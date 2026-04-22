@@ -1,0 +1,2 @@
+-- RenameIndex
+--ALTER INDEX "vehicle_rates_serviceTypeId_fromPlaceId_toPlaceId_minPax_maxPax" RENAME TO "vehicle_rates_serviceTypeId_fromPlaceId_toPlaceId_minPax_ma_idx";

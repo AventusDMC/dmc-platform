@@ -1,0 +1,19 @@
+{
+  "name": "dmc-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @dmc/api run start:dev",
+    "dev:admin": "npm --workspace @dmc/admin-web run dev",
+    "build": "npm run build --workspaces",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "seed:demo": "npm --workspace @dmc/api run prisma:seed",
+    "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  }
+}

@@ -1,0 +1,1397 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id                    String                @id @default(uuid()) @db.Uuid
+  quoteId               String                @unique @db.Uuid
+  acceptedVersionId     String                @unique @db.Uuid
+  bookingType           BookingType           @default(FIT)
+  status                BookingStatus         @default(draft)
+  clientInvoiceStatus   ClientInvoiceStatus   @default(unbilled)
+  supplierPaymentStatus SupplierPaymentStatus @default(unpaid)
+  statusNote            String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  bookingRef            String
+  snapshotJson          Json
+  clientSnapshotJson    Json
+  brandSnapshotJson     Json?
+  contactSnapshotJson   Json
+  itinerarySnapshotJson Json
+  pricingSnapshotJson   Json
+  adults                Int
+  children              Int
+  roomCount             Int
+  nightCount            Int
+  accessToken           String                @unique
+  acceptedVersion       QuoteVersion          @relation("BookingAcceptedVersion", fields: [acceptedVersionId], references: [id])
+  quote                 Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  services              BookingService[]
+  auditLogs             BookingAuditLog[]
+  passengers            BookingPassenger[]
+  roomingEntries        BookingRoomingEntry[]
+
+  @@index([bookingType])
+  @@index([clientInvoiceStatus])
+  @@index([supplierPaymentStatus])
+  @@map("bookings")
+}
+
+model BookingPassenger {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  bookingId          String                     @db.Uuid
+  firstName          String
+  lastName           String
+  title              String?
+  isLead             Boolean                    @default(false)
+  notes              String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  booking            Booking                    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomingAssignments BookingRoomingAssignment[]
+
+  @@index([bookingId, isLead])
+  @@map("booking_passengers")
+}
+
+model BookingRoomingEntry {
+  id          String                     @id @default(uuid()) @db.Uuid
+  bookingId   String                     @db.Uuid
+  roomType    String?
+  occupancy   BookingRoomOccupancy       @default(unknown)
+  notes       String?
+  sortOrder   Int                        @default(0)
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  booking     Booking                    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  assignments BookingRoomingAssignment[]
+
+  @@index([bookingId, sortOrder])
+  @@map("booking_rooming_entries")
+}
+
+model BookingRoomingAssignment {
+  id                    String              @id @default(uuid()) @db.Uuid
+  bookingRoomingEntryId String              @db.Uuid
+  bookingPassengerId    String              @db.Uuid
+  createdAt             DateTime            @default(now())
+  bookingRoomingEntry   BookingRoomingEntry @relation(fields: [bookingRoomingEntryId], references: [id], onDelete: Cascade)
+  bookingPassenger      BookingPassenger    @relation(fields: [bookingPassengerId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingRoomingEntryId, bookingPassengerId])
+  @@index([bookingPassengerId])
+  @@map("booking_rooming_assignments")
+}
+
+model City {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  country   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  hotels    Hotel[]
+  places    Place[]
+
+  @@index([isActive, name])
+  @@map("cities")
+}
+
+model Company {
+  id           String           @id @default(uuid()) @db.Uuid
+  name         String
+  type         String?
+  website      String?
+  country      String?
+  city         String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  logoUrl      String?
+  primaryColor String?
+  branding     CompanyBranding?
+  contacts     Contact[]
+  leads        Lead[]
+  brandQuotes  Quote[]          @relation("BrandQuotes")
+  clientQuotes Quote[]          @relation("ClientQuotes")
+  users        User[]
+
+  @@map("companies")
+}
+
+model CompanyBranding {
+  id             String   @id @default(uuid()) @db.Uuid
+  companyId      String   @unique @db.Uuid
+  displayName    String?
+  logoUrl        String?
+  headerTitle    String?
+  headerSubtitle String?
+  footerText     String?
+  website        String?
+  email          String?
+  phone          String?
+  primaryColor   String?
+  secondaryColor String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_branding")
+}
+
+model Contact {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id])
+  quotes    Quote[]
+
+  @@map("contacts")
+}
+
+model GalleryImage {
+  id              String           @id @default(uuid()) @db.Uuid
+  title           String
+  imageUrl        String
+  destination     String?
+  category        String?
+  createdAt       DateTime         @default(now())
+  itineraryImages ItineraryImage[]
+
+  @@map("gallery_images")
+}
+
+model HotelCategory {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  hotels       Hotel[]
+  quoteOptions QuoteOption[]
+
+  @@index([isActive, name])
+  @@map("hotel_categories")
+}
+
+model HotelContract {
+  id         String           @id @default(uuid()) @db.Uuid
+  hotelId    String           @db.Uuid
+  name       String
+  validFrom  DateTime
+  validTo    DateTime
+  currency   String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  allotments HotelAllotment[]
+  cancellationPolicy HotelContractCancellationPolicy?
+  cancellationPolicyAuditLogs HotelContractCancellationAuditLog[]
+  childPolicy HotelContractChildPolicy?
+  mealPlanAuditLogs HotelContractMealPlanAuditLog[]
+  mealPlans HotelContractMealPlan[]
+  hotel      Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  occupancyAuditLogs HotelContractOccupancyAuditLog[]
+  occupancyRules HotelContractOccupancyRule[]
+  promotions Promotion[]
+  rates      HotelRate[]
+  supplementAuditLogs HotelContractSupplementAuditLog[]
+  supplements HotelContractSupplement[]
+  childPolicyAuditLogs HotelContractChildPolicyAuditLog[]
+  quoteItems QuoteItem[]
+
+  @@index([hotelId])
+  @@map("hotel_contracts")
+}
+
+model HotelContractOccupancyRule {
+  id              String             @id @default(uuid()) @db.Uuid
+  hotelContractId String             @db.Uuid
+  roomCategoryId  String?            @db.Uuid
+  occupancyType   HotelOccupancyType
+  minAdults       Int
+  maxAdults       Int
+  maxChildren     Int                @default(0)
+  maxOccupants    Int
+  isActive        Boolean            @default(true)
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  auditLogs       HotelContractOccupancyAuditLog[]
+  hotelContract   HotelContract      @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory? @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+
+  @@index([hotelContractId, occupancyType, isActive])
+  @@index([hotelContractId, roomCategoryId, occupancyType, isActive])
+  @@index([roomCategoryId, occupancyType])
+  @@map("hotel_contract_occupancy_rules")
+}
+
+model HotelContractOccupancyAuditLog {
+  id              String                 @id @default(uuid()) @db.Uuid
+  hotelContractId String                 @db.Uuid
+  occupancyRuleId String?                @db.Uuid
+  action          String
+  oldValue        String?
+  newValue        String?
+  note            String?
+  actorUserId     String                 @db.Uuid
+  actor           String?
+  createdAt       DateTime               @default(now())
+  hotelContract   HotelContract          @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  occupancyRule   HotelContractOccupancyRule? @relation(fields: [occupancyRuleId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, createdAt])
+  @@index([occupancyRuleId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("hotel_contract_occupancy_audit_logs")
+}
+
+model HotelContractChildPolicy {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  hotelContractId    String                       @unique @db.Uuid
+  infantMaxAge       Int
+  childMaxAge        Int
+  notes              String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  auditLogs          HotelContractChildPolicyAuditLog[]
+  hotelContract      HotelContract                @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  bands              HotelContractChildPolicyBand[]
+
+  @@map("hotel_contract_child_policies")
+}
+
+model HotelContractChildPolicyBand {
+  id              String                  @id @default(uuid()) @db.Uuid
+  childPolicyId   String                  @db.Uuid
+  label           String
+  minAge          Int
+  maxAge          Int
+  chargeBasis     ChildPolicyChargeBasis
+  chargeValue     Float?
+  isActive        Boolean                 @default(true)
+  notes           String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  auditLogs       HotelContractChildPolicyAuditLog[]
+  childPolicy     HotelContractChildPolicy @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
+
+  @@index([childPolicyId, isActive, minAge, maxAge])
+  @@map("hotel_contract_child_policy_bands")
+}
+
+model HotelContractChildPolicyAuditLog {
+  id                 String                      @id @default(uuid()) @db.Uuid
+  hotelContractId    String                      @db.Uuid
+  childPolicyId      String?                     @db.Uuid
+  childPolicyBandId  String?                     @db.Uuid
+  action             String
+  oldValue           String?
+  newValue           String?
+  note               String?
+  actorUserId        String                      @db.Uuid
+  actor              String?
+  createdAt          DateTime                    @default(now())
+  hotelContract      HotelContract               @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  childPolicy        HotelContractChildPolicy?   @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
+  childPolicyBand    HotelContractChildPolicyBand? @relation(fields: [childPolicyBandId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, createdAt])
+  @@index([childPolicyId, createdAt])
+  @@index([childPolicyBandId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("hotel_contract_child_policy_audit_logs")
+}
+
+model HotelContractCancellationPolicy {
+  id                 String                              @id @default(uuid()) @db.Uuid
+  hotelContractId    String                              @unique @db.Uuid
+  summary            String?
+  notes              String?
+  noShowPenaltyType  HotelCancellationPenaltyType?
+  noShowPenaltyValue Float?
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+  auditLogs          HotelContractCancellationAuditLog[]
+  hotelContract      HotelContract                       @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  rules              HotelContractCancellationRule[]
+
+  @@map("hotel_contract_cancellation_policies")
+}
+
+model HotelContractCancellationRule {
+  id                   String                              @id @default(uuid()) @db.Uuid
+  cancellationPolicyId String                              @db.Uuid
+  windowFromValue      Int
+  windowToValue        Int
+  deadlineUnit         HotelCancellationDeadlineUnit
+  penaltyType          HotelCancellationPenaltyType
+  penaltyValue         Float?
+  isActive             Boolean                             @default(true)
+  notes                String?
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
+  auditLogs            HotelContractCancellationAuditLog[]
+  cancellationPolicy   HotelContractCancellationPolicy     @relation(fields: [cancellationPolicyId], references: [id], onDelete: Cascade)
+
+  @@index([cancellationPolicyId, isActive, deadlineUnit, windowFromValue, windowToValue])
+  @@map("hotel_contract_cancellation_rules")
+}
+
+model HotelContractCancellationAuditLog {
+  id                    String                              @id @default(uuid()) @db.Uuid
+  hotelContractId       String                              @db.Uuid
+  cancellationPolicyId  String?                             @db.Uuid
+  cancellationRuleId    String?                             @db.Uuid
+  action                String
+  oldValue              String?
+  newValue              String?
+  note                  String?
+  actorUserId           String                              @db.Uuid
+  actor                 String?
+  createdAt             DateTime                            @default(now())
+  hotelContract         HotelContract                       @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  cancellationPolicy    HotelContractCancellationPolicy?    @relation(fields: [cancellationPolicyId], references: [id], onDelete: Cascade)
+  cancellationRule      HotelContractCancellationRule?      @relation(fields: [cancellationRuleId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, createdAt])
+  @@index([cancellationPolicyId, createdAt])
+  @@index([cancellationRuleId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("hotel_contract_cancellation_audit_logs")
+}
+
+model HotelContractMealPlan {
+  id              String                     @id @default(uuid()) @db.Uuid
+  hotelContractId String                     @db.Uuid
+  code            HotelMealPlan
+  isDefault       Boolean                    @default(false)
+  isActive        Boolean                    @default(true)
+  notes           String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  auditLogs       HotelContractMealPlanAuditLog[]
+  hotelContract   HotelContract              @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+
+  @@unique([hotelContractId, code])
+  @@index([hotelContractId, isDefault])
+  @@index([hotelContractId, isActive])
+  @@map("hotel_contract_meal_plans")
+}
+
+model HotelContractMealPlanAuditLog {
+  id              String                @id @default(uuid()) @db.Uuid
+  hotelContractId String                @db.Uuid
+  mealPlanId      String?               @db.Uuid
+  action          String
+  oldValue        String?
+  newValue        String?
+  note            String?
+  actorUserId     String                @db.Uuid
+  actor           String?
+  createdAt       DateTime              @default(now())
+  hotelContract   HotelContract         @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  mealPlan        HotelContractMealPlan? @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, createdAt])
+  @@index([mealPlanId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("hotel_contract_meal_plan_audit_logs")
+}
+
+model HotelContractSupplement {
+  id              String                        @id @default(uuid()) @db.Uuid
+  hotelContractId String                        @db.Uuid
+  roomCategoryId  String?                       @db.Uuid
+  type            HotelContractSupplementType
+  chargeBasis     HotelContractChargeBasis
+  amount          Float
+  currency        String
+  isMandatory     Boolean                       @default(false)
+  isActive        Boolean                       @default(true)
+  notes           String?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  auditLogs       HotelContractSupplementAuditLog[]
+  hotelContract   HotelContract                 @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory?            @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+
+  @@index([hotelContractId, type, isActive])
+  @@index([hotelContractId, roomCategoryId])
+  @@index([hotelContractId, roomCategoryId, type, isActive])
+  @@index([roomCategoryId, type])
+  @@map("hotel_contract_supplements")
+}
+
+model HotelContractSupplementAuditLog {
+  id              String                     @id @default(uuid()) @db.Uuid
+  hotelContractId String                     @db.Uuid
+  supplementId    String?                    @db.Uuid
+  action          String
+  oldValue        String?
+  newValue        String?
+  note            String?
+  actorUserId     String                     @db.Uuid
+  actor           String?
+  createdAt       DateTime                   @default(now())
+  hotelContract   HotelContract              @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  supplement      HotelContractSupplement?   @relation(fields: [supplementId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, createdAt])
+  @@index([supplementId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("hotel_contract_supplement_audit_logs")
+}
+
+model HotelAllotment {
+  id              String            @id @default(uuid()) @db.Uuid
+  hotelContractId String            @db.Uuid
+  roomCategoryId  String            @db.Uuid
+  dateFrom        DateTime
+  dateTo          DateTime
+  allotment       Int
+  releaseDays     Int               @default(0)
+  stopSale        Boolean           @default(false)
+  notes           String?
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  hotelContract   HotelContract     @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory @relation(fields: [roomCategoryId], references: [id], onDelete: Cascade)
+
+  @@index([hotelContractId, dateFrom, dateTo])
+  @@index([roomCategoryId, dateFrom, dateTo])
+  @@index([isActive, dateFrom, dateTo])
+  @@map("hotel_allotments")
+}
+
+model HotelRate {
+  id             String             @id @default(uuid()) @db.Uuid
+  contractId     String             @db.Uuid
+  seasonId       String?            @db.Uuid
+  seasonName     String
+  mealPlan       HotelMealPlan
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  roomCategoryId String             @db.Uuid
+  occupancyType  HotelOccupancyType
+  currency       String
+  cost           Float
+  contract       HotelContract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  roomCategory   HotelRoomCategory  @relation(fields: [roomCategoryId], references: [id])
+  season         Season?            @relation(fields: [seasonId], references: [id])
+
+  @@index([contractId])
+  @@index([seasonId])
+  @@index([roomCategoryId])
+  @@map("hotel_rates")
+}
+
+model Promotion {
+  id              String          @id @default(uuid()) @db.Uuid
+  hotelContractId String          @db.Uuid
+  name            String
+  type            PromotionType
+  value           Float?
+  stayPayNights   Int?
+  payNights       Int?
+  freeNightCount  Int?
+  isActive        Boolean         @default(true)
+  priority        Int             @default(0)
+  combinabilityMode PromotionCombinabilityMode @default(EXCLUSIVE)
+  promotionGroup  String?
+  combinable      Boolean         @default(false)
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  hotelContract   HotelContract   @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  rules           PromotionRule[]
+
+  @@index([hotelContractId, isActive, priority])
+  @@map("promotions")
+}
+
+model PromotionRule {
+  id              String             @id @default(uuid()) @db.Uuid
+  promotionId     String             @db.Uuid
+  roomCategoryId  String?            @db.Uuid
+  travelDateFrom  DateTime?
+  travelDateTo    DateTime?
+  bookingDateFrom DateTime?
+  bookingDateTo   DateTime?
+  boardBasis      HotelMealPlan?
+  minStay         Int?
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  promotion       Promotion          @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory? @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+
+  @@index([promotionId, isActive])
+  @@index([roomCategoryId])
+  @@index([travelDateFrom, travelDateTo])
+  @@index([bookingDateFrom, bookingDateTo])
+  @@map("promotion_rules")
+}
+
+model HotelRoomCategory {
+  id             String           @id @default(uuid()) @db.Uuid
+  hotelId        String           @db.Uuid
+  name           String
+  code           String?
+  description    String?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  allotments     HotelAllotment[]
+  hotelRates     HotelRate[]
+  hotel          Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  occupancyRules HotelContractOccupancyRule[]
+  promotionRules PromotionRule[]
+  quoteItems     QuoteItem[]
+  supplements    HotelContractSupplement[]
+
+  @@index([hotelId])
+  @@map("hotel_room_categories")
+}
+
+model Hotel {
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String
+  city            String
+  category        String
+  supplierId      String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  cityId          String?             @db.Uuid
+  hotelCategoryId String?             @db.Uuid
+  contracts       HotelContract[]
+  roomCategories  HotelRoomCategory[]
+  cityRecord      City?               @relation(fields: [cityId], references: [id])
+  hotelCategory   HotelCategory?      @relation(fields: [hotelCategoryId], references: [id])
+  quoteItems      QuoteItem[]
+
+  @@index([cityId])
+  @@index([hotelCategoryId])
+  @@map("hotels")
+}
+
+model Itinerary {
+  id          String           @id @default(uuid()) @db.Uuid
+  quoteId     String           @db.Uuid
+  dayNumber   Int
+  title       String
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  quote       Quote            @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  images      ItineraryImage[]
+  quoteItems  QuoteItem[]
+
+  @@map("itineraries")
+}
+
+model ItineraryImage {
+  id             String       @id @default(uuid()) @db.Uuid
+  itineraryId    String       @db.Uuid
+  galleryImageId String       @db.Uuid
+  sortOrder      Int          @default(0)
+  galleryImage   GalleryImage @relation(fields: [galleryImageId], references: [id], onDelete: Cascade)
+  itinerary      Itinerary    @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@index([galleryImageId])
+  @@index([itineraryId, sortOrder])
+  @@map("itinerary_images")
+}
+
+model Lead {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String?   @db.Uuid
+  assignedToId String?   @db.Uuid
+  source       String?
+  status       String    @default("new")
+  inquiry      String
+  travelDate   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  assignedTo   User?     @relation(fields: [assignedToId], references: [id])
+  company      Company?  @relation(fields: [companyId], references: [id])
+
+  @@map("leads")
+}
+
+model PlaceType {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  places    Place[]
+
+  @@index([isActive, name])
+  @@map("place_types")
+}
+
+model Place {
+  id               String        @id @default(uuid()) @db.Uuid
+  name             String
+  type             String
+  city             String?
+  country          String?
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  cityId           String?       @db.Uuid
+  placeTypeId      String?       @db.Uuid
+  cityRecord       City?         @relation(fields: [cityId], references: [id])
+  placeType        PlaceType?    @relation(fields: [placeTypeId], references: [id])
+  fromRoutes       Route[]       @relation("RouteFromPlace")
+  toRoutes         Route[]       @relation("RouteToPlace")
+  fromVehicleRates VehicleRate[] @relation("VehicleRateFromPlace")
+  toVehicleRates   VehicleRate[] @relation("VehicleRateToPlace")
+
+  @@index([cityId])
+  @@index([isActive, name])
+  @@index([placeTypeId])
+  @@map("places")
+}
+
+model QuoteBlock {
+  id                   String           @id @default(uuid()) @db.Uuid
+  name                 String
+  type                 QuoteBlockType
+  title                String
+  description          String?
+  defaultServiceId     String?          @db.Uuid
+  defaultServiceTypeId String?          @db.Uuid
+  defaultCategory      String?
+  defaultCost          Float?
+  defaultSell          Float?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  defaultService       SupplierService? @relation(fields: [defaultServiceId], references: [id])
+  defaultServiceType   ServiceType?     @relation(fields: [defaultServiceTypeId], references: [id])
+
+  @@index([defaultServiceId])
+  @@index([defaultServiceTypeId])
+  @@index([type, name])
+  @@map("quote_blocks")
+}
+
+model QuoteItem {
+  id                     String              @id @default(uuid()) @db.Uuid
+  quoteId                String              @db.Uuid
+  serviceId              String              @db.Uuid
+  quantity               Int                 @default(1)
+  paxCount               Int?
+  participantCount       Int?
+  adultCount             Int?
+  childCount             Int?
+  roomCount              Int?
+  nightCount             Int?
+  dayCount               Int?
+  markupPercent          Float               @default(0)
+  totalCost              Float
+  totalSell              Float
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  appliedVehicleRateId   String?             @db.Uuid
+  currency               String
+  pricingDescription     String?
+  itineraryId            String?             @db.Uuid
+  serviceDate            DateTime?
+  startTime              String?
+  pickupTime             String?
+  pickupLocation         String?
+  meetingPoint           String?
+  reconfirmationRequired Boolean             @default(false)
+  reconfirmationDueAt    DateTime?
+  optionId               String?             @db.Uuid
+  hotelId                String?             @db.Uuid
+  contractId             String?             @db.Uuid
+  seasonName             String?
+  mealPlan               HotelMealPlan?
+  roomCategoryId         String?             @db.Uuid
+  occupancyType          HotelOccupancyType?
+  baseCost               Float
+  overrideCost           Float?
+  useOverride            Boolean             @default(false)
+  appliedVehicleRate     VehicleRate?        @relation(fields: [appliedVehicleRateId], references: [id])
+  contract               HotelContract?      @relation(fields: [contractId], references: [id])
+  hotel                  Hotel?              @relation(fields: [hotelId], references: [id])
+  itinerary              Itinerary?          @relation(fields: [itineraryId], references: [id])
+  option                 QuoteOption?        @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  quote                  Quote               @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteItineraryDayItems QuoteItineraryDayItem[]
+  roomCategory           HotelRoomCategory?  @relation(fields: [roomCategoryId], references: [id])
+  service                SupplierService     @relation(fields: [serviceId], references: [id])
+
+  @@index([contractId])
+  @@index([hotelId])
+  @@index([quoteId, optionId])
+  @@index([roomCategoryId])
+  @@map("quote_items")
+}
+
+model QuoteItineraryDay {
+  id         String                  @id @default(uuid()) @db.Uuid
+  quoteId    String                  @db.Uuid
+  dayNumber  Int
+  title      String
+  notes      String?
+  sortOrder  Int                     @default(0)
+  isActive   Boolean                 @default(true)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  quote      Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  dayItems   QuoteItineraryDayItem[]
+  auditLogs  QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
+
+  @@unique([quoteId, dayNumber])
+  @@index([quoteId, isActive, sortOrder])
+  @@map("quote_itinerary_days")
+}
+
+model QuoteItineraryDayItem {
+  id             String                   @id @default(uuid()) @db.Uuid
+  dayId          String                   @db.Uuid
+  quoteServiceId String                   @db.Uuid
+  sortOrder      Int                      @default(0)
+  notes          String?
+  isActive       Boolean                  @default(true)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  day            QuoteItineraryDay        @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  quoteService   QuoteItem                @relation(fields: [quoteServiceId], references: [id], onDelete: Cascade)
+  auditLogs      QuoteItineraryAuditLog[] @relation("QuoteItineraryDayItemAuditLogs")
+
+  @@unique([dayId, sortOrder])
+  @@unique([dayId, quoteServiceId])
+  @@index([dayId, sortOrder])
+  @@index([quoteServiceId])
+  @@map("quote_itinerary_day_items")
+}
+
+model QuoteItineraryAuditLog {
+  id          String                 @id @default(uuid()) @db.Uuid
+  quoteId     String                 @db.Uuid
+  dayId       String?                @db.Uuid
+  itemId      String?                @db.Uuid
+  action      String
+  oldValue    String?
+  newValue    String?
+  actorUserId String                 @db.Uuid
+  actor       String?
+  createdAt   DateTime               @default(now())
+  day         QuoteItineraryDay?     @relation("QuoteItineraryDayAuditLogs", fields: [dayId], references: [id], onDelete: SetNull)
+  item        QuoteItineraryDayItem? @relation("QuoteItineraryDayItemAuditLogs", fields: [itemId], references: [id], onDelete: SetNull)
+  quote       Quote                  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("quote_itinerary_audit_logs")
+}
+
+model QuoteOption {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  quoteId              String                 @db.Uuid
+  name                 String
+  notes                String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  pricingMode          QuoteOptionPricingMode @default(itemized)
+  packageMarginPercent Float?
+  hotelCategoryId      String?                @db.Uuid
+  quoteItems           QuoteItem[]
+  hotelCategory        HotelCategory?         @relation(fields: [hotelCategoryId], references: [id])
+  quote                Quote                  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([hotelCategoryId])
+  @@index([quoteId])
+  @@map("quote_options")
+}
+
+model QuotePricingSlab {
+  id                String   @id @default(uuid()) @db.Uuid
+  quoteId           String   @db.Uuid
+  minPax            Int
+  maxPax            Int?
+  price             Float
+  notes             String?
+  actualPax         Int      @default(1)
+  focPax            Int      @default(0)
+  payingPax         Int      @default(1)
+  totalCost         Float    @default(0)
+  totalSell         Float    @default(0)
+  pricePerPayingPax Float    @default(0)
+  pricePerActualPax Float?
+  createdAt         DateTime @default(now())
+  quote             Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, minPax, maxPax])
+  @@map("quote_pricing_slabs")
+}
+
+model QuoteScenario {
+  id          String   @id @default(uuid()) @db.Uuid
+  quoteId     String   @db.Uuid
+  paxCount    Int
+  totalCost   Float
+  totalSell   Float
+  pricePerPax Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, paxCount])
+  @@map("quote_scenarios")
+}
+
+model QuoteVersion {
+  id                String   @id @default(uuid()) @db.Uuid
+  quoteId           String   @db.Uuid
+  versionNumber     Int
+  label             String?
+  snapshotJson      Json
+  createdAt         DateTime @default(now())
+  booking           Booking? @relation("BookingAcceptedVersion")
+  quote             Quote    @relation("QuoteVersions", fields: [quoteId], references: [id], onDelete: Cascade)
+  acceptedForQuotes Quote[]  @relation("AcceptedQuoteVersion")
+
+  @@unique([quoteId, versionNumber])
+  @@index([quoteId, createdAt])
+  @@map("quote_versions")
+}
+
+model Quote {
+  id                  String             @id @default(uuid()) @db.Uuid
+  clientCompanyId     String             @map("companyId") @db.Uuid
+  contactId           String             @db.Uuid
+  bookingType         BookingType        @default(FIT)
+  title               String
+  description         String?
+  totalPrice          Float              @default(0)
+  status              QuoteStatus        @default(DRAFT)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  adults              Int                @default(1)
+  children            Int                @default(0)
+  roomCount           Int                @default(1)
+  nightCount          Int                @default(1)
+  totalCost           Float              @default(0)
+  totalSell           Float              @default(0)
+  pricePerPax         Float              @default(0)
+  acceptedVersionId   String?            @db.Uuid
+  quoteNumber         String?            @unique
+  clientChangeRequestMessage String?
+  singleSupplement    Float?
+  pricingType         String             @default("simple")
+  focType             String             @default("none")
+  focRatio            Float?
+  focCount            Int?
+  focRoomType         String?
+  brandCompanyId      String?            @db.Uuid
+  pricingMode         String             @default("FIXED")
+  fixedPricePerPerson Float              @default(0)
+  inclusionsText      String?
+  exclusionsText      String?
+  termsNotesText      String?
+  travelStartDate     DateTime?
+  validUntil          DateTime?
+  sentAt              DateTime?
+  acceptedAt          DateTime?
+  publicToken         String?            @unique
+  publicEnabled       Boolean            @default(false)
+  booking             Booking?
+  invoice             Invoice?
+  invoiceAuditLogs    InvoiceAuditLog[]
+  itineraries         Itinerary[]
+  itineraryDays       QuoteItineraryDay[]
+  itineraryAuditLogs  QuoteItineraryAuditLog[]
+  quoteItems          QuoteItem[]
+  quoteOptions        QuoteOption[]
+  pricingSlabs        QuotePricingSlab[]
+  scenarios           QuoteScenario[]
+  versions            QuoteVersion[]     @relation("QuoteVersions")
+  acceptedVersion     QuoteVersion?      @relation("AcceptedQuoteVersion", fields: [acceptedVersionId], references: [id])
+  brandCompany        Company?           @relation("BrandQuotes", fields: [brandCompanyId], references: [id])
+  clientCompany       Company            @relation("ClientQuotes", fields: [clientCompanyId], references: [id])
+  contact             Contact            @relation(fields: [contactId], references: [id])
+
+  @@index([bookingType])
+  @@index([brandCompanyId])
+  @@map("quotes")
+}
+
+model Invoice {
+  id          String        @id @default(uuid()) @db.Uuid
+  quoteId     String        @unique @db.Uuid
+  totalAmount Float
+  currency    String
+  status      InvoiceStatus @default(DRAFT)
+  dueDate     DateTime
+  quote       Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  auditLogs   InvoiceAuditLog[]
+
+  @@index([status, dueDate])
+  @@map("invoices")
+}
+
+model InvoiceAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  invoiceId   String   @db.Uuid
+  quoteId     String   @db.Uuid
+  action      String
+  oldValue    String?
+  newValue    String?
+  note        String?
+  actorUserId String?  @db.Uuid
+  actor       String?
+  createdAt   DateTime @default(now())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([quoteId, createdAt])
+  @@map("invoice_audit_logs")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+
+  @@map("roles")
+}
+
+model Route {
+  id              String                 @id @default(uuid()) @db.Uuid
+  fromPlaceId     String                 @db.Uuid
+  toPlaceId       String                 @db.Uuid
+  name            String
+  routeType       String?
+  durationMinutes Int?
+  distanceKm      Float?
+  notes           String?
+  isActive        Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  fromPlace       Place                  @relation("RouteFromPlace", fields: [fromPlaceId], references: [id])
+  toPlace         Place                  @relation("RouteToPlace", fields: [toPlaceId], references: [id])
+  vehicleRates    VehicleRate[]
+  pricingRules    TransportPricingRule[]
+
+  @@index([fromPlaceId])
+  @@index([isActive, name])
+  @@index([toPlaceId])
+  @@map("routes")
+}
+
+model ServiceType {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String
+  code             String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  quoteBlocks      QuoteBlock[]
+  supplierServices SupplierService[]
+
+  @@index([isActive, name])
+  @@map("service_types")
+}
+
+model SupplierService {
+  id            String          @id @default(uuid()) @db.Uuid
+  supplierId    String
+  name          String
+  category      String
+  unitType      ServiceUnitType
+  baseCost      Float
+  currency      String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  serviceTypeId String?         @db.Uuid
+  quoteBlocks   QuoteBlock[]
+  quoteItems    QuoteItem[]
+  serviceType   ServiceType?    @relation(fields: [serviceTypeId], references: [id])
+
+  @@index([serviceTypeId])
+  @@map("supplier_services")
+}
+
+model SupportTextTemplate {
+  id           String   @id @default(uuid()) @db.Uuid
+  title        String
+  templateType String
+  content      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([templateType, title])
+  @@map("support_text_templates")
+}
+
+model Supplier {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String
+  type            String
+  email           String?
+  phone           String?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  bookingServices BookingService[]
+
+  @@map("suppliers")
+}
+
+model Season {
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  hotelRates HotelRate[]
+
+  @@map("seasons")
+}
+
+model TransportPricingRule {
+  id                     String               @id @default(uuid()) @db.Uuid
+  routeId                String               @db.Uuid
+  transportServiceTypeId String               @db.Uuid
+  vehicleId              String               @db.Uuid
+  pricingMode            TransportPricingMode
+  minPax                 Int
+  maxPax                 Int
+  unitCapacity           Int?
+  baseCost               Float
+  discountPercent        Float                @default(0)
+  currency               String
+  isActive               Boolean              @default(true)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  route                  Route                @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  transportServiceType   TransportServiceType @relation(fields: [transportServiceTypeId], references: [id], onDelete: Cascade)
+  vehicle                Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([routeId])
+  @@index([transportServiceTypeId])
+  @@index([vehicleId])
+  @@index([isActive, routeId, transportServiceTypeId, minPax, maxPax])
+  @@map("transport_pricing_rules")
+}
+
+model TransportServiceType {
+  id           String                 @id @default(uuid()) @db.Uuid
+  name         String
+  code         String                 @unique
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  vehicleRates VehicleRate[]
+  pricingRules TransportPricingRule[]
+
+  @@map("transport_service_types")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  firstName String
+  lastName  String
+  password  String
+  roleId    String   @db.Uuid
+  companyId String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leads     Lead[]
+  company   Company? @relation(fields: [companyId], references: [id])
+  role      Role     @relation(fields: [roleId], references: [id])
+
+  @@map("users")
+}
+
+model VehicleRate {
+  id            String               @id @default(uuid()) @db.Uuid
+  vehicleId     String               @db.Uuid
+  serviceTypeId String               @db.Uuid
+  routeName     String
+  minPax        Int
+  maxPax        Int
+  price         Float
+  currency      String
+  validFrom     DateTime
+  validTo       DateTime
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  fromPlaceId   String?              @db.Uuid
+  toPlaceId     String?              @db.Uuid
+  routeId       String?              @db.Uuid
+  quoteItems    QuoteItem[]
+  fromPlace     Place?               @relation("VehicleRateFromPlace", fields: [fromPlaceId], references: [id])
+  route         Route?               @relation(fields: [routeId], references: [id])
+  serviceType   TransportServiceType @relation(fields: [serviceTypeId], references: [id])
+  toPlace       Place?               @relation("VehicleRateToPlace", fields: [toPlaceId], references: [id])
+  vehicle       Vehicle              @relation(fields: [vehicleId], references: [id])
+
+  @@index([fromPlaceId])
+  @@index([routeId])
+  @@index([serviceTypeId, fromPlaceId, toPlaceId, minPax, maxPax], map: "vehicle_rates_serviceTypeId_fromPlaceId_toPlaceId_minPax_maxPax")
+  @@index([serviceTypeId, routeId, minPax, maxPax])
+  @@index([serviceTypeId, routeName, minPax, maxPax])
+  @@index([toPlaceId])
+  @@index([vehicleId])
+  @@map("vehicle_rates")
+}
+
+model Vehicle {
+  id              String                 @id @default(uuid()) @db.Uuid
+  supplierId      String
+  name            String
+  maxPax          Int
+  luggageCapacity Int
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  vehicleRates    VehicleRate[]
+  pricingRules    TransportPricingRule[]
+
+  @@map("vehicles")
+}
+
+model BookingService {
+  id                      String                        @id @default(uuid()) @db.Uuid
+  bookingId               String                        @db.Uuid
+  sourceQuoteItemId       String?                       @db.Uuid
+  serviceOrder            Int                           @default(0)
+  serviceType             String
+  serviceDate             DateTime?
+  startTime               String?
+  pickupTime              String?
+  pickupLocation          String?
+  meetingPoint            String?
+  participantCount        Int?
+  adultCount              Int?
+  childCount              Int?
+  supplierReference       String?
+  reconfirmationRequired  Boolean                       @default(false)
+  reconfirmationDueAt     DateTime?
+  description             String
+  notes                   String?
+  qty                     Int                           @default(1)
+  unitCost                Float
+  unitSell                Float
+  totalCost               Float
+  totalSell               Float
+  status                  BookingServiceLifecycleStatus @default(pending)
+  supplierId              String?                       @db.Uuid
+  supplierName            String?
+  confirmationStatus      BookingServiceStatus          @default(pending)
+  confirmationNumber      String?
+  confirmationNotes       String?
+  statusNote              String?
+  confirmationRequestedAt DateTime?
+  confirmationConfirmedAt DateTime?
+  createdAt               DateTime                      @default(now())
+  updatedAt               DateTime                      @updatedAt
+  booking                 Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  auditLogs               BookingAuditLog[]
+  supplier                Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, serviceOrder])
+  @@index([sourceQuoteItemId])
+  @@index([supplierId])
+  @@map("booking_services")
+}
+
+model BookingAuditLog {
+  id               String                 @id @default(uuid()) @db.Uuid
+  bookingId        String                 @db.Uuid
+  bookingServiceId String?                @db.Uuid
+  entityType       BookingAuditEntityType
+  entityId         String                 @db.Uuid
+  oldValue         String?
+  newValue         String?
+  action           String
+  note             String?
+  actorUserId      String?                @db.Uuid
+  actor            String?
+  createdAt        DateTime               @default(now())
+  booking          Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingService   BookingService?        @relation(fields: [bookingServiceId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@index([bookingServiceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@map("booking_audit_logs")
+}
+
+enum BookingStatus {
+  draft
+  confirmed
+  in_progress
+  completed
+  cancelled
+}
+
+enum BookingType {
+  FIT
+  GROUP
+  SERIES
+}
+
+enum ClientInvoiceStatus {
+  unbilled
+  invoiced
+  paid
+}
+
+enum SupplierPaymentStatus {
+  unpaid
+  scheduled
+  paid
+}
+
+enum BookingServiceStatus {
+  pending
+  requested
+  confirmed
+}
+
+enum BookingRoomOccupancy {
+  single
+  double
+  triple
+  quad
+  unknown
+}
+
+enum BookingServiceLifecycleStatus {
+  pending
+  ready
+  in_progress
+  confirmed
+  cancelled
+}
+
+enum BookingAuditEntityType {
+  booking
+  booking_service
+}
+
+enum HotelMealPlan {
+  RO
+  BB
+  HB
+  FB
+  AI
+}
+
+enum HotelOccupancyType {
+  SGL
+  DBL
+  TPL
+}
+
+enum ChildPolicyChargeBasis {
+  FREE
+  PERCENT_OF_ADULT
+  FIXED_AMOUNT
+}
+
+enum HotelContractSupplementType {
+  EXTRA_BREAKFAST
+  EXTRA_LUNCH
+  EXTRA_DINNER
+  GALA_DINNER
+  EXTRA_BED
+}
+
+enum HotelContractChargeBasis {
+  PER_PERSON
+  PER_ROOM
+  PER_STAY
+  PER_NIGHT
+}
+
+enum HotelCancellationPenaltyType {
+  PERCENT
+  NIGHTS
+  FULL_STAY
+  FIXED
+}
+
+enum HotelCancellationDeadlineUnit {
+  DAYS
+  HOURS
+}
+
+enum PromotionType {
+  PERCENTAGE_DISCOUNT
+  FIXED_DISCOUNT
+  STAY_PAY
+  FREE_NIGHT
+}
+
+enum PromotionCombinabilityMode {
+  EXCLUSIVE
+  COMBINABLE
+  BEST_OF_GROUP
+}
+
+enum QuoteBlockType {
+  ITINERARY_DAY
+  SERVICE_BLOCK
+}
+
+enum QuoteOptionPricingMode {
+  itemized
+  package
+}
+
+enum QuoteStatus {
+  DRAFT
+  READY
+  SENT
+  ACCEPTED
+  CONFIRMED
+  REVISION_REQUESTED
+  EXPIRED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  CANCELLED
+}
+
+enum TransportPricingMode {
+  per_vehicle
+  capacity_unit
+}
+
+enum ServiceUnitType {
+  per_person
+  per_room
+  per_vehicle
+  per_group
+  per_night
+  per_day
+}

@@ -1,0 +1,790 @@
+:root {
+  color-scheme: light;
+  --proposal-ink: #1f1a17;
+  --proposal-subtle: #5e554d;
+  --proposal-muted: #7d7268;
+  --proposal-muted-soft: #9a8f84;
+  --proposal-border: #e6ddd2;
+  --proposal-border-strong: #d7cabb;
+  --proposal-paper: #fffdfa;
+  --proposal-paper-soft: #f8f3eb;
+  --proposal-paper-soft-2: #f4ede3;
+  --proposal-accent: #8a6a3a;
+  --proposal-accent-soft: rgba(138, 106, 58, 0.1);
+  --proposal-accent-soft-2: rgba(138, 106, 58, 0.18);
+  --proposal-shadow: 0 18px 48px rgba(58, 45, 28, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  color: var(--proposal-ink);
+  background: #f5f1ea;
+}
+
+.proposal-v3 {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.proposal-cover,
+.proposal-section {
+  background: var(--proposal-paper);
+  border: 1px solid var(--proposal-border);
+  border-radius: 24px;
+  margin-bottom: 24px;
+  box-shadow: var(--proposal-shadow);
+}
+
+.proposal-cover {
+  page-break-after: always;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 250, 0.92), rgba(250, 245, 236, 0.96)),
+    radial-gradient(circle at top right, rgba(138, 106, 58, 0.14), transparent 34%);
+}
+
+.proposal-cover-band {
+  height: 14px;
+}
+
+.proposal-cover-inner {
+  padding: 48px 52px 64px;
+  min-height: 620px;
+}
+
+.proposal-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--proposal-accent);
+  text-transform: none;
+}
+
+.proposal-reference {
+  margin: 0;
+  color: var(--proposal-muted);
+  font-size: 14px;
+}
+
+.proposal-cover h1,
+.proposal-section h2,
+.proposal-card h3,
+.proposal-day-card h3,
+.investment-card h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.proposal-cover h1 {
+  font-size: 64px;
+  line-height: 0.98;
+  margin-bottom: 12px;
+  max-width: 10ch;
+  letter-spacing: -0.03em;
+}
+
+.proposal-subtitle,
+.proposal-body-copy,
+.proposal-day-summary,
+.proposal-service-card p,
+.investment-card p {
+  margin: 0;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  color: var(--proposal-subtle);
+  line-height: 1.6;
+}
+
+.proposal-cover-facts,
+.proposal-summary-grid,
+.proposal-section-columns {
+  display: grid;
+  gap: 16px;
+}
+
+.proposal-cover-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.proposal-cover-date {
+  margin: 0;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--proposal-muted);
+  text-align: right;
+}
+
+.proposal-cover-copy {
+  margin-top: 92px;
+  max-width: 780px;
+}
+
+.proposal-cover-kicker {
+  margin: 0 0 18px;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--proposal-muted-soft);
+}
+
+.proposal-cover-destination {
+  margin: 0 0 18px;
+  font-size: 28px;
+  line-height: 1.3;
+  color: #43372d;
+  max-width: 22ch;
+}
+
+.proposal-subtitle {
+  max-width: 52ch;
+  font-size: 16px;
+  color: #685f57;
+}
+
+.proposal-cover-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 64px;
+  gap: 12px;
+}
+
+.proposal-cover-facts article,
+.proposal-summary-grid article,
+.proposal-card,
+.investment-card,
+.proposal-day-card,
+.proposal-service-card {
+  background: var(--proposal-paper-soft);
+  border: 1px solid #eadfce;
+  border-radius: 18px;
+}
+
+.proposal-cover-facts article,
+.proposal-summary-grid article {
+  padding: 18px 18px 20px;
+}
+
+.proposal-cover-facts span,
+.proposal-summary-grid span,
+.investment-kicker,
+.proposal-day-number,
+.proposal-day-group h4 {
+  display: block;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--proposal-accent);
+}
+
+.proposal-cover-facts strong,
+.proposal-summary-grid strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.proposal-cover-signature {
+  margin: 56px 0 0;
+  max-width: 42ch;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--proposal-muted);
+}
+
+.proposal-section {
+  padding: 36px 38px 40px;
+}
+
+.proposal-section-header {
+  margin-bottom: 26px;
+}
+
+.proposal-section-header h2 {
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.proposal-summary-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
+  gap: 34px;
+  align-items: start;
+}
+
+.proposal-summary-main {
+  min-width: 0;
+}
+
+.proposal-body-copy {
+  font-size: 16px;
+  max-width: 62ch;
+}
+
+.proposal-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 34px 0 0;
+  gap: 14px;
+}
+
+.proposal-card {
+  padding: 22px;
+}
+
+.proposal-card-accent {
+  background:
+    linear-gradient(180deg, rgba(138, 106, 58, 0.14), rgba(138, 106, 58, 0.05)),
+    var(--proposal-paper-soft);
+  border-color: var(--proposal-border-strong);
+}
+
+.proposal-card-label {
+  margin: 0 0 8px;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--proposal-accent);
+}
+
+.proposal-card h3 {
+  margin-bottom: 16px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.proposal-list {
+  margin: 0;
+  padding-left: 18px;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  color: #4e463f;
+  line-height: 1.7;
+}
+
+.proposal-list li + li {
+  margin-top: 8px;
+}
+
+.proposal-empty-list-item,
+.proposal-empty-state {
+  color: var(--proposal-muted);
+}
+
+.proposal-list-tight {
+  margin-top: 16px;
+}
+
+.proposal-table-shell {
+  border: 1px solid var(--proposal-border);
+  border-radius: 20px;
+  overflow: clip;
+  background: linear-gradient(180deg, #fffdfa 0%, #fbf7f0 100%);
+}
+
+.proposal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  table-layout: fixed;
+}
+
+.proposal-table thead {
+  display: table-header-group;
+}
+
+.proposal-table th,
+.proposal-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eadfce;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.proposal-table th {
+  color: #7a6956;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #f7efe5 0%, #f2e7d9 100%);
+}
+
+.proposal-table tbody tr:nth-child(even) td {
+  background: rgba(138, 106, 58, 0.025);
+}
+
+.proposal-days {
+  display: grid;
+  gap: 18px;
+}
+
+.proposal-day-card {
+  padding: 24px 24px 22px;
+  background: linear-gradient(180deg, #fffdfa 0%, #fcf8f1 100%);
+  border-color: var(--proposal-border-strong);
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.proposal-day-intro {
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.proposal-day-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.proposal-day-heading h3 {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.proposal-day-overnight,
+.proposal-service-meta {
+  margin-top: 8px;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  color: var(--proposal-muted);
+}
+
+.proposal-day-overnight {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(138, 106, 58, 0.08);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.proposal-day-summary {
+  font-size: 15px;
+  max-width: 68ch;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.proposal-day-services {
+  margin-top: 16px;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.proposal-day-group {
+  margin-top: 18px;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.proposal-day-services > .proposal-day-group:first-child,
+.proposal-day-services > .proposal-empty-state:first-child {
+  margin-top: 0;
+}
+
+.proposal-day-group:first-of-type {
+  break-before: avoid-page;
+  page-break-before: avoid;
+}
+
+.proposal-day-group h4 {
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(138, 106, 58, 0.08);
+  break-after: avoid-page;
+  page-break-after: avoid;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--proposal-muted-soft);
+}
+
+.proposal-service-card {
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(138, 106, 58, 0.12);
+}
+
+.proposal-service-card h5 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.proposal-service-card p + .proposal-service-meta,
+.proposal-service-card h5 + .proposal-service-meta {
+  margin-top: 6px;
+}
+
+.proposal-investment-shell {
+  display: grid;
+  gap: 16px;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.investment-card {
+  padding: 32px 32px 30px;
+  margin-bottom: 0;
+  background:
+    linear-gradient(180deg, rgba(138, 106, 58, 0.18), rgba(138, 106, 58, 0.05)),
+    var(--proposal-paper-soft);
+  border-color: var(--proposal-border-strong);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.investment-card-pending {
+  background:
+    linear-gradient(180deg, rgba(138, 106, 58, 0.09), rgba(138, 106, 58, 0.02)),
+    #f6f0e8;
+}
+
+.investment-card h3 {
+  font-size: 46px;
+  margin: 10px 0 12px;
+  letter-spacing: -0.03em;
+}
+
+.investment-table {
+  border: 1px solid var(--proposal-border);
+  border-radius: 18px;
+  overflow: clip;
+  background: #fffdfa;
+}
+
+.proposal-section-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.proposal-section-columns .proposal-card {
+  height: 100%;
+  background: linear-gradient(180deg, #fffdfa 0%, #faf5ed 100%);
+}
+
+@page {
+  size: A4;
+  margin: 16mm;
+}
+
+@media (max-width: 900px) {
+  .proposal-v3 {
+    padding: 18px;
+  }
+
+  .proposal-cover-inner,
+  .proposal-section {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .proposal-cover-inner {
+    min-height: 0;
+  }
+
+  .proposal-summary-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .proposal-summary-grid,
+  .proposal-cover-facts,
+  .proposal-section-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .proposal-cover h1 {
+    font-size: 42px;
+  }
+
+  .proposal-cover-header,
+  .proposal-day-heading {
+    flex-direction: column;
+  }
+
+  .proposal-cover-date {
+    text-align: left;
+  }
+
+  .proposal-summary-grid,
+  .proposal-cover-facts,
+  .proposal-section-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .proposal-section-header h2,
+  .proposal-day-heading h3 {
+    font-size: 24px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 11mm 10mm 13mm;
+  }
+
+  body {
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .proposal-v3 {
+    max-width: none;
+    padding: 0;
+  }
+
+  .proposal-cover,
+  .proposal-section {
+    margin-bottom: 14px;
+  }
+
+  .proposal-cover,
+  .proposal-section {
+    box-shadow: none;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .proposal-cover {
+    break-after: page;
+    page-break-after: always;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+
+  .proposal-cover-inner {
+    min-height: 0;
+    padding: 34px 36px 28px;
+  }
+
+  .proposal-cover-copy {
+    margin-top: 48px;
+  }
+
+  .proposal-cover-facts {
+    margin-top: 34px;
+    gap: 10px;
+  }
+
+  .proposal-cover-facts article {
+    padding: 14px 14px 15px;
+  }
+
+  .proposal-cover-signature {
+    margin-top: 22px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .proposal-section {
+    padding: 24px 26px 26px;
+  }
+
+  .proposal-section-header {
+    margin-bottom: 18px;
+  }
+
+  .proposal-section-intro {
+    margin: 0 0 14px;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .proposal-summary-layout {
+    gap: 22px;
+  }
+
+  .proposal-body-copy {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .proposal-summary-grid {
+    margin-top: 20px;
+    gap: 12px;
+  }
+
+  .proposal-summary-grid article,
+  .proposal-card,
+  .investment-card {
+    padding: 17px 17px 18px;
+  }
+
+  .proposal-card h3,
+  .investment-card h3 {
+    margin-bottom: 10px;
+  }
+
+  .proposal-list {
+    line-height: 1.58;
+  }
+
+  .proposal-list li + li {
+    margin-top: 5px;
+  }
+
+  .proposal-list-tight {
+    margin-top: 10px;
+  }
+
+  .proposal-table th,
+  .proposal-table td {
+    padding: 10px 11px;
+    font-size: 12px;
+  }
+
+  .proposal-table-shell,
+  .investment-card,
+  .investment-table,
+  .proposal-card,
+  .proposal-day-intro {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .proposal-section-header,
+  .proposal-section-intro {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  .proposal-days {
+    gap: 14px;
+  }
+
+  .proposal-days,
+  .proposal-day-card {
+    display: block;
+  }
+
+  .proposal-day-card {
+    padding: 16px 16px 14px;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .proposal-day-heading {
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .proposal-day-heading h3 {
+    font-size: 18px;
+  }
+
+  .proposal-day-overnight,
+  .proposal-service-meta {
+    font-size: 11px;
+  }
+
+  .proposal-day-overnight {
+    padding: 3px 7px;
+  }
+
+  .proposal-day-summary {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .proposal-day-services {
+    margin-top: 12px;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .proposal-day-group {
+    break-inside: auto;
+    page-break-inside: auto;
+    margin-top: 14px;
+  }
+
+  .proposal-day-group h4 {
+    margin-bottom: 7px;
+    padding-bottom: 5px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: #8f8479;
+  }
+
+  .proposal-section-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    break-inside: auto;
+    page-break-inside: auto;
+    align-items: start;
+  }
+
+  .proposal-service-card {
+    padding: 11px 13px;
+    margin-bottom: 7px;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .proposal-service-card h5 {
+    margin-bottom: 5px;
+    font-size: 14px;
+  }
+
+  .proposal-service-card p {
+    line-height: 1.5;
+    font-size: 12px;
+  }
+
+  .proposal-investment-shell {
+    gap: 12px;
+  }
+
+  .investment-card {
+    padding: 22px 22px 19px;
+  }
+
+  .investment-card h3 {
+    font-size: 34px;
+    margin: 7px 0 9px;
+  }
+
+  .proposal-section-columns .proposal-card {
+    padding: 18px 18px 19px;
+  }
+
+  .proposal-table-empty-row td,
+  .proposal-empty-list-item {
+    color: var(--proposal-muted);
+  }
+
+  .proposal-service-card:last-child,
+  .proposal-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}

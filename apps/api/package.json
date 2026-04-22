@@ -1,0 +1,40 @@
+{
+  "name": "@dmc/api",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main",
+    "start:dev": "nest start --watch",
+    "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "prisma db seed",
+    "prisma:seed:reset": "prisma db seed -- --reset-demo"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.8",
+    "@nestjs/core": "^10.4.8",
+    "@nestjs/platform-express": "^10.4.8",
+    "@prisma/client": "^6.19.3",
+    "@types/pdfkit": "^0.17.5",
+    "nodemailer": "^6.10.1",
+    "pdfkit": "^0.18.0",
+    "puppeteer": "^24.8.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.5",
+    "@nestjs/schematics": "^10.1.4",
+    "@nestjs/testing": "^10.4.8",
+    "@types/node": "^22.14.1",
+    "@types/nodemailer": "^8.0.0",
+    "prisma": "^6.6.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  }
+}

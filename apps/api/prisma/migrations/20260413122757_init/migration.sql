@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "quotes" ALTER COLUMN "id" DROP DEFAULT;

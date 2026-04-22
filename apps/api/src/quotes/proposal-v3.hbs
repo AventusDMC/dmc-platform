@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{metaTitle}}</title>
+    <style>{{styles}}</style>
+  </head>
+  <body>
+    <main class="proposal-v3">
+      <section class="proposal-cover">
+        <div class="proposal-cover-band" style="background: {{accentColor}};"></div>
+        <div class="proposal-cover-inner">
+          <div class="proposal-cover-header">
+            <div>
+              <p class="proposal-eyebrow">{{brandName}}</p>
+              <p class="proposal-reference">{{quoteReference}}</p>
+            </div>
+            <p class="proposal-cover-date">Prepared {{proposalDateLabel}}</p>
+          </div>
+
+          <div class="proposal-cover-copy">
+            <p class="proposal-cover-kicker">A tailored journey proposal</p>
+            <h1>{{documentTitle}}</h1>
+            <p class="proposal-cover-destination">{{destinationLine}}</p>
+            <p class="proposal-subtitle">{{subtitle}}</p>
+          </div>
+
+          <div class="proposal-cover-facts">
+            <article>
+              <span>Prepared for</span>
+              <strong>{{travelerName}}</strong>
+            </article>
+            <article>
+              <span>Travel dates</span>
+              <strong>{{travelDatesLabel}}</strong>
+            </article>
+            <article>
+              <span>Duration</span>
+              <strong>{{durationLabel}}</strong>
+            </article>
+          </div>
+
+          <div class="proposal-cover-footer">
+            <p class="proposal-cover-signature">
+              Designed for a clear, seamless journey from arrival through departure.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="proposal-section">
+        <header class="proposal-section-header">
+          <p class="proposal-eyebrow">Journey overview</p>
+          <h2>{{destinationLine}}</h2>
+        </header>
+        <div class="proposal-summary-layout">
+          <div class="proposal-summary-main">
+            <p class="proposal-body-copy">{{journeySummary}}</p>
+
+            <div class="proposal-summary-grid" aria-label="Journey metrics">
+              <article>
+                <span>Duration</span>
+                <strong>{{durationLabel}}</strong>
+              </article>
+              <article>
+                <span>Travelers</span>
+                <strong>{{travelerCountLabel}}</strong>
+              </article>
+              <article>
+                <span>Services</span>
+                <strong>{{servicesCountLabel}}</strong>
+              </article>
+              <article>
+                <span>Itinerary</span>
+                <strong>{{totalDaysLabel}}</strong>
+              </article>
+            </div>
+          </div>
+
+          <aside class="proposal-card proposal-card-accent">
+            <p class="proposal-card-label">Highlights</p>
+            <h3>Designed around the journey</h3>
+            <ul class="proposal-list">{{highlightsHtml}}</ul>
+          </aside>
+        </div>
+      </section>
+
+      <section class="proposal-section">
+        <header class="proposal-section-header">
+          <p class="proposal-eyebrow">Accommodation</p>
+          <h2>Stay Overview</h2>
+        </header>
+        <div class="proposal-table-shell">
+          <table class="proposal-table proposal-table-accommodation">
+            <thead>
+              <tr>
+                <th>Day</th>
+                <th>Hotel</th>
+                <th>Location</th>
+                <th>Room</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>{{accommodationRowsHtml}}</tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="proposal-section">
+        <header class="proposal-section-header">
+          <p class="proposal-eyebrow">Itinerary</p>
+          <h2>Day by Day</h2>
+        </header>
+        <p class="proposal-section-intro">
+          A curated day-by-day outline of the journey, with stays, transfers, experiences, and support services.
+        </p>
+        <div class="proposal-days">{{itineraryDaysHtml}}</div>
+      </section>
+
+      <section class="proposal-section">
+        <header class="proposal-section-header proposal-section-header-investment">
+          <p class="proposal-eyebrow">Investment</p>
+          <h2>Commercial Summary</h2>
+        </header>
+        <div class="proposal-investment-shell">{{investmentHtml}}</div>
+      </section>
+
+      <section class="proposal-section proposal-section-columns">
+        <article class="proposal-card">
+          <header class="proposal-section-header">
+            <p class="proposal-eyebrow">Included</p>
+            <h2>Inclusions</h2>
+          </header>
+          <ul class="proposal-list">{{inclusionsHtml}}</ul>
+        </article>
+
+        <article class="proposal-card">
+          <header class="proposal-section-header">
+            <p class="proposal-eyebrow">Planning notes</p>
+            <h2>Notes & Requirements</h2>
+          </header>
+          <ul class="proposal-list">{{notesHtml}}</ul>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
