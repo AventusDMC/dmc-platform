@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const email = String(body?.email || '').trim();
   const password = String(body?.password || '').trim();
 
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      email,
-      password,
-    }),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+      cache: 'no-store',
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        message: 'Authentication service is unavailable.',
+      },
+      { status: 502 },
+    );
+  }
 
   const payload = await response.json().catch(() => null);
 
@@ -32,14 +44,15 @@ export async function POST(request: NextRequest) {
   const result = NextResponse.json({
     actor: payload.actor,
   });
+  const isSecure = request.nextUrl.protocol === 'https:' || process.env.NODE_ENV === 'production';
 
   result.cookies.set('dmc_session', payload.token, {
-  httpOnly: true,
-  sameSite: 'none',
-  secure: true,
-  path: '/',
-  maxAge: 60 * 60 * 12,
-});
+    httpOnly: true,
+    sameSite: isSecure ? 'none' : 'lax',
+    secure: isSecure,
+    path: '/',
+    maxAge: 60 * 60 * 12,
+  });
 
   return result;
 }

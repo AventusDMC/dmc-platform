@@ -1473,6 +1473,9 @@ export class QuotesService {
       await this.createBookingRoomingFoundation(tx, createdBooking.id, bookingSnapshot.roomCount, leadPassengerId);
 
       return createdBooking;
+    }, {
+      maxWait: 30000,
+      timeout: 30000,
     });
   }
 
@@ -1784,6 +1787,9 @@ export class QuotesService {
           snapshotJson: JSON.parse(JSON.stringify(quote)),
         },
       });
+    }, {
+      maxWait: 30000,
+      timeout: 30000,
     });
   }
 

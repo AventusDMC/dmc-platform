@@ -1,7 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { forbidden, redirect } from 'next/navigation';
 
-export const ADMIN_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const ADMIN_API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
 type AdminPageFetchInit = RequestInit & {
   allowAnonymous?: boolean;
