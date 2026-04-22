@@ -7,9 +7,13 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors({
-    origin: 'http://localhost:3000',
-  });
+ app.enableCors({
+  origin: [
+    'http://localhost:3000',
+    'https://dmc-platform-admin-web.vercel.app',
+  ],
+  credentials: true,
+});
   app.useStaticAssets(join(process.cwd(), 'apps', 'api', 'uploads'), {
     prefix: '/uploads/',
   });
