@@ -4,9 +4,12 @@ import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
+import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
+import { QuoteItineraryDayCard } from './QuoteItineraryDayCard';
 import { QuoteItineraryDayForm } from './QuoteItineraryDayForm';
 import { QuoteItineraryDayItemForm } from './QuoteItineraryDayItemForm';
 import { QuoteItineraryMoveButton } from './QuoteItineraryMoveButton';
+import { QuoteServiceItemRow } from './QuoteServiceItemRow';
 
 type QuoteItineraryLinkedServiceSummary = {
   id: string;
@@ -198,206 +201,160 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
             <QuoteItineraryDayForm apiBaseUrl={apiBaseUrl} quoteId={quoteId} />
           </CollapsibleCreatePanel>
         }
-        emptyState={<p className="empty-state">No itinerary days yet. Add the first day to start structuring quote services.</p>}
+        emptyState={
+          <QuoteBuilderEmptyState
+            title="No itinerary days yet"
+            description="Add the first day to start structuring the trip, then assign existing quote services to each day."
+          />
+        }
       >
         {itinerary.days.length > 0 ? (
-          <div className="table-wrap">
-            <table className="data-table quote-consistency-table">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Title</th>
-                  <th>Notes</th>
-                  <th>Assigned services</th>
-                  <th>Status</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {itinerary.days.map((day) => (
-                  <tr key={day.id}>
-                    <td>
-                      <strong>Day {day.dayNumber}</strong>
-                      <div className="table-subcopy">Sort {day.sortOrder}</div>
-                      <div className="table-action-row" style={{ marginTop: '0.5rem' }}>
-                        <QuoteItineraryMoveButton
-                          apiBaseUrl={apiBaseUrl}
-                          path={`/itinerary/day/${day.id}`}
-                          payload={{ sortOrder: Math.max(day.sortOrder - 1, 0) }}
-                          label="Up"
-                          disabled={day.sortOrder === 0}
-                        />
-                        <QuoteItineraryMoveButton
-                          apiBaseUrl={apiBaseUrl}
-                          path={`/itinerary/day/${day.id}`}
-                          payload={{ sortOrder: day.sortOrder + 1 }}
-                          label="Down"
-                          disabled={day.sortOrder === itinerary.days.length - 1}
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      <strong>{day.title}</strong>
-                    </td>
-                    <td>{summarizeNotes(day.notes)}</td>
-                    <td>
-                      <strong>{day.dayItems.length}</strong>
-                      <div className="table-subcopy">Active linked services</div>
-                    </td>
-                    <td>
-                      <span className={`quote-ui-badge ${day.isActive ? 'quote-ui-badge-success' : 'quote-ui-badge-info'}`}>
-                        {day.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td>
-                      <RowDetailsPanel
-                        summary="View day"
-                        description="Assigned services and day actions"
-                        className="operations-row-details"
-                        bodyClassName="operations-row-details-body"
-                        groupId="quote-itinerary-days"
-                      >
-                        <div className="section-stack">
-                          <div className="quote-preview-total-list">
-                            <div>
-                              <span>Day</span>
-                              <strong>{day.dayNumber}</strong>
-                            </div>
-                            <div>
-                              <span>Title</span>
-                              <strong>{day.title}</strong>
-                            </div>
-                            <div>
-                              <span>Status</span>
-                              <strong>{day.isActive ? 'Active' : 'Inactive'}</strong>
-                            </div>
-                            <div>
-                              <span>Assigned services</span>
-                              <strong>{day.dayItems.length}</strong>
-                            </div>
-                          </div>
-
-                          <InlineEntityActions
-                            apiBaseUrl={apiBaseUrl}
-                            deletePath={`/itinerary/day/${day.id}`}
-                            deleteLabel="itinerary day"
-                            confirmMessage={`Delete day ${day.dayNumber}?`}
-                          >
-                            <QuoteItineraryDayForm
-                              apiBaseUrl={apiBaseUrl}
-                              quoteId={quoteId}
-                              dayId={day.id}
-                              submitLabel={`Save day ${day.dayNumber}`}
-                              initialValues={{
-                                dayNumber: String(day.dayNumber),
-                                title: day.title,
-                                notes: day.notes || '',
-                                sortOrder: String(day.sortOrder),
-                                isActive: day.isActive,
-                              }}
-                            />
-                          </InlineEntityActions>
-
-                          <InlineRowEditorShell>
-                            <div className="section-stack">
-                              <div className="workspace-section-head">
-                                <div>
-                                  <p className="eyebrow">Assign services</p>
-                                  <h3>Add existing quote service</h3>
-                                </div>
-                              </div>
-                              <QuoteItineraryDayItemForm apiBaseUrl={apiBaseUrl} dayId={day.id} services={assignableServices} />
-                            </div>
-                          </InlineRowEditorShell>
-
-                          <InlineRowEditorShell>
-                            <div className="section-stack">
-                              <div className="workspace-section-head">
-                                <div>
-                                  <p className="eyebrow">Assigned services</p>
-                                  <h3>Linked quote service summaries</h3>
-                                </div>
-                              </div>
-                              {day.dayItems.length === 0 ? (
-                                <p className="empty-state">No quote services assigned to this day yet.</p>
-                              ) : (
-                                <div className="table-wrap">
-                                  <table className="data-table quote-consistency-table">
-                                    <thead>
-                                      <tr>
-                                        <th>Service</th>
-                                        <th>Context</th>
-                                        <th>Notes</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {day.dayItems.map((item) => (
-                                        <tr key={item.id}>
-                                          <td>
-                                            <strong>{buildServiceSummary(item.quoteService)}</strong>
-                                            <div className="table-subcopy">{item.quoteService?.service?.serviceType?.name || item.quoteService?.service?.category || 'Service'}</div>
-                                          </td>
-                                          <td>{buildServiceMeta(item.quoteService)}</td>
-                                          <td>{item.notes || 'No assignment notes'}</td>
-                                          <td>
-                                            <span className={`quote-ui-badge ${item.isActive ? 'quote-ui-badge-success' : 'quote-ui-badge-info'}`}>
-                                              {item.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                          </td>
-                                          <td>
-                                            <div className="table-action-row" style={{ marginBottom: '0.5rem' }}>
-                                              <QuoteItineraryMoveButton
-                                                apiBaseUrl={apiBaseUrl}
-                                                path={`/itinerary/day/${day.id}/items/${item.id}`}
-                                                payload={{ sortOrder: Math.max(item.sortOrder - 1, 0) }}
-                                                label="Up"
-                                                disabled={item.sortOrder === 0}
-                                              />
-                                              <QuoteItineraryMoveButton
-                                                apiBaseUrl={apiBaseUrl}
-                                                path={`/itinerary/day/${day.id}/items/${item.id}`}
-                                                payload={{ sortOrder: item.sortOrder + 1 }}
-                                                label="Down"
-                                                disabled={item.sortOrder === day.dayItems.length - 1}
-                                              />
-                                            </div>
-                                            <InlineEntityActions
-                                              apiBaseUrl={apiBaseUrl}
-                                              deletePath={`/itinerary/day/${day.id}/items/${item.id}`}
-                                              deleteLabel="itinerary service assignment"
-                                              confirmMessage={`Remove ${buildServiceSummary(item.quoteService)} from day ${day.dayNumber}?`}
-                                            >
-                                              <QuoteItineraryDayItemForm
-                                                apiBaseUrl={apiBaseUrl}
-                                                dayId={day.id}
-                                                itemId={item.id}
-                                                submitLabel="Save assignment"
-                                                services={assignableServices}
-                                                initialValues={{
-                                                  quoteServiceId: item.quoteServiceId,
-                                                  sortOrder: String(item.sortOrder),
-                                                  notes: item.notes || '',
-                                                }}
-                                              />
-                                            </InlineEntityActions>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
-                          </InlineRowEditorShell>
+          <div className="quote-itinerary-day-list">
+            {itinerary.days.map((day) => (
+              <QuoteItineraryDayCard
+                key={day.id}
+                dayNumber={day.dayNumber}
+                title={day.title}
+                notes={day.notes}
+                status={
+                  <span className={`quote-ui-badge ${day.isActive ? 'quote-ui-badge-success' : 'quote-ui-badge-info'}`}>
+                    {day.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                }
+                summary={[
+                  { label: 'Sort order', value: day.sortOrder + 1 },
+                  { label: 'Assigned services', value: day.dayItems.length },
+                  { label: 'Notes', value: summarizeNotes(day.notes) },
+                ]}
+                moveActions={
+                  <>
+                    <QuoteItineraryMoveButton
+                      apiBaseUrl={apiBaseUrl}
+                      path={`/itinerary/day/${day.id}`}
+                      payload={{ sortOrder: Math.max(day.sortOrder - 1, 0) }}
+                      label="Up"
+                      disabled={day.sortOrder === 0}
+                    />
+                    <QuoteItineraryMoveButton
+                      apiBaseUrl={apiBaseUrl}
+                      path={`/itinerary/day/${day.id}`}
+                      payload={{ sortOrder: day.sortOrder + 1 }}
+                      label="Down"
+                      disabled={day.sortOrder === itinerary.days.length - 1}
+                    />
+                  </>
+                }
+                editor={
+                  <InlineEntityActions
+                    apiBaseUrl={apiBaseUrl}
+                    deletePath={`/itinerary/day/${day.id}`}
+                    deleteLabel="itinerary day"
+                    confirmMessage={`Delete day ${day.dayNumber}?`}
+                  >
+                    <QuoteItineraryDayForm
+                      apiBaseUrl={apiBaseUrl}
+                      quoteId={quoteId}
+                      dayId={day.id}
+                      submitLabel={`Save day ${day.dayNumber}`}
+                      initialValues={{
+                        dayNumber: String(day.dayNumber),
+                        title: day.title,
+                        notes: day.notes || '',
+                        sortOrder: String(day.sortOrder),
+                        isActive: day.isActive,
+                      }}
+                    />
+                  </InlineEntityActions>
+                }
+                assignService={
+                  <InlineRowEditorShell>
+                    <div className="section-stack">
+                      <div className="workspace-section-head">
+                        <div>
+                          <p className="eyebrow">Assign services</p>
+                          <h3>Add existing quote service</h3>
                         </div>
-                      </RowDetailsPanel>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </div>
+                      <QuoteItineraryDayItemForm apiBaseUrl={apiBaseUrl} dayId={day.id} services={assignableServices} />
+                    </div>
+                  </InlineRowEditorShell>
+                }
+                services={
+                  day.dayItems.length === 0 ? (
+                    <QuoteBuilderEmptyState
+                      eyebrow="Day Services"
+                      title="No services assigned"
+                      description="Link existing quote services to make this itinerary day client-ready."
+                    />
+                  ) : (
+                    <div className="quote-service-item-list">
+                      {day.dayItems.map((item) => (
+                        <QuoteServiceItemRow
+                          key={item.id}
+                          title={buildServiceSummary(item.quoteService)}
+                          category={item.quoteService?.service?.serviceType?.name || item.quoteService?.service?.category || 'Service'}
+                          summary={buildServiceMeta(item.quoteService)}
+                          meta={`Sort ${item.sortOrder + 1}`}
+                          notes={item.notes || 'No assignment notes'}
+                          badge={
+                            <span className={`quote-ui-badge ${item.isActive ? 'quote-ui-badge-success' : 'quote-ui-badge-info'}`}>
+                              {item.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          }
+                          actions={
+                            <RowDetailsPanel
+                              summary="Edit assignment"
+                              description="Update linked service details"
+                              className="operations-row-details"
+                              bodyClassName="operations-row-details-body"
+                              groupId="quote-itinerary-day-items"
+                            >
+                              <div className="section-stack">
+                                <div className="table-action-row">
+                                  <QuoteItineraryMoveButton
+                                    apiBaseUrl={apiBaseUrl}
+                                    path={`/itinerary/day/${day.id}/items/${item.id}`}
+                                    payload={{ sortOrder: Math.max(item.sortOrder - 1, 0) }}
+                                    label="Up"
+                                    disabled={item.sortOrder === 0}
+                                  />
+                                  <QuoteItineraryMoveButton
+                                    apiBaseUrl={apiBaseUrl}
+                                    path={`/itinerary/day/${day.id}/items/${item.id}`}
+                                    payload={{ sortOrder: item.sortOrder + 1 }}
+                                    label="Down"
+                                    disabled={item.sortOrder === day.dayItems.length - 1}
+                                  />
+                                </div>
+                                <InlineEntityActions
+                                  apiBaseUrl={apiBaseUrl}
+                                  deletePath={`/itinerary/day/${day.id}/items/${item.id}`}
+                                  deleteLabel="itinerary service assignment"
+                                  confirmMessage={`Remove ${buildServiceSummary(item.quoteService)} from day ${day.dayNumber}?`}
+                                >
+                                  <QuoteItineraryDayItemForm
+                                    apiBaseUrl={apiBaseUrl}
+                                    dayId={day.id}
+                                    itemId={item.id}
+                                    submitLabel="Save assignment"
+                                    services={assignableServices}
+                                    initialValues={{
+                                      quoteServiceId: item.quoteServiceId,
+                                      sortOrder: String(item.sortOrder),
+                                      notes: item.notes || '',
+                                    }}
+                                  />
+                                </InlineEntityActions>
+                              </div>
+                            </RowDetailsPanel>
+                          }
+                        />
+                      ))}
+                    </div>
+                  )
+                }
+              />
+            ))}
           </div>
         ) : null}
       </TableSectionShell>

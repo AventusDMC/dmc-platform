@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { AdvancedFiltersPanel } from '../components/AdvancedFiltersPanel';
+import { AdminForbiddenState } from '../components/AdminForbiddenState';
 import { CompactFilterBar } from '../components/CompactFilterBar';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { PageActionBar } from '../components/PageActionBar';
@@ -8,11 +10,12 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { FinanceBookingsTable } from './FinanceBookingsTable';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, isAdminForbiddenError } from '../lib/admin-server';
+import { canAccessFinance, readSessionActor } from '../lib/auth-session';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 
-type FinanceReport = 'all' | 'low-margin' | 'unpaid-clients' | 'unpaid-suppliers';
+type FinanceReport = 'all' | 'low-margin' | 'unpaid-clients' | 'unpaid-suppliers' | 'overdue-clients' | 'overdue-suppliers';
 
 type Booking = {
   id: string;
@@ -32,6 +35,10 @@ type Booking = {
     hasLowMargin: boolean;
     hasUnpaidClientBalance: boolean;
     hasUnpaidSupplierObligation: boolean;
+    overdueClientPaymentsCount: number;
+    overdueSupplierPaymentsCount: number;
+    hasOverdueClientPayments: boolean;
+    hasOverdueSupplierPayments: boolean;
     badge: {
       count: number;
       tone: 'error' | 'warning' | 'none';
@@ -40,6 +47,8 @@ type Booking = {
         unpaidSupplier: number;
         negativeMargin: number;
         lowMargin: number;
+        overdueClient: number;
+        overdueSupplier: number;
       };
     };
   };
@@ -58,7 +67,13 @@ async function getBookings(): Promise<Booking[]> {
 }
 
 function resolveReport(value?: string): FinanceReport {
-  if (value === 'low-margin' || value === 'unpaid-clients' || value === 'unpaid-suppliers') {
+  if (
+    value === 'low-margin' ||
+    value === 'unpaid-clients' ||
+    value === 'unpaid-suppliers' ||
+    value === 'overdue-clients' ||
+    value === 'overdue-suppliers'
+  ) {
     return value;
   }
 
@@ -73,6 +88,8 @@ function getFinanceTitle(report: FinanceReport) {
   if (report === 'low-margin') return 'Low Margin';
   if (report === 'unpaid-clients') return 'Unpaid Clients';
   if (report === 'unpaid-suppliers') return 'Unpaid Suppliers';
+  if (report === 'overdue-clients') return 'Overdue Client Payments';
+  if (report === 'overdue-suppliers') return 'Overdue Supplier Payments';
   return 'Overview';
 }
 
@@ -89,21 +106,44 @@ function filterBookings(bookings: Booking[], report: FinanceReport) {
     return bookings.filter((booking) => booking.finance.hasUnpaidSupplierObligation);
   }
 
+  if (report === 'overdue-clients') {
+    return bookings.filter((booking) => booking.finance.hasOverdueClientPayments);
+  }
+
+  if (report === 'overdue-suppliers') {
+    return bookings.filter((booking) => booking.finance.hasOverdueSupplierPayments);
+  }
+
   return bookings;
 }
 
 export default async function FinancePage({ searchParams }: FinancePageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const report = resolveReport(resolvedSearchParams?.report);
-  const bookings = await getBookings();
-  const filteredBookings = filterBookings(bookings, report);
+  const cookieStore = await cookies();
+  const session = readSessionActor(cookieStore.get('dmc_session')?.value || '');
 
-  const lowMarginCount = bookings.filter((booking) => booking.finance.hasLowMargin || booking.finance.badge.breakdown.negativeMargin > 0).length;
-  const unpaidClientCount = bookings.filter((booking) => booking.finance.hasUnpaidClientBalance).length;
-  const unpaidSupplierCount = bookings.filter((booking) => booking.finance.hasUnpaidSupplierObligation).length;
-  const clearCount = bookings.filter((booking) => booking.finance.badge.tone === 'none').length;
+  if (!canAccessFinance(session?.role)) {
+    return (
+      <AdminForbiddenState
+        title="Finance access restricted"
+        description="Your account does not have permission to view finance reporting for this company."
+      />
+    );
+  }
 
-  return (
+  try {
+    const resolvedSearchParams = searchParams ? await searchParams : undefined;
+    const report = resolveReport(resolvedSearchParams?.report);
+    const bookings = await getBookings();
+    const filteredBookings = filterBookings(bookings, report);
+
+    const lowMarginCount = bookings.filter((booking) => booking.finance.hasLowMargin || booking.finance.badge.breakdown.negativeMargin > 0).length;
+    const unpaidClientCount = bookings.filter((booking) => booking.finance.hasUnpaidClientBalance).length;
+    const unpaidSupplierCount = bookings.filter((booking) => booking.finance.hasUnpaidSupplierObligation).length;
+    const overdueClientCount = bookings.reduce((total, booking) => total + booking.finance.overdueClientPaymentsCount, 0);
+    const overdueSupplierCount = bookings.reduce((total, booking) => total + booking.finance.overdueSupplierPaymentsCount, 0);
+    const clearCount = bookings.filter((booking) => booking.finance.badge.tone === 'none').length;
+
+    return (
     <main className="page">
       <section className="panel workspace-panel">
         <WorkspaceShell
@@ -119,6 +159,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 { id: 'low-margin', label: 'Low Margin', href: buildFinanceHref('low-margin'), helper: 'Profitability risk' },
                 { id: 'unpaid-clients', label: 'Unpaid Clients', href: buildFinanceHref('unpaid-clients'), helper: 'Receivables' },
                 { id: 'unpaid-suppliers', label: 'Unpaid Suppliers', href: buildFinanceHref('unpaid-suppliers'), helper: 'Payables' },
+                { id: 'overdue-clients', label: 'Overdue Clients', href: buildFinanceHref('overdue-clients'), helper: 'Late receivables' },
+                { id: 'overdue-suppliers', label: 'Overdue Suppliers', href: buildFinanceHref('overdue-suppliers'), helper: 'Late payables' },
+                { id: 'reconciliation', label: 'Reconciliation', href: '/finance/reconciliation', helper: 'Proof review queue' },
               ]}
             />
           }
@@ -129,6 +172,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 { id: 'low-margin', label: 'Low margin', value: String(lowMarginCount), helper: 'Margin pressure' },
                 { id: 'unpaid-clients', label: 'Unpaid clients', value: String(unpaidClientCount), helper: 'Open receivables' },
                 { id: 'unpaid-suppliers', label: 'Unpaid suppliers', value: String(unpaidSupplierCount), helper: 'Open payables' },
+                { id: 'overdue-clients', label: 'Overdue clients', value: String(overdueClientCount), helper: 'Late receivables' },
+                { id: 'overdue-suppliers', label: 'Overdue suppliers', value: String(overdueSupplierCount), helper: 'Late payables' },
                 { id: 'clear', label: 'Clear', value: String(clearCount), helper: 'No finance badge' },
               ]}
             />
@@ -161,6 +206,15 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               <Link href={buildFinanceHref('unpaid-suppliers')} className="dashboard-toolbar-link">
                 Unpaid suppliers
               </Link>
+              <Link href={buildFinanceHref('overdue-clients')} className="dashboard-toolbar-link">
+                Overdue clients
+              </Link>
+              <Link href={buildFinanceHref('overdue-suppliers')} className="dashboard-toolbar-link">
+                Overdue suppliers
+              </Link>
+              <Link href="/finance/reconciliation" className="dashboard-toolbar-link">
+                Reconciliation
+              </Link>
             </PageActionBar>
 
             <CompactFilterBar
@@ -180,6 +234,15 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 </Link>
                 <Link href={buildFinanceHref('unpaid-suppliers')} className="secondary-button">
                   Unpaid suppliers
+                </Link>
+                <Link href={buildFinanceHref('overdue-clients')} className="secondary-button">
+                  Overdue clients
+                </Link>
+                <Link href={buildFinanceHref('overdue-suppliers')} className="secondary-button">
+                  Overdue suppliers
+                </Link>
+                <Link href="/finance/reconciliation" className="secondary-button">
+                  Reconciliation
                 </Link>
               </div>
               <AdvancedFiltersPanel title="Related finance surfaces" description="Finance-adjacent navigation without changing slices">
@@ -206,5 +269,17 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
         </WorkspaceShell>
       </section>
     </main>
-  );
+    );
+  } catch (error) {
+    if (isAdminForbiddenError(error)) {
+      return (
+        <AdminForbiddenState
+          title="Finance access restricted"
+          description="Your account does not have permission to load finance data for this company."
+        />
+      );
+    }
+
+    throw error;
+  }
 }

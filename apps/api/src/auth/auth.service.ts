@@ -13,6 +13,93 @@ const SESSION_COOKIE_HEADER = 'x-dmc-session';
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async signup(input: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName?: string;
+    companyName?: string;
+  }) {
+    const email = input.email.trim().toLowerCase();
+    const password = input.password.trim();
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName?.trim() || '';
+    const companyName = input.companyName?.trim() || `${firstName || email}'s Company`;
+
+    if (!email || !password || !firstName || !companyName) {
+      throw new UnauthorizedException('Email, password, first name, and company name are required');
+    }
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingUser) {
+      throw new UnauthorizedException('An account with this email already exists');
+    }
+
+    const adminRole = await this.prisma.role.findFirst({
+      where: {
+        name: 'admin',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!adminRole) {
+      throw new UnauthorizedException('Admin role is not configured');
+    }
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: {
+          name: companyName,
+          type: 'tenant',
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      return tx.user.create({
+        data: {
+          email,
+          password: this.hashPassword(password),
+          firstName,
+          lastName,
+          roleId: adminRole.id,
+          companyId: company.id,
+        },
+        include: {
+          role: true,
+        },
+      });
+    });
+
+    const actor = this.toActor({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role.name,
+      companyId: user.companyId,
+    });
+
+    return {
+      token: this.createSessionToken(actor),
+      actor,
+    };
+  }
+
   async login(email: string, password: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
@@ -106,7 +193,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid session token');
     }
 
-    if (!ROLE_NAMES.includes(payload.role)) {
+    const normalizedRole = this.normalizeRoleName(payload.role);
+
+    if (!normalizedRole) {
       throw new UnauthorizedException('Invalid session token');
     }
 
@@ -119,7 +208,7 @@ export class AuthService {
       email: payload.email,
       firstName: payload.firstName,
       lastName: payload.lastName,
-      role: payload.role,
+      role: normalizedRole,
       companyId: payload.companyId,
     });
   }
@@ -186,9 +275,9 @@ export class AuthService {
     role: string;
     companyId?: string | null;
   }): AuthenticatedActor {
-    const normalizedRole = values.role.trim().toLowerCase() as DmcRole;
+    const normalizedRole = this.normalizeRoleName(values.role);
 
-    if (!ROLE_NAMES.includes(normalizedRole)) {
+    if (!normalizedRole) {
       throw new UnauthorizedException('Unsupported user role');
     }
 
@@ -206,5 +295,15 @@ export class AuthService {
       auditLabel: `${name} <${values.email.trim().toLowerCase()}> [${normalizedRole}]`,
       companyId: values.companyId ?? null,
     };
+  }
+
+  private normalizeRoleName(role: string) {
+    const normalized = role.trim().toLowerCase();
+
+    if (normalized === 'sales') {
+      return 'viewer';
+    }
+
+    return ROLE_NAMES.includes(normalized as DmcRole) ? (normalized as DmcRole) : null;
   }
 }

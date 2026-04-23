@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 type LoginFormProps = {
   nextPath?: string;
@@ -70,7 +71,10 @@ export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProp
       </button>
 
       {initialMessage ? <p className="form-helper">{initialMessage}</p> : null}
-      <p className="form-helper">Seed users: `admin@dmc.local`, `sales@dmc.local`, `operations@dmc.local`, `finance@dmc.local`.</p>
+      <p className="form-helper">Seed users: `admin@dmc.local`, `viewer@dmc.local`, `operations@dmc.local`, `finance@dmc.local`.</p>
+      <p className="form-helper">
+        New company? <Link href="/signup">Create an account</Link>
+      </p>
       {error ? <p className="form-error">{error}</p> : null}
     </form>
   );

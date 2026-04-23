@@ -4,6 +4,8 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiValidationError, getApiError } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
+import { CurrencySelect } from '../components/CurrencySelect';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type CompanyOption = {
   id: string;
@@ -30,6 +32,7 @@ type QuotesFormProps = {
     bookingType: 'FIT' | 'GROUP' | 'SERIES';
     title: string;
     description: string;
+    quoteCurrency: SupportedCurrency;
     pricingMode: 'SLAB' | 'FIXED';
     pricingSlabs: Array<{
       id?: string;
@@ -80,6 +83,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
   const [bookingType, setBookingType] = useState<'FIT' | 'GROUP' | 'SERIES'>(initialValues?.bookingType || 'FIT');
   const [title, setTitle] = useState(initialValues?.title || '');
   const [description, setDescription] = useState(initialValues?.description || '');
+  const [quoteCurrency, setQuoteCurrency] = useState<SupportedCurrency>(initialValues?.quoteCurrency || 'USD');
   const [pricingMode, setPricingMode] = useState<'SLAB' | 'FIXED'>(initialValues?.pricingMode || 'FIXED');
   const [pricingSlabs, setPricingSlabs] = useState<PricingSlabFormValue[]>(
     initialValues?.pricingSlabs?.length
@@ -212,6 +216,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
           bookingType,
           title,
           description,
+          quoteCurrency,
           pricingMode,
           pricingType: pricingMode === 'SLAB' ? 'group' : 'simple',
           fixedPricePerPerson:
@@ -248,6 +253,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
         setBookingType('FIT');
         setTitle('');
         setDescription('');
+        setQuoteCurrency('USD');
         setPricingMode('FIXED');
         setPricingSlabs([createPricingSlabValue()]);
         setFixedPricePerPerson('');
@@ -358,13 +364,20 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
       </label>
 
-      <label>
-        Pricing Mode
-        <select value={pricingMode} onChange={(event) => handlePricingModeChange(event.target.value as 'SLAB' | 'FIXED')}>
-          <option value="SLAB">Slab Pricing</option>
-          <option value="FIXED">Fixed Price</option>
-        </select>
-      </label>
+      <div className="form-row">
+        <label>
+          Quote Currency
+          <CurrencySelect value={quoteCurrency} onChange={(value) => setQuoteCurrency((value || 'USD') as SupportedCurrency)} required />
+        </label>
+
+        <label>
+          Pricing Mode
+          <select value={pricingMode} onChange={(event) => handlePricingModeChange(event.target.value as 'SLAB' | 'FIXED')}>
+            <option value="SLAB">Slab Pricing</option>
+            <option value="FIXED">Fixed Price</option>
+          </select>
+        </label>
+      </div>
 
       {pricingMode === 'SLAB' ? (
         <div className="stacked-card">

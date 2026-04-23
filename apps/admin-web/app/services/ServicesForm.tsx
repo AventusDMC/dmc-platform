@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CurrencySelect } from '../components/CurrencySelect';
 import { ServiceTypeCombobox } from '../components/ServiceTypeCombobox';
 import { getErrorMessage } from '../lib/api';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 import { ServiceTypeOption } from '../lib/serviceTypes';
 
 type ServicesFormProps = {
@@ -18,7 +20,7 @@ type ServicesFormProps = {
     serviceTypeId: string | null;
     unitType: (typeof UNIT_TYPES)[number];
     baseCost: string;
-    currency: string;
+    currency: SupportedCurrency;
   };
 };
 
@@ -39,7 +41,7 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel,
   const [category, setCategory] = useState(initialValues?.category || '');
   const [unitType, setUnitType] = useState<(typeof UNIT_TYPES)[number]>(initialValues?.unitType || 'per_person');
   const [baseCost, setBaseCost] = useState(initialValues?.baseCost || '');
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(serviceId);
@@ -162,7 +164,7 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel,
 
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
       </div>
 

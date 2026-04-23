@@ -1,5 +1,5 @@
 import { cookies, headers } from 'next/headers';
-import { forbidden, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
 export const ADMIN_API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
@@ -7,6 +7,19 @@ type AdminPageFetchInit = RequestInit & {
   allowAnonymous?: boolean;
   allow404?: boolean;
 };
+
+export class AdminForbiddenError extends Error {
+  readonly status = 403;
+
+  constructor(message = 'Admin API request is forbidden') {
+    super(message);
+    this.name = 'AdminForbiddenError';
+  }
+}
+
+export function isAdminForbiddenError(error: unknown): error is AdminForbiddenError {
+  return error instanceof AdminForbiddenError || (error instanceof Error && error.name === 'AdminForbiddenError');
+}
 
 function buildLoginRedirectPath(pathname: string) {
   return `/login?reason=session-expired&next=${encodeURIComponent(pathname || '/')}`;
@@ -86,7 +99,7 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
   }
 
   if (response.status === 403) {
-    forbidden();
+    throw new AdminForbiddenError(`Admin API request is forbidden: ${String(input)}`);
   }
 
   return response;

@@ -7,13 +7,21 @@ import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
+import { BookingAlertPanel } from './BookingAlertPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
 import { getItineraryDayDisplay } from '../../lib/itineraryDayDisplay';
 import { formatNightCountLabel } from '../../lib/formatters';
+import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
+import { BookingOperationsHeader } from './BookingOperationsHeader';
+import { BookingOperationsStatCard } from './BookingOperationsStatCard';
+import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { BookingDocumentActions } from './BookingDocumentActions';
-import { BookingServicesList } from './BookingServicesList';
+import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
+import { BookingServiceTimeline } from './BookingServiceTimeline';
 import { BookingPortalLinkActions } from './BookingPortalLinkActions';
+import { BookingFinancialsTab } from './BookingFinancialsTab';
+import { type BookingPaymentRecord } from './BookingPaymentsSection';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
 
@@ -59,6 +67,7 @@ type Contact = {
   title?: string | null;
   firstName: string;
   lastName: string;
+  email?: string | null;
 };
 
 type Supplier = {
@@ -198,6 +207,27 @@ type Booking = {
     totalSell: number | null;
     pricePerPax: number | null;
   };
+  invoiceDelivery?: {
+    sentAt: string | null;
+    sentTo: string | null;
+  };
+  paymentReminderDelivery?: {
+    sentAt: string | null;
+    sentTo: string | null;
+  };
+  paymentReminderAutomation?: {
+    reminderCount: number;
+    lastReminderAt: string | null;
+    nextReminderDueAt: string | null;
+    autoActive: boolean;
+    stage: 'gentle' | 'firm' | 'urgent';
+  };
+  paymentProofSubmission?: {
+    reference: string | null;
+    amount: number | null;
+    receiptUrl: string | null;
+    submittedAt: string | null;
+  } | null;
   finance: {
     quotedTotalSell: number;
     quotedTotalCost: number;
@@ -212,6 +242,10 @@ type Booking = {
     hasLowMargin: boolean;
     hasUnpaidClientBalance: boolean;
     hasUnpaidSupplierObligation: boolean;
+    overdueClientPaymentsCount: number;
+    overdueSupplierPaymentsCount: number;
+    hasOverdueClientPayments: boolean;
+    hasOverdueSupplierPayments: boolean;
     badge: {
       count: number;
       tone: 'error' | 'warning' | 'none';
@@ -220,9 +254,12 @@ type Booking = {
         unpaidSupplier: number;
         negativeMargin: number;
         lowMargin: number;
+        overdueClient: number;
+        overdueSupplier: number;
       };
     };
   };
+  payments: BookingPaymentRecord[];
   operations: {
     badge: {
       count: number;
@@ -327,7 +364,18 @@ type BookingPageProps = {
   }>;
   searchParams?: Promise<{
     created?: string;
-    tab?: 'overview' | 'operations' | 'passengers-rooming' | 'rooming' | 'finance' | 'documents' | 'timeline';
+    tab?:
+      | 'overview'
+      | 'operations'
+      | 'services'
+      | 'passengers-rooming'
+      | 'passengers'
+      | 'rooming'
+      | 'finance'
+      | 'financials'
+      | 'documents'
+      | 'timeline'
+      | 'audit-log';
     service?: string;
     warning?: string;
     warningText?: string;
@@ -335,15 +383,15 @@ type BookingPageProps = {
   }>;
 };
 
-type BookingDetailTab = 'overview' | 'operations' | 'passengers-rooming' | 'finance' | 'documents' | 'timeline';
+type BookingDetailTab = 'overview' | 'services' | 'passengers' | 'rooming' | 'financials' | 'audit-log';
 
 const BOOKING_DETAIL_TABS: Array<{ id: BookingDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'operations', label: 'Operations' },
-  { id: 'passengers-rooming', label: 'Passengers & Rooming' },
-  { id: 'finance', label: 'Finance' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'timeline', label: 'Timeline' },
+  { id: 'services', label: 'Services' },
+  { id: 'passengers', label: 'Passengers' },
+  { id: 'rooming', label: 'Rooming' },
+  { id: 'financials', label: 'Financials' },
+  { id: 'audit-log', label: 'Audit Log' },
 ];
 
 async function getBooking(id: string): Promise<Booking | null> {
@@ -650,6 +698,8 @@ function buildFinanceBadgeTooltip(booking: Booking) {
     { count: booking.finance.badge.breakdown.unpaidSupplier, label: 'unpaid supplier' },
     { count: booking.finance.badge.breakdown.negativeMargin, label: 'negative margin' },
     { count: booking.finance.badge.breakdown.lowMargin, label: 'low margin' },
+    { count: booking.finance.badge.breakdown.overdueClient, label: 'overdue client payment' },
+    { count: booking.finance.badge.breakdown.overdueSupplier, label: 'overdue supplier payment' },
   ]);
 }
 
@@ -670,9 +720,11 @@ function buildRoomingBadgeTooltip(booking: Booking) {
 }
 
 function resolveActiveBookingTab(tab?: string): BookingDetailTab {
-  if (tab === 'rooming') {
-    return 'passengers-rooming';
-  }
+  if (tab === 'operations') return 'services';
+  if (tab === 'passengers-rooming') return 'passengers';
+  if (tab === 'finance') return 'financials';
+  if (tab === 'timeline') return 'audit-log';
+  if (tab === 'documents') return 'overview';
 
   return BOOKING_DETAIL_TABS.some((entry) => entry.id === tab) ? (tab as BookingDetailTab) : 'overview';
 }
@@ -708,9 +760,10 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
     totalPax,
     nightCount: snapshot.nightCount,
   });
-  const portalUrl = `${APP_BASE_URL}/portal/booking/${booking.id}?token=${encodeURIComponent(booking.accessToken)}`;
+  const portalUrl = `${APP_BASE_URL}/invoice/${encodeURIComponent(booking.accessToken)}`;
   const allowedTransitions = getAllowedBookingStatusTransitions(booking.status);
   const timeline = buildBookingTimeline(booking);
+  const bookingPayments = booking.payments;
   const bookingRef = snapshot.quoteNumber || booking.quote.quoteNumber || booking.id;
   const assignedPassengerIds = new Set(
     booking.roomingEntries.flatMap((entry) => entry.assignments.map((assignment) => assignment.bookingPassenger.id)),
@@ -739,909 +792,845 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
     booking.finance.hasUnpaidClientBalance ? 'Client balance is still open.' : null,
     booking.finance.hasUnpaidSupplierObligation ? 'Supplier obligations are still open.' : null,
   ].filter(Boolean) as string[];
-  const bookingDocumentsBadgeCount = pendingConfirmationsCount + (booking.accessToken ? 0 : 1);
+  const leadPassenger = booking.passengers.find((passenger) => passenger.isLead) || null;
+  const roomingIssues = [
+    booking.rooming.badge.breakdown.unassignedPassengers > 0
+      ? `${booking.rooming.badge.breakdown.unassignedPassengers} passengers are still unassigned to rooms.`
+      : null,
+    booking.rooming.badge.breakdown.unassignedRooms > 0
+      ? `${booking.rooming.badge.breakdown.unassignedRooms} rooms still need assignments or review.`
+      : null,
+    booking.rooming.badge.breakdown.occupancyIssues > 0
+      ? `${booking.rooming.badge.breakdown.occupancyIssues} room occupancy issues need correction.`
+      : null,
+  ].filter(Boolean) as string[];
+  const operationalAlerts = [
+    pendingConfirmationsCount > 0 ? `${pendingConfirmationsCount} services are waiting on supplier confirmation.` : null,
+    booking.operations.badge.breakdown.missingExecutionDetails > 0
+      ? `${booking.operations.badge.breakdown.missingExecutionDetails} services are missing execution details.`
+      : null,
+    booking.operations.badge.breakdown.reconfirmationDue > 0
+      ? `${booking.operations.badge.breakdown.reconfirmationDue} services need reconfirmation follow-up.`
+      : null,
+  ].filter(Boolean) as string[];
+  const healthChecklist = [
+    { label: 'Lead passenger assigned', complete: Boolean(leadPassenger) },
+    { label: 'All services confirmed', complete: pendingConfirmationsCount === 0 && booking.services.length > 0 },
+    { label: 'Rooming in good shape', complete: roomingIssues.length === 0 },
+    { label: 'Client invoice cleared', complete: !booking.finance.hasUnpaidClientBalance },
+    { label: 'Supplier payments tracked', complete: !booking.finance.hasUnpaidSupplierObligation },
+  ];
   const buildTabHref = (tab: BookingDetailTab) => `/bookings/${booking.id}?tab=${tab}`;
 
   return (
-    <main className="page">
-      <section className="panel quote-preview-page">
-        <Link href={`/quotes/${booking.quote.id}`} className="back-link">
-          Back to quote
-        </Link>
+    <main className="page booking-ops-page">
+      <section className="panel booking-ops-workspace-page">
+        <div className="booking-ops-shell">
+          <BookingOperationsHeader
+            bookingId={booking.id}
+            bookingRef={bookingRef}
+            title={snapshot.title}
+            companyName={booking.clientSnapshotJson.name}
+            contactName={`${booking.contactSnapshotJson.firstName} ${booking.contactSnapshotJson.lastName}`}
+            travelSummary={tripSummary}
+            badges={
+              <>
+                <BookingOperationsStatusBadge kind="booking" status={booking.status} />
+                <BookingOperationsStatusBadge kind="invoice" status={booking.finance.clientInvoiceStatus} />
+                <BookingOperationsStatusBadge kind="supplier-payment" status={booking.finance.supplierPaymentStatus} />
+              </>
+            }
+            actions={
+              <>
+                <Link href={`/quotes/${booking.quote.id}`} className="secondary-button">
+                  Source quote
+                </Link>
+                <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                  Voucher
+                </Link>
+              </>
+            }
+          />
 
-        <header className="quote-preview-hero">
-          <div>
-            <p className="eyebrow">Booking Summary</p>
-            <h1 className="section-title quote-title">{snapshot.title}</h1>
-            <p className="detail-copy">{snapshot.quoteNumber || booking.quote.quoteNumber || 'Quote number pending'}</p>
-            <p className="detail-copy">{tripSummary}</p>
-            {resolvedSearchParams?.created === '1' ? <p className="detail-copy">Booking created from the accepted quote version.</p> : null}
-          </div>
-          <div className="quote-preview-meta">
-            <strong>Booking {booking.id}</strong>
-            <p>Status: {formatBookingStatus(booking.status)}</p>
-            <p>
-              {totalPax} pax | {snapshot.roomCount} rooms | {formatNightCountLabel(snapshot.nightCount)}
-            </p>
-            <p>Created {formatDateTime(booking.createdAt)}</p>
-          </div>
-        </header>
-
-        {(warningMessage || resolvedSearchParams?.success) ? (
-          <section className="warning-banner">
-            {warningMessage ? renderFeedbackMessage(warningMessage, 'form-error') : null}
-            {resolvedSearchParams?.success ? renderFeedbackMessage(resolvedSearchParams.success, 'form-helper') : null}
+          <section className="booking-ops-stat-grid">
+            <BookingOperationsStatCard label="Total services" value={booking.services.length} helper="Booked execution rows" />
+            <BookingOperationsStatCard label="Confirmed services" value={confirmedServicesCount} helper="Supplier confirmed" />
+            <BookingOperationsStatCard
+              label="Pending confirmations"
+              value={pendingConfirmationsCount}
+              helper="Outstanding supplier follow-up"
+              tone={pendingConfirmationsCount > 0 ? 'accent' : 'default'}
+            />
+            <BookingOperationsStatCard
+              label="Supplier payment"
+              value={formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}
+              helper={booking.finance.hasUnpaidSupplierObligation ? 'Obligations still open' : 'Supplier side in shape'}
+              tone={booking.finance.hasUnpaidSupplierObligation ? 'accent' : 'default'}
+            />
+            <BookingOperationsStatCard
+              label="Party"
+              value={`${totalPax} pax`}
+              helper={`${snapshot.roomCount} rooms / ${formatNightCountLabel(snapshot.nightCount)}`}
+            />
+            <BookingOperationsStatCard
+              label="Created"
+              value={formatDateTime(booking.createdAt)}
+              helper={resolvedSearchParams?.created === '1' ? 'Created from accepted quote version' : 'Execution record live'}
+            />
           </section>
-        ) : null}
 
-        <AdminPageTabs
-          ariaLabel="Booking detail sections"
-          activeTab={activeTab}
-          tabs={BOOKING_DETAIL_TABS.map((tab) => ({
-            ...tab,
-            href: buildTabHref(tab.id),
-            badge:
-              tab.id === 'operations'
-                ? booking.operations.badge.count
-                : tab.id === 'passengers-rooming'
-                  ? booking.rooming.badge.count
-                : tab.id === 'finance'
-                  ? booking.finance.badge.count
-                  : tab.id === 'documents'
-                    ? bookingDocumentsBadgeCount
-                    : null,
-            badgeTitle:
-              tab.id === 'operations'
-                ? buildOperationsBadgeTooltip(booking)
-                : tab.id === 'passengers-rooming'
-                  ? buildRoomingBadgeTooltip(booking)
-                  : tab.id === 'finance'
-                    ? buildFinanceBadgeTooltip(booking)
-                    : undefined,
-            badgeTone:
-              tab.id === 'operations'
-                ? booking.operations.badge.tone === 'none'
-                  ? 'default'
-                  : booking.operations.badge.tone
-                : tab.id === 'passengers-rooming'
-                  ? booking.rooming.badge.tone === 'none'
-                    ? 'default'
-                    : booking.rooming.badge.tone
-                : tab.id === 'finance'
-                  ? booking.finance.badge.tone === 'none'
-                    ? 'default'
-                    : booking.finance.badge.tone
-                  : tab.id === 'documents'
-                    ? 'warning'
-                    : 'default',
-          }))}
-        />
+          {(warningMessage || resolvedSearchParams?.success) ? (
+            <section className="warning-banner">
+              {warningMessage ? renderFeedbackMessage(warningMessage, 'form-error') : null}
+              {resolvedSearchParams?.success ? renderFeedbackMessage(resolvedSearchParams.success, 'form-helper') : null}
+            </section>
+          ) : null}
 
-        {activeTab === 'overview' ? (
-          <>
-            <section className="quote-preview-grid">
-              <article className="detail-card">
-                <p className="eyebrow">Overview</p>
-                <p className="detail-copy">Keep the booking summary, warning signals, and commercial snapshot in one place before drilling into execution.</p>
-              </article>
+          <div className="booking-ops-tab-shell">
+            <AdminPageTabs
+              ariaLabel="Booking detail sections"
+              activeTab={activeTab}
+              tabs={BOOKING_DETAIL_TABS.map((tab) => ({
+                ...tab,
+                href: buildTabHref(tab.id),
+                badge:
+                  tab.id === 'services'
+                    ? booking.operations.badge.count
+                    : tab.id === 'rooming'
+                      ? booking.rooming.badge.count
+                      : tab.id === 'financials'
+                        ? booking.finance.badge.count
+                        : null,
+                badgeTitle:
+                  tab.id === 'services'
+                    ? buildOperationsBadgeTooltip(booking)
+                    : tab.id === 'rooming'
+                      ? buildRoomingBadgeTooltip(booking)
+                      : tab.id === 'financials'
+                        ? buildFinanceBadgeTooltip(booking)
+                        : undefined,
+                badgeTone:
+                  tab.id === 'services'
+                    ? booking.operations.badge.tone === 'none'
+                      ? 'default'
+                      : booking.operations.badge.tone
+                    : tab.id === 'rooming'
+                      ? booking.rooming.badge.tone === 'none'
+                        ? 'default'
+                        : booking.rooming.badge.tone
+                      : tab.id === 'financials'
+                        ? booking.finance.badge.tone === 'none'
+                          ? 'default'
+                          : booking.finance.badge.tone
+                        : 'default',
+              }))}
+            />
+          </div>
 
-              <article className="detail-card">
-                <p className="eyebrow">Key Metrics</p>
-                <div className="quote-preview-total-list">
-                  <div>
-                    <span>Services confirmed</span>
-                    <strong>{confirmedServicesCount} / {booking.services.length}</strong>
-                  </div>
-                  <div>
-                    <span>Ops-ready services</span>
-                    <strong>{readyServicesCount} / {booking.services.length}</strong>
-                  </div>
-                  <div>
-                    <span>Quoted margin</span>
-                    <strong style={{ color: getMarginColor(quotedTotals.tone) }}>{booking.finance.quotedMarginPercent.toFixed(2)}%</strong>
-                  </div>
-                  <div>
-                    <span>Realized margin</span>
-                    <strong style={{ color: getMarginColor(realizedTotals.tone) }}>{booking.finance.realizedMarginPercent.toFixed(2)}%</strong>
-                  </div>
-                </div>
-              </article>
-
-              <article className="detail-card">
-                <p className="eyebrow">Attention</p>
-                {overviewWarnings.length === 0 ? (
-                  <p className="detail-copy">No immediate operational or finance warnings.</p>
-                ) : (
-                  overviewWarnings.map((message) => (
-                    <p key={message} className="form-error">
-                      {message}
-                    </p>
-                  ))
-                )}
-              </article>
-
-              <article className="detail-card">
-                <p className="eyebrow">Booking Info</p>
-                <div className="quote-preview-total-list">
-                  <div>
-                    <span>Booking type</span>
-                    <strong>{formatBookingType(booking.bookingType)}</strong>
-                  </div>
-                  <div>
-                    <span>Status</span>
-                    <strong>{formatBookingStatus(booking.status)}</strong>
-                  </div>
-                  <div>
-                    <span>Created at</span>
-                    <strong>{formatDateTime(booking.createdAt)}</strong>
-                  </div>
-                  <div>
-                    <span>Updated at</span>
-                    <strong>{formatDateTime(booking.updatedAt)}</strong>
-                  </div>
-                </div>
-                {booking.statusNote ? <p className="detail-copy">Latest override note: {booking.statusNote}</p> : null}
-              </article>
-
-              <article className="detail-card">
-                <p className="eyebrow">Source Quote</p>
-                <div className="quote-preview-total-list">
-                  <div>
-                    <span>Source quote</span>
-                    <strong>{booking.quote.quoteNumber || snapshot.quoteNumber || booking.quote.title}</strong>
-                  </div>
-                  <div>
-                    <span>Quote booking type</span>
-                    <strong>{formatBookingType((snapshot.bookingType || booking.bookingType) as BookingType)}</strong>
-                  </div>
-                  <div>
-                    <span>Client</span>
-                    <strong>{booking.clientSnapshotJson.name}</strong>
-                  </div>
-                  <div>
-                    <span>Contact</span>
-                    <strong>
-                      {booking.contactSnapshotJson.firstName} {booking.contactSnapshotJson.lastName}
-                    </strong>
-                  </div>
-                </div>
-              </article>
-
-              <article className="detail-card">
-                <p className="eyebrow">Accepted Version</p>
-                <div className="quote-preview-total-list">
-                  <div>
-                    <span>Reference</span>
-                    <strong>v{booking.acceptedVersion.versionNumber}</strong>
-                  </div>
-                  <div>
-                    <span>Saved at</span>
-                    <strong>{formatDateTime(booking.acceptedVersion.createdAt)}</strong>
-                  </div>
-                </div>
-                <p className="detail-copy">{booking.acceptedVersion.label || 'Snapshot saved from the accepted quote state.'}</p>
-              </article>
-
-              <article className="detail-card">
-                <p className="eyebrow">Option Summary</p>
-                <div className="quote-preview-option-list">
-                  {snapshot.quoteOptions.length === 0 ? (
-                    <p className="empty-state">No hotel options added yet.</p>
-                  ) : (
-                    snapshot.quoteOptions.map((option) => (
-                      <div key={option.id} className="quote-preview-option-row">
+          <div className="booking-ops-layout">
+            <div className="section-stack booking-ops-main">
+              {activeTab === 'overview' ? (
+                <div className="section-stack">
+                  <section className="booking-ops-grid-two">
+                    <article className="workspace-section booking-ops-panel-card">
+                      <div className="workspace-section-head">
                         <div>
-                          <strong>{option.name}</strong>
-                          <p>{option.notes || 'No notes provided.'}</p>
-                        </div>
-                        <div>
-                          <strong>{formatMoney(option.totalSell)}</strong>
-                          <p>{formatMoney(option.pricePerPax)} per pax</p>
+                          <p className="eyebrow">Overview</p>
+                          <h2>Execution snapshot</h2>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </article>
-            </section>
-
-            <section className="detail-card">
-              <p className="eyebrow">Trip Program</p>
-              <div className="quote-preview-day-list">
-                {!hasItineraryDays ? (
-                  <p className="empty-state">Detailed day-by-day itinerary will be provided upon confirmation.</p>
-                ) : (
-                  sortedDays.map((day) => {
-                    const dayItems = snapshot.quoteItems.filter((item) => item.itineraryId === day.id);
-                    const primaryImage = day.images[0]?.galleryImage || null;
-                    const displayDay = getItineraryDayDisplay(day);
-                    return (
-                      <article key={day.id} className="quote-preview-day-card">
-                        <div className="quote-preview-day-head">
-                          <div>
-                            <p className="eyebrow">{displayDay.dayLabel}</p>
-                            <p className="detail-copy">{displayDay.city}</p>
-                            <strong>{displayDay.title}</strong>
-                            <p>{displayDay.description}</p>
-                          </div>
+                      <p className="detail-copy">
+                        Booking operations stays focused on delivery readiness, supplier visibility, rooming control, and commercial follow-through.
+                      </p>
+                      <div className="quote-preview-total-list">
+                        <div>
+                          <span>Booking type</span>
+                          <strong>{formatBookingType(booking.bookingType)}</strong>
                         </div>
-                        {primaryImage ? (
-                          <figure className="quote-preview-day-image">
-                            <img src={primaryImage.imageUrl} alt={primaryImage.title} className="quote-preview-day-image-asset" />
-                          </figure>
-                        ) : null}
-                        {renderServices(dayItems, 'No services assigned to this day.', snapshot)}
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
+                        <div>
+                          <span>Status</span>
+                          <strong>{formatBookingStatus(booking.status)}</strong>
+                        </div>
+                        <div>
+                          <span>Source quote</span>
+                          <strong>{booking.quote.quoteNumber || booking.quote.title}</strong>
+                        </div>
+                        <div>
+                          <span>Accepted version</span>
+                          <strong>v{booking.acceptedVersion.versionNumber}</strong>
+                        </div>
+                      </div>
+                    </article>
 
-            {hasItineraryDays ? (
-              <section className="detail-card">
-                <p className="eyebrow">Services Outside Itinerary</p>
-                {renderServices(unassignedItems, 'No extra services outside the itinerary.', snapshot)}
-              </section>
-            ) : null}
-          </>
-        ) : null}
+                    <BookingAlertPanel
+                      eyebrow="Operational Alerts"
+                      title="Current issues"
+                      tone={overviewWarnings.length > 0 ? 'warning' : 'neutral'}
+                      items={overviewWarnings.map((item, index) => ({
+                        id: `overview-warning-${index}`,
+                        message: item,
+                      }))}
+                      emptyLabel="No immediate operational or finance warnings."
+                    />
+                  </section>
 
-        {activeTab === 'operations' ? (
-          <>
-            <section className="section-stack">
-              <article className="detail-card">
-                <p className="eyebrow">Operations</p>
-                <p className="detail-copy">Use this workspace for workflow changes, service execution details, and supplier confirmations without showing every control at once.</p>
-              </article>
-
-              <SummaryStrip
-                items={[
-                  { id: 'services', label: 'Services', value: String(booking.services.length), helper: 'Booked service rows' },
-                  { id: 'confirmed', label: 'Confirmed', value: String(confirmedServicesCount), helper: 'Supplier confirmed' },
-                  { id: 'ready', label: 'Ops-ready', value: String(readyServicesCount), helper: 'Execution ready' },
-                  { id: 'pending', label: 'Pending', value: String(pendingConfirmationsCount), helper: 'Confirmation outstanding' },
-                  { id: 'missing-ops', label: 'Missing ops', value: String(activityServicesMissingOpsCount), helper: 'Execution details missing' },
-                  { id: 'status', label: 'Booking status', value: formatBookingStatus(booking.status), helper: 'Current workflow state' },
-                ]}
-              />
-
-              <AdvancedFiltersPanel title="Booking controls" description="Status changes and workflow controls">
-                <InlineRowEditorShell>
-                  <p className="detail-copy">
-                    Allowed next statuses: {allowedTransitions.length > 0 ? allowedTransitions.map(formatBookingStatus).join(', ') : 'No further transitions'}
-                  </p>
-                  <form action={`/api/bookings/${booking.id}/status`} method="POST" className="quote-status-form">
-                    <label>
-                      Booking status
-                      <select name="status" defaultValue="" disabled={allowedTransitions.length === 0}>
-                        <option value="" disabled>
-                          {allowedTransitions.length === 0 ? 'No further transitions' : 'Select next status'}
-                        </option>
-                        {allowedTransitions.map((status) => (
-                          <option key={status} value={status}>
-                            {formatBookingStatus(status)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Reason
-                      <input type="text" name="note" placeholder="Reason for manual booking status override" required minLength={3} />
-                    </label>
-                    <div className="quote-status-actions">
-                      <button type="submit">Update booking status</button>
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
+                        <p className="eyebrow">Program</p>
+                        <h2>Booking itinerary snapshot</h2>
+                      </div>
                     </div>
-                  </form>
-                </InlineRowEditorShell>
-              </AdvancedFiltersPanel>
-
-              <TableSectionShell
-                title="Booking services"
-                description="Scan services first, then expand individual rows for assignment, confirmation, operational detail, and audit."
-                context={<p>{booking.services.length} services in this booking</p>}
-              >
-                <BookingServicesList
-                  services={booking.services}
-                  suppliers={suppliers}
-                  formatMoney={formatMoney}
-                  formatBookingServiceStatus={formatBookingServiceStatus}
-                  formatConfirmationStatus={formatConfirmationStatus}
-                  formatDateTime={formatDateTime}
-                  highlightServiceId={highlightServiceId}
-                />
-              </TableSectionShell>
-            </section>
-          </>
-        ) : null}
-
-        {activeTab === 'passengers-rooming' ? (
-          <>
-            <section className="section-stack">
-              <article className="detail-card">
-                <p className="eyebrow">Passengers & Rooming</p>
-                <p className="detail-copy">Traveler records and room allocation now stay compact by default so assignment work is easier to scan.</p>
-              </article>
-
-              <SummaryStrip
-                items={[
-                  { id: 'passengers', label: 'Passengers', value: String(booking.passengers.length), helper: 'Traveler records' },
-                  {
-                    id: 'lead',
-                    label: 'Lead passenger',
-                    value: booking.passengers.find((passenger) => passenger.isLead) ? 'Assigned' : 'Missing',
-                    helper: 'Primary traveler owner',
-                  },
-                  { id: 'rooms', label: 'Rooms', value: String(booking.roomingEntries.length), helper: 'Rooming entries' },
-                  { id: 'assigned', label: 'Assigned', value: String(assignedPassengerIds.size), helper: 'Passengers placed in rooms' },
-                ]}
-              />
-
-              <TableSectionShell
-                title="Passengers"
-                description="Scan passenger records first, then expand rows for edits and lead-passenger controls."
-                context={<p>{booking.passengers.length} passengers in scope</p>}
-                createPanel={
-                  <CollapsibleCreatePanel title="Add passenger" description="Create a traveler record while keeping the existing manifest visible." triggerLabelOpen="Add passenger">
-                    <InlineRowEditorShell>
-                      <form action={`/api/bookings/${booking.id}/passengers`} method="POST" className="quote-status-form">
-                        <label>
-                          Title
-                          <input type="text" name="title" placeholder="Mr / Ms / Dr" />
-                        </label>
-                        <label>
-                          First name
-                          <input type="text" name="firstName" required />
-                        </label>
-                        <label>
-                          Last name
-                          <input type="text" name="lastName" required />
-                        </label>
-                        <label>
-                          Notes
-                          <input type="text" name="notes" placeholder="Special handling or document note" />
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <input type="checkbox" name="isLead" />
-                          Set as lead passenger
-                        </label>
-                        <div className="quote-status-actions">
-                          <button type="submit">Add passenger</button>
-                        </div>
-                      </form>
-                    </InlineRowEditorShell>
-                  </CollapsibleCreatePanel>
-                }
-                emptyState={<p className="empty-state">No passenger records have been added yet.</p>}
-              >
-                {booking.passengers.length > 0 ? (
-                  <div className="table-wrap">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Passenger</th>
-                          <th>Lead</th>
-                          <th>Assignments</th>
-                          <th>Notes</th>
-                          <th>Details</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {booking.passengers.map((passenger) => (
-                          <tr key={passenger.id}>
-                            <td>
-                              <strong>{formatPassengerName(passenger)}</strong>
-                            </td>
-                            <td>{passenger.isLead ? 'Lead' : 'Passenger'}</td>
-                            <td>{passenger.roomingAssignments.length}</td>
-                            <td>{passenger.notes || 'No passenger notes'}</td>
-                            <td>
-                              <RowDetailsPanel summary="Open details" description="Edit passenger, update lead ownership, or remove" className="operations-row-details" bodyClassName="operations-row-details-body">
-                                <InlineRowEditorShell>
-                                  <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST" className="quote-status-form">
-                                    <input type="hidden" name="intent" value="update" />
-                                    <label>
-                                      Title
-                                      <input type="text" name="title" defaultValue={passenger.title || ''} />
-                                    </label>
-                                    <label>
-                                      First name
-                                      <input type="text" name="firstName" defaultValue={passenger.firstName} required />
-                                    </label>
-                                    <label>
-                                      Last name
-                                      <input type="text" name="lastName" defaultValue={passenger.lastName} required />
-                                    </label>
-                                    <label>
-                                      Notes
-                                      <input type="text" name="notes" defaultValue={passenger.notes || ''} />
-                                    </label>
-                                    <div className="quote-status-actions">
-                                      <button type="submit">Save passenger</button>
-                                    </div>
-                                  </form>
-                                </InlineRowEditorShell>
-                                <div className="quote-status-actions">
-                                  {!passenger.isLead ? (
-                                    <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST">
-                                      <input type="hidden" name="intent" value="set-lead" />
-                                      <button type="submit">Set lead passenger</button>
-                                    </form>
-                                  ) : null}
-                                  <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST">
-                                    <input type="hidden" name="intent" value="delete" />
-                                    <button type="submit">Delete passenger</button>
-                                  </form>
+                    <div className="quote-preview-day-list">
+                      {!hasItineraryDays ? (
+                        <BookingOperationsEmptyState
+                          eyebrow="Program"
+                          title="No detailed itinerary days"
+                          description="Detailed day-by-day itinerary will appear here once the accepted quote includes itinerary structure."
+                        />
+                      ) : (
+                        sortedDays.map((day) => {
+                          const dayItems = snapshot.quoteItems.filter((item) => item.itineraryId === day.id);
+                          const primaryImage = day.images[0]?.galleryImage || null;
+                          const displayDay = getItineraryDayDisplay(day);
+                          return (
+                            <article key={day.id} className="quote-preview-day-card">
+                              <div className="quote-preview-day-head">
+                                <div>
+                                  <p className="eyebrow">{displayDay.dayLabel}</p>
+                                  <p className="detail-copy">{displayDay.city}</p>
+                                  <strong>{displayDay.title}</strong>
+                                  <p>{displayDay.description}</p>
                                 </div>
-                              </RowDetailsPanel>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </TableSectionShell>
+                              </div>
+                              {primaryImage ? (
+                                <figure className="quote-preview-day-image">
+                                  <img src={primaryImage.imageUrl} alt={primaryImage.title} className="quote-preview-day-image-asset" />
+                                </figure>
+                              ) : null}
+                              {renderServices(dayItems, 'No services assigned to this day.', snapshot)}
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+                    {hasItineraryDays ? renderServices(unassignedItems, 'No extra services outside the itinerary.', snapshot) : null}
+                  </section>
 
-              <TableSectionShell
-                title="Rooming"
-                description="Room entries stay collapsed by default so you can scan occupancy and assignment gaps before opening room-level controls."
-                context={<p>{booking.roomingEntries.length} rooming entries in scope</p>}
-                createPanel={
-                  <CollapsibleCreatePanel title="Add room" description="Create a rooming entry without pushing the full room list off screen." triggerLabelOpen="Add room">
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
+                        <p className="eyebrow">Documents</p>
+                        <h2>Operational surfaces</h2>
+                      </div>
+                    </div>
+                    <div className="booking-ops-doc-grid">
+                      <article className="detail-card">
+                        <p className="eyebrow">Portal</p>
+                        <p className="detail-copy">{portalUrl}</p>
+                        <BookingPortalLinkActions apiBaseUrl={ACTION_API_BASE_URL} bookingId={booking.id} portalUrl={portalUrl} />
+                      </article>
+                      <article className="detail-card">
+                        <p className="eyebrow">Voucher</p>
+                        <div className="workspace-document-actions">
+                          <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                            Open voucher
+                          </Link>
+                        </div>
+                        <BookingDocumentActions
+                          apiBaseUrl={ACTION_API_BASE_URL}
+                          bookingId={booking.id}
+                          bookingRef={bookingRef}
+                          documentLabel="Booking Voucher"
+                          documentType="voucher"
+                        />
+                      </article>
+                      <article className="detail-card">
+                        <p className="eyebrow">Supplier Confirmation</p>
+                        <div className="workspace-document-actions">
+                          <Link href={`/bookings/${booking.id}/supplier-confirmation`} className="secondary-button">
+                            Supplier confirmation
+                          </Link>
+                        </div>
+                        <BookingDocumentActions
+                          apiBaseUrl={ACTION_API_BASE_URL}
+                          bookingId={booking.id}
+                          bookingRef={bookingRef}
+                          documentLabel="Supplier Confirmation"
+                          documentType="supplier-confirmation"
+                        />
+                      </article>
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {activeTab === 'services' ? (
+                <div className="section-stack">
+                  <AdvancedFiltersPanel title="Booking controls" description="Status changes and workflow controls">
                     <InlineRowEditorShell>
-                      <form action={`/api/bookings/${booking.id}/rooming`} method="POST" className="quote-status-form">
+                      <p className="detail-copy">
+                        Allowed next statuses: {allowedTransitions.length > 0 ? allowedTransitions.map(formatBookingStatus).join(', ') : 'No further transitions'}
+                      </p>
+                      <form action={`/api/bookings/${booking.id}/status`} method="POST" className="quote-status-form">
                         <label>
-                          Room type
-                          <input type="text" name="roomType" placeholder="DBL Sea View / Family Room" />
-                        </label>
-                        <label>
-                          Occupancy
-                          <select name="occupancy" defaultValue="unknown">
-                            <option value="unknown">Unknown</option>
-                            <option value="single">Single</option>
-                            <option value="double">Double</option>
-                            <option value="triple">Triple</option>
-                            <option value="quad">Quad</option>
+                          Booking status
+                          <select name="status" defaultValue="" disabled={allowedTransitions.length === 0}>
+                            <option value="" disabled>
+                              {allowedTransitions.length === 0 ? 'No further transitions' : 'Select next status'}
+                            </option>
+                            {allowedTransitions.map((status) => (
+                              <option key={status} value={status}>
+                                {formatBookingStatus(status)}
+                              </option>
+                            ))}
                           </select>
                         </label>
                         <label>
-                          Sort order
-                          <input type="number" name="sortOrder" min={0} defaultValue={booking.roomingEntries.length + 1} />
-                        </label>
-                        <label>
-                          Notes
-                          <input type="text" name="notes" placeholder="Rooming note or hotel instruction" />
+                          Reason
+                          <input type="text" name="note" placeholder="Reason for manual booking status override" required minLength={3} />
                         </label>
                         <div className="quote-status-actions">
-                          <button type="submit">Add room</button>
+                          <button type="submit">Update booking status</button>
                         </div>
                       </form>
                     </InlineRowEditorShell>
-                  </CollapsibleCreatePanel>
-                }
-                emptyState={<p className="empty-state">No rooming entries have been created yet.</p>}
-              >
-                {booking.roomingEntries.length > 0 ? (
-                  <div className="table-wrap">
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Room</th>
-                          <th>Occupancy</th>
-                          <th>Assigned</th>
-                          <th>Notes</th>
-                          <th>Details</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {booking.roomingEntries.map((entry) => {
-                          const capacity = getRoomOccupancyCapacity(entry.occupancy);
-                          const availablePassengers = booking.passengers.filter(
-                            (passenger) =>
-                              !assignedPassengerIds.has(passenger.id) ||
-                              entry.assignments.some((assignment) => assignment.bookingPassenger.id === passenger.id),
-                          );
+                  </AdvancedFiltersPanel>
 
-                          return (
-                            <tr key={entry.id}>
-                              <td>
-                                <strong>{getRoomLabel(entry)}</strong>
-                              </td>
-                              <td>{formatRoomOccupancy(entry.occupancy)}</td>
-                              <td>
-                                {entry.assignments.length}
-                                {capacity ? ` / ${capacity}` : ''}
-                              </td>
-                              <td>{entry.notes || 'No rooming notes'}</td>
-                              <td>
-                                <RowDetailsPanel summary="Open details" description="Edit room, manage assignments, and remove room entry" className="operations-row-details" bodyClassName="operations-row-details-body">
-                                  <InlineRowEditorShell>
-                                    <form action={`/api/bookings/${booking.id}/rooming/${entry.id}`} method="POST" className="quote-status-form">
-                                      <input type="hidden" name="intent" value="update" />
-                                      <label>
-                                        Room type
-                                        <input type="text" name="roomType" defaultValue={entry.roomType || ''} />
-                                      </label>
-                                      <label>
-                                        Occupancy
-                                        <select name="occupancy" defaultValue={entry.occupancy}>
-                                          <option value="unknown">Unknown</option>
-                                          <option value="single">Single</option>
-                                          <option value="double">Double</option>
-                                          <option value="triple">Triple</option>
-                                          <option value="quad">Quad</option>
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Sort order
-                                        <input type="number" name="sortOrder" min={0} defaultValue={entry.sortOrder} />
-                                      </label>
-                                      <label>
-                                        Notes
-                                        <input type="text" name="notes" defaultValue={entry.notes || ''} />
-                                      </label>
-                                      <div className="quote-status-actions">
-                                        <button type="submit">Save room</button>
-                                      </div>
-                                    </form>
-                                  </InlineRowEditorShell>
-                                  <div className="quote-status-actions">
-                                    <form action={`/api/bookings/${booking.id}/rooming/${entry.id}`} method="POST">
-                                      <input type="hidden" name="intent" value="delete" />
-                                      <button type="submit">Delete room</button>
-                                    </form>
-                                  </div>
-                                  <div className="audit-log-list">
-                                    <div className="audit-log-item">
-                                      <strong>
-                                        {entry.assignments.length > 0
-                                          ? entry.assignments.map((assignment) => formatPassengerName(assignment.bookingPassenger)).join(', ')
-                                          : 'No passengers assigned'}
-                                      </strong>
-                                    </div>
-                                  </div>
-                                  {entry.assignments.length > 0 ? (
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
+                        <p className="eyebrow">Services</p>
+                        <h2>Service execution timeline</h2>
+                      </div>
+                    </div>
+                    <BookingServiceTimeline
+                      services={booking.services}
+                      suppliers={suppliers}
+                      highlightServiceId={highlightServiceId}
+                    />
+                  </section>
+                </div>
+              ) : null}
+
+              {activeTab === 'passengers' ? (
+                <section className="section-stack">
+                  <TableSectionShell
+                    title="Passengers"
+                    description="Traveler records, lead ownership, and special notes."
+                    context={<p>{booking.passengers.length} passengers in scope</p>}
+                    createPanel={
+                      <CollapsibleCreatePanel title="Add passenger" description="Create a traveler record while keeping the manifest visible." triggerLabelOpen="Add passenger">
+                        <InlineRowEditorShell>
+                          <form action={`/api/bookings/${booking.id}/passengers`} method="POST" className="quote-status-form">
+                            <label>
+                              Title
+                              <input type="text" name="title" placeholder="Mr / Ms / Dr" />
+                            </label>
+                            <label>
+                              First name
+                              <input type="text" name="firstName" required />
+                            </label>
+                            <label>
+                              Last name
+                              <input type="text" name="lastName" required />
+                            </label>
+                            <label>
+                              Notes
+                              <input type="text" name="notes" placeholder="Special handling or document note" />
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <input type="checkbox" name="isLead" />
+                              Set as lead passenger
+                            </label>
+                            <div className="quote-status-actions">
+                              <button type="submit">Add passenger</button>
+                            </div>
+                          </form>
+                        </InlineRowEditorShell>
+                      </CollapsibleCreatePanel>
+                    }
+                    emptyState={
+                      <BookingOperationsEmptyState
+                        eyebrow="Passengers"
+                        title="No passengers added"
+                        description="Create traveler records to manage rooming, lead ownership, and manifest readiness."
+                      />
+                    }
+                  >
+                    {booking.passengers.length > 0 ? (
+                      <div className="table-wrap">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Passenger</th>
+                              <th>Role</th>
+                              <th>Assignments</th>
+                              <th>Notes</th>
+                              <th>Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {booking.passengers.map((passenger) => (
+                              <tr key={passenger.id}>
+                                <td>
+                                  <strong>{formatPassengerName(passenger)}</strong>
+                                </td>
+                                <td>{passenger.isLead ? 'Lead' : 'Passenger'}</td>
+                                <td>{passenger.roomingAssignments.length}</td>
+                                <td>{passenger.notes || 'No passenger notes'}</td>
+                                <td>
+                                  <RowDetailsPanel summary="Open details" description="Edit passenger, update lead ownership, or remove" className="operations-row-details" bodyClassName="operations-row-details-body">
+                                    <InlineRowEditorShell>
+                                      <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST" className="quote-status-form">
+                                        <input type="hidden" name="intent" value="update" />
+                                        <label>
+                                          Title
+                                          <input type="text" name="title" defaultValue={passenger.title || ''} />
+                                        </label>
+                                        <label>
+                                          First name
+                                          <input type="text" name="firstName" defaultValue={passenger.firstName} required />
+                                        </label>
+                                        <label>
+                                          Last name
+                                          <input type="text" name="lastName" defaultValue={passenger.lastName} required />
+                                        </label>
+                                        <label>
+                                          Notes
+                                          <input type="text" name="notes" defaultValue={passenger.notes || ''} />
+                                        </label>
+                                        <div className="quote-status-actions">
+                                          <button type="submit">Save passenger</button>
+                                        </div>
+                                      </form>
+                                    </InlineRowEditorShell>
                                     <div className="quote-status-actions">
-                                      {entry.assignments.map((assignment) => (
-                                        <form
-                                          key={assignment.id}
-                                          action={`/api/bookings/${booking.id}/rooming/${entry.id}/assignments/${assignment.bookingPassenger.id}`}
-                                          method="POST"
-                                        >
-                                          <button type="submit">Unassign {formatPassengerName(assignment.bookingPassenger)}</button>
+                                      {!passenger.isLead ? (
+                                        <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST">
+                                          <input type="hidden" name="intent" value="set-lead" />
+                                          <button type="submit">Set lead passenger</button>
                                         </form>
-                                      ))}
+                                      ) : null}
+                                      <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST">
+                                        <input type="hidden" name="intent" value="delete" />
+                                        <button type="submit">Delete passenger</button>
+                                      </form>
                                     </div>
-                                  ) : null}
-                                  <InlineRowEditorShell>
-                                    <form action={`/api/bookings/${booking.id}/rooming/${entry.id}/assignments`} method="POST" className="quote-status-form">
-                                      <label>
-                                        Assign passenger
-                                        <select
-                                          name="passengerId"
-                                          defaultValue=""
-                                          disabled={availablePassengers.length === 0 || (capacity !== null && entry.assignments.length >= capacity)}
-                                        >
-                                          <option value="" disabled>
-                                            {availablePassengers.length === 0
-                                              ? 'No unassigned passengers'
-                                              : capacity !== null && entry.assignments.length >= capacity
-                                                ? 'Room occupancy is full'
-                                                : 'Select passenger'}
-                                          </option>
-                                          {availablePassengers.map((passenger) => (
-                                            <option key={passenger.id} value={passenger.id}>
-                                              {formatPassengerName(passenger)}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
+                                  </RowDetailsPanel>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </TableSectionShell>
+                </section>
+              ) : null}
+
+              {activeTab === 'rooming' ? (
+                <section className="section-stack">
+                  <TableSectionShell
+                    title="Rooming"
+                    description="Room entries, occupancy, and passenger assignments."
+                    context={<p>{booking.roomingEntries.length} rooming entries in scope</p>}
+                    createPanel={
+                      <CollapsibleCreatePanel title="Add room" description="Create a rooming entry without pushing the room list off screen." triggerLabelOpen="Add room">
+                        <InlineRowEditorShell>
+                          <form action={`/api/bookings/${booking.id}/rooming`} method="POST" className="quote-status-form">
+                            <label>
+                              Room type
+                              <input type="text" name="roomType" placeholder="DBL Sea View / Family Room" />
+                            </label>
+                            <label>
+                              Occupancy
+                              <select name="occupancy" defaultValue="unknown">
+                                <option value="unknown">Unknown</option>
+                                <option value="single">Single</option>
+                                <option value="double">Double</option>
+                                <option value="triple">Triple</option>
+                                <option value="quad">Quad</option>
+                              </select>
+                            </label>
+                            <label>
+                              Sort order
+                              <input type="number" name="sortOrder" min={0} defaultValue={booking.roomingEntries.length + 1} />
+                            </label>
+                            <label>
+                              Notes
+                              <input type="text" name="notes" placeholder="Rooming note or hotel instruction" />
+                            </label>
+                            <div className="quote-status-actions">
+                              <button type="submit">Add room</button>
+                            </div>
+                          </form>
+                        </InlineRowEditorShell>
+                      </CollapsibleCreatePanel>
+                    }
+                    emptyState={
+                      <BookingOperationsEmptyState
+                        eyebrow="Rooming"
+                        title="No rooming entries created"
+                        description="Create room records to assign passengers and validate occupancy."
+                      />
+                    }
+                  >
+                    {booking.roomingEntries.length > 0 ? (
+                      <div className="table-wrap">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Room</th>
+                              <th>Occupancy</th>
+                              <th>Assigned</th>
+                              <th>Notes</th>
+                              <th>Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {booking.roomingEntries.map((entry) => {
+                              const capacity = getRoomOccupancyCapacity(entry.occupancy);
+                              const availablePassengers = booking.passengers.filter(
+                                (passenger) =>
+                                  !assignedPassengerIds.has(passenger.id) ||
+                                  entry.assignments.some((assignment) => assignment.bookingPassenger.id === passenger.id),
+                              );
+
+                              return (
+                                <tr key={entry.id}>
+                                  <td>
+                                    <strong>{getRoomLabel(entry)}</strong>
+                                  </td>
+                                  <td>{formatRoomOccupancy(entry.occupancy)}</td>
+                                  <td>
+                                    {entry.assignments.length}
+                                    {capacity ? ` / ${capacity}` : ''}
+                                  </td>
+                                  <td>{entry.notes || 'No rooming notes'}</td>
+                                  <td>
+                                    <RowDetailsPanel summary="Open details" description="Edit room, manage assignments, and remove room entry" className="operations-row-details" bodyClassName="operations-row-details-body">
+                                      <InlineRowEditorShell>
+                                        <form action={`/api/bookings/${booking.id}/rooming/${entry.id}`} method="POST" className="quote-status-form">
+                                          <input type="hidden" name="intent" value="update" />
+                                          <label>
+                                            Room type
+                                            <input type="text" name="roomType" defaultValue={entry.roomType || ''} />
+                                          </label>
+                                          <label>
+                                            Occupancy
+                                            <select name="occupancy" defaultValue={entry.occupancy}>
+                                              <option value="unknown">Unknown</option>
+                                              <option value="single">Single</option>
+                                              <option value="double">Double</option>
+                                              <option value="triple">Triple</option>
+                                              <option value="quad">Quad</option>
+                                            </select>
+                                          </label>
+                                          <label>
+                                            Sort order
+                                            <input type="number" name="sortOrder" min={0} defaultValue={entry.sortOrder} />
+                                          </label>
+                                          <label>
+                                            Notes
+                                            <input type="text" name="notes" defaultValue={entry.notes || ''} />
+                                          </label>
+                                          <div className="quote-status-actions">
+                                            <button type="submit">Save room</button>
+                                          </div>
+                                        </form>
+                                      </InlineRowEditorShell>
                                       <div className="quote-status-actions">
-                                        <button
-                                          type="submit"
-                                          disabled={availablePassengers.length === 0 || (capacity !== null && entry.assignments.length >= capacity)}
-                                        >
-                                          Assign passenger
-                                        </button>
+                                        <form action={`/api/bookings/${booking.id}/rooming/${entry.id}`} method="POST">
+                                          <input type="hidden" name="intent" value="delete" />
+                                          <button type="submit">Delete room</button>
+                                        </form>
                                       </div>
-                                    </form>
-                                  </InlineRowEditorShell>
-                                </RowDetailsPanel>
+                                      <div className="audit-log-list">
+                                        <div className="audit-log-item">
+                                          <strong>
+                                            {entry.assignments.length > 0
+                                              ? entry.assignments.map((assignment) => formatPassengerName(assignment.bookingPassenger)).join(', ')
+                                              : 'No passengers assigned'}
+                                          </strong>
+                                        </div>
+                                      </div>
+                                      {entry.assignments.length > 0 ? (
+                                        <div className="quote-status-actions">
+                                          {entry.assignments.map((assignment) => (
+                                            <form
+                                              key={assignment.id}
+                                              action={`/api/bookings/${booking.id}/rooming/${entry.id}/assignments/${assignment.bookingPassenger.id}`}
+                                              method="POST"
+                                            >
+                                              <button type="submit">Unassign {formatPassengerName(assignment.bookingPassenger)}</button>
+                                            </form>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      <InlineRowEditorShell>
+                                        <form action={`/api/bookings/${booking.id}/rooming/${entry.id}/assignments`} method="POST" className="quote-status-form">
+                                          <label>
+                                            Assign passenger
+                                            <select
+                                              name="passengerId"
+                                              defaultValue=""
+                                              disabled={availablePassengers.length === 0 || (capacity !== null && entry.assignments.length >= capacity)}
+                                            >
+                                              <option value="" disabled>
+                                                {availablePassengers.length === 0
+                                                  ? 'No unassigned passengers'
+                                                  : capacity !== null && entry.assignments.length >= capacity
+                                                    ? 'Room occupancy is full'
+                                                    : 'Select passenger'}
+                                              </option>
+                                              {availablePassengers.map((passenger) => (
+                                                <option key={passenger.id} value={passenger.id}>
+                                                  {formatPassengerName(passenger)}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                          <div className="quote-status-actions">
+                                            <button
+                                              type="submit"
+                                              disabled={availablePassengers.length === 0 || (capacity !== null && entry.assignments.length >= capacity)}
+                                            >
+                                              Assign passenger
+                                            </button>
+                                          </div>
+                                        </form>
+                                      </InlineRowEditorShell>
+                                    </RowDetailsPanel>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </TableSectionShell>
+                </section>
+              ) : null}
+
+              {activeTab === 'financials' ? (
+                <section className="section-stack">
+                  <BookingFinancialsTab
+                    bookingId={booking.id}
+                    bookingRef={bookingRef}
+                    portalUrl={portalUrl}
+                    currency="USD"
+                    totalSell={booking.finance.realizedTotalSell || booking.finance.quotedTotalSell}
+                    totalCost={booking.finance.realizedTotalCost || booking.finance.quotedTotalCost}
+                    initialPayments={bookingPayments}
+                    initialInvoiceSentAt={booking.invoiceDelivery?.sentAt || null}
+                    initialInvoiceSentTo={booking.invoiceDelivery?.sentTo || null}
+                    initialReminderSentAt={booking.paymentReminderDelivery?.sentAt || null}
+                    initialReminderSentTo={booking.paymentReminderDelivery?.sentTo || null}
+                    initialReminderCount={booking.paymentReminderAutomation?.reminderCount ?? 0}
+                    initialLastReminderAt={booking.paymentReminderAutomation?.lastReminderAt || null}
+                    initialNextReminderDueAt={booking.paymentReminderAutomation?.nextReminderDueAt || null}
+                    reminderAutomationActive={booking.paymentReminderAutomation?.autoActive ?? false}
+                    reminderAutomationStage={booking.paymentReminderAutomation?.stage ?? 'gentle'}
+                    paymentProofSubmission={booking.paymentProofSubmission || null}
+                    invoiceRecipientEmail={booking.quote.contact.email || booking.contactSnapshotJson.email || null}
+                  />
+
+                  <AdvancedFiltersPanel title="Finance controls" description="Invoice and supplier payment tracking">
+                    <InlineRowEditorShell>
+                      <form action={`/api/bookings/${booking.id}/finance`} method="POST" className="quote-status-form">
+                        <label>
+                          Client invoice status
+                          <select name="clientInvoiceStatus" defaultValue={booking.finance.clientInvoiceStatus}>
+                            <option value="unbilled">Unbilled</option>
+                            <option value="invoiced">Invoiced</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        </label>
+                        <label>
+                          Supplier payment status
+                          <select name="supplierPaymentStatus" defaultValue={booking.finance.supplierPaymentStatus}>
+                            <option value="unpaid">Unpaid</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        </label>
+                        <div className="quote-status-actions">
+                          <button type="submit">Update finance tracking</button>
+                        </div>
+                      </form>
+                    </InlineRowEditorShell>
+                  </AdvancedFiltersPanel>
+
+                  <TableSectionShell
+                    title="Scenario pricing"
+                    description="Accepted quote scenarios remain visible for downstream finance review."
+                    context={<p>{snapshot.scenarios.length} scenario rows</p>}
+                  >
+                    <div className="table-wrap">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Pax count</th>
+                            <th>Total sell</th>
+                            <th>Price per pax</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {snapshot.scenarios.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="empty-state">
+                                No group pricing generated yet.
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </TableSectionShell>
-            </section>
-          </>
-        ) : null}
+                          ) : (
+                            snapshot.scenarios.map((scenario) => (
+                              <tr key={scenario.id}>
+                                <td>{scenario.paxCount}</td>
+                                <td>{formatMoney(scenario.totalSell)}</td>
+                                <td>{formatMoney(scenario.pricePerPax)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TableSectionShell>
+                </section>
+              ) : null}
 
-        {activeTab === 'finance' ? (
-          <>
-            <section className="section-stack">
-              <article className="detail-card">
-                <p className="eyebrow">Finance</p>
-                <p className="detail-copy">Commercial tracking stays summary-first, while finance controls and scenario tables open only when needed.</p>
+              {activeTab === 'audit-log' ? (
+                <section className="section-stack">
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
+                        <p className="eyebrow">Audit Log</p>
+                        <h2>Workflow history</h2>
+                      </div>
+                    </div>
+                    {timeline.length === 0 ? (
+                      <BookingOperationsEmptyState
+                        eyebrow="Audit Log"
+                        title="No workflow activity yet"
+                        description="Booking and service audit history will appear here as operations progress."
+                      />
+                    ) : (
+                      <div className="audit-log-list">
+                        {timeline.map((entry) => (
+                          <div key={entry.id} className="audit-log-item">
+                            <strong>{entry.title}</strong>
+                            <p>
+                              {formatDateTime(entry.createdAt)}
+                              {entry.actor ? ` | ${entry.actor}` : ''}
+                            </p>
+                            {entry.detail ? <p>{entry.detail}</p> : null}
+                            {entry.note ? <p>{entry.note}</p> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </section>
+              ) : null}
+            </div>
+
+            <aside className="booking-ops-sidebar">
+              <article className="workspace-section booking-ops-sidebar-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Booking Status</p>
+                    <h3>Current state</h3>
+                  </div>
+                </div>
+                <div className="booking-ops-sidebar-list">
+                  <div>
+                    <span>Lifecycle</span>
+                    <strong>{formatBookingStatus(booking.status)}</strong>
+                  </div>
+                  <div>
+                    <span>Client invoice</span>
+                    <strong>{formatClientInvoiceStatus(booking.finance.clientInvoiceStatus)}</strong>
+                  </div>
+                  <div>
+                    <span>Supplier payment</span>
+                    <strong>{formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}</strong>
+                  </div>
+                  <div>
+                    <span>Last updated</span>
+                    <strong>{formatDateTime(booking.updatedAt)}</strong>
+                  </div>
+                </div>
               </article>
 
-              <SummaryStrip
-                items={[
-                  { id: 'quoted-margin', label: 'Quoted margin %', value: `${booking.finance.quotedMarginPercent.toFixed(2)}%`, helper: formatMoney(booking.finance.quotedMargin) },
-                  { id: 'realized-margin', label: 'Realized margin %', value: `${booking.finance.realizedMarginPercent.toFixed(2)}%`, helper: formatMoney(booking.finance.realizedMargin) },
-                  { id: 'client-invoice', label: 'Client invoice', value: formatClientInvoiceStatus(booking.finance.clientInvoiceStatus), helper: booking.finance.hasUnpaidClientBalance ? 'Balance still open' : 'No client balance issue' },
-                  { id: 'supplier-payment', label: 'Supplier payment', value: formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus), helper: booking.finance.hasUnpaidSupplierObligation ? 'Supplier obligations open' : 'No supplier issue' },
-                ]}
+              <article className="workspace-section booking-ops-sidebar-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Lead Passenger</p>
+                    <h3>Primary traveler</h3>
+                  </div>
+                </div>
+                {leadPassenger ? (
+                  <div className="booking-ops-sidebar-list">
+                    <div>
+                      <span>Name</span>
+                      <strong>{formatPassengerName(leadPassenger)}</strong>
+                    </div>
+                    <div>
+                      <span>Assignments</span>
+                      <strong>{leadPassenger.roomingAssignments.length}</strong>
+                    </div>
+                    <div>
+                      <span>Notes</span>
+                      <strong>{leadPassenger.notes || 'No lead notes'}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <BookingOperationsEmptyState
+                    eyebrow="Lead Passenger"
+                    title="No lead passenger assigned"
+                    description="Assign a lead passenger so suppliers and operations have a clear primary traveler."
+                  />
+                )}
+              </article>
+
+              <BookingRoomingSummaryCard
+                roomCount={booking.roomingEntries.length}
+                assignedPassengers={assignedPassengerIds.size}
+                passengerCount={booking.passengers.length}
+                roomingIssues={roomingIssues}
               />
 
-              <section className="quote-preview-grid">
-                <article className="detail-card">
-                  <p className="eyebrow">Quoted Profitability</p>
-                  <div className="quote-preview-total-list">
-                    <div>
-                      <span>Quoted total cost</span>
-                      <strong>{formatMoney(booking.finance.quotedTotalCost)}</strong>
-                    </div>
-                    <div>
-                      <span>Quoted total sell</span>
-                      <strong>{formatMoney(booking.finance.quotedTotalSell)}</strong>
-                    </div>
-                    <div>
-                      <span>Quoted margin</span>
-                      <strong style={{ color: getMarginColor(quotedTotals.tone) }}>{formatMoney(booking.finance.quotedMargin)}</strong>
-                    </div>
-                    <div>
-                      <span>Quoted margin %</span>
-                      <strong style={{ color: getMarginColor(quotedTotals.tone) }}>{booking.finance.quotedMarginPercent.toFixed(2)}%</strong>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="detail-card">
-                  <p className="eyebrow">Realized Profitability</p>
-                  <div className="quote-preview-total-list">
-                    <div>
-                      <span>Realized total cost</span>
-                      <strong>{formatMoney(booking.finance.realizedTotalCost)}</strong>
-                    </div>
-                    <div>
-                      <span>Realized total sell</span>
-                      <strong>{formatMoney(booking.finance.realizedTotalSell)}</strong>
-                    </div>
-                    <div>
-                      <span>Realized margin</span>
-                      <strong style={{ color: getMarginColor(realizedTotals.tone) }}>{formatMoney(booking.finance.realizedMargin)}</strong>
-                    </div>
-                    <div>
-                      <span>Realized margin %</span>
-                      <strong style={{ color: getMarginColor(realizedTotals.tone) }}>{booking.finance.realizedMarginPercent.toFixed(2)}%</strong>
-                    </div>
-                  </div>
-                  {realizedTotals.isNegative ? <p className="form-error">Warning: this booking is currently below cost.</p> : null}
-                  {booking.finance.hasLowMargin && !realizedTotals.isNegative ? <p className="detail-copy">Margin is below the operational threshold.</p> : null}
-                </article>
-              </section>
-
-              <AdvancedFiltersPanel title="Finance controls" description="Invoice and supplier payment tracking">
-                <InlineRowEditorShell>
-                  <div className="quote-preview-total-list">
-                    <div>
-                      <span>Client invoice</span>
-                      <strong>{formatClientInvoiceStatus(booking.finance.clientInvoiceStatus)}</strong>
-                    </div>
-                    <div>
-                      <span>Supplier payment</span>
-                      <strong>{formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}</strong>
-                    </div>
-                  </div>
-                  {booking.finance.hasUnpaidClientBalance ? <p className="form-error">Client balance is not fully paid.</p> : null}
-                  {booking.finance.hasUnpaidSupplierObligation ? <p className="form-error">Supplier obligations are still open.</p> : null}
-                  <form action={`/api/bookings/${booking.id}/finance`} method="POST" className="quote-status-form">
-                    <label>
-                      Client invoice status
-                      <select name="clientInvoiceStatus" defaultValue={booking.finance.clientInvoiceStatus}>
-                        <option value="unbilled">Unbilled</option>
-                        <option value="invoiced">Invoiced</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                    </label>
-                    <label>
-                      Supplier payment status
-                      <select name="supplierPaymentStatus" defaultValue={booking.finance.supplierPaymentStatus}>
-                        <option value="unpaid">Unpaid</option>
-                        <option value="scheduled">Scheduled</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                    </label>
-                    <div className="quote-status-actions">
-                      <button type="submit">Update finance tracking</button>
-                    </div>
-                  </form>
-                </InlineRowEditorShell>
-              </AdvancedFiltersPanel>
-
-              <TableSectionShell
-                title="Scenario pricing"
-                description="Group pricing remains available, but stays out of the main scan path until needed."
-                context={<p>{snapshot.scenarios.length} scenario rows</p>}
-              >
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Pax count</th>
-                        <th>Total sell</th>
-                        <th>Price per pax</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {snapshot.scenarios.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="empty-state">
-                            No group pricing generated yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        snapshot.scenarios.map((scenario) => (
-                          <tr key={scenario.id}>
-                            <td>{scenario.paxCount}</td>
-                            <td>{formatMoney(scenario.totalSell)}</td>
-                            <td>{formatMoney(scenario.pricePerPax)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </TableSectionShell>
-            </section>
-          </>
-        ) : null}
-
-        {activeTab === 'documents' ? (
-          <>
-            <section className="section-stack">
-              <article className="detail-card">
-                <p className="eyebrow">Documents</p>
-                <p className="detail-copy">Document actions stay grouped in one compact workspace so sharing and send actions do not dominate the whole tab.</p>
-              </article>
-
-              <SummaryStrip
-                items={[
-                  { id: 'portal', label: 'Portal', value: 'Live', helper: 'Client access link available' },
-                  { id: 'voucher', label: 'Voucher', value: 'Ready', helper: 'Open or send from details' },
-                  { id: 'supplier-confirmation', label: 'Supplier confirmation', value: 'Ready', helper: 'Open or send from details' },
-                ]}
+              <BookingAlertPanel
+                eyebrow="Operational Alerts"
+                title="Execution watchlist"
+                tone={operationalAlerts.length > 0 ? 'warning' : 'neutral'}
+                items={operationalAlerts.map((item, index) => ({
+                  id: `operational-alert-${index}`,
+                  message: item,
+                }))}
+                emptyLabel="No operational alerts are currently flagged."
               />
 
-              <TableSectionShell
-                title="Document surfaces"
-                description="Keep document actions collapsed by default and open each surface only when you need to share or send."
-                context={<p>3 document surfaces in scope</p>}
-              >
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Surface</th>
-                        <th>Status</th>
-                        <th>Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>
-                          <strong>Client portal</strong>
-                          <div className="table-subcopy">{portalUrl}</div>
-                        </td>
-                        <td>Live</td>
-                        <td>
-                          <RowDetailsPanel summary="Open details" description="Portal link and sharing actions" className="operations-row-details" bodyClassName="operations-row-details-body">
-                            <InlineRowEditorShell>
-                              <div className="quote-preview-total-list">
-                                <div>
-                                  <span>Portal link</span>
-                                  <strong>{portalUrl}</strong>
-                                </div>
-                              </div>
-                              <BookingPortalLinkActions apiBaseUrl={ACTION_API_BASE_URL} bookingId={booking.id} portalUrl={portalUrl} />
-                            </InlineRowEditorShell>
-                          </RowDetailsPanel>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>
-                          <strong>Voucher</strong>
-                          <div className="table-subcopy">Client-facing booking voucher</div>
-                        </td>
-                        <td>Ready</td>
-                        <td>
-                          <RowDetailsPanel summary="Open details" description="Open voucher and trigger send actions" className="operations-row-details" bodyClassName="operations-row-details-body">
-                            <InlineRowEditorShell>
-                              <div className="workspace-document-actions">
-                                <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
-                                  Open voucher
-                                </Link>
-                              </div>
-                              <BookingDocumentActions
-                                apiBaseUrl={ACTION_API_BASE_URL}
-                                bookingId={booking.id}
-                                bookingRef={bookingRef}
-                                documentLabel="Booking Voucher"
-                                documentType="voucher"
-                              />
-                            </InlineRowEditorShell>
-                          </RowDetailsPanel>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>
-                          <strong>Supplier confirmation</strong>
-                          <div className="table-subcopy">Supplier-facing booking confirmation</div>
-                        </td>
-                        <td>Ready</td>
-                        <td>
-                          <RowDetailsPanel summary="Open details" description="Open supplier confirmation and trigger send actions" className="operations-row-details" bodyClassName="operations-row-details-body">
-                            <InlineRowEditorShell>
-                              <div className="workspace-document-actions">
-                                <Link href={`/bookings/${booking.id}/supplier-confirmation`} className="secondary-button">
-                                  Supplier confirmation
-                                </Link>
-                              </div>
-                              <BookingDocumentActions
-                                apiBaseUrl={ACTION_API_BASE_URL}
-                                bookingId={booking.id}
-                                bookingRef={bookingRef}
-                                documentLabel="Supplier Confirmation"
-                                documentType="supplier-confirmation"
-                              />
-                            </InlineRowEditorShell>
-                          </RowDetailsPanel>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+              <article className="workspace-section booking-ops-sidebar-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Health Checklist</p>
+                    <h3>Operational readiness</h3>
+                  </div>
                 </div>
-              </TableSectionShell>
-            </section>
-          </>
-        ) : null}
-
-        {activeTab === 'timeline' ? (
-          <>
-            <section className="quote-preview-grid">
-              <article className="detail-card">
-                <p className="eyebrow">Timeline</p>
-                <p className="detail-copy">Audit history for booking-level and service-level workflow changes.</p>
-              </article>
-            </section>
-
-            <section className="detail-card">
-              <p className="eyebrow">Workflow Timeline</p>
-              {timeline.length === 0 ? (
-                <p className="empty-state">No workflow activity yet.</p>
-              ) : (
-                <div className="audit-log-list">
-                  {timeline.map((entry) => (
-                    <div key={entry.id} className="audit-log-item">
-                      <strong>{entry.title}</strong>
-                      <p>
-                        {formatDateTime(entry.createdAt)}
-                        {entry.actor ? ` | ${entry.actor}` : ''}
-                      </p>
-                      {entry.detail ? <p>{entry.detail}</p> : null}
-                      {entry.note ? <p>{entry.note}</p> : null}
+                <div className="booking-ops-checklist">
+                  {healthChecklist.map((item) => (
+                    <div key={item.label} className={`booking-ops-checklist-item${item.complete ? ' booking-ops-checklist-item-complete' : ''}`}>
+                      <span>{item.complete ? 'Complete' : 'Pending'}</span>
+                      <strong>{item.label}</strong>
                     </div>
                   ))}
                 </div>
-              )}
-            </section>
-          </>
-        ) : null}
+              </article>
+            </aside>
+          </div>
+        </div>
       </section>
     </main>
   );

@@ -1,5 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'JOD'] as const;
+
 export function normalizeOptionalString(value?: string | null) {
   if (value === undefined) {
     return undefined;
@@ -44,4 +46,32 @@ export function blockDelete(resourceLabel: string, linkedLabel: string, count: n
       `Cannot delete ${resourceLabel} because ${count} linked ${linkedLabel} ${count === 1 ? 'exists' : 'exist'}`,
     );
   }
+}
+
+export function requireSupportedCurrency(value: string, fieldLabel: string) {
+  const trimmed = requireTrimmedString(value, fieldLabel);
+
+  if (trimmed !== trimmed.toUpperCase()) {
+    throw new BadRequestException(`${fieldLabel} must be one of USD, EUR, or JOD`);
+  }
+
+  const normalized = trimmed.toUpperCase();
+
+  if (!SUPPORTED_CURRENCIES.includes(normalized as (typeof SUPPORTED_CURRENCIES)[number])) {
+    throw new BadRequestException(`${fieldLabel} must be one of USD, EUR, or JOD`);
+  }
+
+  return normalized;
+}
+
+export function normalizeOptionalSupportedCurrency(value: string | null | undefined, fieldLabel: string) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  return requireSupportedCurrency(value, fieldLabel);
 }

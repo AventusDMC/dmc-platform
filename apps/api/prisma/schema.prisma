@@ -35,11 +35,13 @@ model Booking {
   services              BookingService[]
   auditLogs             BookingAuditLog[]
   passengers            BookingPassenger[]
+  payments              Payment[]
   roomingEntries        BookingRoomingEntry[]
 
   @@index([bookingType])
   @@index([clientInvoiceStatus])
   @@index([supplierPaymentStatus])
+  @@index([status])
   @@map("bookings")
 }
 
@@ -58,6 +60,30 @@ model BookingPassenger {
 
   @@index([bookingId, isLead])
   @@map("booking_passengers")
+}
+
+model Payment {
+  id        String        @id @default(uuid()) @db.Uuid
+  bookingId String        @db.Uuid
+  type      PaymentType
+  amount    Float
+  currency  String
+  status    PaymentStatus @default(PENDING)
+  method    PaymentMethod
+  reference String?
+  dueDate   DateTime?
+  paidAt    DateTime?
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  booking   Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, type, status])
+  @@index([bookingId, dueDate])
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+  @@map("payments")
 }
 
 model BookingRoomingEntry {
@@ -119,9 +145,48 @@ model Company {
   leads        Lead[]
   brandQuotes  Quote[]          @relation("BrandQuotes")
   clientQuotes Quote[]          @relation("ClientQuotes")
+  auditLogs    AuditLog[]
+  invitations  Invitation[]
   users        User[]
 
   @@map("companies")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, action, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model Invitation {
+  id              String   @id @default(uuid()) @db.Uuid
+  email           String
+  role            String
+  companyId       String   @db.Uuid
+  token           String   @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  invitedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, email])
+  @@index([token, expiresAt])
+  @@map("invitations")
 }
 
 model CompanyBranding {
@@ -486,8 +551,18 @@ model HotelRate {
   updatedAt      DateTime           @updatedAt
   roomCategoryId String             @db.Uuid
   occupancyType  HotelOccupancyType
+  pricingMode    HotelRatePricingMode?
   currency       String
   cost           Float
+  costBaseAmount Float              @default(0)
+  costCurrency   String             @default("USD")
+  salesTaxPercent Float             @default(0)
+  salesTaxIncluded Boolean          @default(false)
+  serviceChargePercent Float        @default(0)
+  serviceChargeIncluded Boolean     @default(false)
+  tourismFeeAmount Float?
+  tourismFeeCurrency String?
+  tourismFeeMode TourismFeeMode?
   contract       HotelContract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
   roomCategory   HotelRoomCategory  @relation(fields: [roomCategoryId], references: [id])
   season         Season?            @relation(fields: [seasonId], references: [id])
@@ -708,6 +783,7 @@ model QuoteItem {
   updatedAt              DateTime            @updatedAt
   appliedVehicleRateId   String?             @db.Uuid
   currency               String
+  quoteCurrency          String              @default("USD")
   pricingDescription     String?
   itineraryId            String?             @db.Uuid
   serviceDate            DateTime?
@@ -725,6 +801,19 @@ model QuoteItem {
   roomCategoryId         String?             @db.Uuid
   occupancyType          HotelOccupancyType?
   baseCost               Float
+  costBaseAmount         Float               @default(0)
+  costCurrency           String              @default("USD")
+  salesTaxPercent        Float               @default(0)
+  salesTaxIncluded       Boolean             @default(false)
+  serviceChargePercent   Float               @default(0)
+  serviceChargeIncluded  Boolean             @default(false)
+  tourismFeeAmount       Float?
+  tourismFeeCurrency     String?
+  tourismFeeMode         TourismFeeMode?
+  fxRate                 Float?
+  fxFromCurrency         String?
+  fxToCurrency           String?
+  fxRateDate             DateTime?
   overrideCost           Float?
   useOverride            Boolean             @default(false)
   appliedVehicleRate     VehicleRate?        @relation(fields: [appliedVehicleRateId], references: [id])
@@ -882,6 +971,7 @@ model Quote {
   title               String
   description         String?
   totalPrice          Float              @default(0)
+  quoteCurrency       String             @default("USD")
   status              QuoteStatus        @default(DRAFT)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -1024,15 +1114,48 @@ model SupplierService {
   unitType      ServiceUnitType
   baseCost      Float
   currency      String
+  costBaseAmount Float           @default(0)
+  costCurrency   String          @default("USD")
+  salesTaxPercent Float          @default(0)
+  salesTaxIncluded Boolean       @default(false)
+  serviceChargePercent Float     @default(0)
+  serviceChargeIncluded Boolean  @default(false)
+  tourismFeeAmount Float?
+  tourismFeeCurrency String?
+  tourismFeeMode TourismFeeMode?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   serviceTypeId String?         @db.Uuid
+  serviceRates  ServiceRate[]
   quoteBlocks   QuoteBlock[]
   quoteItems    QuoteItem[]
   serviceType   ServiceType?    @relation(fields: [serviceTypeId], references: [id])
 
   @@index([serviceTypeId])
   @@map("supplier_services")
+}
+
+model ServiceRate {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  serviceId            String                 @db.Uuid
+  supplierId           String?
+  costBaseAmount       Float                  @default(0)
+  costCurrency         String                 @default("USD")
+  pricingMode          ServiceRatePricingMode
+  salesTaxPercent      Float                  @default(0)
+  salesTaxIncluded     Boolean                @default(false)
+  serviceChargePercent Float                  @default(0)
+  serviceChargeIncluded Boolean               @default(false)
+  tourismFeeAmount     Float?
+  tourismFeeCurrency   String?
+  tourismFeeMode       TourismFeeMode?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  service              SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, createdAt])
+  @@index([supplierId])
+  @@map("service_rates")
 }
 
 model SupportTextTemplate {
@@ -1116,11 +1239,11 @@ model User {
   lastName  String
   password  String
   roleId    String   @db.Uuid
-  companyId String?  @db.Uuid
+  companyId String   @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   leads     Lead[]
-  company   Company? @relation(fields: [companyId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id])
   role      Role     @relation(fields: [roleId], references: [id])
 
   @@map("users")
@@ -1267,6 +1390,22 @@ enum SupplierPaymentStatus {
   paid
 }
 
+enum PaymentType {
+  CLIENT
+  SUPPLIER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+enum PaymentMethod {
+  bank
+  cash
+  card
+}
+
 enum BookingServiceStatus {
   pending
   requested
@@ -1306,6 +1445,22 @@ enum HotelOccupancyType {
   SGL
   DBL
   TPL
+}
+
+enum HotelRatePricingMode {
+  PER_ROOM_PER_NIGHT
+  PER_PERSON_PER_NIGHT
+}
+
+enum ServiceRatePricingMode {
+  PER_PERSON
+  PER_GROUP
+  PER_DAY
+}
+
+enum TourismFeeMode {
+  PER_NIGHT_PER_PERSON
+  PER_NIGHT_PER_ROOM
 }
 
 enum ChildPolicyChargeBasis {

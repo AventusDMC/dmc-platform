@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Actor } from '../auth/auth.decorators';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { LeadsService } from './leads.service';
 
 type CreateLeadBody = {
@@ -24,32 +26,32 @@ export class LeadsController {
   constructor(private readonly leadsService: LeadsService) {}
 
   @Get()
-  findAll() {
-    return this.leadsService.findAll();
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.leadsService.findAll(actor);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.leadsService.findOne(id, actor);
   }
 
   @Post()
-  create(@Body() body: CreateLeadBody) {
-    return this.leadsService.create(body);
+  create(@Body() body: CreateLeadBody, @Actor() actor: AuthenticatedActor) {
+    return this.leadsService.create(body, actor);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UpdateLeadBody) {
-    return this.leadsService.update(id, body);
+  update(@Param('id') id: string, @Body() body: UpdateLeadBody, @Actor() actor: AuthenticatedActor) {
+    return this.leadsService.update(id, body, actor);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.leadsService.remove(id);
+  remove(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.leadsService.remove(id, actor);
   }
 
   @Post(':id/convert')
-  convert(@Param('id') id: string, @Body() body: ConvertLeadBody) {
-    return this.leadsService.convert(id, body);
+  convert(@Param('id') id: string, @Body() body: ConvertLeadBody, @Actor() actor: AuthenticatedActor) {
+    return this.leadsService.convert(id, body, actor);
   }
 }

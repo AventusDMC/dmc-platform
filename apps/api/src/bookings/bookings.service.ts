@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   BookingAuditEntityType,
   BookingRoomOccupancy,
@@ -11,6 +11,8 @@ import { randomBytes } from 'crypto';
 import PDFDocument = require('pdfkit');
 import nodemailer = require('nodemailer');
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { buildFinanceBadge } from './booking-finance-badge';
 import { buildOperationsBadge } from './booking-operations-badge';
 import { buildRoomingBadge } from './booking-rooming-badge';
@@ -69,11 +71,33 @@ type BookingPdfContact = {
 
 type BookingPdfCompany = {
   name?: string | null;
+  logoUrl?: string | null;
 };
 
 type BookingDocumentType = 'voucher' | 'supplier-confirmation';
 type ClientInvoiceStatusValue = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatusValue = 'unpaid' | 'scheduled' | 'paid';
+type PaymentTypeValue = 'CLIENT' | 'SUPPLIER';
+type PaymentStatusValue = 'PENDING' | 'PAID';
+type PaymentMethodValue = 'bank' | 'cash' | 'card';
+type DerivedPaymentRecord = {
+  id: string;
+  bookingId: string;
+  type: PaymentTypeValue;
+  amount: number;
+  currency: string;
+  status: PaymentStatusValue;
+  method: PaymentMethodValue;
+  reference: string;
+  dueDate: string | Date | null;
+  paidAt: string | Date | null;
+  overdue: boolean;
+  overdueDays: number | null;
+  notes?: string | null;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+};
+type BookingInvoiceMode = 'PACKAGE' | 'ITEMIZED';
 type AuditActor =
   | {
       userId?: string | null;
@@ -82,16 +106,50 @@ type AuditActor =
   | null
   | undefined;
 type BookingMutationClient = Prisma.TransactionClient | PrismaService;
+type CacheEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
 const CLIENT_INVOICE_STATUSES = ['unbilled', 'invoiced', 'paid'] as const;
 const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
+const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
+const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
+const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
 
 @Injectable()
-export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+export class BookingsService implements OnModuleInit, OnModuleDestroy {
+  private reminderAutomationTimer: NodeJS.Timeout | null = null;
+  private isProcessingReminderAutomation = false;
+  private readonly analyticsCache = new Map<string, CacheEntry<unknown>>();
 
-  findAll() {
-    return this.prisma.booking
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  onModuleInit() {
+    if (String(process.env.BOOKING_PAYMENT_REMINDER_AUTOMATION_DISABLED || '').toLowerCase() === 'true') {
+      return;
+    }
+
+    const intervalMs = Math.max(300_000, Number(process.env.BOOKING_PAYMENT_REMINDER_INTERVAL_MS || 3_600_000));
+    this.reminderAutomationTimer = setInterval(() => {
+      void this.processAutomatedPaymentReminders();
+    }, intervalMs);
+  }
+
+  onModuleDestroy() {
+    if (this.reminderAutomationTimer) {
+      clearInterval(this.reminderAutomationTimer);
+      this.reminderAutomationTimer = null;
+    }
+  }
+
+  findAll(actor?: CompanyScopedActor) {
+    const bookingWhere = this.buildBookingCompanyWhere(actor);
+    return (this.prisma.booking as any)
       .findMany({
+        where: bookingWhere,
         include: {
           passengers: {
             select: {
@@ -103,10 +161,10 @@ export class BookingsService {
               },
             },
           },
-          roomingEntries: {
-            select: {
-              id: true,
-              occupancy: true,
+        roomingEntries: {
+          select: {
+            id: true,
+            occupancy: true,
               assignments: {
                 select: {
                   bookingPassenger: {
@@ -115,12 +173,30 @@ export class BookingsService {
                     },
                   },
                 },
-              },
             },
           },
-          auditLogs: {
-            orderBy: {
-              createdAt: 'desc',
+        },
+        payments: {
+          select: {
+            id: true,
+            bookingId: true,
+            type: true,
+            amount: true,
+            currency: true,
+            status: true,
+            method: true,
+            reference: true,
+            dueDate: true,
+            paidAt: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
             },
             take: 8,
           },
@@ -143,12 +219,15 @@ export class BookingsService {
           createdAt: 'desc',
         },
       })
-      .then((bookings) => bookings.map((booking) => this.attachFinanceSummary(booking)));
+      .then((bookings: any[]) => bookings.map((booking) => this.attachFinanceSummary(booking)));
   }
 
-  findOne(id: string) {
-    return this.prisma.booking.findUnique({
-      where: { id },
+  findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
+    return (this.prisma.booking as any).findFirst({
+      where: {
+        id,
+        ...this.buildBookingCompanyWhere(actor),
+      },
       include: {
         quote: {
           include: {
@@ -193,6 +272,9 @@ export class BookingsService {
             },
           },
         },
+        payments: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
         services: {
           include: {
             auditLogs: {
@@ -208,13 +290,26 @@ export class BookingsService {
           ],
         },
       },
-    }).then((booking) => {
+    }).then((booking: any) => {
       if (!booking) {
         return null;
       }
 
+      const payments: DerivedPaymentRecord[] = this.sortPaymentRecords(
+        (booking.payments || []).map((payment: any) => this.mapPaymentRecord(payment)),
+      );
+
       return {
         ...booking,
+        payments,
+        invoiceDelivery: this.getBookingInvoiceDelivery(booking.auditLogs || []),
+        paymentReminderDelivery: this.getBookingPaymentReminderDelivery(booking.auditLogs || []),
+        paymentProofSubmission: this.getBookingPaymentProofSubmission(booking.auditLogs || []),
+        paymentReminderAutomation: this.getBookingPaymentReminderAutomation({
+          auditLogs: booking.auditLogs || [],
+          payments,
+          finance: this.buildBookingFinanceSummary(booking),
+        }),
         finance: this.buildBookingFinanceSummary(booking),
         operations: this.buildBookingOperationsSummary(booking.services),
         rooming: this.buildBookingRoomingSummary({
@@ -354,9 +449,278 @@ export class BookingsService {
       });
   }
 
-  async regeneratePortalAccessToken(id: string) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
+  async findInvoicePortalByToken(
+    token: string,
+    input?: {
+      trackView?: boolean;
+      userAgent?: string | null;
+    },
+  ) {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      return null;
+    }
+
+    const booking = await (this.prisma.booking as any).findUnique({
+      where: {
+        accessToken: normalizedToken,
+      },
+      include: {
+        quote: {
+          include: {
+            clientCompany: true,
+            contact: true,
+          },
+        },
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 20,
+        },
+        payments: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+        services: {
+          select: {
+            status: true,
+            totalCost: true,
+            totalSell: true,
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      return null;
+    }
+
+    const payments = this.listPersistedBookingPayments(booking);
+    const finance = this.buildBookingFinanceSummary({
+      pricingSnapshotJson: booking.pricingSnapshotJson,
+      snapshotJson: booking.snapshotJson,
+      services: booking.services,
+      payments,
+    });
+    const invoiceNumber = this.buildBookingInvoiceNumber(booking.bookingRef || booking.id);
+    const clientSnapshot = (booking.clientSnapshotJson || {}) as {
+      name?: string | null;
+    };
+    const contactSnapshot = (booking.contactSnapshotJson || {}) as {
+      firstName?: string | null;
+      lastName?: string | null;
+    };
+    const bookingReference = booking.bookingRef || booking.id;
+    const supportEmail =
+      this.normalizeOptionalText(process.env.INVOICE_SUPPORT_EMAIL) ||
+      this.normalizeOptionalText(process.env.BOOKING_DOCUMENTS_EMAIL_FROM) ||
+      this.normalizeOptionalText(process.env.SMTP_FROM) ||
+      null;
+    const paymentInstructions = [
+      `Please remit payment by bank transfer or approved settlement method using invoice reference ${invoiceNumber}.`,
+      `Reference booking ${bookingReference} on all payment correspondence.`,
+      `Current outstanding balance: ${this.formatMoney(finance.clientOutstanding)}.`,
+    ];
+    const latestAcknowledgedAt = this.getLatestBookingAuditTimestamp(
+      booking.auditLogs || [],
+      'booking_invoice_client_acknowledged',
+    );
+    const paymentProofSubmission = this.getBookingPaymentProofSubmission(booking.auditLogs || []);
+
+    let viewedAt = this.getLatestBookingAuditTimestamp(booking.auditLogs || [], 'booking_invoice_portal_viewed');
+
+    if (input?.trackView !== false) {
+      const auditLog = await this.prisma.bookingAuditLog.create({
+        data: {
+          bookingId: booking.id,
+          entityType: BookingAuditEntityType.booking,
+          entityId: booking.id,
+          action: 'booking_invoice_portal_viewed',
+          newValue: invoiceNumber,
+          note: this.normalizeOptionalText(input?.userAgent),
+          actor: 'Client Portal',
+        },
+      });
+      viewedAt = auditLog.createdAt;
+    }
+
+    return {
+      bookingId: booking.id,
+      token: normalizedToken,
+      invoiceNumber,
+      bookingReference,
+      clientName:
+        this.normalizeOptionalText(clientSnapshot.name) ||
+        this.normalizeOptionalText(booking.quote?.clientCompany?.name) ||
+        this.formatFullName(booking.quote?.contact || contactSnapshot),
+      total: finance.effectiveTotalSell,
+      paid: finance.clientPaidTotal,
+      outstanding: finance.clientOutstanding,
+      overdue: finance.hasOverdueClientPayments,
+      overdueAmount: finance.overdueClientAmount,
+      invoiceRecipientEmail: this.resolveInvoiceRecipientEmail(booking),
+      paymentInstructions,
+      supportEmail,
+      viewedAt,
+      acknowledgedAt: latestAcknowledgedAt,
+      paymentProofSubmission,
+    };
+  }
+
+  async acknowledgeInvoicePortal(
+    token: string,
+    input?: {
+      userAgent?: string | null;
+    },
+  ) {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    const booking = await (this.prisma.booking as any).findUnique({
+      where: {
+        accessToken: normalizedToken,
+      },
+      include: {
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 10,
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    const invoiceNumber = this.buildBookingInvoiceNumber(booking.bookingRef || booking.id);
+    const previousAcknowledgedAt = this.getLatestBookingAuditTimestamp(
+      booking.auditLogs || [],
+      'booking_invoice_client_acknowledged',
+    );
+    const auditLog = await this.prisma.bookingAuditLog.create({
+      data: {
+        bookingId: booking.id,
+        entityType: BookingAuditEntityType.booking,
+        entityId: booking.id,
+        action: 'booking_invoice_client_acknowledged',
+        oldValue: previousAcknowledgedAt ? this.formatDate(previousAcknowledgedAt) : null,
+        newValue: invoiceNumber,
+        note: this.normalizeOptionalText(input?.userAgent),
+        actor: 'Client Portal',
+      },
+    });
+
+    return {
+      ok: true,
+      bookingId: booking.id,
+      acknowledgedAt: auditLog.createdAt,
+    };
+  }
+
+  async generateInvoicePdfByToken(token: string) {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    const booking = await (this.prisma.booking as any).findUnique({
+      where: {
+        accessToken: normalizedToken,
+      },
+      select: {
+        id: true,
+        bookingRef: true,
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    return {
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef || booking.id,
+      pdfBuffer: await this.generateInvoicePdf(booking.id, 'PACKAGE'),
+    };
+  }
+
+  async submitInvoicePaymentProof(
+    token: string,
+    input: {
+      reference?: string | null;
+      amount?: number | null;
+      receiptUrl?: string | null;
+      userAgent?: string | null;
+    },
+  ) {
+    const normalizedToken = token?.trim();
+    if (!normalizedToken) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    if (!input.reference && !input.receiptUrl) {
+      throw new BadRequestException('Provide a payment reference or receipt file');
+    }
+
+    const booking = await (this.prisma.booking as any).findUnique({
+      where: {
+        accessToken: normalizedToken,
+      },
+      include: {
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 10,
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    const invoiceNumber = this.buildBookingInvoiceNumber(booking.bookingRef || booking.id);
+    const previousProof = this.getBookingPaymentProofSubmission(booking.auditLogs || []);
+    const note = JSON.stringify({
+      reference: this.normalizeOptionalText(input.reference) || null,
+      amount: input.amount === undefined || input.amount === null ? null : this.roundMoney(input.amount),
+      receiptUrl: this.normalizeOptionalText(input.receiptUrl) || null,
+      userAgent: this.normalizeOptionalText(input.userAgent) || null,
+    });
+    const auditLog = await this.prisma.bookingAuditLog.create({
+      data: {
+        bookingId: booking.id,
+        entityType: BookingAuditEntityType.booking,
+        entityId: booking.id,
+        action: 'booking_payment_proof_submitted',
+        oldValue: previousProof?.reference || null,
+        newValue: invoiceNumber,
+        note,
+        actor: 'Client Portal',
+      },
+    });
+    const paymentProofSubmission = this.getBookingPaymentProofSubmission([auditLog, ...(booking.auditLogs || [])]);
+    this.invalidateAnalyticsCaches();
+
+    return {
+      ok: true,
+      bookingId: booking.id,
+      submittedAt: auditLog.createdAt,
+      paymentProofSubmission,
+    };
+  }
+
+  async regeneratePortalAccessToken(id: string, actor?: CompanyScopedActor) {
+    const booking = await (this.prisma.booking as any).findFirst({
+      where: {
+        id,
+        ...this.buildBookingCompanyWhere(actor),
+      },
       select: {
         id: true,
         accessToken: true,
@@ -385,14 +749,18 @@ export class BookingsService {
       status: BookingStatus | 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
       note: string;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     const note = this.normalizeManualOverrideNote(data.note, 'Booking status update note is required');
     const actor = data.actor;
 
     return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.findUnique({
-        where: { id },
+      const booking = await tx.booking.findFirst({
+        where: {
+          id,
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
         select: {
           id: true,
           status: true,
@@ -439,6 +807,23 @@ export class BookingsService {
         actor,
       });
 
+      await this.auditService.log({
+        actor: data.companyActor
+          ? {
+              id: data.actor?.userId ?? null,
+              companyId: data.companyActor.companyId,
+            }
+          : null,
+        action: 'booking.updated',
+        entity: 'booking',
+        entityId: booking.id,
+        metadata: {
+          field: 'status',
+          from: booking.status,
+          to: data.status,
+        },
+      });
+
       return updatedBooking;
     });
   }
@@ -449,14 +834,29 @@ export class BookingsService {
       clientInvoiceStatus?: ClientInvoiceStatusValue;
       supplierPaymentStatus?: SupplierPaymentStatusValue;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        id,
+        ...this.buildBookingCompanyWhere(data.companyActor),
+      },
       select: {
         id: true,
-        clientInvoiceStatus: true,
-        supplierPaymentStatus: true,
+        bookingRef: true,
+        pricingSnapshotJson: true,
+        snapshotJson: true,
+        payments: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+        services: {
+          select: {
+            status: true,
+            totalCost: true,
+            totalSell: true,
+          },
+        },
       },
     });
 
@@ -464,29 +864,29 @@ export class BookingsService {
       throw new NotFoundException('Booking not found');
     }
 
+    const finance = this.buildBookingFinanceSummary(booking);
     const nextClientInvoiceStatus =
       data.clientInvoiceStatus === undefined
-        ? booking.clientInvoiceStatus
+        ? finance.clientInvoiceStatus
         : this.normalizeClientInvoiceStatus(data.clientInvoiceStatus);
     const nextSupplierPaymentStatus =
       data.supplierPaymentStatus === undefined
-        ? booking.supplierPaymentStatus
+        ? finance.supplierPaymentStatus
         : this.normalizeSupplierPaymentStatus(data.supplierPaymentStatus);
 
     if (
-      nextClientInvoiceStatus === booking.clientInvoiceStatus &&
-      nextSupplierPaymentStatus === booking.supplierPaymentStatus
+      nextClientInvoiceStatus === finance.clientInvoiceStatus &&
+      nextSupplierPaymentStatus === finance.supplierPaymentStatus
     ) {
-      return this.findOne(id);
+      return this.findOne(id, data.companyActor);
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.booking.update({
-        where: { id },
-        data: {
-          clientInvoiceStatus: nextClientInvoiceStatus,
-          supplierPaymentStatus: nextSupplierPaymentStatus,
-        },
+      await this.applyFinanceStatusShortcut(tx, {
+        booking,
+        finance,
+        nextClientInvoiceStatus,
+        nextSupplierPaymentStatus,
       });
 
       await this.createAuditLog(tx, {
@@ -494,13 +894,1453 @@ export class BookingsService {
         entityType: BookingAuditEntityType.booking,
         entityId: id,
         action: 'booking_finance_status_updated',
-        oldValue: this.formatBookingFinanceStatusSummary(booking.clientInvoiceStatus, booking.supplierPaymentStatus),
+        oldValue: this.formatBookingFinanceStatusSummary(finance.clientInvoiceStatus, finance.supplierPaymentStatus),
         newValue: this.formatBookingFinanceStatusSummary(nextClientInvoiceStatus, nextSupplierPaymentStatus),
         actor: data.actor,
       });
     });
 
-    return this.findOne(id);
+    await this.auditService.log({
+      actor: data.companyActor
+        ? {
+            id: data.actor?.userId ?? null,
+            companyId: data.companyActor.companyId,
+          }
+        : null,
+      action: 'booking.updated',
+      entity: 'booking',
+      entityId: id,
+      metadata: {
+        field: 'finance',
+        clientInvoiceStatus: nextClientInvoiceStatus,
+        supplierPaymentStatus: nextSupplierPaymentStatus,
+      },
+    });
+
+    return this.findOne(id, data.companyActor);
+  }
+
+  async listPayments(bookingId: string, actor?: CompanyScopedActor) {
+    await this.assertBookingExists(bookingId, actor);
+
+    return ((this.prisma as any).payment as any)
+      .findMany({
+        where: {
+          bookingId,
+          ...this.buildPaymentCompanyWhere(actor),
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      })
+      .then((payments: any[]) => this.sortPaymentRecords(payments.map((payment) => this.mapPaymentRecord(payment))));
+  }
+
+  async getFinanceDashboard(actor?: CompanyScopedActor) {
+    return this.withAnalyticsCache(this.buildCompanyScopedCacheKey('finance-dashboard', actor), 45_000, async () => {
+      const period = this.getFinanceDashboardPeriodWindow();
+      const sparklineSeries = this.buildFinanceSparklineSeriesWindow();
+      const monthlySeries = this.buildFinanceMonthlySeriesWindow();
+      const bookingWhere = this.buildBookingCompanyWhere(actor);
+      const paymentWhere = this.buildPaymentCompanyWhere(actor);
+      const bookingServiceWhere = this.buildBookingServiceCompanyWhere(actor);
+      const [bookings, payments, serviceSums] = await Promise.all([
+        (this.prisma.booking as any).findMany({
+          where: bookingWhere,
+          select: {
+            id: true,
+            bookingRef: true,
+            createdAt: true,
+            snapshotJson: true,
+            clientSnapshotJson: true,
+            pricingSnapshotJson: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        }),
+        (this.prisma as any).payment.findMany({
+          where: paymentWhere,
+          select: {
+            id: true,
+            bookingId: true,
+            type: true,
+            amount: true,
+            currency: true,
+            status: true,
+            method: true,
+            reference: true,
+            dueDate: true,
+            paidAt: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        }),
+        (this.prisma as any).bookingService.groupBy({
+          by: ['bookingId'],
+          where: {
+            ...bookingServiceWhere,
+            status: {
+              not: BookingServiceLifecycleStatus.cancelled,
+            },
+          },
+          _sum: {
+            totalCost: true,
+            totalSell: true,
+          },
+        }),
+      ]);
+
+      const paymentsByBookingId = new Map<string, any[]>();
+      for (const payment of payments) {
+        const entries = paymentsByBookingId.get(payment.bookingId) || [];
+        entries.push(payment);
+        paymentsByBookingId.set(payment.bookingId, entries);
+      }
+
+      const serviceSummaryByBookingId = new Map<
+        string,
+        {
+          status: BookingServiceLifecycleStatus;
+          totalCost: number;
+          totalSell: number;
+        }
+      >(
+        serviceSums.map((entry: { bookingId: string; _sum: { totalCost: number | null; totalSell: number | null } }) => [
+          entry.bookingId,
+          {
+            status: BookingServiceLifecycleStatus.confirmed,
+            totalCost: Number(entry._sum.totalCost || 0),
+            totalSell: Number(entry._sum.totalSell || 0),
+          },
+        ]),
+      );
+
+      const aggregate = bookings.reduce(
+      (
+        summary: {
+          totalRevenue: number;
+          totalCollected: number;
+          totalOutstanding: number;
+          totalOverdue: number;
+          supplierPayable: number;
+          totalCost: number;
+          overdueClientCount: number;
+          overdueClientAmount: number;
+          overdueSupplierCount: number;
+          overdueSupplierAmount: number;
+          currentPeriod: {
+            revenue: number;
+            collected: number;
+            outstanding: number;
+            overdue: number;
+            supplierPayable: number;
+            profit: number;
+          };
+          previousPeriod: {
+            revenue: number;
+            collected: number;
+            outstanding: number;
+            overdue: number;
+            supplierPayable: number;
+            profit: number;
+          };
+          sparklineSeries: {
+            revenue: number[];
+            collected: number[];
+            outstanding: number[];
+            overdue: number[];
+          };
+          sparklineDates: Date[];
+          monthlySeries: Array<{
+            label: string;
+            start: Date;
+            end: Date;
+            revenue: number;
+            collected: number;
+          }>;
+          recentPayments: Array<{
+            id: string;
+            bookingId: string;
+            bookingRef: string;
+            bookingTitle: string;
+            clientName: string;
+            type: PaymentTypeValue;
+            amount: number;
+            currency: string;
+            status: PaymentStatusValue;
+            dueDate: string | Date | null;
+            paidAt: string | Date | null;
+            overdue: boolean;
+            overdueDays: number | null;
+            createdAt: string | Date | null;
+          }>;
+        },
+        booking: any,
+      ) => {
+        const paymentRecords: DerivedPaymentRecord[] = this.sortPaymentRecords(
+          ((paymentsByBookingId.get(booking.id) || []) as any[]).map((payment: any) => this.mapPaymentRecord(payment)),
+        );
+        const serviceSummary = serviceSummaryByBookingId.get(booking.id);
+        const groupedServices: Array<{
+          status: BookingServiceLifecycleStatus;
+          totalCost: number;
+          totalSell: number;
+        }> = serviceSummary ? [serviceSummary] : [];
+        const metrics = this.computeBookingFinanceMetrics({
+          pricingSnapshotJson: booking.pricingSnapshotJson,
+          snapshotJson: booking.snapshotJson,
+          services: groupedServices,
+          payments: paymentRecords,
+        });
+        const title = this.getBookingDashboardTitle(booking.snapshotJson);
+        const clientName = this.getBookingDashboardClientName(booking.clientSnapshotJson, booking.snapshotJson);
+
+        summary.totalRevenue += metrics.effectiveTotalSell;
+        summary.totalCollected += metrics.clientPaidTotal;
+        summary.totalOutstanding += metrics.clientOutstanding;
+        summary.totalOverdue += metrics.overdueClientAmount + metrics.overdueSupplierAmount;
+        summary.supplierPayable += metrics.supplierOutstanding;
+        summary.totalCost += metrics.effectiveTotalCost;
+        summary.overdueClientCount += metrics.overdueClientPayments.length;
+        summary.overdueClientAmount += metrics.overdueClientAmount;
+        summary.overdueSupplierCount += metrics.overdueSupplierPayments.length;
+        summary.overdueSupplierAmount += metrics.overdueSupplierAmount;
+
+        if (this.isDateInRange(booking.createdAt, period.currentStart, period.currentEnd)) {
+          summary.currentPeriod.revenue += metrics.effectiveTotalSell;
+          summary.currentPeriod.outstanding += metrics.clientOutstanding;
+          summary.currentPeriod.supplierPayable += metrics.supplierOutstanding;
+          summary.currentPeriod.profit += metrics.effectiveTotalSell - metrics.effectiveTotalCost;
+        } else if (this.isDateInRange(booking.createdAt, period.previousStart, period.previousEnd)) {
+          summary.previousPeriod.revenue += metrics.effectiveTotalSell;
+          summary.previousPeriod.outstanding += metrics.clientOutstanding;
+          summary.previousPeriod.supplierPayable += metrics.supplierOutstanding;
+          summary.previousPeriod.profit += metrics.effectiveTotalSell - metrics.effectiveTotalCost;
+        }
+
+        const sparklineBookingIndex = this.findFinanceSeriesIndex(booking.createdAt, summary.sparklineDates);
+        if (sparklineBookingIndex >= 0) {
+          summary.sparklineSeries.revenue[sparklineBookingIndex] += metrics.effectiveTotalSell;
+          summary.sparklineSeries.outstanding[sparklineBookingIndex] += metrics.clientOutstanding;
+        }
+
+        const monthlyBookingIndex = this.findFinanceMonthlySeriesIndex(booking.createdAt, summary.monthlySeries);
+        if (monthlyBookingIndex >= 0) {
+          summary.monthlySeries[monthlyBookingIndex].revenue += metrics.effectiveTotalSell;
+        }
+
+        paymentRecords.forEach((payment) => {
+          if (payment.status === 'PAID' && this.isDateInRange(payment.paidAt, period.currentStart, period.currentEnd)) {
+            summary.currentPeriod.collected += payment.type === 'CLIENT' ? payment.amount : 0;
+          } else if (payment.status === 'PAID' && this.isDateInRange(payment.paidAt, period.previousStart, period.previousEnd)) {
+            summary.previousPeriod.collected += payment.type === 'CLIENT' ? payment.amount : 0;
+          }
+
+          if (payment.overdue && this.isDateInRange(payment.dueDate, period.currentStart, period.currentEnd)) {
+            summary.currentPeriod.overdue += payment.amount;
+          } else if (payment.overdue && this.isDateInRange(payment.dueDate, period.previousStart, period.previousEnd)) {
+            summary.previousPeriod.overdue += payment.amount;
+          }
+
+          const sparklineCollectedIndex = this.findFinanceSeriesIndex(payment.paidAt, summary.sparklineDates);
+          if (payment.status === 'PAID' && payment.type === 'CLIENT' && sparklineCollectedIndex >= 0) {
+            summary.sparklineSeries.collected[sparklineCollectedIndex] += payment.amount;
+          }
+
+          const sparklineOverdueIndex = this.findFinanceSeriesIndex(payment.dueDate, summary.sparklineDates);
+          if (payment.overdue && sparklineOverdueIndex >= 0) {
+            summary.sparklineSeries.overdue[sparklineOverdueIndex] += payment.amount;
+          }
+
+          const monthlyCollectedIndex = this.findFinanceMonthlySeriesIndex(payment.paidAt, summary.monthlySeries);
+          if (payment.status === 'PAID' && payment.type === 'CLIENT' && monthlyCollectedIndex >= 0) {
+            summary.monthlySeries[monthlyCollectedIndex].collected += payment.amount;
+          }
+        });
+
+        summary.recentPayments.push(
+          ...paymentRecords.map((payment) => ({
+            id: payment.id,
+            bookingId: booking.id,
+            bookingRef: booking.bookingRef || booking.id,
+            bookingTitle: title,
+            clientName,
+            type: payment.type,
+            amount: payment.amount,
+            currency: payment.currency,
+            status: payment.status,
+            dueDate: payment.dueDate,
+            paidAt: payment.paidAt,
+            overdue: payment.overdue,
+            overdueDays: payment.overdueDays,
+            createdAt: payment.createdAt ?? null,
+          })),
+        );
+
+        return summary;
+        },
+        {
+        totalRevenue: 0,
+        totalCollected: 0,
+        totalOutstanding: 0,
+        totalOverdue: 0,
+        supplierPayable: 0,
+        totalCost: 0,
+        overdueClientCount: 0,
+        overdueClientAmount: 0,
+        overdueSupplierCount: 0,
+        overdueSupplierAmount: 0,
+        currentPeriod: {
+          revenue: 0,
+          collected: 0,
+          outstanding: 0,
+          overdue: 0,
+          supplierPayable: 0,
+          profit: 0,
+        },
+        previousPeriod: {
+          revenue: 0,
+          collected: 0,
+          outstanding: 0,
+          overdue: 0,
+          supplierPayable: 0,
+          profit: 0,
+        },
+        sparklineSeries: {
+          revenue: sparklineSeries.map(() => 0),
+          collected: sparklineSeries.map(() => 0),
+          outstanding: sparklineSeries.map(() => 0),
+          overdue: sparklineSeries.map(() => 0),
+        },
+        sparklineDates: sparklineSeries,
+        monthlySeries: monthlySeries.map((point) => ({
+          ...point,
+          revenue: 0,
+          collected: 0,
+        })),
+        recentPayments: [] as Array<{
+          id: string;
+          bookingId: string;
+          bookingRef: string;
+          bookingTitle: string;
+          clientName: string;
+          type: PaymentTypeValue;
+          amount: number;
+          currency: string;
+          status: PaymentStatusValue;
+          dueDate: string | Date | null;
+          paidAt: string | Date | null;
+          overdue: boolean;
+          overdueDays: number | null;
+          createdAt: string | Date | null;
+        }>,
+        },
+      );
+
+      const totalRevenue = this.roundMoney(aggregate.totalRevenue);
+      const totalCollected = this.roundMoney(aggregate.totalCollected);
+      const totalOutstanding = this.roundMoney(aggregate.totalOutstanding);
+      const totalOverdue = this.roundMoney(aggregate.totalOverdue);
+      const supplierPayable = this.roundMoney(aggregate.supplierPayable);
+      const profit = this.roundMoney(totalRevenue - aggregate.totalCost);
+      const margin = totalRevenue > 0 ? Number(((profit / totalRevenue) * 100).toFixed(2)) : 0;
+      const currentMargin =
+        aggregate.currentPeriod.revenue > 0
+          ? Number(((aggregate.currentPeriod.profit / aggregate.currentPeriod.revenue) * 100).toFixed(2))
+          : 0;
+      const previousMargin =
+        aggregate.previousPeriod.revenue > 0
+          ? Number(((aggregate.previousPeriod.profit / aggregate.previousPeriod.revenue) * 100).toFixed(2))
+          : 0;
+
+      const recentPayments = [...aggregate.recentPayments]
+        .sort((left, right) => {
+          if (left.overdue !== right.overdue) {
+            return left.overdue ? -1 : 1;
+          }
+
+          const leftActivity = left.paidAt ? new Date(left.paidAt).getTime() : left.createdAt ? new Date(left.createdAt).getTime() : 0;
+          const rightActivity = right.paidAt ? new Date(right.paidAt).getTime() : right.createdAt ? new Date(right.createdAt).getTime() : 0;
+          return rightActivity - leftActivity;
+        })
+        .slice(0, 8);
+
+      return {
+        totalRevenue,
+        totalCollected,
+        totalOutstanding,
+        totalOverdue,
+        supplierPayable,
+        profit,
+        margin,
+        trends: {
+          revenue: this.buildFinanceDashboardTrend(aggregate.currentPeriod.revenue, aggregate.previousPeriod.revenue),
+          collected: this.buildFinanceDashboardTrend(aggregate.currentPeriod.collected, aggregate.previousPeriod.collected),
+          outstanding: this.buildFinanceDashboardTrend(aggregate.currentPeriod.outstanding, aggregate.previousPeriod.outstanding),
+          overdue: this.buildFinanceDashboardTrend(aggregate.currentPeriod.overdue, aggregate.previousPeriod.overdue),
+          supplierPayable: this.buildFinanceDashboardTrend(
+            aggregate.currentPeriod.supplierPayable,
+            aggregate.previousPeriod.supplierPayable,
+          ),
+          profit: this.buildFinanceDashboardTrend(aggregate.currentPeriod.profit, aggregate.previousPeriod.profit),
+          margin: this.buildFinanceDashboardTrend(currentMargin, previousMargin, 'pp'),
+        },
+        trendLabel: `vs last ${period.lengthDays} days`,
+        sparklineSeries: {
+          revenue: aggregate.sparklineSeries.revenue.map((value: number) => this.roundMoney(value)),
+          collected: aggregate.sparklineSeries.collected.map((value: number) => this.roundMoney(value)),
+          outstanding: aggregate.sparklineSeries.outstanding.map((value: number) => this.roundMoney(value)),
+          overdue: aggregate.sparklineSeries.overdue.map((value: number) => this.roundMoney(value)),
+        },
+        monthlySeries: aggregate.monthlySeries.map((point: { label: string; revenue: number; collected: number }) => ({
+          label: point.label,
+          revenue: this.roundMoney(point.revenue),
+          collected: this.roundMoney(point.collected),
+        })),
+        overdueBreakdown: {
+          client: {
+            count: aggregate.overdueClientCount,
+            amount: this.roundMoney(aggregate.overdueClientAmount),
+          },
+          supplier: {
+            count: aggregate.overdueSupplierCount,
+            amount: this.roundMoney(aggregate.overdueSupplierAmount),
+          },
+        },
+        recentPayments,
+      };
+    });
+  }
+
+  async getPaymentProofReconciliationQueue(actor?: CompanyScopedActor) {
+    return this.withAnalyticsCache(this.buildCompanyScopedCacheKey('reconciliation-queue', actor), 30_000, async () => {
+      const now = new Date();
+      const pendingPayments = await (this.prisma as any).payment.findMany({
+        where: {
+          ...this.buildPaymentCompanyWhere(actor),
+          type: 'CLIENT',
+          status: 'PENDING',
+        },
+        select: {
+          id: true,
+          bookingId: true,
+          amount: true,
+          currency: true,
+          status: true,
+          method: true,
+          reference: true,
+          dueDate: true,
+          paidAt: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          booking: {
+            select: {
+              id: true,
+              bookingRef: true,
+              snapshotJson: true,
+              clientSnapshotJson: true,
+              contactSnapshotJson: true,
+              pricingSnapshotJson: true,
+              quote: {
+                select: {
+                  clientCompany: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                  contact: {
+                    select: {
+                      firstName: true,
+                      lastName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      });
+
+      const bookingIds = Array.from(new Set(pendingPayments.map((payment: any) => payment.bookingId)));
+      if (bookingIds.length === 0) {
+        return [];
+      }
+
+      const [otherPayments, serviceSums, auditLogs] = await Promise.all([
+        (this.prisma as any).payment.findMany({
+          where: {
+            ...this.buildPaymentCompanyWhere(actor),
+            bookingId: { in: bookingIds },
+            NOT: {
+              id: {
+                in: pendingPayments.map((payment: any) => payment.id),
+              },
+            },
+          },
+          select: {
+            id: true,
+            bookingId: true,
+            type: true,
+            amount: true,
+            currency: true,
+            status: true,
+            method: true,
+            reference: true,
+            dueDate: true,
+            paidAt: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+        (this.prisma as any).bookingService.groupBy({
+          by: ['bookingId'],
+          where: {
+            ...this.buildBookingServiceCompanyWhere(actor),
+            bookingId: { in: bookingIds },
+            status: {
+              not: BookingServiceLifecycleStatus.cancelled,
+            },
+          },
+          _sum: {
+            totalCost: true,
+            totalSell: true,
+          },
+        }),
+        (this.prisma as any).bookingAuditLog.findMany({
+          where: {
+            ...this.buildBookingAuditLogCompanyWhere(actor),
+            bookingId: { in: bookingIds },
+            action: {
+              in: ['booking_payment_proof_submitted', 'booking_invoice_sent', 'booking_payment_reminder_sent'],
+            },
+          },
+          select: {
+            bookingId: true,
+            action: true,
+            newValue: true,
+            note: true,
+            createdAt: true,
+          },
+          orderBy: [{ createdAt: 'desc' }],
+        }),
+      ]);
+
+      const paymentsByBookingId = new Map<string, DerivedPaymentRecord[]>();
+      for (const payment of [...pendingPayments, ...otherPayments]) {
+        const entries = paymentsByBookingId.get(payment.bookingId) || [];
+        entries.push(this.mapPaymentRecord(payment));
+        paymentsByBookingId.set(payment.bookingId, entries);
+      }
+
+      const serviceSummaryByBookingId = new Map<
+        string,
+        {
+          status: BookingServiceLifecycleStatus;
+          totalCost: number;
+          totalSell: number;
+        }
+      >(
+        serviceSums.map((entry: { bookingId: string; _sum: { totalCost: number | null; totalSell: number | null } }) => [
+          entry.bookingId,
+          {
+            status: BookingServiceLifecycleStatus.confirmed,
+            totalCost: Number(entry._sum.totalCost || 0),
+            totalSell: Number(entry._sum.totalSell || 0),
+          },
+        ]),
+      );
+
+      const auditLogsByBookingId = new Map<string, Array<{ action: string; newValue?: string | null; note?: string | null; createdAt: Date }>>();
+      for (const log of auditLogs) {
+        const entries = auditLogsByBookingId.get(log.bookingId) || [];
+        entries.push(log);
+        auditLogsByBookingId.set(log.bookingId, entries);
+      }
+
+      const bookingQueue = pendingPayments
+        .map((pendingPayment: any) => {
+          const booking = pendingPayment.booking;
+          const bookingAuditLogs = auditLogsByBookingId.get(booking.id) || [];
+          const payments = this.sortPaymentRecords(paymentsByBookingId.get(booking.id) || []);
+          const paymentProofSubmission = this.getBookingPaymentProofSubmission(bookingAuditLogs);
+          if (!paymentProofSubmission) {
+            return null;
+          }
+
+          const groupedServices: Array<{
+            status: BookingServiceLifecycleStatus;
+            totalCost: number;
+            totalSell: number;
+          }> = serviceSummaryByBookingId.get(booking.id) ? [serviceSummaryByBookingId.get(booking.id)!] : [];
+          const finance = this.buildBookingFinanceSummary({
+            pricingSnapshotJson: booking.pricingSnapshotJson,
+            snapshotJson: booking.snapshotJson,
+            services: groupedServices,
+            payments,
+          });
+
+          if (finance.clientOutstanding <= 0) {
+            return null;
+          }
+
+          const clientSnapshot = (booking.clientSnapshotJson || {}) as {
+            name?: string | null;
+          };
+          const contactSnapshot = (booking.contactSnapshotJson || {}) as {
+            firstName?: string | null;
+            lastName?: string | null;
+          };
+          const matchPct =
+            paymentProofSubmission.amount && finance.clientOutstanding > 0
+              ? Number(((paymentProofSubmission.amount / finance.clientOutstanding) * 100).toFixed(1))
+              : null;
+          const confidence = this.getPaymentProofMatchConfidence({
+            matchPct,
+            hasReceipt: Boolean(paymentProofSubmission.receiptUrl),
+          });
+          const readyToConfirm = confidence === 'high';
+          const reminderAutomation = this.getBookingPaymentReminderAutomation({
+            auditLogs: bookingAuditLogs,
+            payments,
+            finance,
+          });
+
+          return {
+            bookingId: booking.id,
+            bookingReference: booking.bookingRef || booking.id,
+            clientName:
+              this.normalizeOptionalText(clientSnapshot.name) ||
+              this.normalizeOptionalText(booking.quote?.clientCompany?.name) ||
+              this.formatFullName(booking.quote?.contact || contactSnapshot),
+            outstandingAmount: finance.clientOutstanding,
+            overdue: finance.hasOverdueClientPayments,
+            overdueAmount: finance.overdueClientAmount,
+            paymentId: pendingPayment.id,
+            paymentAmount: pendingPayment.amount,
+            submittedProofReference: paymentProofSubmission.reference,
+            submittedProofAmount: paymentProofSubmission.amount,
+            receiptUrl: paymentProofSubmission.receiptUrl,
+            submittedAt: paymentProofSubmission.submittedAt,
+            matchPct,
+            confidence,
+            readyToConfirm,
+            reminderStage: reminderAutomation.stage,
+            reminderCooldownActive: Boolean(
+              !readyToConfirm &&
+                reminderAutomation.nextReminderDueAt &&
+                new Date(reminderAutomation.nextReminderDueAt).getTime() > now.getTime(),
+            ),
+            nextReminderDueAt: reminderAutomation.nextReminderDueAt,
+            invoiceDelivery: this.getBookingInvoiceDelivery(bookingAuditLogs),
+            paymentReminderDelivery: this.getBookingPaymentReminderDelivery(bookingAuditLogs),
+          };
+        })
+        .filter(Boolean);
+
+      return bookingQueue.sort((left: any, right: any) => {
+        const leftTime = left?.submittedAt ? new Date(left.submittedAt).getTime() : 0;
+        const rightTime = right?.submittedAt ? new Date(right.submittedAt).getTime() : 0;
+        return rightTime - leftTime;
+      });
+    });
+  }
+
+  async getPaymentProofReconciliationSummary(actor?: CompanyScopedActor) {
+    return this.withAnalyticsCache(this.buildCompanyScopedCacheKey('reconciliation-summary', actor), 60_000, async () => {
+      const now = new Date();
+      const startOfDay = new Date(now);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const [confirmedPayments, reminderLogs] = await Promise.all([
+      (this.prisma as any).payment.findMany({
+        where: {
+          ...this.buildPaymentCompanyWhere(actor),
+          type: 'CLIENT',
+          status: 'PAID',
+          paidAt: {
+            gte: startOfDay,
+            lte: now,
+          },
+        },
+        select: {
+          bookingId: true,
+          amount: true,
+          paidAt: true,
+        },
+      }),
+      (this.prisma as any).bookingAuditLog.findMany({
+        where: {
+          ...this.buildBookingAuditLogCompanyWhere(actor),
+          action: 'booking_payment_reminder_sent',
+          createdAt: {
+            gte: startOfDay,
+            lte: now,
+          },
+        },
+        select: {
+          bookingId: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+      const confirmationBookingIds = Array.from(
+      new Set(confirmedPayments.map((payment: { bookingId: string | null }) => payment.bookingId).filter(Boolean)),
+      ) as string[];
+
+      const proofLogsByBooking = new Map<string, Array<{ createdAt: Date }>>();
+      if (confirmationBookingIds.length > 0) {
+      const proofLogs = await (this.prisma as any).bookingAuditLog.findMany({
+        where: {
+          ...this.buildBookingAuditLogCompanyWhere(actor),
+          bookingId: {
+            in: confirmationBookingIds,
+          },
+          action: 'booking_payment_proof_submitted',
+        },
+        select: {
+          bookingId: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+        for (const log of proofLogs) {
+        const entries = proofLogsByBooking.get(log.bookingId) || [];
+        entries.push({ createdAt: log.createdAt });
+        proofLogsByBooking.set(log.bookingId, entries);
+      }
+      }
+
+      const processingTimes = confirmedPayments
+      .map((payment: { bookingId: string; paidAt: Date }) => {
+        const proofLogs = proofLogsByBooking.get(payment.bookingId) || [];
+        const latestRelevantProof = proofLogs.find((log) => log.createdAt.getTime() <= new Date(payment.paidAt).getTime());
+
+        if (!latestRelevantProof) {
+          return null;
+        }
+
+        return Math.max(
+          0,
+          Math.round((new Date(payment.paidAt).getTime() - latestRelevantProof.createdAt.getTime()) / 60000),
+        );
+      })
+        .filter((value: number | null): value is number => value !== null);
+
+      return {
+        confirmedCount: confirmedPayments.length,
+        confirmedAmount: this.roundMoney(
+          confirmedPayments.reduce((sum: number, payment: { amount: number }) => sum + Number(payment.amount || 0), 0),
+        ),
+        remindersSent: reminderLogs.length,
+        avgProcessingTime:
+          processingTimes.length > 0
+            ? Math.round(processingTimes.reduce((sum: number, value: number) => sum + value, 0) / processingTimes.length)
+            : null,
+      };
+    });
+  }
+
+  async getPaymentProofReconciliationPerformance(actor?: CompanyScopedActor) {
+    return this.withAnalyticsCache(this.buildCompanyScopedCacheKey('reconciliation-performance', actor), 60_000, async () => {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const series30Start = new Date(startOfToday);
+    series30Start.setDate(series30Start.getDate() - 29);
+    const series7Start = new Date(startOfToday);
+    series7Start.setDate(series7Start.getDate() - 6);
+
+    const [confirmedPayments, reminderLogs] = await Promise.all([
+      (this.prisma as any).payment.findMany({
+        where: {
+          ...this.buildPaymentCompanyWhere(actor),
+          type: 'CLIENT',
+          status: 'PAID',
+          paidAt: {
+            gte: series30Start,
+            lte: now,
+          },
+        },
+        select: {
+          bookingId: true,
+          amount: true,
+          paidAt: true,
+        },
+      }),
+      (this.prisma as any).bookingAuditLog.findMany({
+        where: {
+          ...this.buildBookingAuditLogCompanyWhere(actor),
+          action: 'booking_payment_reminder_sent',
+          createdAt: {
+            gte: series30Start,
+            lte: now,
+          },
+        },
+        select: {
+          bookingId: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    const confirmationBookingIds = Array.from(
+      new Set(confirmedPayments.map((payment: { bookingId: string | null }) => payment.bookingId).filter(Boolean)),
+    ) as string[];
+
+    const proofLogsByBooking = new Map<string, Array<{ createdAt: Date }>>();
+    if (confirmationBookingIds.length > 0) {
+      const proofLogs = await (this.prisma as any).bookingAuditLog.findMany({
+        where: {
+          ...this.buildBookingAuditLogCompanyWhere(actor),
+          bookingId: {
+            in: confirmationBookingIds,
+          },
+          action: 'booking_payment_proof_submitted',
+        },
+        select: {
+          bookingId: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      for (const log of proofLogs) {
+        const entries = proofLogsByBooking.get(log.bookingId) || [];
+        entries.push({ createdAt: log.createdAt });
+        proofLogsByBooking.set(log.bookingId, entries);
+      }
+    }
+
+    const processingSamples = confirmedPayments
+      .map((payment: { bookingId: string; paidAt: Date; amount: number }) => {
+        const proofLogs = proofLogsByBooking.get(payment.bookingId) || [];
+        const latestRelevantProof = proofLogs.find((log) => log.createdAt.getTime() <= new Date(payment.paidAt).getTime());
+
+        if (!latestRelevantProof) {
+          return null;
+        }
+
+        return {
+          bookingId: payment.bookingId,
+          paidAt: payment.paidAt,
+          amount: payment.amount,
+          minutes: Math.max(
+            0,
+            Math.round((new Date(payment.paidAt).getTime() - latestRelevantProof.createdAt.getTime()) / 60000),
+          ),
+        };
+      })
+      .filter(
+        (
+          value: { bookingId: string; paidAt: Date; amount: number; minutes: number } | null,
+        ): value is { bookingId: string; paidAt: Date; amount: number; minutes: number } => value !== null,
+      );
+
+    const buildWindowSummary = (startDate: Date, endDate?: Date) => {
+      const windowConfirmed = confirmedPayments.filter(
+        (payment: { paidAt: Date }) =>
+          new Date(payment.paidAt).getTime() >= startDate.getTime() &&
+          (endDate ? new Date(payment.paidAt).getTime() < endDate.getTime() : true),
+      );
+      const windowReminders = reminderLogs.filter(
+        (log: { createdAt: Date }) =>
+          new Date(log.createdAt).getTime() >= startDate.getTime() &&
+          (endDate ? new Date(log.createdAt).getTime() < endDate.getTime() : true),
+      );
+      const windowProcessing = processingSamples.filter(
+        (sample: { paidAt: Date; minutes: number }) =>
+          new Date(sample.paidAt).getTime() >= startDate.getTime() &&
+          (endDate ? new Date(sample.paidAt).getTime() < endDate.getTime() : true),
+      );
+
+      return {
+        confirmedCount: windowConfirmed.length,
+        confirmedAmount: this.roundMoney(
+          windowConfirmed.reduce((sum: number, payment: { amount: number }) => sum + Number(payment.amount || 0), 0),
+        ),
+        remindersSent: windowReminders.length,
+        avgProcessingTime:
+          windowProcessing.length > 0
+            ? Math.round(
+                windowProcessing.reduce((sum: number, sample: { minutes: number }) => sum + sample.minutes, 0) /
+                  windowProcessing.length,
+              )
+            : null,
+      };
+    };
+
+    const previousWeekStart = new Date(series7Start);
+    previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+    const previousMonthStart = new Date(series30Start);
+    previousMonthStart.setDate(previousMonthStart.getDate() - 30);
+
+    const buildSeries = (days: number, startDate: Date) => {
+      const points = Array.from({ length: days }, (_, index) => {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + index);
+        const key = date.toISOString().slice(0, 10);
+
+        return {
+          key,
+          label: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
+          confirmedCount: 0,
+          confirmedAmount: 0,
+          remindersSent: 0,
+          processingSamples: [] as number[],
+        };
+      });
+
+      const pointByKey = new Map(points.map((point) => [point.key, point]));
+
+      for (const payment of confirmedPayments) {
+        const key = new Date(payment.paidAt).toISOString().slice(0, 10);
+        const point = pointByKey.get(key);
+        if (point) {
+          point.confirmedCount += 1;
+          point.confirmedAmount += Number(payment.amount || 0);
+        }
+      }
+
+      for (const reminder of reminderLogs) {
+        const key = new Date(reminder.createdAt).toISOString().slice(0, 10);
+        const point = pointByKey.get(key);
+        if (point) {
+          point.remindersSent += 1;
+        }
+      }
+
+      for (const sample of processingSamples) {
+        const key = new Date(sample.paidAt).toISOString().slice(0, 10);
+        const point = pointByKey.get(key);
+        if (point) {
+          point.processingSamples.push(sample.minutes);
+        }
+      }
+
+      return points.map((point) => ({
+        label: point.label,
+        confirmedCount: point.confirmedCount,
+        confirmedAmount: this.roundMoney(point.confirmedAmount),
+        remindersSent: point.remindersSent,
+        avgProcessingTime:
+          point.processingSamples.length > 0
+            ? Math.round(point.processingSamples.reduce((sum: number, value: number) => sum + value, 0) / point.processingSamples.length)
+            : null,
+      }));
+    };
+
+    const weekly = buildWindowSummary(series7Start);
+    const previousWeekly = buildWindowSummary(previousWeekStart, series7Start);
+    const monthly = buildWindowSummary(series30Start);
+    const previousMonthly = buildWindowSummary(previousMonthStart, series30Start);
+    const weeklyProcessingTrend =
+      weekly.avgProcessingTime !== null && previousWeekly.avgProcessingTime !== null
+        ? this.buildFinanceDashboardTrend(previousWeekly.avgProcessingTime, weekly.avgProcessingTime)
+        : this.buildFinanceDashboardTrend(0, 0);
+    const monthlyProcessingTrend =
+      monthly.avgProcessingTime !== null && previousMonthly.avgProcessingTime !== null
+        ? this.buildFinanceDashboardTrend(previousMonthly.avgProcessingTime, monthly.avgProcessingTime)
+        : this.buildFinanceDashboardTrend(0, 0);
+    const trends = {
+      weekly: {
+        confirmedAmount: this.buildFinanceDashboardTrend(weekly.confirmedAmount, previousWeekly.confirmedAmount),
+        avgProcessingTime: weeklyProcessingTrend,
+        remindersSent: this.buildFinanceDashboardTrend(weekly.remindersSent, previousWeekly.remindersSent),
+      },
+      monthly: {
+        confirmedAmount: this.buildFinanceDashboardTrend(monthly.confirmedAmount, previousMonthly.confirmedAmount),
+        avgProcessingTime: monthlyProcessingTrend,
+        remindersSent: this.buildFinanceDashboardTrend(monthly.remindersSent, previousMonthly.remindersSent),
+      },
+    };
+
+    const insights = [
+      {
+        importance: trends.weekly.confirmedAmount.changePercent,
+        direction: trends.weekly.confirmedAmount.direction,
+        text:
+          trends.weekly.confirmedAmount.direction === 'up'
+            ? `Performance improved by ${trends.weekly.confirmedAmount.changePercent.toFixed(1)}% this week.`
+            : trends.weekly.confirmedAmount.direction === 'down'
+              ? `Performance declined by ${trends.weekly.confirmedAmount.changePercent.toFixed(1)}% this week.`
+              : 'Performance is flat week over week.',
+      },
+      {
+        importance: Math.abs(trends.weekly.avgProcessingTime.changePercent),
+        direction:
+          weekly.avgProcessingTime !== null &&
+          previousWeekly.avgProcessingTime !== null &&
+          weekly.avgProcessingTime < previousWeekly.avgProcessingTime
+            ? 'up'
+            : weekly.avgProcessingTime !== null &&
+                previousWeekly.avgProcessingTime !== null &&
+                weekly.avgProcessingTime > previousWeekly.avgProcessingTime
+              ? 'down'
+              : 'flat',
+        text:
+          weekly.avgProcessingTime !== null &&
+          previousWeekly.avgProcessingTime !== null &&
+          weekly.avgProcessingTime < previousWeekly.avgProcessingTime
+            ? 'Processing time decreased this week.'
+            : weekly.avgProcessingTime !== null &&
+                previousWeekly.avgProcessingTime !== null &&
+                weekly.avgProcessingTime > previousWeekly.avgProcessingTime
+              ? 'Processing time increased this week.'
+              : 'Processing speed is stable.',
+      },
+      {
+        importance: trends.monthly.remindersSent.changePercent,
+        direction: trends.monthly.remindersSent.direction,
+        text:
+          trends.monthly.remindersSent.direction === 'up'
+            ? 'Reminders are increasing month over month.'
+            : trends.monthly.remindersSent.direction === 'down'
+              ? 'Reminders are decreasing month over month.'
+              : 'Reminder volume is holding steady.',
+      },
+    ]
+      .sort((left, right) => right.importance - left.importance)
+      .slice(0, 2)
+      .map(({ direction, text }) => ({ direction, text }));
+
+    return {
+      weekly,
+      previousWeekly,
+      monthly,
+      previousMonthly,
+      trends,
+      insights,
+      series7: buildSeries(7, series7Start),
+      series30: buildSeries(30, series30Start),
+    };
+    });
+  }
+
+  async confirmPaymentProofBatch(
+    data?: {
+      paymentIds?: string[];
+      paidAt?: string | Date | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const paymentIds = Array.from(
+      new Set(
+        (data?.paymentIds || [])
+          .map((value) => this.normalizeOptionalText(value))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+
+    if (paymentIds.length === 0) {
+      throw new BadRequestException('Select at least one payment to confirm.');
+    }
+
+    const payments = await (this.prisma as any).payment.findMany({
+      where: {
+        id: {
+          in: paymentIds,
+        },
+        type: 'CLIENT',
+        ...this.buildPaymentCompanyWhere(data?.companyActor),
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        amount: true,
+        currency: true,
+        status: true,
+      },
+    });
+
+    if (payments.length !== paymentIds.length) {
+      throw new NotFoundException('One or more payments could not be found.');
+    }
+
+    const paymentsById = new Map(payments.map((payment: any) => [payment.id, payment]));
+    const orderedPayments = paymentIds.map((paymentId) => paymentsById.get(paymentId)).filter(Boolean) as Array<{
+      id: string;
+      bookingId: string;
+      amount: number;
+      currency: string;
+      status: PaymentStatusValue;
+    }>;
+
+    const confirmedItems: Array<{
+      bookingId: string;
+      paymentId: string;
+      amount: number;
+      currency: string;
+      status: PaymentStatusValue;
+      alreadyPaid: boolean;
+      clientNotified: boolean;
+    }> = [];
+
+    for (const payment of orderedPayments) {
+      const alreadyPaid = payment.status === 'PAID';
+      const confirmedPayment = await this.markPaymentPaid(payment.bookingId, payment.id, {
+        paidAt: data?.paidAt,
+        actor: data?.actor,
+        companyActor: data?.companyActor,
+      });
+
+      confirmedItems.push({
+        bookingId: payment.bookingId,
+        paymentId: payment.id,
+        amount: payment.amount,
+        currency: payment.currency,
+        status: confirmedPayment.status,
+        alreadyPaid,
+        clientNotified: Boolean((confirmedPayment as { clientNotified?: boolean }).clientNotified),
+      });
+    }
+
+    return {
+      confirmedCount: confirmedItems.length,
+      clientNotifiedCount: confirmedItems.filter((item) => item.clientNotified).length,
+      totalConfirmedAmount: this.roundMoney(
+        confirmedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      ),
+      currency: confirmedItems[0]?.currency || 'USD',
+      items: confirmedItems,
+    };
+  }
+
+  async sendPaymentProofReminderBatch(
+    data?: {
+      bookingIds?: string[];
+      paymentIds?: string[];
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const normalizedBookingIds = (data?.bookingIds || [])
+      .map((value) => this.normalizeOptionalText(value))
+      .filter((value): value is string => Boolean(value));
+    const normalizedPaymentIds = (data?.paymentIds || [])
+      .map((value) => this.normalizeOptionalText(value))
+      .filter((value): value is string => Boolean(value));
+
+    const bookingIds = new Set(normalizedBookingIds);
+
+    if (normalizedPaymentIds.length > 0) {
+      const payments = await (this.prisma as any).payment.findMany({
+        where: {
+          id: {
+            in: normalizedPaymentIds,
+          },
+          type: 'CLIENT',
+          ...this.buildPaymentCompanyWhere(data?.companyActor),
+        },
+        select: {
+          id: true,
+          bookingId: true,
+        },
+      });
+
+      for (const payment of payments) {
+        bookingIds.add(payment.bookingId);
+      }
+    }
+
+    const targetBookingIds = Array.from(bookingIds);
+
+    if (targetBookingIds.length === 0) {
+      throw new BadRequestException('Select at least one booking to remind.');
+    }
+
+    const now = new Date();
+    let totalNotified = 0;
+    let skippedCooldownCount = 0;
+
+    for (const bookingId of targetBookingIds) {
+      const booking = await this.findOne(bookingId, data?.companyActor);
+
+      if (!booking) {
+        continue;
+      }
+
+      const automation = this.getBookingPaymentReminderAutomation({
+        auditLogs: booking.auditLogs || [],
+        payments: booking.payments || [],
+        finance: booking.finance,
+      });
+
+      if (
+        automation.nextReminderDueAt &&
+        new Date(automation.nextReminderDueAt).getTime() > now.getTime()
+      ) {
+        skippedCooldownCount += 1;
+        continue;
+      }
+
+      await this.sendPaymentReminder(bookingId, {
+        actor: data?.actor,
+        stage: automation.stage,
+      });
+      totalNotified += 1;
+    }
+
+    return {
+      count: targetBookingIds.length,
+      totalNotified,
+      skippedCooldownCount,
+    };
+  }
+
+  async createPayment(
+    bookingId: string,
+    data: {
+      type: PaymentTypeValue;
+      amount: number;
+      currency?: string | null;
+      status?: PaymentStatusValue;
+      method?: PaymentMethodValue | null;
+      reference?: string | null;
+      dueDate?: string | Date | null;
+      paidAt?: string | Date | null;
+      notes?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    await this.assertBookingExists(bookingId, data.companyActor);
+    const type = this.normalizePaymentType(data.type);
+    const amount = this.normalizePaymentAmount(data.amount);
+    const currency = this.normalizePaymentCurrency(data.currency);
+    const status = this.normalizePaymentStatus(data.status);
+    const method = this.normalizePaymentMethod(data.method);
+    const reference = this.normalizeOptionalText(data.reference);
+    const notes = this.normalizeOptionalText(data.notes);
+    const dueDate = this.normalizePaymentDate(data.dueDate, 'Payment due date is invalid');
+    const paidAt =
+      status === 'PAID'
+        ? this.normalizePaymentDate(data.paidAt, 'Payment paid date is invalid') ?? new Date()
+        : null;
+
+    const payment = await this.prisma.$transaction(async (tx) => {
+      const createdPayment = await (tx as any).payment.create({
+        data: {
+          bookingId,
+          type,
+          amount,
+          currency,
+          status,
+          method,
+          reference,
+          dueDate,
+          paidAt,
+          notes,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_payment_created',
+        newValue: `${type} ${this.formatMoney(amount, currency)} ${status}`,
+        note: reference || notes || null,
+        actor: data.actor,
+      });
+
+      return createdPayment;
+    });
+
+    return this.mapPaymentRecord(payment);
+  }
+
+  async updatePayment(
+    bookingId: string,
+    paymentId: string,
+    data: {
+      amount?: number;
+      currency?: string | null;
+      status?: PaymentStatusValue;
+      method?: PaymentMethodValue | null;
+      reference?: string | null;
+      dueDate?: string | Date | null;
+      paidAt?: string | Date | null;
+      notes?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const payment = await (this.prisma as any).payment.findFirst({
+      where: {
+        id: paymentId,
+        bookingId,
+        ...this.buildPaymentCompanyWhere(data.companyActor),
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    const nextAmount = data.amount === undefined ? payment.amount : this.normalizePaymentAmount(data.amount);
+    const nextCurrency = data.currency === undefined ? payment.currency : this.normalizePaymentCurrency(data.currency);
+    const nextStatus = data.status === undefined ? payment.status : this.normalizePaymentStatus(data.status);
+    const nextMethod = data.method === undefined ? payment.method : this.normalizePaymentMethod(data.method);
+    const nextReference = data.reference === undefined ? payment.reference : this.normalizeOptionalText(data.reference);
+    const nextDueDate =
+      data.dueDate === undefined ? payment.dueDate : this.normalizePaymentDate(data.dueDate, 'Payment due date is invalid');
+    const nextNotes = data.notes === undefined ? payment.notes : this.normalizeOptionalText(data.notes);
+    const nextPaidAt =
+      data.paidAt === undefined
+        ? nextStatus === 'PAID'
+          ? payment.paidAt ?? new Date()
+          : null
+        : nextStatus === 'PAID'
+          ? this.normalizePaymentDate(data.paidAt, 'Payment paid date is invalid') ?? new Date()
+          : null;
+
+    if (
+      nextAmount === payment.amount &&
+      nextCurrency === payment.currency &&
+      nextStatus === payment.status &&
+      nextMethod === payment.method &&
+      nextReference === payment.reference &&
+      this.areDatesEqual(nextDueDate, payment.dueDate) &&
+      this.areDatesEqual(nextPaidAt, payment.paidAt) &&
+      nextNotes === payment.notes
+    ) {
+      return this.mapPaymentRecord(payment);
+    }
+
+    const updatedPayment = await this.prisma.$transaction(async (tx) => {
+      const result = await (tx as any).payment.update({
+        where: { id: payment.id },
+        data: {
+          amount: nextAmount,
+          currency: nextCurrency,
+          status: nextStatus,
+          method: nextMethod,
+          reference: nextReference,
+          dueDate: nextDueDate,
+          paidAt: nextPaidAt,
+          notes: nextNotes,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_payment_updated',
+        oldValue: `${payment.type} ${this.formatMoney(payment.amount, payment.currency)} ${payment.status}`,
+        newValue: `${payment.type} ${this.formatMoney(nextAmount, nextCurrency)} ${nextStatus}`,
+        note: nextReference || nextNotes || null,
+        actor: data.actor,
+      });
+
+      return result;
+    });
+
+    this.invalidateAnalyticsCaches();
+    return this.mapPaymentRecord(updatedPayment);
+  }
+
+  async markPaymentPaid(
+    bookingId: string,
+    paymentId: string,
+    data?: {
+      paidAt?: string | Date | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const payment = await (this.prisma as any).payment.findFirst({
+      where: {
+        id: paymentId,
+        bookingId,
+        ...this.buildPaymentCompanyWhere(data?.companyActor),
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    if (payment.status === 'PAID') {
+      return {
+        ...this.mapPaymentRecord(payment),
+        clientNotified: false,
+        clientNotificationSentAt: null,
+        clientNotificationSentTo: null,
+      };
+    }
+
+    const paidAt = this.normalizePaymentDate(data?.paidAt, 'Payment paid date is invalid') ?? new Date();
+    const updatedPayment = await this.prisma.$transaction(async (tx) => {
+      const result = await (tx as any).payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'PAID',
+          paidAt,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_payment_marked_paid',
+        oldValue: payment.status,
+        newValue: 'PAID',
+        note: payment.reference || null,
+        actor: data?.actor,
+      });
+
+      return result;
+    });
+
+    const mappedPayment = this.mapPaymentRecord(updatedPayment);
+    const notification =
+      payment.type === 'CLIENT'
+        ? await this.sendPaymentConfirmationEmail({
+            bookingId,
+            paymentId: payment.id,
+            amount: payment.amount,
+            currency: payment.currency,
+            actor: data?.actor,
+          })
+        : {
+            sent: false,
+            sentAt: null,
+            sentTo: null,
+          };
+
+    await this.auditService.log({
+      actor: data?.companyActor ? { id: data.actor?.userId ?? null, companyId: data.companyActor.companyId } : null,
+      action: 'payment.confirmed',
+      entity: 'payment',
+      entityId: payment.id,
+      metadata: {
+        bookingId,
+        amount: mappedPayment.amount,
+        currency: mappedPayment.currency,
+        clientNotified: notification.sent,
+      },
+    });
+
+    this.invalidateAnalyticsCaches();
+    return {
+      ...mappedPayment,
+      clientNotified: notification.sent,
+      clientNotificationSentAt: notification.sentAt,
+      clientNotificationSentTo: notification.sentTo,
+    };
   }
 
   async createPassenger(
@@ -512,6 +2352,7 @@ export class BookingsService {
       notes?: string | null;
       isLead?: boolean;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     const firstName = this.normalizeRequiredText(data.firstName, 'Passenger first name is required');
@@ -521,8 +2362,11 @@ export class BookingsService {
     const shouldSetLead = Boolean(data.isLead);
 
     return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.findUnique({
-        where: { id: bookingId },
+      const booking = await tx.booking.findFirst({
+        where: {
+          id: bookingId,
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
         select: { id: true },
       });
 
@@ -571,11 +2415,20 @@ export class BookingsService {
       notes?: string | null;
       isLead?: boolean;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const passenger = await tx.bookingPassenger.findUnique({
-        where: { id: passengerId },
+      const passenger = await tx.bookingPassenger.findFirst({
+        where: {
+          id: passengerId,
+          bookingId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(data.companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -587,7 +2440,7 @@ export class BookingsService {
         },
       });
 
-      if (!passenger || passenger.bookingId !== bookingId) {
+      if (!passenger) {
         throw new NotFoundException('Booking passenger not found');
       }
 
@@ -638,10 +2491,18 @@ export class BookingsService {
     });
   }
 
-  async deletePassenger(bookingId: string, passengerId: string, actor?: AuditActor) {
+  async deletePassenger(bookingId: string, passengerId: string, actor?: AuditActor, companyActor?: CompanyScopedActor) {
     return this.prisma.$transaction(async (tx) => {
-      const passenger = await tx.bookingPassenger.findUnique({
-        where: { id: passengerId },
+      const passenger = await tx.bookingPassenger.findFirst({
+        where: {
+          id: passengerId,
+          bookingId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -657,7 +2518,7 @@ export class BookingsService {
         },
       });
 
-      if (!passenger || passenger.bookingId !== bookingId) {
+      if (!passenger) {
         throw new NotFoundException('Booking passenger not found');
       }
 
@@ -682,10 +2543,18 @@ export class BookingsService {
     });
   }
 
-  async setLeadPassenger(bookingId: string, passengerId: string, actor?: AuditActor) {
+  async setLeadPassenger(bookingId: string, passengerId: string, actor?: AuditActor, companyActor?: CompanyScopedActor) {
     return this.prisma.$transaction(async (tx) => {
-      const passenger = await tx.bookingPassenger.findUnique({
-        where: { id: passengerId },
+      const passenger = await tx.bookingPassenger.findFirst({
+        where: {
+          id: passengerId,
+          bookingId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -696,7 +2565,7 @@ export class BookingsService {
         },
       });
 
-      if (!passenger || passenger.bookingId !== bookingId) {
+      if (!passenger) {
         throw new NotFoundException('Booking passenger not found');
       }
 
@@ -736,11 +2605,15 @@ export class BookingsService {
       notes?: string | null;
       sortOrder?: number;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.findUnique({
-        where: { id: bookingId },
+      const booking = await tx.booking.findFirst({
+        where: {
+          id: bookingId,
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
         select: {
           id: true,
           roomingEntries: {
@@ -795,11 +2668,20 @@ export class BookingsService {
       notes?: string | null;
       sortOrder?: number;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     return this.prisma.$transaction(async (tx) => {
-      const roomingEntry = await tx.bookingRoomingEntry.findUnique({
-        where: { id: roomingEntryId },
+      const roomingEntry = await tx.bookingRoomingEntry.findFirst({
+        where: {
+          id: roomingEntryId,
+          bookingId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(data.companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -810,7 +2692,7 @@ export class BookingsService {
         },
       });
 
-      if (!roomingEntry || roomingEntry.bookingId !== bookingId) {
+      if (!roomingEntry) {
         throw new NotFoundException('Booking rooming entry not found');
       }
 
@@ -855,10 +2737,23 @@ export class BookingsService {
     });
   }
 
-  async deleteRoomingEntry(bookingId: string, roomingEntryId: string, actor?: AuditActor) {
+  async deleteRoomingEntry(
+    bookingId: string,
+    roomingEntryId: string,
+    actor?: AuditActor,
+    companyActor?: CompanyScopedActor,
+  ) {
     return this.prisma.$transaction(async (tx) => {
-      const roomingEntry = await tx.bookingRoomingEntry.findUnique({
-        where: { id: roomingEntryId },
+      const roomingEntry = await tx.bookingRoomingEntry.findFirst({
+        where: {
+          id: roomingEntryId,
+          bookingId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -874,7 +2769,7 @@ export class BookingsService {
         },
       });
 
-      if (!roomingEntry || roomingEntry.bookingId !== bookingId) {
+      if (!roomingEntry) {
         throw new NotFoundException('Booking rooming entry not found');
       }
 
@@ -899,13 +2794,28 @@ export class BookingsService {
     });
   }
 
-  async assignPassengerToRoom(bookingId: string, roomingEntryId: string, passengerId: string, actor?: AuditActor) {
+  async assignPassengerToRoom(
+    bookingId: string,
+    roomingEntryId: string,
+    passengerId: string,
+    actor?: AuditActor,
+    companyActor?: CompanyScopedActor,
+  ) {
     const normalizedPassengerId = this.normalizeRequiredText(passengerId, 'Passenger is required for room assignment');
+    const companyId = requireActorCompanyId(companyActor);
 
     return this.prisma.$transaction(async (tx) => {
       const [roomingEntry, passenger] = await Promise.all([
-        tx.bookingRoomingEntry.findUnique({
-          where: { id: roomingEntryId },
+        tx.bookingRoomingEntry.findFirst({
+          where: {
+            id: roomingEntryId,
+            bookingId,
+            booking: {
+              quote: {
+                clientCompanyId: companyId,
+              },
+            },
+          },
           select: {
             id: true,
             bookingId: true,
@@ -919,8 +2829,16 @@ export class BookingsService {
             },
           },
         }),
-        tx.bookingPassenger.findUnique({
-          where: { id: normalizedPassengerId },
+        tx.bookingPassenger.findFirst({
+          where: {
+            id: normalizedPassengerId,
+            bookingId,
+            booking: {
+              quote: {
+                clientCompanyId: companyId,
+              },
+            },
+          },
           select: {
             id: true,
             bookingId: true,
@@ -936,11 +2854,11 @@ export class BookingsService {
         }),
       ]);
 
-      if (!roomingEntry || roomingEntry.bookingId !== bookingId) {
+      if (!roomingEntry) {
         throw new NotFoundException('Booking rooming entry not found');
       }
 
-      if (!passenger || passenger.bookingId !== bookingId) {
+      if (!passenger) {
         throw new NotFoundException('Booking passenger not found');
       }
 
@@ -978,13 +2896,28 @@ export class BookingsService {
     });
   }
 
-  async unassignPassengerFromRoom(bookingId: string, roomingEntryId: string, passengerId: string, actor?: AuditActor) {
+  async unassignPassengerFromRoom(
+    bookingId: string,
+    roomingEntryId: string,
+    passengerId: string,
+    actor?: AuditActor,
+    companyActor?: CompanyScopedActor,
+  ) {
     const normalizedPassengerId = this.normalizeRequiredText(passengerId, 'Passenger is required for room assignment removal');
+    const companyId = requireActorCompanyId(companyActor);
 
     return this.prisma.$transaction(async (tx) => {
       const [roomingEntry, passenger, assignment] = await Promise.all([
-        tx.bookingRoomingEntry.findUnique({
-          where: { id: roomingEntryId },
+        tx.bookingRoomingEntry.findFirst({
+          where: {
+            id: roomingEntryId,
+            bookingId,
+            booking: {
+              quote: {
+                clientCompanyId: companyId,
+              },
+            },
+          },
           select: {
             id: true,
             bookingId: true,
@@ -993,8 +2926,16 @@ export class BookingsService {
             sortOrder: true,
           },
         }),
-        tx.bookingPassenger.findUnique({
-          where: { id: normalizedPassengerId },
+        tx.bookingPassenger.findFirst({
+          where: {
+            id: normalizedPassengerId,
+            bookingId,
+            booking: {
+              quote: {
+                clientCompanyId: companyId,
+              },
+            },
+          },
           select: {
             id: true,
             bookingId: true,
@@ -1016,11 +2957,11 @@ export class BookingsService {
         }),
       ]);
 
-      if (!roomingEntry || roomingEntry.bookingId !== bookingId) {
+      if (!roomingEntry) {
         throw new NotFoundException('Booking rooming entry not found');
       }
 
-      if (!passenger || passenger.bookingId !== bookingId) {
+      if (!passenger) {
         throw new NotFoundException('Booking passenger not found');
       }
 
@@ -1048,13 +2989,20 @@ export class BookingsService {
 
   assignSupplier(
     bookingServiceId: string,
-    data: { supplierId?: string | null; supplierName?: string | null; actor?: AuditActor },
+    data: { supplierId?: string | null; supplierName?: string | null; actor?: AuditActor; companyActor?: CompanyScopedActor },
   ) {
     const actor = data.actor;
 
     return this.prisma.bookingService
-      .findUnique({
-        where: { id: bookingServiceId },
+      .findFirst({
+        where: {
+          id: bookingServiceId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(data.companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -1188,13 +3136,21 @@ export class BookingsService {
       supplierReference?: string | null;
       notes?: string | null;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     const actor = data.actor;
 
     return this.prisma.bookingService
-      .findUnique({
-        where: { id: bookingServiceId },
+      .findFirst({
+        where: {
+          id: bookingServiceId,
+          booking: {
+            quote: {
+              clientCompanyId: requireActorCompanyId(data.companyActor),
+            },
+          },
+        },
         select: {
           id: true,
           bookingId: true,
@@ -1490,11 +3446,19 @@ export class BookingsService {
       reconfirmationDueAt?: string | null;
       note?: string | null;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     const actor = data.actor;
-    const bookingService = await this.prisma.bookingService.findUnique({
-      where: { id: bookingServiceId },
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: {
+          quote: {
+            clientCompanyId: requireActorCompanyId(data.companyActor),
+          },
+        },
+      },
       select: {
         id: true,
         bookingId: true,
@@ -1624,12 +3588,20 @@ export class BookingsService {
       action: 'cancel' | 'reopen' | 'mark_ready';
       note: string;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
     const note = this.normalizeManualOverrideNote(data.note, 'Manual service action note is required');
     const actor = data.actor;
-    const bookingService = await this.prisma.bookingService.findUnique({
-      where: { id: bookingServiceId },
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: {
+          quote: {
+            clientCompanyId: requireActorCompanyId(data.companyActor),
+          },
+        },
+      },
       select: {
         id: true,
         bookingId: true,
@@ -1663,6 +3635,7 @@ export class BookingsService {
     action: 'cancel' | 'reopen' | 'mark_ready' | 'request_confirmation';
     note: string;
     actor?: AuditActor;
+    companyActor?: CompanyScopedActor;
   }) {
     const serviceIds = Array.from(new Set(data.serviceIds.map((serviceId) => serviceId.trim()).filter(Boolean)));
     const note = this.normalizeManualOverrideNote(data.note, 'Bulk action note is required');
@@ -1676,6 +3649,11 @@ export class BookingsService {
       where: {
         id: {
           in: serviceIds,
+        },
+        booking: {
+          quote: {
+            clientCompanyId: requireActorCompanyId(data.companyActor),
+          },
         },
       },
       select: {
@@ -2603,8 +4581,6 @@ export class BookingsService {
 
   private attachFinanceSummary<
     T extends {
-      clientInvoiceStatus: ClientInvoiceStatusValue;
-      supplierPaymentStatus: SupplierPaymentStatusValue;
       pricingSnapshotJson: Prisma.JsonValue;
       snapshotJson: Prisma.JsonValue;
       roomCount: number;
@@ -2637,6 +4613,12 @@ export class BookingsService {
         totalCost: number;
         totalSell: number;
       }>;
+      payments: Array<{
+        type: PaymentTypeValue;
+        amount: number;
+        status: PaymentStatusValue;
+        dueDate?: string | Date | null;
+      }>;
     },
   >(booking: T) {
     return {
@@ -2651,15 +4633,19 @@ export class BookingsService {
     };
   }
 
-  private buildBookingFinanceSummary(values: {
-    clientInvoiceStatus: ClientInvoiceStatusValue;
-    supplierPaymentStatus: SupplierPaymentStatusValue;
+  private computeBookingFinanceMetrics(values: {
     pricingSnapshotJson: Prisma.JsonValue;
     snapshotJson: Prisma.JsonValue;
     services: Array<{
       status: BookingServiceLifecycleStatus;
       totalCost: number;
       totalSell: number;
+    }>;
+    payments: Array<{
+      type: PaymentTypeValue;
+      amount: number;
+      status: PaymentStatusValue;
+      dueDate?: string | Date | null;
     }>;
   }) {
     const pricingSnapshot = (values.pricingSnapshotJson || {}) as {
@@ -2691,8 +4677,50 @@ export class BookingsService {
     const hasNegativeMargin = realizedTotalSell > 0 && realizedMargin < 0;
     const hasLowMargin = realizedTotalSell > 0 && (realizedMargin < 0 || realizedMarginPercent < 10);
     const hasLowMarginWarning = realizedTotalSell > 0 && realizedMargin >= 0 && realizedMarginPercent < 10;
-    const hasUnpaidClientBalance = realizedTotalSell > 0 && values.clientInvoiceStatus !== 'paid';
-    const hasUnpaidSupplierObligation = realizedTotalCost > 0 && values.supplierPaymentStatus !== 'paid';
+    const effectiveTotalSell = this.roundMoney(realizedTotalSell || quotedTotalSell || 0);
+    const effectiveTotalCost = this.roundMoney(realizedTotalCost || quotedTotalCost || 0);
+    const clientPayments = values.payments.filter((payment) => payment.type === 'CLIENT');
+    const supplierPayments = values.payments.filter((payment) => payment.type === 'SUPPLIER');
+    const overdueClientPayments = clientPayments.filter((payment) => this.isPaymentOverdue(payment));
+    const overdueSupplierPayments = supplierPayments.filter((payment) => this.isPaymentOverdue(payment));
+    const clientPaidTotal = this.roundMoney(
+      clientPayments
+        .filter((payment) => payment.status === 'PAID')
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    );
+    const supplierPaidTotal = this.roundMoney(
+      supplierPayments
+        .filter((payment) => payment.status === 'PAID')
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    );
+    const clientOutstanding = this.roundMoney(Math.max(effectiveTotalSell - clientPaidTotal, 0));
+    const supplierOutstanding = this.roundMoney(Math.max(effectiveTotalCost - supplierPaidTotal, 0));
+    const overdueClientAmount = this.roundMoney(
+      overdueClientPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    );
+    const overdueSupplierAmount = this.roundMoney(
+      overdueSupplierPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    );
+    const clientInvoiceStatus: ClientInvoiceStatusValue =
+      effectiveTotalSell <= 0
+        ? 'unbilled'
+        : clientPaidTotal >= effectiveTotalSell
+          ? 'paid'
+          : clientPayments.length > 0
+            ? 'invoiced'
+            : 'unbilled';
+    const supplierPaymentStatus: SupplierPaymentStatusValue =
+      effectiveTotalCost <= 0
+        ? 'unpaid'
+        : supplierPaidTotal >= effectiveTotalCost
+          ? 'paid'
+          : supplierPayments.length > 0
+            ? 'scheduled'
+            : 'unpaid';
+    const hasUnpaidClientBalance = effectiveTotalSell > clientPaidTotal;
+    const hasUnpaidSupplierObligation = effectiveTotalCost > supplierPaidTotal;
+    const hasOverdueClientPayments = overdueClientPayments.length > 0;
+    const hasOverdueSupplierPayments = overdueSupplierPayments.length > 0;
 
     return {
       quotedTotalSell,
@@ -2703,18 +4731,52 @@ export class BookingsService {
       realizedTotalCost,
       realizedMargin,
       realizedMarginPercent,
-      clientInvoiceStatus: values.clientInvoiceStatus,
-      supplierPaymentStatus: values.supplierPaymentStatus,
+      effectiveTotalSell,
+      effectiveTotalCost,
+      clientPaidTotal,
+      supplierPaidTotal,
+      clientOutstanding,
+      supplierOutstanding,
+      overdueClientAmount,
+      overdueSupplierAmount,
+      overdueClientPayments,
+      overdueSupplierPayments,
+      clientInvoiceStatus,
+      supplierPaymentStatus,
       hasLowMargin,
       hasUnpaidClientBalance,
       hasUnpaidSupplierObligation,
+      overdueClientPaymentsCount: overdueClientPayments.length,
+      overdueSupplierPaymentsCount: overdueSupplierPayments.length,
+      hasOverdueClientPayments,
+      hasOverdueSupplierPayments,
       badge: buildFinanceBadge({
         hasUnpaidClientBalance,
         hasUnpaidSupplierObligation,
         hasNegativeMargin,
         hasLowMargin: hasLowMarginWarning,
+        hasOverdueClientPayments,
+        hasOverdueSupplierPayments,
       }),
     };
+  }
+
+  private buildBookingFinanceSummary(values: {
+    pricingSnapshotJson: Prisma.JsonValue;
+    snapshotJson: Prisma.JsonValue;
+    services: Array<{
+      status: BookingServiceLifecycleStatus;
+      totalCost: number;
+      totalSell: number;
+    }>;
+    payments: Array<{
+      type: PaymentTypeValue;
+      amount: number;
+      status: PaymentStatusValue;
+      dueDate?: string | Date | null;
+    }>;
+  }) {
+    return this.computeBookingFinanceMetrics(values);
   }
 
   private buildBookingOperationsSummary(
@@ -2803,6 +4865,342 @@ export class BookingsService {
     return Number(Number(value || 0).toFixed(2));
   }
 
+  private getFinanceDashboardPeriodWindow(lengthDays = 30) {
+    const currentEnd = new Date();
+    const currentStart = new Date(currentEnd);
+    currentStart.setHours(0, 0, 0, 0);
+    currentStart.setDate(currentStart.getDate() - (lengthDays - 1));
+
+    const previousEnd = new Date(currentStart);
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousStart.getDate() - lengthDays);
+
+    return {
+      currentStart,
+      currentEnd,
+      previousStart,
+      previousEnd,
+      lengthDays,
+    };
+  }
+
+  private buildFinanceSparklineSeriesWindow(lengthDays = 30) {
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const points: Date[] = [];
+
+    for (let index = lengthDays - 1; index >= 0; index -= 1) {
+      const point = new Date(end);
+      point.setDate(end.getDate() - index);
+      points.push(point);
+    }
+
+    return points;
+  }
+
+  private buildFinanceMonthlySeriesWindow(monthCount = 6) {
+    const now = new Date();
+    return Array.from({ length: monthCount }, (_, index) => {
+      const offset = monthCount - index - 1;
+      const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 1);
+      const label = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+      }).format(start);
+
+      return {
+        label,
+        start,
+        end,
+      };
+    });
+  }
+
+  private isDateInRange(value: string | Date | null | undefined, start: Date, endExclusive: Date) {
+    if (!value) {
+      return false;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return false;
+    }
+
+    return date.getTime() >= start.getTime() && date.getTime() < endExclusive.getTime();
+  }
+
+  private findFinanceSeriesIndex(value: string | Date | null | undefined, seriesDates: Date[]) {
+    if (!value) {
+      return -1;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return -1;
+    }
+
+    date.setHours(0, 0, 0, 0);
+    return seriesDates.findIndex((point) => point.getTime() === date.getTime());
+  }
+
+  private findFinanceMonthlySeriesIndex(
+    value: string | Date | null | undefined,
+    series: Array<{ start: Date; end: Date }>,
+  ) {
+    if (!value) {
+      return -1;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return -1;
+    }
+
+    return series.findIndex((point) => date.getTime() >= point.start.getTime() && date.getTime() < point.end.getTime());
+  }
+
+  private buildFinanceDashboardTrend(current: number, previous: number, unit: 'percent' | 'pp' = 'percent') {
+    const roundedCurrent = this.roundMoney(current);
+    const roundedPrevious = this.roundMoney(previous);
+    const delta = this.roundMoney(roundedCurrent - roundedPrevious);
+    const direction = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+    const changePercent =
+      roundedPrevious === 0
+        ? roundedCurrent === 0
+          ? 0
+          : 100
+        : Number(((Math.abs(delta) / Math.abs(roundedPrevious)) * 100).toFixed(1));
+
+    return {
+      direction,
+      delta,
+      changePercent,
+      unit,
+    };
+  }
+
+  private getBookingDashboardTitle(snapshotJson: Prisma.JsonValue) {
+    const snapshot = (snapshotJson || {}) as {
+      title?: string | null;
+    };
+
+    return snapshot.title?.trim() || 'Booking';
+  }
+
+  private getBookingDashboardClientName(clientSnapshotJson: Prisma.JsonValue, snapshotJson: Prisma.JsonValue) {
+    const clientSnapshot = (clientSnapshotJson || {}) as {
+      name?: string | null;
+    };
+    const snapshot = (snapshotJson || {}) as {
+      company?: {
+        name?: string | null;
+      } | null;
+    };
+
+    return clientSnapshot.name?.trim() || snapshot.company?.name?.trim() || 'Client pending';
+  }
+
+  private getBookingInvoiceDelivery(
+    auditLogs: Array<{ action: string; newValue?: string | null; createdAt: string | Date }>,
+  ) {
+    const latestDelivery = auditLogs.find((entry) => entry.action === 'booking_invoice_sent');
+
+    return {
+      sentAt: latestDelivery?.createdAt ?? null,
+      sentTo: latestDelivery?.newValue?.trim() || null,
+    };
+  }
+
+  private getLatestBookingAuditTimestamp(
+    auditLogs: Array<{ action: string; createdAt: string | Date }>,
+    action: string,
+  ) {
+    const latestEntry = auditLogs.find((entry) => entry.action === action);
+    return latestEntry?.createdAt ?? null;
+  }
+
+  private getBookingPaymentReminderDelivery(
+    auditLogs: Array<{ action: string; newValue?: string | null; createdAt: string | Date }>,
+  ) {
+    const latestDelivery = auditLogs.find((entry) => entry.action === 'booking_payment_reminder_sent');
+
+    return {
+      sentAt: latestDelivery?.createdAt ?? null,
+      sentTo: latestDelivery?.newValue?.trim() || null,
+    };
+  }
+
+  private getBookingPaymentProofSubmission(
+    auditLogs: Array<{ action: string; note?: string | null; createdAt: string | Date }>,
+  ) {
+    const latestProof = auditLogs.find((entry) => entry.action === 'booking_payment_proof_submitted');
+    if (!latestProof) {
+      return null;
+    }
+
+    const metadata = this.parseBookingPaymentProofMetadata(latestProof.note);
+    return {
+      reference: metadata.reference,
+      amount: metadata.amount,
+      receiptUrl: metadata.receiptUrl,
+      submittedAt: latestProof.createdAt,
+    };
+  }
+
+  private getPaymentProofMatchConfidence(values: { matchPct: number | null; hasReceipt: boolean }) {
+    if (values.matchPct !== null && values.matchPct >= 95 && values.matchPct <= 105 && values.hasReceipt) {
+      return 'high' as const;
+    }
+
+    if (
+      (values.matchPct !== null && values.matchPct >= 90 && values.matchPct <= 110) ||
+      (values.matchPct !== null && values.matchPct >= 95 && values.matchPct <= 105) ||
+      values.hasReceipt
+    ) {
+      return 'medium' as const;
+    }
+
+    return 'low' as const;
+  }
+
+  private parseBookingPaymentProofMetadata(note: string | null | undefined) {
+    if (!note?.trim()) {
+      return {
+        reference: null,
+        amount: null,
+        receiptUrl: null,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(note) as {
+        reference?: string | null;
+        amount?: number | null;
+        receiptUrl?: string | null;
+      };
+
+      return {
+        reference: this.normalizeOptionalText(parsed.reference) || null,
+        amount:
+          typeof parsed.amount === 'number' && Number.isFinite(parsed.amount)
+            ? this.roundMoney(parsed.amount)
+            : null,
+        receiptUrl: this.normalizeOptionalText(parsed.receiptUrl) || null,
+      };
+    } catch {
+      return {
+        reference: null,
+        amount: null,
+        receiptUrl: null,
+      };
+    }
+  }
+
+  private getBookingPaymentReminderAutomation(values: {
+    auditLogs: Array<{ action: string; newValue?: string | null; createdAt: string | Date }>;
+    payments: DerivedPaymentRecord[];
+    finance: {
+      hasUnpaidClientBalance: boolean;
+      hasOverdueClientPayments: boolean;
+    };
+  }) {
+    const reminderLogs = values.auditLogs.filter((entry) => entry.action === 'booking_payment_reminder_sent');
+    const latestReminder = reminderLogs[0] || null;
+    const maxOverdueDays = values.payments
+      .filter((payment) => payment.type === 'CLIENT' && payment.overdue)
+      .reduce((max, payment) => Math.max(max, payment.overdueDays || 0), 0);
+    const stage = this.getPaymentReminderStage(maxOverdueDays);
+    const cooldownMs = 48 * 60 * 60 * 1000;
+    const lastReminderAt = latestReminder?.createdAt ?? null;
+    const nextReminderDueAt =
+      values.finance.hasUnpaidClientBalance && values.finance.hasOverdueClientPayments
+        ? lastReminderAt
+          ? new Date(new Date(lastReminderAt).getTime() + cooldownMs)
+          : new Date()
+        : null;
+
+    return {
+      reminderCount: reminderLogs.length,
+      lastReminderAt,
+      nextReminderDueAt,
+      autoActive: values.finance.hasUnpaidClientBalance,
+      stage,
+    };
+  }
+
+  private getPaymentReminderStage(overdueDays: number) {
+    if (overdueDays >= 7) {
+      return 'urgent' as const;
+    }
+
+    if (overdueDays >= 4) {
+      return 'firm' as const;
+    }
+
+    return 'gentle' as const;
+  }
+
+  private getCachedValue<T>(key: string) {
+    const entry = this.analyticsCache.get(key);
+
+    if (!entry) {
+      return null;
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+      this.analyticsCache.delete(key);
+      return null;
+    }
+
+    return entry.value as T;
+  }
+
+  private setCachedValue<T>(key: string, value: T, ttlMs: number) {
+    this.analyticsCache.set(key, {
+      value,
+      expiresAt: Date.now() + ttlMs,
+    });
+
+    return value;
+  }
+
+  private async withAnalyticsCache<T>(key: string, ttlMs: number, factory: () => Promise<T>) {
+    const cachedValue = this.getCachedValue<T>(key);
+    if (cachedValue !== null) {
+      return cachedValue;
+    }
+
+    const value = await factory();
+    return this.setCachedValue(key, value, ttlMs);
+  }
+
+  private invalidateAnalyticsCaches() {
+    this.analyticsCache.clear();
+  }
+
+  private resolveInvoiceRecipientEmail(
+    booking: {
+      quote?: {
+        contact?: {
+          email?: string | null;
+        } | null;
+      } | null;
+      contactSnapshotJson?: Prisma.JsonValue;
+    },
+    overrideEmail?: string | null,
+  ) {
+    const contactSnapshot = (booking.contactSnapshotJson || {}) as {
+      email?: string | null;
+    };
+
+    return (
+      this.normalizeOptionalText(overrideEmail) ||
+      this.normalizeOptionalText(booking.quote?.contact?.email) ||
+      this.normalizeOptionalText(contactSnapshot.email) ||
+      null
+    );
+  }
+
   private formatBookingFinanceStatusSummary(
     clientInvoiceStatus: ClientInvoiceStatusValue,
     supplierPaymentStatus: SupplierPaymentStatusValue,
@@ -2823,7 +5221,7 @@ export class BookingsService {
     const totalPax = Number(booking.adults || 0) + Number(booking.children || 0);
     const sortedDays = [...(snapshot.itineraries || [])].sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0));
     const leadPassenger =
-      booking.passengers?.find((passenger) => passenger.isLead) ||
+      booking.passengers?.find((passenger: any) => passenger.isLead) ||
       booking.passengers?.[0] ||
       null;
     const passengerCount = booking.passengers?.length || 0;
@@ -2916,10 +5314,10 @@ export class BookingsService {
         .map((day) => [day.id, day]),
     );
     const supplierGroups = (booking.services || [])
-      .filter((service) => service.supplierId || service.supplierName)
-      .reduce<Array<{ key: string; supplierName: string; services: any[] }>>((groups, service) => {
+      .filter((service: any) => service.supplierId || service.supplierName)
+      .reduce((groups: Array<{ key: string; supplierName: string; services: any[] }>, service: any) => {
         const key = service.supplierId || service.supplierName || service.id;
-        const existing = groups.find((group) => group.key === key);
+        const existing = groups.find((group: any) => group.key === key);
 
         if (existing) {
           existing.services.push(service);
@@ -2934,7 +5332,7 @@ export class BookingsService {
 
         return groups;
       }, [])
-      .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
+      .sort((a: any, b: any) => a.supplierName.localeCompare(b.supplierName));
 
     return this.createPdf((doc) => {
       this.writeDocumentTitle(doc, 'Supplier Confirmation Sheet', booking.bookingRef || 'Booking');
@@ -2972,6 +5370,102 @@ export class BookingsService {
           ]);
         }
       }
+      });
+  }
+
+  async generateInvoicePdf(id: string, mode: BookingInvoiceMode = 'ITEMIZED') {
+    const booking = await this.findOne(id);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot;
+    const clientSnapshot = (booking.clientSnapshotJson || {}) as BookingPdfCompany;
+    const brandSnapshot = (booking.brandSnapshotJson || {}) as BookingPdfCompany;
+    const contactSnapshot = (booking.contactSnapshotJson || {}) as BookingPdfContact;
+    const companyName = brandSnapshot.name || clientSnapshot.name || booking.quote?.company?.name || 'Company';
+    const invoiceNumber = this.buildBookingInvoiceNumber(booking.bookingRef || booking.id);
+    const invoiceDate = new Date();
+    const payments = this.listPersistedBookingPayments(booking);
+    const clientPayments = payments.filter((payment) => payment.type === 'CLIENT');
+    const clientPaid = this.roundMoney(
+      clientPayments.filter((payment) => payment.status === 'PAID').reduce((sum, payment) => sum + payment.amount, 0),
+    );
+    const totalSell = this.roundMoney(booking.finance.realizedTotalSell || booking.finance.quotedTotalSell || 0);
+    const outstanding = this.roundMoney(Math.max(totalSell - clientPaid, 0));
+    const packageName = this.formatClientFacingPackageTitle(
+      snapshot.title || booking.quote?.title || booking.bookingRef || 'Travel package',
+    );
+    const packageDuration = this.formatPackageDuration(snapshot.nightCount || booking.nightCount || 0);
+    const packageDescription = this.buildPackageInvoiceDescription({
+      title: packageName,
+      bookingType: booking.bookingType,
+      nightCount: snapshot.nightCount || booking.nightCount,
+      travelStartDate: (snapshot as { travelStartDate?: string | null }).travelStartDate || null,
+    });
+    const lineItems =
+      mode === 'ITEMIZED'
+        ? (booking.services || [])
+            .filter((service: any) => service.status !== BookingServiceLifecycleStatus.cancelled)
+            .map((service: any) => ({
+              name: service.description || service.serviceType || 'Service',
+              date: service.serviceDate ? this.formatDate(service.serviceDate) : 'Date pending',
+              price: this.roundMoney(Number(service.totalSell || 0)),
+              description: null,
+            }))
+        : [];
+    const logoBuffer = await this.fetchImageBuffer(brandSnapshot.logoUrl || booking.quote?.brandCompany?.logoUrl || null);
+
+    return this.createPdf((doc) => {
+
+      this.writeInvoiceHeader(doc, {
+        companyName,
+        logoBuffer,
+        invoiceNumber,
+        invoiceDate,
+        bookingRef: booking.bookingRef || booking.id,
+        mode,
+      });
+
+      this.writeSectionTitle(doc, 'Bill To');
+      this.writeKeyValue(doc, 'Client', clientSnapshot.name || booking.quote?.company?.name || 'Client');
+      this.writeKeyValue(doc, 'Contact', this.formatFullName(contactSnapshot));
+      this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
+      doc.moveDown(0.6);
+
+      if (mode === 'PACKAGE') {
+        this.writePackageInvoiceBlock(doc, {
+          name: packageName,
+          duration: packageDuration,
+          description: packageDescription,
+          total: totalSell,
+        });
+      } else if (lineItems.length === 0) {
+        this.writeSectionTitle(doc, 'Services');
+        this.writeBodyLine(doc, 'No booking services are currently available to invoice.');
+      } else {
+        this.writeSectionTitle(doc, 'Services');
+        this.writeInvoiceTable(doc, lineItems);
+      }
+
+      this.writeSectionTitle(doc, 'Summary');
+      this.writeInvoiceSummaryBlock(doc, {
+        total: totalSell,
+        paid: clientPaid,
+        outstanding,
+        payments: clientPayments.map((payment) => ({
+          amount: payment.amount,
+          status: payment.status,
+          date: this.formatDate(payment.status === 'PAID' ? payment.paidAt : payment.dueDate),
+        })),
+      });
+
+      this.writeInvoiceFooterBox(doc, [
+        `Please remit payment by bank transfer or approved settlement method using invoice reference ${invoiceNumber}.`,
+        `Reference booking ${booking.bookingRef || booking.id} on all payment correspondence.`,
+        `Current outstanding balance: ${this.formatMoney(outstanding)}.`,
+      ]);
     });
   }
 
@@ -3009,20 +5503,25 @@ export class BookingsService {
 
     const transporter = this.createMailTransport();
     const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to: email,
-      subject: `${documentLabel} - ${booking.bookingRef || 'Booking'}`,
-      text: `Please find attached the ${documentLabel.toLowerCase()} for booking reference ${booking.bookingRef || input.bookingId}.`,
-      attachments: [
-        {
-          filename: attachmentFileName,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
-    });
+    const info = await this.sendMailWithRetry(
+      transporter,
+      {
+        from: fromAddress,
+        to: email,
+        subject: `${documentLabel} - ${booking.bookingRef || 'Booking'}`,
+        text: `Please find attached the ${documentLabel.toLowerCase()} for booking reference ${booking.bookingRef || input.bookingId}.`,
+        attachments: [
+          {
+            filename: attachmentFileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      { bookingId: input.bookingId, action: 'send-document-email' },
+    );
 
+    this.invalidateAnalyticsCaches();
     return {
       ok: true,
       email,
@@ -3031,6 +5530,462 @@ export class BookingsService {
       messageId: info.messageId || null,
       preview: 'message' in info && Buffer.isBuffer(info.message) ? info.message.toString('utf8') : null,
     };
+  }
+
+  async sendInvoice(
+    bookingId: string,
+    input: {
+      email?: string | null;
+      mode?: BookingInvoiceMode;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const booking = await (this.prisma.booking as any).findFirst({
+      where: {
+        id: bookingId,
+        ...this.buildBookingCompanyWhere(input.companyActor),
+      },
+      include: {
+        quote: {
+          include: {
+            contact: true,
+          },
+        },
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 12,
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const email = this.resolveInvoiceRecipientEmail(booking, input.email);
+    if (!email) {
+      throw new BadRequestException('No recipient email is available for this booking invoice');
+    }
+
+    const normalizedMode: BookingInvoiceMode = input.mode === 'ITEMIZED' ? 'ITEMIZED' : 'PACKAGE';
+    const pdfBuffer = await this.generateInvoicePdf(bookingId, normalizedMode);
+    const attachmentFileName = `${`${booking.bookingRef || 'booking'}-invoice`
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'booking-invoice'}.pdf`;
+    const transporter = this.createMailTransport();
+    const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
+    const info = await this.sendMailWithRetry(
+      transporter,
+      {
+        from: fromAddress,
+        to: email,
+        subject: `Booking Invoice - ${booking.bookingRef || 'Booking'}`,
+        text: `Please find attached the booking invoice for booking reference ${booking.bookingRef || bookingId}.`,
+        attachments: [
+          {
+            filename: attachmentFileName,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      },
+      { bookingId, action: 'send-invoice' },
+    );
+
+    const previousDelivery = this.getBookingInvoiceDelivery(booking.auditLogs || []);
+    const auditLog = await this.prisma.bookingAuditLog.create({
+      data: {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_invoice_sent',
+        oldValue: previousDelivery.sentTo,
+        newValue: email,
+        note: info.messageId ? `${normalizedMode} | ${info.messageId}` : normalizedMode,
+        actorUserId: this.normalizeActorUserId(input.actor),
+        actor: this.normalizeActorLabel(input.actor),
+      },
+    });
+
+    await this.auditService.log({
+      actor: input.companyActor ? { id: input.actor?.userId ?? null, companyId: input.companyActor.companyId } : null,
+      action: 'invoice.sent',
+      entity: 'booking',
+      entityId: bookingId,
+      metadata: {
+        sentTo: email,
+        mode: normalizedMode,
+        messageId: info.messageId || null,
+      },
+    });
+
+    this.invalidateAnalyticsCaches();
+    return {
+      ok: true,
+      bookingId,
+      sentAt: auditLog.createdAt,
+      sentTo: email,
+      mode: normalizedMode,
+      messageId: info.messageId || null,
+      preview: 'message' in info && Buffer.isBuffer(info.message) ? info.message.toString('utf8') : null,
+    };
+  }
+
+  async sendPaymentReminder(
+    bookingId: string,
+    input: {
+      email?: string | null;
+      actor?: AuditActor;
+      stage?: 'gentle' | 'firm' | 'urgent';
+      automated?: boolean;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const booking = await this.findOne(bookingId, input.companyActor);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const email = this.resolveInvoiceRecipientEmail(booking, input.email);
+    if (!email) {
+      throw new BadRequestException('No recipient email is available for this booking payment reminder');
+    }
+
+    const outstandingAmount = this.roundMoney(
+      Math.max(Number(booking.finance.realizedTotalSell || booking.finance.quotedTotalSell || 0) -
+        booking.payments
+          .filter((payment: DerivedPaymentRecord) => payment.type === 'CLIENT' && payment.status === 'PAID')
+          .reduce((sum: number, payment: DerivedPaymentRecord) => sum + payment.amount, 0), 0),
+    );
+
+    if (outstandingAmount <= 0) {
+      throw new BadRequestException('This booking does not have an outstanding client balance');
+    }
+
+    const overdueAmount = this.roundMoney(
+      booking.payments
+        .filter((payment: DerivedPaymentRecord) => payment.type === 'CLIENT' && payment.overdue)
+        .reduce((sum: number, payment: DerivedPaymentRecord) => sum + payment.amount, 0),
+    );
+    const maxOverdueDays = booking.payments
+      .filter((payment: DerivedPaymentRecord) => payment.type === 'CLIENT' && payment.overdue)
+      .reduce((max: number, payment: DerivedPaymentRecord) => Math.max(max, payment.overdueDays || 0), 0);
+    const reminderStage = input.stage || this.getPaymentReminderStage(maxOverdueDays);
+    const invoiceReference =
+      booking.finance.clientInvoiceStatus !== 'unbilled'
+        ? this.buildBookingInvoiceNumber(booking.bookingRef || booking.id)
+        : null;
+
+    const transporter = this.createMailTransport();
+    const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
+    const subjectPrefix =
+      reminderStage === 'urgent'
+        ? 'Urgent Payment Reminder'
+        : reminderStage === 'firm'
+          ? 'Payment Reminder'
+          : 'Friendly Payment Reminder';
+    const subject = `${subjectPrefix} - ${booking.bookingRef || 'Booking'}`;
+    const lines = [
+      `Hello,`,
+      ``,
+      reminderStage === 'urgent'
+        ? `This is an urgent reminder regarding booking reference ${booking.bookingRef || booking.id}.`
+        : reminderStage === 'firm'
+          ? `This is a reminder regarding booking reference ${booking.bookingRef || booking.id}.`
+          : `This is a friendly reminder regarding booking reference ${booking.bookingRef || booking.id}.`,
+      `Outstanding amount: ${this.formatMoney(outstandingAmount)}.`,
+      overdueAmount > 0 ? `Overdue amount: ${this.formatMoney(overdueAmount)}.` : null,
+      invoiceReference ? `Invoice reference: ${invoiceReference}.` : null,
+      reminderStage === 'urgent'
+        ? `Please arrange payment as soon as possible, or reply immediately if you need a copy of the invoice or payment details.`
+        : reminderStage === 'firm'
+          ? `Please arrange payment promptly, or reply if you need a copy of the invoice or payment details.`
+          : `Please arrange payment at your earliest convenience, or reply if you need a copy of the invoice or payment details.`,
+      ``,
+      `Thank you.`,
+    ].filter(Boolean) as string[];
+    const info = await this.sendMailWithRetry(
+      transporter,
+      {
+        from: fromAddress,
+        to: email,
+        subject,
+        text: lines.join('\n'),
+      },
+      { bookingId, action: 'send-payment-reminder' },
+    );
+
+    const previousDelivery = this.getBookingPaymentReminderDelivery(booking.auditLogs || []);
+    const auditLog = await this.prisma.bookingAuditLog.create({
+      data: {
+        bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: bookingId,
+        action: 'booking_payment_reminder_sent',
+        oldValue: previousDelivery.sentTo,
+        newValue: email,
+        note: [
+          `stage=${reminderStage}`,
+          input.automated ? 'automated=true' : 'automated=false',
+          `outstanding=${this.formatMoney(outstandingAmount)}`,
+          overdueAmount > 0 ? `overdue=${this.formatMoney(overdueAmount)}` : null,
+          invoiceReference ? `invoice=${invoiceReference}` : null,
+          info.messageId ? `messageId=${info.messageId}` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        actorUserId: this.normalizeActorUserId(input.actor),
+        actor: this.normalizeActorLabel(input.actor),
+      },
+    });
+    const reminderAutomation = this.getBookingPaymentReminderAutomation({
+      auditLogs: [auditLog, ...(booking.auditLogs || [])],
+      payments: booking.payments,
+      finance: booking.finance,
+    });
+
+    this.invalidateAnalyticsCaches();
+    return {
+      ok: true,
+      bookingId,
+      sentAt: auditLog.createdAt,
+      sentTo: email,
+      reminderStage,
+      reminderCount: reminderAutomation.reminderCount,
+      lastReminderAt: reminderAutomation.lastReminderAt,
+      nextReminderDueAt: reminderAutomation.nextReminderDueAt,
+      outstandingAmount,
+      overdueAmount,
+      invoiceReference,
+      messageId: info.messageId || null,
+      preview: 'message' in info && Buffer.isBuffer(info.message) ? info.message.toString('utf8') : null,
+    };
+  }
+
+  private async sendPaymentConfirmationEmail(values: {
+    bookingId: string;
+    paymentId: string;
+    amount: number;
+    currency: string;
+    actor?: AuditActor;
+  }) {
+    const booking = await (this.prisma.booking as any).findUnique({
+      where: { id: values.bookingId },
+      include: {
+        quote: {
+          include: {
+            contact: true,
+          },
+        },
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 12,
+        },
+      },
+    });
+
+    if (!booking) {
+      return {
+        sent: false,
+        sentAt: null,
+        sentTo: null,
+      };
+    }
+
+    const email = this.resolveInvoiceRecipientEmail(booking);
+    if (!email) {
+      return {
+        sent: false,
+        sentAt: null,
+        sentTo: null,
+      };
+    }
+
+    const invoiceReference = this.getBookingInvoiceDelivery(booking.auditLogs || []).sentAt
+      ? this.buildBookingInvoiceNumber(booking.bookingRef || booking.id)
+      : null;
+    const transporter = this.createMailTransport();
+    const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
+    const subject = `Payment Confirmed - ${booking.bookingRef || 'Booking'}`;
+    const lines = [
+      'Hello,',
+      '',
+      `We have confirmed receipt of your payment for booking reference ${booking.bookingRef || booking.id}.`,
+      `Amount confirmed: ${this.formatMoney(values.amount, values.currency)}.`,
+      invoiceReference ? `Invoice reference: ${invoiceReference}.` : null,
+      '',
+      'Thank you for your payment.',
+    ].filter(Boolean) as string[];
+
+    const info = await this.sendMailWithRetry(
+      transporter,
+      {
+        from: fromAddress,
+        to: email,
+        subject,
+        text: lines.join('\n'),
+      },
+      { bookingId: values.bookingId, action: 'send-payment-confirmation' },
+    );
+
+    const auditLog = await this.prisma.bookingAuditLog.create({
+      data: {
+        bookingId: values.bookingId,
+        entityType: BookingAuditEntityType.booking,
+        entityId: values.bookingId,
+        action: 'booking_payment_confirmation_sent',
+        oldValue: null,
+        newValue: email,
+        note: [
+          `paymentId=${values.paymentId}`,
+          `amount=${this.formatMoney(values.amount, values.currency)}`,
+          invoiceReference ? `invoice=${invoiceReference}` : null,
+          info.messageId ? `messageId=${info.messageId}` : null,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        actorUserId: this.normalizeActorUserId(values.actor),
+        actor: this.normalizeActorLabel(values.actor),
+      },
+    });
+
+    return {
+      sent: true,
+      sentAt: auditLog.createdAt,
+      sentTo: email,
+    };
+  }
+
+  private async processAutomatedPaymentReminders() {
+    if (this.isProcessingReminderAutomation) {
+      return;
+    }
+
+    this.isProcessingReminderAutomation = true;
+
+    try {
+      const companyIds = await this.listCompanyIdsForSystemJobs();
+
+      for (const companyId of companyIds) {
+        await this.processAutomatedPaymentRemindersForCompany(companyId);
+      }
+    } finally {
+      this.isProcessingReminderAutomation = false;
+    }
+  }
+
+  private async processAutomatedPaymentRemindersForCompany(companyId: string) {
+    const actor = { companyId };
+    const bookings = await (this.prisma.booking as any).findMany({
+      where: this.buildBookingCompanyWhere(actor),
+      include: {
+        quote: {
+          include: {
+            contact: true,
+          },
+        },
+        auditLogs: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 20,
+        },
+        payments: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+        services: true,
+        passengers: {
+          select: {
+            id: true,
+            roomingAssignments: {
+              select: {
+                bookingRoomingEntryId: true,
+              },
+            },
+          },
+        },
+        roomingEntries: {
+          select: {
+            id: true,
+            occupancy: true,
+            assignments: {
+              select: {
+                bookingPassenger: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+
+    for (const booking of bookings) {
+      const payments: DerivedPaymentRecord[] = this.sortPaymentRecords(
+        (booking.payments || []).map((payment: any) => this.mapPaymentRecord(payment)),
+      );
+      const finance = this.buildBookingFinanceSummary({
+        pricingSnapshotJson: booking.pricingSnapshotJson,
+        snapshotJson: booking.snapshotJson,
+        services: booking.services,
+        payments,
+      });
+      const automation = this.getBookingPaymentReminderAutomation({
+        auditLogs: booking.auditLogs || [],
+        payments,
+        finance,
+      });
+
+      if (!finance.hasUnpaidClientBalance || !finance.hasOverdueClientPayments || !automation.autoActive) {
+        continue;
+      }
+
+      if (!automation.nextReminderDueAt || new Date(automation.nextReminderDueAt).getTime() > now.getTime()) {
+        continue;
+      }
+
+      try {
+        await this.sendPaymentReminder(booking.id, {
+          actor: { label: 'Automation' },
+          stage: automation.stage,
+          automated: true,
+          companyActor: actor,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Automated reminder failed';
+        console.error('Automated payment reminder failed', {
+          companyId,
+          bookingId: booking.id,
+          bookingRef: booking.bookingRef,
+          message,
+        });
+      }
+    }
+  }
+
+  private async listCompanyIdsForSystemJobs() {
+    const companies = await this.prisma.company.findMany({
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    return companies.map((company) => company.id);
   }
 
   private createPdf(write: (doc: PDFKit.PDFDocument) => void) {
@@ -3070,7 +6025,10 @@ export class BookingsService {
 
   private writeSectionTitle(doc: PDFKit.PDFDocument, title: string) {
     this.ensurePageSpace(doc, 60);
-    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text(title);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text(title.replace(/\s*\n+\s*/g, ' ').trim(), {
+      width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+      lineBreak: false,
+    });
     doc.moveDown(0.45);
   }
 
@@ -3088,6 +6046,131 @@ export class BookingsService {
     doc.moveDown(0.45);
   }
 
+  private writeInvoiceHeader(
+    doc: PDFKit.PDFDocument,
+    values: {
+      companyName: string;
+      logoBuffer: Buffer | null;
+      invoiceNumber: string;
+      invoiceDate: Date;
+      bookingRef: string;
+      mode: BookingInvoiceMode;
+    },
+  ) {
+    const topY = doc.y;
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const rightColumnX = doc.page.margins.left + pageWidth - 176;
+    const leftColumnX = doc.page.margins.left;
+    const leftColumnWidth = pageWidth - 210;
+    let companyNameY = topY;
+
+    if (values.logoBuffer) {
+      try {
+        doc.image(values.logoBuffer, leftColumnX, topY, {
+          fit: [118, 46],
+        });
+        companyNameY = topY + 54;
+      } catch {
+        companyNameY = topY;
+      }
+    }
+
+    doc.y = companyNameY;
+    doc.font('Helvetica-Bold').fontSize(22).fillColor('#111111').text(values.companyName, leftColumnX, doc.y, {
+      width: leftColumnWidth,
+    });
+    doc.moveDown(0.5);
+    const invoiceTitleY = doc.y;
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f766e').text('BOOKING INVOICE', leftColumnX, doc.y, {
+      width: leftColumnWidth,
+      align: 'left',
+      lineBreak: false,
+    });
+
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text(`Invoice #: ${values.invoiceNumber}`, rightColumnX, topY + 8, {
+      width: 180,
+      align: 'right',
+    });
+    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(
+      `Date: ${this.formatDate(values.invoiceDate)}`,
+      rightColumnX,
+      topY + 32,
+      {
+        width: 180,
+        align: 'right',
+      },
+    );
+    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(`Booking Ref: ${values.bookingRef}`, rightColumnX, topY + 62, {
+      width: 180,
+      align: 'right',
+    });
+    if (values.mode !== 'PACKAGE') {
+      doc.font('Helvetica').fontSize(10).fillColor('#0f766e').text('Itemized invoice', rightColumnX, topY + 78, {
+        width: 180,
+        align: 'right',
+      });
+    }
+
+    const dividerY = Math.max(invoiceTitleY + 18, topY + (values.mode !== 'PACKAGE' ? 104 : 90));
+    doc
+      .moveTo(doc.page.margins.left, dividerY)
+      .lineTo(doc.page.width - doc.page.margins.right, dividerY)
+      .strokeColor('#d8d0c6')
+      .lineWidth(1)
+      .stroke();
+    doc.y = dividerY + 14;
+  }
+
+  private writePackageInvoiceBlock(
+    doc: PDFKit.PDFDocument,
+    values: {
+      name: string;
+      duration: string;
+      description: string | null;
+      total: number;
+    },
+  ) {
+    this.ensurePageSpace(doc, 172);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Package');
+    doc.moveDown(0.45);
+    const startX = doc.page.margins.left;
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const startY = doc.y;
+
+    doc.roundedRect(startX, startY, width, 112, 16).fillAndStroke('#fbf8f3', '#ddd3c7');
+    doc.font('Helvetica-Bold').fontSize(19).fillColor('#111111').text(values.name, startX + 18, startY + 24, {
+      width: width - 180,
+    });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b6258').text('Trip length', startX + 18, startY + 66);
+    doc.font('Helvetica').fontSize(11).fillColor('#1f2937').text(values.duration, startX + 18, startY + 80, {
+      width: width - 210,
+    });
+
+    if (values.description) {
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b6258').text('Inclusions', startX + 150, startY + 66);
+      doc.font('Helvetica').fontSize(11).fillColor('#1f2937').text(values.description, startX + 150, startY + 80, {
+        width: width - 330,
+      });
+    }
+
+    doc.roundedRect(startX + width - 148, startY + 18, 130, 76, 14).fillAndStroke('#f1fbf8', '#c6e4dc');
+    doc.font('Helvetica').fontSize(10).fillColor('#0f766e').text('Package Total', startX + width - 132, startY + 34, {
+      width: 98,
+      align: 'right',
+    });
+    doc.font('Helvetica-Bold').fontSize(20).fillColor('#111111').text(
+      this.formatMoney(values.total),
+      startX + width - 136,
+      startY + 52,
+      {
+        width: 104,
+        align: 'right',
+      },
+    );
+
+    doc.y = startY + 126;
+  }
+
   private writeListItem(doc: PDFKit.PDFDocument, title: string, lines: Array<string | null>) {
     this.ensurePageSpace(doc, 70);
     doc.font('Helvetica-Bold').fontSize(11).fillColor('#111111').text(title);
@@ -3101,6 +6184,186 @@ export class BookingsService {
     doc.moveDown(0.6);
   }
 
+  private writeInvoiceTable(
+    doc: PDFKit.PDFDocument,
+    rows: Array<{
+      name: string;
+      date: string;
+      price: number;
+      description?: string | null;
+    }>,
+  ) {
+    const startX = doc.page.margins.left;
+    const serviceWidth = 305;
+    const dateX = startX + serviceWidth + 10;
+    const dateWidth = 95;
+    const priceX = dateX + dateWidth + 10;
+    const priceWidth = 70;
+    const tableWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    this.ensurePageSpace(doc, 44);
+    doc.roundedRect(startX, doc.y - 2, tableWidth, 24, 8).fillAndStroke('#f3eee7', '#dfd6cb');
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#111111');
+    doc.text('Service', startX + 10, doc.y + 5, { width: serviceWidth - 10 });
+    doc.text('Date', dateX, doc.y + 5, { width: dateWidth });
+    doc.text('Price', priceX, doc.y + 5, { width: priceWidth, align: 'right' });
+    doc.y += 28;
+    doc
+      .moveTo(startX, doc.y)
+      .lineTo(startX + tableWidth, doc.y)
+      .strokeColor('#d6cec5')
+      .lineWidth(1)
+      .stroke();
+    doc.moveDown(0.35);
+
+    rows.forEach((row, index) => {
+      this.ensurePageSpace(doc, 68);
+      const rowY = doc.y;
+      if (index % 2 === 0) {
+        doc.roundedRect(startX, rowY - 4, tableWidth, 42, 8).fill('#fcfaf7');
+      }
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#1a1a1a').text(row.name, startX + 10, rowY, { width: serviceWidth - 10 });
+      let serviceBottomY = doc.y;
+      if (row.description) {
+        doc.font('Helvetica').fontSize(9.5).fillColor('#666666').text(row.description, startX + 10, serviceBottomY + 2, {
+          width: serviceWidth - 10,
+        });
+        serviceBottomY = doc.y;
+      }
+      doc.font('Helvetica').fontSize(10).fillColor('#555555').text(row.date, dateX, rowY, { width: dateWidth });
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111111').text(this.formatMoney(row.price), priceX, rowY, {
+        width: priceWidth,
+        align: 'right',
+      });
+      doc.y = Math.max(serviceBottomY, rowY + 18);
+      doc.moveDown(0.4);
+      doc
+        .moveTo(startX, doc.y)
+        .lineTo(startX + tableWidth, doc.y)
+        .strokeColor('#efe7de')
+        .lineWidth(1)
+        .stroke();
+      doc.moveDown(0.4);
+    });
+  }
+
+  private writeInvoiceSummaryBlock(
+    doc: PDFKit.PDFDocument,
+    values: {
+      total: number;
+      paid: number;
+      outstanding: number;
+      payments: Array<{
+        amount: number;
+        status: 'PENDING' | 'PAID';
+        date: string;
+      }>;
+    },
+  ) {
+    this.ensurePageSpace(doc, 190);
+    const startX = doc.page.width - doc.page.margins.right - 220;
+    const blockWidth = 220;
+    const blockY = doc.y;
+
+    doc.roundedRect(startX, blockY, blockWidth, 102, 12).fillAndStroke('#f8f4ee', '#ddd3c7');
+    let y = blockY + 14;
+    [
+      ['Total', this.formatMoney(values.total)],
+      ['Paid', this.formatMoney(values.paid)],
+      ['Outstanding', this.formatMoney(values.outstanding)],
+    ].forEach(([label, amount], index) => {
+      const emphasis = index === 2;
+      if (emphasis) {
+        doc.roundedRect(startX + 10, y - 6, blockWidth - 20, 28, 10).fill('#fff1ef');
+      }
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b6258').text(label, startX + 14, y, { width: 90 });
+      doc
+        .font(emphasis ? 'Helvetica-Bold' : 'Helvetica-Bold')
+        .fontSize(emphasis ? 15 : 11)
+        .fillColor(emphasis ? '#b42318' : '#111111')
+        .text(amount, startX + 90, y - 1, { width: 116, align: 'right' });
+      y += 26;
+    });
+    doc.y = blockY + 118;
+
+    if (values.payments.length > 0) {
+      this.ensurePageSpace(doc, 108);
+      const paymentsX = doc.page.margins.left;
+      const paymentsWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+      const tableY = doc.y + 8;
+      const amountWidth = 138;
+      const statusWidth = 92;
+      const dateWidth = 108;
+      const amountX = paymentsX + 14;
+      const statusX = amountX + amountWidth + 18;
+      const dateX = paymentsX + paymentsWidth - dateWidth - 14;
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#6b6258').text('Payments', paymentsX, tableY - 4);
+      doc.roundedRect(paymentsX, tableY + 16, paymentsWidth, 24, 8).fillAndStroke('#f3eee7', '#dfd6cb');
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#111111');
+      doc.text('Amount', amountX, tableY + 23, { width: amountWidth, align: 'right' });
+      doc.text('Status', statusX, tableY + 23, { width: statusWidth, align: 'center' });
+      doc.text('Date', dateX, tableY + 23, { width: dateWidth, align: 'right' });
+
+      let rowY = tableY + 48;
+      values.payments.forEach((payment, index) => {
+        this.ensurePageSpace(doc, 38);
+        if (index % 2 === 0) {
+          doc.roundedRect(paymentsX, rowY - 5, paymentsWidth, 26, 8).fill('#fcfaf7');
+        }
+        doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#111111').text(
+          this.formatMoney(payment.amount),
+          amountX,
+          rowY,
+          {
+            width: amountWidth,
+            align: 'right',
+          },
+        );
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(payment.status === 'PAID' ? '#0f766e' : '#b45309').text(
+          payment.status === 'PAID' ? 'Paid' : 'Pending',
+          statusX,
+          rowY,
+          {
+            width: statusWidth,
+            align: 'center',
+          },
+        );
+        doc.font('Helvetica').fontSize(10).fillColor('#4b5563').text(payment.date, dateX, rowY, {
+          width: dateWidth,
+          align: 'right',
+        });
+        rowY += 30;
+      });
+      doc.y = rowY + 6;
+    }
+  }
+
+  private writeInvoiceFooterBox(doc: PDFKit.PDFDocument, lines: string[]) {
+    this.ensurePageSpace(doc, 136);
+    doc.font('Helvetica-Bold').fontSize(13).fillColor('#111111').text('Payment Instructions', {
+      width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+      lineBreak: false,
+    });
+    doc.moveDown(0.45);
+    const startX = doc.page.margins.left;
+    const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const startY = doc.y;
+    const lineHeight = 16;
+    const boxHeight = Math.max(72, 20 + lines.length * lineHeight + 12);
+
+    doc.roundedRect(startX, startY, width, boxHeight, 12).fillAndStroke('#f4f8f7', '#cfe3df');
+    let textY = startY + 16;
+    lines.forEach((line) => {
+      doc.font('Helvetica').fontSize(10).fillColor('#334155').text(line, startX + 14, textY, {
+        width: width - 28,
+        lineGap: 2,
+      });
+      textY = doc.y + 4;
+    });
+    doc.y = startY + boxHeight + 8;
+  }
+
   private ensurePageSpace(doc: PDFKit.PDFDocument, minimumHeight: number) {
     if (doc.y + minimumHeight > doc.page.height - doc.page.margins.bottom) {
       doc.addPage();
@@ -3111,8 +6374,468 @@ export class BookingsService {
     return [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim() || 'Lead guest';
   }
 
+  private buildBookingInvoiceNumber(bookingRef: string) {
+    const clean = String(bookingRef || 'booking')
+      .replace(/^INV[\s\-_]*/i, '')
+      .replace(/[\u2010-\u2015]/g, '-')
+      .replace(/[\u0000-\u001F\u007F-\u009F\u00A0\uFEFF\uFFFE\uFFFF\uFFFD]/g, '-')
+      .replace(/[^\x20-\x7E]/g, '-')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return `INV-${clean || 'BOOKING'}`;
+  }
+
+  private buildPackageInvoiceDescription(values: {
+    title: string;
+    bookingType: string;
+    nightCount: number;
+    travelStartDate: string | null;
+  }) {
+    return [
+      values.travelStartDate ? `Starting ${this.formatDate(values.travelStartDate)}` : null,
+      values.nightCount > 0 ? `${values.nightCount + 1} day itinerary` : 'Custom itinerary',
+      `${this.formatBookingType(values.bookingType)} travel package`,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+  }
+
+  private formatPackageDuration(nightCount: number) {
+    if (nightCount <= 0) {
+      return 'Custom itinerary';
+    }
+
+    const dayCount = nightCount + 1;
+    return `${nightCount} night${nightCount === 1 ? '' : 's'} / ${dayCount} day${dayCount === 1 ? '' : 's'}`;
+  }
+
+  private formatClientFacingPackageTitle(value: string) {
+    const clean = String(value || '')
+      .replace(/^demo\s+/i, '')
+      .replace(/^quote\s*[:\-]\s*/i, '')
+      .replace(/^booking\s*[:\-]\s*/i, '')
+      .replace(/\s*-\s*accepted booking$/i, '')
+      .replace(/\s*-\s*booking$/i, '')
+      .replace(/\s*-\s*confirmed$/i, '')
+      .replace(/\bfit\b/gi, '')
+      .replace(/\bseries\b/gi, '')
+      .replace(/\bgroup\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    if (!clean || /^[A-Z0-9\-\/]+$/i.test(clean)) {
+      return 'Travel package';
+    }
+
+    return clean;
+  }
+
+  private listPersistedBookingPayments(booking: {
+    id: string;
+    bookingRef: string;
+    payments: Array<{
+      id: string;
+      bookingId: string;
+      type: PaymentTypeValue;
+      amount: number;
+      currency: string;
+      status: PaymentStatusValue;
+      method: PaymentMethodValue;
+      reference: string | null;
+      dueDate: string | Date | null;
+      paidAt: string | Date | null;
+      notes: string | null;
+      createdAt: string | Date;
+      updatedAt: string | Date;
+    }>;
+  }): DerivedPaymentRecord[] {
+    return this.sortPaymentRecords(booking.payments.map((payment) => this.mapPaymentRecord(payment)));
+  }
+
+  private mapPaymentRecord(payment: {
+    id: string;
+    bookingId: string;
+    type: PaymentTypeValue;
+    amount: number;
+    currency: string;
+    status: PaymentStatusValue;
+    method: PaymentMethodValue;
+    reference: string | null;
+    dueDate: string | Date | null;
+    paidAt: string | Date | null;
+    notes?: string | null;
+    createdAt?: string | Date;
+    updatedAt?: string | Date;
+  }): DerivedPaymentRecord {
+    const overdue = this.isPaymentOverdue(payment);
+    return {
+      id: payment.id,
+      bookingId: payment.bookingId,
+      type: payment.type,
+      amount: this.roundMoney(Number(payment.amount || 0)),
+      currency: payment.currency || 'USD',
+      status: payment.status,
+      method: payment.method,
+      reference: payment.reference || '',
+      dueDate: payment.dueDate,
+      paidAt: payment.paidAt,
+      overdue,
+      overdueDays: overdue ? this.getPaymentOverdueDays(payment.dueDate) : null,
+      notes: payment.notes ?? null,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+    };
+  }
+
+  private getTodayStart() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }
+
+  private isPaymentOverdue(payment: {
+    dueDate?: string | Date | null;
+    status: PaymentStatusValue;
+  }) {
+    if (payment.status !== 'PENDING' || !payment.dueDate) {
+      return false;
+    }
+
+    const dueDate = new Date(payment.dueDate);
+    if (Number.isNaN(dueDate.getTime())) {
+      return false;
+    }
+
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate.getTime() < this.getTodayStart().getTime();
+  }
+
+  private getPaymentOverdueDays(dueDate: string | Date | null | undefined) {
+    if (!dueDate) {
+      return null;
+    }
+
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) {
+      return null;
+    }
+
+    due.setHours(0, 0, 0, 0);
+    const diffMs = this.getTodayStart().getTime() - due.getTime();
+    return diffMs > 0 ? Math.floor(diffMs / 86_400_000) : null;
+  }
+
+  private sortPaymentRecords<T extends { overdue: boolean; dueDate?: string | Date | null; createdAt?: string | Date }>(payments: T[]) {
+    return [...payments].sort((left, right) => {
+      if (left.overdue !== right.overdue) {
+        return left.overdue ? -1 : 1;
+      }
+
+      const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDue !== rightDue) {
+        return leftDue - rightDue;
+      }
+
+      const leftCreated = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightCreated = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+      return rightCreated - leftCreated;
+    });
+  }
+
+  private buildCompanyScopedCacheKey(baseKey: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return `${baseKey}:${companyId}`;
+  }
+
+  private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      quote: {
+        clientCompanyId: companyId,
+      },
+    };
+  }
+
+  private buildPaymentCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
+  }
+
+  private buildBookingServiceCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
+  }
+
+  private buildBookingAuditLogCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
+  }
+
+  private async assertBookingExists(bookingId: string, actor?: CompanyScopedActor) {
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        id: bookingId,
+        ...this.buildBookingCompanyWhere(actor),
+      },
+      select: { id: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+  }
+
+  private normalizePaymentType(value: PaymentTypeValue) {
+    const normalized = String(value || '').trim().toUpperCase() as PaymentTypeValue;
+
+    if (!PAYMENT_TYPES.includes(normalized)) {
+      throw new BadRequestException('Unsupported payment type');
+    }
+
+    return normalized;
+  }
+
+  private normalizePaymentStatus(value?: PaymentStatusValue) {
+    const normalized = String(value || 'PENDING').trim().toUpperCase() as PaymentStatusValue;
+
+    if (!PAYMENT_STATUSES.includes(normalized)) {
+      throw new BadRequestException('Unsupported payment status');
+    }
+
+    return normalized;
+  }
+
+  private normalizePaymentMethod(value?: PaymentMethodValue | null) {
+    const normalized = String(value || 'bank').trim().toLowerCase() as PaymentMethodValue;
+
+    if (!PAYMENT_METHODS.includes(normalized)) {
+      throw new BadRequestException('Unsupported payment method');
+    }
+
+    return normalized;
+  }
+
+  private normalizePaymentAmount(value: number | string) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
+    return this.roundMoney(numericValue);
+  }
+
+  private normalizePaymentCurrency(value?: string | null) {
+    const normalized = String(value || 'USD').trim().toUpperCase();
+
+    if (!/^[A-Z]{3}$/.test(normalized)) {
+      throw new BadRequestException('Payment currency must be a 3-letter ISO code');
+    }
+
+    return normalized;
+  }
+
+  private normalizePaymentDate(value: string | Date | null | undefined, errorMessage: string) {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (value === null || value === '') {
+      return null;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(errorMessage);
+    }
+
+    return date;
+  }
+
+  private areDatesEqual(left: string | Date | null | undefined, right: string | Date | null | undefined) {
+    if (!left && !right) {
+      return true;
+    }
+
+    if (!left || !right) {
+      return false;
+    }
+
+    return new Date(left).getTime() === new Date(right).getTime();
+  }
+
+  private sumPaidPayments(
+    payments: Array<{
+      type: PaymentTypeValue;
+      status: PaymentStatusValue;
+      amount: number;
+    }>,
+    type: PaymentTypeValue,
+  ) {
+    return this.roundMoney(
+      payments
+        .filter((payment) => payment.type === type && payment.status === 'PAID')
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    );
+  }
+
+  private async applyFinanceStatusShortcut(
+    prismaClient: BookingMutationClient,
+    values: {
+      booking: {
+        id: string;
+        bookingRef: string;
+        payments: Array<{
+          id: string;
+          type: PaymentTypeValue;
+          status: PaymentStatusValue;
+          amount: number;
+          currency: string;
+        }>;
+      };
+      finance: {
+        realizedTotalSell: number;
+        quotedTotalSell: number;
+        realizedTotalCost: number;
+        quotedTotalCost: number;
+        clientInvoiceStatus: ClientInvoiceStatusValue;
+        supplierPaymentStatus: SupplierPaymentStatusValue;
+      };
+      nextClientInvoiceStatus: ClientInvoiceStatusValue;
+      nextSupplierPaymentStatus: SupplierPaymentStatusValue;
+    },
+  ) {
+    const clientTotal = this.roundMoney(values.finance.realizedTotalSell || values.finance.quotedTotalSell || 0);
+    const supplierTotal = this.roundMoney(values.finance.realizedTotalCost || values.finance.quotedTotalCost || 0);
+    const clientPaid = this.sumPaidPayments(values.booking.payments, 'CLIENT');
+    const supplierPaid = this.sumPaidPayments(values.booking.payments, 'SUPPLIER');
+
+    if (values.nextClientInvoiceStatus === 'paid' && clientTotal > clientPaid) {
+      await (prismaClient as any).payment.create({
+        data: {
+          bookingId: values.booking.id,
+          type: 'CLIENT',
+          amount: this.roundMoney(clientTotal - clientPaid),
+          currency: 'USD',
+          status: 'PAID',
+          method: 'bank',
+          reference: `Finance shortcut settlement for ${values.booking.bookingRef || values.booking.id}`,
+          paidAt: new Date(),
+        },
+      });
+    } else if (
+      values.nextClientInvoiceStatus === 'invoiced' &&
+      values.finance.clientInvoiceStatus === 'unbilled' &&
+      clientTotal > clientPaid
+    ) {
+      await (prismaClient as any).payment.create({
+        data: {
+          bookingId: values.booking.id,
+          type: 'CLIENT',
+          amount: this.roundMoney(clientTotal - clientPaid),
+          currency: 'USD',
+          status: 'PENDING',
+          method: 'bank',
+          reference: `Finance shortcut invoice ${this.buildBookingInvoiceNumber(values.booking.bookingRef || values.booking.id)}`,
+        },
+      });
+    }
+
+    if (values.nextSupplierPaymentStatus === 'paid' && supplierTotal > supplierPaid) {
+      await (prismaClient as any).payment.create({
+        data: {
+          bookingId: values.booking.id,
+          type: 'SUPPLIER',
+          amount: this.roundMoney(supplierTotal - supplierPaid),
+          currency: 'USD',
+          status: 'PAID',
+          method: 'bank',
+          reference: `Finance shortcut supplier settlement for ${values.booking.bookingRef || values.booking.id}`,
+          paidAt: new Date(),
+        },
+      });
+    } else if (
+      values.nextSupplierPaymentStatus === 'scheduled' &&
+      values.finance.supplierPaymentStatus === 'unpaid' &&
+      supplierTotal > supplierPaid
+    ) {
+      await (prismaClient as any).payment.create({
+        data: {
+          bookingId: values.booking.id,
+          type: 'SUPPLIER',
+          amount: this.roundMoney(supplierTotal - supplierPaid),
+          currency: 'USD',
+          status: 'PENDING',
+          method: 'bank',
+          reference: `Finance shortcut supplier payment for ${values.booking.bookingRef || values.booking.id}`,
+        },
+      });
+    }
+  }
+
   private formatNightCountLabel(value: number) {
     return `${value} night${value === 1 ? '' : 's'}`;
+  }
+
+  private formatMoney(value: number, currency = 'USD') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(Number(value || 0));
+  }
+
+  private formatDate(value: string | Date | null | undefined) {
+    if (!value) {
+      return 'Not set';
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+      dateStyle: 'medium',
+    }).format(new Date(value));
+  }
+
+  private async fetchImageBuffer(url: string | null | undefined) {
+    const clean = String(url || '').trim();
+    if (!clean) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(clean);
+      if (!response.ok) {
+        return null;
+      }
+
+      const bytes = await response.arrayBuffer();
+      return Buffer.from(bytes);
+    } catch {
+      return null;
+    }
   }
 
   private formatBookingType(value: string) {
@@ -3199,6 +6922,46 @@ export class BookingsService {
       buffer: true,
       newline: 'unix',
     });
+  }
+
+  private async sendMailWithRetry(
+    transporter: any,
+    mailOptions: Record<string, unknown>,
+    context: Record<string, unknown>,
+    retries = 1,
+  ) {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+      try {
+        return await transporter.sendMail(mailOptions);
+      } catch (error) {
+        lastError = error;
+        const details =
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : {
+                message: String(error),
+              };
+
+        console.error('Booking email send failed', {
+          ...context,
+          attempt,
+          maxAttempts: retries + 1,
+          details,
+        });
+
+        if (attempt <= retries) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+        }
+      }
+    }
+
+    throw lastError;
   }
 
   private generateBookingAccessToken() {

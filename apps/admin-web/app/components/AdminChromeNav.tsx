@@ -2,24 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { SessionRole } from '../lib/auth-session';
 import { getProductsPricingWorkspaceLabel } from '../products-pricing-workspaces';
-import { getActiveNavGroup, isPathMatch, NAV_GROUPS } from '../admin-nav';
+import { getActiveNavGroup, getVisibleNavGroups, isPathMatch } from '../admin-nav';
 import { ProductsPricingWorkspaceNav } from './ProductsPricingWorkspaceNav';
 
 type AdminChromeNavProps = {
   mode: 'primary' | 'subnav' | 'topbar';
+  sessionRole?: SessionRole | null;
 };
 
-export function AdminChromeNav({ mode }: AdminChromeNavProps) {
+export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
   const pathname = usePathname() || '/';
-  const activeGroup = getActiveNavGroup(pathname);
+  const navGroups = getVisibleNavGroups(sessionRole);
+  const activeGroup = getActiveNavGroup(pathname, sessionRole);
+  const isDashboardRoute = pathname === '/' || pathname === '/dashboard';
   const activeCatalogWorkspaceLabel =
     activeGroup.label === 'Product Catalog' ? getProductsPricingWorkspaceLabel(pathname) : null;
 
   if (mode === 'primary') {
     return (
       <nav className="admin-sidebar-nav" aria-label="Primary">
-        {NAV_GROUPS.map((group) => {
+        {navGroups.map((group) => {
           const active = activeGroup.label === group.label;
 
           return (
@@ -39,6 +43,10 @@ export function AdminChromeNav({ mode }: AdminChromeNavProps) {
   }
 
   if (mode === 'topbar') {
+    if (isDashboardRoute) {
+      return null;
+    }
+
     return (
       <div className="admin-topbar-copy">
         <p className="eyebrow">{activeGroup.label === 'Product Catalog' ? 'Workspace' : 'Current Area'}</p>
@@ -54,6 +62,10 @@ export function AdminChromeNav({ mode }: AdminChromeNavProps) {
         )}
       </div>
     );
+  }
+
+  if (isDashboardRoute) {
+    return null;
   }
 
   if (activeGroup.children.length === 0) {

@@ -1,8 +1,11 @@
+import type { SessionRole } from './lib/auth-session';
+
 export type AdminNavGroup = {
   label: string;
   href: string;
   match: string[];
   helper?: string;
+  roles?: SessionRole[];
   children: Array<{
     label: string;
     href: string;
@@ -10,6 +13,13 @@ export type AdminNavGroup = {
 };
 
 export const NAV_GROUPS: AdminNavGroup[] = [
+  {
+    label: 'Dashboard',
+    href: '/dashboard',
+    match: ['/', '/dashboard'],
+    helper: 'Business overview and operational signals',
+    children: [{ label: 'Overview', href: '/dashboard' }],
+  },
   {
     label: 'Quotes',
     href: '/quotes',
@@ -64,6 +74,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     href: '/bookings',
     match: ['/bookings', '/operations'],
     helper: 'Run confirmed trips and service follow-up',
+    roles: ['admin', 'operations'],
     children: [
       { label: 'Bookings', href: '/bookings' },
       { label: 'Confirmations', href: '/operations?report=pending_confirmations' },
@@ -81,6 +92,10 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   },
 ];
 
+export function getVisibleNavGroups(role?: SessionRole | null) {
+  return NAV_GROUPS.filter((group) => !group.roles?.length || (role ? group.roles.includes(role) : false));
+}
+
 export function isPathMatch(pathname: string, match: string) {
   if (match === '/') {
     return pathname === '/';
@@ -89,6 +104,7 @@ export function isPathMatch(pathname: string, match: string) {
   return pathname === match || pathname.startsWith(`${match}/`);
 }
 
-export function getActiveNavGroup(pathname: string) {
-  return NAV_GROUPS.find((group) => group.match.some((match) => isPathMatch(pathname, match))) || NAV_GROUPS[0];
+export function getActiveNavGroup(pathname: string, role?: SessionRole | null) {
+  const visibleGroups = getVisibleNavGroups(role);
+  return visibleGroups.find((group) => group.match.some((match) => isPathMatch(pathname, match))) || visibleGroups[0] || NAV_GROUPS[0];
 }

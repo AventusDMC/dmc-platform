@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import { CurrencySelect } from '../../components/CurrencySelect';
+import { type SupportedCurrency } from '../../lib/currencyOptions';
 import { QuoteBulkActionNotice, type QuoteBulkActionNoticeState } from './QuoteBulkActionNotice';
 import { QuotePricingFocus } from './quote-readiness';
 
@@ -103,7 +105,9 @@ function matchesPricingFocus(item: QuoteItem, focus: QuotePricingFocus) {
 
 function getCurrencyDefaults(items: PricingTargetItem[]) {
   const firstNonEmpty = items.find((item) => item.currency && item.currency.trim());
-  return firstNonEmpty?.currency || 'USD';
+  return firstNonEmpty?.currency === 'EUR' || firstNonEmpty?.currency === 'JOD' || firstNonEmpty?.currency === 'USD'
+    ? firstNonEmpty.currency
+    : 'USD';
 }
 
 export function QuotePricingBulkTools({
@@ -124,7 +128,7 @@ export function QuotePricingBulkTools({
     [quoteItems, quoteOptions],
   );
   const [currencyScope, setCurrencyScope] = useState<BulkScope>('missing-currency');
-  const [currencyCode, setCurrencyCode] = useState(() => getCurrencyDefaults(allItems));
+  const [currencyCode, setCurrencyCode] = useState<SupportedCurrency>(() => getCurrencyDefaults(allItems));
   const [markupScope, setMarkupScope] = useState<MarkupScope>('missing-sell');
   const [markupPercent, setMarkupPercent] = useState('20');
   const [isApplyingCurrency, setIsApplyingCurrency] = useState(false);
@@ -203,17 +207,7 @@ export function QuotePricingBulkTools({
   }
 
   async function handleCurrencyApply() {
-    const normalizedCurrency = currencyCode.trim().toUpperCase();
-
-    if (!normalizedCurrency) {
-      setNotice({
-        tone: 'error',
-        title: 'Currency is required',
-        summary: 'Enter a currency code before applying bulk currency updates.',
-      });
-      return;
-    }
-
+    const normalizedCurrency = currencyCode;
     const compatibleTargets = currencyTargets.filter((item) => item.currency.trim().toUpperCase() !== normalizedCurrency);
     const skippedCount = currencyTargets.length - compatibleTargets.length;
 
@@ -377,8 +371,8 @@ export function QuotePricingBulkTools({
             </select>
           </label>
           <label className="field-label">
-            Currency code
-            <input value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)} maxLength={6} />
+            Currency
+            <CurrencySelect value={currencyCode} onChange={(value) => setCurrencyCode((value || 'USD') as SupportedCurrency)} required />
           </label>
           <div className="workspace-stat-list">
             <div>

@@ -12,7 +12,8 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { HotelMealPlan, HotelOccupancyType, QuoteStatus } from '@prisma/client';
-import { Public, Roles } from '../auth/auth.decorators';
+import { Actor, Public, Roles } from '../auth/auth.decorators';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { ProposalV3Service } from './proposal-v3.service';
 import { QuotesService } from './quotes.service';
 
@@ -56,6 +57,7 @@ type CreateQuoteBody = {
   singleSupplement?: number | null;
   travelStartDate?: string | null;
   validUntil?: string | null;
+  quoteCurrency?: string;
 };
 
 type UpdateQuoteBody = Partial<CreateQuoteBody> & {
@@ -142,8 +144,8 @@ export class QuotesController {
   ) {}
 
   @Get()
-  findAll() {
-    return this.quotesService.findAll();
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.quotesService.findAll(actor);
   }
 
   @Public()
@@ -183,8 +185,8 @@ export class QuotesController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  async findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -288,44 +290,48 @@ export class QuotesController {
   }
 
   @Post(':id/enable-public-link')
-  @Roles('admin', 'sales', 'finance')
-  async enablePublicLink(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async enablePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.enablePublicLink(id);
+    return this.quotesService.enablePublicLink(id, actor);
   }
 
   @Post(':id/disable-public-link')
-  @Roles('admin', 'sales', 'finance')
-  async disablePublicLink(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async disablePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.disablePublicLink(id);
+    return this.quotesService.disablePublicLink(id, actor);
   }
 
   @Post(':id/regenerate-public-link')
-  @Roles('admin', 'sales', 'finance')
-  async regeneratePublicLink(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async regeneratePublicLink(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.regeneratePublicLink(id);
+    return this.quotesService.regeneratePublicLink(id, actor);
   }
 
   @Post()
-  @Roles('admin', 'sales', 'finance')
-  create(@Body() body: CreateQuoteBody, @Headers() headers: Record<string, string | string[] | undefined>) {
+  @Roles('admin', 'viewer', 'finance')
+  create(
+    @Body() body: CreateQuoteBody,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
+  ) {
     return this.quotesService.create({
       clientCompanyId: body.clientCompanyId || body.companyId,
       brandCompanyId: body.brandCompanyId === undefined ? undefined : body.brandCompanyId || null,
@@ -363,15 +369,17 @@ export class QuotesController {
       travelStartDate:
         body.travelStartDate === undefined ? undefined : body.travelStartDate ? new Date(body.travelStartDate) : null,
       validUntil: body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
-    });
+      quoteCurrency: body.quoteCurrency,
+    }, actor);
   }
 
   @Patch(':id')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   update(
     @Param('id') id: string,
     @Body() body: UpdateQuoteBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
     return this.quotesService.update(id, {
       clientCompanyId: body.clientCompanyId || body.companyId,
@@ -411,33 +419,35 @@ export class QuotesController {
       travelStartDate:
         body.travelStartDate === undefined ? undefined : body.travelStartDate ? new Date(body.travelStartDate) : null,
       validUntil: body.validUntil === undefined ? undefined : body.validUntil ? new Date(body.validUntil) : null,
+      quoteCurrency: body.quoteCurrency,
       status: body.status,
-    });
+    }, actor);
   }
 
   @Patch(':id/status')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   updateStatus(
     @Param('id') id: string,
     @Body() body: UpdateQuoteStatusBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
     return this.quotesService.updateStatus(id, {
       status: body.status,
       acceptedVersionId: body.acceptedVersionId === undefined ? undefined : body.acceptedVersionId || null,
-    });
+    }, actor);
   }
 
   @Post(':id/create-invoice')
-  @Roles('admin', 'sales', 'finance')
-  createInvoice(@Param('id') id: string) {
-    return this.quotesService.createInvoice(id);
+  @Roles('admin', 'viewer', 'finance')
+  createInvoice(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.quotesService.createInvoice(id, actor);
   }
 
   @Delete(':id')
-  @Roles('admin', 'sales')
-  remove(@Param('id') id: string) {
-    return this.quotesService.remove(id);
+  @Roles('admin', 'viewer')
+  remove(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.quotesService.remove(id, actor);
   }
 
   @Get(':id/pricing-slabs')
@@ -452,13 +462,14 @@ export class QuotesController {
   }
 
   @Post(':id/pricing-slabs')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createPricingSlab(
     @Param('id') id: string,
     @Body() body: QuotePricingSlabBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -468,18 +479,19 @@ export class QuotesController {
       minPax: Number(body.minPax),
       maxPax: Number(body.maxPax),
       price: Number(body.price),
-    });
+    }, actor);
   }
 
   @Patch(':id/pricing-slabs/:slabId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updatePricingSlab(
     @Param('id') id: string,
     @Param('slabId') slabId: string,
     @Body() body: Partial<QuotePricingSlabBody>,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -489,23 +501,24 @@ export class QuotesController {
       minPax: body.minPax === undefined ? undefined : Number(body.minPax),
       maxPax: body.maxPax === undefined ? undefined : Number(body.maxPax),
       price: body.price === undefined ? undefined : Number(body.price),
-    });
+    }, actor);
   }
 
   @Delete(':id/pricing-slabs/:slabId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removePricingSlab(
     @Param('id') id: string,
     @Param('slabId') slabId: string,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.removePricingSlab(id, slabId);
+    return this.quotesService.removePricingSlab(id, slabId, actor);
   }
 
   @Get(':id/versions')
@@ -520,25 +533,26 @@ export class QuotesController {
   }
 
   @Post(':id/convert-to-booking')
-  @Roles('admin', 'sales', 'finance')
-  async convertToBooking(@Param('id') id: string) {
-    const quote = await this.quotesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async convertToBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.convertToBooking(id);
+    return this.quotesService.convertToBooking(id, actor);
   }
 
   @Post(':id/versions')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createVersion(
     @Param('id') id: string,
     @Body() body: CreateQuoteVersionBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -547,7 +561,7 @@ export class QuotesController {
     return this.quotesService.createVersion({
       quoteId: id,
       label: body.label,
-    });
+    }, actor);
   }
 
   @Get(':id/versions/:versionId')
@@ -579,13 +593,14 @@ export class QuotesController {
   }
 
   @Post(':id/items')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createItem(
     @Param('id') id: string,
     @Body() body: CreateQuoteItemBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -634,18 +649,19 @@ export class QuotesController {
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
       routeName: body.routeName || undefined,
-    });
+    }, actor);
   }
 
   @Patch(':id/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() body: UpdateQuoteItemBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -695,7 +711,7 @@ export class QuotesController {
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
       routeName: body.routeName || undefined,
-    });
+    }, actor);
   }
 
   @Get(':id/items/:itemId/suggested-services')
@@ -710,12 +726,13 @@ export class QuotesController {
   }
 
   @Patch(':id/items/:itemId/assign-service')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async assignService(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() body: AssignQuoteItemServiceBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
     const quote = await this.quotesService.findOne(id);
 
@@ -723,23 +740,24 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.assignServiceToItem(id, itemId, body.serviceId);
+    return this.quotesService.assignServiceToItem(id, itemId, body.serviceId, actor);
   }
 
   @Delete(':id/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removeItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.removeItem(itemId);
+    return this.quotesService.removeItem(itemId, actor);
   }
 
   @Get(':id/options')
@@ -754,13 +772,14 @@ export class QuotesController {
   }
 
   @Post(':id/options')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createOption(
     @Param('id') id: string,
     @Body() body: CreateQuoteOptionBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -773,18 +792,19 @@ export class QuotesController {
       hotelCategoryId: body.hotelCategoryId,
       pricingMode: body.pricingMode,
       packageMarginPercent: body.packageMarginPercent,
-    });
+    }, actor);
   }
 
   @Patch(':id/options/:optionId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updateOption(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
     @Body() body: UpdateQuoteOptionBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -796,23 +816,24 @@ export class QuotesController {
       hotelCategoryId: body.hotelCategoryId,
       pricingMode: body.pricingMode,
       packageMarginPercent: body.packageMarginPercent,
-    });
+    }, actor);
   }
 
   @Delete(':id/options/:optionId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removeOption(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.removeOption(id, optionId);
+    return this.quotesService.removeOption(id, optionId, actor);
   }
 
   @Get(':id/options/:optionId/items')
@@ -827,14 +848,15 @@ export class QuotesController {
   }
 
   @Post(':id/options/:optionId/items')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createOptionItem(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
     @Body() body: CreateQuoteItemBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -883,19 +905,20 @@ export class QuotesController {
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
       routeName: body.routeName || undefined,
-    });
+    }, actor);
   }
 
   @Patch(':id/options/:optionId/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updateOptionItem(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
     @Param('itemId') itemId: string,
     @Body() body: UpdateQuoteItemBody,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -944,28 +967,29 @@ export class QuotesController {
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
       routeName: body.routeName || undefined,
-    });
+    }, actor);
   }
 
   @Delete(':id/options/:optionId/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removeOptionItem(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
     @Param('itemId') itemId: string,
     @Headers() headers: Record<string, string | string[] | undefined>,
+    @Actor() actor: AuthenticatedActor,
   ) {
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.removeOptionItem(optionId, itemId);
+    return this.quotesService.removeOptionItem(optionId, itemId, actor);
   }
 
   @Post(':id/scenarios/generate')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async generateScenarios(
     @Param('id') id: string,
     @Body() body: GenerateQuoteScenariosBody,
@@ -983,3 +1007,4 @@ export class QuotesController {
     });
   }
 }
+

@@ -20,6 +20,10 @@ type FinanceBooking = {
     hasLowMargin: boolean;
     hasUnpaidClientBalance: boolean;
     hasUnpaidSupplierObligation: boolean;
+    overdueClientPaymentsCount: number;
+    overdueSupplierPaymentsCount: number;
+    hasOverdueClientPayments: boolean;
+    hasOverdueSupplierPayments: boolean;
     badge: {
       count: number;
       tone: 'error' | 'warning' | 'none';
@@ -28,6 +32,8 @@ type FinanceBooking = {
         unpaidSupplier: number;
         negativeMargin: number;
         lowMargin: number;
+        overdueClient: number;
+        overdueSupplier: number;
       };
     };
   };
@@ -105,6 +111,8 @@ export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
                     <>
                       {booking.finance.badge.breakdown.unpaidClient > 0 ? <p className="form-error operations-inline-warning">{booking.finance.badge.breakdown.unpaidClient} unpaid client</p> : null}
                       {booking.finance.badge.breakdown.unpaidSupplier > 0 ? <p className="form-error operations-inline-warning">{booking.finance.badge.breakdown.unpaidSupplier} unpaid supplier</p> : null}
+                      {booking.finance.badge.breakdown.overdueClient > 0 ? <p className="form-error operations-inline-warning">{booking.finance.overdueClientPaymentsCount} overdue client payment{booking.finance.overdueClientPaymentsCount === 1 ? '' : 's'}</p> : null}
+                      {booking.finance.badge.breakdown.overdueSupplier > 0 ? <p className="form-error operations-inline-warning">{booking.finance.overdueSupplierPaymentsCount} overdue supplier payment{booking.finance.overdueSupplierPaymentsCount === 1 ? '' : 's'}</p> : null}
                       {booking.finance.badge.breakdown.negativeMargin > 0 ? <p className="form-error operations-inline-warning">{booking.finance.badge.breakdown.negativeMargin} negative margin</p> : null}
                       {booking.finance.badge.breakdown.lowMargin > 0 ? <p className="form-error operations-inline-warning">{booking.finance.badge.breakdown.lowMargin} low margin</p> : null}
                     </>
@@ -128,6 +136,8 @@ export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
                     {booking.finance.hasLowMargin ? <p className="form-error">Margin is below the operational threshold.</p> : null}
                     {booking.finance.hasUnpaidClientBalance ? <p className="form-error">Client balance is not fully paid.</p> : null}
                     {booking.finance.hasUnpaidSupplierObligation ? <p className="form-error">Supplier obligations are still open.</p> : null}
+                    {booking.finance.hasOverdueClientPayments ? <p className="form-error">Client payments are overdue.</p> : null}
+                    {booking.finance.hasOverdueSupplierPayments ? <p className="form-error">Supplier payments are overdue.</p> : null}
                   </RowDetailsPanel>
                 </td>
               </tr>

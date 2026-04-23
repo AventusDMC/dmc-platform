@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 
 type InvoiceStatusValue = 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
 type QuoteStatusValue = 'DRAFT' | 'READY' | 'SENT' | 'ACCEPTED' | 'CONFIRMED' | 'REVISION_REQUESTED' | 'EXPIRED' | 'CANCELLED';
@@ -20,8 +21,14 @@ const INVOICE_STATUS_TRANSITIONS: Record<InvoiceStatusValue, InvoiceStatusValue[
 export class InvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  findAll(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return (this.prisma as any).invoice.findMany({
+      where: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
       include: {
         quote: {
           include: {
@@ -40,9 +47,15 @@ export class InvoicesService {
     });
   }
 
-  findOne(id: string) {
-    return (this.prisma as any).invoice.findUnique({
-      where: { id },
+  findOne(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return (this.prisma as any).invoice.findFirst({
+      where: {
+        id,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
       include: {
         quote: {
           include: {
@@ -69,10 +82,17 @@ export class InvoicesService {
       status: InvoiceStatusValue;
       note?: string | null;
       actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
     },
   ) {
-    const invoice = await (this.prisma as any).invoice.findUnique({
-      where: { id },
+    const companyId = requireActorCompanyId(data.companyActor);
+    const invoice = await (this.prisma as any).invoice.findFirst({
+      where: {
+        id,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
       select: {
         id: true,
         quoteId: true,
@@ -85,7 +105,7 @@ export class InvoicesService {
     }
 
     if (data.status === invoice.status) {
-      const existing = await this.findOne(id);
+      const existing = await this.findOne(id, data.companyActor);
 
       if (!existing) {
         throw new NotFoundException('Invoice not found');
@@ -132,7 +152,7 @@ export class InvoicesService {
       }
     });
 
-    const updated = await this.findOne(id);
+    const updated = await this.findOne(id, data.companyActor);
 
     if (!updated) {
       throw new NotFoundException('Invoice not found');
@@ -141,19 +161,21 @@ export class InvoicesService {
     return updated;
   }
 
-  markPaid(id: string, data: { note?: string | null; actor?: AuditActor }) {
+  markPaid(id: string, data: { note?: string | null; actor?: AuditActor; companyActor?: CompanyScopedActor }) {
     return this.updateStatus(id, {
       status: 'PAID',
       note: data.note,
       actor: data.actor,
+      companyActor: data.companyActor,
     });
   }
 
-  cancel(id: string, data: { note?: string | null; actor?: AuditActor }) {
+  cancel(id: string, data: { note?: string | null; actor?: AuditActor; companyActor?: CompanyScopedActor }) {
     return this.updateStatus(id, {
       status: 'CANCELLED',
       note: data.note,
       actor: data.actor,
+      companyActor: data.companyActor,
     });
   }
 

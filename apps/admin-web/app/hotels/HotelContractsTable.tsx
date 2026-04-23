@@ -7,6 +7,7 @@ import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { HotelContractsForm } from '../hotel-contracts/HotelContractsForm';
+import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 
 type HotelOption = {
   id: string;
@@ -173,7 +174,7 @@ export function HotelContractsTable({ apiBaseUrl, hotels, hotelContracts }: Hote
                               name: contract.name,
                               validFrom: contract.validFrom.slice(0, 10),
                               validTo: contract.validTo.slice(0, 10),
-                              currency: contract.currency,
+                              currency: normalizeSupportedCurrency(contract.currency),
                             }}
                           />
                         </InlineRowEditorShell>

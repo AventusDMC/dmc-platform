@@ -46,6 +46,7 @@ export type ProposalV3QuoteItem = {
 export type ProposalV3Quote = {
   id: string;
   quoteNumber?: string | null;
+  quoteCurrency?: string | null;
   title: string;
   description?: string | null;
   inclusionsText?: string | null;

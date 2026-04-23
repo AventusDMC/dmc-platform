@@ -4,6 +4,8 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
+import { CurrencySelect } from '../components/CurrencySelect';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 import { RouteOption } from '../lib/routes';
 
 type VehicleOption = {
@@ -34,7 +36,7 @@ type TransportPricingRuleFormProps = {
     unitCapacity: string;
     baseCost: string;
     discountPercent: string;
-    currency: string;
+    currency: SupportedCurrency;
     isActive: boolean;
   };
 };
@@ -58,7 +60,7 @@ export function TransportPricingRuleForm({
   const [unitCapacity, setUnitCapacity] = useState(initialValues?.unitCapacity || '');
   const [baseCost, setBaseCost] = useState(initialValues?.baseCost || '');
   const [discountPercent, setDiscountPercent] = useState(initialValues?.discountPercent || '0');
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [isActive, setIsActive] = useState(initialValues?.isActive ?? true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -220,7 +222,7 @@ export function TransportPricingRuleForm({
 
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
 
         <label>

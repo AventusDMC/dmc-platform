@@ -102,7 +102,7 @@ export function ShareQuoteButton({
   }
 
   return (
-    <div className="quote-send-actions">
+    <div className="quote-send-actions quote-share-actions">
       <p className="detail-copy">Public link: {isPublicEnabled && publicToken ? 'Enabled' : 'Disabled'}</p>
       {!isPublicEnabled ? <p className="detail-copy">Enable a link to let the client review the latest shared quote online.</p> : null}
       <button type="button" className="secondary-button" onClick={handleEnableLink} disabled={isSubmitting || isPublicEnabled}>
@@ -110,7 +110,7 @@ export function ShareQuoteButton({
       </button>
       {isPublicEnabled && shareUrl ? (
         <>
-          <a href={shareUrl} target="_blank" rel="noreferrer" className="detail-copy">
+          <a href={shareUrl} target="_blank" rel="noreferrer" className="detail-copy quote-share-link">
             {shareUrl}
           </a>
           <button type="button" className="secondary-button" onClick={handleRegenerateLink} disabled={isSubmitting}>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { RouteOption } from '../lib/routes';
 import { DuplicateVehicleRateButton } from '../vehicle-rates/DuplicateVehicleRateButton';
 import { VehicleRatesForm } from '../vehicle-rates/VehicleRatesForm';
+import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 import { CityOption } from '../lib/cities';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
@@ -189,7 +190,7 @@ export function VehicleRatesTable({
                               minPax: String(rate.minPax),
                               maxPax: String(rate.maxPax),
                               price: String(rate.price),
-                              currency: rate.currency,
+                              currency: normalizeSupportedCurrency(rate.currency),
                               validFrom: rate.validFrom.slice(0, 10),
                               validTo: rate.validTo.slice(0, 10),
                             }}

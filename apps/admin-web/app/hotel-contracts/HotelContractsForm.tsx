@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CurrencySelect } from '../components/CurrencySelect';
 import { getErrorMessage } from '../lib/api';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type HotelOption = {
   id: string;
@@ -20,7 +22,7 @@ type HotelContractsFormProps = {
     name: string;
     validFrom: string;
     validTo: string;
-    currency: string;
+    currency: SupportedCurrency;
   };
 };
 
@@ -30,7 +32,7 @@ export function HotelContractsForm({ apiBaseUrl, hotels, contractId, submitLabel
   const [name, setName] = useState(initialValues?.name || '');
   const [validFrom, setValidFrom] = useState(initialValues?.validFrom || '');
   const [validTo, setValidTo] = useState(initialValues?.validTo || '');
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(contractId);
@@ -110,7 +112,7 @@ export function HotelContractsForm({ apiBaseUrl, hotels, contractId, submitLabel
 
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
       </div>
 

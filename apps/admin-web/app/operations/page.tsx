@@ -1,5 +1,7 @@
 import { AdvancedFiltersPanel } from '../components/AdvancedFiltersPanel';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
+import { AdminForbiddenState } from '../components/AdminForbiddenState';
 import { CompactFilterBar } from '../components/CompactFilterBar';
 import { PageActionBar } from '../components/PageActionBar';
 import { RowDetailsPanel } from '../components/RowDetailsPanel';
@@ -21,7 +23,8 @@ import {
 import { BookingQuickActions } from './BookingQuickActions';
 import { OperationsBulkActionsProvider, OperationsBulkGroupVisibility, OperationsBulkSelectionCheckbox } from './OperationsBulkActions';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, isAdminForbiddenError } from '../lib/admin-server';
+import { canAccessOperations, readSessionActor } from '../lib/auth-session';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const LOW_MARGIN_THRESHOLD_LABEL = '<10%';
@@ -584,6 +587,19 @@ function summarizeCompletionIssues(service: BookingService) {
 }
 
 export default async function OperationsPage({ searchParams }: OperationsPageProps) {
+  const cookieStore = await cookies();
+  const session = readSessionActor(cookieStore.get('dmc_session')?.value || '');
+
+  if (!canAccessOperations(session?.role)) {
+    return (
+      <AdminForbiddenState
+        title="Operations access restricted"
+        description="Your account does not have permission to view the operations workspace for this company."
+      />
+    );
+  }
+
+  try {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const serviceStatusFilter = resolvedSearchParams?.serviceStatus || 'all';
   const confirmationStatusFilter = resolvedSearchParams?.confirmationStatus || 'all';
@@ -1704,4 +1720,16 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       </section>
     </main>
   );
+  } catch (error) {
+    if (isAdminForbiddenError(error)) {
+      return (
+        <AdminForbiddenState
+          title="Operations access restricted"
+          description="Your account does not have permission to load operations data for this company."
+        />
+      );
+    }
+
+    throw error;
+  }
 }

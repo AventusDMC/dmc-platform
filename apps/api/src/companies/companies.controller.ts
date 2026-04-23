@@ -13,6 +13,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
+import { Actor } from '../auth/auth.decorators';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { CompaniesService } from './companies.service';
 
 const { diskStorage } = require('multer');
@@ -57,33 +59,33 @@ export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
   @Get()
-  findAll() {
-    return this.companiesService.findAll();
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.companiesService.findAll(actor);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.companiesService.findOne(id);
+  findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.findOne(id, actor);
   }
 
   @Get(':id/branding')
-  getBranding(@Param('id') id: string) {
-    return this.companiesService.getBranding(id);
+  getBranding(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.getBranding(id, actor);
   }
 
   @Post()
-  create(@Body() body: CreateCompanyBody) {
-    return this.companiesService.create(body);
+  create(@Body() body: CreateCompanyBody, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.create(body, actor);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UpdateCompanyBody) {
-    return this.companiesService.update(id, body);
+  update(@Param('id') id: string, @Body() body: UpdateCompanyBody, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.update(id, body, actor);
   }
 
   @Patch(':id/branding')
-  updateBranding(@Param('id') id: string, @Body() body: UpdateBrandingBody) {
-    return this.companiesService.updateBranding(id, body);
+  updateBranding(@Param('id') id: string, @Body() body: UpdateBrandingBody, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.updateBranding(id, body, actor);
   }
 
   @Post(':id/branding/logo')
@@ -108,7 +110,7 @@ export class CompaniesController {
       },
     }),
   )
-  async uploadBrandingLogo(@Param('id') id: string, @UploadedFile() file?: any) {
+  async uploadBrandingLogo(@Param('id') id: string, @UploadedFile() file?: any, @Actor() actor?: AuthenticatedActor) {
     if (!file) {
       throw new BadRequestException('A logo image file is required');
     }
@@ -118,11 +120,11 @@ export class CompaniesController {
     }
 
     const logoUrl = `/uploads/branding/${file.filename}`;
-    return this.companiesService.updateBrandingLogo(id, logoUrl);
+    return this.companiesService.updateBrandingLogo(id, logoUrl, actor);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.companiesService.remove(id);
+  remove(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.remove(id, actor);
   }
 }

@@ -1,36 +1,90 @@
 import Link from 'next/link';
-import { DashboardKpiCard } from './components/DashboardKpiCard';
-import { DashboardListItem } from './components/DashboardListItem';
-import { DashboardPanel } from './components/DashboardPanel';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from './lib/admin-server';
-import {
-  buildFinanceTooltip,
-  buildOperationsTooltip,
-  buildRoomingTooltip,
-  getBookingAttentionSeverity,
-  getBookingFinanceHref,
-  getBookingOperationsHref,
-  getBookingRoomingHref,
-  type FinanceBadge,
-  type OperationsBadge,
-  type RoomingBadge,
-} from './lib/bookingAttention';
+import dynamic from 'next/dynamic';
+import { cookies } from 'next/headers';
+import { AlertsList, type DashboardAlertItem } from './components/AlertsList';
+import { AdminForbiddenState } from './components/AdminForbiddenState';
+import { DashboardHeader } from './components/DashboardHeader';
+import { DashboardStatCard } from './components/DashboardStatCard';
+import { PipelineSummaryCard } from './components/PipelineSummaryCard';
+import { QuickActionsCard } from './components/QuickActionsCard';
+import { RecentBookingsList } from './components/RecentBookingsList';
+import { RecentQuotesList } from './components/RecentQuotesList';
+import { RevenueTrendCard, type DashboardTrendPoint } from './components/RevenueTrendCard';
+import { UpcomingOperationsList } from './components/UpcomingOperationsList';
+import { adminPageFetchJson, isAdminForbiddenError } from './lib/admin-server';
+import { canAccessFinance, canAccessOperations, readSessionActor } from './lib/auth-session';
+import { type FinanceBadge, type OperationsBadge, type RoomingBadge } from './lib/bookingAttention';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const FinanceDashboardSection = dynamic(
+  () => import('./components/FinanceDashboardSection').then((module) => module.FinanceDashboardSection),
+  {
+    loading: () => <section className="dashboard-section-loading">Loading financial overview...</section>,
+  },
+);
+
+type QuoteStatus = 'DRAFT' | 'READY' | 'SENT' | 'ACCEPTED' | 'CONFIRMED' | 'REVISION_REQUESTED' | 'EXPIRED' | 'CANCELLED';
+type BookingStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
+
+type Quote = {
+  id: string;
+  quoteNumber: string | null;
+  title: string;
+  status: QuoteStatus;
+  totalSell: number;
+  adults: number;
+  children: number;
+  travelStartDate: string | null;
+  validUntil: string | null;
+  createdAt: string;
+  company: {
+    name: string;
+  };
+  invoice: {
+    id: string;
+    status: InvoiceStatus;
+    dueDate: string;
+    totalAmount: number;
+    currency: string;
+  } | null;
+};
+
+type BookingService = {
+  id: string;
+  description: string;
+  serviceType: string;
+  serviceDate: string | null;
+  supplierName: string | null;
+  status: 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
+  confirmationStatus: 'pending' | 'requested' | 'confirmed';
+  reconfirmationRequired?: boolean;
+  reconfirmationDueAt?: string | null;
+};
 
 type Booking = {
   id: string;
   bookingRef: string;
+  status: BookingStatus;
+  createdAt: string;
   snapshotJson: {
     title?: string | null;
     travelStartDate?: string | null;
     nightCount?: number | null;
+    company?: {
+      name?: string | null;
+    } | null;
   };
-  clientSnapshotJson: {
+  clientSnapshotJson?: {
     name?: string | null;
-  };
+  } | null;
+  services: BookingService[];
   finance: {
     badge: FinanceBadge;
+    clientInvoiceStatus?: string | null;
+    overdueClientPaymentsCount?: number;
+    overdueSupplierPaymentsCount?: number;
+    hasOverdueClientPayments?: boolean;
+    hasOverdueSupplierPayments?: boolean;
   };
   operations: {
     badge: OperationsBadge;
@@ -40,15 +94,149 @@ type Booking = {
   };
 };
 
-async function getBookings(): Promise<Booking[]> {
-  return adminPageFetchJson<Booking[]>(`${API_BASE_URL}/bookings`, 'Dashboard bookings', {
+type Invoice = {
+  id: string;
+  totalAmount: number;
+  currency: string;
+  status: InvoiceStatus;
+  dueDate: string;
+  createdAt?: string;
+  quote: {
+    id: string;
+    quoteNumber: string | null;
+    title: string;
+    clientCompany: {
+      name: string;
+    };
+  };
+};
+
+type FinanceDashboardSummary = {
+  totalRevenue: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  totalOverdue: number;
+  supplierPayable: number;
+  profit: number;
+  margin: number;
+  trendLabel: string;
+  trends: {
+    revenue: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    collected: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    outstanding: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    overdue: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    supplierPayable: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    profit: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+    margin: {
+      direction: 'up' | 'down' | 'flat';
+      delta: number;
+      changePercent: number;
+      unit: 'percent' | 'pp';
+    };
+  };
+  sparklineSeries?: Partial<{
+    revenue: number[];
+    collected: number[];
+    outstanding: number[];
+    overdue: number[];
+  }>;
+  monthlySeries?: Array<{
+    label: string;
+    revenue: number;
+    collected: number;
+  }>;
+  overdueBreakdown: {
+    client: {
+      count: number;
+      amount: number;
+    };
+    supplier: {
+      count: number;
+      amount: number;
+    };
+  };
+  recentPayments: Array<{
+    id: string;
+    bookingId: string;
+    bookingRef: string;
+    bookingTitle: string;
+    clientName: string;
+    type: 'CLIENT' | 'SUPPLIER';
+    amount: number;
+    currency: string;
+    status: 'PENDING' | 'PAID';
+    dueDate: string | null;
+    paidAt: string | null;
+    overdue: boolean;
+    overdueDays: number | null;
+  }>;
+};
+
+async function getQuotes() {
+  return adminPageFetchJson<Quote[]>('/api/quotes', 'Dashboard quotes', {
     cache: 'no-store',
   });
 }
 
+async function getBookings() {
+  return adminPageFetchJson<Booking[]>('/api/bookings', 'Dashboard bookings', {
+    cache: 'no-store',
+  });
+}
+
+async function getInvoices() {
+  return adminPageFetchJson<Invoice[]>('/api/invoices', 'Dashboard invoices', {
+    cache: 'no-store',
+  });
+}
+
+async function getFinanceDashboard() {
+  return adminPageFetchJson<FinanceDashboardSummary>('/api/bookings/dashboard/finance', 'Dashboard finance summary', {
+    cache: 'no-store',
+  });
+}
+
+function formatMoney(amount: number, currency = 'USD') {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) {
-    return 'Travel date pending';
+    return 'Date pending';
   }
 
   return new Intl.DateTimeFormat('en-US', {
@@ -56,289 +244,419 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function formatNightCountLabel(value?: number | null) {
-  if (!value || value <= 0) {
-    return 'Nights pending';
+function formatShortDate(value: string | null | undefined) {
+  if (!value) {
+    return 'Pending';
   }
 
-  return `${value} ${value === 1 ? 'night' : 'nights'}`;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value));
 }
 
-function getPrimaryAttentionHref(booking: Booking) {
-  if (booking.finance.badge.tone === 'error') {
-    return getBookingFinanceHref(booking.id);
-  }
-
-  if (booking.operations.badge.tone === 'error') {
-    return getBookingOperationsHref(booking.id);
-  }
-
-  if (booking.rooming.badge.tone === 'error') {
-    return getBookingRoomingHref(booking.id);
-  }
-
-  if (booking.operations.badge.count > 0) {
-    return getBookingOperationsHref(booking.id);
-  }
-
-  if (booking.finance.badge.count > 0) {
-    return getBookingFinanceHref(booking.id);
-  }
-
-  if (booking.rooming.badge.count > 0) {
-    return getBookingRoomingHref(booking.id);
-  }
-
-  return `/bookings/${booking.id}`;
+function formatMonthLabel(value: Date) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+  }).format(value);
 }
 
-function buildIssueSummary(booking: Booking) {
-  const summary: string[] = [];
-
-  const finance = booking.finance.badge.breakdown;
-  if (finance.unpaidClient > 0) summary.push(`${finance.unpaidClient} unpaid client`);
-  if (finance.unpaidSupplier > 0) summary.push(`${finance.unpaidSupplier} unpaid supplier`);
-  if (finance.negativeMargin > 0) summary.push(`${finance.negativeMargin} negative margin`);
-  if (finance.lowMargin > 0) summary.push(`${finance.lowMargin} low margin`);
-
-  const operations = booking.operations.badge.breakdown;
-  if (operations.reconfirmationDue > 0) summary.push(`${operations.reconfirmationDue} reconfirmation due`);
-  if (operations.pendingConfirmations > 0) summary.push(`${operations.pendingConfirmations} pending confirmations`);
-  if (operations.missingExecutionDetails > 0) summary.push(`${operations.missingExecutionDetails} missing execution details`);
-
-  const rooming = booking.rooming.badge.breakdown;
-  if (rooming.unassignedPassengers > 0) summary.push(`${rooming.unassignedPassengers} unassigned passengers`);
-  if (rooming.unassignedRooms > 0) summary.push(`${rooming.unassignedRooms} incomplete rooms`);
-  if (rooming.occupancyIssues > 0) summary.push(`${rooming.occupancyIssues} occupancy issues`);
-
-  return summary;
+function formatQuoteStatus(status: QuoteStatus) {
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 }
 
-function sortAttentionBookings(left: Booking, right: Booking) {
-  const severityRank = {
-    error: 2,
-    warning: 1,
-    none: 0,
-  } as const;
+function formatBookingStatus(status: BookingStatus) {
+  return status
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
 
-  const leftSeverity = getBookingAttentionSeverity(left) || 'none';
-  const rightSeverity = getBookingAttentionSeverity(right) || 'none';
-
+function getBookingClient(booking: Booking) {
   return (
-    severityRank[rightSeverity] - severityRank[leftSeverity] ||
-    (right.finance.badge.count + right.operations.badge.count + right.rooming.badge.count) -
-      (left.finance.badge.count + left.operations.badge.count + left.rooming.badge.count)
+    booking.clientSnapshotJson?.name?.trim() ||
+    booking.snapshotJson.company?.name?.trim() ||
+    'Client pending'
   );
 }
 
-function AttentionBookingRow({ booking, href }: { booking: Booking; href: string }) {
-  const severity = getBookingAttentionSeverity(booking);
-  const issueSummary = buildIssueSummary(booking);
-  const title = booking.snapshotJson?.title?.trim() || 'Booking';
-  const client = booking.clientSnapshotJson?.name?.trim() || 'Client pending';
-
-  return (
-    <DashboardListItem
-      title={
-        <Link href={href} className="dashboard-row-link">
-          <strong>{booking.bookingRef || booking.id}</strong>
-        </Link>
-      }
-      meta={
-        <>
-          <p>{title}</p>
-          <p>
-            {client} | {formatDate(booking.snapshotJson?.travelStartDate)} | {formatNightCountLabel(booking.snapshotJson?.nightCount)}
-          </p>
-        </>
-      }
-      summary={<p>{issueSummary.join(' | ') || 'Attention signal available'}</p>}
-      chips={
-        <>
-          {booking.finance.badge.count > 0 ? (
-            <Link href={getBookingFinanceHref(booking.id)} className="dashboard-issue-link" title={buildFinanceTooltip(booking.finance.badge)}>
-              Finance ({booking.finance.badge.count})
-            </Link>
-          ) : null}
-          {booking.operations.badge.count > 0 ? (
-            <Link
-              href={getBookingOperationsHref(booking.id)}
-              className="dashboard-issue-link"
-              title={buildOperationsTooltip(booking.operations.badge)}
-            >
-              Operations ({booking.operations.badge.count})
-            </Link>
-          ) : null}
-          {booking.rooming.badge.count > 0 ? (
-            <Link href={getBookingRoomingHref(booking.id)} className="dashboard-issue-link" title={buildRoomingTooltip(booking.rooming.badge)}>
-              Rooming ({booking.rooming.badge.count})
-            </Link>
-          ) : null}
-        </>
-      }
-      aside={
-        <span
-          className={`dashboard-pill${
-            severity === 'error' ? ' dashboard-pill-alert' : severity === 'warning' ? ' dashboard-pill-warning' : ''
-          }`}
-        >
-          {severity === 'error' ? 'Error' : 'Warning'}
-        </span>
-      }
-    />
-  );
+function isSameMonth(value: string, date: Date) {
+  const current = new Date(value);
+  return current.getFullYear() === date.getFullYear() && current.getMonth() === date.getMonth();
 }
 
-function AttentionSection({
-  eyebrow,
-  title,
-  bookings,
-  hrefBuilder,
-  emptyState,
-}: {
-  eyebrow: string;
-  title: string;
-  bookings: Booking[];
-  hrefBuilder: (booking: Booking) => string;
-  emptyState: string;
-}) {
-  return (
-    <DashboardPanel eyebrow={eyebrow} title={title}>
-      {bookings.length === 0 ? (
-        <p className="empty-state">{emptyState}</p>
-      ) : (
-        <div className="dashboard-list">
-          {bookings.map((booking) => (
-            <AttentionBookingRow key={`${eyebrow}-${booking.id}`} booking={booking} href={hrefBuilder(booking)} />
-          ))}
-        </div>
-      )}
-    </DashboardPanel>
+function buildTrendPoints(bookings: Booking[], invoices: Invoice[]) {
+  const now = new Date();
+  const points: DashboardTrendPoint[] = [];
+
+  for (let index = 5; index >= 0; index -= 1) {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - index, 1);
+    const monthKey = `${monthDate.getFullYear()}-${monthDate.getMonth()}`;
+
+    points.push({
+      id: monthKey,
+      label: formatMonthLabel(monthDate),
+      revenue: invoices
+        .filter((invoice) => invoice.status !== 'CANCELLED' && isSameMonth(invoice.dueDate, monthDate))
+        .reduce((total, invoice) => total + invoice.totalAmount, 0),
+      bookings: bookings.filter((booking) => isSameMonth(booking.createdAt, monthDate)).length,
+    });
+  }
+
+  return points;
+}
+
+function getUpcomingOperations(bookings: Booking[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return bookings
+    .flatMap((booking) =>
+      booking.services
+        .filter((service) => service.status !== 'cancelled' && service.serviceDate)
+        .map((service) => ({
+          id: service.id,
+          href: `/bookings/${booking.id}?tab=services#service-${service.id}`,
+          serviceName: service.description || service.serviceType,
+          bookingRef: booking.bookingRef || booking.id,
+          dateValue: service.serviceDate as string,
+          dateLabel: formatDate(service.serviceDate),
+          supplierLabel: service.supplierName || 'Supplier pending',
+          statusLabel: service.confirmationStatus === 'confirmed' ? 'Confirmed' : 'Pending',
+          warningLabel:
+            service.reconfirmationRequired && service.reconfirmationDueAt
+              ? `Reconfirm ${formatShortDate(service.reconfirmationDueAt)}`
+              : undefined,
+        })),
+    )
+    .filter((service) => new Date(service.dateValue).getTime() >= today.getTime())
+    .sort((left, right) => new Date(left.dateValue).getTime() - new Date(right.dateValue).getTime())
+    .slice(0, 6);
+}
+
+function getAlerts(
+  bookings: Booking[],
+  invoices: Invoice[],
+  access: {
+    finance: boolean;
+    operations: boolean;
+  },
+): DashboardAlertItem[] {
+  const overdueReconfirmations = bookings.reduce(
+    (total, booking) => total + booking.operations.badge.breakdown.reconfirmationDue,
+    0,
   );
+  const pendingConfirmations = bookings.reduce(
+    (total, booking) => total + booking.operations.badge.breakdown.pendingConfirmations,
+    0,
+  );
+  const missingExecutionDetails = bookings.reduce(
+    (total, booking) => total + booking.operations.badge.breakdown.missingExecutionDetails,
+    0,
+  );
+  const financialRiskBookings = bookings.filter((booking) => booking.finance.badge.count > 0).length;
+  const overdueClientPayments = bookings.reduce((total, booking) => total + (booking.finance.overdueClientPaymentsCount || 0), 0);
+  const overdueSupplierPayments = bookings.reduce((total, booking) => total + (booking.finance.overdueSupplierPaymentsCount || 0), 0);
+  const roomingIssueBookings = bookings.filter((booking) => booking.rooming.badge.count > 0).length;
+  const outstandingInvoices = invoices.filter((invoice) => invoice.status === 'ISSUED').length;
+
+  const alerts: DashboardAlertItem[] = [];
+
+  if (access.operations && overdueReconfirmations > 0) {
+    alerts.push({
+      id: 'reconfirmations',
+      title: `${overdueReconfirmations} reconfirmations due`,
+      detail: 'Supplier follow-up is overdue and should be handled from the operations queue.',
+      severity: 'critical',
+      href: '/operations?report=pending_confirmations',
+    });
+  }
+
+  if (access.operations && pendingConfirmations > 0) {
+    alerts.push({
+      id: 'confirmations',
+      title: `${pendingConfirmations} services awaiting confirmation`,
+      detail: 'Supplier responses are still outstanding on active bookings.',
+      severity: 'warning',
+      href: '/operations?report=pending_confirmations',
+    });
+  }
+
+  if (access.operations && missingExecutionDetails > 0) {
+    alerts.push({
+      id: 'execution',
+      title: `${missingExecutionDetails} services missing execution details`,
+      detail: 'Pickup, meeting point, or dated activity details still need cleanup.',
+      severity: 'warning',
+      href: '/operations?report=unresolved_issues',
+    });
+  }
+
+  if (access.finance && overdueClientPayments > 0) {
+    alerts.push({
+      id: 'overdue-client-payments',
+      title: `${overdueClientPayments} overdue client payments`,
+      detail: 'Receivables are past due and need finance follow-up.',
+      severity: 'critical',
+      href: '/finance?report=overdue-clients',
+    });
+  }
+
+  if (access.finance && overdueSupplierPayments > 0) {
+    alerts.push({
+      id: 'overdue-supplier-payments',
+      title: `${overdueSupplierPayments} overdue supplier payments`,
+      detail: 'Payables are past due and need settlement review.',
+      severity: 'warning',
+      href: '/finance?report=overdue-suppliers',
+    });
+  }
+
+  if (access.finance && (financialRiskBookings > 0 || outstandingInvoices > 0)) {
+    alerts.push({
+      id: 'finance',
+      title: outstandingInvoices > 0 ? `${outstandingInvoices} outstanding invoices` : `${financialRiskBookings} finance risks`,
+      detail: `${financialRiskBookings} bookings also carry finance attention signals.`,
+      severity: outstandingInvoices > 0 ? 'warning' : 'info',
+      href: '/finance',
+    });
+  }
+
+  if (access.operations && roomingIssueBookings > 0) {
+    alerts.push({
+      id: 'rooming',
+      title: `${roomingIssueBookings} bookings with rooming issues`,
+      detail: 'Passenger allocations or occupancy setup still need review.',
+      severity: 'info',
+      href: '/operations?groupBy=booking',
+    });
+  }
+
+  return alerts;
 }
 
 export default async function HomePage() {
-  const bookings = await getBookings();
+  try {
+    const cookieStore = await cookies();
+    const session = readSessionActor(cookieStore.get('dmc_session')?.value || '');
+    const financeAccess = canAccessFinance(session?.role);
+    const operationsAccess = canAccessOperations(session?.role);
 
-  const attentionBookings = bookings
-    .filter(
-      (booking) =>
-        booking.finance.badge.tone !== 'none' || booking.operations.badge.tone !== 'none' || booking.rooming.badge.tone !== 'none',
-    )
-    .sort(sortAttentionBookings);
+    const [quotes, bookings, invoices, financeDashboard] = await Promise.all([
+      getQuotes(),
+      getBookings(),
+      getInvoices(),
+      financeAccess ? getFinanceDashboard() : Promise.resolve(null),
+    ]);
 
-  const reconfirmationsDue = attentionBookings.filter((booking) => booking.operations.badge.breakdown.reconfirmationDue > 0);
-  const pendingConfirmations = attentionBookings.filter((booking) => booking.operations.badge.breakdown.pendingConfirmations > 0);
-  const financialRisks = attentionBookings.filter((booking) => booking.finance.badge.tone !== 'none');
-  const roomingIssues = attentionBookings.filter((booking) => booking.rooming.badge.tone !== 'none');
+    const now = new Date();
+    const activeTrips = bookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'in_progress').length;
+    const pendingConfirmations = bookings.reduce((total, booking) => total + booking.operations.badge.breakdown.pendingConfirmations, 0);
+    const quotesAwaitingResponse = quotes.filter((quote) => quote.status === 'READY' || quote.status === 'SENT' || quote.status === 'REVISION_REQUESTED').length;
+    const outstandingInvoices = invoices.filter((invoice) => invoice.status === 'ISSUED');
+    const outstandingInvoiceValue = outstandingInvoices.reduce((total, invoice) => total + invoice.totalAmount, 0);
 
-  const summary = {
-    needsAttention: attentionBookings.length,
-    errors: attentionBookings.filter((booking) => getBookingAttentionSeverity(booking) === 'error').length,
-    warnings: attentionBookings.filter((booking) => getBookingAttentionSeverity(booking) === 'warning').length,
-    reconfirmationsDue: reconfirmationsDue.length,
-  };
+  // TODO: replace this due-date proxy with a paid-at/issued-at revenue source when the backend exposes one.
+    const revenueThisMonth = invoices
+      .filter((invoice) => invoice.status !== 'CANCELLED' && isSameMonth(invoice.dueDate, now))
+      .reduce((total, invoice) => total + invoice.totalAmount, 0);
 
-  return (
+    const recentQuotes = quotes.slice(0, 5).map((quote) => ({
+      id: quote.id,
+      href: `/quotes/${quote.id}`,
+      title: quote.title,
+      reference: quote.quoteNumber || 'Reference pending',
+      company: quote.company.name,
+      travelLabel: formatDate(quote.travelStartDate),
+      statusLabel: formatQuoteStatus(quote.status),
+      amountLabel: formatMoney(quote.totalSell || 0),
+    }));
+
+    const recentBookings = bookings.slice(0, 5).map((booking) => ({
+      id: booking.id,
+      href: `/bookings/${booking.id}`,
+      title: booking.snapshotJson.title?.trim() || booking.bookingRef || 'Booking',
+      reference: booking.bookingRef || booking.id,
+      client: getBookingClient(booking),
+      travelLabel: formatDate(booking.snapshotJson.travelStartDate),
+      statusLabel: formatBookingStatus(booking.status),
+      statusTone:
+        booking.status === 'in_progress' || booking.status === 'confirmed'
+          ? ('accent' as const)
+          : booking.status === 'cancelled'
+            ? ('warning' as const)
+            : ('neutral' as const),
+    }));
+
+    const trendPoints = buildTrendPoints(bookings, invoices);
+    const alerts = getAlerts(bookings, invoices, { finance: financeAccess, operations: operationsAccess });
+    const upcomingOperations = operationsAccess ? getUpcomingOperations(bookings) : [];
+    const draftQuotes = quotes.filter((quote) => quote.status === 'DRAFT').length;
+    const sentQuotes = quotes.filter((quote) => quote.status === 'SENT').length;
+    const acceptedQuotes = quotes.filter((quote) => quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED').length;
+    const draftBookings = bookings.filter((booking) => booking.status === 'draft').length;
+    const liveBookings = bookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'in_progress').length;
+    const completedBookings = bookings.filter((booking) => booking.status === 'completed').length;
+
+    return (
     <main className="page">
-      <section className="panel dashboard-page">
-        <header className="dashboard-hero">
-          <div className="dashboard-hero-copy">
-            <p className="eyebrow">Dashboard</p>
-            <h1 className="section-title">Needs attention control center</h1>
-            <p className="detail-copy">Watch the bookings that need operator action now, using the backend-owned finance, operations, and rooming badge signals.</p>
-          </div>
-          <div className="dashboard-hero-actions">
-            <Link href="/operations?groupBy=booking" className="dashboard-toolbar-link">
-              Open booking queue
-            </Link>
-            <Link href="/operations" className="dashboard-toolbar-link">
-              Open service queue
-            </Link>
-          </div>
-        </header>
+      <section className="panel executive-dashboard-page">
+        <div className="executive-dashboard-shell">
+          <DashboardHeader
+            title="Business control center"
+            subtitle="Track commercial momentum, live operational risk, and the next actions your team should take."
+            actions={
+              <>
+                <Link href="/quotes/new" className="primary-button">
+                  New Quote
+                </Link>
+                <Link href="/quotes" className="dashboard-toolbar-link">
+                  New Booking
+                </Link>
+                {financeAccess ? (
+                  <Link href="/finance" className="dashboard-toolbar-link">
+                    Finance Summary
+                  </Link>
+                ) : null}
+              </>
+            }
+          />
 
-        <section className="dashboard-kpi-grid">
-          <DashboardKpiCard
-            label="Bookings needing action"
-            value={String(summary.needsAttention)}
-            description="Finance, operations, or rooming attention signals."
-            tone={summary.errors > 0 ? 'alert' : 'default'}
-          />
-          <DashboardKpiCard
-            label="Pending confirmations"
-            value={String(pendingConfirmations.length)}
-            description="Supplier confirmations still unresolved."
-          />
-          <DashboardKpiCard
-            label="Reconfirmations due"
-            value={String(summary.reconfirmationsDue)}
-            description="Bookings needing immediate operational follow-up."
-            tone={summary.reconfirmationsDue > 0 ? 'alert' : 'default'}
-          />
-          <DashboardKpiCard
-            label="Financial risks"
-            value={String(financialRisks.length)}
-            description="Bookings with finance attention signals."
-          />
-          <DashboardKpiCard
-            label="Rooming issues"
-            value={String(roomingIssues.length)}
-            description="Passenger or occupancy cleanup still needed."
-          />
-          <DashboardKpiCard
-            label="Warnings"
-            value={String(summary.warnings)}
-            description="Non-critical signals still requiring review."
-          />
-        </section>
-
-        <section className="dashboard-main-grid">
-          <div className="dashboard-column">
-            <AttentionSection
-              eyebrow="Needs Attention"
-              title="Bookings needing action"
-              bookings={attentionBookings}
-              hrefBuilder={getPrimaryAttentionHref}
-              emptyState="No active booking attention signals right now."
+          <section className="executive-dashboard-stat-grid">
+            {financeAccess ? (
+              <DashboardStatCard
+                label="Revenue This Month"
+                value={formatMoney(revenueThisMonth)}
+                helper="Invoice volume this month"
+                tone="accent"
+              />
+            ) : null}
+            <DashboardStatCard
+              label="Bookings"
+              value={String(bookings.length)}
+              helper={`${liveBookings} active in delivery`}
             />
-
-            <AttentionSection
-              eyebrow="Reconfirmations Due"
-              title="Immediate operational follow-up"
-              bookings={reconfirmationsDue}
-              hrefBuilder={(booking) => `/bookings/${booking.id}?tab=operations`}
-              emptyState="No bookings currently have overdue reconfirmations."
+            <DashboardStatCard
+              label="Active Trips"
+              value={String(activeTrips)}
+              helper="Confirmed or live execution"
             />
-
-            <AttentionSection
-              eyebrow="Pending Confirmations"
-              title="Supplier confirmations still open"
-              bookings={pendingConfirmations}
-              hrefBuilder={(booking) => `/bookings/${booking.id}?tab=operations`}
-              emptyState="No bookings currently have pending confirmations."
+            {operationsAccess ? (
+              <DashboardStatCard
+                label="Pending Confirmations"
+                value={String(pendingConfirmations)}
+                helper="Services still waiting on suppliers"
+                tone={pendingConfirmations > 0 ? 'warning' : 'neutral'}
+              />
+            ) : null}
+            <DashboardStatCard
+              label="Quotes Awaiting Response"
+              value={String(quotesAwaitingResponse)}
+              helper="Ready, sent, or revision requested"
             />
-          </div>
+            {financeAccess ? (
+              <DashboardStatCard
+                label="Outstanding Invoices"
+                value={String(outstandingInvoices.length)}
+                helper={formatMoney(outstandingInvoiceValue)}
+                tone={outstandingInvoices.length > 0 ? 'danger' : 'neutral'}
+              />
+            ) : null}
+          </section>
 
-          <div className="dashboard-column">
-            <AttentionSection
-              eyebrow="Financial Risks"
-              title="Commercial bookings to review"
-              bookings={financialRisks}
-              hrefBuilder={(booking) => `/bookings/${booking.id}?tab=finance`}
-              emptyState="No finance attention signals right now."
-            />
+          <section className="executive-dashboard-main-grid">
+            <div className="executive-dashboard-main-column">
+              {financeDashboard ? <FinanceDashboardSection summary={financeDashboard} /> : null}
+              <RecentQuotesList quotes={recentQuotes} />
+              <RecentBookingsList bookings={recentBookings} />
+              <RevenueTrendCard
+                points={trendPoints}
+                revenueLabel={formatMoney(trendPoints.reduce((total, point) => total + point.revenue, 0))}
+                bookingsLabel={String(trendPoints.reduce((total, point) => total + point.bookings, 0))}
+              />
+              {operationsAccess ? <UpcomingOperationsList items={upcomingOperations} /> : null}
+            </div>
 
-            <AttentionSection
-              eyebrow="Rooming Issues"
-              title="Passenger and rooming cleanup"
-              bookings={roomingIssues}
-              hrefBuilder={(booking) => `/bookings/${booking.id}?tab=rooming`}
-              emptyState="No rooming attention signals right now."
-            />
-          </div>
-        </section>
+            <aside className="executive-dashboard-sidebar">
+              <AlertsList alerts={alerts} />
+              <PipelineSummaryCard
+                salesRows={[
+                  { id: 'quotes-draft', label: 'Draft quotes', value: String(draftQuotes), helper: 'Early-stage proposals' },
+                  { id: 'quotes-awaiting', label: 'Awaiting response', value: String(quotesAwaitingResponse), helper: 'Needs follow-up' },
+                  { id: 'quotes-sent', label: 'Sent quotes', value: String(sentQuotes), helper: 'With clients now' },
+                  { id: 'quotes-accepted', label: 'Accepted / confirmed', value: String(acceptedQuotes), helper: 'Converted pipeline' },
+                ]}
+                deliveryRows={[
+                  { id: 'bookings-draft', label: 'Draft bookings', value: String(draftBookings), helper: 'Freshly converted' },
+                  { id: 'bookings-live', label: 'Live bookings', value: String(liveBookings), helper: 'Confirmed or in progress' },
+                  { id: 'bookings-complete', label: 'Completed', value: String(completedBookings), helper: 'Closed delivery' },
+                  ...(operationsAccess
+                    ? [
+                        {
+                          id: 'ops-upcoming',
+                          label: 'Upcoming services',
+                          value: String(upcomingOperations.length),
+                          helper: 'Next operational horizon',
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+              <QuickActionsCard
+                actions={[
+                  { id: 'action-quote', label: 'Create quote', helper: 'Start a new proposal', href: '/quotes/new', primary: true },
+                  ...(operationsAccess
+                    ? [{ id: 'action-bookings', label: 'Open bookings', helper: 'Review live delivery', href: '/bookings' }]
+                    : []),
+                  ...(financeAccess
+                    ? [
+                        {
+                          id: 'action-send-invoices',
+                          label: 'Send invoices',
+                          helper: 'Follow up on client billing',
+                          href: '/finance?report=unpaid-clients',
+                        },
+                        {
+                          id: 'action-send-reminders',
+                          label: 'Send reminders',
+                          helper: 'Chase overdue receivables',
+                          href: '/finance?report=overdue-clients',
+                        },
+                      ]
+                    : []),
+                  ...(operationsAccess
+                    ? [
+                        {
+                          id: 'action-confirmations',
+                          label: 'Pending confirmations',
+                          helper: 'Chase supplier responses',
+                          href: '/operations?report=pending_confirmations',
+                        },
+                      ]
+                    : []),
+                  { id: 'action-invoices', label: 'Invoice queue', helper: 'Review settlement status', href: '/invoices' },
+                ]}
+              />
+            </aside>
+          </section>
+        </div>
       </section>
     </main>
-  );
+    );
+  } catch (error) {
+    if (isAdminForbiddenError(error)) {
+      return (
+        <AdminForbiddenState
+          title="Dashboard access restricted"
+          description="Your account can sign in, but it does not have permission to load this dashboard data."
+        />
+      );
+    }
+
+    throw error;
+  }
 }

@@ -7,6 +7,7 @@ import { RowDetailsPanel } from '../components/RowDetailsPanel';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
 import { HotelContractSupplementForm } from './HotelContractSupplementForm';
+import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 
 type RoomCategoryOption = {
   id: string;
@@ -154,7 +155,7 @@ export function HotelContractSupplementsTable({
                           type: supplement.type,
                           chargeBasis: supplement.chargeBasis,
                           amount: String(supplement.amount),
-                          currency: supplement.currency,
+                          currency: normalizeSupportedCurrency(supplement.currency),
                           isMandatory: supplement.isMandatory,
                           isActive: supplement.isActive,
                           notes: supplement.notes || '',

@@ -4,6 +4,23 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ServiceTypeOption } from '../lib/serviceTypes';
+import { ServiceRatesManager } from './ServiceRatesManager';
+
+type ServiceRate = {
+  id: string;
+  serviceId: string;
+  supplierId: string | null;
+  costBaseAmount: number;
+  costCurrency: 'USD' | 'EUR' | 'JOD';
+  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  salesTaxPercent: number;
+  salesTaxIncluded: boolean;
+  serviceChargePercent: number;
+  serviceChargeIncluded: boolean;
+  tourismFeeAmount: number | null;
+  tourismFeeCurrency: 'USD' | 'EUR' | 'JOD' | null;
+  tourismFeeMode: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+};
 
 type SupplierService = {
   id: string;
@@ -15,9 +32,11 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  serviceRates: ServiceRate[];
 };
 
 type ServicesCatalogBrowserProps = {
+  apiBaseUrl: string;
   services: SupplierService[];
 };
 
@@ -82,7 +101,7 @@ function buildSelectHref(returnTo: string, serviceId: string) {
   return `${url.pathname}${url.search}`;
 }
 
-export function ServicesCatalogBrowser({ services }: ServicesCatalogBrowserProps) {
+export function ServicesCatalogBrowser({ apiBaseUrl, services }: ServicesCatalogBrowserProps) {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get('returnTo');
   const [query, setQuery] = useState(searchParams.get('q') || '');
@@ -223,6 +242,13 @@ export function ServicesCatalogBrowser({ services }: ServicesCatalogBrowserProps
                   </Link>
                 ) : null}
               </div>
+
+              <ServiceRatesManager
+                apiBaseUrl={apiBaseUrl}
+                serviceId={service.id}
+                initialRates={service.serviceRates || []}
+                showTourismFee={getServiceCategoryKey(service) === 'hotel'}
+              />
             </article>
           ))
         )}

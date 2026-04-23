@@ -38,25 +38,25 @@ export class QuoteItineraryController {
   }
 
   @Post('quotes/:quoteId/itinerary/day')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createDay(@Param('quoteId') quoteId: string, @Body() body: CreateDayBody, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.createDay(quoteId, this.toCreateDayDto(body), this.toActor(actor));
   }
 
   @Patch('itinerary/day/:dayId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updateDay(@Param('dayId') dayId: string, @Body() body: UpdateDayBody, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.updateDay(dayId, this.toUpdateDayDto(body), this.toActor(actor));
   }
 
   @Delete('itinerary/day/:dayId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removeDay(@Param('dayId') dayId: string, @Actor() actor: AuthenticatedActor | null) {
     return this.quoteItineraryService.removeDay(dayId, this.toActor(actor));
   }
 
   @Post('itinerary/day/:dayId/items')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async createDayItem(
     @Param('dayId') dayId: string,
     @Body() body: CreateDayItemBody,
@@ -66,7 +66,7 @@ export class QuoteItineraryController {
   }
 
   @Patch('itinerary/day/:dayId/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async updateDayItem(
     @Param('dayId') dayId: string,
     @Param('itemId') itemId: string,
@@ -77,7 +77,7 @@ export class QuoteItineraryController {
   }
 
   @Delete('itinerary/day/:dayId/items/:itemId')
-  @Roles('admin', 'sales', 'finance')
+  @Roles('admin', 'viewer', 'finance')
   async removeDayItem(
     @Param('dayId') dayId: string,
     @Param('itemId') itemId: string,
@@ -128,3 +128,4 @@ export class QuoteItineraryController {
     return actor ? { id: actor.id, auditLabel: actor.auditLabel } : null;
   }
 }
+

@@ -306,7 +306,7 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                             Booking
                           </Link>
                         ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                          <ConvertToBookingButton apiBaseUrl={apiBaseUrl} quoteId={quote.id} label="Create Booking" />
+                          <ConvertToBookingButton quoteId={quote.id} label="Create Booking" />
                         ) : null}
                       </div>
                     </td>

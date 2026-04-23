@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { blockDelete, normalizeOptionalString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -39,8 +40,12 @@ type UpdateBrandingInput = {
 export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  findAll(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.company.findMany({
+      where: {
+        id: companyId,
+      },
       include: {
         branding: true,
         _count: {
@@ -55,9 +60,13 @@ export class CompaniesService {
     });
   }
 
-  async findOne(id: string) {
-    const company = await this.prisma.company.findUnique({
-      where: { id },
+  async findOne(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const company = await this.prisma.company.findFirst({
+      where: {
+        id,
+        AND: [{ id: companyId }],
+      },
       include: {
         branding: true,
         _count: {
@@ -75,28 +84,29 @@ export class CompaniesService {
     return throwIfNotFound(company, 'Company');
   }
 
-  create(data: CreateCompanyInput) {
-    return this.prisma.company.create({
-      data: {
-        name: data.name.trim(),
-        type: normalizeOptionalString(data.type),
-        website: normalizeOptionalString(data.website),
-        logoUrl: normalizeOptionalString(data.logoUrl),
-        primaryColor: this.normalizeCompanyColor(data.primaryColor),
-        country: normalizeOptionalString(data.country),
-        city: normalizeOptionalString(data.city),
+  async create(data: CreateCompanyInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const existingCompany = await this.prisma.company.findFirst({
+      where: {
+        id: companyId,
       },
       include: {
         branding: true,
       },
     });
+
+    if (!existingCompany) {
+      throw new BadRequestException('Company not found');
+    }
+
+    return existingCompany;
   }
 
-  async update(id: string, data: UpdateCompanyInput) {
-    await this.findOne(id);
+  async update(id: string, data: UpdateCompanyInput, actor?: CompanyScopedActor) {
+    const company = await this.findOne(id, actor);
 
     return this.prisma.company.update({
-      where: { id },
+      where: { id: company.id },
       data: {
         name: data.name === undefined ? undefined : data.name.trim(),
         type: normalizeOptionalString(data.type),
@@ -112,18 +122,18 @@ export class CompaniesService {
     });
   }
 
-  async getBranding(companyId: string) {
-    const company = await this.findOne(companyId);
+  async getBranding(companyId: string, actor?: CompanyScopedActor) {
+    const company = await this.findOne(companyId, actor);
     return this.buildBrandingResponse(company);
   }
 
-  async updateBranding(companyId: string, data: UpdateBrandingInput) {
-    await this.findOne(companyId);
+  async updateBranding(companyId: string, data: UpdateBrandingInput, actor?: CompanyScopedActor) {
+    const company = await this.findOne(companyId, actor);
 
     const branding = await this.prisma.companyBranding.upsert({
-      where: { companyId },
+      where: { companyId: company.id },
       create: {
-        companyId,
+        companyId: company.id,
         displayName: normalizeOptionalString(data.displayName ?? undefined),
         logoUrl: normalizeOptionalString(data.logoUrl ?? undefined),
         headerTitle: normalizeOptionalString(data.headerTitle ?? undefined),
@@ -150,24 +160,24 @@ export class CompaniesService {
       },
     });
 
-    const company = await this.prisma.company.findUnique({
-      where: { id: companyId },
+    const updatedCompany = await this.prisma.company.findUnique({
+      where: { id: company.id },
       include: {
         branding: true,
       },
     });
 
-    return this.buildBrandingResponse(throwIfNotFound(company, 'Company'), branding);
+    return this.buildBrandingResponse(throwIfNotFound(updatedCompany, 'Company'), branding);
   }
 
-  async updateBrandingLogo(companyId: string, logoUrl: string) {
+  async updateBrandingLogo(companyId: string, logoUrl: string, actor?: CompanyScopedActor) {
     return this.updateBranding(companyId, {
       logoUrl,
-    });
+    }, actor);
   }
 
-  async remove(id: string) {
-    const company = await this.findOne(id);
+  async remove(id: string, actor?: CompanyScopedActor) {
+    const company = await this.findOne(id, actor);
 
     blockDelete('company', 'users', company._count.users);
     blockDelete('company', 'contacts', company._count.contacts);
@@ -175,7 +185,7 @@ export class CompaniesService {
     blockDelete('company', 'quotes', company._count.clientQuotes + company._count.brandQuotes);
 
     return this.prisma.company.delete({
-      where: { id },
+      where: { id: company.id },
     });
   }
 

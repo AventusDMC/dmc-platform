@@ -7,6 +7,22 @@ import { ServicesCatalogBrowser } from './ServicesCatalogBrowser';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 
+type ServiceRate = {
+  id: string;
+  serviceId: string;
+  supplierId: string | null;
+  costBaseAmount: number;
+  costCurrency: 'USD' | 'EUR' | 'JOD';
+  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  salesTaxPercent: number;
+  salesTaxIncluded: boolean;
+  serviceChargePercent: number;
+  serviceChargeIncluded: boolean;
+  tourismFeeAmount: number | null;
+  tourismFeeCurrency: 'USD' | 'EUR' | 'JOD' | null;
+  tourismFeeMode: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+};
+
 type SupplierService = {
   id: string;
   supplierId: string;
@@ -17,6 +33,7 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  serviceRates: ServiceRate[];
 };
 
 async function getServices(): Promise<SupplierService[]> {
@@ -46,7 +63,7 @@ export async function ServicesCatalogSection() {
       }
       emptyState={services.length === 0 ? <p className="empty-state">No services yet.</p> : undefined}
     >
-      {services.length > 0 ? <ServicesCatalogBrowser services={services} /> : null}
+      {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl={API_BASE_URL} services={services} /> : null}
     </TableSectionShell>
   );
 }

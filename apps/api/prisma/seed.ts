@@ -1,4 +1,5 @@
 import { HotelMealPlan, HotelOccupancyType, QuoteOptionPricingMode, QuoteStatus, ServiceUnitType, TransportPricingMode } from '@prisma/client';
+import { AuditService } from '../src/audit/audit.service';
 import { AuthService } from '../src/auth/auth.service';
 import { InvoicesService } from '../src/invoices/invoices.service';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -31,10 +32,11 @@ async function main() {
   const prisma = new PrismaService();
   await prisma.$connect();
 
+  const auditService = new AuditService(prisma);
   const transportPricingService = new TransportPricingService(prisma);
   const promotionsService = new PromotionsService(prisma);
   const quotePricingService = new QuotePricingService();
-  const quotesService = new QuotesService(prisma, transportPricingService, promotionsService, quotePricingService);
+  const quotesService = new QuotesService(prisma, auditService, transportPricingService, promotionsService, quotePricingService);
   const itinerariesService = new ItinerariesService(prisma);
   const authService = new AuthService(prisma);
   const invoicesService = new InvoicesService(prisma);
@@ -93,10 +95,40 @@ async function main() {
 }
 
 async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService) {
+  const existingDefaultCompany = await prisma.company.findFirst({
+    where: {
+      name: {
+        equals: 'Default Company',
+        mode: 'insensitive',
+      },
+    },
+  });
+  const defaultCompany = existingDefaultCompany
+    ? await prisma.company.update({
+        where: {
+          id: existingDefaultCompany.id,
+        },
+        data: {
+          name: 'Default Company',
+          type: 'internal',
+          country: 'Jordan',
+          city: 'Amman',
+        },
+      })
+    : await prisma.company.create({
+        data: {
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'Default Company',
+          type: 'internal',
+          country: 'Jordan',
+          city: 'Amman',
+        },
+      });
+
   const roles = await Promise.all(
     [
       { name: 'admin', description: 'Platform administrators with full access.' },
-      { name: 'sales', description: 'Commercial users managing quotes and pricing.' },
+      { name: 'viewer', description: 'Read-only commercial users reviewing dashboards, quotes, and invoices.' },
       { name: 'operations', description: 'Operations users managing bookings and workflow actions.' },
       { name: 'finance', description: 'Finance users managing rates and transport pricing.' },
     ].map((role) =>
@@ -118,11 +150,11 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
       role: 'admin',
     },
     {
-      email: 'sales@dmc.local',
-      firstName: 'Sales',
+      email: 'viewer@dmc.local',
+      firstName: 'Viewer',
       lastName: 'User',
-      password: 'sales123',
-      role: 'sales',
+      password: 'viewer123',
+      role: 'viewer',
     },
     {
       email: 'operations@dmc.local',
@@ -148,6 +180,7 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
         lastName: user.lastName,
         password: authService.hashPassword(user.password),
         roleId: roleMap.get(user.role)!,
+        companyId: defaultCompany.id,
       },
       create: {
         email: user.email,
@@ -155,6 +188,7 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
         lastName: user.lastName,
         password: authService.hashPassword(user.password),
         roleId: roleMap.get(user.role)!,
+        companyId: defaultCompany.id,
       },
     });
   }
@@ -1937,10 +1971,10 @@ async function seedSampleQuoteScenario(
     phone: '+447700900100',
     title: 'Senior Product Manager',
   });
+  const quoteActor = { companyId: clientCompany.id };
 
   const quote = await quotesService.create({
     clientCompanyId: clientCompany.id,
-    brandCompanyId: brandCompany.id,
     contactId: contact.id,
     title: DEMO_ACCEPTED_QUOTE_TITLE,
     description:
@@ -1958,6 +1992,12 @@ async function seedSampleQuoteScenario(
     roomCount: 2,
     nightCount: 6,
     validUntil: new Date('2026-05-31T23:59:59.999Z'),
+  }, quoteActor);
+  await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      brandCompanyId: brandCompany.id,
+    },
   });
 
   const quoteId = quote.id;
@@ -2301,16 +2341,16 @@ reconfirmationDueAt: new Date('2026-05-12T16:00:00.000Z'),
   const version = await quotesService.createVersion({
     quoteId,
     label: 'Accepted FIT demo snapshot',
-  });
+  }, quoteActor);
 
   await quotesService.updateStatus(quoteId, {
     status: QuoteStatus.ACCEPTED,
     acceptedVersionId: version.id,
-  });
-  const publicLink = await quotesService.enablePublicLink(quoteId);
-  const invoice = await quotesService.createInvoice(quoteId);
+  }, quoteActor);
+  const publicLink = await quotesService.enablePublicLink(quoteId, quoteActor);
+  const invoice = await quotesService.createInvoice(quoteId, quoteActor);
 
-  const booking = await quotesService.convertToBooking(quoteId);
+  const booking = await quotesService.convertToBooking(quoteId, quoteActor);
   await seedBookingAssignments(prisma, booking.id, suppliers);
   await seedBookingOperationsScenario(prisma, booking.id);
 
@@ -2372,10 +2412,10 @@ async function seedFitSentScenario(
     phone: '+49891234567',
     title: 'Product Executive',
   });
+  const quoteActor = { companyId: clientCompany.id };
 
   const quote = await quotesService.create({
     clientCompanyId: clientCompany.id,
-    brandCompanyId: brandCompany.id,
     contactId: contact.id,
     title: DEMO_SENT_QUOTE_TITLE,
     description: 'Sent FIT proposal with public sharing enabled for quote-detail and public portal testing.',
@@ -2390,6 +2430,12 @@ async function seedFitSentScenario(
     nightCount: 3,
     travelStartDate: new Date('2026-04-12T00:00:00.000Z'),
     validUntil: new Date('2026-04-30T23:59:59.999Z'),
+  }, quoteActor);
+  await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      brandCompanyId: brandCompany.id,
+    },
   });
 
   const quoteId = quote.id;
@@ -2524,8 +2570,8 @@ async function seedFitSentScenario(
   await syncQuoteItineraryFromQuoteItems(prisma, quoteId);
   await quotesService.updateStatus(quoteId, {
     status: QuoteStatus.SENT,
-  });
-  const publicLink = await quotesService.enablePublicLink(quoteId);
+  }, quoteActor);
+  const publicLink = await quotesService.enablePublicLink(quoteId, quoteActor);
 
   const finalQuote = await prisma.quote.findUniqueOrThrow({
     where: { id: quoteId },
@@ -2577,10 +2623,10 @@ async function seedGroupQuoteScenario(
     phone: '+34911222333',
     title: 'Groups Contracting Manager',
   });
+  const quoteActor = { companyId: clientCompany.id };
 
   const quote = await quotesService.create({
     clientCompanyId: clientCompany.id,
-    brandCompanyId: brandCompany.id,
     contactId: contact.id,
     bookingType: 'GROUP',
     title: DEMO_GROUP_QUOTE_TITLE,
@@ -2597,6 +2643,12 @@ async function seedGroupQuoteScenario(
     fixedPricePerPerson: 0,
     travelStartDate: new Date('2026-09-15T00:00:00.000Z'),
     validUntil: new Date('2026-08-31T23:59:59.999Z'),
+  }, quoteActor);
+  await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      brandCompanyId: brandCompany.id,
+    },
   });
 
   const quoteId = quote.id;
@@ -2774,9 +2826,9 @@ async function seedGroupQuoteScenario(
     markupPercent: 18,
   });
 
-  await quotesService.createPricingSlab(quoteId, { minPax: 8, maxPax: 10, price: 990 });
-  await quotesService.createPricingSlab(quoteId, { minPax: 11, maxPax: 12, price: 955 });
-  await quotesService.createPricingSlab(quoteId, { minPax: 13, maxPax: 14, price: 925 });
+  await quotesService.createPricingSlab(quoteId, { minPax: 8, maxPax: 10, price: 990 }, quoteActor);
+  await quotesService.createPricingSlab(quoteId, { minPax: 11, maxPax: 12, price: 955 }, quoteActor);
+  await quotesService.createPricingSlab(quoteId, { minPax: 13, maxPax: 14, price: 925 }, quoteActor);
   await quotesService.generateScenarios({
     quoteId,
     paxCounts: [8, 10, 12, 14],
@@ -2785,10 +2837,10 @@ async function seedGroupQuoteScenario(
   await quotesService.createVersion({
     quoteId,
     label: 'Group commercial review v1',
-  });
+  }, quoteActor);
   await quotesService.updateStatus(quoteId, {
     status: QuoteStatus.READY,
-  });
+  }, quoteActor);
 
   const finalQuote = await prisma.quote.findUniqueOrThrow({
     where: { id: quoteId },
@@ -2849,10 +2901,10 @@ async function seedRevisionRequestedScenario(
     phone: '+33155667788',
     title: 'Leisure Contracting Manager',
   });
+  const quoteActor = { companyId: clientCompany.id };
 
   const quote = await quotesService.create({
     clientCompanyId: clientCompany.id,
-    brandCompanyId: brandCompany.id,
     contactId: contact.id,
     title: DEMO_REVISION_QUOTE_TITLE,
     description: 'Publicly shared FIT quote with a client change request captured in the current workflow.',
@@ -2867,6 +2919,12 @@ async function seedRevisionRequestedScenario(
     nightCount: 4,
     travelStartDate: new Date('2026-06-10T00:00:00.000Z'),
     validUntil: new Date('2026-05-25T23:59:59.999Z'),
+  }, quoteActor);
+  await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      brandCompanyId: brandCompany.id,
+    },
   });
 
   const quoteId = quote.id;
@@ -2980,8 +3038,8 @@ async function seedRevisionRequestedScenario(
   await syncQuoteItineraryFromQuoteItems(prisma, quoteId);
   await quotesService.updateStatus(quoteId, {
     status: QuoteStatus.SENT,
-  });
-  const publicLink = await quotesService.enablePublicLink(quoteId);
+  }, quoteActor);
+  const publicLink = await quotesService.enablePublicLink(quoteId, quoteActor);
   await quotesService.requestPublicQuoteChanges(
     publicLink?.publicToken || '',
     'Please revise the Dead Sea night to HB and add one family-friendly dinner option on day 2.',

@@ -42,8 +42,16 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
+  pricingMode?: 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT' | null;
   currency: string;
   cost: number;
+  salesTaxPercent?: number | null;
+  salesTaxIncluded?: boolean | null;
+  serviceChargePercent?: number | null;
+  serviceChargeIncluded?: boolean | null;
+  tourismFeeAmount?: number | null;
+  tourismFeeCurrency?: string | null;
+  tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
   roomCategory: {
     id: string;
     name: string;

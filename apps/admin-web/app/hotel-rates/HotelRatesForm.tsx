@@ -2,7 +2,9 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CurrencySelect } from '../components/CurrencySelect';
 import { getErrorMessage } from '../lib/api';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type ContractOption = {
   id: string;
@@ -10,6 +12,7 @@ type ContractOption = {
   hotel: {
     id: string;
     name: string;
+    city?: string | null;
     roomCategories: RoomCategoryOption[];
   };
 };
@@ -25,6 +28,7 @@ type RoomCategoryOption = {
 type HotelOption = {
   id: string;
   name: string;
+  city?: string | null;
   roomCategories: RoomCategoryOption[];
 };
 
@@ -47,8 +51,16 @@ type HotelRatesFormProps = {
     roomCategoryId: string;
     occupancyType: (typeof occupancyTypes)[number];
     mealPlan: (typeof mealPlans)[number];
-    currency: string;
+    pricingMode?: '' | 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT';
+    currency: SupportedCurrency;
     cost: string;
+    salesTaxPercent?: string;
+    salesTaxIncluded?: boolean;
+    serviceChargePercent?: string;
+    serviceChargeIncluded?: boolean;
+    tourismFeeAmount?: string;
+    tourismFeeCurrency?: SupportedCurrency | '';
+    tourismFeeMode?: '' | 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
   };
 };
 
@@ -72,8 +84,20 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
   const [roomCategoryId, setRoomCategoryId] = useState(initialValues?.roomCategoryId || '');
   const [occupancyType, setOccupancyType] = useState<(typeof occupancyTypes)[number]>(initialValues?.occupancyType || 'SGL');
   const [mealPlan, setMealPlan] = useState<(typeof mealPlans)[number]>(initialValues?.mealPlan || 'BB');
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
+  const [pricingMode, setPricingMode] = useState<'' | 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT'>(
+    initialValues?.pricingMode || '',
+  );
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [cost, setCost] = useState(initialValues?.cost || '');
+  const [salesTaxPercent, setSalesTaxPercent] = useState(initialValues?.salesTaxPercent || '');
+  const [salesTaxIncluded, setSalesTaxIncluded] = useState(Boolean(initialValues?.salesTaxIncluded));
+  const [serviceChargePercent, setServiceChargePercent] = useState(initialValues?.serviceChargePercent || '');
+  const [serviceChargeIncluded, setServiceChargeIncluded] = useState(Boolean(initialValues?.serviceChargeIncluded));
+  const [tourismFeeAmount, setTourismFeeAmount] = useState(initialValues?.tourismFeeAmount || '');
+  const [tourismFeeCurrency, setTourismFeeCurrency] = useState<SupportedCurrency | ''>(initialValues?.tourismFeeCurrency || '');
+  const [tourismFeeMode, setTourismFeeMode] = useState<'' | 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM'>(
+    initialValues?.tourismFeeMode || '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(rateId);
@@ -87,6 +111,7 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
     selectedContract?.hotel.roomCategories?.filter((category) => category.isActive) ||
     selectedHotel?.roomCategories.filter((category) => category.isActive) ||
     [];
+  const tourismFeeLocation = selectedContract?.hotel.city || selectedHotel?.city || '';
 
   useEffect(() => {
     if (availableRoomCategories.length === 0) {
@@ -126,8 +151,16 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
           roomCategoryId,
           occupancyType,
           mealPlan,
+          pricingMode: pricingMode || undefined,
           currency,
           cost: Number(cost),
+          salesTaxPercent: salesTaxPercent.trim() ? Number(salesTaxPercent) : undefined,
+          salesTaxIncluded,
+          serviceChargePercent: serviceChargePercent.trim() ? Number(serviceChargePercent) : undefined,
+          serviceChargeIncluded,
+          tourismFeeAmount: tourismFeeAmount.trim() ? Number(tourismFeeAmount) : undefined,
+          tourismFeeCurrency: tourismFeeCurrency || undefined,
+          tourismFeeMode: tourismFeeMode || undefined,
         }),
       });
 
@@ -140,8 +173,16 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
         setSeasonName('');
         setOccupancyType('SGL');
         setMealPlan('BB');
+        setPricingMode('');
         setCurrency(selectedContract?.hotel ? 'USD' : currency);
         setCost('');
+        setSalesTaxPercent('');
+        setSalesTaxIncluded(false);
+        setServiceChargePercent('');
+        setServiceChargeIncluded(false);
+        setTourismFeeAmount('');
+        setTourismFeeCurrency('');
+        setTourismFeeMode('');
       }
       router.refresh();
     } catch (caughtError) {
@@ -241,16 +282,116 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
 
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} maxLength={3} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
       </div>
 
-      <div className="form-row">
+      <div className="form-row form-row-2">
+        <label>
+          Pricing mode
+          <select
+            value={pricingMode}
+            onChange={(event) => setPricingMode(event.target.value as '' | 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT')}
+          >
+            <option value="">Default / legacy</option>
+            <option value="PER_ROOM_PER_NIGHT">Per room per night</option>
+            <option value="PER_PERSON_PER_NIGHT">Per person per night</option>
+          </select>
+        </label>
+
         <label>
           Cost
           <input value={cost} onChange={(event) => setCost(event.target.value)} type="number" min="0" step="0.01" required />
         </label>
       </div>
+
+      <div className="form-row form-row-4">
+        <label>
+          Sales tax %
+          <input
+            value={salesTaxPercent}
+            onChange={(event) => setSalesTaxPercent(event.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Optional"
+          />
+        </label>
+
+        <label className="checkbox-row">
+          <span>Sales tax included</span>
+          <input
+            checked={salesTaxIncluded}
+            onChange={(event) => setSalesTaxIncluded(event.target.checked)}
+            type="checkbox"
+          />
+        </label>
+
+        <label>
+          Service charge %
+          <input
+            value={serviceChargePercent}
+            onChange={(event) => setServiceChargePercent(event.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Optional"
+          />
+        </label>
+
+        <label className="checkbox-row">
+          <span>Service charge included</span>
+          <input
+            checked={serviceChargeIncluded}
+            onChange={(event) => setServiceChargeIncluded(event.target.checked)}
+            type="checkbox"
+          />
+        </label>
+      </div>
+
+      <div className="form-row form-row-3">
+        <label>
+          Tourism fee paid to hotel
+          <input
+            value={tourismFeeAmount}
+            onChange={(event) => setTourismFeeAmount(event.target.value)}
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Optional"
+          />
+        </label>
+
+        <label>
+          Tourism fee currency
+          <CurrencySelect
+            value={tourismFeeCurrency}
+            onChange={(value) => setTourismFeeCurrency(value as SupportedCurrency | '')}
+            allowEmpty
+            emptyLabel="None"
+          />
+        </label>
+
+        <label>
+          Tourism fee basis
+          <select
+            value={tourismFeeMode}
+            onChange={(event) => setTourismFeeMode(event.target.value as '' | 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM')}
+          >
+            <option value="">None</option>
+            <option value="PER_NIGHT_PER_PERSON">Per night per person</option>
+            <option value="PER_NIGHT_PER_ROOM">Per night per room</option>
+          </select>
+        </label>
+      </div>
+
+      {tourismFeeLocation ? (
+        <p className="table-subcopy">
+          Tourism fee follows the hotel stay basis for {selectedContract?.hotel.name || selectedHotel?.name} in {tourismFeeLocation}.
+        </p>
+      ) : (
+        <p className="table-subcopy">Tourism fee is a hotel stay charge, typically driven by nights and pax or nights and rooms.</p>
+      )}
 
       <div className="form-row">
         <button type="submit" disabled={isSubmitting || !canSubmit}>

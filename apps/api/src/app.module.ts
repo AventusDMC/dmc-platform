@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
+import { AuditService } from './audit/audit.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { BookingsController } from './bookings/bookings.controller';
@@ -37,6 +38,7 @@ import { HotelsService } from './hotels/hotels.service';
 import { ImportItineraryController } from './import-itinerary/import-itinerary.controller';
 import { ImportItineraryService } from './import-itinerary/import-itinerary.service';
 import { InvoicesController } from './invoices/invoices.controller';
+import { InvoicePortalController } from './invoices/invoice-portal.controller';
 import { InvoicesService } from './invoices/invoices.service';
 import { ItinerariesController } from './itineraries/itineraries.controller';
 import { ItinerariesService } from './itineraries/itineraries.service';
@@ -78,6 +80,8 @@ import { VehiclesController } from './vehicles/vehicles.controller';
 import { VehiclesService } from './vehicles/vehicles.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
+import { UserInvitationsController } from './users/user-invitations.controller';
+import { UserInvitationsService } from './users/user-invitations.service';
 
 @Module({
   imports: [PrismaModule, QuoteItineraryModule],
@@ -104,6 +108,7 @@ import { UsersService } from './users/users.service';
     HotelRatesController,
     ImportItineraryController,
     InvoicesController,
+    InvoicePortalController,
     QuoteBlocksController,
     QuotesController,
     RoutesController,
@@ -118,9 +123,11 @@ import { UsersService } from './users/users.service';
     VehicleRatesController,
     TransportPricingController,
     UsersController,
+    UserInvitationsController,
   ],
   providers: [
     AppService,
+    AuditService,
     AuthService,
     {
       provide: APP_GUARD,
@@ -166,6 +173,7 @@ import { UsersService } from './users/users.service';
     VehicleRatesService,
     TransportPricingService,
     UsersService,
+    UserInvitationsService,
   ],
 })
 export class AppModule {}

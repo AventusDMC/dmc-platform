@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { normalizeOptionalString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -24,25 +25,35 @@ type ConvertLeadInput = {
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  findAll(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.lead.findMany({
+      where: {
+        companyId,
+      },
       orderBy: {
         createdAt: 'desc',
       },
     });
   }
 
-  async findOne(id: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id },
+  async findOne(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const lead = await this.prisma.lead.findFirst({
+      where: {
+        id,
+        companyId,
+      },
     });
 
     return throwIfNotFound(lead, 'Lead');
   }
 
-  create(data: CreateLeadInput) {
+  create(data: CreateLeadInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.lead.create({
       data: {
+        companyId,
         inquiry: data.inquiry,
         source: normalizeOptionalString(data.source),
         status: data.status || 'new',
@@ -50,11 +61,11 @@ export class LeadsService {
     });
   }
 
-  async update(id: string, data: UpdateLeadInput) {
-    await this.findOne(id);
+  async update(id: string, data: UpdateLeadInput, actor?: CompanyScopedActor) {
+    const lead = await this.findOne(id, actor);
 
     return this.prisma.lead.update({
-      where: { id },
+      where: { id: lead.id },
       data: {
         inquiry: data.inquiry,
         source: normalizeOptionalString(data.source),
@@ -63,16 +74,17 @@ export class LeadsService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, actor?: CompanyScopedActor) {
+    const lead = await this.findOne(id, actor);
 
     return this.prisma.lead.delete({
-      where: { id },
+      where: { id: lead.id },
     });
   }
 
-  async convert(id: string, data: ConvertLeadInput) {
-    const lead = await this.findOne(id);
+  async convert(id: string, data: ConvertLeadInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const lead = await this.findOne(id, actor);
 
     if (lead.status === 'converted') {
       throw new BadRequestException('Lead already converted');
@@ -90,15 +102,19 @@ export class LeadsService {
     const lastName = lastNameParts.join(' ') || 'Lead';
 
     return this.prisma.$transaction(async (tx) => {
-      const company = await tx.company.create({
-        data: {
-          name: companyName,
+      const company = await tx.company.findFirst({
+        where: {
+          id: companyId,
         },
       });
 
+      if (!company) {
+        throw new BadRequestException('Company not found');
+      }
+
       const contact = await tx.contact.create({
         data: {
-          companyId: company.id,
+          companyId,
           firstName,
           lastName,
           email,
@@ -109,9 +125,9 @@ export class LeadsService {
       });
 
       const updatedLead = await tx.lead.update({
-        where: { id },
+        where: { id: lead.id },
         data: {
-          companyId: company.id,
+          companyId,
           status: 'converted',
         },
       });

@@ -2,6 +2,9 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { HotelMealPlan, HotelOccupancyType } from '@prisma/client';
 import { HotelRatesService } from './hotel-rates.service';
 
+type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
+type HotelRatePricingMode = 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT';
+
 type CreateHotelRateBody = {
   contractId: string;
   seasonId?: string;
@@ -9,8 +12,18 @@ type CreateHotelRateBody = {
   roomCategoryId: string;
   occupancyType: HotelOccupancyType;
   mealPlan: HotelMealPlan;
+  pricingMode?: HotelRatePricingMode | null;
   currency: string;
   cost: number;
+  costBaseAmount?: number;
+  costCurrency?: string;
+  salesTaxPercent?: number;
+  salesTaxIncluded?: boolean;
+  serviceChargePercent?: number;
+  serviceChargeIncluded?: boolean;
+  tourismFeeAmount?: number | null;
+  tourismFeeCurrency?: string | null;
+  tourismFeeMode?: TourismFeeMode | null;
 };
 
 type UpdateHotelRateBody = Partial<CreateHotelRateBody>;
@@ -38,8 +51,18 @@ export class HotelRatesController {
       roomCategoryId: body.roomCategoryId,
       occupancyType: body.occupancyType,
       mealPlan: body.mealPlan,
+      pricingMode: body.pricingMode ?? null,
       currency: body.currency,
       cost: Number(body.cost),
+      costBaseAmount: body.costBaseAmount === undefined ? undefined : Number(body.costBaseAmount),
+      costCurrency: body.costCurrency,
+      salesTaxPercent: body.salesTaxPercent === undefined ? undefined : Number(body.salesTaxPercent),
+      salesTaxIncluded: body.salesTaxIncluded,
+      serviceChargePercent: body.serviceChargePercent === undefined ? undefined : Number(body.serviceChargePercent),
+      serviceChargeIncluded: body.serviceChargeIncluded,
+      tourismFeeAmount: body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
+      tourismFeeCurrency: body.tourismFeeCurrency,
+      tourismFeeMode: body.tourismFeeMode,
     });
   }
 
@@ -52,8 +75,19 @@ export class HotelRatesController {
       roomCategoryId: body.roomCategoryId,
       occupancyType: body.occupancyType,
       mealPlan: body.mealPlan,
+      pricingMode: body.pricingMode === undefined ? undefined : body.pricingMode ?? null,
       currency: body.currency,
       cost: body.cost === undefined ? undefined : Number(body.cost),
+      costBaseAmount: body.costBaseAmount === undefined ? undefined : Number(body.costBaseAmount),
+      costCurrency: body.costCurrency,
+      salesTaxPercent: body.salesTaxPercent === undefined ? undefined : Number(body.salesTaxPercent),
+      salesTaxIncluded: body.salesTaxIncluded,
+      serviceChargePercent: body.serviceChargePercent === undefined ? undefined : Number(body.serviceChargePercent),
+      serviceChargeIncluded: body.serviceChargeIncluded,
+      tourismFeeAmount:
+        body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
+      tourismFeeCurrency: body.tourismFeeCurrency,
+      tourismFeeMode: body.tourismFeeMode,
     });
   }
 

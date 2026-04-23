@@ -458,9 +458,9 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
   return notes.map((note) => cleanText(note)).filter(Boolean);
 }
 
-function getProposalCurrency(items: ProposalV3QuoteItem[]) {
-  // TODO: If quote-level commercial currency becomes explicit, switch this to the canonical quote/proposal currency source.
-  return 'USD';
+function getProposalCurrency(quote: ProposalV3Quote) {
+  const currency = quote.quoteCurrency?.trim().toUpperCase() || 'USD';
+  return ['USD', 'EUR', 'JOD'].includes(currency) ? currency : 'USD';
 }
 
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
@@ -469,7 +469,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const dayCount = Math.max(sortedDays.length, (quote.nightCount || 0) + 1, 1);
   const destinations = Array.from(new Set(sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
   const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
-  const currency = getProposalCurrency(quote.quoteItems);
+  const currency = getProposalCurrency(quote);
 
   return {
     documentTitle: cleanText(quote.title) || 'Bespoke Travel Proposal',

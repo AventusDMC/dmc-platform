@@ -37,6 +37,15 @@ type SendBookingDocumentEmailBody = {
   documentType: 'voucher' | 'supplier-confirmation';
 };
 
+type SendBookingInvoiceBody = {
+  email?: string | null;
+  mode?: 'PACKAGE' | 'ITEMIZED';
+};
+
+type SendBookingPaymentReminderBody = {
+  email?: string | null;
+};
+
 type UpdateBookingStatusBody = {
   status: 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   note: string;
@@ -45,6 +54,47 @@ type UpdateBookingStatusBody = {
 type UpdateBookingFinanceBody = {
   clientInvoiceStatus?: 'unbilled' | 'invoiced' | 'paid';
   supplierPaymentStatus?: 'unpaid' | 'scheduled' | 'paid';
+};
+
+type BookingPaymentTypeBody = 'CLIENT' | 'SUPPLIER';
+type BookingPaymentStatusBody = 'PENDING' | 'PAID';
+type BookingPaymentMethodBody = 'bank' | 'cash' | 'card';
+
+type CreateBookingPaymentBody = {
+  type: BookingPaymentTypeBody;
+  amount: number;
+  currency?: string | null;
+  status?: BookingPaymentStatusBody;
+  method?: BookingPaymentMethodBody | null;
+  reference?: string | null;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+};
+
+type UpdateBookingPaymentBody = {
+  amount?: number;
+  currency?: string | null;
+  status?: BookingPaymentStatusBody;
+  method?: BookingPaymentMethodBody | null;
+  reference?: string | null;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+};
+
+type MarkBookingPaymentPaidBody = {
+  paidAt?: string | null;
+};
+
+type ConfirmBookingPaymentsBatchBody = {
+  paymentIds?: string[];
+  paidAt?: string | null;
+};
+
+type SendBookingPaymentRemindersBatchBody = {
+  bookingIds?: string[];
+  paymentIds?: string[];
 };
 
 type CreateBookingPassengerBody = {
@@ -117,13 +167,65 @@ export class BookingsController {
   }
 
   @Get()
-  findAll() {
-    return this.bookingsService.findAll();
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.findAll(actor);
+  }
+
+  @Get('dashboard/finance')
+  @Roles('admin', 'finance', 'operations')
+  getFinanceDashboard(@Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.getFinanceDashboard(actor);
+  }
+
+  @Get('reconciliation/payment-proofs')
+  @Roles('admin', 'finance', 'operations')
+  getPaymentProofReconciliationQueue(@Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.getPaymentProofReconciliationQueue(actor);
+  }
+
+  @Get('reconciliation/payment-proofs/summary')
+  @Roles('admin', 'finance', 'operations')
+  getPaymentProofReconciliationSummary(@Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.getPaymentProofReconciliationSummary(actor);
+  }
+
+  @Get('reconciliation/payment-proofs/performance')
+  @Roles('admin', 'finance', 'operations')
+  getPaymentProofReconciliationPerformance(@Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.getPaymentProofReconciliationPerformance(actor);
+  }
+
+  @Post('reconciliation/payment-proofs/confirm')
+  @Roles('admin', 'finance')
+  confirmPaymentProofBatch(
+    @Body() body: ConfirmBookingPaymentsBatchBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.confirmPaymentProofBatch({
+      paymentIds: Array.isArray(body.paymentIds) ? body.paymentIds : [],
+      paidAt: body.paidAt === undefined ? undefined : body.paidAt || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post('reconciliation/payment-proofs/remind')
+  @Roles('admin', 'finance')
+  sendPaymentProofReminderBatch(
+    @Body() body: SendBookingPaymentRemindersBatchBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.sendPaymentProofReminderBatch({
+      bookingIds: Array.isArray(body.bookingIds) ? body.bookingIds : [],
+      paymentIds: Array.isArray(body.paymentIds) ? body.paymentIds : [],
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    const booking = await this.bookingsService.findOne(id);
+  async findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const booking = await this.bookingsService.findOne(id, actor);
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
@@ -227,6 +329,34 @@ export class BookingsController {
     return new StreamableFile(pdfBuffer);
   }
 
+  @Get(':id/invoice/pdf')
+  @Roles('admin', 'finance', 'operations')
+  async downloadInvoicePdf(
+    @Param('id') id: string,
+    @Query('mode') mode: string | undefined,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const booking = await this.bookingsService.findOne(id);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const normalizedMode = mode === 'PACKAGE' ? 'PACKAGE' : 'ITEMIZED';
+    const pdfBuffer = await this.bookingsService.generateInvoicePdf(id, normalizedMode);
+    const fileName =
+      `${booking.bookingRef || 'booking'}-invoice`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'booking-invoice';
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+
+    return new StreamableFile(pdfBuffer);
+  }
+
   @Post('send-document-email')
   @Roles('admin', 'operations')
   sendDocumentEmail(@Body() body: SendBookingDocumentEmailBody) {
@@ -237,10 +367,39 @@ export class BookingsController {
     });
   }
 
+  @Post(':id/invoice/send')
+  @Roles('admin', 'finance', 'operations')
+  sendInvoice(
+    @Param('id') id: string,
+    @Body() body: SendBookingInvoiceBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.sendInvoice(id, {
+      email: body.email === undefined ? undefined : body.email || null,
+      mode: body.mode,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/payments/reminder')
+  @Roles('admin', 'finance', 'operations')
+  sendPaymentReminder(
+    @Param('id') id: string,
+    @Body() body: SendBookingPaymentReminderBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.sendPaymentReminder(id, {
+      email: body.email === undefined ? undefined : body.email || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Post(':id/portal-access-token')
   @Roles('admin', 'operations')
-  regeneratePortalAccessToken(@Param('id') id: string) {
-    return this.bookingsService.regeneratePortalAccessToken(id);
+  regeneratePortalAccessToken(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.regeneratePortalAccessToken(id, actor);
   }
 
   @Patch(':id/status')
@@ -254,6 +413,7 @@ export class BookingsController {
       status: body.status,
       note: body.note,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -268,6 +428,72 @@ export class BookingsController {
       clientInvoiceStatus: body.clientInvoiceStatus,
       supplierPaymentStatus: body.supplierPaymentStatus,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Get(':id/payments')
+  @Roles('admin', 'finance')
+  listPayments(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.listPayments(id, actor);
+  }
+
+  @Post(':id/payments')
+  @Roles('admin', 'finance')
+  createPayment(
+    @Param('id') id: string,
+    @Body() body: CreateBookingPaymentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.createPayment(id, {
+      type: body.type,
+      amount: body.amount,
+      currency: body.currency === undefined ? undefined : body.currency || null,
+      status: body.status,
+      method: body.method === undefined ? undefined : body.method || null,
+      reference: body.reference === undefined ? undefined : body.reference || null,
+      dueDate: body.dueDate === undefined ? undefined : body.dueDate || null,
+      paidAt: body.paidAt === undefined ? undefined : body.paidAt || null,
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch(':id/payments/:paymentId')
+  @Roles('admin', 'finance')
+  updatePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() body: UpdateBookingPaymentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updatePayment(id, paymentId, {
+      amount: body.amount === undefined ? undefined : Number(body.amount),
+      currency: body.currency === undefined ? undefined : body.currency || null,
+      status: body.status,
+      method: body.method === undefined ? undefined : body.method || null,
+      reference: body.reference === undefined ? undefined : body.reference || null,
+      dueDate: body.dueDate === undefined ? undefined : body.dueDate || null,
+      paidAt: body.paidAt === undefined ? undefined : body.paidAt || null,
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/payments/:paymentId/mark-paid')
+  @Roles('admin', 'finance')
+  markPaymentPaid(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() body: MarkBookingPaymentPaidBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.markPaymentPaid(id, paymentId, {
+      paidAt: body.paidAt === undefined ? undefined : body.paidAt || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -285,6 +511,7 @@ export class BookingsController {
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -303,6 +530,7 @@ export class BookingsController {
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -313,7 +541,7 @@ export class BookingsController {
     @Param('passengerId') passengerId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
-    return this.bookingsService.deletePassenger(id, passengerId, this.toAuditActor(actor));
+    return this.bookingsService.deletePassenger(id, passengerId, this.toAuditActor(actor), actor);
   }
 
   @Post(':id/passengers/:passengerId/set-lead')
@@ -323,7 +551,7 @@ export class BookingsController {
     @Param('passengerId') passengerId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
-    return this.bookingsService.setLeadPassenger(id, passengerId, this.toAuditActor(actor));
+    return this.bookingsService.setLeadPassenger(id, passengerId, this.toAuditActor(actor), actor);
   }
 
   @Post(':id/rooming')
@@ -339,6 +567,7 @@ export class BookingsController {
       notes: body.notes === undefined ? undefined : body.notes || null,
       sortOrder: body.sortOrder === undefined || body.sortOrder === null ? undefined : Number(body.sortOrder),
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -356,6 +585,7 @@ export class BookingsController {
       notes: body.notes === undefined ? undefined : body.notes || null,
       sortOrder: body.sortOrder === undefined || body.sortOrder === null ? undefined : Number(body.sortOrder),
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -366,7 +596,7 @@ export class BookingsController {
     @Param('roomingEntryId') roomingEntryId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
-    return this.bookingsService.deleteRoomingEntry(id, roomingEntryId, this.toAuditActor(actor));
+    return this.bookingsService.deleteRoomingEntry(id, roomingEntryId, this.toAuditActor(actor), actor);
   }
 
   @Post(':id/rooming/:roomingEntryId/assignments')
@@ -377,7 +607,7 @@ export class BookingsController {
     @Body() body: AssignBookingPassengerToRoomBody,
     @Actor() actor: AuthenticatedActor,
   ) {
-    return this.bookingsService.assignPassengerToRoom(id, roomingEntryId, body.passengerId, this.toAuditActor(actor));
+    return this.bookingsService.assignPassengerToRoom(id, roomingEntryId, body.passengerId, this.toAuditActor(actor), actor);
   }
 
   @Delete(':id/rooming/:roomingEntryId/assignments/:passengerId')
@@ -388,7 +618,7 @@ export class BookingsController {
     @Param('passengerId') passengerId: string,
     @Actor() actor: AuthenticatedActor,
   ) {
-    return this.bookingsService.unassignPassengerFromRoom(id, roomingEntryId, passengerId, this.toAuditActor(actor));
+    return this.bookingsService.unassignPassengerFromRoom(id, roomingEntryId, passengerId, this.toAuditActor(actor), actor);
   }
 
   @Patch('services/:serviceId/assign-supplier')
@@ -402,6 +632,7 @@ export class BookingsController {
       supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
       supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -423,6 +654,7 @@ export class BookingsController {
       supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -450,6 +682,7 @@ export class BookingsController {
       reconfirmationDueAt: body.reconfirmationDueAt === undefined ? undefined : body.reconfirmationDueAt || null,
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -492,6 +725,7 @@ export class BookingsController {
       action: body.action,
       note: body.note,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -506,6 +740,7 @@ export class BookingsController {
       action: body.action,
       note: body.note,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 }

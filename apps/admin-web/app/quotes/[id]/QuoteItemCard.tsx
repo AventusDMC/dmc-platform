@@ -120,6 +120,19 @@ type QuoteItem = {
   nightCount: number | null;
   dayCount: number | null;
   baseCost: number;
+  costBaseAmount?: number;
+  costCurrency?: string;
+  quoteCurrency?: string;
+  salesTaxPercent?: number;
+  salesTaxIncluded?: boolean;
+  serviceChargePercent?: number;
+  serviceChargeIncluded?: boolean;
+  tourismFeeAmount?: number | null;
+  tourismFeeCurrency?: string | null;
+  tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+  fxRate?: number | null;
+  fxFromCurrency?: string | null;
+  fxToCurrency?: string | null;
   overrideCost: number | null;
   useOverride: boolean;
   currency: string;
@@ -418,6 +431,27 @@ export function QuoteItemCard({
               ? ` | Override ${formatMoney(currentItem.overrideCost, currentItem.currency)}`
               : ''}
           </p>
+          {currentItem.costCurrency && currentItem.costCurrency !== currentItem.currency ? (
+            <p>
+              Supplier cost {formatMoney(currentItem.costBaseAmount || 0, currentItem.costCurrency)}
+              {currentItem.fxRate ? ` | FX ${currentItem.fxFromCurrency}/${currentItem.fxToCurrency} ${currentItem.fxRate}` : ''}
+            </p>
+          ) : null}
+          {currentItem.salesTaxPercent || currentItem.serviceChargePercent || currentItem.tourismFeeAmount ? (
+            <p>
+              {[
+                currentItem.salesTaxPercent ? `Tax ${currentItem.salesTaxPercent}%${currentItem.salesTaxIncluded ? ' included' : ''}` : null,
+                currentItem.serviceChargePercent
+                  ? `Service ${currentItem.serviceChargePercent}%${currentItem.serviceChargeIncluded ? ' included' : ''}`
+                  : null,
+                currentItem.tourismFeeAmount
+                  ? `Tourism fee paid to hotel ${formatMoney(currentItem.tourismFeeAmount, currentItem.tourismFeeCurrency || currentItem.costCurrency || currentItem.currency)} ${currentItem.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? 'per night per person' : 'per night per room'}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' | ')}
+            </p>
+          ) : null}
           {currentItem.serviceDate || currentItem.startTime || currentItem.pickupTime ? (
             <p>
               {[currentItem.serviceDate ? `Date ${currentItem.serviceDate.slice(0, 10)}` : null, currentItem.startTime ? `Start ${currentItem.startTime}` : null, currentItem.pickupTime ? `Pickup ${currentItem.pickupTime}` : null]

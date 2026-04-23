@@ -4,6 +4,7 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { RouteOption } from '../lib/routes';
 import { TransportPricingRuleForm } from '../transport-pricing/TransportPricingRuleForm';
+import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 
@@ -269,7 +270,7 @@ export async function TransportPricingRulesSection() {
                                         unitCapacity: rule.unitCapacity === null ? '' : String(rule.unitCapacity),
                                         baseCost: String(rule.baseCost),
                                         discountPercent: String(rule.discountPercent),
-                                        currency: rule.currency,
+                                        currency: normalizeSupportedCurrency(rule.currency),
                                         isActive: rule.isActive,
                                       }}
                                     />

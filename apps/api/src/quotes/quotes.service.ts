@@ -14,13 +14,16 @@ import PDFDocument = require('pdfkit');
 import { randomBytes } from 'crypto';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
-import { blockDelete } from '../common/crud.helpers';
+import { AuditService } from '../audit/audit.service';
+import { blockDelete, requireSupportedCurrency } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
+import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
 
 
 const GUIDE_RATES = {
@@ -86,6 +89,7 @@ type CreateQuoteInput = {
   singleSupplement?: number | null;
   travelStartDate?: Date | null;
   validUntil?: Date | null;
+  quoteCurrency?: string;
 };
 
 type UpdateQuoteInput = Partial<CreateQuoteInput> & {
@@ -291,13 +295,18 @@ export class QuotesService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
     private readonly transportPricingService: TransportPricingService,
     private readonly promotionsService: PromotionsService,
     private readonly quotePricingService: QuotePricingService,
   ) {}
 
-  findAll() {
+  findAll(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.quote.findMany({
+      where: {
+        clientCompanyId: companyId,
+      },
       include: {
         clientCompany: {
           include: {
@@ -325,18 +334,22 @@ export class QuotesService {
     }).then((quotes) => quotes.map((quote) => this.attachResolvedQuoteFields(quote)));
   }
 
-  findOne(id: string) {
-    return this.loadQuoteState(id).then((quote: any) => (quote ? this.attachResolvedQuoteFields(quote) : null));
+  findOne(id: string, actor?: CompanyScopedActor) {
+    return this.loadQuoteState(id, this.prisma, actor).then((quote: any) => (quote ? this.attachResolvedQuoteFields(quote) : null));
   }
 
   private generatePublicQuoteToken() {
     return randomBytes(24).toString('hex');
   }
 
-  async enablePublicLink(id: string) {
+  async enablePublicLink(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
-    const existing = await quoteModel.findUnique({
-      where: { id },
+    const existing = await quoteModel.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       select: {
         id: true,
         publicToken: true,
@@ -371,10 +384,14 @@ export class QuotesService {
     return updated;
   }
 
-  async disablePublicLink(id: string) {
+  async disablePublicLink(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
-    const existing = await quoteModel.findUnique({
-      where: { id },
+    const existing = await quoteModel.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       select: {
         id: true,
       },
@@ -397,10 +414,14 @@ export class QuotesService {
     });
   }
 
-  async regeneratePublicLink(id: string) {
+  async regeneratePublicLink(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
-    const existing = await quoteModel.findUnique({
-      where: { id },
+    const existing = await quoteModel.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       select: {
         id: true,
       },
@@ -597,6 +618,7 @@ export class QuotesService {
         select: {
           id: true,
           status: true,
+          acceptedVersionId: true,
         },
       });
 
@@ -612,6 +634,12 @@ export class QuotesService {
         throw new BadRequestException('Quote interaction already completed');
       }
 
+      const acceptedVersion = await this.resolveAcceptedQuoteVersion({
+        quoteId: quote.id,
+        acceptedVersionId: quote.acceptedVersionId ?? null,
+        prismaClient: tx,
+      });
+
       const lifecycleTimestamps = this.buildQuoteStatusTimestamps({
         currentStatus: quote.status,
         nextStatus: QuoteStatus.ACCEPTED,
@@ -623,6 +651,7 @@ export class QuotesService {
         where: { id: quote.id },
         data: {
           status: QuoteStatus.ACCEPTED,
+          acceptedVersionId: acceptedVersion.id,
           acceptedAt: lifecycleTimestamps.acceptedAt,
         },
         select: {
@@ -683,18 +712,31 @@ export class QuotesService {
     });
   }
 
-  async create(data: CreateQuoteInput) {
+  async create(data: CreateQuoteInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+
+    if (data.clientCompanyId !== companyId) {
+      throw new BadRequestException('Quote company does not match the current company');
+    }
+
+    if (data.brandCompanyId && data.brandCompanyId !== companyId) {
+      throw new BadRequestException('Branding company does not match the current company');
+    }
+
     const [clientCompany, brandCompany, contact] = await Promise.all([
-      this.prisma.company.findUnique({
-        where: { id: data.clientCompanyId },
+      this.prisma.company.findFirst({
+        where: { id: companyId },
       }),
       data.brandCompanyId
-        ? this.prisma.company.findUnique({
-            where: { id: data.brandCompanyId },
+        ? this.prisma.company.findFirst({
+            where: { id: companyId },
           })
         : Promise.resolve(null),
-      this.prisma.contact.findUnique({
-        where: { id: data.contactId },
+      this.prisma.contact.findFirst({
+        where: {
+          id: data.contactId,
+          companyId,
+        },
       }),
     ]);
 
@@ -744,6 +786,7 @@ export class QuotesService {
               bookingType: this.normalizeBookingType(data.bookingType),
               title: data.title,
               description: data.description || null,
+              quoteCurrency: this.validateInputCurrencyCode(data.quoteCurrency, 'quoteCurrency'),
               inclusionsText: this.normalizeSupportText(data.inclusionsText),
               exclusionsText: this.normalizeSupportText(data.exclusionsText),
               termsNotesText: this.normalizeSupportText(data.termsNotesText),
@@ -772,7 +815,7 @@ export class QuotesService {
                     create: normalizedSlabs,
                   }
                 : undefined,
-            },
+            } as any,
             include: {
               clientCompany: {
                 include: {
@@ -800,7 +843,7 @@ export class QuotesService {
 
         await this.recalculateQuoteTotals(createdQuoteId);
 
-        return this.loadQuoteState(createdQuoteId);
+        return this.loadQuoteState(createdQuoteId, this.prisma, actor);
       } catch (error) {
         if (this.isQuoteNumberConflict(error) && attempt < QuotesService.QUOTE_NUMBER_RETRY_LIMIT - 1) {
           continue;
@@ -881,7 +924,8 @@ export class QuotesService {
           totalSell: 0,
           pricePerPax: 0,
           fixedPricePerPerson: 0,
-        },
+          quoteCurrency: 'USD',
+        } as any,
         select: {
           id: true,
         },
@@ -941,6 +985,20 @@ export class QuotesService {
               nightCount: null,
               dayCount: 1,
               baseCost: 0,
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              quoteCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              tourismFeeAmount: null,
+              tourismFeeCurrency: null,
+              tourismFeeMode: null,
+              fxRate: null,
+              fxFromCurrency: null,
+              fxToCurrency: null,
+              fxRateDate: null,
               overrideCost: null,
               useOverride: false,
               currency: 'USD',
@@ -948,7 +1006,7 @@ export class QuotesService {
               markupPercent: 0,
               totalCost: 0,
               totalSell: 0,
-            },
+            } as any,
             select: {
               id: true,
             },
@@ -973,6 +1031,20 @@ export class QuotesService {
               nightCount: null,
               dayCount: 1,
               baseCost: 0,
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              quoteCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              tourismFeeAmount: null,
+              tourismFeeCurrency: null,
+              tourismFeeMode: null,
+              fxRate: null,
+              fxFromCurrency: null,
+              fxToCurrency: null,
+              fxRateDate: null,
               overrideCost: null,
               useOverride: false,
               currency: 'USD',
@@ -980,7 +1052,7 @@ export class QuotesService {
               markupPercent: 0,
               totalCost: 0,
               totalSell: 0,
-            },
+            } as any,
           });
         }
       }
@@ -1011,9 +1083,13 @@ export class QuotesService {
     });
   }
 
-  async update(id: string, data: UpdateQuoteInput) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id },
+  async update(id: string, data: UpdateQuoteInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
     });
 
     if (!quote) {
@@ -1023,6 +1099,19 @@ export class QuotesService {
     const clientCompanyId = data.clientCompanyId ?? quote.clientCompanyId;
     const brandCompanyId = data.brandCompanyId === undefined ? quote.brandCompanyId : data.brandCompanyId;
     const contactId = data.contactId ?? quote.contactId;
+    const quoteCurrency = this.validateInputCurrencyCode(
+      data.quoteCurrency ?? (quote as any).quoteCurrency ?? 'USD',
+      'quoteCurrency',
+    );
+
+    if (clientCompanyId !== companyId) {
+      throw new BadRequestException('Quote company does not match the current company');
+    }
+
+    if (brandCompanyId && brandCompanyId !== companyId) {
+      throw new BadRequestException('Branding company does not match the current company');
+    }
+
     const storedPricingType = this.normalizeQuotePricingType(quote.pricingType);
     const pricingType =
       data.pricingType === undefined ? storedPricingType : this.normalizeQuotePricingType(data.pricingType);
@@ -1031,8 +1120,19 @@ export class QuotesService {
       data.fixedPricePerPerson === undefined
         ? this.normalizeFixedPricePerPerson(quote.fixedPricePerPerson)
         : this.normalizeFixedPricePerPerson(data.fixedPricePerPerson);
-    if (data.status === QuoteStatus.ACCEPTED && !quote.acceptedVersionId) {
-      throw new BadRequestException('Use the quote status workflow to mark a quote as ACCEPTED after selecting an accepted version');
+    let nextAcceptedVersionId = quote.acceptedVersionId;
+
+    if (data.status === QuoteStatus.ACCEPTED) {
+      if (!quote.acceptedVersionId) {
+        throw new BadRequestException('Use the quote status workflow to mark a quote as ACCEPTED after selecting an accepted version');
+      }
+
+      nextAcceptedVersionId = (
+        await this.resolveAcceptedQuoteVersion({
+          quoteId: id,
+          acceptedVersionId: quote.acceptedVersionId,
+        })
+      ).id;
     }
     const lifecycleTimestamps =
       data.status === undefined
@@ -1050,16 +1150,19 @@ export class QuotesService {
       focRoomType: data.focRoomType === undefined ? this.normalizeQuoteFocRoomType(quote.focRoomType) : data.focRoomType,
     });
     const [clientCompany, brandCompany, contact] = await Promise.all([
-      this.prisma.company.findUnique({
-        where: { id: clientCompanyId },
+      this.prisma.company.findFirst({
+        where: { id: companyId },
       }),
       brandCompanyId
-        ? this.prisma.company.findUnique({
-            where: { id: brandCompanyId },
+        ? this.prisma.company.findFirst({
+            where: { id: companyId },
           })
         : Promise.resolve(null),
-      this.prisma.contact.findUnique({
-        where: { id: contactId },
+      this.prisma.contact.findFirst({
+        where: {
+          id: contactId,
+          companyId,
+        },
       }),
     ]);
 
@@ -1107,6 +1210,7 @@ export class QuotesService {
           bookingType: data.bookingType === undefined ? undefined : this.normalizeBookingType(data.bookingType),
           title: data.title === undefined ? undefined : data.title.trim(),
           description: data.description === undefined ? undefined : data.description || null,
+          quoteCurrency,
           inclusionsText: data.inclusionsText === undefined ? undefined : this.normalizeSupportText(data.inclusionsText),
           exclusionsText: data.exclusionsText === undefined ? undefined : this.normalizeSupportText(data.exclusionsText),
           termsNotesText: data.termsNotesText === undefined ? undefined : this.normalizeSupportText(data.termsNotesText),
@@ -1123,9 +1227,10 @@ export class QuotesService {
             data.travelStartDate === undefined ? undefined : this.normalizeQuoteLifecycleDate(data.travelStartDate),
           validUntil: data.validUntil === undefined ? undefined : this.normalizeQuoteLifecycleDate(data.validUntil),
           status: data.status,
+          acceptedVersionId: data.status === QuoteStatus.ACCEPTED ? nextAcceptedVersionId : undefined,
           sentAt: lifecycleTimestamps?.sentAt,
           acceptedAt: lifecycleTimestamps?.acceptedAt,
-        },
+        } as any,
       });
 
       if (normalizedSlabs !== undefined) {
@@ -1137,7 +1242,7 @@ export class QuotesService {
 
     await this.recalculateQuoteTotals(updated);
 
-    return this.loadQuoteState(updated);
+    return this.loadQuoteState(updated, this.prisma, actor);
   }
 
   findPricingSlabs(quoteId: string) {
@@ -1161,9 +1266,8 @@ export class QuotesService {
     );
   }
 
-  async createPricingSlab(quoteId: string, data: QuotePricingSlabInput) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id: quoteId },
+  async createPricingSlab(quoteId: string, data: QuotePricingSlabInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor, {
       select: {
         id: true,
         pricingType: true,
@@ -1180,7 +1284,7 @@ export class QuotesService {
     }
 
     const normalized = this.normalizePricingSlabInput(data);
-    const existingSlabs = await this.findPricingSlabs(quoteId);
+    const existingSlabs = await this.findPricingSlabs(quote.id);
     this.quotePricingService.assertValidPricingConfig({
       mode: 'group',
       pricingSlabs: [...existingSlabs, normalized].sort((left, right) => this.comparePricingSlabRanges(left, right)),
@@ -1188,24 +1292,28 @@ export class QuotesService {
 
     const createdSlab = await this.prisma.quotePricingSlab.create({
       data: {
-        quoteId,
+        quoteId: quote.id,
         ...normalized,
       },
     });
 
-    await this.recalculateQuoteTotals(quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return this.prisma.quotePricingSlab.findUnique({
       where: { id: createdSlab.id },
     });
   }
 
-  async updatePricingSlab(quoteId: string, slabId: string, data: Partial<QuotePricingSlabInput>) {
-    const slab = await this.prisma.quotePricingSlab.findUnique({
-      where: { id: slabId },
+  async updatePricingSlab(quoteId: string, slabId: string, data: Partial<QuotePricingSlabInput>, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const slab = await this.prisma.quotePricingSlab.findFirst({
+      where: {
+        id: slabId,
+        quoteId: quote.id,
+      },
     });
 
-    if (!slab || slab.quoteId !== quoteId) {
+    if (!slab) {
       throw new BadRequestException('Quote pricing slab not found');
     }
 
@@ -1217,7 +1325,7 @@ export class QuotesService {
       notes: data.notes === undefined ? slab.notes : data.notes,
     });
 
-    const existingSlabs = await this.findPricingSlabs(quoteId);
+    const existingSlabs = await this.findPricingSlabs(quote.id);
     this.quotePricingService.assertValidPricingConfig({
       mode: 'group',
       pricingSlabs:
@@ -1231,23 +1339,27 @@ export class QuotesService {
       data: normalized,
     });
 
-    await this.recalculateQuoteTotals(quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return this.prisma.quotePricingSlab.findUnique({
       where: { id: updatedSlab.id },
     });
   }
 
-  async removePricingSlab(quoteId: string, slabId: string) {
-    const slab = await this.prisma.quotePricingSlab.findUnique({
-      where: { id: slabId },
+  async removePricingSlab(quoteId: string, slabId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const slab = await this.prisma.quotePricingSlab.findFirst({
+      where: {
+        id: slabId,
+        quoteId: quote.id,
+      },
       select: {
         id: true,
         quoteId: true,
       },
     });
 
-    if (!slab || slab.quoteId !== quoteId) {
+    if (!slab) {
       throw new BadRequestException('Quote pricing slab not found');
     }
 
@@ -1255,17 +1367,22 @@ export class QuotesService {
       where: { id: slabId },
     });
 
-    await this.recalculateQuoteTotals(quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return deletedSlab;
   }
 
-  async updateStatus(id: string, data: UpdateQuoteStatusInput) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id },
+  async updateStatus(id: string, data: UpdateQuoteStatusInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       select: {
         id: true,
         status: true,
+        acceptedVersionId: true,
         sentAt: true,
         acceptedAt: true,
         pricingType: true,
@@ -1286,7 +1403,7 @@ export class QuotesService {
       throw new BadRequestException('Quote not found');
     }
 
-    let acceptedVersionId: string | null = null;
+    let acceptedVersionId = quote.acceptedVersionId ?? null;
 
     if (data.status === QuoteStatus.ACCEPTED) {
       if (this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB') {
@@ -1296,36 +1413,25 @@ export class QuotesService {
         });
       }
 
-      acceptedVersionId = data.acceptedVersionId ?? null;
-
-      if (!acceptedVersionId) {
-        throw new BadRequestException('acceptedVersionId is required when status is ACCEPTED');
-      }
-
-      const version = await this.prisma.quoteVersion.findUnique({
-        where: {
-          id: acceptedVersionId,
-        },
-        select: {
-          id: true,
-          quoteId: true,
-          snapshotJson: true,
-        },
-      });
-
-      if (!version) {
-        throw new BadRequestException('Quote version not found');
-      }
-
-      if (version.quoteId !== id) {
-        throw new BadRequestException('Quote version does not belong to the selected quote');
-      }
-
-      this.assertQuoteWorkflowStateIsComplete(version.snapshotJson);
+      acceptedVersionId = (
+        await this.resolveAcceptedQuoteVersion({
+          quoteId: id,
+          acceptedVersionId: data.acceptedVersionId ?? null,
+        })
+      ).id;
+    } else if (data.status === QuotesService.CONFIRMED) {
+      acceptedVersionId = (
+        await this.resolveAcceptedQuoteVersion({
+          quoteId: id,
+          acceptedVersionId: quote.acceptedVersionId ?? null,
+        })
+      ).id;
+    } else {
+      acceptedVersionId = null;
     }
 
     if (data.status === QuoteStatus.READY || data.status === QuoteStatus.SENT) {
-      const workflowQuote = await this.loadQuoteState(id);
+      const workflowQuote = await this.loadQuoteState(id, this.prisma, actor);
 
       if (!workflowQuote) {
         throw new BadRequestException('Quote not found');
@@ -1365,15 +1471,110 @@ export class QuotesService {
     }).then((quote) => this.attachResolvedQuoteFields(quote));
   }
 
-  async createInvoice(id: string) {
-    const invoice = await this.ensureInvoiceForAcceptedQuote(id);
+  async createInvoice(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!quote) {
+      throw new BadRequestException('Quote not found');
+    }
+
+    const invoice = await this.ensureInvoiceForAcceptedQuote(id, this.prisma, actor);
     return this.mapInvoiceSummary(invoice);
   }
 
-  async convertToBooking(id: string) {
+  async repairAcceptedQuoteVersionLinks(companyId?: string) {
+    const companyIds = companyId ? [companyId] : await this.listCompanyIdsForMaintenanceJobs();
+    const repaired: Array<{ quoteId: string; acceptedVersionId: string; companyId: string }> = [];
+    const failed: Array<{ quoteId: string; reason: string; companyId: string }> = [];
+    let scanned = 0;
+
+    for (const targetCompanyId of companyIds) {
+      const result = await this.repairAcceptedQuoteVersionLinksForCompany(targetCompanyId);
+      scanned += result.scanned;
+      repaired.push(...result.repaired);
+      failed.push(...result.failed);
+    }
+
+    return {
+      scanned,
+      repaired,
+      failed,
+    };
+  }
+
+  private async repairAcceptedQuoteVersionLinksForCompany(companyId: string) {
+    const brokenQuotes = await this.prisma.quote.findMany({
+      where: {
+        clientCompanyId: companyId,
+        status: {
+          in: [QuoteStatus.ACCEPTED, QuotesService.CONFIRMED],
+        },
+        acceptedVersionId: null,
+      },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    const repaired: Array<{ quoteId: string; acceptedVersionId: string; companyId: string }> = [];
+    const failed: Array<{ quoteId: string; reason: string; companyId: string }> = [];
+
+    for (const quote of brokenQuotes) {
+      try {
+        const version = await this.resolveAcceptedQuoteVersion({
+          quoteId: quote.id,
+        });
+
+        await this.prisma.quote.update({
+          where: { id: quote.id },
+          data: {
+            acceptedVersionId: version.id,
+          },
+        });
+
+        repaired.push({
+          quoteId: quote.id,
+          acceptedVersionId: version.id,
+          companyId,
+        });
+      } catch (error) {
+        failed.push({
+          quoteId: quote.id,
+          reason: error instanceof Error ? error.message : 'Could not resolve accepted version',
+          companyId,
+        });
+      }
+    }
+
+    return {
+      scanned: brokenQuotes.length,
+      repaired,
+      failed,
+    };
+  }
+
+  async convertToBooking(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.$transaction(async (tx) => {
-      const quote = await tx.quote.findUnique({
-        where: { id },
+      const quote = await tx.quote.findFirst({
+        where: {
+          id,
+          clientCompanyId: companyId,
+        },
         select: {
           id: true,
           status: true,
@@ -1402,9 +1603,10 @@ export class QuotesService {
         throw new BadRequestException('A booking already exists for this quote');
       }
 
-      const acceptedVersion = await tx.quoteVersion.findUnique({
+      const acceptedVersion = await tx.quoteVersion.findFirst({
         where: {
           id: quote.acceptedVersionId,
+          quoteId: quote.id,
         },
         select: {
           id: true,
@@ -1434,7 +1636,7 @@ export class QuotesService {
         data: {
           bookingRef,
           accessToken: this.generateBookingAccessToken(),
-          quoteId: id,
+          quoteId: quote.id,
           acceptedVersionId: acceptedVersion.id,
           bookingType: bookingSnapshot.bookingType,
           snapshotJson: bookingSnapshot.snapshotJson,
@@ -1476,6 +1678,19 @@ export class QuotesService {
     }, {
       maxWait: 30000,
       timeout: 30000,
+    }).then(async (createdBooking) => {
+      await this.auditService.log({
+        actor: actor ? { id: (actor as { id?: string }).id ?? null, companyId } : null,
+        action: 'booking.created',
+        entity: 'booking',
+        entityId: createdBooking.id,
+        metadata: {
+          quoteId: id,
+          bookingRef: createdBooking.bookingRef || null,
+        },
+      });
+
+      return createdBooking;
     });
   }
 
@@ -1544,15 +1759,21 @@ export class QuotesService {
     }));
   }
 
-  async createItem(data: CreateQuoteItemInput) {
-    const values = await this.resolveQuoteItemValues(data);
+  async createItem(data: CreateQuoteItemInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(data.quoteId, actor);
+    const optionId = data.optionId ? (await this.ensureOptionBelongsToQuote(quote.id, data.optionId, actor)).id : undefined;
+    const values = await this.resolveQuoteItemValues({
+      ...data,
+      quoteId: quote.id,
+      optionId,
+    });
 
     const item = await this.prisma.quoteItem.create({
       data: values.data,
       include: values.include,
     } as any);
 
-    await this.recalculateQuoteTotals(data.quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return {
       ...item,
@@ -1560,9 +1781,15 @@ export class QuotesService {
     };
   }
 
-  async updateItem(itemId: string, data: UpdateQuoteItemInput) {
-    const existingItem = await this.prisma.quoteItem.findUnique({
-      where: { id: itemId },
+  async updateItem(itemId: string, data: UpdateQuoteItemInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const existingItem = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
     });
 
     if (!existingItem) {
@@ -1570,9 +1797,15 @@ export class QuotesService {
     }
 
     const quoteId = data.quoteId ?? existingItem.quoteId;
-    const optionId = data.optionId === undefined ? existingItem.optionId || undefined : data.optionId;
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const optionId =
+      data.optionId === undefined
+        ? existingItem.optionId || undefined
+        : data.optionId
+          ? (await this.ensureOptionBelongsToQuote(quote.id, data.optionId, actor)).id
+          : undefined;
     const values = await this.resolveQuoteItemValues({
-      quoteId,
+      quoteId: quote.id,
       optionId,
       serviceId: data.serviceId ?? existingItem.serviceId,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
@@ -1637,11 +1870,11 @@ export class QuotesService {
       include: values.include,
     } as any);
 
-    if (existingItem.quoteId !== quoteId) {
+    if (existingItem.quoteId !== quote.id) {
       await this.recalculateQuoteTotals(existingItem.quoteId);
     }
 
-    await this.recalculateQuoteTotals(quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return {
       ...item,
@@ -1649,12 +1882,13 @@ export class QuotesService {
     };
   }
 
-  async assignServiceToItem(quoteId: string, itemId: string, serviceId: string) {
+  async assignServiceToItem(quoteId: string, itemId: string, serviceId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
     const [item, service] = await Promise.all([
       this.prisma.quoteItem.findFirst({
         where: {
           id: itemId,
-          quoteId,
+          quoteId: quote.id,
           optionId: null,
         },
         include: {
@@ -1705,14 +1939,20 @@ export class QuotesService {
       },
     } as any);
 
-    await this.recalculateQuoteTotals(quoteId);
+    await this.recalculateQuoteTotals(quote.id);
 
     return updatedItem;
   }
 
-  async removeItem(itemId: string) {
-    const item = await this.prisma.quoteItem.findUnique({
-      where: { id: itemId },
+  async removeItem(itemId: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const item = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
     });
 
     if (!item) {
@@ -1728,9 +1968,13 @@ export class QuotesService {
     return { id: itemId };
   }
 
-  async remove(id: string) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id },
+  async remove(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       include: {
         _count: {
           select: {
@@ -1755,13 +1999,13 @@ export class QuotesService {
     blockDelete('quote', 'saved versions', quote._count.versions);
 
     return this.prisma.quote.delete({
-      where: { id },
+      where: { id: quote.id },
     });
   }
 
-  async createVersion(data: CreateQuoteVersionInput) {
+  async createVersion(data: CreateQuoteVersionInput, actor?: CompanyScopedActor) {
     return this.prisma.$transaction(async (tx) => {
-      const quote = await this.loadQuoteState(data.quoteId, tx);
+      const quote = await this.loadQuoteState(data.quoteId, tx, actor);
 
       if (!quote) {
         throw new BadRequestException('Quote not found');
@@ -1881,6 +2125,15 @@ export class QuotesService {
     const reconfirmationRequired = Boolean(data.reconfirmationRequired);
     let baseCost = service.baseCost;
     let currency = service.currency || '';
+    let supplierCostBaseAmount = (service as any).costBaseAmount ?? service.baseCost;
+    let supplierCostCurrency = (service as any).costCurrency ?? (service.currency || 'USD');
+    let salesTaxPercent = Number((service as any).salesTaxPercent ?? 0);
+    let salesTaxIncluded = Boolean((service as any).salesTaxIncluded);
+    let serviceChargePercent = Number((service as any).serviceChargePercent ?? 0);
+    let serviceChargeIncluded = Boolean((service as any).serviceChargeIncluded);
+    let tourismFeeAmount = (service as any).tourismFeeAmount ?? null;
+    let tourismFeeCurrency = (service as any).tourismFeeCurrency ?? null;
+    let tourismFeeMode = (service as any).tourismFeeMode ?? null;
     let pricingDescription: string | null = null;
     let appliedVehicleRateId: string | null = null;
     let routeId: string | null = null;
@@ -1953,6 +2206,15 @@ export class QuotesService {
 
       baseCost = hotelRate.cost;
       currency = hotelRate.currency;
+      supplierCostBaseAmount = (hotelRate as any).costBaseAmount ?? hotelRate.cost;
+      supplierCostCurrency = (hotelRate as any).costCurrency ?? hotelRate.currency;
+      salesTaxPercent = Number((hotelRate as any).salesTaxPercent ?? 0);
+      salesTaxIncluded = Boolean((hotelRate as any).salesTaxIncluded);
+      serviceChargePercent = Number((hotelRate as any).serviceChargePercent ?? 0);
+      serviceChargeIncluded = Boolean((hotelRate as any).serviceChargeIncluded);
+      tourismFeeAmount = (hotelRate as any).tourismFeeAmount ?? null;
+      tourismFeeCurrency = (hotelRate as any).tourismFeeCurrency ?? null;
+      tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
       pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${hotelRate.mealPlan}`;
       hotelId = data.hotelId;
       contractId = hotelRate.contract.id;
@@ -2051,7 +2313,7 @@ export class QuotesService {
     }
 
     if (data.currency !== undefined) {
-      currency = data.currency?.trim() || '';
+      supplierCostCurrency = data.currency?.trim().toUpperCase() || supplierCostCurrency;
     }
 
     const overrideCost = data.overrideCost === undefined ? null : data.overrideCost;
@@ -2068,32 +2330,31 @@ export class QuotesService {
     const effectiveUnitCost = this.getFinalItemCost(baseCost, overrideCost, useOverride);
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
 
-    const pricing = this.isHotelService(service)
-      ? this.calculateHotelItemPricing({
-          quantity: transportQuantity,
-          roomCount,
-          nightCount,
-          unitCost: effectiveUnitCost,
-          markupPercent: data.markupPercent,
-        })
-      : this.isTransportService(service) && transportPricingMode
-        ? this.calculateTransportItemPricing({
-            totalCost:
-              transportPricingMode === 'capacity_unit' && unitCount
-                ? unitCount * effectiveUnitCost
-                : effectiveUnitCost,
-            markupPercent: data.markupPercent,
-          })
-      : this.calculateItemPricing({
-          unitType: service.unitType,
-          quantity: transportQuantity,
-          paxCount,
-          roomCount,
-          nightCount,
-          dayCount,
-          unitCost: effectiveUnitCost,
-          markupPercent: data.markupPercent,
-        });
+    const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
+    const pricing = this.calculateCentralizedQuoteItemPricing({
+      service,
+      quantity: transportQuantity,
+      paxCount,
+      roomCount,
+      nightCount,
+      dayCount,
+      unitCost: effectiveUnitCost,
+      markupPercent: data.markupPercent,
+      quoteCurrency,
+      supplierPricing: {
+        costBaseAmount: effectiveUnitCost,
+        costCurrency: supplierCostCurrency,
+        salesTaxPercent,
+        salesTaxIncluded,
+        serviceChargePercent,
+        serviceChargeIncluded,
+        tourismFeeAmount,
+        tourismFeeCurrency: tourismFeeCurrency ?? supplierCostCurrency,
+        tourismFeeMode,
+      },
+      transportPricingMode,
+      unitCount,
+    });
     const promotionTravelDate = serviceDate ?? quote.travelStartDate;
     const promotionResult =
       this.isHotelService(service) && contractId && roomCategoryId && promotionTravelDate
@@ -2106,7 +2367,7 @@ export class QuotesService {
             stayNights: nightCount,
             baseCost: pricing.totalCost,
             baseSell: pricing.totalSell,
-            currency,
+            currency: quoteCurrency,
           })
         : null;
 
@@ -2143,10 +2404,24 @@ export class QuotesService {
         roomCount,
         nightCount,
         dayCount,
-        baseCost,
+        baseCost: pricing.totalCost,
+        costBaseAmount: supplierCostBaseAmount,
+        costCurrency: supplierCostCurrency,
+        quoteCurrency,
+        salesTaxPercent,
+        salesTaxIncluded,
+        serviceChargePercent,
+        serviceChargeIncluded,
+        tourismFeeAmount,
+        tourismFeeCurrency,
+        tourismFeeMode,
+        fxRate: pricing.fxRate,
+        fxFromCurrency: pricing.fxFromCurrency,
+        fxToCurrency: pricing.fxToCurrency,
+        fxRateDate: pricing.fxRateDate,
         overrideCost,
         useOverride,
-        currency,
+        currency: quoteCurrency,
         pricingDescription,
         appliedVehicleRateId,
         markupPercent: data.markupPercent,
@@ -2775,8 +3050,9 @@ export class QuotesService {
     }));
   }
 
-  createOption(data: CreateQuoteOptionInput) {
-    return this.resolveQuoteOptionName(data.name, data.hotelCategoryId).then(({ hotelCategoryId, name }) =>
+  createOption(data: CreateQuoteOptionInput, actor?: CompanyScopedActor) {
+    return this.assertQuoteMutationAccess(data.quoteId, actor).then(() =>
+      this.resolveQuoteOptionName(data.name, data.hotelCategoryId).then(({ hotelCategoryId, name }) =>
       this.prisma.quoteOption.create({
         data: {
           quoteId: data.quoteId,
@@ -2802,12 +3078,18 @@ export class QuotesService {
         },
         0,
       ),
-    }));
+    })));
   }
 
-  async updateOption(optionId: string, data: UpdateQuoteOptionInput) {
-    const option = await this.prisma.quoteOption.findUnique({
-      where: { id: optionId },
+  async updateOption(optionId: string, data: UpdateQuoteOptionInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const option = await this.prisma.quoteOption.findFirst({
+      where: {
+        id: optionId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
       include: {
         hotelCategory: true,
       },
@@ -2874,8 +3156,8 @@ export class QuotesService {
     });
   }
 
-  async removeOption(quoteId: string, optionId: string) {
-    await this.ensureOptionBelongsToQuote(quoteId, optionId);
+  async removeOption(quoteId: string, optionId: string, actor?: CompanyScopedActor) {
+    await this.ensureOptionBelongsToQuote(quoteId, optionId, actor);
 
     await this.prisma.quoteOption.delete({
       where: { id: optionId },
@@ -2914,21 +3196,28 @@ export class QuotesService {
     } as any);
   }
 
-  async createOptionItem(optionId: string, data: Omit<CreateQuoteItemInput, 'optionId'>) {
-    await this.ensureOptionBelongsToQuote(data.quoteId, optionId);
+  async createOptionItem(optionId: string, data: Omit<CreateQuoteItemInput, 'optionId'>, actor?: CompanyScopedActor) {
+    await this.ensureOptionBelongsToQuote(data.quoteId, optionId, actor);
 
     return this.createItem({
       ...data,
       optionId,
-    });
+    }, actor);
   }
 
-  async updateOptionItem(optionId: string, itemId: string, data: UpdateQuoteItemInput) {
-    const item = await this.prisma.quoteItem.findUnique({
-      where: { id: itemId },
+  async updateOptionItem(optionId: string, itemId: string, data: UpdateQuoteItemInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const item = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        optionId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
     });
 
-    if (!item || item.optionId !== optionId) {
+    if (!item) {
       throw new BadRequestException('Quote item not found');
     }
 
@@ -2936,19 +3225,26 @@ export class QuotesService {
       ...data,
       optionId,
       quoteId: item.quoteId,
-    });
+    }, actor);
   }
 
-  async removeOptionItem(optionId: string, itemId: string) {
-    const item = await this.prisma.quoteItem.findUnique({
-      where: { id: itemId },
+  async removeOptionItem(optionId: string, itemId: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const item = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        optionId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
     });
 
-    if (!item || item.optionId !== optionId) {
+    if (!item) {
       throw new BadRequestException('Quote item not found');
     }
 
-    return this.removeItem(itemId);
+    return this.removeItem(itemId, actor);
   }
 
   async generateScenarios(data: GenerateQuoteScenariosInput) {
@@ -3169,6 +3465,140 @@ export class QuotesService {
     };
   }
 
+  private buildLegacyQuoteItemPricing(values: {
+    service: {
+      category: string;
+      unitType: ServiceUnitType;
+      serviceType?: { name: string; code: string | null } | null;
+    };
+    quantity: number;
+    paxCount: number;
+    roomCount: number;
+    nightCount: number;
+    dayCount: number;
+    unitCost: number;
+    markupPercent: number;
+    transportPricingMode?: TransportPricingMode | null;
+    unitCount?: number | null;
+  }) {
+    if (this.isHotelService(values.service)) {
+      return this.calculateHotelItemPricing({
+        quantity: values.quantity,
+        roomCount: values.roomCount,
+        nightCount: values.nightCount,
+        unitCost: values.unitCost,
+        markupPercent: values.markupPercent,
+      });
+    }
+
+    if (this.isTransportService(values.service) && values.transportPricingMode) {
+      return this.calculateTransportItemPricing({
+        totalCost:
+          values.transportPricingMode === 'capacity_unit' && values.unitCount
+            ? values.unitCount * values.unitCost
+            : values.unitCost,
+        markupPercent: values.markupPercent,
+      });
+    }
+
+    return this.calculateItemPricing({
+      unitType: values.service.unitType,
+      quantity: values.quantity,
+      paxCount: values.paxCount,
+      roomCount: values.roomCount,
+      nightCount: values.nightCount,
+      dayCount: values.dayCount,
+      unitCost: values.unitCost,
+      markupPercent: values.markupPercent,
+    });
+  }
+
+  private calculateCentralizedQuoteItemPricing(values: {
+    service: {
+      category: string;
+      unitType: ServiceUnitType;
+      serviceType?: { name: string; code: string | null } | null;
+    };
+    quantity: number;
+    paxCount: number;
+    roomCount: number;
+    nightCount: number;
+    dayCount: number;
+    unitCost: number;
+    markupPercent: number;
+    quoteCurrency: string;
+    supplierPricing: {
+      costBaseAmount?: number | null;
+      costCurrency?: string | null;
+      salesTaxPercent?: number | null;
+      salesTaxIncluded?: boolean | null;
+      serviceChargePercent?: number | null;
+      serviceChargeIncluded?: boolean | null;
+      tourismFeeAmount?: number | null;
+      tourismFeeCurrency?: string | null;
+      tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+    };
+    transportPricingMode?: TransportPricingMode | null;
+    unitCount?: number | null;
+    legacyCurrency?: string | null;
+  }) {
+    const pricingUnits = this.isHotelService(values.service)
+      ? Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
+      : this.isTransportService(values.service) &&
+          values.transportPricingMode === 'capacity_unit' &&
+          values.unitCount
+        ? values.unitCount
+        : this.getPricingUnits(values.service.unitType, {
+            quantity: values.quantity,
+            paxCount: values.paxCount,
+            roomCount: values.roomCount,
+            nightCount: values.nightCount,
+            dayCount: values.dayCount,
+          });
+    const legacyPricing = this.buildLegacyQuoteItemPricing({
+      service: values.service,
+      quantity: values.quantity,
+      paxCount: values.paxCount,
+      roomCount: values.roomCount,
+      nightCount: values.nightCount,
+      dayCount: values.dayCount,
+      unitCost: values.unitCost,
+      markupPercent: values.markupPercent,
+      transportPricingMode: values.transportPricingMode,
+      unitCount: values.unitCount,
+    });
+
+    return calculateMultiCurrencyQuoteItemPricing({
+      supplierPricing: {
+        costBaseAmount: values.supplierPricing.costBaseAmount ?? values.unitCost,
+        costCurrency: values.supplierPricing.costCurrency ?? values.legacyCurrency ?? values.quoteCurrency,
+        salesTaxPercent: values.supplierPricing.salesTaxPercent ?? 0,
+        salesTaxIncluded: values.supplierPricing.salesTaxIncluded ?? false,
+        serviceChargePercent: values.supplierPricing.serviceChargePercent ?? 0,
+        serviceChargeIncluded: values.supplierPricing.serviceChargeIncluded ?? false,
+        tourismFeeAmount: values.supplierPricing.tourismFeeAmount ?? 0,
+        tourismFeeCurrency:
+          values.supplierPricing.tourismFeeCurrency ??
+          values.supplierPricing.costCurrency ??
+          values.legacyCurrency ??
+          values.quoteCurrency,
+        tourismFeeMode: values.supplierPricing.tourismFeeMode ?? null,
+      },
+      pricingUnits: {
+        pricingUnits,
+        roomCount: values.roomCount,
+        nightCount: values.nightCount,
+        paxCount: values.paxCount,
+      },
+      quoteCurrency: values.quoteCurrency,
+      markupPercent: values.markupPercent,
+      legacyPricing: {
+        ...legacyPricing,
+        currency: values.legacyCurrency ?? values.supplierPricing.costCurrency ?? values.quoteCurrency,
+      },
+    });
+  }
+
   private getFinalItemCost(baseCost: number, overrideCost: number | null, useOverride: boolean) {
     if (useOverride && overrideCost !== null) {
       return overrideCost;
@@ -3386,16 +3816,54 @@ export class QuotesService {
     return value === 'half_day' ? 'Half day' : 'Full day';
   }
 
-  private async ensureOptionBelongsToQuote(quoteId: string, optionId: string) {
-    const option = await this.prisma.quoteOption.findUnique({
-      where: { id: optionId },
+  private async ensureOptionBelongsToQuote(quoteId: string, optionId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const option = await this.prisma.quoteOption.findFirst({
+      where: {
+        id: optionId,
+        quoteId: quote.id,
+      },
     });
 
-    if (!option || option.quoteId !== quoteId) {
+    if (!option) {
       throw new BadRequestException('Quote option not found');
     }
 
     return option;
+  }
+
+  private async assertQuoteMutationAccess(
+    quoteId: string,
+    actor?: CompanyScopedActor,
+    args?: { select?: Record<string, boolean | object>; include?: Record<string, unknown> },
+  ) {
+    const companyId = requireActorCompanyId(actor);
+    const quote = await this.prisma.quote.findFirst({
+      where: {
+        id: quoteId,
+        clientCompanyId: companyId,
+      },
+      ...(args || { select: { id: true } }),
+    });
+
+    if (!quote) {
+      throw new BadRequestException('Quote not found');
+    }
+
+    return quote;
+  }
+
+  private async listCompanyIdsForMaintenanceJobs() {
+    const companies = await this.prisma.company.findMany({
+      select: {
+        id: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    return companies.map((company) => company.id);
   }
 
   private async recalculateQuoteTotals(quoteId: string) {
@@ -3489,7 +3957,21 @@ export class QuotesService {
       roomCount: number | null;
       nightCount: number | null;
       dayCount: number | null;
+      paxCount?: number | null;
       baseCost: number;
+      totalCost?: number | null;
+      totalSell?: number | null;
+      currency?: string | null;
+      quoteCurrency?: string | null;
+      costBaseAmount?: number | null;
+      costCurrency?: string | null;
+      salesTaxPercent?: number | null;
+      salesTaxIncluded?: boolean | null;
+      serviceChargePercent?: number | null;
+      serviceChargeIncluded?: boolean | null;
+      tourismFeeAmount?: number | null;
+      tourismFeeCurrency?: string | null;
+      tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
       overrideCost: number | null;
       useOverride: boolean;
       markupPercent: number;
@@ -3535,7 +4017,21 @@ export class QuotesService {
       roomCount: number | null;
       nightCount: number | null;
       dayCount: number | null;
+      paxCount?: number | null;
       baseCost: number;
+      totalCost?: number | null;
+      totalSell?: number | null;
+      currency?: string | null;
+      quoteCurrency?: string | null;
+      costBaseAmount?: number | null;
+      costCurrency?: string | null;
+      salesTaxPercent?: number | null;
+      salesTaxIncluded?: boolean | null;
+      serviceChargePercent?: number | null;
+      serviceChargeIncluded?: boolean | null;
+      tourismFeeAmount?: number | null;
+      tourismFeeCurrency?: string | null;
+      tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
       overrideCost: number | null;
       useOverride: boolean;
       markupPercent: number;
@@ -3584,7 +4080,21 @@ export class QuotesService {
       roomCount: number | null;
       nightCount: number | null;
       dayCount: number | null;
+      paxCount?: number | null;
       baseCost: number;
+      totalCost?: number | null;
+      totalSell?: number | null;
+      currency?: string | null;
+      quoteCurrency?: string | null;
+      costBaseAmount?: number | null;
+      costCurrency?: string | null;
+      salesTaxPercent?: number | null;
+      salesTaxIncluded?: boolean | null;
+      serviceChargePercent?: number | null;
+      serviceChargeIncluded?: boolean | null;
+      tourismFeeAmount?: number | null;
+      tourismFeeCurrency?: string | null;
+      tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
       overrideCost: number | null;
       useOverride: boolean;
       markupPercent: number;
@@ -3622,24 +4132,29 @@ export class QuotesService {
       }
 
       const effectiveUnitCost = this.getFinalItemCost(baseCost, item.overrideCost, item.useOverride);
-      const pricing = this.isHotelService(item.service)
-        ? this.calculateHotelItemPricing({
-            quantity: item.quantity,
-            roomCount: item.roomCount ?? quote.roomCount,
-            nightCount: item.nightCount ?? quote.nightCount,
-            unitCost: effectiveUnitCost,
-            markupPercent: item.markupPercent,
-          })
-        : this.calculateItemPricing({
-            unitType: item.service.unitType,
-            quantity: item.quantity,
-            paxCount,
-            roomCount: item.roomCount ?? quote.roomCount,
-            nightCount: item.nightCount ?? quote.nightCount,
-            dayCount: item.dayCount ?? 1,
-            unitCost: effectiveUnitCost,
-            markupPercent: item.markupPercent,
-          });
+      const pricing = this.calculateCentralizedQuoteItemPricing({
+        service: item.service,
+        quantity: item.quantity,
+        paxCount: item.paxCount ?? paxCount,
+        roomCount: item.roomCount ?? quote.roomCount,
+        nightCount: item.nightCount ?? quote.nightCount,
+        dayCount: item.dayCount ?? 1,
+        unitCost: effectiveUnitCost,
+        markupPercent: item.markupPercent,
+        quoteCurrency: this.normalizeCurrencyCode(item.quoteCurrency ?? item.currency ?? 'USD'),
+        supplierPricing: {
+          costBaseAmount: item.costBaseAmount ?? effectiveUnitCost,
+          costCurrency: item.costCurrency ?? item.currency ?? 'USD',
+          salesTaxPercent: item.salesTaxPercent ?? 0,
+          salesTaxIncluded: item.salesTaxIncluded ?? false,
+          serviceChargePercent: item.serviceChargePercent ?? 0,
+          serviceChargeIncluded: item.serviceChargeIncluded ?? false,
+          tourismFeeAmount: item.tourismFeeAmount ?? 0,
+          tourismFeeCurrency: item.tourismFeeCurrency ?? item.costCurrency ?? item.currency ?? 'USD',
+          tourismFeeMode: item.tourismFeeMode ?? null,
+        },
+        legacyCurrency: item.currency ?? 'USD',
+      });
 
       totalCost += pricing.totalCost;
     }
@@ -3695,6 +4210,69 @@ export class QuotesService {
           ? now
           : values.currentAcceptedAt,
     };
+  }
+
+  private async resolveAcceptedQuoteVersion(values: {
+    quoteId: string;
+    acceptedVersionId?: string | null;
+    prismaClient?: Prisma.TransactionClient | PrismaService;
+  }) {
+    const prismaClient = values.prismaClient ?? this.prisma;
+    const quoteVersionModel = (prismaClient as any).quoteVersion;
+    const preferredVersionId = values.acceptedVersionId?.trim() || null;
+
+    if (preferredVersionId) {
+      const preferredVersion = await quoteVersionModel.findUnique({
+        where: {
+          id: preferredVersionId,
+        },
+        select: {
+          id: true,
+          quoteId: true,
+          snapshotJson: true,
+        },
+      });
+
+      if (!preferredVersion) {
+        throw new BadRequestException('Quote version not found');
+      }
+
+      if (preferredVersion.quoteId !== values.quoteId) {
+        throw new BadRequestException('Quote version does not belong to the selected quote');
+      }
+
+      this.assertQuoteWorkflowStateIsComplete(preferredVersion.snapshotJson);
+      return preferredVersion as { id: string; quoteId: string; snapshotJson: unknown };
+    }
+
+    const versions = await quoteVersionModel.findMany({
+      where: {
+        quoteId: values.quoteId,
+      },
+      orderBy: [{ versionNumber: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        quoteId: true,
+        snapshotJson: true,
+      },
+    });
+
+    if (versions.length === 0) {
+      throw new BadRequestException('Accepted quotes require at least one saved quote version');
+    }
+
+    for (const version of versions as Array<{ id: string; quoteId: string; snapshotJson: unknown }>) {
+      try {
+        this.assertQuoteWorkflowStateIsComplete(version.snapshotJson);
+        return version;
+      } catch {
+        continue;
+      }
+    }
+
+    throw new BadRequestException(
+      'Accepted quotes require a saved quote version with complete pricing and workflow details',
+    );
   }
 
   private buildBookingSnapshotFromAcceptedVersion(snapshotJson: unknown) {
@@ -4355,9 +4933,13 @@ export class QuotesService {
     });
   }
 
-  private loadQuoteState(id: string, prismaClient: any = this.prisma) {
-    return prismaClient.quote.findUnique({
-      where: { id },
+  private loadQuoteState(id: string, prismaClient: any = this.prisma, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return prismaClient.quote.findFirst({
+      where: {
+        id,
+        clientCompanyId: companyId,
+      },
       include: {
         clientCompany: {
           include: {
@@ -7607,12 +8189,16 @@ export class QuotesService {
   }
 
   private formatProposalMoney(amount: number, currency = 'USD') {
+    const safeAmount = Number.isFinite(amount) ? amount : 0;
+    const safeCurrency = ['USD', 'EUR', 'JOD'].includes((currency || '').trim().toUpperCase())
+      ? currency.trim().toUpperCase()
+      : 'USD';
     const formattedAmount = new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+      minimumFractionDigits: Number.isInteger(safeAmount) ? 0 : 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(safeAmount);
 
-    return `${currency} ${formattedAmount}`;
+    return `${safeCurrency} ${formattedAmount}`;
   }
 
   private getProposalPriceSummary(
@@ -7724,8 +8310,19 @@ export class QuotesService {
     };
   }
 
-  private getProposalCurrency(items: Array<{ currency: string }>) {
-    return items.find((item) => item.currency?.trim())?.currency?.trim() || 'USD';
+  private getProposalCurrency(items: Array<{ currency: string | null | undefined }>) {
+    const candidate = items.find((item) => item.currency?.trim())?.currency?.trim().toUpperCase();
+    return ['USD', 'EUR', 'JOD'].includes(candidate || '') ? candidate! : 'USD';
+  }
+
+  private normalizeCurrencyCode(currency: string | null | undefined) {
+    const normalized = currency?.trim().toUpperCase() || 'USD';
+
+    return ['USD', 'EUR', 'JOD'].includes(normalized) ? normalized : 'USD';
+  }
+
+  private validateInputCurrencyCode(currency: string | null | undefined, fieldLabel: string) {
+    return requireSupportedCurrency(currency || 'USD', fieldLabel);
   }
 
   private mapInvoiceSummary(invoice: QuoteInvoiceSummary | null | undefined) {
@@ -7743,16 +8340,29 @@ export class QuotesService {
     };
   }
 
-  private async ensureInvoiceForAcceptedQuote(quoteId: string, prismaClient: Prisma.TransactionClient | PrismaService = this.prisma) {
+  private async ensureInvoiceForAcceptedQuote(
+    quoteId: string,
+    prismaClient: Prisma.TransactionClient | PrismaService = this.prisma,
+    actor?: CompanyScopedActor,
+  ) {
     const quoteModel = (prismaClient as any).quote;
     const invoiceModel = (prismaClient as any).invoice;
-    const quote = await quoteModel.findUnique({
-      where: { id: quoteId },
+    const companyId = actor?.companyId?.trim() || null;
+    const quote = await quoteModel.findFirst({
+      where: {
+        id: quoteId,
+        ...(companyId
+          ? {
+              clientCompanyId: companyId,
+            }
+          : {}),
+      },
       select: {
         id: true,
         status: true,
         acceptedAt: true,
         totalSell: true,
+        quoteCurrency: true,
         invoice: {
           select: {
             id: true,
@@ -7794,7 +8404,7 @@ export class QuotesService {
       data: {
         quoteId: quote.id,
         totalAmount: Number((quote.totalSell || 0).toFixed(2)),
-        currency: this.getProposalCurrency(quote.quoteItems),
+        currency: this.normalizeCurrencyCode((quote as any).quoteCurrency || this.getProposalCurrency(quote.quoteItems)),
         status: 'ISSUED',
         dueDate,
       },

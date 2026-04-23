@@ -9,12 +9,11 @@ type Booking = {
 };
 
 type ConvertToBookingButtonProps = {
-  apiBaseUrl: string;
   quoteId: string;
   label?: string;
 };
 
-export function ConvertToBookingButton({ apiBaseUrl, quoteId, label = 'Convert to booking' }: ConvertToBookingButtonProps) {
+export function ConvertToBookingButton({ quoteId, label = 'Convert to booking' }: ConvertToBookingButtonProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -26,7 +25,7 @@ export function ConvertToBookingButton({ apiBaseUrl, quoteId, label = 'Convert t
     setMessage('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/convert-to-booking`, {
+      const response = await fetch(`/api/quotes/${quoteId}/convert-to-booking`, {
         method: 'POST',
       });
 

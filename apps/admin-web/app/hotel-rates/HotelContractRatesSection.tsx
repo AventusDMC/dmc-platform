@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { HotelRatesForm } from './HotelRatesForm';
 import { getErrorMessage } from '../lib/api';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type HotelRoomCategory = {
   id: string;
@@ -43,8 +44,16 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
+  pricingMode?: 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT' | null;
   currency: string;
   cost: number;
+  salesTaxPercent?: number | null;
+  salesTaxIncluded?: boolean | null;
+  serviceChargePercent?: number | null;
+  serviceChargeIncluded?: boolean | null;
+  tourismFeeAmount?: number | null;
+  tourismFeeCurrency?: string | null;
+  tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
   roomCategory: {
     id: string;
     name: string;
@@ -85,6 +94,10 @@ function formatDate(value: string) {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(value));
+}
+
+function normalizeSupportedCurrency(value: string | null | undefined): SupportedCurrency {
+  return value === 'EUR' || value === 'JOD' || value === 'USD' ? value : 'USD';
 }
 
 export function HotelContractRatesSection({
@@ -173,8 +186,21 @@ export function HotelContractRatesSection({
             roomCategoryId: rate?.roomCategoryId || '',
             occupancyType: rate?.occupancyType || 'SGL',
             mealPlan: rate?.mealPlan || 'BB',
-            currency: rate?.currency || contract.currency || 'USD',
+            pricingMode: rate?.pricingMode || '',
+            currency: normalizeSupportedCurrency(rate?.currency || contract.currency),
             cost: rate ? String(rate.cost) : '',
+            salesTaxPercent:
+              rate?.salesTaxPercent === null || rate?.salesTaxPercent === undefined ? '' : String(rate.salesTaxPercent),
+            salesTaxIncluded: Boolean(rate?.salesTaxIncluded),
+            serviceChargePercent:
+              rate?.serviceChargePercent === null || rate?.serviceChargePercent === undefined
+                ? ''
+                : String(rate.serviceChargePercent),
+            serviceChargeIncluded: Boolean(rate?.serviceChargeIncluded),
+            tourismFeeAmount:
+              rate?.tourismFeeAmount === null || rate?.tourismFeeAmount === undefined ? '' : String(rate.tourismFeeAmount),
+            tourismFeeCurrency: rate?.tourismFeeCurrency ? normalizeSupportedCurrency(rate.tourismFeeCurrency) : '',
+            tourismFeeMode: rate?.tourismFeeMode || '',
           }}
         />
         {actionError ? <p className="form-error">{actionError}</p> : null}

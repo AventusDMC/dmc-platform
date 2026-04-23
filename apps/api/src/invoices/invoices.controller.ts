@@ -28,15 +28,15 @@ export class InvoicesController {
   }
 
   @Get()
-  @Roles('admin', 'sales', 'finance')
-  findAll() {
-    return this.invoicesService.findAll();
+  @Roles('admin', 'viewer', 'finance')
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.invoicesService.findAll(actor);
   }
 
   @Get(':id')
-  @Roles('admin', 'sales', 'finance')
-  async findOne(@Param('id') id: string) {
-    const invoice = await this.invoicesService.findOne(id);
+  @Roles('admin', 'viewer', 'finance')
+  async findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const invoice = await this.invoicesService.findOne(id, actor);
 
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
@@ -56,6 +56,7 @@ export class InvoicesController {
       status: body.status,
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -69,6 +70,7 @@ export class InvoicesController {
     return this.invoicesService.markPaid(id, {
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 
@@ -82,6 +84,7 @@ export class InvoicesController {
     return this.invoicesService.cancel(id, {
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
+      companyActor: actor,
     });
   }
 }

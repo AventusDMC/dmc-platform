@@ -23,7 +23,8 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   const pathname = requestHeaders.get('x-dmc-pathname') || '/';
   const sessionToken = cookieStore.get('dmc_session')?.value || '';
   const session = readSessionActor(sessionToken);
-  const isPublicRoute = pathname === '/login' || pathname.startsWith('/portal');
+  const isPublicRoute = pathname === '/login' || pathname.startsWith('/portal') || pathname.startsWith('/invoice');
+  const isDashboardRoute = pathname === '/' || pathname === '/dashboard';
 
   if (!isPublicRoute && !sessionToken) {
     redirect(`/login?reason=session-expired&next=${encodeURIComponent(pathname)}`);
@@ -47,10 +48,10 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                 <p className="admin-sidebar-copy">Operational control, products, suppliers, and finance in one compact shell.</p>
               </div>
 
-              <AdminChromeNav mode="primary" />
+              <AdminChromeNav mode="primary" sessionRole={session?.role} />
 
               <div className="admin-sidebar-subnav">
-                <AdminChromeNav mode="subnav" />
+                <AdminChromeNav mode="subnav" sessionRole={session?.role} />
               </div>
 
               <div className="admin-sidebar-footer">
@@ -66,7 +67,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <div className="admin-main-shell">
               <header className="site-header admin-header">
                 <div className="admin-topbar">
-                  <AdminChromeNav mode="topbar" />
+                  {!isDashboardRoute ? <AdminChromeNav mode="topbar" sessionRole={session?.role} /> : null}
 
                   <div className="admin-account">
                     {session ? (
@@ -87,11 +88,13 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                   </div>
                 </div>
 
-                <div className="admin-subnav-shell">
-                  <div className="admin-subnav">
-                    <AdminChromeNav mode="subnav" />
+                {!isDashboardRoute ? (
+                  <div className="admin-subnav-shell">
+                    <div className="admin-subnav">
+                      <AdminChromeNav mode="subnav" sessionRole={session?.role} />
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </header>
 
               <div className="admin-content-shell">{children}</div>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AdvancedFiltersPanel } from '../components/AdvancedFiltersPanel';
+import { AdminForbiddenState } from '../components/AdminForbiddenState';
 import { CompactFilterBar } from '../components/CompactFilterBar';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { PageActionBar } from '../components/PageActionBar';
@@ -7,7 +8,7 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, isAdminForbiddenError } from '../lib/admin-server';
 import { BrandingCompaniesTable } from './BrandingCompaniesTable';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -34,19 +35,20 @@ async function getCompanies(): Promise<Company[]> {
 }
 
 export default async function BrandingPage() {
-  const companies = await getCompanies();
-  const brandedCount = companies.filter(
-    (company) =>
-      Boolean(
-        company.branding?.displayName ||
-          company.branding?.logoUrl ||
-          company.branding?.primaryColor ||
-          company.branding?.secondaryColor,
-      ),
-  ).length;
-  const logoCount = companies.filter((company) => Boolean(company.branding?.logoUrl || company.logoUrl)).length;
+  try {
+    const companies = await getCompanies();
+    const brandedCount = companies.filter(
+      (company) =>
+        Boolean(
+          company.branding?.displayName ||
+            company.branding?.logoUrl ||
+            company.branding?.primaryColor ||
+            company.branding?.secondaryColor,
+        ),
+    ).length;
+    const logoCount = companies.filter((company) => Boolean(company.branding?.logoUrl || company.logoUrl)).length;
 
-  return (
+    return (
     <main className="page">
       <section className="panel workspace-panel">
         <WorkspaceShell
@@ -125,5 +127,17 @@ export default async function BrandingPage() {
         </WorkspaceShell>
       </section>
     </main>
-  );
+    );
+  } catch (error) {
+    if (isAdminForbiddenError(error)) {
+      return (
+        <AdminForbiddenState
+          title="Branding access restricted"
+          description="Your account does not have permission to view or manage branding settings for this company."
+        />
+      );
+    }
+
+    throw error;
+  }
 }

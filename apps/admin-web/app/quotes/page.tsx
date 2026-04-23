@@ -33,6 +33,7 @@ type Quote = {
   bookingType: 'FIT' | 'GROUP' | 'SERIES';
   title: string;
   description: string | null;
+  quoteCurrency: 'USD' | 'JOD' | 'EUR';
   pricingMode: 'SLAB' | 'FIXED';
   pricingType: 'simple' | 'group';
   fixedPricePerPerson: number;

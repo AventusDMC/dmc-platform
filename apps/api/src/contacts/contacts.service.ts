@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { blockDelete, normalizeOptionalString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -24,8 +25,12 @@ type UpdateContactInput = {
 export class ContactsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  findAll(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
     return this.prisma.contact.findMany({
+      where: {
+        companyId,
+      },
       include: {
         company: true,
       },
@@ -35,9 +40,13 @@ export class ContactsService {
     });
   }
 
-  async findOne(id: string) {
-    const contact = await this.prisma.contact.findUnique({
-      where: { id },
+  async findOne(id: string, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const contact = await this.prisma.contact.findFirst({
+      where: {
+        id,
+        companyId,
+      },
       include: {
         company: true,
         _count: {
@@ -51,9 +60,15 @@ export class ContactsService {
     return throwIfNotFound(contact, 'Contact');
   }
 
-  async create(data: CreateContactInput) {
-    const company = await this.prisma.company.findUnique({
-      where: { id: data.companyId },
+  async create(data: CreateContactInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+
+    if (data.companyId !== companyId) {
+      throw new BadRequestException('Contact company does not match the authenticated company');
+    }
+
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId },
     });
 
     if (!company) {
@@ -62,7 +77,7 @@ export class ContactsService {
 
     return this.prisma.contact.create({
       data: {
-        companyId: data.companyId,
+        companyId,
         firstName: data.firstName,
         lastName: data.lastName,
         email: normalizeOptionalString(data.email),
@@ -75,11 +90,16 @@ export class ContactsService {
     });
   }
 
-  async update(id: string, data: UpdateContactInput) {
-    const contact = await this.findOne(id);
-    const companyId = data.companyId ?? contact.companyId;
+  async update(id: string, data: UpdateContactInput, actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const contact = await this.findOne(id, actor);
+    const nextCompanyId = data.companyId ?? contact.companyId;
 
-    const company = await this.prisma.company.findUnique({
+    if (nextCompanyId !== companyId) {
+      throw new BadRequestException('Contact company does not match the authenticated company');
+    }
+
+    const company = await this.prisma.company.findFirst({
       where: { id: companyId },
     });
 
@@ -87,12 +107,12 @@ export class ContactsService {
       throw new BadRequestException('Company not found');
     }
 
-    if (companyId !== contact.companyId && contact._count.quotes > 0) {
+    if (nextCompanyId !== contact.companyId && contact._count.quotes > 0) {
       throw new BadRequestException('Cannot move contact because linked quotes exist');
     }
 
     return this.prisma.contact.update({
-      where: { id },
+      where: { id: contact.id },
       data: {
         companyId,
         firstName: data.firstName === undefined ? undefined : data.firstName.trim(),
@@ -107,13 +127,13 @@ export class ContactsService {
     });
   }
 
-  async remove(id: string) {
-    const contact = await this.findOne(id);
+  async remove(id: string, actor?: CompanyScopedActor) {
+    const contact = await this.findOne(id, actor);
 
     blockDelete('contact', 'quotes', contact._count.quotes);
 
     return this.prisma.contact.delete({
-      where: { id },
+      where: { id: contact.id },
     });
   }
 }

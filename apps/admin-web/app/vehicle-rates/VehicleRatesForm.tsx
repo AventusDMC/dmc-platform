@@ -3,10 +3,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PlaceComboboxWithCreate } from '../components/PlaceComboboxWithCreate';
+import { CurrencySelect } from '../components/CurrencySelect';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { RouteCombobox } from '../components/RouteCombobox';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
@@ -42,7 +44,7 @@ type VehicleRatesFormProps = {
     minPax: string;
     maxPax: string;
     price: string;
-    currency: string;
+    currency: SupportedCurrency;
     validFrom: string;
     validTo: string;
   };
@@ -71,7 +73,7 @@ export function VehicleRatesForm({
   const [minPax, setMinPax] = useState(initialValues?.minPax || '1');
   const [maxPax, setMaxPax] = useState(initialValues?.maxPax || '1');
   const [price, setPrice] = useState(initialValues?.price || '');
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [validFrom, setValidFrom] = useState(initialValues?.validFrom || '');
   const [validTo, setValidTo] = useState(initialValues?.validTo || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -299,7 +301,7 @@ export function VehicleRatesForm({
 
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
       </div>
 

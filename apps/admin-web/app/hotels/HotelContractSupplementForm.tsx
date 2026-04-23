@@ -4,6 +4,8 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
+import { CurrencySelect } from '../components/CurrencySelect';
+import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type RoomCategoryOption = {
   id: string;
@@ -19,7 +21,7 @@ type SupplementFormValues = {
   type: SupplementType;
   chargeBasis: ChargeBasis;
   amount: string;
-  currency: string;
+  currency: SupportedCurrency;
   isMandatory: boolean;
   isActive: boolean;
   notes: string;
@@ -61,7 +63,7 @@ export function HotelContractSupplementForm({
   const [type, setType] = useState<SupplementType>(initialState.type);
   const [chargeBasis, setChargeBasis] = useState<ChargeBasis>(initialState.chargeBasis);
   const [amount, setAmount] = useState(initialState.amount);
-  const [currency, setCurrency] = useState(initialState.currency);
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialState.currency);
   const [isMandatory, setIsMandatory] = useState(initialState.isMandatory);
   const [isActive, setIsActive] = useState(initialState.isActive);
   const [notes, setNotes] = useState(initialState.notes);
@@ -149,7 +151,7 @@ export function HotelContractSupplementForm({
       <div className="form-row form-row-4">
         <label>
           Currency
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} placeholder="USD" required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
         </label>
 
         <label className="checkbox-field">
