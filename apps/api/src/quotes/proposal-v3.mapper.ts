@@ -26,12 +26,39 @@ const PLACEHOLDER_TEXT_PATTERNS = [
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 
 function formatProposalMoney(amount: number, currency = 'USD') {
-  const formattedAmount = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  if (!Number.isFinite(amount)) {
+    return currency === 'JOD' ? '0.000 JD' : currency === 'EUR' ? 'EUR 0.00' : '$0.00';
+  }
 
-  return `${currency} ${formattedAmount}`;
+  if (currency === 'USD') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  if (currency === 'EUR') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  if (currency === 'JOD') {
+    return `${new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    }).format(amount)} JD`;
+  }
+
+  return `${currency} ${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)}`;
 }
 
 function cleanText(value: string | null | undefined) {
@@ -448,11 +475,35 @@ function buildDefaultInclusions(quote: ProposalV3Quote) {
 }
 
 function buildDefaultNotes(quote: ProposalV3Quote) {
+  const pricingNotes = Array.from(
+    new Set(
+      quote.quoteItems.flatMap((item) => {
+        const notes = [
+          item.salesTaxPercent
+            ? item.salesTaxIncluded
+              ? `Applicable taxes are included at ${item.salesTaxPercent}%.`
+              : `Applicable taxes are not included and may apply at ${item.salesTaxPercent}%.`
+            : null,
+          item.serviceChargePercent
+            ? item.serviceChargeIncluded
+              ? `Service charge is included at ${item.serviceChargePercent}% where applicable.`
+              : `Service charge is not included and may apply at ${item.serviceChargePercent}% where applicable.`
+            : null,
+          item.tourismFeeAmount
+            ? `Tourism fee paid to hotel is charged ${item.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? 'per night per guest' : 'per night per room'} where applicable.`
+            : null,
+        ].filter(Boolean);
+
+        return notes as string[];
+      }),
+    ),
+  );
   const notes = [
     'Rates remain subject to final availability and confirmation at the time of booking.',
     quote.quoteOptions.length > 0
       ? `Alternative options can be prepared on request. ${quote.quoteOptions.length} option${quote.quoteOptions.length === 1 ? '' : 's'} currently available.`
       : 'Alternative arrangements can be prepared on request.',
+    ...pricingNotes,
   ];
 
   return notes.map((note) => cleanText(note)).filter(Boolean);

@@ -413,6 +413,22 @@ type InternalCostingMetrics = {
   marginPercent: number;
 };
 
+type QuoteFetchResult =
+  | {
+      status: 'ok';
+      quote: Quote | null;
+    }
+  | {
+      status: 'error';
+      message: string;
+    };
+
+type QuoteItineraryFetchResult = {
+  status: 'ok' | 'error';
+  itinerary: QuoteItineraryResponse;
+  message?: string;
+};
+
 type ServiceCostBreakdown = {
   key: string;
   label: string;
@@ -424,11 +440,26 @@ type ServiceCostBreakdown = {
   currency: string;
 };
 
-async function getQuote(id: string): Promise<Quote | null> {
-  return adminPageFetchJson<Quote | null>(`${DATA_API_BASE_URL}/quotes/${id}`, 'Quote detail', {
-    cache: 'no-store',
-    allow404: true,
-  });
+async function getQuote(id: string): Promise<QuoteFetchResult> {
+  try {
+    const quote = await adminPageFetchJson<Quote | null>(`${DATA_API_BASE_URL}/quotes/${id}`, 'Quote detail', {
+      cache: 'no-store',
+      allow404: true,
+    });
+
+    return {
+      status: 'ok',
+      quote,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown quote fetch failure';
+    console.error(`[QuoteDetailsPage] Quote fetch failed for ${id}: ${message}`);
+
+    return {
+      status: 'error',
+      message,
+    };
+  }
 }
 
 async function getServices(): Promise<SupplierService[]> {
@@ -510,10 +541,156 @@ async function getQuoteBlocks(): Promise<QuoteBlock[]> {
   });
 }
 
-async function getQuoteItinerary(id: string): Promise<QuoteItineraryResponse> {
-  return adminPageFetchJson<QuoteItineraryResponse>(`${DATA_API_BASE_URL}/quotes/${id}/itinerary`, 'Quote detail itinerary', {
-    cache: 'no-store',
-  });
+async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult> {
+  try {
+    const itinerary =
+      (await adminPageFetchJson<QuoteItineraryResponse | null>(`${DATA_API_BASE_URL}/quotes/${id}/itinerary`, 'Quote detail itinerary', {
+        cache: 'no-store',
+        allow404: true,
+      })) || {
+        quoteId: id,
+        days: [],
+      };
+
+    return {
+      status: 'ok',
+      itinerary,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown itinerary fetch failure';
+    console.error(`[QuoteDetailsPage] Quote itinerary fetch failed for ${id}: ${message}`);
+
+    return {
+      status: 'error',
+      message,
+      itinerary: {
+        quoteId: id,
+        days: [],
+      },
+    };
+  }
+}
+
+function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteItem {
+  const service = item?.service || ({
+    id: 'missing-service',
+    supplierId: 'import-itinerary-system',
+    name: 'Service details unavailable',
+    category: 'Unassigned',
+    serviceTypeId: null,
+    serviceType: null,
+    unitType: 'per_group',
+    baseCost: 0,
+    currency: 'USD',
+  } satisfies SupplierService);
+
+  return {
+    id: item?.id || `missing-item-${Math.random().toString(36).slice(2)}`,
+    itineraryId: item?.itineraryId ?? null,
+    serviceDate: item?.serviceDate ?? null,
+    startTime: item?.startTime ?? null,
+    pickupTime: item?.pickupTime ?? null,
+    pickupLocation: item?.pickupLocation ?? null,
+    meetingPoint: item?.meetingPoint ?? null,
+    participantCount: item?.participantCount ?? null,
+    adultCount: item?.adultCount ?? null,
+    childCount: item?.childCount ?? null,
+    reconfirmationRequired: Boolean(item?.reconfirmationRequired),
+    reconfirmationDueAt: item?.reconfirmationDueAt ?? null,
+    hotelId: item?.hotelId ?? null,
+    contractId: item?.contractId ?? null,
+    seasonId: item?.seasonId ?? null,
+    seasonName: item?.seasonName ?? null,
+    roomCategoryId: item?.roomCategoryId ?? null,
+    occupancyType: item?.occupancyType ?? null,
+    mealPlan: item?.mealPlan ?? null,
+    quantity: item?.quantity ?? 0,
+    paxCount: item?.paxCount ?? null,
+    roomCount: item?.roomCount ?? null,
+    nightCount: item?.nightCount ?? null,
+    dayCount: item?.dayCount ?? null,
+    baseCost: item?.baseCost ?? 0,
+    costBaseAmount: item?.costBaseAmount,
+    costCurrency: item?.costCurrency,
+    quoteCurrency: item?.quoteCurrency,
+    salesTaxPercent: item?.salesTaxPercent,
+    salesTaxIncluded: item?.salesTaxIncluded,
+    serviceChargePercent: item?.serviceChargePercent,
+    serviceChargeIncluded: item?.serviceChargeIncluded,
+    tourismFeeAmount: item?.tourismFeeAmount ?? null,
+    tourismFeeCurrency: item?.tourismFeeCurrency ?? null,
+    tourismFeeMode: item?.tourismFeeMode ?? null,
+    fxRate: item?.fxRate ?? null,
+    fxFromCurrency: item?.fxFromCurrency ?? null,
+    fxToCurrency: item?.fxToCurrency ?? null,
+    fxRateDate: item?.fxRateDate ?? null,
+    baseSell: item?.baseSell ?? null,
+    overrideCost: item?.overrideCost ?? null,
+    useOverride: Boolean(item?.useOverride),
+    currency: item?.currency || item?.quoteCurrency || item?.costCurrency || 'USD',
+    pricingDescription: item?.pricingDescription ?? null,
+    promotionExplanation: item?.promotionExplanation ?? null,
+    markupPercent: item?.markupPercent ?? 0,
+    totalCost: item?.totalCost ?? 0,
+    totalSell: item?.totalSell ?? 0,
+    service: {
+      ...service,
+      serviceType: service.serviceType
+        ? {
+            id: service.serviceType.id,
+            name: service.serviceType.name,
+            code: service.serviceType.code,
+            isActive: service.serviceType.isActive,
+          }
+        : null,
+    },
+    appliedVehicleRate: item?.appliedVehicleRate
+      ? {
+          id: item.appliedVehicleRate.id,
+          routeId: item.appliedVehicleRate.routeId ?? null,
+          routeName: item.appliedVehicleRate.routeName,
+          vehicle: {
+            name: item.appliedVehicleRate.vehicle?.name || 'Vehicle to be confirmed',
+          },
+          serviceType: {
+            id: item.appliedVehicleRate.serviceType?.id || 'missing-service-type',
+            name: item.appliedVehicleRate.serviceType?.name || 'Transport',
+            code: item.appliedVehicleRate.serviceType?.code || 'TRANSPORT',
+          },
+        }
+      : null,
+    hotel: item?.hotel ? { name: item.hotel.name } : null,
+    contract: item?.contract ? { name: item.contract.name } : null,
+    roomCategory: item?.roomCategory ? { name: item.roomCategory.name } : null,
+  };
+}
+
+function normalizeQuoteDetail(quote: Quote): Quote {
+  return {
+    ...quote,
+    quoteCurrency: quote.quoteCurrency || 'USD',
+    inclusionsText: quote.inclusionsText ?? null,
+    exclusionsText: quote.exclusionsText ?? null,
+    termsNotesText: quote.termsNotesText ?? null,
+    pricingSlabs: Array.isArray(quote.pricingSlabs) ? quote.pricingSlabs : [],
+    scenarios: Array.isArray(quote.scenarios) ? quote.scenarios : [],
+    company: quote.company || { id: 'missing-company', name: 'Company unavailable' },
+    contact: quote.contact || { id: 'missing-contact', companyId: '', firstName: 'Contact', lastName: 'Unavailable' },
+    quoteItems: Array.isArray(quote.quoteItems) ? quote.quoteItems.map((item) => normalizeQuoteItem(item)) : [],
+    quoteOptions: Array.isArray(quote.quoteOptions)
+      ? quote.quoteOptions.map((option) => ({
+          ...option,
+          quoteItems: Array.isArray(option.quoteItems) ? option.quoteItems.map((item) => normalizeQuoteItem(item)) : [],
+        }))
+      : [],
+    itineraries: Array.isArray(quote.itineraries)
+      ? quote.itineraries.map((day) => ({
+          ...day,
+          description: day.description ?? null,
+          images: Array.isArray(day.images) ? day.images : [],
+        }))
+      : [],
+  };
 }
 
 function formatMoney(amount: number, currency = 'USD') {
@@ -875,7 +1052,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
-  const [quote, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, versions, hotelCategories, supportTextTemplates, quoteBlocks, quoteItinerary] = await Promise.all([
+  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, versions, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
     getQuote(id),
     getServices(),
     getTransportServiceTypes(),
@@ -893,9 +1070,33 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     getQuoteItinerary(id),
   ]);
 
-  if (!quote) {
+  if (quoteResult.status === 'error') {
+    return (
+      <main className="page">
+        <section className="panel">
+          <QuoteBuilderEmptyState
+            eyebrow="Quote Detail"
+            title="Quote detail is temporarily unavailable"
+            description="The quote record could not be loaded right now. Please refresh or try again shortly."
+            action={
+              <Link href="/quotes" className="secondary-button">
+                Back to quotes
+              </Link>
+            }
+          />
+        </section>
+      </main>
+    );
+  }
+
+  const rawQuote = quoteResult.quote;
+
+  if (!rawQuote) {
     notFound();
   }
+
+  const quote = normalizeQuoteDetail(rawQuote);
+  const quoteItinerary = quoteItineraryResult.itinerary;
 
   const totalPax = quote.adults + quote.children;
   const quoteExpired = isQuoteExpired(quote);
@@ -910,6 +1111,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     nightCount: quote.nightCount,
   });
   const overviewWarnings = [
+    quoteItineraryResult.status === 'error' ? 'Itinerary details could not be loaded. Showing quote detail without itinerary data.' : null,
     quoteExpired ? 'Quote validity has passed.' : null,
     authoringSummary.incompleteItems > 0 ? `${authoringSummary.incompleteItems} items still need pricing or workflow details.` : null,
     authoringSummary.pricingIssues > 0 ? `${authoringSummary.pricingIssues} items are missing sell, cost, or pax details.` : null,
@@ -1279,19 +1481,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   <div className="quote-preview-total-list">
                     <div>
                       <span>Total sell</span>
-                      <strong>{formatMoney(quote.totalSell)}</strong>
+                      <strong>{formatMoney(quote.totalSell, quote.quoteCurrency)}</strong>
                     </div>
                     <div>
                       <span>Total cost</span>
-                      <strong>{formatMoney(quote.totalCost)}</strong>
+                      <strong>{formatMoney(quote.totalCost, quote.quoteCurrency)}</strong>
                     </div>
                     <div>
-                      <span>Margin</span>
-                      <strong>{formatMoney(quote.totalSell - quote.totalCost)}</strong>
+                      <span>Quote currency</span>
+                      <strong>{quote.quoteCurrency}</strong>
                     </div>
                     <div>
                       <span>Price per pax</span>
-                      <strong>{formatMoney(quote.pricePerPax)}</strong>
+                      <strong>{formatMoney(quote.pricePerPax, quote.quoteCurrency)}</strong>
                     </div>
                   </div>
                 </article>

@@ -203,7 +203,7 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
         }
         emptyState={
           <QuoteBuilderEmptyState
-            title="No itinerary days yet"
+            title="No itinerary yet"
             description="Add the first day to start structuring the trip, then assign existing quote services to each day."
           />
         }

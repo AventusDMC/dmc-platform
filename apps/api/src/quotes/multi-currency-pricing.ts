@@ -1,5 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
-
 export type SupportedCurrency = 'USD' | 'JOD' | 'EUR';
 export type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
 

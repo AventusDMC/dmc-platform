@@ -148,6 +148,7 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
 };
 
 type Quote = Omit<QuoteReadinessQuote, 'itineraries' | 'quoteItems' | 'quoteOptions'> & {
+  quoteCurrency: 'USD' | 'EUR' | 'JOD';
   adults: number;
   children: number;
   roomCount: number;

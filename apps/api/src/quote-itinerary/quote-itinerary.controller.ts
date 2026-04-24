@@ -33,8 +33,8 @@ export class QuoteItineraryController {
   constructor(private readonly quoteItineraryService: QuoteItineraryService) {}
 
   @Get('quotes/:quoteId/itinerary')
-  async findByQuoteId(@Param('quoteId') quoteId: string) {
-    return this.quoteItineraryService.findByQuoteId(quoteId);
+  async findByQuoteId(@Param('quoteId') quoteId: string, @Actor() actor: AuthenticatedActor | null) {
+    return this.quoteItineraryService.findByQuoteId(quoteId, this.toCompanyActor(actor));
   }
 
   @Post('quotes/:quoteId/itinerary/day')
@@ -126,6 +126,10 @@ export class QuoteItineraryController {
 
   private toActor(actor?: AuthenticatedActor | null) {
     return actor ? { id: actor.id, auditLabel: actor.auditLabel } : null;
+  }
+
+  private toCompanyActor(actor?: AuthenticatedActor | null) {
+    return actor ? { companyId: actor.companyId } : null;
   }
 }
 

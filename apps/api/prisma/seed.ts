@@ -15,6 +15,7 @@ const DEMO_ACCEPTED_QUOTE_TITLE = 'Demo FIT Quote - Accepted Booking';
 const DEMO_SENT_QUOTE_TITLE = 'Demo FIT Quote - Sent Portal';
 const DEMO_GROUP_QUOTE_TITLE = 'Demo Group Quote - Jordan Highlights';
 const DEMO_REVISION_QUOTE_TITLE = 'Demo FIT Quote - Revision Requested';
+const DEMO_MULTI_CURRENCY_QUOTE_TITLE = 'Demo FIT Quote - Multi Currency QA';
 
 type NamedRecord = {
   id: string;
@@ -1524,7 +1525,18 @@ async function seedDemoScenarios(
     seasons,
   );
 
-  return [fitSent, fitAccepted, groupScenario, revisionScenario];
+  const multiCurrencyScenario = await seedMultiCurrencyQAScenario(
+    prisma,
+    quotesService,
+    itinerariesService,
+    hotels,
+    roomCategories,
+    services,
+    seasons,
+    suppliers,
+  );
+
+  return [fitSent, fitAccepted, groupScenario, revisionScenario, multiCurrencyScenario];
 }
 
 async function seedHotelContractConfigurations(
@@ -3061,6 +3073,655 @@ async function seedRevisionRequestedScenario(
   };
 }
 
+async function seedMultiCurrencyQAScenario(
+  prisma: PrismaService,
+  quotesService: QuotesService,
+  itinerariesService: ItinerariesService,
+  hotels: Record<string, NamedRecord>,
+  roomCategories: Record<string, NamedRecord>,
+  services: Record<string, NamedRecord>,
+  seasons: Record<string, NamedRecord>,
+  suppliers: Record<string, NamedRecord>,
+) {
+  const brandCompany = await upsertCompany(prisma, {
+    name: DEMO_BRAND_COMPANY,
+    type: 'dmc',
+    website: 'https://desertcompass.example',
+    country: 'Jordan',
+    city: 'Amman',
+    primaryColor: '#0F766E',
+  });
+  const clientCompany = await upsertCompany(prisma, {
+    name: 'Demo Company - Multi Currency QA',
+    type: 'travel-agency',
+    website: 'https://demo-multi-currency.example',
+    country: 'Italy',
+    city: 'Milan',
+    primaryColor: '#0E7490',
+  });
+  const contact = await upsertContact(prisma, clientCompany.id, {
+    firstName: 'Marco',
+    lastName: 'Conti',
+    email: 'demo.multi.currency@demo.local',
+    phone: '+390212345678',
+    title: 'FIT Product Manager',
+  });
+  const quoteActor = { companyId: clientCompany.id };
+  const springSeason = seasons[normalizeKey('Spring 2026')];
+
+  const quote = await quotesService.create(
+    {
+      clientCompanyId: clientCompany.id,
+      contactId: contact.id,
+      title: DEMO_MULTI_CURRENCY_QUOTE_TITLE,
+      description: 'Multi-currency Jordan QA quote covering Amman, Petra, and Wadi Rum with EUR quote pricing.',
+      inclusionsText:
+        'Accommodation, airport and intercity transfers, Petra full-day visit, Wadi Rum jeep tour, and on-ground coordination.',
+      exclusionsText:
+        'International flights, visas, travel insurance, lunches, dinners unless mentioned, and personal expenses.',
+      termsNotesText:
+        'Demo quote for multi-currency pricing QA. Rates remain subject to final availability and confirmation.',
+      pricingMode: 'FIXED',
+      fixedPricePerPerson: 0,
+      quoteCurrency: 'EUR',
+      adults: 4,
+      children: 0,
+      roomCount: 2,
+      nightCount: 3,
+      travelStartDate: new Date('2026-05-21T00:00:00.000Z'),
+      validUntil: new Date('2026-05-10T23:59:59.999Z'),
+    },
+    quoteActor,
+  );
+  await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      brandCompanyId: brandCompany.id,
+    },
+  });
+
+  const quoteId = quote.id;
+  const itineraryDays = await createItineraryDays(itinerariesService, quoteId, [
+    {
+      dayNumber: 1,
+      title: 'Arrival in Amman',
+      description: 'Arrival at Queen Alia International Airport, private transfer to Amman, and overnight stay.',
+    },
+    {
+      dayNumber: 2,
+      title: 'Petra Full-Day Visit',
+      description: 'Private transfer to Petra with a full-day guided visit and overnight stay.',
+    },
+    {
+      dayNumber: 3,
+      title: 'Petra to Wadi Rum',
+      description: 'Transfer to Wadi Rum, jeep tour through the desert, and overnight camp stay.',
+    },
+    {
+      dayNumber: 4,
+      title: 'Departure',
+      description: 'Private departure transfer from Wadi Rum to Queen Alia International Airport.',
+    },
+  ]);
+  const itineraryByDay = new Map(itineraryDays.map((day) => [day.dayNumber, day]));
+  const serviceRateModel = (prisma as any).serviceRate;
+
+  const accommodationServiceId = services[normalizeKey('Jordan Contracted Hotel Night')].id;
+  const transportServiceId = services[normalizeKey('Jordan Private Transfer Service')].id;
+  const transportSupplierId = suppliers[normalizeKey('Desert Compass Transport')].id;
+  const experienceSupplierId = suppliers[normalizeKey('Desert Compass Experiences')].id;
+
+  const sightseeingType = await prisma.serviceType.findFirstOrThrow({
+    where: { code: { equals: 'ACTIVITY', mode: 'insensitive' } },
+    select: { id: true },
+  });
+  const departureTransferType = await prisma.transportServiceType.findFirstOrThrow({
+    where: { code: { equals: 'DEP', mode: 'insensitive' } },
+    select: { id: true },
+  });
+  const intercityTransferType = await prisma.transportServiceType.findFirstOrThrow({
+    where: { code: { equals: 'INT', mode: 'insensitive' } },
+    select: { id: true },
+  });
+  const airportPlace = await prisma.place.findFirstOrThrow({
+    where: { name: { equals: 'Queen Alia International Airport', mode: 'insensitive' } },
+    select: { id: true, name: true },
+  });
+  const wadiRumPlace = await prisma.place.findFirstOrThrow({
+    where: { name: { equals: 'Wadi Rum Camp Area', mode: 'insensitive' } },
+    select: { id: true, name: true },
+  });
+  const h1Vehicle = await prisma.vehicle.findFirstOrThrow({
+    where: {
+      supplierId: transportSupplierId,
+      name: { equals: 'Hyundai H1 Minivan', mode: 'insensitive' },
+    },
+    select: { id: true, name: true },
+  });
+
+  const departureRoute = await prisma.route.upsert({
+    where: {
+      id: '11111111-1111-1111-1111-111111111111',
+    },
+    update: {
+      fromPlaceId: wadiRumPlace.id,
+      toPlaceId: airportPlace.id,
+      name: 'Wadi Rum Camp Area - Queen Alia International Airport',
+      routeType: 'private-transfer',
+      durationMinutes: 240,
+      distanceKm: 320,
+      notes: 'Multi-currency QA departure transfer route.',
+      isActive: true,
+    },
+    create: {
+      id: '11111111-1111-1111-1111-111111111111',
+      fromPlaceId: wadiRumPlace.id,
+      toPlaceId: airportPlace.id,
+      name: 'Wadi Rum Camp Area - Queen Alia International Airport',
+      routeType: 'private-transfer',
+      durationMinutes: 240,
+      distanceKm: 320,
+      notes: 'Multi-currency QA departure transfer route.',
+      isActive: true,
+    },
+  });
+
+  await prisma.vehicleRate.upsert({
+    where: {
+      id: '22222222-2222-2222-2222-222222222222',
+    },
+    update: {
+      vehicleId: h1Vehicle.id,
+      serviceTypeId: departureTransferType.id,
+      routeId: departureRoute.id,
+      fromPlaceId: wadiRumPlace.id,
+      toPlaceId: airportPlace.id,
+      routeName: departureRoute.name,
+      minPax: 3,
+      maxPax: 5,
+      price: 260,
+      currency: 'USD',
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validTo: new Date('2026-12-31T23:59:59.999Z'),
+    },
+    create: {
+      id: '22222222-2222-2222-2222-222222222222',
+      vehicleId: h1Vehicle.id,
+      serviceTypeId: departureTransferType.id,
+      routeId: departureRoute.id,
+      fromPlaceId: wadiRumPlace.id,
+      toPlaceId: airportPlace.id,
+      routeName: departureRoute.name,
+      minPax: 3,
+      maxPax: 5,
+      price: 260,
+      currency: 'USD',
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validTo: new Date('2026-12-31T23:59:59.999Z'),
+    },
+  });
+  await prisma.transportPricingRule.upsert({
+    where: {
+      id: '22222222-2222-2222-2222-222222222223',
+    },
+    update: {
+      routeId: departureRoute.id,
+      transportServiceTypeId: departureTransferType.id,
+      vehicleId: h1Vehicle.id,
+      pricingMode: TransportPricingMode.per_vehicle,
+      minPax: 3,
+      maxPax: 5,
+      unitCapacity: null,
+      baseCost: 260,
+      discountPercent: 0,
+      currency: 'USD',
+      isActive: true,
+    },
+    create: {
+      id: '22222222-2222-2222-2222-222222222223',
+      routeId: departureRoute.id,
+      transportServiceTypeId: departureTransferType.id,
+      vehicleId: h1Vehicle.id,
+      pricingMode: TransportPricingMode.per_vehicle,
+      minPax: 3,
+      maxPax: 5,
+      unitCapacity: null,
+      baseCost: 260,
+      discountPercent: 0,
+      currency: 'USD',
+      isActive: true,
+    },
+  });
+
+  const petraExperience = await prisma.supplierService.upsert({
+    where: { id: '33333333-3333-3333-3333-333333333333' },
+    update: {
+      supplierId: experienceSupplierId,
+      name: 'Petra Full-Day Guided Experience',
+      category: 'Sightseeing',
+      serviceTypeId: sightseeingType.id,
+      unitType: ServiceUnitType.per_person,
+      baseCost: 92,
+      currency: 'EUR',
+      costBaseAmount: 92,
+      costCurrency: 'EUR',
+      salesTaxPercent: 0,
+      salesTaxIncluded: false,
+      serviceChargePercent: 0,
+      serviceChargeIncluded: false,
+      tourismFeeAmount: null,
+      tourismFeeCurrency: null,
+      tourismFeeMode: null,
+    },
+    create: {
+      id: '33333333-3333-3333-3333-333333333333',
+      supplierId: experienceSupplierId,
+      name: 'Petra Full-Day Guided Experience',
+      category: 'Sightseeing',
+      serviceTypeId: sightseeingType.id,
+      unitType: ServiceUnitType.per_person,
+      baseCost: 92,
+      currency: 'EUR',
+      costBaseAmount: 92,
+      costCurrency: 'EUR',
+      salesTaxPercent: 0,
+      salesTaxIncluded: false,
+      serviceChargePercent: 0,
+      serviceChargeIncluded: false,
+    },
+  });
+  const wadiRumJeepSafari = await prisma.supplierService.upsert({
+    where: { id: '44444444-4444-4444-4444-444444444444' },
+    update: {
+      supplierId: experienceSupplierId,
+      name: 'Wadi Rum Sunset Jeep Tour',
+      category: 'Sightseeing',
+      serviceTypeId: sightseeingType.id,
+      unitType: ServiceUnitType.per_person,
+      baseCost: 48,
+      currency: 'USD',
+      costBaseAmount: 48,
+      costCurrency: 'USD',
+      salesTaxPercent: 0,
+      salesTaxIncluded: false,
+      serviceChargePercent: 0,
+      serviceChargeIncluded: false,
+      tourismFeeAmount: null,
+      tourismFeeCurrency: null,
+      tourismFeeMode: null,
+    },
+    create: {
+      id: '44444444-4444-4444-4444-444444444444',
+      supplierId: experienceSupplierId,
+      name: 'Wadi Rum Sunset Jeep Tour',
+      category: 'Sightseeing',
+      serviceTypeId: sightseeingType.id,
+      unitType: ServiceUnitType.per_person,
+      baseCost: 48,
+      currency: 'USD',
+      costBaseAmount: 48,
+      costCurrency: 'USD',
+      salesTaxPercent: 0,
+      salesTaxIncluded: false,
+      serviceChargePercent: 0,
+      serviceChargeIncluded: false,
+    },
+  });
+
+  if (serviceRateModel) {
+    await serviceRateModel.upsert({
+      where: { id: '55555555-5555-5555-5555-555555555555' },
+      update: {
+        serviceId: petraExperience.id,
+        supplierId: experienceSupplierId,
+        costBaseAmount: 92,
+        costCurrency: 'EUR',
+        pricingMode: 'PER_PERSON',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: null,
+        tourismFeeCurrency: null,
+        tourismFeeMode: null,
+      },
+      create: {
+        id: '55555555-5555-5555-5555-555555555555',
+        serviceId: petraExperience.id,
+        supplierId: experienceSupplierId,
+        costBaseAmount: 92,
+        costCurrency: 'EUR',
+        pricingMode: 'PER_PERSON',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+      },
+    });
+    await serviceRateModel.upsert({
+      where: { id: '66666666-6666-6666-6666-666666666666' },
+      update: {
+        serviceId: wadiRumJeepSafari.id,
+        supplierId: experienceSupplierId,
+        costBaseAmount: 48,
+        costCurrency: 'USD',
+        pricingMode: 'PER_PERSON',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: null,
+        tourismFeeCurrency: null,
+        tourismFeeMode: null,
+      },
+      create: {
+        id: '66666666-6666-6666-6666-666666666666',
+        serviceId: wadiRumJeepSafari.id,
+        supplierId: experienceSupplierId,
+        costBaseAmount: 48,
+        costCurrency: 'USD',
+        pricingMode: 'PER_PERSON',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+      },
+    });
+  }
+
+  const ammanHotelId = hotels[normalizeKey('The House Boutique Suites Amman')].id;
+  const petraHotelId = hotels[normalizeKey('Petra Moon Hotel')].id;
+  const wadiRumHotelId = hotels[normalizeKey('Sun City Camp Wadi Rum')].id;
+  const multiCurrencyContracts = [
+    {
+      id: '77777777-7777-7777-7777-777777777771',
+      hotelId: ammanHotelId,
+      roomCategoryId: roomCategories[normalizeKey(`${ammanHotelId}:Standard Room`)].id,
+      seasonName: springSeason.name,
+      cost: 118,
+    },
+    {
+      id: '77777777-7777-7777-7777-777777777772',
+      hotelId: petraHotelId,
+      roomCategoryId: roomCategories[normalizeKey(`${petraHotelId}:Standard Room`)].id,
+      seasonName: springSeason.name,
+      cost: 132,
+    },
+    {
+      id: '77777777-7777-7777-7777-777777777773',
+      hotelId: wadiRumHotelId,
+      roomCategoryId: roomCategories[normalizeKey(`${wadiRumHotelId}:Standard Tent`)].id,
+      seasonName: springSeason.name,
+      cost: 142,
+    },
+  ] as const;
+
+  for (const entry of multiCurrencyContracts) {
+    const contract = await prisma.hotelContract.upsert({
+      where: { id: entry.id },
+      update: {
+        hotelId: entry.hotelId,
+        name: 'Jordan Multi-Currency Demo 2026',
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validTo: new Date('2026-12-31T23:59:59.999Z'),
+        currency: 'JOD',
+      },
+      create: {
+        id: entry.id,
+        hotelId: entry.hotelId,
+        name: 'Jordan Multi-Currency Demo 2026',
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validTo: new Date('2026-12-31T23:59:59.999Z'),
+        currency: 'JOD',
+      },
+    });
+
+    await prisma.hotelRate.upsert({
+      where: { id: `${entry.id}` },
+      update: {
+        contractId: contract.id,
+        seasonId: springSeason.id,
+        seasonName: entry.seasonName,
+        roomCategoryId: entry.roomCategoryId,
+        occupancyType: HotelOccupancyType.DBL,
+        pricingMode: 'PER_ROOM_PER_NIGHT',
+        mealPlan: HotelMealPlan.BB,
+        currency: 'JOD',
+        cost: entry.cost,
+        costBaseAmount: entry.cost,
+        costCurrency: 'JOD',
+        salesTaxPercent: 16,
+        salesTaxIncluded: true,
+        serviceChargePercent: 10,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: 7,
+        tourismFeeCurrency: 'JOD',
+        tourismFeeMode: 'PER_NIGHT_PER_PERSON',
+      },
+      create: {
+        id: `${entry.id}`,
+        contractId: contract.id,
+        seasonId: springSeason.id,
+        seasonName: entry.seasonName,
+        roomCategoryId: entry.roomCategoryId,
+        occupancyType: HotelOccupancyType.DBL,
+        pricingMode: 'PER_ROOM_PER_NIGHT',
+        mealPlan: HotelMealPlan.BB,
+        currency: 'JOD',
+        cost: entry.cost,
+        costBaseAmount: entry.cost,
+        costCurrency: 'JOD',
+        salesTaxPercent: 16,
+        salesTaxIncluded: true,
+        serviceChargePercent: 10,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: 7,
+        tourismFeeCurrency: 'JOD',
+        tourismFeeMode: 'PER_NIGHT_PER_PERSON',
+      },
+    });
+  }
+
+  const ammanContractId = multiCurrencyContracts[0].id;
+  const petraContractId = multiCurrencyContracts[1].id;
+  const wadiRumContractId = multiCurrencyContracts[2].id;
+
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(1)?.id,
+      serviceId: transportServiceId,
+      quantity: 1,
+      paxCount: 4,
+      markupPercent: 18,
+      routeId: (await prisma.route.findFirstOrThrow({
+        where: { name: { equals: 'Queen Alia International Airport - Amman City Center', mode: 'insensitive' } },
+        select: { id: true },
+      })).id,
+      transportServiceTypeId: (await prisma.transportServiceType.findFirstOrThrow({
+        where: { code: { equals: 'ARR', mode: 'insensitive' } },
+        select: { id: true },
+      })).id,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(1)?.id,
+      serviceId: accommodationServiceId,
+      hotelId: ammanHotelId,
+      contractId: ammanContractId,
+      seasonId: springSeason.id,
+      seasonName: springSeason.name,
+      roomCategoryId: roomCategories[normalizeKey(`${ammanHotelId}:Standard Room`)].id,
+      occupancyType: HotelOccupancyType.DBL,
+      mealPlan: HotelMealPlan.BB,
+      quantity: 1,
+      paxCount: 4,
+      roomCount: 2,
+      nightCount: 1,
+      markupPercent: 16,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(2)?.id,
+      serviceId: petraExperience.id,
+      quantity: 4,
+      paxCount: 4,
+      dayCount: 1,
+      participantCount: 4,
+      adultCount: 4,
+      childCount: 0,
+      serviceDate: new Date('2026-05-22T00:00:00.000Z'),
+      startTime: '09:00',
+      meetingPoint: 'Petra Visitor Center',
+      markupPercent: 20,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(2)?.id,
+      serviceId: transportServiceId,
+      quantity: 1,
+      paxCount: 4,
+      markupPercent: 18,
+      routeId: (await prisma.route.findFirstOrThrow({
+        where: { name: { equals: 'Amman City Center - Petra Visitor Center', mode: 'insensitive' } },
+        select: { id: true },
+      })).id,
+      transportServiceTypeId: intercityTransferType.id,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(2)?.id,
+      serviceId: accommodationServiceId,
+      hotelId: petraHotelId,
+      contractId: petraContractId,
+      seasonId: springSeason.id,
+      seasonName: springSeason.name,
+      roomCategoryId: roomCategories[normalizeKey(`${petraHotelId}:Standard Room`)].id,
+      occupancyType: HotelOccupancyType.DBL,
+      mealPlan: HotelMealPlan.BB,
+      quantity: 1,
+      paxCount: 4,
+      roomCount: 2,
+      nightCount: 1,
+      markupPercent: 16,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(3)?.id,
+      serviceId: wadiRumJeepSafari.id,
+      quantity: 4,
+      paxCount: 4,
+      dayCount: 1,
+      participantCount: 4,
+      adultCount: 4,
+      childCount: 0,
+      serviceDate: new Date('2026-05-23T00:00:00.000Z'),
+      startTime: '16:30',
+      meetingPoint: 'Wadi Rum Camp Area',
+      markupPercent: 20,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(3)?.id,
+      serviceId: transportServiceId,
+      quantity: 1,
+      paxCount: 4,
+      markupPercent: 18,
+      routeId: (await prisma.route.findFirstOrThrow({
+        where: { name: { equals: 'Petra Visitor Center - Wadi Rum Camp Area', mode: 'insensitive' } },
+        select: { id: true },
+      })).id,
+      transportServiceTypeId: intercityTransferType.id,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(3)?.id,
+      serviceId: accommodationServiceId,
+      hotelId: wadiRumHotelId,
+      contractId: wadiRumContractId,
+      seasonId: springSeason.id,
+      seasonName: springSeason.name,
+      roomCategoryId: roomCategories[normalizeKey(`${wadiRumHotelId}:Standard Tent`)].id,
+      occupancyType: HotelOccupancyType.DBL,
+      mealPlan: HotelMealPlan.BB,
+      quantity: 1,
+      paxCount: 4,
+      roomCount: 2,
+      nightCount: 1,
+      markupPercent: 16,
+    },
+    quoteActor,
+  );
+  await quotesService.createItem(
+    {
+      quoteId,
+      itineraryId: itineraryByDay.get(4)?.id,
+      serviceId: transportServiceId,
+      quantity: 1,
+      paxCount: 4,
+      markupPercent: 18,
+      routeId: departureRoute.id,
+      transportServiceTypeId: departureTransferType.id,
+    },
+    quoteActor,
+  );
+
+  await syncQuoteItineraryFromQuoteItems(prisma, quoteId);
+
+  const finalQuote = await prisma.quote.findUniqueOrThrow({
+    where: { id: quoteId },
+    select: {
+      id: true,
+      quoteNumber: true,
+      status: true,
+      totalSell: true,
+      totalCost: true,
+      quoteCurrency: true,
+      pricePerPax: true,
+      quoteItems: {
+        orderBy: [{ createdAt: 'asc' }],
+        select: {
+          id: true,
+          serviceId: true,
+          currency: true,
+          costCurrency: true,
+          quoteCurrency: true,
+          fxRate: true,
+          fxFromCurrency: true,
+          fxToCurrency: true,
+        },
+      },
+    },
+  });
+  const fxItems = finalQuote.quoteItems.filter((item) => item.fxRate !== null);
+
+  return {
+    label: 'Multi-currency QA scenario',
+    summary: `${finalQuote.quoteNumber || finalQuote.id} | ${finalQuote.quoteCurrency} total ${finalQuote.totalSell.toFixed(2)} | cost ${finalQuote.totalCost.toFixed(2)} | pax ${finalQuote.pricePerPax.toFixed(2)} | fx items ${fxItems.length}/${finalQuote.quoteItems.length}`,
+  };
+}
+
 async function seedBookingOperationsScenario(prisma: PrismaService, bookingId: string) {
   const adminUser = await prisma.user.findFirst({
     where: {
@@ -3317,6 +3978,37 @@ async function resetDemoScenarioData(prisma: PrismaService) {
   });
 
   if (demoCompanies.length > 0) {
+    const companyScopedQuotes = await prisma.quote.findMany({
+      where: {
+        OR: [
+          {
+            clientCompanyId: {
+              in: demoCompanies.map((company) => company.id),
+            },
+          },
+          {
+            brandCompanyId: {
+              in: demoCompanies.map((company) => company.id),
+            },
+          },
+          {
+            contact: {
+              companyId: {
+                in: demoCompanies.map((company) => company.id),
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    for (const quote of companyScopedQuotes) {
+      await deleteQuoteScenario(prisma, quote.id);
+    }
+
     await prisma.contact.deleteMany({
       where: {
         companyId: {

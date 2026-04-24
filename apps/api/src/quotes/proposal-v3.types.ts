@@ -12,6 +12,12 @@ export type ProposalV3QuoteItem = {
   occupancyType?: string | null;
   mealPlan?: string | null;
   pricingDescription?: string | null;
+  salesTaxPercent?: number | null;
+  salesTaxIncluded?: boolean | null;
+  serviceChargePercent?: number | null;
+  serviceChargeIncluded?: boolean | null;
+  tourismFeeAmount?: number | null;
+  tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
   service: {
     name: string;
     category: string;

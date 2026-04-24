@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -25,8 +26,8 @@ export class QuoteItineraryService {
     return (this.prisma as any).quoteItineraryAuditLog;
   }
 
-  async findByQuoteId(quoteId: string) {
-    await this.ensureQuoteExists(quoteId);
+  async findByQuoteId(quoteId: string, actor: CompanyScopedActor) {
+    await this.ensureQuoteExists(quoteId, actor);
 
     const days = await this.dayModel.findMany({
       where: { quoteId },
@@ -64,7 +65,7 @@ export class QuoteItineraryService {
 
     return {
       quoteId,
-      days: days.map((day: any) => this.serializeDay(day)),
+      days: (days || []).map((day: any) => this.serializeDay(day)),
     };
   }
 
@@ -344,11 +345,19 @@ export class QuoteItineraryService {
     return { id: itemId };
   }
 
-  private async ensureQuoteExists(quoteId: string) {
-    const quote = await this.prisma.quote.findUnique({
-      where: { id: quoteId },
-      select: { id: true },
-    });
+  private async ensureQuoteExists(quoteId: string, actor?: CompanyScopedActor) {
+    const quote = actor
+      ? await this.prisma.quote.findFirst({
+          where: {
+            id: quoteId,
+            clientCompanyId: requireActorCompanyId(actor),
+          },
+          select: { id: true },
+        })
+      : await this.prisma.quote.findUnique({
+          where: { id: quoteId },
+          select: { id: true },
+        });
 
     return throwIfNotFound(quote, 'Quote');
   }

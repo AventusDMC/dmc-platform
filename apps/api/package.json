@@ -6,12 +6,15 @@
     "build": "nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
-    "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts src/quotes/multi-currency-pricing.test.ts src/quotes/quote-pricing-scenarios.test.ts src/common/currency-validation.test.ts src/services/services.service.test.ts src/hotel-rates/hotel-rates.service.test.ts",
+    "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts src/quotes/multi-currency-pricing.test.ts src/quotes/quote-pricing-scenarios.test.ts src/common/currency-validation.test.ts src/services/services.service.test.ts src/hotel-rates/hotel-rates.service.test.ts src/quote-itinerary/quote-itinerary.service.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "prisma:seed:demo-quote": "ts-node prisma/seed-demo-quote.ts",
     "prisma:seed:reset": "prisma db seed -- --reset-demo",
-    "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts"
+    "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts",
+    "start:prod": "npm run prisma:migrate:deploy && node dist/main"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.8",

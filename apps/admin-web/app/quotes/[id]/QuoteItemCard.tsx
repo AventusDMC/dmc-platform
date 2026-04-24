@@ -167,6 +167,7 @@ type QuoteItem = {
 
 type Quote = {
   id: string;
+  quoteCurrency: 'USD' | 'EUR' | 'JOD';
   adults: number;
   children: number;
   roomCount: number;
@@ -263,6 +264,16 @@ function getFinalItemCost(item: Pick<QuoteItem, 'baseCost' | 'overrideCost' | 'u
   return item.baseCost;
 }
 
+function getMarginMetrics(item: Pick<QuoteItem, 'totalCost' | 'totalSell'>) {
+  const profit = Number((item.totalSell - item.totalCost).toFixed(2));
+  const marginPercent = item.totalSell > 0 ? Number(((profit / item.totalSell) * 100).toFixed(2)) : 0;
+
+  return {
+    profit,
+    marginPercent,
+  };
+}
+
 function isUnmatchedImportedService(service: SupplierService) {
   return service.supplierId === 'import-itinerary-system';
 }
@@ -321,6 +332,7 @@ export function QuoteItemCard({
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
   const hotelItemSummary = getHotelItemSummary(currentItem);
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
+  const marginMetrics = getMarginMetrics(currentItem);
   const itineraryDayNumber = currentItem.itineraryId
     ? quote.itineraries.find((day) => day.id === currentItem.itineraryId)?.dayNumber ?? null
     : null;
@@ -426,12 +438,12 @@ export function QuoteItemCard({
             </p>
           ) : null}
           <p>
-            Base {formatMoney(currentItem.baseCost, currentItem.currency)}
+            Quote currency {currentItem.quoteCurrency || quote.quoteCurrency || currentItem.currency} | Base {formatMoney(currentItem.baseCost, currentItem.currency)}
             {currentItem.useOverride && currentItem.overrideCost !== null
               ? ` | Override ${formatMoney(currentItem.overrideCost, currentItem.currency)}`
               : ''}
           </p>
-          {currentItem.costCurrency && currentItem.costCurrency !== currentItem.currency ? (
+          {currentItem.costCurrency ? (
             <p>
               Supplier cost {formatMoney(currentItem.costBaseAmount || 0, currentItem.costCurrency)}
               {currentItem.fxRate ? ` | FX ${currentItem.fxFromCurrency}/${currentItem.fxToCurrency} ${currentItem.fxRate}` : ''}
@@ -450,6 +462,11 @@ export function QuoteItemCard({
               ]
                 .filter(Boolean)
                 .join(' | ')}
+            </p>
+          ) : null}
+          {currentItem.totalSell > 0 || currentItem.totalCost > 0 ? (
+            <p>
+              Profit {formatMoney(marginMetrics.profit, currentItem.currency)} | Margin {marginMetrics.marginPercent.toFixed(2)}%
             </p>
           ) : null}
           {currentItem.serviceDate || currentItem.startTime || currentItem.pickupTime ? (
@@ -527,7 +544,7 @@ export function QuoteItemCard({
         </div>
         <div className="quote-item-row-totals">
           <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
-          <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)}</span>
+          <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Profit {formatMoney(marginMetrics.profit, currentItem.currency)}</span>
         </div>
       </article>
 
