@@ -6,7 +6,9 @@ import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3ViewModel } from './proposal-v3.types';
 import { AuthenticatedActor } from '../auth/auth.types';
 
-type TemplateTokens = Record<string, string>;
+interface TemplateTokens {
+  [key: string]: string | TemplateTokens;
+}
 type PuppeteerBrowser = {
   newPage(): Promise<{
     setContent(html: string, options?: { waitUntil?: 'domcontentloaded' | 'load' | 'networkidle0' | 'networkidle2' }): Promise<void>;
@@ -158,6 +160,11 @@ export class ProposalV3Service {
       travelerCountLabel: this.escapeHtml(viewModel.travelerCountLabel),
       servicesCountLabel: this.escapeHtml(viewModel.servicesCountLabel),
       totalDaysLabel: this.escapeHtml(viewModel.totalDaysLabel),
+      pricingHighlight: {
+        total: this.escapeHtml(viewModel.pricingHighlight.total),
+        perPax: this.escapeHtml(viewModel.pricingHighlight.perPax),
+        currency: this.escapeHtml(viewModel.pricingHighlight.currency),
+      },
       journeySummary: this.escapeHtml(viewModel.journeySummary),
       highlightsHtml: this.renderList(viewModel.highlights),
       accommodationRowsHtml: this.renderAccommodationRows(viewModel),
@@ -193,7 +200,17 @@ export class ProposalV3Service {
   }
 
   private renderTemplate(template: string, tokens: TemplateTokens) {
-    return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => tokens[key] ?? '');
+    return template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_match, keyPath) => {
+      const resolved = keyPath.split('.').reduce((value: string | TemplateTokens | undefined, segment: string) => {
+        if (!value || typeof value === 'string') {
+          return undefined;
+        }
+
+        return value[segment];
+      }, tokens);
+
+      return typeof resolved === 'string' ? resolved : '';
+    });
   }
 
   private async loadPuppeteer(): Promise<PuppeteerModule> {

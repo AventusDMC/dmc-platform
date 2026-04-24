@@ -514,6 +514,23 @@ function getProposalCurrency(quote: ProposalV3Quote) {
   return ['USD', 'EUR', 'JOD'].includes(currency) ? currency : 'USD';
 }
 
+function buildClientFacingTitle(quote: ProposalV3Quote, destinationLine: string) {
+  const cleanedTitle = cleanText(quote.title);
+
+  if (
+    !cleanedTitle ||
+    /\bqa\b/i.test(cleanedTitle) ||
+    /\bdemo\b/i.test(cleanedTitle) ||
+    /\btest\b/i.test(cleanedTitle) ||
+    /\bfit quote\b/i.test(cleanedTitle) ||
+    /\bmulti currency\b/i.test(cleanedTitle)
+  ) {
+    return destinationLine ? `${destinationLine} Journey` : 'Private Travel Proposal';
+  }
+
+  return cleanedTitle;
+}
+
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
   const totalPax = quote.adults + quote.children;
@@ -521,10 +538,19 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const destinations = Array.from(new Set(sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
   const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
   const currency = getProposalCurrency(quote);
+  const documentTitle = buildClientFacingTitle(quote, destinationLine);
+  const totalValue =
+    typeof quote.totalSell === 'number' && Number.isFinite(quote.totalSell) && quote.totalSell > 0
+      ? formatProposalMoney(quote.totalSell, currency)
+      : 'To be confirmed';
+  const perPersonValue =
+    typeof quote.pricePerPax === 'number' && Number.isFinite(quote.pricePerPax) && quote.pricePerPax > 0
+      ? formatProposalMoney(quote.pricePerPax, currency)
+      : 'To be confirmed';
 
   return {
-    documentTitle: cleanText(quote.title) || 'Bespoke Travel Proposal',
-    metaTitle: `${cleanText(quote.title) || 'Travel Proposal'} | ${getBrandName(quote)}`,
+    documentTitle,
+    metaTitle: `${documentTitle || 'Travel Proposal'} | ${getBrandName(quote)}`,
     brandName: getBrandName(quote),
     accentColor: getAccentColor(quote),
     quoteReference: cleanText(quote.quoteNumber) || 'Quote reference to be confirmed',
@@ -537,6 +563,11 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     travelerCountLabel: formatGuestCountLabel(totalPax),
     servicesCountLabel: `${quote.quoteItems.length} service${quote.quoteItems.length === 1 ? '' : 's'}`,
     totalDaysLabel: `${dayCount} itinerary day${dayCount === 1 ? '' : 's'}`,
+    pricingHighlight: {
+      total: totalValue,
+      perPax: perPersonValue,
+      currency,
+    },
     journeySummary: buildJourneySummary(quote, destinationLine),
     highlights: buildHighlights(quote, destinationLine),
     accommodationRows: buildAccommodationRows(quote),
