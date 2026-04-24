@@ -429,6 +429,12 @@ type QuoteItineraryFetchResult = {
   message?: string;
 };
 
+type QuoteVersionsFetchResult = {
+  status: 'ok' | 'error';
+  versions: QuoteVersion[];
+  message?: string;
+};
+
 type ServiceCostBreakdown = {
   key: string;
   label: string;
@@ -516,11 +522,28 @@ async function getCompanies(): Promise<Company[]> {
   });
 }
 
-async function getVersions(id: string): Promise<QuoteVersion[]> {
-  return (await adminPageFetchJson<QuoteVersion[] | null>(`${DATA_API_BASE_URL}/quotes/${id}/versions`, 'Quote detail versions', {
-    cache: 'no-store',
-    allow404: true,
-  })) || [];
+async function getVersions(id: string): Promise<QuoteVersionsFetchResult> {
+  try {
+    const versions =
+      (await adminPageFetchJson<QuoteVersion[] | null>(`${DATA_API_BASE_URL}/quotes/${id}/versions`, 'Quote detail versions', {
+        cache: 'no-store',
+        allow404: true,
+      })) || [];
+
+    return {
+      status: 'ok',
+      versions,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown versions fetch failure';
+    console.warn(`[QuoteDetailsPage] Quote versions fetch failed for ${id}: ${message}`);
+
+    return {
+      status: 'error',
+      message,
+      versions: [],
+    };
+  }
 }
 
 async function getContacts(): Promise<Contact[]> {
@@ -1052,7 +1075,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
-  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, versions, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
+  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, versionsResult, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
     getQuote(id),
     getServices(),
     getTransportServiceTypes(),
@@ -1090,6 +1113,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   }
 
   const rawQuote = quoteResult.quote;
+  const versions = versionsResult.versions;
 
   if (!rawQuote) {
     notFound();
@@ -1723,6 +1747,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <h2>Saved snapshots</h2>
                   </div>
                 </div>
+                {versionsResult.status === 'error' ? (
+                  <p className="detail-copy">Quote versions are unavailable.</p>
+                ) : null}
                 {versions.length === 0 ? (
                   <p className="empty-state">No saved versions yet.</p>
                 ) : (
