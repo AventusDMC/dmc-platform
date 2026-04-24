@@ -128,7 +128,7 @@ export class ProposalV3Service {
             </div>
           `,
           footerTemplate: `
-            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:9px; color:#6b625b; display:flex; justify-content:space-between; align-items:center;">
+            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#8c837a; display:flex; justify-content:space-between; align-items:center;">
               <span>Aventus DMC · Tailored travel experiences in Jordan</span>
               <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
             </div>
@@ -195,8 +195,8 @@ export class ProposalV3Service {
   private async resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
     const candidates = [
       resolve(__dirname, fileName),
-      resolve(__dirname, '..', '..', '..', 'src', 'quotes', fileName),
       resolve(process.cwd(), 'apps', 'api', 'src', 'quotes', fileName),
+      resolve(__dirname, '..', '..', '..', 'src', 'quotes', fileName),
       resolve(process.cwd(), 'src', 'quotes', fileName),
     ];
 
@@ -400,7 +400,7 @@ export class ProposalV3Service {
     return parts
       .map((part) => part?.trim())
       .filter((part): part is string => Boolean(part))
-      .join(' · ');
+      .join(' Ã‚Â· ');
   }
 
   private getDisplayText(value: string, groupLabel?: string) {
