@@ -87,6 +87,9 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
   if (sessionToken && !nextHeaders.has('Authorization')) {
     nextHeaders.set('Authorization', `Bearer ${sessionToken}`);
   }
+  if (sessionToken && !nextHeaders.has('Cookie')) {
+    nextHeaders.set('Cookie', `dmc_session=${sessionToken}`);
+  }
 
   const response = await fetch(normalizeAdminApiInput(input, requestHeaders), {
     ...init,
