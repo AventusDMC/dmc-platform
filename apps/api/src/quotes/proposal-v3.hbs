@@ -23,10 +23,11 @@
             <p class="proposal-cover-kicker">A tailored journey proposal</p>
             <h1>{{documentTitle}}</h1>
             <p class="proposal-cover-destination">{{destinationLine}}</p>
-            <p class="proposal-subtitle">{{subtitle}}</p>
+            <p class="proposal-subtitle">{{durationLabel}} · {{destinationLine}}</p>
+            <p class="proposal-cover-intro">{{journeySummary}}</p>
           </div>
 
-          <div class="proposal-cover-facts">
+          <div class="proposal-cover-facts avoid-break">
             <article>
               <span>Prepared for</span>
               <strong>{{travelerName}}</strong>
@@ -40,6 +41,21 @@
               <strong>{{durationLabel}}</strong>
             </article>
           </div>
+
+          <section class="proposal-pricing-highlight avoid-break">
+            <article class="proposal-pricing-highlight-card proposal-pricing-highlight-card-primary avoid-break">
+              <span>{{pricingHighlight.totalLabel}}</span>
+              <strong>{{pricingHighlight.totalValue}}</strong>
+            </article>
+            <article class="proposal-pricing-highlight-card avoid-break">
+              <span>{{pricingHighlight.perPersonLabel}}</span>
+              <strong>{{pricingHighlight.perPersonValue}}</strong>
+            </article>
+            <article class="proposal-pricing-highlight-card avoid-break">
+              <span>{{pricingHighlight.currencyLabel}}</span>
+              <strong>{{pricingHighlight.currencyValue}}</strong>
+            </article>
+          </section>
 
           <div class="proposal-cover-footer">
             <p class="proposal-cover-signature">
@@ -107,7 +123,7 @@
         </div>
       </section>
 
-      <section class="proposal-section">
+      <section class="proposal-section page-break">
         <header class="proposal-section-header">
           <p class="proposal-eyebrow">Itinerary</p>
           <h2>Day by Day</h2>
@@ -120,10 +136,10 @@
 
       <section class="proposal-section">
         <header class="proposal-section-header proposal-section-header-investment">
-          <p class="proposal-eyebrow">Investment</p>
-          <h2>Commercial Summary</h2>
+          <p class="proposal-eyebrow">Pricing</p>
+          <h2>Your Package</h2>
         </header>
-        <div class="proposal-investment-shell">{{investmentHtml}}</div>
+        <div class="proposal-investment-shell avoid-break">{{investmentHtml}}</div>
       </section>
 
       <section class="proposal-section proposal-section-columns">
@@ -137,8 +153,8 @@
 
         <article class="proposal-card">
           <header class="proposal-section-header">
-            <p class="proposal-eyebrow">Planning notes</p>
-            <h2>Notes & Requirements</h2>
+            <p class="proposal-eyebrow">Pricing notes</p>
+            <h2>Pricing Notes</h2>
           </header>
           <ul class="proposal-list">{{notesHtml}}</ul>
         </article>

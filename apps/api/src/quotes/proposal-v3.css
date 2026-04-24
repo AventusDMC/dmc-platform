@@ -33,6 +33,16 @@ body {
   padding: 28px;
 }
 
+.page-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+.avoid-break {
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}
+
 .proposal-cover,
 .proposal-section {
   background: var(--proposal-paper);
@@ -128,6 +138,8 @@ body {
 .proposal-cover-copy {
   margin-top: 92px;
   max-width: 780px;
+  display: grid;
+  gap: 1rem;
 }
 
 .proposal-cover-kicker {
@@ -149,14 +161,66 @@ body {
 
 .proposal-subtitle {
   max-width: 52ch;
-  font-size: 16px;
+  font-size: 17px;
   color: #685f57;
+}
+
+.proposal-cover-intro {
+  margin: 0;
+  max-width: 54ch;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  color: var(--proposal-subtle);
 }
 
 .proposal-cover-facts {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 64px;
   gap: 12px;
+}
+
+.proposal-pricing-highlight {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 44px;
+}
+
+.proposal-pricing-highlight-card {
+  padding: 20px 22px 22px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 253, 250, 0.98), rgba(248, 243, 235, 0.98));
+  border: 1px solid var(--proposal-border);
+  box-shadow: 0 12px 30px rgba(58, 45, 28, 0.06);
+}
+
+.proposal-pricing-highlight-card span {
+  display: block;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--proposal-accent);
+}
+
+.proposal-pricing-highlight-card strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.proposal-pricing-highlight-card-primary {
+  background:
+    linear-gradient(180deg, rgba(138, 106, 58, 0.16), rgba(138, 106, 58, 0.05)),
+    var(--proposal-paper-soft);
+  border-color: var(--proposal-border-strong);
+}
+
+.proposal-pricing-highlight-card-primary strong {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
 .proposal-cover-facts article,
@@ -206,11 +270,11 @@ body {
 }
 
 .proposal-section {
-  padding: 36px 38px 40px;
+  padding: 42px 40px 44px;
 }
 
 .proposal-section-header {
-  margin-bottom: 26px;
+  margin-bottom: 30px;
 }
 
 .proposal-section-header h2 {
@@ -331,15 +395,15 @@ body {
 
 .proposal-days {
   display: grid;
-  gap: 18px;
+  gap: 24px;
 }
 
 .proposal-day-card {
-  padding: 24px 24px 22px;
+  padding: 28px 28px 26px;
   background: linear-gradient(180deg, #fffdfa 0%, #fcf8f1 100%);
   border-color: var(--proposal-border-strong);
-  break-inside: auto;
-  page-break-inside: auto;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
 }
 
 .proposal-day-intro {
@@ -354,13 +418,13 @@ body {
   justify-content: space-between;
   gap: 14px;
   align-items: flex-start;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
   break-after: avoid-page;
   page-break-after: avoid;
 }
 
 .proposal-day-heading h3 {
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1.15;
 }
 
@@ -388,13 +452,13 @@ body {
 }
 
 .proposal-day-services {
-  margin-top: 16px;
+  margin-top: 20px;
   break-inside: auto;
   page-break-inside: auto;
 }
 
 .proposal-day-group {
-  margin-top: 18px;
+  margin-top: 20px;
   break-inside: auto;
   page-break-inside: auto;
 }
@@ -421,8 +485,8 @@ body {
 }
 
 .proposal-service-card {
-  padding: 14px 16px;
-  margin-bottom: 10px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
   break-inside: avoid-page;
   page-break-inside: avoid;
   background: rgba(255, 255, 255, 0.74);
@@ -443,9 +507,9 @@ body {
 
 .proposal-investment-shell {
   display: grid;
-  gap: 16px;
-  break-inside: auto;
-  page-break-inside: auto;
+  gap: 18px;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
 }
 
 .investment-card {
@@ -513,7 +577,8 @@ body {
 
   .proposal-summary-grid,
   .proposal-cover-facts,
-  .proposal-section-columns {
+  .proposal-section-columns,
+  .proposal-pricing-highlight {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -534,7 +599,8 @@ body {
 
   .proposal-summary-grid,
   .proposal-cover-facts,
-  .proposal-section-columns {
+  .proposal-section-columns,
+  .proposal-pricing-highlight {
     grid-template-columns: 1fr;
   }
 
@@ -588,6 +654,11 @@ body {
 
   .proposal-cover-copy {
     margin-top: 48px;
+  }
+
+  .proposal-cover-intro {
+    font-size: 14px;
+    line-height: 1.58;
   }
 
   .proposal-cover-facts {
@@ -666,7 +737,10 @@ body {
   .investment-card,
   .investment-table,
   .proposal-card,
-  .proposal-day-intro {
+  .proposal-day-intro,
+  .proposal-pricing-highlight,
+  .proposal-pricing-highlight-card,
+  .avoid-break {
     break-inside: avoid-page;
     page-break-inside: avoid;
   }
@@ -688,8 +762,8 @@ body {
 
   .proposal-day-card {
     padding: 16px 16px 14px;
-    break-inside: auto;
-    page-break-inside: auto;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
   }
 
   .proposal-day-heading {
