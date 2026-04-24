@@ -5,21 +5,25 @@
     "apps/*"
   ],
   "prisma": {
-  "seed": "ts-node apps/api/prisma/seed.ts"
-},
-"scripts": {
+    "seed": "ts-node apps/api/prisma/seed.ts"
+  },
+  "scripts": {
     "dev:api": "npm --workspace @dmc/api run start:dev",
     "dev:admin": "npm --workspace @dmc/admin-web run dev",
     "build": "npm run build --workspaces",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "seed:demo": "npm --workspace @dmc/api run prisma:seed",
-    "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset"
+    "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset",
+    "smoke:api": "tsx scripts/smoke-api.ts",
+    "smoke:web": "tsx scripts/smoke-web.ts",
+    "smoke": "npm run smoke:api && npm run smoke:web"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"
   },
   "devDependencies": {
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0"
   }
 }

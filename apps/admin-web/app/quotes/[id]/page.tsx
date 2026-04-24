@@ -1367,7 +1367,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             <QuoteBuilderStatCard
               label="Stay"
               value={`${quote.roomCount} rooms / ${formatNightCountLabel(quote.nightCount)}`}
-              helper={`Base sell ${formatMoney(quote.totalSell)}`}
+              helper={`Base sell ${formatMoney(quote.totalSell, quote.quoteCurrency)}`}
             />
             <QuoteBuilderStatCard
               label="Travel Start"
@@ -1628,7 +1628,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       { id: 'group-mode', label: 'Mode', value: quote.pricingMode === 'SLAB' ? 'Group slabs' : 'Package price', helper: 'Separate from service-level pricing' },
                       { id: 'group-slabs', label: 'Slabs', value: String(quote.pricingSlabs.length), helper: quote.pricingMode === 'SLAB' ? 'Configured group tiers' : 'Not used in package mode' },
                       { id: 'group-basis', label: 'Basis', value: quote.pricingMode === 'SLAB' ? 'Per paying guest' : 'Per person', helper: quote.pricingMode === 'SLAB' ? 'FOC reduces paying guests' : 'Package sell basis' },
-                      { id: 'group-fixed', label: 'Package sell', value: quote.fixedPricePerPerson > 0 ? formatMoney(quote.fixedPricePerPerson) : 'Pending', helper: quote.pricingMode === 'FIXED' ? 'Current fixed price basis' : 'Used only in package mode' },
+                      { id: 'group-fixed', label: 'Package sell', value: quote.fixedPricePerPerson > 0 ? formatMoney(quote.fixedPricePerPerson, quote.quoteCurrency) : 'Pending', helper: quote.pricingMode === 'FIXED' ? 'Current fixed price basis' : 'Used only in package mode' },
                     ]}
                   />
 
@@ -2093,10 +2093,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 eyebrow="Commercials"
                 title="Pricing summary"
                 items={[
-                  { label: 'Total sell', value: formatMoney(quote.totalSell), helper: 'Current commercial sell' },
-                  { label: 'Total cost', value: formatMoney(quote.totalCost), helper: 'Supplier-side cost basis' },
-                  { label: 'Margin', value: formatMoney(quote.totalSell - quote.totalCost), helper: `${getInternalCostingMetrics(quote.totalCost, quote.totalSell).marginPercent.toFixed(2)}% margin` },
-                  { label: 'Price per pax', value: formatMoney(quote.pricePerPax), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' },
+                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Current commercial sell' },
+                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier-side cost basis' },
+                  { label: 'Margin', value: formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency), helper: `${getInternalCostingMetrics(quote.totalCost, quote.totalSell).marginPercent.toFixed(2)}% margin` },
+                  { label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' },
                 ]}
               />
 

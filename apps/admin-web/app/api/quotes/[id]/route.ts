@@ -17,3 +17,23 @@ export async function GET(
 
   return forwardProxyJsonResponse(response);
 }
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const body = await request.json().catch(() => ({}));
+  const response = await fetch(`${API_BASE_URL}/quotes/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}
