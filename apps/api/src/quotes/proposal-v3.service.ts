@@ -194,9 +194,7 @@ export class ProposalV3Service {
 
   private async resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
     const candidates = [
-      resolve(__dirname, fileName),
       resolve(process.cwd(), 'apps', 'api', 'src', 'quotes', fileName),
-      resolve(__dirname, '..', '..', '..', 'src', 'quotes', fileName),
       resolve(process.cwd(), 'src', 'quotes', fileName),
     ];
 
