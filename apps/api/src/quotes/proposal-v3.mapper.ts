@@ -114,6 +114,11 @@ function summarizeDestinations(destinations: string[]) {
   return `${cleaned.slice(0, -1).join(', ')}, and ${cleaned[cleaned.length - 1]}`;
 }
 
+function formatDestinationSubtitle(destinations: string[]) {
+  const cleaned = Array.from(new Set(destinations.map((destination) => cleanText(destination)).filter(Boolean)));
+  return cleaned.join(' · ');
+}
+
 function formatDate(value: Date | string | null | undefined) {
   if (!value) {
     return null;
@@ -360,6 +365,10 @@ function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string) {
     : `A ${dayCount}-day journey for ${formatGuestCountLabel(travelerCount)}, with accommodation, transport, and touring arranged throughout.`;
 }
 
+function buildCoverIntro() {
+  return 'We are pleased to present your tailored journey through Jordan, designed for a smooth and memorable travel experience.';
+}
+
 function buildHighlights(quote: ProposalV3Quote, destinationLine: string) {
   const highlights = new Set<string>();
 
@@ -531,14 +540,26 @@ function buildClientFacingTitle(quote: ProposalV3Quote, destinationLine: string)
   return cleanedTitle;
 }
 
+function buildProposalTitle() {
+  return 'Jordan Travel Proposal';
+}
+
+function formatDurationLabel(dayCount: number, nightCount: number) {
+  return `${dayCount} Day${dayCount === 1 ? '' : 's'} / ${nightCount} Night${nightCount === 1 ? '' : 's'}`;
+}
+
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
   const totalPax = quote.adults + quote.children;
   const dayCount = Math.max(sortedDays.length, (quote.nightCount || 0) + 1, 1);
   const destinations = Array.from(new Set(sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
   const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
+  const coverSubtitle = formatDestinationSubtitle(destinations) || destinationLine || 'Jordan';
   const currency = getProposalCurrency(quote);
-  const documentTitle = buildClientFacingTitle(quote, destinationLine);
+  const documentTitle = buildProposalTitle();
+  const durationLabel = formatDurationLabel(dayCount, quote.nightCount || Math.max(dayCount - 1, 0));
+  const coverIntro = buildCoverIntro();
+  const journeySummary = buildJourneySummary(quote, destinationLine);
   const totalValue =
     typeof quote.totalSell === 'number' && Number.isFinite(quote.totalSell) && quote.totalSell > 0
       ? formatProposalMoney(quote.totalSell, currency)
@@ -555,20 +576,20 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     accentColor: getAccentColor(quote),
     quoteReference: cleanText(quote.quoteNumber) || 'Quote reference to be confirmed',
     travelerName: getTravelerName(quote),
+    coverSubtitle,
     destinationLine,
-    durationLabel: `${dayCount} day${dayCount === 1 ? '' : 's'} / ${formatNightCountLabel(quote.nightCount).toLowerCase()}`,
+    durationLabel,
     travelDatesLabel: formatDate(quote.travelStartDate) || 'Dates to be confirmed',
+    coverIntro,
     subtitle: `${formatNightCountLabel(quote.nightCount)} · ${formatGuestCountLabel(totalPax)}${destinationLine ? ` · ${destinationLine}` : ''}`,
     proposalDateLabel: formatDate(quote.createdAt) || formatDate(new Date()) || '',
     travelerCountLabel: formatGuestCountLabel(totalPax),
     servicesCountLabel: `${quote.quoteItems.length} service${quote.quoteItems.length === 1 ? '' : 's'}`,
     totalDaysLabel: `${dayCount} itinerary day${dayCount === 1 ? '' : 's'}`,
-    pricingHighlight: {
-      total: totalValue,
-      perPax: perPersonValue,
-      currency,
-    },
-    journeySummary: buildJourneySummary(quote, destinationLine),
+    pricingHighlightTotal: totalValue,
+    pricingHighlightPerPax: perPersonValue,
+    pricingHighlightCurrency: currency,
+    journeySummary,
     highlights: buildHighlights(quote, destinationLine),
     accommodationRows: buildAccommodationRows(quote),
     days: buildDays(quote),

@@ -170,19 +170,19 @@ export type ProposalV3ViewModel = {
   accentColor: string;
   quoteReference: string;
   travelerName: string;
+  coverSubtitle: string;
   destinationLine: string;
   durationLabel: string;
   travelDatesLabel: string;
+  coverIntro: string;
   subtitle: string;
   proposalDateLabel: string;
   travelerCountLabel: string;
   servicesCountLabel: string;
   totalDaysLabel: string;
-  pricingHighlight: {
-    total: string;
-    perPax: string;
-    currency: string;
-  };
+  pricingHighlightTotal: string;
+  pricingHighlightPerPax: string;
+  pricingHighlightCurrency: string;
   journeySummary: string;
   highlights: string[];
   accommodationRows: ProposalV3AccommodationRow[];
