@@ -159,6 +159,12 @@ export class ProposalV3Service {
       readFile(templatePath, 'utf8'),
       readFile(cssPath, 'utf8'),
     ]);
+    console.info('[proposal-v3] renderHtml:template-debug', {
+      templatePath,
+      cssPath,
+      templatePreview: template.slice(0, 200),
+      containsVersionMarker: template.includes('2026-04-24-final'),
+    });
 
     // TODO: Replace this token renderer with full Handlebars runtime if/when the API workspace adds handlebars as a direct dependency.
     return this.renderTemplate(template, {
@@ -194,7 +200,11 @@ export class ProposalV3Service {
 
   private resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
     const resolvedPath = resolve(__dirname, fileName);
-    console.log('TEMPLATE PATH:', resolvedPath);
+    if (fileName === 'proposal-v3.hbs') {
+      console.log('TEMPLATE PATH:', resolvedPath);
+    } else {
+      console.log('CSS PATH:', resolvedPath);
+    }
     return resolvedPath;
   }
 
