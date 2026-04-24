@@ -163,7 +163,7 @@ export class ProposalV3Service {
       templatePath,
       cssPath,
       templatePreview: template.slice(0, 200),
-      containsVersionMarker: template.includes('2026-04-24-final'),
+      containsVersionMarker: template.includes('2026-04-24-final-v2'),
     });
 
     // TODO: Replace this token renderer with full Handlebars runtime if/when the API workspace adds handlebars as a direct dependency.
