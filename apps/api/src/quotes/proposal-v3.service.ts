@@ -115,6 +115,24 @@ export class ProposalV3Service {
           format: 'A4',
           printBackground: true,
           preferCSSPageSize: true,
+          displayHeaderFooter: true,
+          margin: {
+            top: '18mm',
+            right: '12mm',
+            bottom: '20mm',
+            left: '12mm',
+          },
+          headerTemplate: `
+            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:9px; color:#6b625b; text-align:left;">
+              Aventus DMC
+            </div>
+          `,
+          footerTemplate: `
+            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:9px; color:#6b625b; display:flex; justify-content:space-between; align-items:center;">
+              <span>Aventus DMC · Tailored travel experiences in Jordan</span>
+              <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+            </div>
+          `,
         });
 
         const resolvedBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
@@ -151,9 +169,11 @@ export class ProposalV3Service {
       accentColor: this.escapeHtml(viewModel.accentColor),
       quoteReference: this.escapeHtml(viewModel.quoteReference),
       travelerName: this.escapeHtml(viewModel.travelerName),
+      coverSubtitle: this.escapeHtml(viewModel.coverSubtitle),
       destinationLine: this.escapeHtml(viewModel.destinationLine),
       durationLabel: this.escapeHtml(viewModel.durationLabel),
       travelDatesLabel: this.escapeHtml(viewModel.travelDatesLabel),
+      coverIntro: this.escapeHtml(viewModel.coverIntro),
       subtitle: this.escapeHtml(viewModel.subtitle),
       proposalDateLabel: this.escapeHtml(viewModel.proposalDateLabel),
       travelerCountLabel: this.escapeHtml(viewModel.travelerCountLabel),
