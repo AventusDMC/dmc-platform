@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { QuotesService } from './quotes.service';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3ViewModel } from './proposal-v3.types';
+import { AuthenticatedActor } from '../auth/auth.types';
 
 type TemplateTokens = Record<string, string>;
 type PuppeteerBrowser = {
@@ -23,9 +24,9 @@ type PuppeteerModule = {
 export class ProposalV3Service {
   constructor(private readonly quotesService: QuotesService) {}
 
-  async getProposalHtml(quoteId: string) {
+  async getProposalHtml(quoteId: string, actor?: AuthenticatedActor) {
     console.info('[proposal-v3] getProposalHtml:start', { quoteId });
-    const quote = await this.quotesService.findOne(quoteId);
+    const quote = await this.quotesService.findOne(quoteId, actor);
 
     if (!quote) {
       console.warn('[proposal-v3] getProposalHtml:not-found', { quoteId });
@@ -50,9 +51,9 @@ export class ProposalV3Service {
     }
   }
 
-  async getProposalPdf(quoteId: string) {
+  async getProposalPdf(quoteId: string, actor?: AuthenticatedActor) {
     console.info('[proposal-v3] getProposalPdf:start', { quoteId });
-    const html = await this.getProposalHtml(quoteId);
+    const html = await this.getProposalHtml(quoteId, actor);
 
     if (!html) {
       console.warn('[proposal-v3] getProposalPdf:no-html', { quoteId });

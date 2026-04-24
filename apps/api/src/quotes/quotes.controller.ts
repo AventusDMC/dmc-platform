@@ -196,15 +196,15 @@ export class QuotesController {
   }
 
   @Get(':id/pdf')
-  async downloadPdf(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
+  async downloadPdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
     console.info('[proposal-v3] controller:pdf-request', { quoteId: id });
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id);
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor);
 
     if (!pdfBuffer) {
       throw new NotFoundException('Quote not found');
@@ -224,9 +224,9 @@ export class QuotesController {
   }
 
   @Get(':id/proposal-v2.pdf')
-  async downloadProposalV2Pdf(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
+  async downloadProposalV2Pdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
     // Temporary internal fallback only. Remove this route when Proposal V2 is retired.
-    const quote = await this.quotesService.findOne(id);
+    const quote = await this.quotesService.findOne(id, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
@@ -248,9 +248,13 @@ export class QuotesController {
   }
 
   @Get(':quoteId/proposal-v3.html')
-  async previewProposalV3Html(@Param('quoteId') quoteId: string, @Res({ passthrough: true }) response: any) {
+  async previewProposalV3Html(
+    @Param('quoteId') quoteId: string,
+    @Res({ passthrough: true }) response: any,
+    @Actor() actor: AuthenticatedActor,
+  ) {
     console.info('[proposal-v3] controller:html-request', { quoteId });
-    const html = await this.proposalV3Service.getProposalHtml(quoteId);
+    const html = await this.proposalV3Service.getProposalHtml(quoteId, actor);
 
     if (!html) {
       throw new NotFoundException('Quote not found');
@@ -262,14 +266,18 @@ export class QuotesController {
   }
 
   @Get(':quoteId/proposal-v3.pdf')
-  async downloadProposalV3Pdf(@Param('quoteId') quoteId: string, @Res({ passthrough: true }) response: any) {
-    const quote = await this.quotesService.findOne(quoteId);
+  async downloadProposalV3Pdf(
+    @Param('quoteId') quoteId: string,
+    @Res({ passthrough: true }) response: any,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(quoteId, actor);
 
     if (!quote) {
       throw new NotFoundException('Quote not found');
     }
 
-    const pdfBuffer = await this.proposalV3Service.getProposalPdf(quoteId);
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(quoteId, actor);
 
     if (!pdfBuffer) {
       throw new NotFoundException('Quote not found');
