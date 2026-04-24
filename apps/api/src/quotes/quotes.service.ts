@@ -1108,6 +1108,7 @@ export class QuotesService {
 
     const clientCompanyId = data.clientCompanyId ?? quote.clientCompanyId;
     const brandCompanyId = data.brandCompanyId === undefined ? quote.brandCompanyId : data.brandCompanyId;
+    const isBrandCompanyUpdate = data.brandCompanyId !== undefined;
     const contactId = data.contactId ?? quote.contactId;
     const quoteCurrency = this.validateInputCurrencyCode(
       data.quoteCurrency ?? (quote as any).quoteCurrency ?? 'USD',
@@ -1118,7 +1119,7 @@ export class QuotesService {
       throw new BadRequestException('Quote company does not match the current company');
     }
 
-    if (brandCompanyId && brandCompanyId !== companyId) {
+    if (isBrandCompanyUpdate && brandCompanyId && brandCompanyId !== companyId) {
       throw new BadRequestException('Branding company does not match the current company');
     }
 
@@ -1163,7 +1164,7 @@ export class QuotesService {
       this.prisma.company.findFirst({
         where: { id: companyId },
       }),
-      brandCompanyId
+      isBrandCompanyUpdate && brandCompanyId
         ? this.prisma.company.findFirst({
             where: { id: companyId },
           })
@@ -1188,7 +1189,7 @@ export class QuotesService {
       throw new BadRequestException('Contact does not belong to the selected company');
     }
 
-    if (brandCompanyId && !brandCompany) {
+    if (isBrandCompanyUpdate && brandCompanyId && !brandCompany) {
       throw new BadRequestException('Branding company not found');
     }
 
