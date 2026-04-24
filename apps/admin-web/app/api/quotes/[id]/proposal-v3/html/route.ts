@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const token = request.cookies.get('dmc_session')?.value;
-  const response = await fetch(`${API_BASE_URL}/quotes/${id}/proposal-v3/html${request.nextUrl.search}`, {
+  const response = await fetch(`${API_BASE_URL}/quotes/${id}/proposal-v3.html${request.nextUrl.search}`, {
     method: 'GET',
     headers: {
       ...buildActorHeaders(request),
