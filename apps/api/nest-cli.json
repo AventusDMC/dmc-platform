@@ -3,8 +3,14 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "assets": [
-      "**/*.hbs",
-      "**/*.css"
+      {
+        "include": "quotes/**/*.hbs",
+        "outDir": "dist"
+      },
+      {
+        "include": "quotes/**/*.css",
+        "outDir": "dist"
+      }
     ],
     "watchAssets": true
   }

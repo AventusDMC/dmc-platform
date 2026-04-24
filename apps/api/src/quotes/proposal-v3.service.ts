@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { access, readFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { QuotesService } from './quotes.service';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
@@ -151,8 +151,8 @@ export class ProposalV3Service {
   }
 
   private async renderHtml(viewModel: ProposalV3ViewModel) {
-    const templatePath = await this.resolveTemplateAssetPath('proposal-v3.hbs');
-    const cssPath = await this.resolveTemplateAssetPath('proposal-v3.css');
+    const templatePath = this.resolveTemplateAssetPath('proposal-v3.hbs');
+    const cssPath = this.resolveTemplateAssetPath('proposal-v3.css');
     console.info('[proposal-v3] renderHtml:assets', { templatePath, cssPath });
 
     const [template, css] = await Promise.all([
@@ -192,26 +192,10 @@ export class ProposalV3Service {
     });
   }
 
-  private async resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
-    const candidates = [
-      resolve(process.cwd(), 'apps', 'api', 'src', 'quotes', fileName),
-      resolve(process.cwd(), 'src', 'quotes', fileName),
-    ];
-
-    for (const candidate of candidates) {
-      try {
-        await access(candidate);
-        return candidate;
-      } catch {
-        // Continue to the next candidate.
-      }
-    }
-
-    console.error('[proposal-v3] renderHtml:missing-asset', {
-      fileName,
-      candidates,
-    });
-    throw new Error(`Proposal V3 asset not found: ${fileName}`);
+  private resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
+    const resolvedPath = resolve(__dirname, fileName);
+    console.log('TEMPLATE PATH:', resolvedPath);
+    return resolvedPath;
   }
 
   private renderTemplate(template: string, tokens: TemplateTokens) {
