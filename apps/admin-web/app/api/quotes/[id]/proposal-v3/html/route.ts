@@ -9,28 +9,16 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const upstreamUrl = `${API_BASE_URL}/quotes/${id}/proposal-v3.html${request.nextUrl.search}`;
-  console.info('[proposal-v3] proxy:html-request', {
-    quoteId: id,
-    path: `/api/quotes/${id}/proposal-v3/html`,
-    upstreamUrl,
-  });
-
-  const response = await fetch(upstreamUrl, {
-    headers: buildActorHeaders(request),
+  const token = request.cookies.get('dmc_session')?.value;
+  const response = await fetch(`${API_BASE_URL}/quotes/${id}/proposal-v3/html${request.nextUrl.search}`, {
+    method: 'GET',
+    headers: {
+      ...buildActorHeaders(request),
+      ...(token ? { Cookie: `dmc_session=${token}` } : {}),
+    },
     cache: 'no-store',
     redirect: 'manual',
   });
-
-  if (!response.ok) {
-    const errorPreview = await response.clone().text().catch(() => '');
-    console.error('[proposal-v3] proxy:html-error', {
-      quoteId: id,
-      status: response.status,
-      contentType: response.headers.get('content-type') || '',
-      bodyPreview: errorPreview.slice(0, 500),
-    });
-  }
 
   return forwardProxyContentResponse(response);
 }

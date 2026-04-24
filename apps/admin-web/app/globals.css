@@ -3172,7 +3172,7 @@ h1 {
 }
 
 .quote-client-price-card {
-  padding: 1rem 1.1rem;
+  padding: 1.2rem 1.2rem 1.3rem;
   border-radius: 1rem;
   background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.02));
   border: 1px solid rgba(15, 118, 110, 0.12);
@@ -3180,10 +3180,16 @@ h1 {
 
 .quote-client-price-card strong {
   display: block;
-  margin-top: 0.25rem;
+  margin-top: 0.45rem;
   font-size: 1.75rem;
   line-height: 1.1;
   color: var(--quote-brand-primary);
+}
+
+.quote-client-total-value {
+  font-size: clamp(2.2rem, 3vw, 3rem) !important;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .quote-client-price-card span {
@@ -3227,13 +3233,28 @@ h1 {
 
 .quote-preview-grid {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .quote-client-info-card,
 .quote-client-itinerary-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 252, 0.98));
   border-color: rgba(15, 118, 110, 0.08);
+}
+
+.quote-client-summary-section {
+  padding-top: 0.4rem;
+}
+
+.quote-client-summary-focus-card {
+  box-shadow: 0 18px 36px rgba(15, 118, 110, 0.07);
+}
+
+.quote-client-section-title {
+  margin: 0 0 1rem;
+  font-size: 1.4rem;
+  line-height: 1.15;
+  color: var(--text-strong);
 }
 
 .quote-client-chip-list {
@@ -3291,6 +3312,7 @@ h1 {
 .quote-client-exclusions {
   display: grid;
   gap: 0.6rem;
+  padding-top: 0.2rem;
 }
 
 .quote-client-editorial-hero {
@@ -3368,7 +3390,7 @@ h1 {
 }
 
 .quote-client-editorial-price-card {
-  padding: 1.2rem 1.25rem;
+  padding: 1.35rem 1.3rem 1.45rem;
   border-radius: 1.1rem;
 }
 
@@ -3395,7 +3417,7 @@ h1 {
 }
 
 .quote-client-editorial-day-list {
-  gap: 1.75rem;
+  gap: 2rem;
 }
 
 .quote-client-editorial-day-card {
@@ -3445,7 +3467,7 @@ h1 {
 
 .quote-client-day-content {
   display: grid;
-  gap: 1.35rem;
+  gap: 1.5rem;
   min-width: 0;
 }
 
@@ -3493,7 +3515,7 @@ h1 {
 
 .quote-client-day-title {
   display: block;
-  font-size: 1.72rem;
+  font-size: 1.8rem;
   line-height: 1.08;
   margin: 0;
 }
@@ -3557,7 +3579,7 @@ h1 {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
   gap: 1rem;
-  padding: 1rem 1.05rem;
+  padding: 1.1rem 1.1rem;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid rgba(15, 118, 110, 0.08);
@@ -3601,7 +3623,7 @@ h1 {
 .quote-client-service-type {
   margin: 0 0 0.3rem;
   color: rgba(22, 48, 45, 0.58);
-  font-size: 0.73rem;
+  font-size: 0.76rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -3628,6 +3650,15 @@ h1 {
   font-size: 0.98rem;
   line-height: 1.68;
   overflow-wrap: anywhere;
+}
+
+.quote-client-itinerary-section {
+  margin-top: 0.5rem;
+  padding-top: 1.2rem;
+}
+
+.quote-client-itinerary-heading {
+  margin: 0 0 1.15rem;
 }
 
 .quote-client-service-details {

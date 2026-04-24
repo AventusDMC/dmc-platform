@@ -233,7 +233,7 @@ function getDestinationsSummary(days: ClientQuoteItineraryDay[]) {
 
 function getPriceSummary(quote: ClientQuoteSummary) {
   const quoteCurrency = quote.quoteCurrency || quote.invoice?.currency || 'USD';
-  const helper = quote.priceComputation?.display.summaryLabel || quote.currentPricing?.label || 'Quote total';
+  const helper = 'Total package price';
   const value =
     quote.totalSell > 0
       ? formatMoney(quote.totalSell, quoteCurrency)
@@ -255,16 +255,16 @@ function getClientFacingPricingNotes(service: ClientLinkedServiceSummary | null)
   const notes = [
     service.salesTaxPercent
       ? service.salesTaxIncluded
-        ? `Taxes are included at ${service.salesTaxPercent}%.`
-        : `Taxes are not included and may apply at ${service.salesTaxPercent}%.`
+        ? `Applicable taxes are included.`
+        : `Applicable taxes are not included.`
       : null,
     service.serviceChargePercent
       ? service.serviceChargeIncluded
-        ? `Service charge is included at ${service.serviceChargePercent}%.`
-        : `Service charge is not included and may apply at ${service.serviceChargePercent}%.`
+        ? `Service charge is included.`
+        : `Service charge is not included.`
       : null,
     service.tourismFeeAmount
-      ? `Tourism fee paid to hotel${service.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? ' per night per guest' : ' per night per room'}.`
+      ? `Tourism fee paid to hotel applies ${service.tourismFeeMode === 'PER_NIGHT_PER_PERSON' ? 'per night per guest' : 'per night per room'}.`
       : null,
   ].filter(Boolean) as string[];
 
@@ -452,7 +452,33 @@ function getServiceTypeLabel(service: ClientLinkedServiceSummary | null) {
     return 'Planned Service';
   }
 
-  return service.service?.serviceType?.name || service.service?.category || 'Planned Service';
+  const haystack = [
+    service.service?.category,
+    service.service?.serviceType?.name,
+    service.service?.serviceType?.code,
+    service.appliedVehicleRate?.serviceType?.name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (haystack.includes('hotel') || service.hotel?.name) {
+    return 'Hotel Stay';
+  }
+
+  if (haystack.includes('transfer') || haystack.includes('transport') || haystack.includes('vehicle') || service.appliedVehicleRate) {
+    return 'Private Transfer';
+  }
+
+  if (haystack.includes('activity') || haystack.includes('tour') || haystack.includes('excursion')) {
+    return 'Guided Experience';
+  }
+
+  if (haystack.includes('meal') || haystack.includes('dinner') || haystack.includes('lunch')) {
+    return 'Dining Experience';
+  }
+
+  return service.service?.serviceType?.name || service.service?.category || 'Included Service';
 }
 
 function getServiceIcon(service: ClientLinkedServiceSummary | null) {
@@ -569,8 +595,8 @@ function QuoteHeroSection({
       </div>
       <div className="quote-preview-meta quote-client-meta quote-client-editorial-aside">
         <div className="quote-client-price-card quote-client-editorial-price-card">
-          <p className="detail-copy">Estimated total</p>
-          <strong>{priceSummary.value}</strong>
+          <p className="detail-copy">Total package price</p>
+          <strong className="quote-client-total-value">{priceSummary.value}</strong>
           <span>{priceSummary.currency}</span>
         </div>
         <div className="quote-client-price-grid">
@@ -583,7 +609,7 @@ function QuoteHeroSection({
             <strong>{guestCount} travelers</strong>
           </div>
           <div>
-            <span>Per person</span>
+            <span>Price per person</span>
             <strong>{priceSummary.perPerson || 'On request'}</strong>
           </div>
         </div>
@@ -621,7 +647,7 @@ function QuoteSummaryStrip({
         <strong>{paxLabel}</strong>
       </article>
       <article className="quote-client-summary-card">
-        <span>Total</span>
+        <span>Total package price</span>
         <strong>{priceSummary.value}</strong>
       </article>
       <article className="quote-client-summary-card quote-client-summary-card-wide">
@@ -634,8 +660,10 @@ function QuoteSummaryStrip({
 
 function QuoteServiceCard({
   service,
+  quoteCurrency,
 }: {
   service: ClientLinkedServiceSummary | null;
+  quoteCurrency: string;
 }) {
   const title = getServiceTitle(service);
   const meta = getServiceMeta(service);
@@ -643,7 +671,7 @@ function QuoteServiceCard({
   const summary = getServiceSummary(service);
   const typeLabel = getServiceTypeLabel(service);
   const pricingNotes = getClientFacingPricingNotes(service);
-  const totalSell = service?.totalSell && service.totalSell > 0 ? formatMoney(service.totalSell, service.quoteCurrency || service.currency || 'USD') : null;
+  const totalSell = service?.totalSell && service.totalSell > 0 ? formatMoney(service.totalSell, quoteCurrency) : null;
 
   return (
     <article className="quote-client-service-card" aria-label={`${typeLabel}: ${title}`}>
@@ -666,15 +694,6 @@ function QuoteServiceCard({
           </div>
         ) : null}
         <p className="detail-copy quote-client-service-summary">{summary}</p>
-        {pricingNotes.length > 0 ? (
-          <div className="quote-client-service-details">
-            {pricingNotes.map((note) => (
-              <p key={note} className="detail-copy">
-                {note}
-              </p>
-            ))}
-          </div>
-        ) : null}
         {details.length > 0 ? (
           <div className="quote-client-service-details">
             {details.map((detail) => (
@@ -689,7 +708,13 @@ function QuoteServiceCard({
   );
 }
 
-function QuoteDayCard({ day }: { day: ClientQuoteItineraryDay }) {
+function QuoteDayCard({
+  day,
+  quoteCurrency,
+}: {
+  day: ClientQuoteItineraryDay;
+  quoteCurrency: string;
+}) {
   const dayDisplay = getItineraryDayDisplay({
     dayNumber: day.dayNumber,
     title: day.title,
@@ -700,7 +725,6 @@ function QuoteDayCard({ day }: { day: ClientQuoteItineraryDay }) {
   const sortedItems = [...day.dayItems]
     .filter((item) => item.isActive)
     .sort((left, right) => left.sortOrder - right.sortOrder);
-  const quoteCurrency = sortedItems.find((item) => item.quoteService?.quoteCurrency)?.quoteService?.quoteCurrency || 'USD';
   const daySubtotal = getDaySubtotal(day, quoteCurrency);
 
   return (
@@ -738,6 +762,7 @@ function QuoteDayCard({ day }: { day: ClientQuoteItineraryDay }) {
               <QuoteServiceCard
                 key={item.quoteService?.id || item.id || `${day.dayNumber}-${item.sortOrder}-${getServiceTitle(item.quoteService)}-${index}`}
                 service={item.quoteService}
+                quoteCurrency={quoteCurrency}
               />
             ))
           )}
@@ -765,6 +790,7 @@ export function QuoteClientItineraryView({ quote, itinerary, interactionPanel }:
   const durationLabel = `${derivedDayCount} day${derivedDayCount === 1 ? '' : 's'} / ${safeNightCount} night${safeNightCount === 1 ? '' : 's'}`;
   const paxLabel = `${Math.max(quote.adults + quote.children, 0)} travelers`;
   const pricingNotes = getGlobalPricingNotes(sortedDays);
+  const quoteCurrency = priceSummary.currency;
 
   return (
     <main className="page">
@@ -787,28 +813,30 @@ export function QuoteClientItineraryView({ quote, itinerary, interactionPanel }:
           includedServices={includedServices}
         />
 
-        <section className="quote-preview-grid">
-          <article className="detail-card quote-client-info-card">
-            <p className="eyebrow">Pricing Overview</p>
+        <section className="quote-preview-grid quote-client-summary-section">
+          <article className="detail-card quote-client-info-card quote-client-summary-focus-card">
+            <p className="eyebrow">Your Package</p>
+            <h2 className="quote-client-section-title">Package summary</h2>
             <div className="quote-preview-total-list">
               <div>
-                <span>Total</span>
+                <span>Total package price</span>
                 <strong>{priceSummary.value}</strong>
               </div>
               <div>
-                <span>Currency</span>
+                <span>Quote currency</span>
                 <strong>{priceSummary.currency}</strong>
               </div>
               <div>
-                <span>Per person</span>
+                <span>Price per person</span>
                 <strong>{priceSummary.perPerson || 'To be confirmed'}</strong>
               </div>
             </div>
-            <p className="detail-copy">{priceSummary.helper}</p>
+            <p className="detail-copy">All prices shown here are in {priceSummary.currency}.</p>
           </article>
 
           <article className="detail-card quote-client-info-card">
             <p className="eyebrow">Included Services</p>
+            <h2 className="quote-client-section-title">Included services</h2>
             <div className="quote-client-chip-list">
               {includedServices.length === 0 ? (
                 <p className="empty-state">Included services will be confirmed in the final program.</p>
@@ -824,25 +852,30 @@ export function QuoteClientItineraryView({ quote, itinerary, interactionPanel }:
 
           <article className="detail-card quote-client-info-card">
             <p className="eyebrow">Pricing Notes</p>
+            <h2 className="quote-client-section-title">Pricing Notes</h2>
             <div className="quote-client-exclusions">
+              <p className="detail-copy">Taxes: included only where stated in the itinerary pricing notes.</p>
+              <p className="detail-copy">Service charge: included only where stated in the itinerary pricing notes.</p>
+              <p className="detail-copy">Tourism fee: applies only where noted for hotel stays.</p>
               {pricingNotes.map((note) => (
                 <p key={note} className="detail-copy">
                   {note}
                 </p>
               ))}
+              <p className="detail-copy">Availability: all arrangements remain subject to final availability and confirmation at the time of booking.</p>
               <p className="detail-copy">International flights, travel insurance, visas, and personal expenses are not included unless stated otherwise.</p>
             </div>
           </article>
         </section>
 
-        <section className="detail-card quote-client-itinerary-card">
+        <section className="detail-card quote-client-itinerary-card quote-client-itinerary-section">
           <p className="eyebrow">Day By Day Itinerary</p>
-          <h2 className="section-title" style={{ fontSize: '1.55rem', margin: '0 0 0.9rem' }}>Day-by-day journey</h2>
+          <h2 className="section-title quote-client-section-title quote-client-itinerary-heading">Day-by-day journey</h2>
           <div className="quote-preview-day-list quote-client-editorial-day-list">
             {sortedDays.length === 0 ? (
               <p className="empty-state">No itinerary yet.</p>
             ) : (
-              sortedDays.map((day) => <QuoteDayCard key={`${day.dayNumber}-${day.sortOrder}`} day={day} />)
+              sortedDays.map((day) => <QuoteDayCard key={`${day.dayNumber}-${day.sortOrder}`} day={day} quoteCurrency={quoteCurrency} />)
             )}
           </div>
         </section>
