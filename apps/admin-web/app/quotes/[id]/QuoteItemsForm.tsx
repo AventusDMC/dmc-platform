@@ -548,7 +548,7 @@ export function QuoteItemsForm({
     const seen = new Set<string>();
     const currentPax = Number(paxCount) || defaultPaxCount || 1;
 
-    return candidates
+    const normalizedCandidates = candidates
       .filter((candidate) => {
         const key = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}`;
 
@@ -568,6 +568,38 @@ export function QuoteItemsForm({
           isRecommended: isRecommendedVehicleCategory(quoteType, currentPax, category),
         };
       });
+
+    const bestValueCandidate = normalizedCandidates.reduce<(typeof normalizedCandidates)[number] | null>((bestCandidate, candidate) => {
+      if (!bestCandidate) {
+        return candidate;
+      }
+
+      const candidatePricePerPax = candidate.price / Math.max(currentPax, 1);
+      const bestPricePerPax = bestCandidate.price / Math.max(currentPax, 1);
+      const candidateCapacityGap =
+        candidate.vehicle.maxPax >= currentPax ? candidate.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
+      const bestCapacityGap =
+        bestCandidate.vehicle.maxPax >= currentPax ? bestCandidate.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
+
+      if (candidatePricePerPax < bestPricePerPax) {
+        return candidate;
+      }
+
+      if (candidatePricePerPax === bestPricePerPax && candidateCapacityGap < bestCapacityGap) {
+        return candidate;
+      }
+
+      return bestCandidate;
+    }, null);
+
+    return normalizedCandidates.map((candidate) => ({
+      ...candidate,
+      isBestValue:
+        Boolean(bestValueCandidate) &&
+        candidate.vehicle.id === bestValueCandidate?.vehicle.id &&
+        candidate.serviceType.id === bestValueCandidate.serviceType.id &&
+        (candidate.routeId || candidate.routeName) === (bestValueCandidate.routeId || bestValueCandidate.routeName),
+    }));
   }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
   const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
 
@@ -1972,7 +2004,7 @@ export function QuoteItemsForm({
                   <div
                     key={`${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`}
                     style={
-                      candidate.isRecommended
+                      candidate.isRecommended || candidate.isBestValue
                         ? { borderColor: 'var(--color-accent)', background: 'var(--color-surface-muted)' }
                         : undefined
                     }
@@ -1980,6 +2012,7 @@ export function QuoteItemsForm({
                     <span>
                       {candidate.vehicle.name}
                       {candidate.isRecommended ? <span className="status-badge" style={{ marginLeft: 8 }}>Recommended</span> : null}
+                      {candidate.isBestValue ? <span className="status-badge" style={{ marginLeft: 8 }}>Best Value</span> : null}
                     </span>
                     <strong>
                       {candidate.currency} {candidate.price.toFixed(2)}
@@ -1994,7 +2027,7 @@ export function QuoteItemsForm({
 
               {!hasRecommendedTransportCandidate ? (
                 <p className="form-helper">
-                  No priced vehicle matches the ideal {quoteType} recommendation for this route and pax count. Available priced vehicles remain selectable through the route and service type.
+                  Recommended vehicle not available for this route. Showing best available options.
                 </p>
               ) : null}
             </div>
