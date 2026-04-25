@@ -208,6 +208,10 @@ type QuoteItemsFormProps = {
   initialValues?: QuoteItemInitialValues;
 };
 
+function notifyQuotePricingChanged(quoteId: string) {
+  window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId } }));
+}
+
 const SERVICE_TYPE_BUTTONS = [
   { key: 'hotel', label: 'Add Hotel' },
   { key: 'transport', label: 'Add Transport' },
@@ -404,8 +408,12 @@ export function QuoteItemsForm({
   const router = useRouter();
   const isEditing = Boolean(itemId);
   const initialService = services.find((service) => service.id === (initialValues?.serviceId || preferredServiceId));
+  const initialActiveServiceType = initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null;
+  const initialActivityServiceDate =
+    initialActiveServiceType === 'activity' && !itineraryId && travelStartDate ? travelStartDate.slice(0, 10) : '';
+  const firstActiveRouteId = routes.find((route) => route.isActive)?.id || routes[0]?.id || '';
   const [activeServiceType, setActiveServiceType] = useState<ServiceTypeKey | null>(
-    initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null,
+    initialActiveServiceType,
   );
   const [serviceId, setServiceId] = useState(initialValues?.serviceId || preferredServiceId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
@@ -417,7 +425,7 @@ export function QuoteItemsForm({
   const [roomCount, setRoomCount] = useState(initialValues?.roomCount || String(defaultRoomCount || 1));
   const [nightCount, setNightCount] = useState(initialValues?.nightCount || String(defaultNightCount || 1));
   const [dayCount, setDayCount] = useState(initialValues?.dayCount || '1');
-  const [serviceDate, setServiceDate] = useState(initialValues?.serviceDate || '');
+  const [serviceDate, setServiceDate] = useState(initialValues?.serviceDate || initialActivityServiceDate);
   const [startTime, setStartTime] = useState(initialValues?.startTime || '');
   const [pickupTime, setPickupTime] = useState(initialValues?.pickupTime || '');
   const [pickupLocation, setPickupLocation] = useState(initialValues?.pickupLocation || '');
@@ -427,8 +435,12 @@ export function QuoteItemsForm({
   const [baseCost, setBaseCost] = useState(initialValues?.baseCost || '');
   const [overrideCost, setOverrideCost] = useState(initialValues?.overrideCost || '');
   const [useOverride, setUseOverride] = useState(initialValues?.useOverride || false);
-  const [transportServiceTypeId, setTransportServiceTypeId] = useState(initialValues?.transportServiceTypeId || '');
-  const [routeId, setRouteId] = useState(initialValues?.routeId || preferredRouteId || '');
+  const [transportServiceTypeId, setTransportServiceTypeId] = useState(
+    initialValues?.transportServiceTypeId || (initialActiveServiceType === 'transport' ? transportServiceTypes[0]?.id || '' : ''),
+  );
+  const [routeId, setRouteId] = useState(
+    initialValues?.routeId || preferredRouteId || (initialActiveServiceType === 'transport' ? firstActiveRouteId : ''),
+  );
   const [routeName, setRouteName] = useState(initialValues?.routeName || '');
   const [hotelId, setHotelId] = useState(initialValues?.hotelId || preferredHotelId || '');
   const [contractId, setContractId] = useState(initialValues?.contractId || preferredContractId || '');
@@ -810,6 +822,14 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (!transportServiceTypeId && transportServiceTypes[0]?.id) {
+      setTransportServiceTypeId(transportServiceTypes[0].id);
+    }
+
+    if (!routeId && !routeName.trim() && firstActiveRouteId) {
+      setRouteId(firstActiveRouteId);
+    }
+
     if (!transportServiceTypeId || (!routeId && !routeName.trim())) {
       setIsLoadingTransportCost(false);
       setBaseCost('');
@@ -861,7 +881,17 @@ export function QuoteItemsForm({
     void loadTransportCost();
 
     return () => abortController.abort();
-  }, [apiBaseUrl, isTransportService, paxCount, routeId, routeName, transportServiceTypeId]);
+  }, [apiBaseUrl, firstActiveRouteId, isTransportService, paxCount, routeId, routeName, transportServiceTypeId, transportServiceTypes]);
+
+  useEffect(() => {
+    if (!isActivityService) {
+      return;
+    }
+
+    if (!serviceDate && !itineraryId && travelStartDate) {
+      setServiceDate(travelStartDate.slice(0, 10));
+    }
+  }, [isActivityService, itineraryId, serviceDate, travelStartDate]);
 
   useEffect(() => {
     if (!isGuideService) {
@@ -1089,6 +1119,8 @@ export function QuoteItemsForm({
         throw new Error(await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'add'} quote item.`));
       }
 
+      notifyQuotePricingChanged(quoteId);
+
       if (!isEditing) {
         setQuantity('1');
         setMarkupPercent('20');
@@ -1202,7 +1234,11 @@ export function QuoteItemsForm({
 
           {!(activeServiceType === 'hotel' && !isEditing) ? (
             <label>
-              Service
+              {activeServiceType === 'transport'
+                ? 'Transport selector'
+                : activeServiceType === 'activity'
+                  ? 'Activity selector'
+                  : 'Service'}
               <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={filteredServices.length === 0}>
                 {filteredServices.length === 0 ? (
                   <option value="">No services available for this type</option>
@@ -1457,7 +1493,7 @@ export function QuoteItemsForm({
           {isHotelService ? (
             <div className="form-row form-row-4">
               <label>
-                Hotel
+                Hotel selector
                 <select value={hotelId} onChange={(event) => setHotelId(event.target.value)} required>
                   {hotels.length === 0 ? <option value="">Create a hotel first</option> : null}
                   {hotels.map((hotel) => (
@@ -1711,7 +1747,7 @@ export function QuoteItemsForm({
           {isTransportService ? (
             <div className="form-row">
               <label>
-                Transport service type
+                Transport selector
                 <select value={transportServiceTypeId} onChange={(event) => setTransportServiceTypeId(event.target.value)} required>
                   <option value="">Select service type</option>
                   {transportServiceTypes.map((serviceType) => (

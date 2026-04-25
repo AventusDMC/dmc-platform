@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { AdvancedFiltersPanel } from '../../components/AdvancedFiltersPanel';
 import { AdminPageTabs } from '../../components/AdminPageTabs';
 import { CompactFilterBar } from '../../components/CompactFilterBar';
@@ -35,6 +36,7 @@ import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { readSessionActor } from '../../lib/auth-session';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -52,6 +54,14 @@ type Contact = {
   companyId: string;
   firstName: string;
   lastName: string;
+};
+
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
+  status: 'active';
 };
 
 type Itinerary = {
@@ -250,6 +260,7 @@ type QuoteOption = {
 type Quote = {
   id: string;
   quoteNumber: string | null;
+  quoteType: 'FIT' | 'GROUP';
   bookingType: 'FIT' | 'GROUP' | 'SERIES';
   title: string;
   description: string | null;
@@ -304,6 +315,12 @@ type Quote = {
   } | null;
   publicToken: string | null;
   publicEnabled: boolean;
+  agent: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null;
   company: Company;
   brandCompany?: Company;
   contact: Contact;
@@ -548,6 +565,12 @@ async function getVersions(id: string): Promise<QuoteVersionsFetchResult> {
 
 async function getContacts(): Promise<Contact[]> {
   return adminPageFetchJson<Contact[]>(`${DATA_API_BASE_URL}/contacts`, 'Quote detail contacts', {
+    cache: 'no-store',
+  });
+}
+
+async function getUsers(): Promise<User[]> {
+  return adminPageFetchJson<User[]>(`${DATA_API_BASE_URL}/users`, 'Quote detail users', {
     cache: 'no-store',
   });
 }
@@ -1078,9 +1101,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   }
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const session = readSessionActor((await cookies()).get('dmc_session')?.value || '');
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
-  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, versionsResult, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
+  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, users, versionsResult, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
     getQuote(id),
     getServices(),
     getTransportServiceTypes(),
@@ -1091,6 +1115,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     getSeasons(),
     getCompanies(),
     getContacts(),
+    getUsers(),
     getVersions(id),
     getHotelCategories(),
     getSupportTextTemplates(),
@@ -1125,6 +1150,14 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   }
 
   const quote = normalizeQuoteDetail(rawQuote);
+  const agents = users
+    .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    }));
   const quoteItinerary = quoteItineraryResult.itinerary;
 
   const totalPax = quote.adults + quote.children;
@@ -1367,6 +1400,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           />
 
           <section className="quote-builder-stat-grid">
+            <QuoteBuilderStatCard label="Quote Type" value={quote.quoteType} helper="Controls quote behavior" />
             <QuoteBuilderStatCard label="Booking Type" value={quote.bookingType} helper="Carried into booking conversion" />
             <QuoteBuilderStatCard label="Group" value={`${totalPax} pax`} helper={`${quote.adults} adults / ${quote.children} children`} />
             <QuoteBuilderStatCard
@@ -1470,12 +1504,15 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     apiBaseUrl={API_BASE_URL}
                     companies={companies}
                     contacts={contacts}
+                    agents={agents}
                     quoteId={quote.id}
                     submitLabel="Save quote"
                     initialValues={{
                       clientCompanyId: quote.company.id,
                       brandCompanyId: quote.brandCompany?.id || quote.company.id,
                       contactId: quote.contact.id,
+                      agentId: quote.agent?.id || '',
+                      quoteType: quote.quoteType,
                       bookingType: quote.bookingType,
                       title: quote.title,
                       description: quote.description || '',
@@ -1619,6 +1656,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 preferredCatalogRateCurrency={resolvedSearchParams?.catalogRateCurrency}
                 preferredCatalogRateNote={resolvedSearchParams?.catalogRateNote}
                 preferredCatalogRouteId={resolvedSearchParams?.catalogRouteId}
+                sessionRole={session?.role || null}
               />
             {guidedStepFooter}
             </div>

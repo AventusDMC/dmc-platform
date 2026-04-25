@@ -43,6 +43,7 @@ type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
 type QuoteFocType = 'none' | 'ratio' | 'fixed';
 type QuoteFocRoomType = 'single' | 'double';
+type QuoteTypeValue = 'FIT' | 'GROUP';
 type QuoteBookingType = 'FIT' | 'GROUP' | 'SERIES';
 
 type QuotePricingSlabInput = {
@@ -68,6 +69,8 @@ type CreateQuoteInput = {
   clientCompanyId: string;
   brandCompanyId?: string | null;
   contactId: string;
+  agentId?: string | null;
+  quoteType?: QuoteTypeValue;
   bookingType?: QuoteBookingType;
   title: string;
   description?: string;
@@ -237,6 +240,7 @@ type ScoredServiceMatch = {
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const MIN_TRIP_SUMMARY_LENGTH = 20;
+const QUOTE_TYPES = ['FIT', 'GROUP'] as const;
 const BOOKING_TYPES = ['FIT', 'GROUP', 'SERIES'] as const;
 const INVALID_TRIP_SUMMARY_PATTERNS = [
   /\blorem ipsum\b/i,
@@ -319,6 +323,14 @@ export class QuotesService {
           },
         },
         contact: true,
+        agent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
         invoice: true,
         pricingSlabs: {
           orderBy: [
@@ -340,6 +352,16 @@ export class QuotesService {
 
   private generatePublicQuoteToken() {
     return randomBytes(24).toString('hex');
+  }
+
+  private buildPublicProposalUrl(token: string) {
+    const appUrl = (process.env.ADMIN_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+
+    if (!appUrl) {
+      return `/proposal/${token}`;
+    }
+
+    return `${appUrl}/proposal/${token}`;
   }
 
   async enablePublicLink(id: string, actor?: CompanyScopedActor) {
@@ -365,6 +387,7 @@ export class QuotesService {
       return {
         publicToken: existing.publicToken,
         publicEnabled: true,
+        publicUrl: this.buildPublicProposalUrl(existing.publicToken),
       };
     }
 
@@ -381,7 +404,10 @@ export class QuotesService {
       },
     });
 
-    return updated;
+    return {
+      ...updated,
+      publicUrl: updated.publicToken ? this.buildPublicProposalUrl(updated.publicToken) : null,
+    };
   }
 
   async disablePublicLink(id: string, actor?: CompanyScopedActor) {
@@ -441,7 +467,34 @@ export class QuotesService {
         publicToken: true,
         publicEnabled: true,
       },
+    }).then((result: { publicToken: string | null; publicEnabled: boolean }) => ({
+      ...result,
+      publicUrl: result.publicToken ? this.buildPublicProposalUrl(result.publicToken) : null,
+    }));
+  }
+
+  async findPublicProposalQuote(token: string) {
+    const normalizedToken = token.trim();
+
+    if (!normalizedToken) {
+      return null;
+    }
+
+    const quoteRef = await (this.prisma as any).quote.findFirst({
+      where: {
+        publicToken: normalizedToken,
+        publicEnabled: true,
+      },
+      select: {
+        id: true,
+      },
     });
+
+    if (!quoteRef) {
+      return null;
+    }
+
+    return this.loadQuoteState(quoteRef.id);
   }
 
   async findPublicView(token: string) {
@@ -733,7 +786,8 @@ export class QuotesService {
       throw new BadRequestException('Branding company does not match the current company');
     }
 
-    const [clientCompany, brandCompany, contact] = await Promise.all([
+    const normalizedAgentId = data.agentId === undefined ? undefined : data.agentId?.trim() || null;
+    const [clientCompany, brandCompany, contact, agent] = await Promise.all([
       this.prisma.company.findFirst({
         where: { id: companyId },
       }),
@@ -748,6 +802,20 @@ export class QuotesService {
           companyId,
         },
       }),
+      normalizedAgentId
+        ? this.prisma.user.findFirst({
+            where: {
+              id: normalizedAgentId,
+              companyId,
+              role: {
+                name: 'agent',
+              },
+            },
+            select: {
+              id: true,
+            },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!clientCompany) {
@@ -764,6 +832,10 @@ export class QuotesService {
 
     if (data.brandCompanyId && !brandCompany) {
       throw new BadRequestException('Branding company not found');
+    }
+
+    if (normalizedAgentId && !agent) {
+      throw new BadRequestException('Assigned agent must be an agent user in the current company');
     }
 
     const pricingType = this.normalizeQuotePricingType(data.pricingType);
@@ -793,6 +865,8 @@ export class QuotesService {
               clientCompanyId: data.clientCompanyId,
               brandCompanyId: data.brandCompanyId ?? null,
               contactId: data.contactId,
+              agentId: normalizedAgentId ?? null,
+              quoteType: this.normalizeQuoteType(data.quoteType),
               bookingType: this.normalizeBookingType(data.bookingType),
               title: data.title,
               description: data.description || null,
@@ -1110,6 +1184,8 @@ export class QuotesService {
     const brandCompanyId = data.brandCompanyId === undefined ? quote.brandCompanyId : data.brandCompanyId;
     const isBrandCompanyUpdate = data.brandCompanyId !== undefined;
     const contactId = data.contactId ?? quote.contactId;
+    const isAgentUpdate = data.agentId !== undefined;
+    const agentId = isAgentUpdate ? data.agentId?.trim() || null : (quote as any).agentId ?? null;
     const quoteCurrency = this.validateInputCurrencyCode(
       data.quoteCurrency ?? (quote as any).quoteCurrency ?? 'USD',
       'quoteCurrency',
@@ -1160,7 +1236,7 @@ export class QuotesService {
       focCount: data.focCount === undefined ? quote.focCount : data.focCount,
       focRoomType: data.focRoomType === undefined ? this.normalizeQuoteFocRoomType(quote.focRoomType) : data.focRoomType,
     });
-    const [clientCompany, brandCompany, contact] = await Promise.all([
+    const [clientCompany, brandCompany, contact, agent] = await Promise.all([
       this.prisma.company.findFirst({
         where: { id: companyId },
       }),
@@ -1175,6 +1251,20 @@ export class QuotesService {
           companyId,
         },
       }),
+      agentId
+        ? this.prisma.user.findFirst({
+            where: {
+              id: agentId,
+              companyId,
+              role: {
+                name: 'agent',
+              },
+            },
+            select: {
+              id: true,
+            },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!clientCompany) {
@@ -1191,6 +1281,10 @@ export class QuotesService {
 
     if (isBrandCompanyUpdate && brandCompanyId && !brandCompany) {
       throw new BadRequestException('Branding company not found');
+    }
+
+    if (agentId && !agent) {
+      throw new BadRequestException('Assigned agent must be an agent user in the current company');
     }
 
     if (data.pricingSlabs !== undefined && pricingMode === 'FIXED' && data.pricingSlabs.length > 0) {
@@ -1218,6 +1312,8 @@ export class QuotesService {
           clientCompanyId,
           brandCompanyId,
           contactId,
+          agentId,
+          quoteType: data.quoteType === undefined ? undefined : this.normalizeQuoteType(data.quoteType),
           bookingType: data.bookingType === undefined ? undefined : this.normalizeBookingType(data.bookingType),
           title: data.title === undefined ? undefined : data.title.trim(),
           description: data.description === undefined ? undefined : data.description || null,
@@ -4168,6 +4264,16 @@ export class QuotesService {
     return value === 'group' ? 'group' : 'simple';
   }
 
+  private normalizeQuoteType(value: string | undefined | null): QuoteTypeValue {
+    const normalized = String(value || 'FIT').trim().toUpperCase() as QuoteTypeValue;
+
+    if (!QUOTE_TYPES.includes(normalized)) {
+      throw new BadRequestException('Unsupported quote type');
+    }
+
+    return normalized;
+  }
+
   private normalizeBookingType(value: string | undefined | null): QuoteBookingType {
     const normalized = String(value || 'FIT').trim().toUpperCase() as QuoteBookingType;
 
@@ -4936,11 +5042,11 @@ export class QuotesService {
   }
 
   private loadQuoteState(id: string, prismaClient: any = this.prisma, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    const companyId = actor?.companyId?.trim() || null;
     return prismaClient.quote.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
+        ...(companyId ? { clientCompanyId: companyId } : {}),
       },
       include: {
         clientCompany: {
@@ -4954,6 +5060,14 @@ export class QuotesService {
           },
         },
         contact: true,
+        agent: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
         pricingSlabs: {
           orderBy: [
             {

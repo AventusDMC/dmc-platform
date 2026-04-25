@@ -21,6 +21,7 @@ type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
 type QuoteFocType = 'none' | 'ratio' | 'fixed';
 type QuoteFocRoomType = 'single' | 'double';
+type QuoteTypeValue = 'FIT' | 'GROUP';
 type QuoteBookingType = 'FIT' | 'GROUP' | 'SERIES';
 
 type QuotePricingSlabBody = {
@@ -36,6 +37,8 @@ type CreateQuoteBody = {
   companyId: string;
   brandCompanyId?: string | null;
   contactId: string;
+  agentId?: string | null;
+  quoteType?: QuoteTypeValue;
   bookingType?: QuoteBookingType;
   title: string;
   description?: string;
@@ -344,6 +347,8 @@ export class QuotesController {
       clientCompanyId: body.clientCompanyId || body.companyId,
       brandCompanyId: body.brandCompanyId === undefined ? undefined : body.brandCompanyId || null,
       contactId: body.contactId,
+      agentId: body.agentId === undefined ? undefined : body.agentId || null,
+      quoteType: body.quoteType,
       bookingType: body.bookingType,
       title: body.title,
       description: body.description,
@@ -393,6 +398,8 @@ export class QuotesController {
       clientCompanyId: body.clientCompanyId || body.companyId,
       brandCompanyId: body.brandCompanyId === undefined ? undefined : body.brandCompanyId || null,
       contactId: body.contactId,
+      agentId: body.agentId === undefined ? undefined : body.agentId || null,
+      quoteType: body.quoteType,
       bookingType: body.bookingType,
       title: body.title,
       description: body.description,

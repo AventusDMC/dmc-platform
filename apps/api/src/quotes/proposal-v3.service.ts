@@ -34,18 +34,40 @@ export class ProposalV3Service {
     }
 
     try {
-      const viewModel = mapQuoteToProposalV3(quote as any);
-      console.info('[proposal-v3] getProposalHtml:view-model', JSON.stringify(viewModel, null, 2));
-      const html = await this.renderHtml(viewModel);
+      const html = await this.renderProposalHtml(quote, 'quoteId', quoteId);
       console.info('[proposal-v3] getProposalHtml:success', {
         quoteId,
-        title: viewModel.documentTitle,
         htmlLength: html.length,
       });
       return html;
     } catch (error) {
       console.error('[proposal-v3] getProposalHtml:error', {
         quoteId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async getPublicProposalHtml(token: string) {
+    console.info('[proposal-v3] getPublicProposalHtml:start', { token });
+    const quote = await this.quotesService.findPublicProposalQuote(token);
+
+    if (!quote) {
+      console.warn('[proposal-v3] getPublicProposalHtml:not-found', { token });
+      return null;
+    }
+
+    try {
+      const html = await this.renderProposalHtml(quote, 'token', token);
+      console.info('[proposal-v3] getPublicProposalHtml:success', {
+        token,
+        htmlLength: html.length,
+      });
+      return html;
+    } catch (error) {
+      console.error('[proposal-v3] getPublicProposalHtml:error', {
+        token,
         message: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -61,13 +83,41 @@ export class ProposalV3Service {
       return null;
     }
 
+    return this.renderPdfFromHtml(html, 'quoteId', quoteId);
+  }
+
+  async getPublicProposalPdf(token: string) {
+    console.info('[proposal-v3] getPublicProposalPdf:start', { token });
+    const html = await this.getPublicProposalHtml(token);
+
+    if (!html) {
+      console.warn('[proposal-v3] getPublicProposalPdf:no-html', { token });
+      return null;
+    }
+
+    return this.renderPdfFromHtml(html, 'token', token);
+  }
+
+  private async renderProposalHtml(quote: unknown, contextKey: 'quoteId' | 'token', contextValue: string) {
+    const viewModel = mapQuoteToProposalV3(quote as any);
+    console.info('[proposal-v3] renderProposalHtml:view-model', {
+      [contextKey]: contextValue,
+      title: viewModel.documentTitle,
+      reference: viewModel.quoteReference,
+    });
+    return this.renderHtml(viewModel);
+  }
+
+  private async renderPdfFromHtml(html: string, contextKey: 'quoteId' | 'token', contextValue: string) {
+    const logContext = { [contextKey]: contextValue };
+
     let puppeteer: PuppeteerModule;
     try {
       puppeteer = await this.loadPuppeteer();
-      console.info('[proposal-v3] getProposalPdf:puppeteer-loaded', { quoteId });
+      console.info('[proposal-v3] getProposalPdf:puppeteer-loaded', logContext);
     } catch (error) {
       console.error('[proposal-v3] getProposalPdf:puppeteer-load-error', {
-        quoteId,
+        ...logContext,
         message: error instanceof Error ? error.message : String(error),
       });
       throw new InternalServerErrorException('Proposal PDF renderer is unavailable.');
@@ -85,32 +135,32 @@ export class ProposalV3Service {
       }
       // TODO: Adjust launch args or executablePath per deployment environment if Chromium is provided externally.
       console.info('[proposal-v3] getProposalPdf:launch', {
-        quoteId,
+        ...logContext,
         hasExecutablePath: Boolean(executablePath),
       });
       browser = await puppeteer.launch(launchOptions);
     } catch (error) {
       console.error('[proposal-v3] getProposalPdf:launch-error', {
-        quoteId,
+        ...logContext,
         message: error instanceof Error ? error.message : String(error),
       });
       throw new InternalServerErrorException('Proposal PDF browser could not be started.');
     }
 
     try {
-      console.info('[proposal-v3] getProposalPdf:new-page', { quoteId });
+      console.info('[proposal-v3] getProposalPdf:new-page', logContext);
       const page = await browser.newPage();
 
       try {
         console.info('[proposal-v3] getProposalPdf:set-content', {
-          quoteId,
+          ...logContext,
           htmlLength: html.length,
         });
         await page.setContent(html, { waitUntil: 'load' });
-        console.info('[proposal-v3] getProposalPdf:emulate-print', { quoteId });
+        console.info('[proposal-v3] getProposalPdf:emulate-print', logContext);
         await page.emulateMediaType('print');
 
-        console.info('[proposal-v3] getProposalPdf:render-pdf', { quoteId });
+        console.info('[proposal-v3] getProposalPdf:render-pdf', logContext);
         const pdf = await page.pdf({
           format: 'A4',
           printBackground: true,
@@ -137,7 +187,7 @@ export class ProposalV3Service {
 
         const resolvedBuffer = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
         console.info('[proposal-v3] getProposalPdf:success', {
-          quoteId,
+          ...logContext,
           byteLength: resolvedBuffer.byteLength,
         });
 

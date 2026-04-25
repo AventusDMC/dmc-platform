@@ -38,6 +38,7 @@ type QuotesFormProps = {
     brandCompanyId: string;
     contactId: string;
     agentId: string;
+    quoteType: 'FIT' | 'GROUP';
     bookingType: 'FIT' | 'GROUP' | 'SERIES';
     title: string;
     description: string;
@@ -90,6 +91,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
   const availableContacts = contacts.filter((contact) => contact.companyId === clientCompanyId);
   const [contactId, setContactId] = useState(initialValues?.contactId || availableContacts[0]?.id || '');
   const [agentId, setAgentId] = useState(initialValues?.agentId || '');
+  const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(initialValues?.quoteType || 'FIT');
   const [bookingType, setBookingType] = useState<'FIT' | 'GROUP' | 'SERIES'>(initialValues?.bookingType || 'FIT');
   const [title, setTitle] = useState(initialValues?.title || '');
   const [description, setDescription] = useState(initialValues?.description || '');
@@ -247,7 +249,8 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
           companyId: clientCompanyId,
           brandCompanyId,
           contactId,
-          agentId: agentId || null,
+          agentId: agentId.trim() || (isEditing ? null : undefined),
+          quoteType,
           bookingType,
           title,
           description,
@@ -284,7 +287,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
       const payload = (await response.json().catch(() => null)) as { id?: string } | null;
 
       if (!isEditing && payload?.id) {
-        router.push(`/quotes/${payload.id}`);
+        router.push(`/quotes/${payload.id}?tab=services`);
         router.refresh();
         return;
       }
@@ -294,6 +297,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         setBrandCompanyId(companies[0]?.id || '');
         setContactId(contacts.find((contact) => contact.companyId === companies[0]?.id)?.id || '');
         setAgentId('');
+        setQuoteType('FIT');
         setBookingType('FIT');
         setTitle('');
         setDescription('');
@@ -402,6 +406,14 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
       </div>
 
       <div className="form-row">
+        <label>
+          Quote Type
+          <select value={quoteType} onChange={(event) => setQuoteType(event.target.value as 'FIT' | 'GROUP')}>
+            <option value="FIT">FIT</option>
+            <option value="GROUP">GROUP</option>
+          </select>
+        </label>
+
         <label>
           Booking Type
           <select value={bookingType} onChange={(event) => setBookingType(event.target.value as 'FIT' | 'GROUP' | 'SERIES')}>

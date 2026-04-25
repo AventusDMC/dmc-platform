@@ -413,6 +413,7 @@ export function QuoteItemCard({
       const updatedItem = await readJsonResponse<QuoteItem>(response, 'Could not assign service.');
       setCurrentItem(updatedItem);
       setSuggestions([]);
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
       router.refresh();
     } catch (caughtError) {
       setSuggestionsError(caughtError instanceof Error ? caughtError.message : 'Could not assign service.');

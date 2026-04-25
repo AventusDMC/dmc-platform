@@ -14,6 +14,14 @@ type Contact = {
   lastName: string;
 };
 
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
+  status: 'active';
+};
+
 async function getCompanies(): Promise<Company[]> {
   return adminPageFetchJson<Company[]>('/api/companies', 'New quote companies', {
     cache: 'no-store',
@@ -26,8 +34,22 @@ async function getContacts(): Promise<Contact[]> {
   });
 }
 
+async function getUsers(): Promise<User[]> {
+  return adminPageFetchJson<User[]>('/api/users', 'New quote users', {
+    cache: 'no-store',
+  });
+}
+
 export default async function NewQuotePage() {
-  const [companies, contacts] = await Promise.all([getCompanies(), getContacts()]);
+  const [companies, contacts, users] = await Promise.all([getCompanies(), getContacts(), getUsers()]);
+  const agents = users
+    .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    }));
 
   return (
     <main className="page">
@@ -70,6 +92,7 @@ export default async function NewQuotePage() {
                 apiBaseUrl="/api"
                 companies={companies}
                 contacts={contacts}
+                agents={agents}
                 submitLabel="Create quote"
               />
             </section>

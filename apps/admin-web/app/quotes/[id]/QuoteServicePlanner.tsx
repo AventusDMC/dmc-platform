@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
+import { readJsonResponse } from '../../lib/api';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteItemCard } from './QuoteItemCard';
@@ -153,6 +155,9 @@ type Quote = Omit<QuoteReadinessQuote, 'itineraries' | 'quoteItems' | 'quoteOpti
   children: number;
   roomCount: number;
   nightCount: number;
+  totalCost: number;
+  totalSell: number;
+  pricePerPax: number;
   travelStartDate: string | null;
   itineraries: QuoteReadinessDay[];
   quoteItems: QuoteItem[];
@@ -193,6 +198,14 @@ type QuoteServicePlannerProps = {
   preferredCatalogRateCurrency?: string;
   preferredCatalogRateNote?: string;
   preferredCatalogRouteId?: string;
+  sessionRole?: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
+};
+
+type LivePricingSummary = {
+  quoteCurrency: 'USD' | 'EUR' | 'JOD';
+  totalCost: number;
+  totalSell: number;
+  pricePerPax: number;
 };
 
 type QuoteItemInitialValues = {
@@ -238,6 +251,23 @@ type PlannerScope = {
   optionId?: string;
 };
 
+type ServiceWorkflowStep = {
+  category: 'hotel' | 'transport' | 'activity';
+  step: string;
+  label: string;
+  hasItem: boolean;
+};
+
+type ServiceWorkflowState = {
+  hasHotel: boolean;
+  hasTransport: boolean;
+  hasActivity: boolean;
+  recommendedCategory: ServicePlannerCategory;
+  title: string;
+  description: string;
+  steps: ServiceWorkflowStep[];
+};
+
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Stay',
   transport: 'Transfer',
@@ -252,6 +282,12 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'transport', label: 'Add Transfer' },
   { category: 'activity', label: 'Add Experience' },
   { category: 'meal', label: 'Add Meal' },
+];
+
+const STARTER_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }> = [
+  { category: 'hotel', label: 'Add hotel' },
+  { category: 'transport', label: 'Add transfer' },
+  { category: 'activity', label: 'Add experience' },
 ];
 
 const DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
@@ -314,6 +350,74 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     guideDuration: guideValues.guideDuration,
     overnight: guideValues.overnight,
   };
+}
+
+function buildServiceWorkflowState(items: QuoteItem[]): ServiceWorkflowState {
+  const hasHotel = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'hotel');
+  const hasTransport = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'transport');
+  const hasActivity = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'activity');
+  let recommendedCategory: ServicePlannerCategory = 'hotel';
+  let title = 'Start building your itinerary';
+  let description = 'Begin with accommodation, then add transfer coverage and experiences.';
+
+  if (!hasHotel && hasTransport && !hasActivity) {
+    recommendedCategory = 'activity';
+    title = 'Add experiences next';
+    description = 'Transport is already in place. Add the first experience when you are ready.';
+  } else if (!hasHotel) {
+    recommendedCategory = 'hotel';
+    title = 'Start with accommodation';
+    description = 'A hotel gives the quote a clear base before transfers and experiences are layered in.';
+  } else if (!hasTransport) {
+    recommendedCategory = 'transport';
+    title = 'Add transfer coverage';
+    description = 'Accommodation is started. Add transfers next, or choose any other service if the program needs it first.';
+  } else if (!hasActivity) {
+    recommendedCategory = 'activity';
+    title = 'Add experiences next';
+    description = 'Stay and transfer coverage are in place. Add an experience to start shaping the trip content.';
+  } else {
+    recommendedCategory = 'activity';
+    title = 'Core workflow started';
+    description = 'Accommodation, transport, and experiences are all represented. Keep adding services in any order.';
+  }
+
+  return {
+    hasHotel,
+    hasTransport,
+    hasActivity,
+    recommendedCategory,
+    title,
+    description,
+    steps: [
+      { category: 'hotel', step: 'Step 1', label: 'Accommodation', hasItem: hasHotel },
+      { category: 'transport', step: 'Step 2', label: 'Transport', hasItem: hasTransport },
+      { category: 'activity', step: 'Step 3', label: 'Experiences', hasItem: hasActivity },
+    ],
+  };
+}
+
+function WorkflowProgress({ quoteId, workflow }: { quoteId: string; workflow: ServiceWorkflowState }) {
+  return (
+    <div className="quote-service-workflow-progress" aria-label="Quote service workflow progress">
+      {workflow.steps.map((step) => (
+        <Link
+          key={step.category}
+          href={buildQuoteWorkspaceHref(quoteId, 'services', { addCategory: step.category })}
+          className={`quote-service-workflow-step${step.hasItem ? ' quote-service-workflow-step-complete' : ''}${
+            workflow.recommendedCategory === step.category ? ' quote-service-workflow-step-current' : ''
+          }`}
+        >
+          <span>{step.step}</span>
+          <div className="quote-service-workflow-step-title">
+            <strong>{step.label}</strong>
+            {step.hasItem ? <span className="quote-service-workflow-check" aria-label={`${step.label} completed`}>✔</span> : null}
+          </div>
+          <em>{step.hasItem ? 'Completed' : workflow.recommendedCategory === step.category ? 'Recommended next' : 'Optional'}</em>
+        </Link>
+      ))}
+    </div>
+  );
 }
 
 function PlannerSuggestionAction({
@@ -432,12 +536,14 @@ function DayWorkflowAction({
   plannerProps,
   optionId,
   day,
+  recommendedCategory,
 }: {
   category: ServicePlannerCategory;
   label: string;
   plannerProps: QuoteServicePlannerProps;
   optionId?: string;
   day: QuoteReadinessDay;
+  recommendedCategory?: ServicePlannerCategory;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -455,7 +561,7 @@ function DayWorkflowAction({
       summary={label}
       description={`Add a ${label.toLowerCase().replace('add ', '')} service to Day ${day.dayNumber}.`}
       defaultOpen={plannerProps.focusedDayId === day.id && plannerProps.initialAddCategory === category}
-      className="operations-row-details quote-service-day-action"
+      className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
       bodyClassName="operations-row-details-body"
       groupId={`quote-service-day-action-${optionId || 'base'}-${day.id}-${category}`}
     >
@@ -502,6 +608,242 @@ function DayWorkflowAction({
   );
 }
 
+function StarterAction({
+  category,
+  label,
+  plannerProps,
+  optionId,
+  recommendedCategory,
+}: {
+  category: ServicePlannerCategory;
+  label: string;
+  plannerProps: QuoteServicePlannerProps;
+  optionId?: string;
+  recommendedCategory?: ServicePlannerCategory;
+}) {
+  const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
+    addCategory: category,
+  });
+  const browseHref =
+    category === 'hotel'
+      ? `/hotels?tab=hotels&returnTo=${encodeURIComponent(returnTo)}`
+      : category === 'transport'
+        ? `/transport?tab=routes&returnTo=${encodeURIComponent(returnTo)}`
+        : `/catalog?tab=services&returnTo=${encodeURIComponent(returnTo)}&type=${encodeURIComponent(category)}`;
+
+  return (
+    <RowDetailsPanel
+      summary={label}
+      description={`Create the first ${category === 'activity' ? 'experience' : category} row for this quote.`}
+      defaultOpen={plannerProps.initialAddCategory === category || recommendedCategory === category}
+      className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
+      bodyClassName="operations-row-details-body"
+      groupId={`quote-service-starter-action-${optionId || 'base'}-${category}`}
+    >
+      <div className="quote-service-catalog-link">
+        <span>Need to browse the catalog first?</span>
+        <Link href={browseHref} className="secondary-button">
+          Browse {category === 'hotel' ? 'Hotels' : category === 'transport' ? 'Transport' : 'Experiences'}
+        </Link>
+      </div>
+      <QuoteItemsForm
+        apiBaseUrl={plannerProps.apiBaseUrl}
+        quoteId={plannerProps.quote.id}
+        optionId={optionId}
+        blocks={plannerProps.quoteBlocks}
+        services={plannerProps.services}
+        transportServiceTypes={plannerProps.transportServiceTypes}
+        routes={plannerProps.routes}
+        hotels={plannerProps.hotels}
+        hotelContracts={plannerProps.hotelContracts}
+        hotelRates={plannerProps.hotelRates}
+        seasons={plannerProps.seasons}
+        defaultPaxCount={plannerProps.totalPax}
+        defaultAdultCount={plannerProps.quote.adults}
+        defaultChildCount={plannerProps.quote.children}
+        defaultRoomCount={plannerProps.quote.roomCount}
+        defaultNightCount={plannerProps.quote.nightCount}
+        travelStartDate={plannerProps.quote.travelStartDate}
+        initialServiceTypeKey={category}
+        preferredServiceId={category !== 'hotel' && category !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
+        preferredHotelId={category === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
+        preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
+        preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
+        preferredMealPlan={category === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
+        preferredOccupancyType={category === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
+        preferredRateCost={category === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
+        preferredRateCurrency={category === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
+        preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
+        preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
+        submitLabel={label}
+      />
+    </RowDetailsPanel>
+  );
+}
+
+function GuidedQuoteStarter({
+  scope,
+  plannerProps,
+  workflow,
+}: {
+  scope: PlannerScope;
+  plannerProps: QuoteServicePlannerProps;
+  workflow: ServiceWorkflowState;
+}) {
+  return (
+    <section className="workspace-section quote-guided-starter">
+      <div className="workspace-section-head">
+        <div>
+          <p className="eyebrow">{scope.label}</p>
+          <h3>{workflow.title}</h3>
+          <p className="detail-copy">{workflow.description}</p>
+        </div>
+        <span className="quote-ui-badge quote-ui-badge-info">Guided, not required</span>
+      </div>
+      <WorkflowProgress quoteId={plannerProps.routeContext.quoteId} workflow={workflow} />
+      <div className="quote-guided-starter-actions">
+        {STARTER_ACTIONS.map((action) => (
+          <StarterAction
+            key={action.category}
+            category={action.category}
+            label={action.label}
+            plannerProps={plannerProps}
+            optionId={scope.optionId}
+            recommendedCategory={workflow.recommendedCategory}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatLiveMoney(value: number, currency: string) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
+function getLivePricingSummary(quote: Quote): LivePricingSummary {
+  return {
+    quoteCurrency: quote.quoteCurrency,
+    totalCost: quote.totalCost,
+    totalSell: quote.totalSell,
+    pricePerPax: quote.pricePerPax,
+  };
+}
+
+function LivePricingPanel({
+  apiBaseUrl,
+  quote,
+  showAdminMetrics,
+}: {
+  apiBaseUrl: string;
+  quote: Quote;
+  showAdminMetrics: boolean;
+}) {
+  const [summary, setSummary] = useState<LivePricingSummary>(() => getLivePricingSummary(quote));
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const marginAmount = Number((summary.totalSell - summary.totalCost).toFixed(2));
+  const marginPercent = summary.totalSell > 0 ? Number(((marginAmount / summary.totalSell) * 100).toFixed(2)) : 0;
+
+  useEffect(() => {
+    setSummary(getLivePricingSummary(quote));
+  }, [quote.id, quote.pricePerPax, quote.quoteCurrency, quote.totalCost, quote.totalSell]);
+
+  useEffect(() => {
+    async function fetchLatestPricing() {
+      setIsRefreshing(true);
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/quotes/${quote.id}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const latestQuote = await readJsonResponse<Partial<LivePricingSummary>>(response, 'Could not refresh quote pricing.');
+        setSummary((current) => ({
+          quoteCurrency: latestQuote.quoteCurrency || current.quoteCurrency,
+          totalCost: Number(latestQuote.totalCost ?? current.totalCost),
+          totalSell: Number(latestQuote.totalSell ?? current.totalSell),
+          pricePerPax: Number(latestQuote.pricePerPax ?? current.pricePerPax),
+        }));
+      } finally {
+        setIsRefreshing(false);
+      }
+    }
+
+    function handlePricingStale(event: Event) {
+      const detail = (event as CustomEvent<{ quoteId?: string }>).detail;
+
+      if (detail?.quoteId && detail.quoteId !== quote.id) {
+        return;
+      }
+
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+
+      debounceRef.current = setTimeout(() => {
+        void fetchLatestPricing();
+      }, 300);
+    }
+
+    window.addEventListener('dmc:quote-pricing-stale', handlePricingStale);
+
+    return () => {
+      window.removeEventListener('dmc:quote-pricing-stale', handlePricingStale);
+
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [apiBaseUrl, quote.id]);
+
+  return (
+    <aside className="quote-live-pricing-panel" aria-live="polite">
+      <div className="quote-live-pricing-head">
+        <div>
+          <p className="eyebrow">Live Pricing</p>
+          <h3>{formatLiveMoney(summary.totalSell, summary.quoteCurrency)}</h3>
+        </div>
+        <span className={isRefreshing ? 'quote-live-pricing-status quote-live-pricing-status-active' : 'quote-live-pricing-status'}>
+          {isRefreshing ? 'Updating' : 'Current'}
+        </span>
+      </div>
+      <div className="quote-live-pricing-grid">
+        <div>
+          <span>Total sell</span>
+          <strong>{formatLiveMoney(summary.totalSell, summary.quoteCurrency)}</strong>
+        </div>
+        {showAdminMetrics ? (
+          <div>
+            <span>Total cost</span>
+            <strong>{formatLiveMoney(summary.totalCost, summary.quoteCurrency)}</strong>
+          </div>
+        ) : null}
+        <div>
+          <span>Price per pax</span>
+          <strong>{formatLiveMoney(summary.pricePerPax, summary.quoteCurrency)}</strong>
+        </div>
+        {showAdminMetrics ? (
+          <div>
+            <span>Margin</span>
+            <strong>
+              {formatLiveMoney(marginAmount, summary.quoteCurrency)} ({marginPercent.toFixed(2)}%)
+            </strong>
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
 function ScopePlanner({
   scope,
   plannerProps,
@@ -518,6 +860,7 @@ function ScopePlanner({
   }));
   const unassignedItems = scope.items.filter((item) => !item.itineraryId);
   const unresolvedItems = scope.items.filter((item) => item.service.supplierId === 'import-itinerary-system');
+  const workflow = buildServiceWorkflowState(scope.items);
   const daysCompleted = daySummaries.filter((summary) =>
     DAY_COMPLETENESS_RULES.every((rule) =>
       summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
@@ -542,6 +885,18 @@ function ScopePlanner({
           </div>
         </div>
         <div className="quote-preview-total-list">
+          <div>
+            <span>Accommodation</span>
+            <strong>{workflow.hasHotel ? 'Started' : 'Missing'}</strong>
+          </div>
+          <div>
+            <span>Transport</span>
+            <strong>{workflow.hasTransport ? 'Started' : 'Missing'}</strong>
+          </div>
+          <div>
+            <span>Experiences</span>
+            <strong>{workflow.hasActivity ? 'Started' : 'Missing'}</strong>
+          </div>
           <div>
             <span>Days completed</span>
             <strong>
@@ -572,6 +927,8 @@ function ScopePlanner({
         services={plannerProps.services}
         scopeLabel={scope.label}
       />
+
+      <GuidedQuoteStarter scope={scope} plannerProps={plannerProps} workflow={workflow} />
 
       {daySummaries.map((summary) => {
         const itemsByCategory = {
@@ -652,6 +1009,7 @@ function ScopePlanner({
                         plannerProps={plannerProps}
                         optionId={scope.optionId}
                         day={summary.day}
+                        recommendedCategory={workflow.recommendedCategory}
                       />
                     ))}
                   </div>
@@ -750,6 +1108,7 @@ function ScopePlanner({
 }
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
+  const showAdminMetrics = props.sessionRole === 'admin';
   const scopes: PlannerScope[] = [
     {
       id: 'shared',
@@ -785,6 +1144,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           <p className="detail-copy">
           Use each day card below to complete the trip step by step. Add the core services first, then review what is still missing before pricing.
           </p>
+        <LivePricingPanel apiBaseUrl={props.apiBaseUrl} quote={props.quote} showAdminMetrics={showAdminMetrics} />
         {props.focusedDayId ? (
           <p className="form-helper">
             Focused day mode is active. Use the highlighted day card below to complete the targeted operating task.

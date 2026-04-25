@@ -170,18 +170,18 @@ model AuditLog {
 }
 
 model Invitation {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String    @id @default(uuid()) @db.Uuid
   email           String
   role            String
-  companyId       String   @db.Uuid
-  token           String   @unique
+  companyId       String    @db.Uuid
+  token           String    @unique
   expiresAt       DateTime
   acceptedAt      DateTime?
   revokedAt       DateTime?
-  invitedByUserId String?  @db.Uuid
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId, createdAt])
   @@index([companyId, email])
@@ -251,50 +251,50 @@ model HotelCategory {
 }
 
 model HotelContract {
-  id         String           @id @default(uuid()) @db.Uuid
-  hotelId    String           @db.Uuid
-  name       String
-  validFrom  DateTime
-  validTo    DateTime
-  currency   String
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  allotments HotelAllotment[]
-  cancellationPolicy HotelContractCancellationPolicy?
+  id                          String                              @id @default(uuid()) @db.Uuid
+  hotelId                     String                              @db.Uuid
+  name                        String
+  validFrom                   DateTime
+  validTo                     DateTime
+  currency                    String
+  createdAt                   DateTime                            @default(now())
+  updatedAt                   DateTime                            @updatedAt
+  allotments                  HotelAllotment[]
+  cancellationPolicy          HotelContractCancellationPolicy?
   cancellationPolicyAuditLogs HotelContractCancellationAuditLog[]
-  childPolicy HotelContractChildPolicy?
-  mealPlanAuditLogs HotelContractMealPlanAuditLog[]
-  mealPlans HotelContractMealPlan[]
-  hotel      Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  occupancyAuditLogs HotelContractOccupancyAuditLog[]
-  occupancyRules HotelContractOccupancyRule[]
-  promotions Promotion[]
-  rates      HotelRate[]
-  supplementAuditLogs HotelContractSupplementAuditLog[]
-  supplements HotelContractSupplement[]
-  childPolicyAuditLogs HotelContractChildPolicyAuditLog[]
-  quoteItems QuoteItem[]
+  childPolicy                 HotelContractChildPolicy?
+  mealPlanAuditLogs           HotelContractMealPlanAuditLog[]
+  mealPlans                   HotelContractMealPlan[]
+  hotel                       Hotel                               @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  occupancyAuditLogs          HotelContractOccupancyAuditLog[]
+  occupancyRules              HotelContractOccupancyRule[]
+  promotions                  Promotion[]
+  rates                       HotelRate[]
+  supplementAuditLogs         HotelContractSupplementAuditLog[]
+  supplements                 HotelContractSupplement[]
+  childPolicyAuditLogs        HotelContractChildPolicyAuditLog[]
+  quoteItems                  QuoteItem[]
 
   @@index([hotelId])
   @@map("hotel_contracts")
 }
 
 model HotelContractOccupancyRule {
-  id              String             @id @default(uuid()) @db.Uuid
-  hotelContractId String             @db.Uuid
-  roomCategoryId  String?            @db.Uuid
+  id              String                           @id @default(uuid()) @db.Uuid
+  hotelContractId String                           @db.Uuid
+  roomCategoryId  String?                          @db.Uuid
   occupancyType   HotelOccupancyType
   minAdults       Int
   maxAdults       Int
-  maxChildren     Int                @default(0)
+  maxChildren     Int                              @default(0)
   maxOccupants    Int
-  isActive        Boolean            @default(true)
+  isActive        Boolean                          @default(true)
   notes           String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  createdAt       DateTime                         @default(now())
+  updatedAt       DateTime                         @updatedAt
   auditLogs       HotelContractOccupancyAuditLog[]
-  hotelContract   HotelContract      @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  roomCategory    HotelRoomCategory? @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+  hotelContract   HotelContract                    @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory?               @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
 
   @@index([hotelContractId, occupancyType, isActive])
   @@index([hotelContractId, roomCategoryId, occupancyType, isActive])
@@ -303,17 +303,17 @@ model HotelContractOccupancyRule {
 }
 
 model HotelContractOccupancyAuditLog {
-  id              String                 @id @default(uuid()) @db.Uuid
-  hotelContractId String                 @db.Uuid
-  occupancyRuleId String?                @db.Uuid
+  id              String                      @id @default(uuid()) @db.Uuid
+  hotelContractId String                      @db.Uuid
+  occupancyRuleId String?                     @db.Uuid
   action          String
   oldValue        String?
   newValue        String?
   note            String?
-  actorUserId     String                 @db.Uuid
+  actorUserId     String                      @db.Uuid
   actor           String?
-  createdAt       DateTime               @default(now())
-  hotelContract   HotelContract          @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                    @default(now())
+  hotelContract   HotelContract               @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
   occupancyRule   HotelContractOccupancyRule? @relation(fields: [occupancyRuleId], references: [id], onDelete: Cascade)
 
   @@index([hotelContractId, createdAt])
@@ -323,54 +323,54 @@ model HotelContractOccupancyAuditLog {
 }
 
 model HotelContractChildPolicy {
-  id                 String                       @id @default(uuid()) @db.Uuid
-  hotelContractId    String                       @unique @db.Uuid
-  infantMaxAge       Int
-  childMaxAge        Int
-  notes              String?
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  auditLogs          HotelContractChildPolicyAuditLog[]
-  hotelContract      HotelContract                @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  bands              HotelContractChildPolicyBand[]
+  id              String                             @id @default(uuid()) @db.Uuid
+  hotelContractId String                             @unique @db.Uuid
+  infantMaxAge    Int
+  childMaxAge     Int
+  notes           String?
+  createdAt       DateTime                           @default(now())
+  updatedAt       DateTime                           @updatedAt
+  auditLogs       HotelContractChildPolicyAuditLog[]
+  hotelContract   HotelContract                      @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  bands           HotelContractChildPolicyBand[]
 
   @@map("hotel_contract_child_policies")
 }
 
 model HotelContractChildPolicyBand {
-  id              String                  @id @default(uuid()) @db.Uuid
-  childPolicyId   String                  @db.Uuid
-  label           String
-  minAge          Int
-  maxAge          Int
-  chargeBasis     ChildPolicyChargeBasis
-  chargeValue     Float?
-  isActive        Boolean                 @default(true)
-  notes           String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  auditLogs       HotelContractChildPolicyAuditLog[]
-  childPolicy     HotelContractChildPolicy @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
+  id            String                             @id @default(uuid()) @db.Uuid
+  childPolicyId String                             @db.Uuid
+  label         String
+  minAge        Int
+  maxAge        Int
+  chargeBasis   ChildPolicyChargeBasis
+  chargeValue   Float?
+  isActive      Boolean                            @default(true)
+  notes         String?
+  createdAt     DateTime                           @default(now())
+  updatedAt     DateTime                           @updatedAt
+  auditLogs     HotelContractChildPolicyAuditLog[]
+  childPolicy   HotelContractChildPolicy           @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
 
   @@index([childPolicyId, isActive, minAge, maxAge])
   @@map("hotel_contract_child_policy_bands")
 }
 
 model HotelContractChildPolicyAuditLog {
-  id                 String                      @id @default(uuid()) @db.Uuid
-  hotelContractId    String                      @db.Uuid
-  childPolicyId      String?                     @db.Uuid
-  childPolicyBandId  String?                     @db.Uuid
-  action             String
-  oldValue           String?
-  newValue           String?
-  note               String?
-  actorUserId        String                      @db.Uuid
-  actor              String?
-  createdAt          DateTime                    @default(now())
-  hotelContract      HotelContract               @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  childPolicy        HotelContractChildPolicy?   @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
-  childPolicyBand    HotelContractChildPolicyBand? @relation(fields: [childPolicyBandId], references: [id], onDelete: Cascade)
+  id                String                        @id @default(uuid()) @db.Uuid
+  hotelContractId   String                        @db.Uuid
+  childPolicyId     String?                       @db.Uuid
+  childPolicyBandId String?                       @db.Uuid
+  action            String
+  oldValue          String?
+  newValue          String?
+  note              String?
+  actorUserId       String                        @db.Uuid
+  actor             String?
+  createdAt         DateTime                      @default(now())
+  hotelContract     HotelContract                 @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  childPolicy       HotelContractChildPolicy?     @relation(fields: [childPolicyId], references: [id], onDelete: Cascade)
+  childPolicyBand   HotelContractChildPolicyBand? @relation(fields: [childPolicyBandId], references: [id], onDelete: Cascade)
 
   @@index([hotelContractId, createdAt])
   @@index([childPolicyId, createdAt])
@@ -415,20 +415,20 @@ model HotelContractCancellationRule {
 }
 
 model HotelContractCancellationAuditLog {
-  id                    String                              @id @default(uuid()) @db.Uuid
-  hotelContractId       String                              @db.Uuid
-  cancellationPolicyId  String?                             @db.Uuid
-  cancellationRuleId    String?                             @db.Uuid
-  action                String
-  oldValue              String?
-  newValue              String?
-  note                  String?
-  actorUserId           String                              @db.Uuid
-  actor                 String?
-  createdAt             DateTime                            @default(now())
-  hotelContract         HotelContract                       @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  cancellationPolicy    HotelContractCancellationPolicy?    @relation(fields: [cancellationPolicyId], references: [id], onDelete: Cascade)
-  cancellationRule      HotelContractCancellationRule?      @relation(fields: [cancellationRuleId], references: [id], onDelete: Cascade)
+  id                   String                           @id @default(uuid()) @db.Uuid
+  hotelContractId      String                           @db.Uuid
+  cancellationPolicyId String?                          @db.Uuid
+  cancellationRuleId   String?                          @db.Uuid
+  action               String
+  oldValue             String?
+  newValue             String?
+  note                 String?
+  actorUserId          String                           @db.Uuid
+  actor                String?
+  createdAt            DateTime                         @default(now())
+  hotelContract        HotelContract                    @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  cancellationPolicy   HotelContractCancellationPolicy? @relation(fields: [cancellationPolicyId], references: [id], onDelete: Cascade)
+  cancellationRule     HotelContractCancellationRule?   @relation(fields: [cancellationRuleId], references: [id], onDelete: Cascade)
 
   @@index([hotelContractId, createdAt])
   @@index([cancellationPolicyId, createdAt])
@@ -438,16 +438,16 @@ model HotelContractCancellationAuditLog {
 }
 
 model HotelContractMealPlan {
-  id              String                     @id @default(uuid()) @db.Uuid
-  hotelContractId String                     @db.Uuid
+  id              String                          @id @default(uuid()) @db.Uuid
+  hotelContractId String                          @db.Uuid
   code            HotelMealPlan
-  isDefault       Boolean                    @default(false)
-  isActive        Boolean                    @default(true)
+  isDefault       Boolean                         @default(false)
+  isActive        Boolean                         @default(true)
   notes           String?
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
+  createdAt       DateTime                        @default(now())
+  updatedAt       DateTime                        @updatedAt
   auditLogs       HotelContractMealPlanAuditLog[]
-  hotelContract   HotelContract              @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  hotelContract   HotelContract                   @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
 
   @@unique([hotelContractId, code])
   @@index([hotelContractId, isDefault])
@@ -456,17 +456,17 @@ model HotelContractMealPlan {
 }
 
 model HotelContractMealPlanAuditLog {
-  id              String                @id @default(uuid()) @db.Uuid
-  hotelContractId String                @db.Uuid
-  mealPlanId      String?               @db.Uuid
+  id              String                 @id @default(uuid()) @db.Uuid
+  hotelContractId String                 @db.Uuid
+  mealPlanId      String?                @db.Uuid
   action          String
   oldValue        String?
   newValue        String?
   note            String?
-  actorUserId     String                @db.Uuid
+  actorUserId     String                 @db.Uuid
   actor           String?
-  createdAt       DateTime              @default(now())
-  hotelContract   HotelContract         @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  createdAt       DateTime               @default(now())
+  hotelContract   HotelContract          @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
   mealPlan        HotelContractMealPlan? @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
 
   @@index([hotelContractId, createdAt])
@@ -476,21 +476,21 @@ model HotelContractMealPlanAuditLog {
 }
 
 model HotelContractSupplement {
-  id              String                        @id @default(uuid()) @db.Uuid
-  hotelContractId String                        @db.Uuid
-  roomCategoryId  String?                       @db.Uuid
+  id              String                            @id @default(uuid()) @db.Uuid
+  hotelContractId String                            @db.Uuid
+  roomCategoryId  String?                           @db.Uuid
   type            HotelContractSupplementType
   chargeBasis     HotelContractChargeBasis
   amount          Float
   currency        String
-  isMandatory     Boolean                       @default(false)
-  isActive        Boolean                       @default(true)
+  isMandatory     Boolean                           @default(false)
+  isActive        Boolean                           @default(true)
   notes           String?
-  createdAt       DateTime                      @default(now())
-  updatedAt       DateTime                      @updatedAt
+  createdAt       DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
   auditLogs       HotelContractSupplementAuditLog[]
-  hotelContract   HotelContract                 @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  roomCategory    HotelRoomCategory?            @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+  hotelContract   HotelContract                     @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  roomCategory    HotelRoomCategory?                @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
 
   @@index([hotelContractId, type, isActive])
   @@index([hotelContractId, roomCategoryId])
@@ -500,18 +500,18 @@ model HotelContractSupplement {
 }
 
 model HotelContractSupplementAuditLog {
-  id              String                     @id @default(uuid()) @db.Uuid
-  hotelContractId String                     @db.Uuid
-  supplementId    String?                    @db.Uuid
+  id              String                   @id @default(uuid()) @db.Uuid
+  hotelContractId String                   @db.Uuid
+  supplementId    String?                  @db.Uuid
   action          String
   oldValue        String?
   newValue        String?
   note            String?
-  actorUserId     String                     @db.Uuid
+  actorUserId     String                   @db.Uuid
   actor           String?
-  createdAt       DateTime                   @default(now())
-  hotelContract   HotelContract              @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  supplement      HotelContractSupplement?   @relation(fields: [supplementId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                 @default(now())
+  hotelContract   HotelContract            @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  supplement      HotelContractSupplement? @relation(fields: [supplementId], references: [id], onDelete: Cascade)
 
   @@index([hotelContractId, createdAt])
   @@index([supplementId, createdAt])
@@ -542,30 +542,30 @@ model HotelAllotment {
 }
 
 model HotelRate {
-  id             String             @id @default(uuid()) @db.Uuid
-  contractId     String             @db.Uuid
-  seasonId       String?            @db.Uuid
-  seasonName     String
-  mealPlan       HotelMealPlan
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  roomCategoryId String             @db.Uuid
-  occupancyType  HotelOccupancyType
-  pricingMode    HotelRatePricingMode?
-  currency       String
-  cost           Float
-  costBaseAmount Float              @default(0)
-  costCurrency   String             @default("USD")
-  salesTaxPercent Float             @default(0)
-  salesTaxIncluded Boolean          @default(false)
-  serviceChargePercent Float        @default(0)
-  serviceChargeIncluded Boolean     @default(false)
-  tourismFeeAmount Float?
-  tourismFeeCurrency String?
-  tourismFeeMode TourismFeeMode?
-  contract       HotelContract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  roomCategory   HotelRoomCategory  @relation(fields: [roomCategoryId], references: [id])
-  season         Season?            @relation(fields: [seasonId], references: [id])
+  id                    String                @id @default(uuid()) @db.Uuid
+  contractId            String                @db.Uuid
+  seasonId              String?               @db.Uuid
+  seasonName            String
+  mealPlan              HotelMealPlan
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  roomCategoryId        String                @db.Uuid
+  occupancyType         HotelOccupancyType
+  pricingMode           HotelRatePricingMode?
+  currency              String
+  cost                  Float
+  costBaseAmount        Float                 @default(0)
+  costCurrency          String                @default("USD")
+  salesTaxPercent       Float                 @default(0)
+  salesTaxIncluded      Boolean               @default(false)
+  serviceChargePercent  Float                 @default(0)
+  serviceChargeIncluded Boolean               @default(false)
+  tourismFeeAmount      Float?
+  tourismFeeCurrency    String?
+  tourismFeeMode        TourismFeeMode?
+  contract              HotelContract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  roomCategory          HotelRoomCategory     @relation(fields: [roomCategoryId], references: [id])
+  season                Season?               @relation(fields: [seasonId], references: [id])
 
   @@index([contractId])
   @@index([seasonId])
@@ -574,24 +574,24 @@ model HotelRate {
 }
 
 model Promotion {
-  id              String          @id @default(uuid()) @db.Uuid
-  hotelContractId String          @db.Uuid
-  name            String
-  type            PromotionType
-  value           Float?
-  stayPayNights   Int?
-  payNights       Int?
-  freeNightCount  Int?
-  isActive        Boolean         @default(true)
-  priority        Int             @default(0)
+  id                String                     @id @default(uuid()) @db.Uuid
+  hotelContractId   String                     @db.Uuid
+  name              String
+  type              PromotionType
+  value             Float?
+  stayPayNights     Int?
+  payNights         Int?
+  freeNightCount    Int?
+  isActive          Boolean                    @default(true)
+  priority          Int                        @default(0)
   combinabilityMode PromotionCombinabilityMode @default(EXCLUSIVE)
-  promotionGroup  String?
-  combinable      Boolean         @default(false)
-  notes           String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  hotelContract   HotelContract   @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
-  rules           PromotionRule[]
+  promotionGroup    String?
+  combinable        Boolean                    @default(false)
+  notes             String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  hotelContract     HotelContract              @relation(fields: [hotelContractId], references: [id], onDelete: Cascade)
+  rules             PromotionRule[]
 
   @@index([hotelContractId, isActive, priority])
   @@map("promotions")
@@ -621,17 +621,17 @@ model PromotionRule {
 }
 
 model HotelRoomCategory {
-  id             String           @id @default(uuid()) @db.Uuid
-  hotelId        String           @db.Uuid
+  id             String                       @id @default(uuid()) @db.Uuid
+  hotelId        String                       @db.Uuid
   name           String
   code           String?
   description    String?
-  isActive       Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  isActive       Boolean                      @default(true)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
   allotments     HotelAllotment[]
   hotelRates     HotelRate[]
-  hotel          Hotel            @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotel          Hotel                        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   occupancyRules HotelContractOccupancyRule[]
   promotionRules PromotionRule[]
   quoteItems     QuoteItem[]
@@ -765,10 +765,10 @@ model QuoteBlock {
 }
 
 model QuoteItem {
-  id                     String              @id @default(uuid()) @db.Uuid
-  quoteId                String              @db.Uuid
-  serviceId              String              @db.Uuid
-  quantity               Int                 @default(1)
+  id                     String                  @id @default(uuid()) @db.Uuid
+  quoteId                String                  @db.Uuid
+  serviceId              String                  @db.Uuid
+  quantity               Int                     @default(1)
   paxCount               Int?
   participantCount       Int?
   adultCount             Int?
@@ -776,37 +776,37 @@ model QuoteItem {
   roomCount              Int?
   nightCount             Int?
   dayCount               Int?
-  markupPercent          Float               @default(0)
+  markupPercent          Float                   @default(0)
   totalCost              Float
   totalSell              Float
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
-  appliedVehicleRateId   String?             @db.Uuid
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  appliedVehicleRateId   String?                 @db.Uuid
   currency               String
-  quoteCurrency          String              @default("USD")
+  quoteCurrency          String                  @default("USD")
   pricingDescription     String?
-  itineraryId            String?             @db.Uuid
+  itineraryId            String?                 @db.Uuid
   serviceDate            DateTime?
   startTime              String?
   pickupTime             String?
   pickupLocation         String?
   meetingPoint           String?
-  reconfirmationRequired Boolean             @default(false)
+  reconfirmationRequired Boolean                 @default(false)
   reconfirmationDueAt    DateTime?
-  optionId               String?             @db.Uuid
-  hotelId                String?             @db.Uuid
-  contractId             String?             @db.Uuid
+  optionId               String?                 @db.Uuid
+  hotelId                String?                 @db.Uuid
+  contractId             String?                 @db.Uuid
   seasonName             String?
   mealPlan               HotelMealPlan?
-  roomCategoryId         String?             @db.Uuid
+  roomCategoryId         String?                 @db.Uuid
   occupancyType          HotelOccupancyType?
   baseCost               Float
-  costBaseAmount         Float               @default(0)
-  costCurrency           String              @default("USD")
-  salesTaxPercent        Float               @default(0)
-  salesTaxIncluded       Boolean             @default(false)
-  serviceChargePercent   Float               @default(0)
-  serviceChargeIncluded  Boolean             @default(false)
+  costBaseAmount         Float                   @default(0)
+  costCurrency           String                  @default("USD")
+  salesTaxPercent        Float                   @default(0)
+  salesTaxIncluded       Boolean                 @default(false)
+  serviceChargePercent   Float                   @default(0)
+  serviceChargeIncluded  Boolean                 @default(false)
   tourismFeeAmount       Float?
   tourismFeeCurrency     String?
   tourismFeeMode         TourismFeeMode?
@@ -815,16 +815,16 @@ model QuoteItem {
   fxToCurrency           String?
   fxRateDate             DateTime?
   overrideCost           Float?
-  useOverride            Boolean             @default(false)
-  appliedVehicleRate     VehicleRate?        @relation(fields: [appliedVehicleRateId], references: [id])
-  contract               HotelContract?      @relation(fields: [contractId], references: [id])
-  hotel                  Hotel?              @relation(fields: [hotelId], references: [id])
-  itinerary              Itinerary?          @relation(fields: [itineraryId], references: [id])
-  option                 QuoteOption?        @relation(fields: [optionId], references: [id], onDelete: Cascade)
-  quote                  Quote               @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  useOverride            Boolean                 @default(false)
+  appliedVehicleRate     VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
+  contract               HotelContract?          @relation(fields: [contractId], references: [id])
+  hotel                  Hotel?                  @relation(fields: [hotelId], references: [id])
+  itinerary              Itinerary?              @relation(fields: [itineraryId], references: [id])
+  option                 QuoteOption?            @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  quote                  Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   quoteItineraryDayItems QuoteItineraryDayItem[]
-  roomCategory           HotelRoomCategory?  @relation(fields: [roomCategoryId], references: [id])
-  service                SupplierService     @relation(fields: [serviceId], references: [id])
+  roomCategory           HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
+  service                SupplierService         @relation(fields: [serviceId], references: [id])
 
   @@index([contractId])
   @@index([hotelId])
@@ -834,18 +834,18 @@ model QuoteItem {
 }
 
 model QuoteItineraryDay {
-  id         String                  @id @default(uuid()) @db.Uuid
-  quoteId    String                  @db.Uuid
-  dayNumber  Int
-  title      String
-  notes      String?
-  sortOrder  Int                     @default(0)
-  isActive   Boolean                 @default(true)
-  createdAt  DateTime                @default(now())
-  updatedAt  DateTime                @updatedAt
-  quote      Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  dayItems   QuoteItineraryDayItem[]
-  auditLogs  QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
+  id        String                   @id @default(uuid()) @db.Uuid
+  quoteId   String                   @db.Uuid
+  dayNumber Int
+  title     String
+  notes     String?
+  sortOrder Int                      @default(0)
+  isActive  Boolean                  @default(true)
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+  quote     Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  dayItems  QuoteItineraryDayItem[]
+  auditLogs QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
 
   @@unique([quoteId, dayNumber])
   @@index([quoteId, isActive, sortOrder])
@@ -964,74 +964,78 @@ model QuoteVersion {
 }
 
 model Quote {
-  id                  String             @id @default(uuid()) @db.Uuid
-  clientCompanyId     String             @map("companyId") @db.Uuid
-  contactId           String             @db.Uuid
-  bookingType         BookingType        @default(FIT)
-  title               String
-  description         String?
-  totalPrice          Float              @default(0)
-  quoteCurrency       String             @default("USD")
-  status              QuoteStatus        @default(DRAFT)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  adults              Int                @default(1)
-  children            Int                @default(0)
-  roomCount           Int                @default(1)
-  nightCount          Int                @default(1)
-  totalCost           Float              @default(0)
-  totalSell           Float              @default(0)
-  pricePerPax         Float              @default(0)
-  acceptedVersionId   String?            @db.Uuid
-  quoteNumber         String?            @unique
+  id                         String                   @id @default(uuid()) @db.Uuid
+  clientCompanyId            String                   @map("companyId") @db.Uuid
+  contactId                  String                   @db.Uuid
+  agentId                    String?                  @db.Uuid
+  quoteType                  QuoteType                @default(FIT)
+  bookingType                BookingType              @default(FIT)
+  title                      String
+  description                String?
+  totalPrice                 Float                    @default(0)
+  quoteCurrency              String                   @default("USD")
+  status                     QuoteStatus              @default(DRAFT)
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  adults                     Int                      @default(1)
+  children                   Int                      @default(0)
+  roomCount                  Int                      @default(1)
+  nightCount                 Int                      @default(1)
+  totalCost                  Float                    @default(0)
+  totalSell                  Float                    @default(0)
+  pricePerPax                Float                    @default(0)
+  acceptedVersionId          String?                  @db.Uuid
+  quoteNumber                String?                  @unique
   clientChangeRequestMessage String?
-  singleSupplement    Float?
-  pricingType         String             @default("simple")
-  focType             String             @default("none")
-  focRatio            Float?
-  focCount            Int?
-  focRoomType         String?
-  brandCompanyId      String?            @db.Uuid
-  pricingMode         String             @default("FIXED")
-  fixedPricePerPerson Float              @default(0)
-  inclusionsText      String?
-  exclusionsText      String?
-  termsNotesText      String?
-  travelStartDate     DateTime?
-  validUntil          DateTime?
-  sentAt              DateTime?
-  acceptedAt          DateTime?
-  publicToken         String?            @unique
-  publicEnabled       Boolean            @default(false)
-  booking             Booking?
-  invoice             Invoice?
-  invoiceAuditLogs    InvoiceAuditLog[]
-  itineraries         Itinerary[]
-  itineraryDays       QuoteItineraryDay[]
-  itineraryAuditLogs  QuoteItineraryAuditLog[]
-  quoteItems          QuoteItem[]
-  quoteOptions        QuoteOption[]
-  pricingSlabs        QuotePricingSlab[]
-  scenarios           QuoteScenario[]
-  versions            QuoteVersion[]     @relation("QuoteVersions")
-  acceptedVersion     QuoteVersion?      @relation("AcceptedQuoteVersion", fields: [acceptedVersionId], references: [id])
-  brandCompany        Company?           @relation("BrandQuotes", fields: [brandCompanyId], references: [id])
-  clientCompany       Company            @relation("ClientQuotes", fields: [clientCompanyId], references: [id])
-  contact             Contact            @relation(fields: [contactId], references: [id])
+  singleSupplement           Float?
+  pricingType                String                   @default("simple")
+  focType                    String                   @default("none")
+  focRatio                   Float?
+  focCount                   Int?
+  focRoomType                String?
+  brandCompanyId             String?                  @db.Uuid
+  pricingMode                String                   @default("FIXED")
+  fixedPricePerPerson        Float                    @default(0)
+  inclusionsText             String?
+  exclusionsText             String?
+  termsNotesText             String?
+  travelStartDate            DateTime?
+  validUntil                 DateTime?
+  sentAt                     DateTime?
+  acceptedAt                 DateTime?
+  publicToken                String?                  @unique
+  publicEnabled              Boolean                  @default(false)
+  booking                    Booking?
+  invoice                    Invoice?
+  invoiceAuditLogs           InvoiceAuditLog[]
+  itineraries                Itinerary[]
+  itineraryDays              QuoteItineraryDay[]
+  itineraryAuditLogs         QuoteItineraryAuditLog[]
+  quoteItems                 QuoteItem[]
+  quoteOptions               QuoteOption[]
+  pricingSlabs               QuotePricingSlab[]
+  scenarios                  QuoteScenario[]
+  versions                   QuoteVersion[]           @relation("QuoteVersions")
+  acceptedVersion            QuoteVersion?            @relation("AcceptedQuoteVersion", fields: [acceptedVersionId], references: [id])
+  agent                      User?                    @relation("AssignedAgentQuotes", fields: [agentId], references: [id])
+  brandCompany               Company?                 @relation("BrandQuotes", fields: [brandCompanyId], references: [id])
+  clientCompany              Company                  @relation("ClientQuotes", fields: [clientCompanyId], references: [id])
+  contact                    Contact                  @relation(fields: [contactId], references: [id])
 
+  @@index([agentId])
   @@index([bookingType])
   @@index([brandCompanyId])
   @@map("quotes")
 }
 
 model Invoice {
-  id          String        @id @default(uuid()) @db.Uuid
-  quoteId     String        @unique @db.Uuid
+  id          String            @id @default(uuid()) @db.Uuid
+  quoteId     String            @unique @db.Uuid
   totalAmount Float
   currency    String
-  status      InvoiceStatus @default(DRAFT)
+  status      InvoiceStatus     @default(DRAFT)
   dueDate     DateTime
-  quote       Quote         @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote       Quote             @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   auditLogs   InvoiceAuditLog[]
 
   @@index([status, dueDate])
@@ -1107,51 +1111,51 @@ model ServiceType {
 }
 
 model SupplierService {
-  id            String          @id @default(uuid()) @db.Uuid
-  supplierId    String
-  name          String
-  category      String
-  unitType      ServiceUnitType
-  baseCost      Float
-  currency      String
-  costBaseAmount Float           @default(0)
-  costCurrency   String          @default("USD")
-  salesTaxPercent Float          @default(0)
-  salesTaxIncluded Boolean       @default(false)
-  serviceChargePercent Float     @default(0)
-  serviceChargeIncluded Boolean  @default(false)
-  tourismFeeAmount Float?
-  tourismFeeCurrency String?
-  tourismFeeMode TourismFeeMode?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  serviceTypeId String?         @db.Uuid
-  serviceRates  ServiceRate[]
-  quoteBlocks   QuoteBlock[]
-  quoteItems    QuoteItem[]
-  serviceType   ServiceType?    @relation(fields: [serviceTypeId], references: [id])
+  id                    String          @id @default(uuid()) @db.Uuid
+  supplierId            String
+  name                  String
+  category              String
+  unitType              ServiceUnitType
+  baseCost              Float
+  currency              String
+  costBaseAmount        Float           @default(0)
+  costCurrency          String          @default("USD")
+  salesTaxPercent       Float           @default(0)
+  salesTaxIncluded      Boolean         @default(false)
+  serviceChargePercent  Float           @default(0)
+  serviceChargeIncluded Boolean         @default(false)
+  tourismFeeAmount      Float?
+  tourismFeeCurrency    String?
+  tourismFeeMode        TourismFeeMode?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  serviceTypeId         String?         @db.Uuid
+  serviceRates          ServiceRate[]
+  quoteBlocks           QuoteBlock[]
+  quoteItems            QuoteItem[]
+  serviceType           ServiceType?    @relation(fields: [serviceTypeId], references: [id])
 
   @@index([serviceTypeId])
   @@map("supplier_services")
 }
 
 model ServiceRate {
-  id                   String                 @id @default(uuid()) @db.Uuid
-  serviceId            String                 @db.Uuid
-  supplierId           String?
-  costBaseAmount       Float                  @default(0)
-  costCurrency         String                 @default("USD")
-  pricingMode          ServiceRatePricingMode
-  salesTaxPercent      Float                  @default(0)
-  salesTaxIncluded     Boolean                @default(false)
-  serviceChargePercent Float                  @default(0)
-  serviceChargeIncluded Boolean               @default(false)
-  tourismFeeAmount     Float?
-  tourismFeeCurrency   String?
-  tourismFeeMode       TourismFeeMode?
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  service              SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  id                    String                 @id @default(uuid()) @db.Uuid
+  serviceId             String                 @db.Uuid
+  supplierId            String?
+  costBaseAmount        Float                  @default(0)
+  costCurrency          String                 @default("USD")
+  pricingMode           ServiceRatePricingMode
+  salesTaxPercent       Float                  @default(0)
+  salesTaxIncluded      Boolean                @default(false)
+  serviceChargePercent  Float                  @default(0)
+  serviceChargeIncluded Boolean                @default(false)
+  tourismFeeAmount      Float?
+  tourismFeeCurrency    String?
+  tourismFeeMode        TourismFeeMode?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  service               SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@index([serviceId, createdAt])
   @@index([supplierId])
@@ -1233,18 +1237,19 @@ model TransportServiceType {
 }
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique
-  firstName String
-  lastName  String
-  password  String
-  roleId    String   @db.Uuid
-  companyId String   @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  leads     Lead[]
-  company   Company  @relation(fields: [companyId], references: [id])
-  role      Role     @relation(fields: [roleId], references: [id])
+  id             String   @id @default(uuid()) @db.Uuid
+  email          String   @unique
+  firstName      String
+  lastName       String
+  password       String
+  roleId         String   @db.Uuid
+  companyId      String   @db.Uuid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  leads          Lead[]
+  assignedQuotes Quote[]  @relation("AssignedAgentQuotes")
+  company        Company  @relation(fields: [companyId], references: [id])
+  role           Role     @relation(fields: [roleId], references: [id])
 
   @@map("users")
 }
@@ -1528,6 +1533,11 @@ enum QuoteStatus {
   REVISION_REQUESTED
   EXPIRED
   CANCELLED
+}
+
+enum QuoteType {
+  FIT
+  GROUP
 }
 
 enum InvoiceStatus {

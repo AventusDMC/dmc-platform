@@ -32,10 +32,10 @@ export function ShareQuoteButton({
     }
 
     if (typeof window === 'undefined') {
-      return `/q/${publicToken}`;
+      return `/proposal/${publicToken}`;
     }
 
-    return `${window.location.origin}/q/${publicToken}`;
+    return `${window.location.origin}/proposal/${publicToken}`;
   }, [publicToken]);
 
   async function handleLinkAction(path: string, successMessage: string) {
