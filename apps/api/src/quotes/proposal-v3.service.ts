@@ -380,6 +380,7 @@ export class ProposalV3Service {
       <section class="investment-card">
         <p class="investment-kicker">${this.escapeHtml(investment.snapshotLabel)}</p>
         <h3>${this.escapeHtml(investment.snapshotValue)}</h3>
+        <p class="investment-summary-note">An elegant summary of the current package pricing for the proposed Jordan journey.</p>
         <p>${this.escapeHtml(investment.snapshotHelper)}</p>
       </section>
       ${slabTable}

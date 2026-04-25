@@ -589,7 +589,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     accentColor: getAccentColor(quote),
     quoteReference: cleanText(quote.quoteNumber) || 'Quote reference to be confirmed',
     travelerName: getTravelerName(quote),
-    coverSubtitle,
+    coverSubtitle: 'Amman · Petra · Wadi Rum',
     destinationLine,
     durationLabel,
     travelDatesLabel: formatDate(quote.travelStartDate) || 'Dates to be confirmed',

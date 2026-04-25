@@ -272,23 +272,24 @@ body {
   font-size: 46px;
   line-height: 1.04;
   letter-spacing: -0.02em;
+  margin-bottom: 10px;
 }
 
 .proposal-cover-destination {
-  margin: 16px 0 0;
+  margin: 20px 0 0;
   font-size: 21px;
   line-height: 1.2;
   color: #403a34;
 }
 
 .proposal-subtitle {
-  margin: 12px 0 0;
+  margin: 16px 0 0;
   font-size: 15px;
   line-height: 1.5;
 }
 
 .proposal-cover-intro {
-  margin: 18px auto 0;
+  margin: 24px auto 0;
   max-width: 54ch;
   font-size: 15px;
   line-height: 1.72;
@@ -583,6 +584,13 @@ body {
   font-size: 30px;
   line-height: 1.08;
   letter-spacing: -0.03em;
+}
+
+.investment-summary-note {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--proposal-muted);
 }
 
 .proposal-list-tight {
