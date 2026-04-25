@@ -15,6 +15,7 @@
     "db:down": "docker compose down",
     "seed:demo": "npm --workspace @dmc/api run prisma:seed",
     "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset",
+    "import:grand-hyatt-2026": "tsx scripts/import-grand-hyatt-amman-2026.ts",
     "smoke:api": "tsx scripts/smoke-api.ts",
     "smoke:web": "tsx scripts/smoke-web.ts",
     "smoke": "npm run smoke:api && npm run smoke:web"
