@@ -48,10 +48,10 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     helper: 'Select the services you can sell',
     children: [
       { label: 'Hotels', href: '/hotels' },
+      { label: 'Catalog', href: '/catalog' },
       { label: 'Import Contract', href: '/contracts/import' },
       { label: 'Import History', href: '/contracts/import/history' },
       { label: 'Transport', href: '/transport' },
-      { label: 'Experiences', href: '/catalog' },
     ],
   },
   {

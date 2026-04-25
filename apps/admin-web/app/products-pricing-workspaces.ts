@@ -1,13 +1,18 @@
 export const PRODUCTS_PRICING_WORKSPACES = [
   {
+    label: 'Hotels',
+    href: '/hotels',
+    match: ['/hotels', '/hotel-categories', '/hotel-contracts', '/hotel-rates', '/hotel-room-categories'],
+  },
+  {
     label: 'Catalog',
     href: '/catalog',
     match: ['/catalog', '/services', '/service-types', '/cities', '/places', '/place-types'],
   },
   {
-    label: 'Hotels',
-    href: '/hotels',
-    match: ['/hotels', '/hotel-categories', '/hotel-contracts', '/hotel-rates', '/hotel-room-categories'],
+    label: 'Import Contract',
+    href: '/contracts/import',
+    match: ['/contracts/import'],
   },
   {
     label: 'Transport',
