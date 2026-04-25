@@ -1,16 +1,17 @@
 :root {
   color-scheme: light;
-  --proposal-ink: #201915;
-  --proposal-subtle: #5f554d;
-  --proposal-muted: #807468;
-  --proposal-border: #e7ddd2;
-  --proposal-border-strong: #d5c6b3;
-  --proposal-paper: #fffdf8;
-  --proposal-paper-soft: #f6f0e7;
-  --proposal-paper-soft-2: #fbf7f0;
-  --proposal-accent: #8a6a3a;
-  --proposal-accent-soft: rgba(138, 106, 58, 0.1);
-  --proposal-shadow: 0 16px 42px rgba(52, 40, 24, 0.08);
+  --proposal-ink: #2b2b2b;
+  --proposal-subtle: #59524c;
+  --proposal-muted: #7f756a;
+  --proposal-border: #e6dccd;
+  --proposal-border-strong: #d8c39b;
+  --proposal-paper: #fffdfa;
+  --proposal-paper-soft: #f5efe6;
+  --proposal-paper-soft-2: #fcf8f2;
+  --proposal-accent: #c8a96a;
+  --proposal-accent-soft: rgba(200, 169, 106, 0.12);
+  --proposal-shadow: 0 18px 40px rgba(43, 43, 43, 0.08);
+  --proposal-separator: rgba(200, 169, 106, 0.28);
 }
 
 * {
@@ -19,9 +20,9 @@
 
 body {
   margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
   color: var(--proposal-ink);
-  background: #f4efe8;
+  background: var(--proposal-paper-soft);
 }
 
 .proposal-v3 {
@@ -89,8 +90,8 @@ body {
 .proposal-cover {
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 253, 248, 0.97), rgba(250, 244, 235, 0.98)),
-    radial-gradient(circle at top right, rgba(138, 106, 58, 0.13), transparent 34%);
+    linear-gradient(180deg, rgba(255, 253, 250, 0.98), rgba(245, 239, 230, 0.98)),
+    radial-gradient(circle at top center, rgba(200, 169, 106, 0.18), transparent 38%);
 }
 
 .proposal-cover-band {
@@ -98,7 +99,7 @@ body {
 }
 
 .proposal-cover-inner {
-  padding: 34px 38px 28px;
+  padding: 42px 44px 36px;
 }
 
 .proposal-eyebrow,
@@ -112,7 +113,7 @@ body {
 .proposal-pricing-highlight-card span {
   margin: 0;
   display: block;
-  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -131,7 +132,7 @@ body {
 .investment-card p,
 .proposal-cover-signature,
 .proposal-list {
-  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
   color: var(--proposal-subtle);
 }
 
@@ -140,6 +141,8 @@ body {
   justify-content: space-between;
   gap: 18px;
   align-items: start;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--proposal-separator);
 }
 
 .proposal-reference {
@@ -183,10 +186,12 @@ body {
 
 .proposal-cover-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
-  gap: 24px;
-  align-items: end;
-  margin-top: 28px;
+  grid-template-columns: 1fr;
+  gap: 28px;
+  align-items: center;
+  justify-items: center;
+  margin-top: 34px;
+  text-align: center;
 }
 
 .proposal-cover-copy {
@@ -203,92 +208,103 @@ body {
   font-weight: 600;
   break-after: avoid-page;
   page-break-after: avoid;
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
 }
 
 .proposal-cover h1 {
-  max-width: 14ch;
-  font-size: 40px;
-  line-height: 1.02;
-  letter-spacing: -0.03em;
+  max-width: 12ch;
+  font-size: 46px;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
 }
 
 .proposal-cover-destination {
-  margin: 14px 0 0;
-  font-size: 22px;
+  margin: 16px 0 0;
+  font-size: 21px;
   line-height: 1.2;
-  color: #3f342d;
+  color: #403a34;
 }
 
 .proposal-subtitle {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   font-size: 15px;
   line-height: 1.5;
 }
 
 .proposal-cover-intro {
-  margin: 16px 0 0;
-  max-width: 58ch;
+  margin: 18px auto 0;
+  max-width: 54ch;
   font-size: 15px;
-  line-height: 1.62;
+  line-height: 1.72;
 }
 
 .proposal-cover-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 22px;
+  gap: 12px;
+  margin-top: 28px;
+  width: 100%;
 }
 
 .proposal-cover-panel {
-  padding: 18px;
+  width: min(100%, 560px);
+  padding: 22px;
   border: 1px solid var(--proposal-border-strong);
-  border-radius: 18px;
+  border-radius: 22px;
   background:
-    linear-gradient(180deg, rgba(138, 106, 58, 0.1), rgba(138, 106, 58, 0.03)),
+    linear-gradient(180deg, rgba(200, 169, 106, 0.14), rgba(200, 169, 106, 0.04)),
     var(--proposal-paper-soft);
+  box-shadow: 0 14px 30px rgba(43, 43, 43, 0.06);
 }
 
 .proposal-pricing-highlight {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .proposal-pricing-highlight-card {
-  padding: 14px 15px;
+  padding: 16px 18px;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .proposal-pricing-highlight-card strong {
   display: block;
-  margin-top: 7px;
-  font-size: 22px;
+  margin-top: 8px;
+  font-size: 24px;
   line-height: 1.14;
 }
 
 .proposal-pricing-highlight-card-primary strong {
-  font-size: 30px;
+  font-size: 34px;
   letter-spacing: -0.03em;
 }
 
 .proposal-cover-signature {
-  margin: 20px 0 0;
+  margin: 28px auto 0;
   max-width: 56ch;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.7;
   color: var(--proposal-muted);
+  text-align: center;
 }
 
 .proposal-section {
-  padding: 28px 30px;
+  padding: 32px 34px;
   break-before: auto;
   page-break-before: auto;
 }
 
 .proposal-section-header,
 .proposal-subsection-header {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   break-after: avoid-page;
   page-break-after: avoid;
+}
+
+.proposal-section-header {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--proposal-separator);
 }
 
 .proposal-section-header h2 {
@@ -306,7 +322,7 @@ body {
 .proposal-summary-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.9fr);
-  gap: 18px;
+  gap: 24px;
   align-items: start;
 }
 
@@ -326,12 +342,12 @@ body {
 }
 
 .proposal-card {
-  padding: 18px;
+  padding: 22px;
 }
 
 .proposal-card-accent {
   background:
-    linear-gradient(180deg, rgba(138, 106, 58, 0.12), rgba(138, 106, 58, 0.04)),
+    linear-gradient(180deg, rgba(200, 169, 106, 0.12), rgba(200, 169, 106, 0.04)),
     var(--proposal-paper-soft);
   border-color: var(--proposal-border-strong);
 }
@@ -348,7 +364,7 @@ body {
 }
 
 .proposal-stay-block {
-  margin-top: 20px;
+  margin-top: 28px;
 }
 
 .proposal-table-shell,
@@ -379,8 +395,8 @@ body {
 }
 
 .proposal-table th {
-  background: #f2e8dc;
-  color: #796a58;
+  background: var(--proposal-paper-soft);
+  color: #766b60;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -405,8 +421,8 @@ body {
 }
 
 .proposal-day-card {
-  padding: 16px 18px;
-  background: linear-gradient(180deg, #fffdfa 0%, #faf5ed 100%);
+  padding: 18px 20px;
+  background: linear-gradient(180deg, #fffdfa 0%, #f9f3ea 100%);
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -455,8 +471,8 @@ body {
 }
 
 .proposal-service-card {
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.8);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .proposal-service-card + .proposal-service-card {
@@ -483,19 +499,19 @@ body {
 .proposal-closing-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
+  gap: 22px;
   align-items: start;
 }
 
 .proposal-investment-shell {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .investment-card {
-  padding: 18px;
+  padding: 22px;
   background:
-    linear-gradient(180deg, rgba(138, 106, 58, 0.14), rgba(138, 106, 58, 0.05)),
+    linear-gradient(180deg, rgba(200, 169, 106, 0.14), rgba(200, 169, 106, 0.05)),
     var(--proposal-paper-soft);
   border-color: var(--proposal-border-strong);
 }
@@ -519,7 +535,7 @@ body {
 
 .proposal-section-columns {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 .proposal-empty-list-item,
@@ -616,15 +632,15 @@ body {
   }
 
   .proposal-cover-inner {
-    padding: 26px 28px 22px;
+    padding: 30px 30px 24px;
   }
 
   .proposal-section {
-    padding: 20px 22px;
+    padding: 24px 24px;
   }
 
   .proposal-cover h1 {
-    font-size: 34px;
+    font-size: 38px;
   }
 
   .proposal-cover-destination {
@@ -637,7 +653,7 @@ body {
 
   .proposal-pricing-highlight-card-primary strong,
   .investment-card h3 {
-    font-size: 24px;
+    font-size: 28px;
   }
 
   .proposal-section-header {
