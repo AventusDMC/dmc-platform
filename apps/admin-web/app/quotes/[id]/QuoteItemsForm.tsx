@@ -291,6 +291,23 @@ function isRecommendedVehicleCategory(quoteType: QuoteType, pax: number, categor
   return getRecommendedVehicleCategories(quoteType, pax).includes(category);
 }
 
+function isInvalidTransportRouteText(value: string) {
+  const normalized = value.toLowerCase();
+  const invalidPatterns = ['extra km', 'extra kilometer', 'stationary', 'per hour', 'hourly'];
+
+  return invalidPatterns.some((pattern) => normalized.includes(pattern));
+}
+
+function isValidTransportRoute(route: RouteOption) {
+  const routeText = [route.name, route.routeType, route.notes].filter(Boolean).join(' ').toLowerCase();
+
+  if (isInvalidTransportRouteText(routeText)) {
+    return false;
+  }
+
+  return Boolean(route.fromPlaceId && route.toPlaceId && route.fromPlace?.name && route.toPlace?.name && route.fromPlaceId !== route.toPlaceId);
+}
+
 const SERVICE_TYPE_BUTTONS = [
   { key: 'hotel', label: 'Add Hotel' },
   { key: 'transport', label: 'Add Transport' },
@@ -491,7 +508,12 @@ export function QuoteItemsForm({
   const initialActiveServiceType = initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null;
   const initialActivityServiceDate =
     initialActiveServiceType === 'activity' && !itineraryId && travelStartDate ? travelStartDate.slice(0, 10) : '';
-  const firstActiveRouteId = routes.find((route) => route.isActive)?.id || routes[0]?.id || '';
+  const validTransportRoutes = useMemo(() => routes.filter((route) => (route.isActive || route.id === initialValues?.routeId || route.id === preferredRouteId) && isValidTransportRoute(route)), [initialValues?.routeId, preferredRouteId, routes]);
+  const initialRouteId = [initialValues?.routeId, preferredRouteId].find((candidateRouteId) =>
+    Boolean(candidateRouteId && validTransportRoutes.some((route) => route.id === candidateRouteId)),
+  ) || '';
+  const initialRouteName =
+    initialValues?.routeName && !isInvalidTransportRouteText(initialValues.routeName) ? initialValues.routeName : '';
   const [activeServiceType, setActiveServiceType] = useState<ServiceTypeKey | null>(
     initialActiveServiceType,
   );
@@ -519,9 +541,9 @@ export function QuoteItemsForm({
     initialValues?.transportServiceTypeId || (initialActiveServiceType === 'transport' ? transportServiceTypes[0]?.id || '' : ''),
   );
   const [routeId, setRouteId] = useState(
-    initialValues?.routeId || preferredRouteId || (initialActiveServiceType === 'transport' ? firstActiveRouteId : ''),
+    initialRouteId,
   );
-  const [routeName, setRouteName] = useState(initialValues?.routeName || '');
+  const [routeName, setRouteName] = useState(initialRouteName);
   const [hotelId, setHotelId] = useState(initialValues?.hotelId || preferredHotelId || '');
   const [contractId, setContractId] = useState(initialValues?.contractId || preferredContractId || '');
   const [seasonId, setSeasonId] = useState(initialValues?.seasonId || '');
@@ -957,16 +979,25 @@ export function QuoteItemsForm({
   }, [isTransportService]);
 
   useEffect(() => {
+    if (!isTransportService || !routeId) {
+      return;
+    }
+
+    if (!validTransportRoutes.some((route) => route.id === routeId)) {
+      setRouteId('');
+      setRouteName('');
+      setBaseCost('');
+      setResolvedTransportPricing(null);
+    }
+  }, [isTransportService, routeId, validTransportRoutes]);
+
+  useEffect(() => {
     if (!isTransportService) {
       return;
     }
 
     if (!transportServiceTypeId && transportServiceTypes[0]?.id) {
       setTransportServiceTypeId(transportServiceTypes[0].id);
-    }
-
-    if (!routeId && !routeName.trim() && firstActiveRouteId) {
-      setRouteId(firstActiveRouteId);
     }
 
     if (!transportServiceTypeId || (!routeId && !routeName.trim())) {
@@ -1020,7 +1051,7 @@ export function QuoteItemsForm({
     void loadTransportCost();
 
     return () => abortController.abort();
-  }, [apiBaseUrl, firstActiveRouteId, isTransportService, paxCount, routeId, routeName, transportServiceTypeId, transportServiceTypes]);
+  }, [apiBaseUrl, isTransportService, paxCount, routeId, routeName, transportServiceTypeId, transportServiceTypes]);
 
   useEffect(() => {
     if (!isActivityService) {
@@ -1898,16 +1929,16 @@ export function QuoteItemsForm({
               </label>
 
               <RouteCombobox
-                label="Saved route"
-                routes={routes.filter((route) => route.isActive || route.id === routeId)}
+                label="Route"
+                routes={validTransportRoutes}
                 value={routeId}
                 onChange={(value) => {
                   setRouteId(value);
-                  if (value) {
-                    setRouteName('');
-                  }
+                  setRouteName('');
+                  setBaseCost('');
+                  setResolvedTransportPricing(null);
                 }}
-                placeholder="Search active routes"
+                placeholder="Select origin -> destination route"
               />
             </div>
           ) : null}
