@@ -740,6 +740,7 @@ function AddServiceLauncher({
   const allDays = createdDay ? [...days, createdDay] : days;
   const focusedDay = plannerProps.focusedDayId ? allDays.find((day) => day.id === plannerProps.focusedDayId) || null : null;
   const targetDay = focusedDay || createdDay || days[0] || null;
+  const isEmptyQuote = days.length === 0 && scope.items.length === 0;
 
   async function ensureDayOne() {
     if (targetDay) {
@@ -794,8 +795,12 @@ function AddServiceLauncher({
       <div className="quote-add-service-head">
         <div>
           <p className="eyebrow">Add Services</p>
-          <h3>Add service</h3>
-          <p className="detail-copy">Choose the next service type to add to {targetDay ? `Day ${targetDay.dayNumber}` : 'the itinerary'}.</p>
+          <h3>{isEmptyQuote ? 'No services added yet' : 'Add service'}</h3>
+          <p className="detail-copy">
+            {isEmptyQuote
+              ? 'Start by adding a service. Day 1 will be created automatically.'
+              : `Choose the next service type to add to ${targetDay ? `Day ${targetDay.dayNumber}` : 'the itinerary'}.`}
+          </p>
         </div>
         <button type="button" className="primary-button" onClick={() => setIsOpen((current) => !current)}>
           Add Service
@@ -1113,8 +1118,6 @@ function ScopePlanner({
         scopeLabel={scope.label}
       />
 
-      <AddServiceLauncher scope={scope} plannerProps={plannerProps} days={plannerProps.quote.itineraries} />
-
       <GuidedQuoteStarter scope={scope} plannerProps={plannerProps} workflow={workflow} />
 
       {daySummaries.length === 0 ? (
@@ -1349,6 +1352,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             Focused day mode is active. Use the highlighted day card below to complete the targeted operating task.
           </p>
         ) : null}
+        <AddServiceLauncher scope={scopes[0]} plannerProps={props} days={props.quote.itineraries} />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />
           <label htmlFor="planner-shared" className="workspace-tab-label">
