@@ -19,16 +19,25 @@ type ContactOption = {
   lastName: string;
 };
 
+type AgentOption = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'agent';
+};
+
 type QuotesFormProps = {
   apiBaseUrl: string;
   companies: CompanyOption[];
   contacts: ContactOption[];
+  agents?: AgentOption[];
   quoteId?: string;
   submitLabel?: string;
   initialValues?: {
     clientCompanyId: string;
     brandCompanyId: string;
     contactId: string;
+    agentId: string;
     bookingType: 'FIT' | 'GROUP' | 'SERIES';
     title: string;
     description: string;
@@ -73,13 +82,14 @@ function createPricingSlabValue(values?: Partial<PricingSlabFormValue>): Pricing
   };
 }
 
-export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLabel, initialValues }: QuotesFormProps) {
+export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quoteId, submitLabel, initialValues }: QuotesFormProps) {
   const router = useRouter();
   const defaultBrandCompanyId = initialValues?.brandCompanyId || companies[0]?.id || '';
   const [clientCompanyId, setClientCompanyId] = useState(initialValues?.clientCompanyId || companies[0]?.id || '');
   const [brandCompanyId, setBrandCompanyId] = useState(defaultBrandCompanyId);
   const availableContacts = contacts.filter((contact) => contact.companyId === clientCompanyId);
   const [contactId, setContactId] = useState(initialValues?.contactId || availableContacts[0]?.id || '');
+  const [agentId, setAgentId] = useState(initialValues?.agentId || '');
   const [bookingType, setBookingType] = useState<'FIT' | 'GROUP' | 'SERIES'>(initialValues?.bookingType || 'FIT');
   const [title, setTitle] = useState(initialValues?.title || '');
   const [description, setDescription] = useState(initialValues?.description || '');
@@ -153,6 +163,30 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
     });
   }
 
+  async function getBackendErrorMessage(response: Response, fallback: string) {
+    const clonedResponse = response.clone();
+    const apiError = await getApiError(response, fallback);
+
+    if (apiError.message && apiError.message !== fallback) {
+      return apiError;
+    }
+
+    try {
+      const rawText = (await clonedResponse.text()).trim();
+
+      if (rawText && !rawText.startsWith('<')) {
+        return {
+          message: rawText,
+          errors: apiError.errors,
+        };
+      }
+    } catch {
+      return apiError;
+    }
+
+    return apiError;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -213,6 +247,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
           companyId: clientCompanyId,
           brandCompanyId,
           contactId,
+          agentId: agentId || null,
           bookingType,
           title,
           description,
@@ -241,7 +276,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
       });
 
       if (!response.ok) {
-        const apiError = await getApiError(response, `Could not ${isEditing ? 'update' : 'create'} quote.`);
+        const apiError = await getBackendErrorMessage(response, `Could not ${isEditing ? 'update' : 'create'} quote.`);
         setValidationErrors(apiError.errors);
         throw new Error(apiError.message);
       }
@@ -258,6 +293,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
         setClientCompanyId(companies[0]?.id || '');
         setBrandCompanyId(companies[0]?.id || '');
         setContactId(contacts.find((contact) => contact.companyId === companies[0]?.id)?.id || '');
+        setAgentId('');
         setBookingType('FIT');
         setTitle('');
         setDescription('');
@@ -352,6 +388,20 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
           </select>
         </label>
 
+        <label>
+          Assigned Agent
+          <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+            <option value="">Unassigned</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name} ({agent.email})
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="form-row">
         <label>
           Booking Type
           <select value={bookingType} onChange={(event) => setBookingType(event.target.value as 'FIT' | 'GROUP' | 'SERIES')}>
