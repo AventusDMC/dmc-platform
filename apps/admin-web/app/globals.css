@@ -2417,6 +2417,230 @@ h1 {
   gap: 1rem;
 }
 
+.quote-auto-itinerary-builder {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(30, 27, 24, 0.1);
+  border-radius: 0.95rem;
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.quote-auto-itinerary-head,
+.quote-auto-itinerary-actions,
+.quote-auto-itinerary-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.quote-auto-itinerary-head h3 {
+  margin: 0.12rem 0 0;
+  font-size: 1.2rem;
+}
+
+.quote-auto-itinerary-grid,
+.quote-auto-itinerary-status-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.quote-auto-itinerary-grid label,
+.quote-auto-itinerary-route {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.quote-auto-itinerary-grid span,
+.quote-auto-itinerary-route span,
+.quote-auto-itinerary-status-grid span,
+.quote-auto-itinerary-day span,
+.quote-auto-itinerary-items span {
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quote-auto-itinerary-route textarea {
+  min-height: 4rem;
+  resize: vertical;
+}
+
+.quote-auto-itinerary-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: rgba(30, 27, 24, 0.76);
+  font-size: 0.92rem;
+}
+
+.quote-auto-itinerary-preview,
+.quote-auto-itinerary-days,
+.quote-auto-itinerary-items,
+.quote-auto-itinerary-comparison,
+.quote-auto-itinerary-warnings {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-auto-itinerary-comparison {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quote-auto-itinerary-option,
+.quote-auto-itinerary-estimate,
+.quote-auto-itinerary-warnings article {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  background: rgba(255, 253, 248, 0.82);
+}
+
+.quote-auto-itinerary-option-active {
+  border-color: rgba(15, 118, 110, 0.24);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.quote-auto-itinerary-option div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.quote-auto-itinerary-option span,
+.quote-auto-itinerary-estimate span {
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.quote-auto-itinerary-option em,
+.quote-auto-itinerary-estimate em {
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.86rem;
+  font-style: normal;
+}
+
+.quote-auto-itinerary-warnings article {
+  border-color: rgba(180, 83, 9, 0.18);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.quote-auto-itinerary-warnings p {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.72);
+}
+
+.quote-auto-itinerary-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.quote-auto-itinerary-notes span {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.08);
+  color: rgb(15, 118, 110);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.quote-auto-itinerary-status-grid div,
+.quote-auto-itinerary-day,
+.quote-auto-itinerary-items div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  background: rgba(248, 244, 238, 0.52);
+}
+
+.quote-auto-itinerary-days {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quote-auto-itinerary-day {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.quote-auto-itinerary-day div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.quote-auto-itinerary-day-meta {
+  align-content: end;
+}
+
+.quote-auto-itinerary-day em,
+.quote-auto-itinerary-items em {
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.86rem;
+  font-style: normal;
+}
+
+.quote-auto-itinerary-items {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.quote-transport-suggestion-option {
+  width: 100%;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  background: rgba(255, 253, 248, 0.72);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.quote-transport-suggestion-option:hover,
+.quote-transport-suggestion-option:focus-visible {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.quote-selected-transport-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-selected-transport-explanation {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 0.75rem;
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.quote-selected-transport-explanation strong,
+.quote-selected-transport-explanation p,
+.quote-selected-transport-explanation ul {
+  margin: 0;
+}
+
+.quote-selected-transport-explanation ul {
+  padding-left: 1.1rem;
+  color: rgba(30, 27, 24, 0.72);
+}
+
 .quote-service-workflow-progress {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5634,7 +5858,13 @@ h1 {
 @media (max-width: 860px) {
   .quote-guided-starter-actions,
   .quote-service-workflow-progress,
-  .quote-live-pricing-grid {
+  .quote-live-pricing-grid,
+  .quote-auto-itinerary-grid,
+  .quote-auto-itinerary-status-grid,
+  .quote-auto-itinerary-days,
+  .quote-auto-itinerary-items,
+  .quote-auto-itinerary-comparison,
+  .quote-auto-itinerary-day {
     grid-template-columns: minmax(0, 1fr);
   }
 
