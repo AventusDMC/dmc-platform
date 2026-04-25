@@ -16,6 +16,9 @@
     "seed:demo": "npm --workspace @dmc/api run prisma:seed",
     "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset",
     "import:grand-hyatt-2026": "tsx scripts/import-grand-hyatt-amman-2026.ts",
+    "import:alpha-fleet": "tsx scripts/import-alpha-fleet.ts",
+    "import:alpha-bus-rates-2026": "tsx scripts/import-alpha-bus-rates-2026.ts",
+    "import:alpha-limo-rates-2026": "tsx scripts/import-alpha-limo-rates-2026.ts",
     "smoke:api": "tsx scripts/smoke-api.ts",
     "smoke:web": "tsx scripts/smoke-web.ts",
     "smoke": "npm run smoke:api && npm run smoke:web"
