@@ -1,4 +1,4 @@
-<!-- proposal-v3-template-version: 2026-04-24-final-v2 -->
+<!-- proposal-v3-template-version: 2026-04-25-redesign -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -12,57 +12,69 @@
       <section class="proposal-cover">
         <div class="proposal-cover-band" style="background: {{accentColor}};"></div>
         <div class="proposal-cover-inner">
-          <div class="proposal-cover-header">
+          <div class="proposal-cover-meta">
             <div>
-              <p class="proposal-eyebrow">Aventus DMC</p>
-              <p class="proposal-reference">Reference: {{quoteReference}}</p>
+              <p class="proposal-eyebrow">{{brandName}}</p>
+              <p class="proposal-reference">Reference {{quoteReference}}</p>
             </div>
-            <p class="proposal-cover-date">Prepared Date: {{proposalDateLabel}}</p>
+            <div class="proposal-meta-list">
+              <article>
+                <span>Prepared</span>
+                <strong>{{proposalDateLabel}}</strong>
+              </article>
+              <article>
+                <span>Prepared for</span>
+                <strong>{{travelerName}}</strong>
+              </article>
+            </div>
           </div>
 
-          <div class="proposal-cover-copy">
-            <p class="proposal-cover-kicker">A tailored journey proposal</p>
-            <h1>{{documentTitle}}</h1>
-            <p class="proposal-cover-destination">{{coverSubtitle}}</p>
-            <p class="proposal-subtitle">{{durationLabel}}</p>
-            <p class="proposal-cover-intro">{{coverIntro}}</p>
+          <div class="proposal-cover-shell">
+            <div class="proposal-cover-copy">
+              <p class="proposal-cover-kicker">Private itinerary proposal</p>
+              <h1>{{documentTitle}}</h1>
+              <p class="proposal-cover-destination">{{coverSubtitle}}</p>
+              <p class="proposal-subtitle">{{durationLabel}}</p>
+              <p class="proposal-cover-intro">{{coverIntro}}</p>
+
+              <div class="proposal-cover-facts avoid-break">
+                <article>
+                  <span>Travel dates</span>
+                  <strong>{{travelDatesLabel}}</strong>
+                </article>
+                <article>
+                  <span>Duration</span>
+                  <strong>{{durationLabel}}</strong>
+                </article>
+                <article>
+                  <span>Guests</span>
+                  <strong>{{travelerCountLabel}}</strong>
+                </article>
+              </div>
+            </div>
+
+            <aside class="proposal-cover-panel avoid-break">
+              <p class="proposal-card-label">Pricing summary</p>
+              <div class="proposal-pricing-highlight">
+                <article class="proposal-pricing-highlight-card proposal-pricing-highlight-card-primary">
+                  <span>Total Package Price</span>
+                  <strong>{{pricingHighlightTotal}}</strong>
+                </article>
+                <article class="proposal-pricing-highlight-card">
+                  <span>Price per Person</span>
+                  <strong>{{pricingHighlightPerPax}}</strong>
+                </article>
+                <article class="proposal-pricing-highlight-card">
+                  <span>Quote Currency</span>
+                  <strong>{{pricingHighlightCurrency}}</strong>
+                </article>
+              </div>
+            </aside>
           </div>
 
-          <div class="proposal-cover-facts avoid-break">
-            <article>
-              <span>Prepared for</span>
-              <strong>{{travelerName}}</strong>
-            </article>
-            <article>
-              <span>Travel dates</span>
-              <strong>{{travelDatesLabel}}</strong>
-            </article>
-            <article>
-              <span>Duration</span>
-              <strong>{{durationLabel}}</strong>
-            </article>
-          </div>
-
-          <section class="proposal-pricing-highlight avoid-break">
-            <article class="proposal-pricing-highlight-card proposal-pricing-highlight-card-primary avoid-break">
-              <span>Total Package Price</span>
-              <strong>{{pricingHighlightTotal}}</strong>
-            </article>
-            <article class="proposal-pricing-highlight-card avoid-break">
-              <span>Price per Person</span>
-              <strong>{{pricingHighlightPerPax}}</strong>
-            </article>
-            <article class="proposal-pricing-highlight-card avoid-break">
-              <span>Quote Currency</span>
-              <strong>{{pricingHighlightCurrency}}</strong>
-            </article>
-          </section>
-
-          <div class="proposal-cover-footer">
-            <p class="proposal-cover-signature">
-              Aventus DMC · Tailored travel experiences in Jordan
-            </p>
-          </div>
+          <p class="proposal-cover-signature">
+            Tailored to balance Jordan's cultural landmarks, desert landscapes, and seamless ground arrangements.
+          </p>
         </div>
       </section>
 
@@ -71,6 +83,7 @@
           <p class="proposal-eyebrow">Journey overview</p>
           <h2>{{destinationLine}}</h2>
         </header>
+
         <div class="proposal-summary-layout">
           <div class="proposal-summary-main">
             <p class="proposal-body-copy">{{journeySummary}}</p>
@@ -97,68 +110,71 @@
 
           <aside class="proposal-card proposal-card-accent">
             <p class="proposal-card-label">Highlights</p>
-            <h3>Designed around the journey</h3>
+            <h3>Key moments</h3>
             <ul class="proposal-list">{{highlightsHtml}}</ul>
           </aside>
+        </div>
+
+        <div class="proposal-stay-block">
+          <header class="proposal-subsection-header">
+            <p class="proposal-eyebrow">Accommodation</p>
+            <h3>Stay Overview</h3>
+          </header>
+          <div class="proposal-table-shell">
+            <table class="proposal-table proposal-table-accommodation">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Hotel</th>
+                  <th>Location</th>
+                  <th>Room</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>{{accommodationRowsHtml}}</tbody>
+            </table>
+          </div>
         </div>
       </section>
 
       <section class="proposal-section">
-        <header class="proposal-section-header">
-          <p class="proposal-eyebrow">Accommodation</p>
-          <h2>Stay Overview</h2>
-        </header>
-        <div class="proposal-table-shell">
-          <table class="proposal-table proposal-table-accommodation">
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th>Hotel</th>
-                <th>Location</th>
-                <th>Room</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>{{accommodationRowsHtml}}</tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="proposal-section page-break">
         <header class="proposal-section-header">
           <p class="proposal-eyebrow">Itinerary</p>
           <h2>Day by Day</h2>
         </header>
         <p class="proposal-section-intro">
-          A curated day-by-day outline of the journey, with stays, transfers, experiences, and support services.
+          A concise day-by-day outline of the route, stays, transfers, and included experiences.
         </p>
         <div class="proposal-days">{{itineraryDaysHtml}}</div>
       </section>
 
-      <section class="proposal-section">
-        <header class="proposal-section-header proposal-section-header-investment">
-          <p class="proposal-eyebrow">Pricing</p>
-          <h2>Price per Person</h2>
+      <section class="proposal-section proposal-section-closing">
+        <header class="proposal-section-header">
+          <p class="proposal-eyebrow">Final details</p>
+          <h2>Inclusions and Pricing Notes</h2>
         </header>
-        <div class="proposal-investment-shell avoid-break">{{investmentHtml}}</div>
-      </section>
 
-      <section class="proposal-section proposal-section-columns">
-        <article class="proposal-card">
-          <header class="proposal-section-header">
-            <p class="proposal-eyebrow">Included</p>
-            <h2>Inclusions</h2>
-          </header>
-          <ul class="proposal-list">{{inclusionsHtml}}</ul>
-        </article>
+        <div class="proposal-closing-layout">
+          <div class="proposal-investment-shell avoid-break">{{investmentHtml}}</div>
 
-        <article class="proposal-card">
-          <header class="proposal-section-header">
-            <p class="proposal-eyebrow">Pricing notes</p>
-            <h2>Pricing Notes</h2>
-          </header>
-          <ul class="proposal-list">{{notesHtml}}</ul>
-        </article>
+          <div class="proposal-section-columns">
+            <article class="proposal-card">
+              <header class="proposal-subsection-header">
+                <p class="proposal-eyebrow">Included</p>
+                <h3>Inclusions</h3>
+              </header>
+              <ul class="proposal-list">{{inclusionsHtml}}</ul>
+            </article>
+
+            <article class="proposal-card">
+              <header class="proposal-subsection-header">
+                <p class="proposal-eyebrow">Pricing notes</p>
+                <h3>Notes</h3>
+              </header>
+              <ul class="proposal-list">{{notesHtml}}</ul>
+            </article>
+          </div>
+        </div>
       </section>
     </main>
   </body>

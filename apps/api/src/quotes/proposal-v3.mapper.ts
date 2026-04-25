@@ -15,6 +15,10 @@ const INVALID_TEXT_PATTERNS = [
   /\bsystem generated\b/i,
   /\bprogram details to be confirmed\b/i,
   /\bservice to be confirmed\b/i,
+  /\bqa\b/i,
+  /\bdemo\b/i,
+  /\btest\b/i,
+  /\bmulti[-\s]?currency\b/i,
 ];
 
 const PLACEHOLDER_TEXT_PATTERNS = [
@@ -66,6 +70,14 @@ function cleanText(value: string | null | undefined) {
     .replace(/\s*\|\s*/g, ', ')
     .replace(/\bDescription:\s*/gi, '')
     .replace(/\bNotes:\s*/gi, '')
+    .replace(/\bTargeted quote for multi[-\s]?currency pricing QA\b/gi, '')
+    .replace(/\bTargeted quote for multi[-\s]?currency\b/gi, '')
+    .replace(/\bMulti[-\s]?currency Jordan QA quote\b/gi, '')
+    .replace(/\bMulti[-\s]?currency QA\b/gi, '')
+    .replace(/\bMulti[-\s]?currency\b/gi, '')
+    .replace(/\bQA quote\b/gi, '')
+    .replace(/\bQA\b/gi, '')
+    .replace(/\bTargeted quote for QA\b/gi, '')
     .replace(/\bImported itinerary:\s*/gi, '')
     .replace(/\bImported Drafts?\b/gi, '')
     .replace(/\bImported Itineraries\b/gi, '')
@@ -352,40 +364,30 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 }
 
 function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string) {
-  const dayCount = Math.max(quote.itineraries.length, (quote.nightCount || 0) + 1, 1);
-  const travelerCount = quote.adults + quote.children;
-  const description = cleanText(quote.description);
-
-  if (description && !isWeakText(description) && !isPlaceholderText(description)) {
-    return description;
-  }
-
-  return destinationLine
-    ? `A ${dayCount}-day journey through ${destinationLine} for ${formatGuestCountLabel(travelerCount)}, with accommodation, transport, and touring arranged throughout.`
-    : `A ${dayCount}-day journey for ${formatGuestCountLabel(travelerCount)}, with accommodation, transport, and touring arranged throughout.`;
+  return 'A curated journey through Jordan’s most iconic destinations, combining culture, history, and desert experiences.';
 }
 
 function buildCoverIntro() {
-  return 'We are pleased to present your tailored journey through Jordan, designed for a smooth and memorable travel experience.';
+  return 'A refined proposal designed for a seamless Jordan experience, with carefully sequenced touring, stays, and private ground arrangements.';
 }
 
 function buildHighlights(quote: ProposalV3Quote, destinationLine: string) {
   const highlights = new Set<string>();
 
   if (destinationLine) {
-    highlights.add(`Curated routing through ${destinationLine}.`);
+    highlights.add(`A well-paced routing through ${destinationLine}.`);
   }
 
   if (quote.quoteItems.some((item) => isHotelItem(item))) {
-    highlights.add('Accommodation planning aligned to the itinerary.');
+    highlights.add('Handpicked stays aligned with the journey flow.');
   }
 
   if (quote.quoteItems.some((item) => isTransportItem(item))) {
-    highlights.add('Ground transport coverage matched to the journey flow.');
+    highlights.add('Private transfers coordinated throughout the route.');
   }
 
   if (quote.quoteItems.some((item) => isActivityItem(item) || isGuideItem(item))) {
-    highlights.add('Experiences and guided touring integrated day by day.');
+    highlights.add('Cultural visits and experiences arranged day by day.');
   }
 
   return Array.from(highlights).slice(0, 4);
@@ -508,10 +510,11 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
     ),
   );
   const notes = [
-    'Rates remain subject to final availability and confirmation at the time of booking.',
+    'Rates are subject to availability and final confirmation at the time of booking.',
     quote.quoteOptions.length > 0
-      ? `Alternative options can be prepared on request. ${quote.quoteOptions.length} option${quote.quoteOptions.length === 1 ? '' : 's'} currently available.`
+      ? `Alternative arrangements can be prepared on request. ${quote.quoteOptions.length} additional option${quote.quoteOptions.length === 1 ? '' : 's'} can be shared if preferred.`
       : 'Alternative arrangements can be prepared on request.',
+    'Any government taxes, entrance rules, or local regulations remain subject to change without prior notice.',
     ...pricingNotes,
   ];
 

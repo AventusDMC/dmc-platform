@@ -117,19 +117,19 @@ export class ProposalV3Service {
           preferCSSPageSize: true,
           displayHeaderFooter: true,
           margin: {
-            top: '18mm',
+            top: '14mm',
             right: '12mm',
-            bottom: '20mm',
+            bottom: '16mm',
             left: '12mm',
           },
           headerTemplate: `
-            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:9px; color:#6b625b; text-align:left;">
-              Aventus DMC
+            <div style="width:100%; font-size:1px; color:transparent;">
+              &nbsp;
             </div>
           `,
           footerTemplate: `
-            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#8c837a; display:flex; justify-content:space-between; align-items:center;">
-              <span>Aventus DMC · Tailored travel experiences in Jordan</span>
+            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#9a8f84; display:flex; justify-content:space-between; align-items:center;">
+              <span>Aventus DMC</span>
               <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
             </div>
           `,
@@ -392,7 +392,7 @@ export class ProposalV3Service {
     return parts
       .map((part) => part?.trim())
       .filter((part): part is string => Boolean(part))
-      .join(' Ã‚Â· ');
+      .join(' | ');
   }
 
   private getDisplayText(value: string, groupLabel?: string) {
