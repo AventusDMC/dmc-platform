@@ -290,11 +290,20 @@ const STARTER_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }
   { category: 'activity', label: 'Add experience' },
 ];
 
-const DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
+const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
   { key: 'hotel', label: 'Stay' },
   { key: 'transport', label: 'Transfer' },
   { key: 'activity', label: 'Experience' },
 ];
+
+const FIT_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
+  { key: 'activity', label: 'Experience' },
+  { key: 'transport', label: 'Transfer' },
+];
+
+function getDayCompletenessRules(quoteType: Quote['quoteType']) {
+  return quoteType === 'GROUP' ? GROUP_DAY_COMPLETENESS_RULES : FIT_DAY_COMPLETENESS_RULES;
+}
 
 function formatDayHeading(day: QuoteReadinessDay, inferredCity?: string | null) {
   const dayLabel = `Day ${String(day.dayNumber).padStart(2, '0')}`;
@@ -352,7 +361,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
   };
 }
 
-function buildServiceWorkflowState(items: QuoteItem[]): ServiceWorkflowState {
+function buildServiceWorkflowState(items: QuoteItem[], quoteType: Quote['quoteType']): ServiceWorkflowState {
   const hasHotel = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'hotel');
   const hasTransport = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'transport');
   const hasActivity = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'activity');
@@ -360,7 +369,25 @@ function buildServiceWorkflowState(items: QuoteItem[]): ServiceWorkflowState {
   let title = 'Start building your itinerary';
   let description = 'Begin with accommodation, then add transfer coverage and experiences.';
 
-  if (!hasHotel && hasTransport && !hasActivity) {
+  if (quoteType === 'FIT') {
+    if (!hasActivity) {
+      recommendedCategory = 'activity';
+      title = 'Start with the core experience';
+      description = 'For FIT quotes, begin with the requested experience or service, then add transport only when it is included.';
+    } else if (!hasTransport) {
+      recommendedCategory = 'transport';
+      title = 'Review transfer coverage';
+      description = 'The FIT experience is started. Add transport if the quote includes private movement.';
+    } else if (!hasHotel) {
+      recommendedCategory = 'hotel';
+      title = 'Review accommodation';
+      description = 'Transport and experience coverage are started. Add accommodation if it is part of this FIT package.';
+    } else {
+      recommendedCategory = 'activity';
+      title = 'FIT workflow started';
+      description = 'Experience, transfer, and accommodation coverage are represented. Keep adding services as needed.';
+    }
+  } else if (!hasHotel && hasTransport && !hasActivity) {
     recommendedCategory = 'activity';
     title = 'Add experiences next';
     description = 'Transport is already in place. Add the first experience when you are ready.';
@@ -860,16 +887,17 @@ function ScopePlanner({
   }));
   const unassignedItems = scope.items.filter((item) => !item.itineraryId);
   const unresolvedItems = scope.items.filter((item) => item.service.supplierId === 'import-itinerary-system');
-  const workflow = buildServiceWorkflowState(scope.items);
+  const workflow = buildServiceWorkflowState(scope.items, plannerProps.quote.quoteType);
+  const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const daysCompleted = daySummaries.filter((summary) =>
-    DAY_COMPLETENESS_RULES.every((rule) =>
+    dayCompletenessRules.every((rule) =>
       summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
     ),
   ).length;
   const missingCoverageWarnings = daySummaries.reduce((count, summary) => {
     return (
       count +
-      DAY_COMPLETENESS_RULES.filter(
+      dayCompletenessRules.filter(
         (rule) => !summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
       ).length
     );
@@ -939,7 +967,7 @@ function ScopePlanner({
           meal: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'meal'),
           other: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'other'),
         };
-        const completeness = DAY_COMPLETENESS_RULES.map((rule) => ({
+        const completeness = dayCompletenessRules.map((rule) => ({
           ...rule,
           complete: summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
         }));

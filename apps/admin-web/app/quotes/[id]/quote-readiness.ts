@@ -60,6 +60,7 @@ export type QuoteReadinessOption = {
 
 export type QuoteReadinessQuote = {
   id: string;
+  quoteType: 'FIT' | 'GROUP';
   travelStartDate: string | null;
   nightCount?: number | null;
   pricingMode: 'SLAB' | 'FIXED';
@@ -406,6 +407,7 @@ export function buildQuoteReadinessModel(
   const unassignedSuppliers = unresolvedItems;
   const tripStart = normalizeDateOnly(quote.travelStartDate);
   const tripEnd = buildTripEndDate(quote);
+  const isGroupQuote = quote.quoteType === 'GROUP';
 
   const arrivalPatterns = [/\barrival\b/i, /\barrive\b/i, /\bairport\b/i];
   const departurePatterns = [/\bdeparture\b/i, /\bdepart\b/i, /\bleave\b/i, /\bcheckout\b/i];
@@ -465,22 +467,33 @@ export function buildQuoteReadinessModel(
 
     if ((hasAnySignal(text, arrivalPatterns) || hasAnySignal(text, departurePatterns)) && !hasTransport) {
       const href = buildIssueHref(buildStepHref, 'services', { day: day.id, addCategory: 'transport' });
-      dayBlockers.push({
+      const issue: QuoteReadinessIssue = {
         id: `transfer-${day.id}`,
-        severity: 'blocker',
+        severity: isGroupQuote ? 'blocker' : 'warning',
         code: 'arrival-departure-no-transfer',
         title: `Day ${day.dayNumber} has arrival or departure without transfer`,
-        description: 'Add a transfer or transport service for airport or station movement.',
+        description: isGroupQuote
+          ? 'Add a transfer or transport service for airport or station movement.'
+          : 'Review whether this FIT needs transfer coverage for airport or station movement.',
         href,
         source: 'Service Planner',
         dayId: day.id,
         action: { type: 'add-service', step: 'services', href, dayId: day.id, category: 'transport' },
-      });
+      };
+
+      if (isGroupQuote) {
+        dayBlockers.push(issue);
+      } else {
+        dayWarnings.push(issue);
+      }
+
       suggestions.push({
         id: `transfer-${day.id}`,
         category: 'transport',
-        title: 'Add transfer',
-        description: 'Arrival and departure days should usually include transport coverage.',
+        title: isGroupQuote ? 'Add transfer' : 'Review transfer',
+        description: isGroupQuote
+          ? 'Arrival and departure days should usually include transport coverage.'
+          : 'Add transport only when this FIT quote includes private transfer arrangements.',
       });
     }
 
@@ -515,21 +528,31 @@ export function buildQuoteReadinessModel(
       const href = buildIssueHref(buildStepHref, 'services', { day: summary.day.id, addCategory: 'transport' });
       const issue: QuoteReadinessIssue = {
         id: `city-change-${summary.day.id}-${nextSummary.day.id}`,
-        severity: 'blocker',
+        severity: isGroupQuote ? 'blocker' : 'warning',
         code: 'city-change-no-transport',
         title: `City change from ${summary.inferredCity} to ${nextSummary.inferredCity} has no transport`,
-        description: 'Add a transport or transfer service across the day change before sharing the quote.',
+        description: isGroupQuote
+          ? 'Add a transport or transfer service across the day change before sharing the quote.'
+          : 'Review whether this FIT quote needs private transport across the city change.',
         href,
         source: 'Service Planner',
         dayId: summary.day.id,
         action: { type: 'add-service', step: 'services', href, dayId: summary.day.id, category: 'transport' },
       };
-      blockers.push(issue);
+
+      if (isGroupQuote) {
+        blockers.push(issue);
+      } else {
+        warnings.push(issue);
+      }
+
       summary.suggestions.push({
         id: `city-change-transport-${summary.day.id}`,
         category: 'transport',
-        title: 'Add intercity transport',
-        description: `The itinerary moves from ${summary.inferredCity} to ${nextSummary.inferredCity} without a transport service.`,
+        title: isGroupQuote ? 'Add intercity transport' : 'Review intercity transport',
+        description: isGroupQuote
+          ? `The itinerary moves from ${summary.inferredCity} to ${nextSummary.inferredCity} without a transport service.`
+          : `The itinerary moves from ${summary.inferredCity} to ${nextSummary.inferredCity}; add transport only if it is included in the FIT package.`,
       });
     }
   }
