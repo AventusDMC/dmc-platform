@@ -1072,6 +1072,11 @@ function renderInternalCostingPanel({
 
 export default async function QuoteDetailsPage({ params, searchParams }: QuoteDetailsPageProps) {
   const { id } = await params;
+
+  if (id === 'new') {
+    notFound();
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);

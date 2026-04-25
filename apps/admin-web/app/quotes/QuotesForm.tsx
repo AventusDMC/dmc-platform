@@ -246,6 +246,14 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, quoteId, submitLab
         throw new Error(apiError.message);
       }
 
+      const payload = (await response.json().catch(() => null)) as { id?: string } | null;
+
+      if (!isEditing && payload?.id) {
+        router.push(`/quotes/${payload.id}`);
+        router.refresh();
+        return;
+      }
+
       if (!isEditing) {
         setClientCompanyId(companies[0]?.id || '');
         setBrandCompanyId(companies[0]?.id || '');
