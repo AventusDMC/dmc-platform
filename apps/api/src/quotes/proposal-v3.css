@@ -49,7 +49,6 @@ body {
   break-inside: avoid;
 }
 
-.overview-section,
 .itinerary-section {
   page-break-before: always;
   break-before: page;
@@ -599,7 +598,6 @@ body {
     margin-bottom: 12px;
   }
 
-  .overview-section,
   .itinerary-section {
     break-before: page;
     page-break-before: always;

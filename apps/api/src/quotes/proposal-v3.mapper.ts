@@ -175,11 +175,16 @@ function getTravelerName(quote: ProposalV3Quote) {
 }
 
 function getBrandName(quote: ProposalV3Quote) {
-  return (
+  const rawName =
     cleanText(quote.brandCompany?.name) ||
     cleanText(quote.clientCompany?.name) ||
-    'Travel Proposal'
-  );
+    'Travel Proposal';
+
+  if (/brand\s*-\s*desert compass jordan/i.test(rawName)) {
+    return 'Desert Compass Jordan';
+  }
+
+  return rawName.replace(/^brand\s*-\s*/i, '');
 }
 
 function getAccentColor(quote: ProposalV3Quote) {
@@ -510,7 +515,7 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
     ),
   );
   const notes = [
-    'Rates are subject to availability and final confirmation at the time of booking.',
+    'Prices are subject to availability and final confirmation at the time of booking.',
     quote.quoteOptions.length > 0
       ? `Alternative arrangements can be prepared on request. ${quote.quoteOptions.length} additional option${quote.quoteOptions.length === 1 ? '' : 's'} can be shared if preferred.`
       : 'Alternative arrangements can be prepared on request.',
@@ -557,7 +562,12 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const dayCount = Math.max(sortedDays.length, (quote.nightCount || 0) + 1, 1);
   const destinations = Array.from(new Set(sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
   const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
-  const coverSubtitle = formatDestinationSubtitle(destinations) || destinationLine || 'Jordan';
+  const coverSubtitle =
+    destinations.some((value) => value.toLowerCase() === 'amman') &&
+    destinations.some((value) => value.toLowerCase() === 'petra') &&
+    destinations.some((value) => value.toLowerCase() === 'wadi rum')
+      ? 'Amman · Petra · Wadi Rum'
+      : formatDestinationSubtitle(destinations) || destinationLine || 'Jordan';
   const currency = getProposalCurrency(quote);
   const documentTitle = buildProposalTitle();
   const durationLabel = formatDurationLabel(dayCount, quote.nightCount || Math.max(dayCount - 1, 0));
