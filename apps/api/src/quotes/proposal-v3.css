@@ -41,6 +41,27 @@ body {
   page-break-before: always;
 }
 
+.cover-section,
+.overview-section,
+.itinerary-section,
+.final-section {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.overview-section,
+.itinerary-section {
+  page-break-before: always;
+  break-before: page;
+}
+
+.stay-overview,
+.highlights,
+.day {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
 .section,
 .proposal-section,
 .card,
@@ -391,6 +412,11 @@ body {
   page-break-inside: avoid;
 }
 
+.day {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 .proposal-day-heading {
   display: flex;
   justify-content: space-between;
@@ -571,6 +597,24 @@ body {
   .proposal-section {
     box-shadow: none;
     margin-bottom: 12px;
+  }
+
+  .overview-section,
+  .itinerary-section {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .cover-section,
+  .overview-section,
+  .itinerary-section,
+  .final-section,
+  .stay-overview,
+  .highlights,
+  .day,
+  .proposal-day-card {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
   }
 
   .proposal-cover-inner {

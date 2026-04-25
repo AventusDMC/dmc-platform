@@ -9,7 +9,7 @@
   </head>
   <body>
     <main class="proposal-v3">
-      <section class="proposal-cover">
+      <section class="proposal-cover cover-section">
         <div class="proposal-cover-band" style="background: {{accentColor}};"></div>
         <div class="proposal-cover-inner">
           <div class="proposal-cover-meta">
@@ -31,7 +31,6 @@
 
           <div class="proposal-cover-shell">
             <div class="proposal-cover-copy">
-              <p class="proposal-cover-kicker">Private itinerary proposal</p>
               <h1>{{documentTitle}}</h1>
               <p class="proposal-cover-destination">{{coverSubtitle}}</p>
               <p class="proposal-subtitle">{{durationLabel}}</p>
@@ -78,7 +77,7 @@
         </div>
       </section>
 
-      <section class="proposal-section">
+      <section class="proposal-section overview-section">
         <header class="proposal-section-header">
           <p class="proposal-eyebrow">Journey overview</p>
           <h2>{{destinationLine}}</h2>
@@ -108,14 +107,14 @@
             </div>
           </div>
 
-          <aside class="proposal-card proposal-card-accent">
+          <aside class="proposal-card proposal-card-accent highlights">
             <p class="proposal-card-label">Highlights</p>
             <h3>Key moments</h3>
             <ul class="proposal-list">{{highlightsHtml}}</ul>
           </aside>
         </div>
 
-        <div class="proposal-stay-block">
+        <div class="proposal-stay-block stay-overview">
           <header class="proposal-subsection-header">
             <p class="proposal-eyebrow">Accommodation</p>
             <h3>Stay Overview</h3>
@@ -137,7 +136,7 @@
         </div>
       </section>
 
-      <section class="proposal-section">
+      <section class="proposal-section itinerary-section">
         <header class="proposal-section-header">
           <p class="proposal-eyebrow">Itinerary</p>
           <h2>Day by Day</h2>
@@ -148,7 +147,7 @@
         <div class="proposal-days">{{itineraryDaysHtml}}</div>
       </section>
 
-      <section class="proposal-section proposal-section-closing">
+      <section class="proposal-section proposal-section-closing final-section">
         <header class="proposal-section-header">
           <p class="proposal-eyebrow">Final details</p>
           <h2>Inclusions and Pricing Notes</h2>
