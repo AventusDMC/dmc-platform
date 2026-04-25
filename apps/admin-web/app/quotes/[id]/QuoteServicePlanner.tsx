@@ -498,6 +498,7 @@ function PlannerSuggestionAction({
         hotelContracts={hotelContracts}
         hotelRates={hotelRates}
         seasons={seasons}
+        quoteType={quote.quoteType}
         defaultPaxCount={totalPax}
         defaultAdultCount={quote.adults}
         defaultChildCount={quote.children}
@@ -610,6 +611,7 @@ function DayWorkflowAction({
         hotelContracts={plannerProps.hotelContracts}
         hotelRates={plannerProps.hotelRates}
         seasons={plannerProps.seasons}
+        quoteType={plannerProps.quote.quoteType}
         defaultPaxCount={plannerProps.totalPax}
         defaultAdultCount={plannerProps.quote.adults}
         defaultChildCount={plannerProps.quote.children}
@@ -685,6 +687,7 @@ function StarterAction({
         hotelContracts={plannerProps.hotelContracts}
         hotelRates={plannerProps.hotelRates}
         seasons={plannerProps.seasons}
+        quoteType={plannerProps.quote.quoteType}
         defaultPaxCount={plannerProps.totalPax}
         defaultAdultCount={plannerProps.quote.adults}
         defaultChildCount={plannerProps.quote.children}

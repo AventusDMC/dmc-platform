@@ -11,6 +11,27 @@ type FindTransportRateInput = {
   travelDate?: Date;
 };
 
+type TransportPricingCandidate = {
+  routeId: string | null;
+  routeName: string;
+  pricingMode: 'per_vehicle' | 'capacity_unit';
+  unitCapacity: number | null;
+  unitCount: number | null;
+  price: number;
+  currency: string;
+  vehicle: {
+    id: string;
+    name: string;
+    maxPax: number;
+    luggageCapacity?: number | null;
+  };
+  serviceType: {
+    id: string;
+    name: string;
+    code: string;
+  };
+};
+
 type ResolveTransportPricingRuleInput = {
   routeId: string;
   transportServiceTypeId: string;
@@ -175,6 +196,148 @@ export class TransportPricingService {
     };
   }
 
+  async resolvePricingRuleCandidates(data: ResolveTransportPricingRuleInput): Promise<TransportPricingCandidate[]> {
+    if (!data.routeId) {
+      throw new BadRequestException('routeId is required');
+    }
+
+    if (!data.transportServiceTypeId) {
+      throw new BadRequestException('transportServiceTypeId is required');
+    }
+
+    if (data.pax < 1) {
+      throw new BadRequestException('pax must be at least 1');
+    }
+
+    const rules = await this.prisma.transportPricingRule.findMany({
+      where: {
+        routeId: data.routeId,
+        transportServiceTypeId: data.transportServiceTypeId,
+        isActive: true,
+        minPax: {
+          lte: data.pax,
+        },
+        maxPax: {
+          gte: data.pax,
+        },
+      },
+      include: {
+        route: true,
+        transportServiceType: true,
+        vehicle: true,
+      },
+      orderBy: [
+        {
+          maxPax: 'asc',
+        },
+        {
+          baseCost: 'asc',
+        },
+        {
+          minPax: 'desc',
+        },
+      ],
+    });
+
+    return rules.map((rule) => {
+      const discountedBaseCost = Number((rule.baseCost * (1 - rule.discountPercent / 100)).toFixed(2));
+      const unitCount =
+        rule.pricingMode === 'capacity_unit' && rule.unitCapacity ? Math.ceil(data.pax / rule.unitCapacity) : null;
+      const price =
+        rule.pricingMode === 'capacity_unit' && unitCount
+          ? Number((unitCount * discountedBaseCost).toFixed(2))
+          : Number(discountedBaseCost.toFixed(2));
+
+      return {
+        routeId: rule.routeId,
+        routeName: rule.route.name,
+        pricingMode: rule.pricingMode,
+        unitCapacity: rule.unitCapacity,
+        unitCount,
+        price,
+        currency: rule.currency,
+        vehicle: {
+          id: rule.vehicle.id,
+          name: rule.vehicle.name,
+          maxPax: rule.vehicle.maxPax,
+          luggageCapacity: rule.vehicle.luggageCapacity,
+        },
+        serviceType: {
+          id: rule.transportServiceType.id,
+          name: rule.transportServiceType.name,
+          code: rule.transportServiceType.code,
+        },
+      };
+    });
+  }
+
+  async findMatchingRateCandidates(data: FindTransportRateInput): Promise<TransportPricingCandidate[]> {
+    if (!data.serviceTypeId) {
+      throw new BadRequestException('serviceTypeId is required');
+    }
+
+    if (data.paxCount < 1) {
+      throw new BadRequestException('paxCount must be at least 1');
+    }
+
+    const routeFilter = await this.buildRouteFilter(data);
+    const pricingDate = data.travelDate ?? new Date();
+    const rates = await this.prisma.vehicleRate.findMany({
+      where: {
+        serviceTypeId: data.serviceTypeId,
+        ...routeFilter,
+        minPax: {
+          lte: data.paxCount,
+        },
+        maxPax: {
+          gte: data.paxCount,
+        },
+        validFrom: {
+          lte: pricingDate,
+        },
+        validTo: {
+          gte: pricingDate,
+        },
+      },
+      include: {
+        vehicle: true,
+        serviceType: true,
+      },
+      orderBy: [
+        {
+          maxPax: 'asc',
+        },
+        {
+          price: 'asc',
+        },
+        {
+          minPax: 'desc',
+        },
+      ],
+    });
+
+    return rates.map((rate) => ({
+      routeId: rate.routeId,
+      routeName: rate.routeName,
+      pricingMode: 'per_vehicle' as const,
+      unitCapacity: null,
+      unitCount: null,
+      price: rate.price,
+      currency: rate.currency,
+      vehicle: {
+        id: rate.vehicle.id,
+        name: rate.vehicle.name,
+        maxPax: rate.vehicle.maxPax,
+        luggageCapacity: rate.vehicle.luggageCapacity,
+      },
+      serviceType: {
+        id: rate.serviceType.id,
+        name: rate.serviceType.name,
+        code: rate.serviceType.code,
+      },
+    }));
+  }
+
   async findMatchingRate(data: FindTransportRateInput) {
     if (!data.serviceTypeId) {
       throw new BadRequestException('serviceTypeId is required');
@@ -244,6 +407,11 @@ export class TransportPricingService {
           transportServiceTypeId: data.serviceTypeId,
           pax: data.paxCount,
         });
+        const candidates = await this.resolvePricingRuleCandidates({
+          routeId: data.routeId,
+          transportServiceTypeId: data.serviceTypeId,
+          pax: data.paxCount,
+        });
 
         return {
           routeId: resolvedPricing.rule.routeId,
@@ -268,6 +436,7 @@ export class TransportPricingService {
             name: resolvedPricing.rule.transportServiceType.name,
             code: resolvedPricing.rule.transportServiceType.code,
           },
+          candidates,
         };
       } catch (error) {
         if (!(error instanceof NotFoundException)) {
@@ -277,6 +446,7 @@ export class TransportPricingService {
     }
 
     const rate = await this.findMatchingRate(data);
+    const candidates = await this.findMatchingRateCandidates(data);
 
     return {
       vehicleRateId: rate.id,
@@ -307,6 +477,7 @@ export class TransportPricingService {
       },
       validFrom: rate.validFrom,
       validTo: rate.validTo,
+      candidates,
     };
   }
 

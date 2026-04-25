@@ -167,6 +167,7 @@ type QuoteItem = {
 
 type Quote = {
   id: string;
+  quoteType: 'FIT' | 'GROUP';
   quoteCurrency: 'USD' | 'EUR' | 'JOD';
   adults: number;
   children: number;
@@ -568,6 +569,7 @@ export function QuoteItemCard({
           hotelContracts={hotelContracts}
           hotelRates={hotelRates}
           seasons={seasons}
+          quoteType={quote.quoteType}
           defaultPaxCount={totalPax}
           defaultAdultCount={quote.adults}
           defaultChildCount={quote.children}

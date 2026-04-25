@@ -157,6 +157,7 @@ type QuoteItem = {
 
 type Quote = {
   id: string;
+  quoteType: 'FIT' | 'GROUP';
   adults: number;
   children: number;
   roomCount: number;
@@ -736,6 +737,7 @@ function QuoteServiceRow({
                 hotelContracts={hotelContracts}
                 hotelRates={hotelRates}
                 seasons={seasons}
+                quoteType={quote.quoteType}
                 defaultPaxCount={totalPax}
                 defaultAdultCount={quote.adults}
                 defaultChildCount={quote.children}

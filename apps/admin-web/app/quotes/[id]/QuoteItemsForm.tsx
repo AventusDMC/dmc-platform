@@ -72,6 +72,29 @@ type TransportServiceType = {
   code: string;
 };
 
+type QuoteType = 'FIT' | 'GROUP';
+type VehicleCategory = 'CAR' | 'VAN' | 'MINIBUS' | 'BUS' | 'COACH' | 'LIMO';
+
+type TransportPricingCandidate = {
+  routeId: string | null;
+  routeName: string;
+  currency: string;
+  price: number;
+  unitCount: number | null;
+  pricingMode: 'per_vehicle' | 'capacity_unit';
+  unitCapacity: number | null;
+  vehicle: {
+    id: string;
+    name: string;
+    maxPax: number;
+  };
+  serviceType: {
+    id: string;
+    name: string;
+    code: string;
+  };
+};
+
 type ResolvedTransportPricing = {
   routeName: string;
   currency: string;
@@ -90,6 +113,7 @@ type ResolvedTransportPricing = {
     name: string;
     code: string;
   };
+  candidates?: TransportPricingCandidate[];
 };
 
 type QuoteBlock = {
@@ -185,6 +209,7 @@ type QuoteItemsFormProps = {
   hotelContracts: HotelContract[];
   hotelRates: HotelRate[];
   seasons: Season[];
+  quoteType?: QuoteType;
   defaultPaxCount: number;
   defaultAdultCount: number;
   defaultChildCount: number;
@@ -210,6 +235,60 @@ type QuoteItemsFormProps = {
 
 function notifyQuotePricingChanged(quoteId: string) {
   window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId } }));
+}
+
+function getVehicleCategory(vehicleName: string, maxPax: number): VehicleCategory {
+  const normalized = vehicleName.toLowerCase();
+
+  if (normalized.includes('limo') || normalized.includes('v-class') || normalized.includes('staria')) {
+    return 'LIMO';
+  }
+
+  if (normalized.includes('car') || normalized.includes('sedan')) {
+    return 'CAR';
+  }
+
+  if (normalized.includes('van') || normalized.includes('sprinter') || normalized.includes('h350') || maxPax <= 12) {
+    return maxPax >= 8 ? 'MINIBUS' : 'VAN';
+  }
+
+  if (normalized.includes('coaster') || maxPax <= 20) {
+    return 'MINIBUS';
+  }
+
+  if (normalized.includes('coach') || normalized.includes('grand star') || maxPax >= 29) {
+    return maxPax >= 40 ? 'COACH' : 'BUS';
+  }
+
+  return maxPax >= 20 ? 'BUS' : 'VAN';
+}
+
+function getRecommendedVehicleCategories(quoteType: QuoteType, pax: number): VehicleCategory[] {
+  if (quoteType === 'FIT') {
+    if (pax <= 3) {
+      return ['CAR', 'LIMO'];
+    }
+
+    if (pax <= 7) {
+      return ['VAN'];
+    }
+
+    return ['VAN', 'MINIBUS'];
+  }
+
+  if (pax >= 10) {
+    return ['BUS', 'COACH'];
+  }
+
+  if (pax >= 8) {
+    return ['MINIBUS'];
+  }
+
+  return ['VAN', 'MINIBUS'];
+}
+
+function isRecommendedVehicleCategory(quoteType: QuoteType, pax: number, category: VehicleCategory) {
+  return getRecommendedVehicleCategories(quoteType, pax).includes(category);
 }
 
 const SERVICE_TYPE_BUTTONS = [
@@ -383,6 +462,7 @@ export function QuoteItemsForm({
   hotelContracts,
   hotelRates,
   seasons,
+  quoteType = 'FIT',
   defaultPaxCount,
   defaultAdultCount,
   defaultChildCount,
@@ -463,6 +543,33 @@ export function QuoteItemsForm({
   const [pendingHotelRateSubmit, setPendingHotelRateSubmit] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
+  const transportCandidates = useMemo(() => {
+    const candidates = resolvedTransportPricing?.candidates || [];
+    const seen = new Set<string>();
+    const currentPax = Number(paxCount) || defaultPaxCount || 1;
+
+    return candidates
+      .filter((candidate) => {
+        const key = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}`;
+
+        if (seen.has(key)) {
+          return false;
+        }
+
+        seen.add(key);
+        return true;
+      })
+      .map((candidate) => {
+        const category = getVehicleCategory(candidate.vehicle.name, candidate.vehicle.maxPax);
+
+        return {
+          ...candidate,
+          category,
+          isRecommended: isRecommendedVehicleCategory(quoteType, currentPax, category),
+        };
+      });
+  }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
+  const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
 
   const filteredServices = activeServiceType
     ? services.filter((service) => {
@@ -1847,6 +1954,50 @@ export function QuoteItemsForm({
             <p className="form-helper">
               {`${resolvedTransportPricing.currency} ${resolvedTransportPricing.discountedBaseCost.toFixed(2)} per unit -> ${resolvedTransportPricing.unitCount} units -> ${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)} total`}
             </p>
+          ) : null}
+
+          {isTransportService && transportCandidates.length > 0 ? (
+            <div className="stacked-card">
+              <div className="panel-header" style={{ marginBottom: 12 }}>
+                <div>
+                  <p className="eyebrow">Smart Transport Suggestions</p>
+                  <h3 className="section-title" style={{ fontSize: '1rem' }}>
+                    {quoteType} / {Number(paxCount) || defaultPaxCount || 1} pax
+                  </h3>
+                </div>
+              </div>
+
+              <div className="quote-preview-total-list">
+                {transportCandidates.map((candidate) => (
+                  <div
+                    key={`${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`}
+                    style={
+                      candidate.isRecommended
+                        ? { borderColor: 'var(--color-accent)', background: 'var(--color-surface-muted)' }
+                        : undefined
+                    }
+                  >
+                    <span>
+                      {candidate.vehicle.name}
+                      {candidate.isRecommended ? <span className="status-badge" style={{ marginLeft: 8 }}>Recommended</span> : null}
+                    </span>
+                    <strong>
+                      {candidate.currency} {candidate.price.toFixed(2)}
+                    </strong>
+                    <span>
+                      {candidate.category} / {candidate.vehicle.maxPax} pax capacity
+                      {candidate.unitCount ? ` / ${candidate.unitCount} unit${candidate.unitCount === 1 ? '' : 's'}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {!hasRecommendedTransportCandidate ? (
+                <p className="form-helper">
+                  No priced vehicle matches the ideal {quoteType} recommendation for this route and pax count. Available priced vehicles remain selectable through the route and service type.
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           <button
