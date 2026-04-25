@@ -14,6 +14,7 @@ import { CompaniesTable } from './CompaniesTable';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 type Company = {
   id: string;
   name: string;
@@ -118,12 +119,12 @@ export default async function CompaniesPage() {
               context={<p>{companies.length} companies in scope</p>}
               createPanel={
                 <CollapsibleCreatePanel title="Create company" description="Add company records while keeping the list visible." triggerLabelOpen="Add company">
-                  <CompaniesForm apiBaseUrl={API_BASE_URL} />
+                  <CompaniesForm apiBaseUrl={ACTION_API_BASE_URL} />
                 </CollapsibleCreatePanel>
               }
               emptyState={companies.length === 0 ? <p className="empty-state">No companies yet.</p> : undefined}
             >
-              {companies.length > 0 ? <CompaniesTable apiBaseUrl={API_BASE_URL} companies={companies} /> : null}
+              {companies.length > 0 ? <CompaniesTable apiBaseUrl={ACTION_API_BASE_URL} companies={companies} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

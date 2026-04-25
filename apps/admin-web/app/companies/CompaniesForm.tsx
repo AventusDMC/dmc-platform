@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CountryCityFields } from '../components/CountryCityFields';
 import { TypeSelect } from '../components/TypeSelect';
-import { getErrorMessage } from '../lib/api';
+import { ApiValidationError, getApiError } from '../lib/api';
 import { companyTypes } from '../lib/reference-data';
 
 type CompaniesFormProps = {
@@ -33,32 +33,37 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
   const [city, setCity] = useState(initialValues?.city || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [validationErrors, setValidationErrors] = useState<ApiValidationError[]>([]);
   const isEditing = Boolean(companyId);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
     setError('');
+    setValidationErrors([]);
 
     try {
+      const payload = {
+        name: name.trim(),
+        type: type.trim() || undefined,
+        website: website.trim() || undefined,
+        logoUrl: logoUrl.trim() || undefined,
+        primaryColor: primaryColor.trim() || undefined,
+        country: country.trim() || undefined,
+        city: city.trim() || undefined,
+      };
       const response = await fetch(`${apiBaseUrl}/companies${companyId ? `/${companyId}` : ''}`, {
         method: companyId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name,
-          type,
-          website,
-          logoUrl,
-          primaryColor,
-          country,
-          city,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'create'} company.`));
+        const apiError = await getApiError(response, `Could not ${isEditing ? 'update' : 'create'} company.`);
+        setValidationErrors(apiError.errors);
+        throw new Error(apiError.message);
       }
 
       if (!isEditing) {
@@ -129,6 +134,13 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
       </button>
 
       {error ? <p className="form-error">{error}</p> : null}
+      {validationErrors.length > 0 ? (
+        <div className="form-error">
+          {validationErrors.map((validationError) => (
+            <p key={`${validationError.path}:${validationError.code}`}>{validationError.message}</p>
+          ))}
+        </div>
+      ) : null}
     </form>
   );
 }
