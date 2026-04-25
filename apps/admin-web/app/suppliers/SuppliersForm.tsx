@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { TypeSelect } from '../components/TypeSelect';
 import { getErrorMessage } from '../lib/api';
+import { supplierTypes } from '../lib/reference-data';
 
 type SupplierType = 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 
@@ -78,16 +80,14 @@ export function SuppliersForm({ apiBaseUrl, supplierId, submitLabel, initialValu
           <input value={name} onChange={(event) => setName(event.target.value)} required />
         </label>
 
-        <label>
-          Type
-          <select value={type} onChange={(event) => setType(event.target.value as SupplierType)} required>
-            <option value="hotel">Hotel</option>
-            <option value="transport">Transport</option>
-            <option value="activity">Activity</option>
-            <option value="guide">Guide</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
+        <TypeSelect
+          label="Type"
+          value={type}
+          onChange={(value) => setType((value || 'other') as SupplierType)}
+          options={supplierTypes}
+          required
+          allowCustom={false}
+        />
       </div>
 
       <div className="form-row form-row-2">

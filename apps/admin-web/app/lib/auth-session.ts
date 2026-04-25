@@ -1,4 +1,4 @@
-export type SessionRole = 'admin' | 'viewer' | 'operations' | 'finance';
+export type SessionRole = 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
 
 export type SessionActor = {
   id: string;

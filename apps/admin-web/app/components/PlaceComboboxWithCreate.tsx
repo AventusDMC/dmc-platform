@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { CityCombobox } from './CityCombobox';
+import { CitySelect } from './CitySelect';
+import { CountrySelect } from './CountrySelect';
 import { PlaceCombobox } from './PlaceCombobox';
 import { PlaceTypeCombobox } from './PlaceTypeCombobox';
 import { getErrorMessage, readJsonResponse } from '../lib/api';
@@ -179,26 +181,22 @@ export function PlaceComboboxWithCreate({
                 placeholder="Search active cities"
               />
 
-              <label>
-                Country
-                <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder="Optional" />
-              </label>
+              <CountrySelect value={country} onChange={setCountry} placeholder="Optional" />
             </div>
 
-            <label>
-              Legacy city text
-              <input
-                value={city}
-                onChange={(event) => {
-                  setCity(event.target.value);
-                  if (event.target.value) {
-                    setCityId('');
-                  }
-                }}
-                placeholder="Optional fallback if the city record does not exist yet"
-                disabled={Boolean(cityId)}
-              />
-            </label>
+            <CitySelect
+              country={country}
+              label="Legacy city text"
+              value={city}
+              onChange={(nextCity) => {
+                setCity(nextCity);
+                if (nextCity) {
+                  setCityId('');
+                }
+              }}
+              placeholder="Optional fallback if the city record does not exist yet"
+              disabled={Boolean(cityId) || !country}
+            />
 
             <label className="checkbox-field">
               <input checked={isActive} onChange={(event) => setIsActive(event.target.checked)} type="checkbox" />

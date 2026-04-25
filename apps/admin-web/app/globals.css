@@ -376,6 +376,25 @@ h1 {
   gap: 0.65rem;
 }
 
+.form-fieldset {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(30, 27, 24, 0.1);
+  border-radius: 0.85rem;
+}
+
+.form-fieldset legend {
+  padding: 0 0.35rem;
+  color: rgba(30, 27, 24, 0.68);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.form-fieldset:disabled {
+  opacity: 0.72;
+}
+
 .form-field-alert {
   align-self: end;
   display: flex;

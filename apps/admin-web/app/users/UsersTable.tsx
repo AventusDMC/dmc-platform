@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../lib/api';
 
-type UserRole = 'admin' | 'viewer' | 'operations' | 'finance';
+type UserRole = 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
 
 type User = {
   id: string;
@@ -28,7 +28,7 @@ type UsersTableProps = {
   invitations: Invitation[];
 };
 
-const ROLE_OPTIONS: UserRole[] = ['admin', 'viewer', 'operations', 'finance'];
+const ROLE_OPTIONS: UserRole[] = ['admin', 'viewer', 'operations', 'finance', 'agent'];
 
 function formatRole(role: UserRole) {
   return role.charAt(0).toUpperCase() + role.slice(1);

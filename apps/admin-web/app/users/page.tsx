@@ -10,14 +10,14 @@ type User = {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'viewer' | 'operations' | 'finance';
+  role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
   status: 'active';
 };
 
 type Invitation = {
   id: string;
   email: string;
-  role: 'admin' | 'viewer' | 'operations' | 'finance';
+  role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
   status: 'pending' | 'accepted' | 'revoked' | 'expired';
   expiresAt: string;
 };

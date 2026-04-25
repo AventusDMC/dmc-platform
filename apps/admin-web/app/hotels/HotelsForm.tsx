@@ -3,10 +3,12 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CityCombobox } from '../components/CityCombobox';
+import { CountryCityFields } from '../components/CountryCityFields';
 import { HotelCategoryCombobox } from '../components/HotelCategoryCombobox';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
 import { HotelCategoryOption } from '../lib/hotelCategories';
+import { getCountryForCity } from '../lib/reference-data';
 
 type HotelsFormProps = {
   apiBaseUrl: string;
@@ -29,6 +31,7 @@ export function HotelsForm({ apiBaseUrl, cities, hotelCategories, hotelId, submi
   const [name, setName] = useState(initialValues?.name || '');
   const [cityId, setCityId] = useState(initialValues?.cityId || '');
   const [city, setCity] = useState(initialValues?.city || '');
+  const [legacyCountry, setLegacyCountry] = useState(initialValues?.city ? getCountryForCity(initialValues.city) : '');
   const [hotelCategoryId, setHotelCategoryId] = useState(initialValues?.hotelCategoryId || '');
   const [supplierId, setSupplierId] = useState(initialValues?.supplierId || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,6 +71,7 @@ export function HotelsForm({ apiBaseUrl, cities, hotelCategories, hotelId, submi
         setName('');
         setCityId('');
         setCity('');
+        setLegacyCountry('');
         setHotelCategoryId('');
         setSupplierId('');
       }
@@ -114,20 +118,10 @@ export function HotelsForm({ apiBaseUrl, cities, hotelCategories, hotelId, submi
         <p className="form-helper">Current legacy category: {initialValues.category}. Link a structured category when ready.</p>
       ) : null}
 
-      <label>
-        Legacy city text
-        <input
-          value={city}
-          onChange={(event) => {
-            setCity(event.target.value);
-            if (event.target.value) {
-              setCityId('');
-            }
-          }}
-          placeholder="Use only if the city record does not exist yet"
-          disabled={Boolean(cityId)}
-        />
-      </label>
+      <fieldset className="form-fieldset" disabled={Boolean(cityId)}>
+        <legend>Legacy city fallback</legend>
+        <CountryCityFields country={legacyCountry} city={city} onCountryChange={setLegacyCountry} onCityChange={setCity} />
+      </fieldset>
 
       <label>
         Supplier ID

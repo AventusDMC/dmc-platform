@@ -2,7 +2,10 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CountryCityFields } from '../components/CountryCityFields';
+import { TypeSelect } from '../components/TypeSelect';
 import { getErrorMessage } from '../lib/api';
+import { companyTypes } from '../lib/reference-data';
 
 type CompaniesFormProps = {
   apiBaseUrl: string;
@@ -82,14 +85,7 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         <input value={name} onChange={(event) => setName(event.target.value)} required />
       </label>
 
-      <label>
-        Type
-        <input
-          value={type}
-          onChange={(event) => setType(event.target.value)}
-          placeholder="Agency, hotel, operator..."
-        />
-      </label>
+      <TypeSelect label="Type" value={type} onChange={setType} options={companyTypes} placeholder="Select company type" />
 
       <label>
         Website
@@ -126,17 +122,7 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         </label>
       </div>
 
-      <div className="form-row">
-        <label>
-          Country
-          <input value={country} onChange={(event) => setCountry(event.target.value)} />
-        </label>
-
-        <label>
-          City
-          <input value={city} onChange={(event) => setCity(event.target.value)} />
-        </label>
-      </div>
+      <CountryCityFields country={country} city={city} onCountryChange={setCountry} onCityChange={setCity} />
 
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Create company')}

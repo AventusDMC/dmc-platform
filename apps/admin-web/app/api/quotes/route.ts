@@ -15,3 +15,19 @@ export async function GET(request: NextRequest) {
 
   return forwardProxyJsonResponse(response);
 }
+
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const response = await fetch(`${API_BASE_URL}/quotes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}

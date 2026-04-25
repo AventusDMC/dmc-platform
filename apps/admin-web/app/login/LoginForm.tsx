@@ -33,13 +33,15 @@ export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProp
         }),
       });
 
-      const payload = await readJsonResponseIfPresent<{ message?: string }>(response);
+      const payload = await readJsonResponseIfPresent<{ message?: string; actor?: { role?: string } }>(response);
 
       if (!response.ok) {
         throw new Error(String(payload?.message || 'Could not sign in.'));
       }
 
-      router.push(nextPath || '/');
+      const actorRole = String(payload?.actor?.role || '').trim().toLowerCase();
+      const defaultPath = actorRole === 'agent' ? '/agent/dashboard' : '/';
+      router.push(nextPath || defaultPath);
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not sign in.');
@@ -71,7 +73,7 @@ export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProp
       </button>
 
       {initialMessage ? <p className="form-helper">{initialMessage}</p> : null}
-      <p className="form-helper">Seed users: `admin@dmc.local`, `viewer@dmc.local`, `operations@dmc.local`, `finance@dmc.local`.</p>
+      <p className="form-helper">Seed users: `admin@dmc.local`, `viewer@dmc.local`, `operations@dmc.local`, `finance@dmc.local`, `agent@dmc.local`.</p>
       <p className="form-helper">
         New company? <Link href="/signup">Create an account</Link>
       </p>

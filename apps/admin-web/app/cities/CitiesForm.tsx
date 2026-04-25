@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { CountrySelect } from '../components/CountrySelect';
 import { getErrorMessage } from '../lib/api';
 
 type CitiesFormProps = {
@@ -68,10 +69,7 @@ export function CitiesForm({ apiBaseUrl, cityId, submitLabel, initialValues }: C
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Amman" required />
         </label>
 
-        <label>
-          Country
-          <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder="Jordan" />
-        </label>
+        <CountrySelect value={country} onChange={setCountry} />
       </div>
 
       <label className="checkbox-field">

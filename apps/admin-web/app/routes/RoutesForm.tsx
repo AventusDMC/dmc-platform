@@ -3,10 +3,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PlaceComboboxWithCreate } from '../components/PlaceComboboxWithCreate';
+import { TypeSelect } from '../components/TypeSelect';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
 import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
+import { routeTypes } from '../lib/reference-data';
 
 type RoutesFormProps = {
   apiBaseUrl: string;
@@ -164,10 +166,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
       </label>
 
       <div className="form-row form-row-3">
-        <label>
-          Route type
-          <input value={routeType} onChange={(event) => setRouteType(event.target.value)} placeholder="Optional" />
-        </label>
+        <TypeSelect label="Route type" value={routeType} onChange={setRouteType} options={routeTypes} placeholder="Optional" />
 
         <label>
           Duration (minutes)
