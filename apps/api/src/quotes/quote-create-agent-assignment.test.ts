@@ -1,8 +1,8 @@
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const { BadRequestException } = require('@nestjs/common');
-const { QuotesService } = require('./quotes.service');
-const { QuotePricingService } = require('./quote-pricing.service');
+const quoteCreateTest = require('node:test');
+const quoteCreateAssert = require('node:assert/strict');
+const { BadRequestException: QuoteCreateBadRequestException } = require('@nestjs/common');
+const { QuotesService: QuoteCreateQuotesService } = require('./quotes.service');
+const { QuotePricingService: QuoteCreateQuotePricingService } = require('./quote-pricing.service');
 
 type CreateServiceOptions = {
   agentLookupResult?: { id: string } | null;
@@ -45,12 +45,12 @@ function createService(options: CreateServiceOptions = {}) {
       }),
   };
 
-  const service = new QuotesService(
+  const service = new QuoteCreateQuotesService(
     prisma as any,
     {} as any,
     {} as any,
     {} as any,
-    new QuotePricingService(),
+    new QuoteCreateQuotePricingService(),
   );
 
   (service as any).recalculateQuoteTotals = async () => undefined;
@@ -59,7 +59,7 @@ function createService(options: CreateServiceOptions = {}) {
   return { service, calls };
 }
 
-function createQuoteInput(overrides: Record<string, unknown> = {}) {
+function createQuoteInput(overrides: Record<string, unknown> = {}): any {
   return {
     clientCompanyId: 'company-1',
     brandCompanyId: 'company-1',
@@ -87,45 +87,88 @@ function createQuoteInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('create quote without agent succeeds and does not validate agent', async () => {
+quoteCreateTest('create quote without agent succeeds and does not validate agent', async () => {
   const { service, calls } = createService();
 
   const result = await service.create(createQuoteInput(), { companyId: 'company-1' } as any);
 
-  assert.equal(result.id, 'quote-1');
-  assert.equal(calls.userFindFirst.length, 0);
-  assert.equal(calls.quoteCreateData[0].agentId, null);
+  quoteCreateAssert.equal(result.id, 'quote-1');
+  quoteCreateAssert.equal(calls.userFindFirst.length, 0);
+  quoteCreateAssert.equal(calls.quoteCreateData[0].agentId, null);
 });
 
-test('create quote with valid same-company agent succeeds', async () => {
+quoteCreateTest('create quote with no quoteType succeeds as FIT', async () => {
+  const { service, calls } = createService();
+
+  const result = await service.create(createQuoteInput({ quoteType: undefined }), { companyId: 'company-1' } as any);
+
+  quoteCreateAssert.equal(result.id, 'quote-1');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].quoteType, 'FIT');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].bookingType, 'FIT');
+});
+
+quoteCreateTest('create quote with FIT quoteType succeeds', async () => {
+  const { service, calls } = createService();
+
+  const result = await service.create(createQuoteInput({ quoteType: 'FIT', bookingType: 'GROUP' }), { companyId: 'company-1' } as any);
+
+  quoteCreateAssert.equal(result.id, 'quote-1');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].quoteType, 'FIT');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].bookingType, 'GROUP');
+});
+
+quoteCreateTest('create quote with GROUP quoteType succeeds', async () => {
+  const { service, calls } = createService();
+
+  const result = await service.create(createQuoteInput({ quoteType: 'GROUP', bookingType: 'FIT' }), { companyId: 'company-1' } as any);
+
+  quoteCreateAssert.equal(result.id, 'quote-1');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].quoteType, 'GROUP');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].bookingType, 'FIT');
+});
+
+quoteCreateTest('create quote with invalid quoteType returns clear bad request', async () => {
+  const { service } = createService();
+
+  await quoteCreateAssert.rejects(
+    () => service.create(createQuoteInput({ quoteType: 'SERIES' }), { companyId: 'company-1' } as any),
+    (error: any) => {
+      quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
+      quoteCreateAssert.equal(error.message, 'quoteType must be FIT or GROUP');
+      return true;
+    },
+  );
+});
+
+quoteCreateTest('create quote with valid same-company agent succeeds', async () => {
   const { service, calls } = createService({ agentLookupResult: { id: 'agent-1' } });
 
   const result = await service.create(createQuoteInput({ agentId: ' agent-1 ' }), { companyId: 'company-1' } as any);
 
-  assert.equal(result.id, 'quote-1');
-  assert.deepEqual(calls.userFindFirst[0].where, {
+  quoteCreateAssert.equal(result.id, 'quote-1');
+  quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'agent-1',
     companyId: 'company-1',
     role: {
       name: 'agent',
     },
   });
-  assert.equal(calls.quoteCreateData[0].agentId, 'agent-1');
+  quoteCreateAssert.equal(calls.quoteCreateData[0].agentId, 'agent-1');
 });
 
-test('create quote with non-agent fails', async () => {
+quoteCreateTest('create quote with non-agent fails', async () => {
   const { service, calls } = createService({ agentLookupResult: null });
 
-  await assert.rejects(
+  await quoteCreateAssert.rejects(
     () => service.create(createQuoteInput({ agentId: 'viewer-1' }), { companyId: 'company-1' } as any),
     (error: any) => {
-      assert.equal(error instanceof BadRequestException, true);
-      assert.equal(error.message, 'Assigned agent must be an agent user in the current company');
+      quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
+      quoteCreateAssert.equal(error.message, 'Assigned agent must be an agent user in the current company');
       return true;
     },
   );
 
-  assert.deepEqual(calls.userFindFirst[0].where, {
+  quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'viewer-1',
     companyId: 'company-1',
     role: {
@@ -134,19 +177,19 @@ test('create quote with non-agent fails', async () => {
   });
 });
 
-test('create quote with other-company agent fails', async () => {
+quoteCreateTest('create quote with other-company agent fails', async () => {
   const { service, calls } = createService({ agentLookupResult: null });
 
-  await assert.rejects(
+  await quoteCreateAssert.rejects(
     () => service.create(createQuoteInput({ agentId: 'other-company-agent-1' }), { companyId: 'company-1' } as any),
     (error: any) => {
-      assert.equal(error instanceof BadRequestException, true);
-      assert.equal(error.message, 'Assigned agent must be an agent user in the current company');
+      quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
+      quoteCreateAssert.equal(error.message, 'Assigned agent must be an agent user in the current company');
       return true;
     },
   );
 
-  assert.deepEqual(calls.userFindFirst[0].where, {
+  quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'other-company-agent-1',
     companyId: 'company-1',
     role: {
@@ -154,5 +197,3 @@ test('create quote with other-company agent fails', async () => {
     },
   });
 });
-
-export {};

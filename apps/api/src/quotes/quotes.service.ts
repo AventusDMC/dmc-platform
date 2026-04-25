@@ -4268,7 +4268,7 @@ export class QuotesService {
     const normalized = String(value || 'FIT').trim().toUpperCase() as QuoteTypeValue;
 
     if (!QUOTE_TYPES.includes(normalized)) {
-      throw new BadRequestException('Unsupported quote type');
+      throw new BadRequestException('quoteType must be FIT or GROUP');
     }
 
     return normalized;
