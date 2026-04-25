@@ -1,9 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 
@@ -131,6 +133,9 @@ type PreviewTransport = {
   dayNumber: number;
   fromCity: string;
   toCity: string;
+  distanceKm: number | null;
+  travelTimeHours: number | null;
+  isTravelHeavy: boolean;
   route: RouteOption | null;
   selectedCandidate: TransportPricingCandidate | null;
   optimizationReason: string;
@@ -179,6 +184,12 @@ type ComparisonState = {
 };
 
 type ManualDayOverrides = Record<number, Partial<Pick<PreviewDay, 'title' | 'city'>>>;
+
+type SendReadinessState = {
+  status: 'ready' | 'warnings' | 'blocked';
+  blockers: string[];
+  warnings: ItineraryWarning[];
+};
 
 type CreatedDay = {
   id: string;
@@ -302,6 +313,30 @@ function getRouteMetric(route: RouteOption, mode: OptimizationMode) {
   return route.distanceKm ?? route.durationMinutes ?? Number.MAX_SAFE_INTEGER;
 }
 
+function getRouteDistanceEstimate(route: RouteOption | null, fromCity: string, toCity: string) {
+  if (route?.distanceKm || route?.durationMinutes) {
+    const distanceKm = route.distanceKm ?? null;
+    const travelTimeHours = route.durationMinutes ? Number((route.durationMinutes / 60).toFixed(1)) : null;
+
+    return {
+      distanceKm,
+      travelTimeHours,
+    };
+  }
+
+  return calculateCityDistance(fromCity, toCity);
+}
+
+function getCityDistanceMetric(fromCity: string, toCity: string, route: RouteOption | null, mode: OptimizationMode) {
+  const estimate = getRouteDistanceEstimate(route, fromCity, toCity);
+
+  if (mode === 'comfort') {
+    return estimate?.travelTimeHours ?? route?.durationMinutes ?? route?.distanceKm ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  return estimate?.distanceKm ?? route?.distanceKm ?? route?.durationMinutes ?? Number.MAX_SAFE_INTEGER;
+}
+
 function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: OptimizationMode) {
   const notes: string[] = [];
   const uniqueCities = cities.filter((city, index) => {
@@ -328,8 +363,10 @@ function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: Opt
     return { cities: uniqueCities, notes };
   }
 
-  const ordered = [uniqueCities[0]];
-  const remaining = uniqueCities.slice(1);
+  const arrivalCity = uniqueCities.find((city) => normalizeText(city) === 'amman') || uniqueCities[0];
+  const departureCity = uniqueCities[uniqueCities.length - 1];
+  const ordered = [arrivalCity];
+  const remaining = uniqueCities.filter((city) => normalizeText(city) !== normalizeText(arrivalCity) && normalizeText(city) !== normalizeText(departureCity));
 
   while (remaining.length > 0) {
     const currentCity = ordered[ordered.length - 1];
@@ -339,8 +376,11 @@ function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: Opt
         index,
         route: findRoute(routes, currentCity, city),
       }))
-      .filter((candidate): candidate is { city: string; index: number; route: RouteOption } => Boolean(candidate.route))
-      .sort((left, right) => getRouteMetric(left.route, mode) - getRouteMetric(right.route, mode))[0];
+      .sort(
+        (left, right) =>
+          getCityDistanceMetric(currentCity, left.city, left.route, mode) -
+          getCityDistanceMetric(currentCity, right.city, right.route, mode),
+      )[0];
 
     if (!nextCandidate) {
       ordered.push(remaining.shift() as string);
@@ -349,6 +389,10 @@ function optimizeCitySequence(cities: string[], routes: RouteOption[], mode: Opt
 
     ordered.push(nextCandidate.city);
     remaining.splice(nextCandidate.index, 1);
+  }
+
+  if (normalizeText(departureCity) !== normalizeText(ordered[ordered.length - 1])) {
+    ordered.push(departureCity);
   }
 
   if (ordered.join('|') !== uniqueCities.join('|')) {
@@ -566,12 +610,25 @@ function buildItineraryWarnings(values: {
 
   values.transports.forEach((transport) => {
     const durationMinutes = transport.route?.durationMinutes;
+    const travelTimeHours = transport.travelTimeHours ?? (durationMinutes ? durationMinutes / 60 : null);
 
-    if (durationMinutes && durationMinutes > 240) {
+    if (transport.isTravelHeavy || (travelTimeHours !== null && travelTimeHours > 4)) {
       warnings.push({
         id: `long-transfer-${transport.dayNumber}`,
         title: `Day ${transport.dayNumber} transfer is over 4 hours`,
-        description: `${transport.fromCity} to ${transport.toCity} is approximately ${Math.round(durationMinutes / 60)} hours. Consider adding a stop or overnight break.`,
+        description: `${transport.fromCity} to ${transport.toCity} is approximately ${travelTimeHours?.toFixed(1) || '4+'} hours. Suggest a rest day or short activity after this drive.`,
+      });
+    }
+  });
+
+  values.transports.forEach((transport, index) => {
+    const previous = values.transports[index - 1];
+
+    if (previous?.isTravelHeavy && transport.isTravelHeavy) {
+      warnings.push({
+        id: `back-to-back-long-transfer-${transport.dayNumber}`,
+        title: 'Back-to-back long drives detected',
+        description: `Avoid stacking ${previous.fromCity} to ${previous.toCity} and ${transport.fromCity} to ${transport.toCity}. Suggest a rest day or a short local activity between them.`,
       });
     }
   });
@@ -619,6 +676,40 @@ function formatEstimateMoney(value: number, currency: string) {
   }).format(value || 0);
 }
 
+function buildSendReadinessState(values: {
+  draft: PreviewDraft;
+  hasHotelService: boolean;
+  hasTransportService: boolean;
+  hasActivityService: boolean;
+  includeActivities: boolean;
+}) {
+  const blockers = [
+    values.hasTransportService ? null : values.draft.transports.length > 0 ? 'Transport service is missing.' : null,
+    values.hasHotelService ? null : values.draft.hotels.length > 0 ? 'Hotel service is missing.' : null,
+    values.includeActivities && !values.hasActivityService ? 'Activity service is missing.' : null,
+    ...values.draft.transports
+      .filter((item) => !item.route || !item.selectedCandidate)
+      .map((item) => `Transport is not priced for ${item.fromCity} to ${item.toCity}.`),
+    ...values.draft.hotels
+      .filter((item) => !item.hotel || !item.contract || !item.rate)
+      .map((item) => `Hotel is not priced for ${item.city}.`),
+  ].filter((blocker): blocker is string => Boolean(blocker));
+
+  if (blockers.length > 0) {
+    return {
+      status: 'blocked' as const,
+      blockers,
+      warnings: values.draft.warnings,
+    };
+  }
+
+  return {
+    status: values.draft.warnings.length > 0 ? ('warnings' as const) : ('ready' as const),
+    blockers,
+    warnings: values.draft.warnings,
+  };
+}
+
 async function resolveTransportCandidate(values: {
   apiBaseUrl: string;
   route: RouteOption;
@@ -639,6 +730,7 @@ async function resolveTransportCandidate(values: {
     body: JSON.stringify({
       serviceTypeId: values.transportServiceType.id,
       routeId: values.route.id,
+      normalizedKey: values.route.normalizedKey,
       routeName: '',
       paxCount: values.pax,
     }),
@@ -698,6 +790,7 @@ async function buildPreviewDraft(values: {
     cities.slice(0, -1).map(async (city, index) => {
       const toCity = cities[index + 1];
       const route = findRoute(values.routes, city, toCity);
+      const distanceEstimate = getRouteDistanceEstimate(route, city, toCity);
       const selectedCandidate = route
         ? await resolveTransportCandidate({
             apiBaseUrl: values.apiBaseUrl,
@@ -713,6 +806,9 @@ async function buildPreviewDraft(values: {
         dayNumber: index + 1,
         fromCity: city,
         toCity,
+        distanceKm: distanceEstimate?.distanceKm ?? null,
+        travelTimeHours: distanceEstimate?.travelTimeHours ?? null,
+        isTravelHeavy: (distanceEstimate?.travelTimeHours ?? 0) > 4,
         route,
         selectedCandidate,
         optimizationReason: selectedCandidate
@@ -781,6 +877,7 @@ export function QuoteAutoItineraryBuilder({
   const [preview, setPreview] = useState<PreviewDraft | null>(null);
   const [comparison, setComparison] = useState<ComparisonState | null>(null);
   const [manualDayOverrides, setManualDayOverrides] = useState<ManualDayOverrides>({});
+  const [sendReadiness, setSendReadiness] = useState<SendReadinessState | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -815,6 +912,7 @@ export function QuoteAutoItineraryBuilder({
     setManualDayOverrides({});
     setPreview(null);
     setComparison(null);
+    setSendReadiness(null);
     setMessage(`${preset.name} preset loaded. Preview before applying.`);
   }
 
@@ -822,6 +920,7 @@ export function QuoteAutoItineraryBuilder({
     setIsGenerating(true);
     setError(null);
     setMessage(null);
+    setSendReadiness(null);
 
     try {
       const [costDraft, comfortDraft] = await Promise.all(
@@ -879,6 +978,7 @@ export function QuoteAutoItineraryBuilder({
   function cancelPreview() {
     setPreview(null);
     setComparison(null);
+    setSendReadiness(null);
     setMessage('Itinerary preview cancelled. No changes were applied.');
   }
 
@@ -896,6 +996,7 @@ export function QuoteAutoItineraryBuilder({
     setIsGenerating(true);
     setError(null);
     setMessage(null);
+    setSendReadiness(null);
 
     try {
       setPreview(
@@ -927,6 +1028,7 @@ export function QuoteAutoItineraryBuilder({
   }
 
   function updateManualDay(dayNumber: number, field: 'title' | 'city', value: string) {
+    setSendReadiness(null);
     setManualDayOverrides((current) => ({
       ...current,
       [dayNumber]: {
@@ -969,6 +1071,7 @@ export function QuoteAutoItineraryBuilder({
       return;
     }
 
+    setSendReadiness(null);
     setPreview((current) =>
       current
         ? (() => {
@@ -1052,6 +1155,7 @@ export function QuoteAutoItineraryBuilder({
               markupPercent: 20,
               transportServiceTypeId: item.selectedCandidate?.serviceType.id || transportServiceType.id,
               routeId: item.route.id,
+              normalizedKey: item.route.normalizedKey,
               routeName: '',
               overrideCost: item.selectedCandidate ? item.selectedCandidate.price : undefined,
               useOverride: Boolean(item.selectedCandidate),
@@ -1126,7 +1230,10 @@ export function QuoteAutoItineraryBuilder({
       window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
       setMessage(successMessage);
       window.setTimeout(() => {
-        document.querySelector('.quote-live-pricing-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.querySelector('#pricing-summary, .quote-live-pricing-panel, .quote-pricing-summary-card')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
       }, 350);
       router.refresh();
       return createdItems;
@@ -1163,11 +1270,21 @@ export function QuoteAutoItineraryBuilder({
     setIsSaving(true);
     setError(null);
     setMessage(null);
+    setSendReadiness(null);
 
     try {
       await saveDraft(
         preview,
         `Itinerary applied with ${preview.days.length} day${preview.days.length === 1 ? '' : 's'}.`,
+      );
+      setSendReadiness(
+        buildSendReadinessState({
+          draft: preview,
+          hasHotelService: Boolean(hotelService),
+          hasTransportService: Boolean(transportService),
+          hasActivityService: Boolean(activityService),
+          includeActivities,
+        }),
       );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save the draft itinerary.');
@@ -1181,6 +1298,7 @@ export function QuoteAutoItineraryBuilder({
     setIsGenerating(true);
     setError(null);
     setMessage(null);
+    setSendReadiness(null);
 
     try {
       const [costDraft, comfortDraft] = await Promise.all([buildOptimizedDraftForMode('cost'), buildOptimizedDraftForMode('comfort')]);
@@ -1195,6 +1313,15 @@ export function QuoteAutoItineraryBuilder({
       setComparison(nextComparison);
       setPreview(selectedDraft);
       await saveDraft(selectedDraft, 'Itinerary generated and priced');
+      setSendReadiness(
+        buildSendReadinessState({
+          draft: selectedDraft,
+          hasHotelService: Boolean(hotelService),
+          hasTransportService: Boolean(transportService),
+          hasActivityService: Boolean(activityService),
+          includeActivities,
+        }),
+      );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not generate and price itinerary.');
     } finally {
@@ -1267,6 +1394,9 @@ export function QuoteAutoItineraryBuilder({
       </label>
 
       <div className="quote-auto-itinerary-actions">
+        <button type="button" className="primary-button" onClick={() => void handleGenerateAndPrice()} disabled={isSaving || isGenerating}>
+          {isSaving && isGenerating ? 'Generating & Pricing...' : 'Generate & Price Itinerary'}
+        </button>
         <button type="button" className="secondary-button" onClick={() => void generatePreview()} disabled={isGenerating}>
           {isGenerating ? 'Optimizing...' : 'Preview Draft'}
         </button>
@@ -1282,6 +1412,35 @@ export function QuoteAutoItineraryBuilder({
 
       {error ? <p className="form-error">{error}</p> : null}
       {message ? <p className="form-success">{message}</p> : null}
+      {sendReadiness ? (
+        <section
+          className={`quote-auto-itinerary-ready-banner quote-auto-itinerary-ready-banner-${sendReadiness.status}`}
+          aria-live="polite"
+        >
+          <div>
+            <p className="eyebrow">Proposal Readiness</p>
+            <h3>
+              {sendReadiness.status === 'ready'
+                ? 'Ready to send'
+                : sendReadiness.status === 'warnings'
+                  ? 'Ready with warnings'
+                  : 'Needs review before sending'}
+            </h3>
+            {sendReadiness.status === 'blocked' ? (
+              <p>{sendReadiness.blockers.slice(0, 2).join(' ')}</p>
+            ) : sendReadiness.status === 'warnings' ? (
+              <p>{sendReadiness.warnings.length} warning{sendReadiness.warnings.length === 1 ? '' : 's'} should be reviewed before sending.</p>
+            ) : (
+              <p>The generated itinerary has priced core services and no blocking issues.</p>
+            )}
+          </div>
+          {sendReadiness.status === 'ready' || sendReadiness.status === 'warnings' ? (
+            <Link href={`/quotes/${quote.id}/preview`} className="primary-button">
+              Open Proposal
+            </Link>
+          ) : null}
+        </section>
+      ) : null}
 
       {preview ? (
         <div className="quote-auto-itinerary-preview">

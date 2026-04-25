@@ -2541,6 +2541,41 @@ h1 {
   color: rgba(30, 27, 24, 0.72);
 }
 
+.quote-auto-itinerary-ready-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(30, 27, 24, 0.1);
+  background: rgba(255, 253, 248, 0.9);
+}
+
+.quote-auto-itinerary-ready-banner h3,
+.quote-auto-itinerary-ready-banner p {
+  margin: 0.12rem 0 0;
+}
+
+.quote-auto-itinerary-ready-banner p {
+  color: rgba(30, 27, 24, 0.72);
+}
+
+.quote-auto-itinerary-ready-banner-ready {
+  border-color: rgba(15, 118, 110, 0.24);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.quote-auto-itinerary-ready-banner-warnings {
+  border-color: rgba(180, 83, 9, 0.22);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.quote-auto-itinerary-ready-banner-blocked {
+  border-color: rgba(185, 28, 28, 0.18);
+  background: rgba(254, 226, 226, 0.55);
+}
+
 .quote-auto-itinerary-notes {
   display: flex;
   flex-wrap: wrap;
@@ -5870,6 +5905,11 @@ h1 {
 
   .quote-live-pricing-panel {
     top: 0.5rem;
+  }
+
+  .quote-auto-itinerary-ready-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .executive-dashboard-page {
