@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { readJsonResponse } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteItemCard } from './QuoteItemCard';
@@ -288,6 +289,12 @@ const STARTER_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }
   { category: 'hotel', label: 'Add hotel' },
   { category: 'transport', label: 'Add transfer' },
   { category: 'activity', label: 'Add experience' },
+];
+
+const ADD_SERVICE_OPTIONS: Array<{ category: 'hotel' | 'transport' | 'activity'; label: string }> = [
+  { category: 'hotel', label: 'Hotel' },
+  { category: 'transport', label: 'Transport' },
+  { category: 'activity', label: 'Activity' },
 ];
 
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
@@ -711,6 +718,153 @@ function StarterAction({
   );
 }
 
+function AddServiceLauncher({
+  scope,
+  plannerProps,
+  days,
+}: {
+  scope: PlannerScope;
+  plannerProps: QuoteServicePlannerProps;
+  days: QuoteReadinessDay[];
+}) {
+  const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
+  const initialCategory =
+    plannerProps.initialAddCategory && ['hotel', 'transport', 'activity'].includes(plannerProps.initialAddCategory)
+      ? (plannerProps.initialAddCategory as 'hotel' | 'transport' | 'activity')
+      : null;
+  const [selectedCategory, setSelectedCategory] = useState<'hotel' | 'transport' | 'activity' | null>(initialCategory);
+  const [createdDay, setCreatedDay] = useState<QuoteReadinessDay | null>(null);
+  const [isCreatingDay, setIsCreatingDay] = useState(false);
+  const [error, setError] = useState('');
+  const allDays = createdDay ? [...days, createdDay] : days;
+  const focusedDay = plannerProps.focusedDayId ? allDays.find((day) => day.id === plannerProps.focusedDayId) || null : null;
+  const targetDay = focusedDay || createdDay || days[0] || null;
+
+  async function ensureDayOne() {
+    if (targetDay) {
+      return targetDay;
+    }
+
+    setIsCreatingDay(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/itinerary/day`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dayNumber: 1,
+          title: 'Day 1',
+          notes: '',
+          sortOrder: 0,
+          isActive: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not create Day 1.'));
+      }
+
+      const day = await readJsonResponse<QuoteReadinessDay>(response, 'Could not create Day 1.');
+      setCreatedDay(day);
+      router.refresh();
+      return day;
+    } finally {
+      setIsCreatingDay(false);
+    }
+  }
+
+  async function handleSelectCategory(category: 'hotel' | 'transport' | 'activity') {
+    setIsOpen(true);
+    setError('');
+
+    try {
+      await ensureDayOne();
+      setSelectedCategory(category);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not prepare the service form.');
+    }
+  }
+
+  return (
+    <section className="quote-add-service-panel">
+      <div className="quote-add-service-head">
+        <div>
+          <p className="eyebrow">Add Services</p>
+          <h3>Add service</h3>
+          <p className="detail-copy">Choose the next service type to add to {targetDay ? `Day ${targetDay.dayNumber}` : 'the itinerary'}.</p>
+        </div>
+        <button type="button" className="primary-button" onClick={() => setIsOpen((current) => !current)}>
+          Add Service
+        </button>
+      </div>
+
+      {isOpen ? (
+        <div className="quote-add-service-body">
+          <div className="quote-add-service-options" role="group" aria-label="Service type">
+            {ADD_SERVICE_OPTIONS.map((option) => (
+              <button
+                key={option.category}
+                type="button"
+                className={selectedCategory === option.category ? 'secondary-button quote-add-service-option-active' : 'secondary-button'}
+                onClick={() => void handleSelectCategory(option.category)}
+                disabled={isCreatingDay}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {isCreatingDay ? <p className="form-helper">Creating Day 1 before opening the service form...</p> : null}
+          {error ? <p className="form-error">{error}</p> : null}
+
+          {selectedCategory && targetDay ? (
+            <div className="quote-add-service-form">
+              <QuoteItemsForm
+                apiBaseUrl={plannerProps.apiBaseUrl}
+                quoteId={plannerProps.quote.id}
+                optionId={scope.optionId}
+                blocks={plannerProps.quoteBlocks}
+                services={plannerProps.services}
+                transportServiceTypes={plannerProps.transportServiceTypes}
+                routes={plannerProps.routes}
+                hotels={plannerProps.hotels}
+                hotelContracts={plannerProps.hotelContracts}
+                hotelRates={plannerProps.hotelRates}
+                seasons={plannerProps.seasons}
+                quoteType={plannerProps.quote.quoteType}
+                defaultPaxCount={plannerProps.totalPax}
+                defaultAdultCount={plannerProps.quote.adults}
+                defaultChildCount={plannerProps.quote.children}
+                defaultRoomCount={plannerProps.quote.roomCount}
+                defaultNightCount={plannerProps.quote.nightCount}
+                travelStartDate={plannerProps.quote.travelStartDate}
+                itineraryDayNumber={targetDay.dayNumber}
+                itineraryId={targetDay.id}
+                initialServiceTypeKey={selectedCategory}
+                preferredServiceId={selectedCategory !== 'hotel' && selectedCategory !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
+                preferredHotelId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
+                preferredContractId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
+                preferredRoomCategoryId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
+                preferredMealPlan={selectedCategory === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
+                preferredOccupancyType={selectedCategory === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
+                preferredRateCost={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
+                preferredRateCurrency={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
+                preferredRateNote={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
+                preferredRouteId={selectedCategory === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
+                submitLabel={`Add ${ADD_SERVICE_OPTIONS.find((option) => option.category === selectedCategory)?.label || 'Service'}`}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function GuidedQuoteStarter({
   scope,
   plannerProps,
@@ -959,7 +1113,21 @@ function ScopePlanner({
         scopeLabel={scope.label}
       />
 
+      <AddServiceLauncher scope={scope} plannerProps={plannerProps} days={plannerProps.quote.itineraries} />
+
       <GuidedQuoteStarter scope={scope} plannerProps={plannerProps} workflow={workflow} />
+
+      {daySummaries.length === 0 ? (
+        <article className="workspace-day-card quote-service-day-card">
+          <div className="workspace-day-header">
+            <div>
+              <p className="workspace-day-kicker">Day plan</p>
+              <h3>No services added yet</h3>
+              <p className="workspace-day-copy">No services added yet. Start by adding a service.</p>
+            </div>
+          </div>
+        </article>
+      ) : null}
 
       {daySummaries.map((summary) => {
         const itemsByCategory = {
@@ -1012,8 +1180,8 @@ function ScopePlanner({
                 </div>
                 {currentServicesCount === 0 ? (
                   <div className="quote-service-empty-state">
-                    <strong>Nothing has been assigned to this day yet.</strong>
-                    <p>Start with hotel, transfer, and experience coverage using the actions on the right.</p>
+                    <strong>No services added yet.</strong>
+                    <p>No services added yet. Start by adding a service.</p>
                   </div>
                 ) : null}
                 <div className="quote-service-category-grid">
