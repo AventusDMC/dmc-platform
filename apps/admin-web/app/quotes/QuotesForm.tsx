@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ApiValidationError, getApiError } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
@@ -325,7 +326,17 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
     }
   }
 
-  const canSubmit = companies.length > 0 && availableContacts.length > 0;
+  const missingCompany = companies.length === 0;
+  const missingContactForSelectedCompany = Boolean(clientCompanyId) && availableContacts.length === 0;
+  const missingContactSelection = availableContacts.length > 0 && !contactId;
+  const submitDisabledReason = missingCompany
+    ? 'Create a company before creating a quote'
+    : missingContactForSelectedCompany
+      ? 'Create a contact for this company before creating a quote'
+      : missingContactSelection
+        ? 'Select a contact before creating a quote'
+        : '';
+  const canSubmit = !submitDisabledReason;
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
@@ -372,25 +383,36 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
       </div>
 
       <div className="form-row">
-        <label>
-          Contact
-          <select
-            value={contactId}
-            onChange={(event) => setContactId(event.target.value)}
-            required
-            disabled={availableContacts.length === 0}
-          >
-            {availableContacts.length === 0 ? (
-              <option value="">Create a contact for this company first</option>
-            ) : (
-              availableContacts.map((contact) => (
-                <option key={contact.id} value={contact.id}>
-                  {contact.firstName} {contact.lastName}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
+        <div className="form-field-stack">
+          <label className={missingContactForSelectedCompany || missingContactSelection ? 'form-field-missing' : undefined}>
+            Contact
+            <select
+              value={contactId}
+              onChange={(event) => setContactId(event.target.value)}
+              required
+              disabled={availableContacts.length === 0}
+            >
+              {availableContacts.length === 0 ? (
+                <option value="">Create a contact for this company first</option>
+              ) : (
+                availableContacts.map((contact) => (
+                  <option key={contact.id} value={contact.id}>
+                    {contact.firstName} {contact.lastName}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          {missingContactForSelectedCompany ? (
+            <div className="form-field-alert" role="alert">
+              <p>Create a contact for this company before creating a quote</p>
+              <Link className="secondary-button" href="/contacts/new">
+                Create contact
+              </Link>
+            </div>
+          ) : null}
+        </div>
 
         <label>
           Assigned Agent
@@ -659,10 +681,11 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         <input value={validUntil} onChange={(event) => setValidUntil(event.target.value)} type="date" />
       </label>
 
-      <button type="submit" disabled={isSubmitting || !canSubmit}>
+      <button type="submit" disabled={isSubmitting || !canSubmit} title={submitDisabledReason || undefined}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Create quote')}
       </button>
 
+      {submitDisabledReason ? <p className="form-error">{submitDisabledReason}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       {validationErrors.length > 0 ? (
         <div className="form-error">
