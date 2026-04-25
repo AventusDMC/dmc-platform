@@ -1,11 +1,11 @@
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { ServiceTypeOption } from '../lib/serviceTypes';
 import { ServicesForm } from '../services/ServicesForm';
 import { ServicesCatalogBrowser } from './ServicesCatalogBrowser';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type ServiceRate = {
   id: string;
@@ -58,12 +58,12 @@ export async function ServicesCatalogSection() {
       context={<p>{services.length} services in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create service" description="Add supplier-managed catalog services without leaving the list." triggerLabelOpen="Add service">
-          <ServicesForm apiBaseUrl={API_BASE_URL} serviceTypes={serviceTypes} />
+          <ServicesForm apiBaseUrl="/api" serviceTypes={serviceTypes} />
         </CollapsibleCreatePanel>
       }
       emptyState={services.length === 0 ? <p className="empty-state">No services yet.</p> : undefined}
     >
-      {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl={API_BASE_URL} services={services} /> : null}
+      {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl="/api" services={services} /> : null}
     </TableSectionShell>
   );
 }

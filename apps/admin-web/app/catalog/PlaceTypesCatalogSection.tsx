@@ -1,11 +1,11 @@
 import { InlineEntityActions } from '../components/InlineEntityActions';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { PlaceTypesForm } from '../place-types/PlaceTypesForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 async function getPlaceTypes(): Promise<PlaceTypeOption[]> {
   return adminPageFetchJson<PlaceTypeOption[]>(`${API_BASE_URL}/place-types`, 'Catalog place types', {
@@ -23,7 +23,7 @@ export async function PlaceTypesCatalogSection() {
       context={<p>{placeTypes.length} place types in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create place type" description="Add shared location labels without leaving the list." triggerLabelOpen="Add place type">
-          <PlaceTypesForm apiBaseUrl={API_BASE_URL} />
+          <PlaceTypesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
       emptyState={placeTypes.length === 0 ? <p className="empty-state">No place types yet.</p> : undefined}
@@ -47,13 +47,13 @@ export async function PlaceTypesCatalogSection() {
                   <td>{placeType.isActive ? 'Active' : 'Inactive'}</td>
                   <td>
                     <InlineEntityActions
-                      apiBaseUrl={API_BASE_URL}
+                      apiBaseUrl="/api"
                       deletePath={`/place-types/${placeType.id}`}
                       deleteLabel="place type"
                       confirmMessage={`Delete ${placeType.name}?`}
                     >
                       <PlaceTypesForm
-                        apiBaseUrl={API_BASE_URL}
+                        apiBaseUrl="/api"
                         placeTypeId={placeType.id}
                         submitLabel="Save place type"
                         initialValues={{

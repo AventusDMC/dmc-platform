@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelAllotmentsSection } from './HotelAllotmentsSection';
 import { HotelContractsSection } from './HotelContractsSection';
 import { HotelMealPlansSupplementsSection } from './HotelMealPlansSupplementsSection';
@@ -23,7 +23,7 @@ type HotelsTab =
   | 'meal-plans-supplements'
   | 'policies'
   | 'promotions';
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type HotelsPageProps = {
   searchParams?: Promise<{

@@ -127,6 +127,8 @@ type QuoteItem = {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  jordanPassCovered?: boolean;
+  jordanPassSavingsJod?: number;
   markupPercent: number;
   totalCost: number;
   totalSell: number;

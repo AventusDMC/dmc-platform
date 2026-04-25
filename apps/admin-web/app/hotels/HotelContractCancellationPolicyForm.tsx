@@ -49,7 +49,7 @@ export function HotelContractCancellationPolicyForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/cancellation-policy`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/cancellation-policy`, {
         method: 'PUT',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import { PageActionBar } from '../components/PageActionBar';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { CitiesCatalogSection } from './CitiesCatalogSection';
 import { PlaceTypesCatalogSection } from './PlaceTypesCatalogSection';
 import { PlacesCatalogSection } from './PlacesCatalogSection';
@@ -12,7 +12,7 @@ import { ServicesCatalogSection } from './ServicesCatalogSection';
 import { ServiceTypesCatalogSection } from './ServiceTypesCatalogSection';
 
 type CatalogTab = 'services' | 'service-types' | 'place-types' | 'cities' | 'places';
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type CatalogPageProps = {
   searchParams?: Promise<{

@@ -51,7 +51,7 @@ export function HotelContractMealPlanForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/meal-plans${mealPlanId ? `/${mealPlanId}` : ''}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/meal-plans${mealPlanId ? `/${mealPlanId}` : ''}`, {
         method: mealPlanId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

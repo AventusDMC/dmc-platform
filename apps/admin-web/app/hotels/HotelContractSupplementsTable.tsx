@@ -80,7 +80,7 @@ export function HotelContractSupplementsTable({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/supplements/${supplement.id}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/supplements/${supplement.id}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

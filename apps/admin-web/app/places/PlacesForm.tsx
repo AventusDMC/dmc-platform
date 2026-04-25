@@ -11,7 +11,6 @@ import { CityOption } from '../lib/cities';
 import { PlaceTypeOption } from '../lib/placeTypes';
 
 type PlacesFormProps = {
-  apiBaseUrl: string;
   cities: CityOption[];
   placeTypes: PlaceTypeOption[];
   placeId?: string;
@@ -27,7 +26,7 @@ type PlacesFormProps = {
   };
 };
 
-export function PlacesForm({ apiBaseUrl, cities, placeTypes, placeId, submitLabel, initialValues }: PlacesFormProps) {
+export function PlacesForm({ cities, placeTypes, placeId, submitLabel, initialValues }: PlacesFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initialValues?.name || '');
   const [type, setType] = useState(initialValues?.type || '');
@@ -58,7 +57,7 @@ export function PlacesForm({ apiBaseUrl, cities, placeTypes, placeId, submitLabe
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/places${placeId ? `/${placeId}` : ''}`, {
+      const response = await fetch(placeId ? `/api/places/${placeId}` : '/api/places', {
         method: placeId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AgentController } from './agent/agent.controller';
+import { AgentService } from './agent/agent.service';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { AuditService } from './audit/audit.service';
@@ -17,6 +19,8 @@ import { ContractChildPolicyController } from './contract-child-policy/contract-
 import { ContractChildPolicyService } from './contract-child-policy/contract-child-policy.service';
 import { ContractMealPlansController } from './contract-meal-plans/contract-meal-plans.controller';
 import { ContractMealPlansService } from './contract-meal-plans/contract-meal-plans.service';
+import { ContractImportsController } from './contract-imports/contract-imports.controller';
+import { ContractImportsService } from './contract-imports/contract-imports.service';
 import { ContractOccupancyController } from './contract-occupancy/contract-occupancy.controller';
 import { ContractOccupancyService } from './contract-occupancy/contract-occupancy.service';
 import { ContractPoliciesController } from './contract-policies/contract-policies.controller';
@@ -58,6 +62,7 @@ import { QuotesController } from './quotes/quotes.controller';
 import { QuotePricingService } from './quotes/quote-pricing.service';
 import { ProposalV3Service } from './quotes/proposal-v3.service';
 import { QuotesService } from './quotes/quotes.service';
+import { PublicProposalsController } from './public-proposals/public-proposals.controller';
 import { RoutesController } from './routes/routes.controller';
 import { RoutesService } from './routes/routes.service';
 import { ServicesController } from './services/services.controller';
@@ -87,10 +92,12 @@ import { UserInvitationsService } from './users/user-invitations.service';
   imports: [PrismaModule, QuoteItineraryModule],
   controllers: [
     AppController,
+    AgentController,
     AuthController,
     BookingsController,
     CitiesController,
     ContractChildPolicyController,
+    ContractImportsController,
     ContractMealPlansController,
     ContractOccupancyController,
     ContractPoliciesController,
@@ -111,6 +118,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     InvoicePortalController,
     QuoteBlocksController,
     QuotesController,
+    PublicProposalsController,
     RoutesController,
     SeasonsController,
     ItinerariesController,
@@ -127,6 +135,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
   ],
   providers: [
     AppService,
+    AgentService,
     AuditService,
     AuthService,
     {
@@ -140,6 +149,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     BookingsService,
     CitiesService,
     ContractChildPolicyService,
+    ContractImportsService,
     ContractMealPlansService,
     ContractOccupancyService,
     ContractPoliciesService,

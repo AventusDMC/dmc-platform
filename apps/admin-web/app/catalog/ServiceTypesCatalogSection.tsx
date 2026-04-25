@@ -1,11 +1,11 @@
 import { InlineEntityActions } from '../components/InlineEntityActions';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { ServiceTypeOption } from '../lib/serviceTypes';
 import { ServiceTypesForm } from '../service-types/ServiceTypesForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 async function getServiceTypes(): Promise<ServiceTypeOption[]> {
   return adminPageFetchJson<ServiceTypeOption[]>(`${API_BASE_URL}/service-types`, 'Catalog service types', {
@@ -23,7 +23,7 @@ export async function ServiceTypesCatalogSection() {
       context={<p>{serviceTypes.length} service types in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create service type" description="Add a shared classification without leaving the catalog list." triggerLabelOpen="Add service type">
-          <ServiceTypesForm apiBaseUrl={API_BASE_URL} />
+          <ServiceTypesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
       emptyState={serviceTypes.length === 0 ? <p className="empty-state">No service types yet.</p> : undefined}
@@ -49,13 +49,13 @@ export async function ServiceTypesCatalogSection() {
                   <td>{serviceType.isActive ? 'Active' : 'Inactive'}</td>
                   <td>
                     <InlineEntityActions
-                      apiBaseUrl={API_BASE_URL}
+                      apiBaseUrl="/api"
                       deletePath={`/service-types/${serviceType.id}`}
                       deleteLabel="service type"
                       confirmMessage={`Delete ${serviceType.name}?`}
                     >
                       <ServiceTypesForm
-                        apiBaseUrl={API_BASE_URL}
+                        apiBaseUrl="/api"
                         serviceTypeId={serviceType.id}
                         submitLabel="Save service type"
                         initialValues={{

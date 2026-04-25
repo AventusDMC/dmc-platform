@@ -1,8 +1,8 @@
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { RoomCategoriesManager } from '../hotel-room-categories/RoomCategoriesManager';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type HotelRoomCategory = {
   id: string;
@@ -36,7 +36,7 @@ export async function RoomCategoriesSection() {
       description="Define sellable room categories per hotel so contracts and rates can reference structured room inventory."
       context={<p>{roomCategoryCount} room categories in scope</p>}
     >
-      <RoomCategoriesManager apiBaseUrl={API_BASE_URL} hotels={hotels} />
+      <RoomCategoriesManager apiBaseUrl="/api" hotels={hotels} />
     </TableSectionShell>
   );
 }

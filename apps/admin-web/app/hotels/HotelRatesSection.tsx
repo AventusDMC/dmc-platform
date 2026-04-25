@@ -1,8 +1,8 @@
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { QueryDropdownFilters, type QueryDropdownFilterOption } from '../components/QueryDropdownFilters';
 import { HotelContractRatesSection } from '../hotel-rates/HotelContractRatesSection';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type HotelRoomCategory = {
   id: string;
@@ -337,7 +337,7 @@ export async function HotelRatesSection({ contractId, filters }: HotelRatesSecti
             return (
               <HotelContractRatesSection
                 key={contract.id}
-                apiBaseUrl={API_BASE_URL}
+                apiBaseUrl="/api"
                 contract={contract}
                 contractRates={contractRates}
                 contracts={contracts}

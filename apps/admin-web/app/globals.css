@@ -3557,6 +3557,38 @@ h1 {
   font-size: 0.98rem;
 }
 
+.contract-import-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.contract-import-layout .form-card,
+.contract-import-layout .table-section {
+  display: grid;
+  gap: 16px;
+}
+
+.contract-import-layout .section-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.contract-import-layout .table-scroll {
+  overflow-x: auto;
+}
+
+.contract-import-layout .data-table input {
+  min-width: 120px;
+  width: 100%;
+}
+
+.warning-list {
+  display: grid;
+  gap: 8px;
+}
+
 .commercial-actions-row {
   display: flex;
   gap: 0.75rem;

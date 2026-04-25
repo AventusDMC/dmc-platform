@@ -97,7 +97,7 @@ export function HotelAllotmentsTable({ apiBaseUrl, contracts, contract }: HotelA
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contract.id}/allotments/${allotment.id}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contract.id}/allotments/${allotment.id}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

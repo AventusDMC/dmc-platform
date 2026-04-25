@@ -6,10 +6,12 @@ import {
   throwIfNotFound,
 } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName } from './route-normalization';
 
 type FindRoutesInput = {
   search?: string;
   active?: boolean;
+  type?: string;
 };
 
 type CreateRouteInput = {
@@ -26,11 +28,62 @@ type CreateRouteInput = {
 type UpdateRouteInput = Partial<CreateRouteInput>;
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
-  return `${fromPlaceName} - ${toPlaceName}`;
+  return formatRouteName(fromPlaceName, toPlaceName);
 }
 
-function buildDuplicateRouteName(name: string) {
-  return `${name} (Copy)`;
+function isSpecialPricingRouteText(value: string) {
+  const normalized = value.toLowerCase();
+  const specialPatterns = [
+    'extra km',
+    'extra kilometer',
+    'stationary',
+    'per hour',
+    'hourly',
+    'extra hour',
+    'driver overnight',
+    'deduct transfer',
+    'not part of program',
+  ];
+
+  return specialPatterns.some((pattern) => normalized.includes(pattern));
+}
+
+function isValidTransferRoute(route: {
+  fromPlaceId: string;
+  toPlaceId: string;
+  name: string;
+  routeType: string | null;
+  notes: string | null;
+  isActive: boolean;
+  fromPlace?: { name: string } | null;
+  toPlace?: { name: string } | null;
+}) {
+  if (!route.isActive) {
+    return false;
+  }
+
+  if (!route.fromPlaceId || !route.toPlaceId || !route.fromPlace?.name || !route.toPlace?.name) {
+    return false;
+  }
+
+  const routeType = (route.routeType || '').trim().toLowerCase();
+  const routeText = [route.name, route.routeType, route.fromPlace.name, route.toPlace.name, route.notes]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (
+    ['extra-km', 'stationary', 'extra-hour', 'driver-overnight', 'transfer-deduction'].includes(routeType) ||
+    isSpecialPricingRouteText(routeText)
+  ) {
+    return false;
+  }
+
+  if (routeType && !/(transfer|airport|border|intercity|excursion|private|local)/.test(routeType)) {
+    return false;
+  }
+
+  return true;
 }
 
 @Injectable()
@@ -39,8 +92,13 @@ export class RoutesService {
 
   async findAll(filters: FindRoutesInput = {}) {
     const search = filters.search?.trim();
+    const type = filters.type?.trim().toLowerCase();
 
-    return this.prisma.route.findMany({
+    if (type && !['all', 'debug', 'transfer'].includes(type)) {
+      throw new BadRequestException('Unsupported route type filter');
+    }
+
+    const routes = await this.prisma.route.findMany({
       where: {
         ...(filters.active === undefined ? {} : { isActive: filters.active }),
         ...(search
@@ -61,6 +119,12 @@ export class RoutesService {
       },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
+
+    if (type === 'transfer') {
+      return routes.filter(isValidTransferRoute);
+    }
+
+    return routes;
   }
 
   async findOne(id: string) {
@@ -82,6 +146,20 @@ export class RoutesService {
 
   async create(data: CreateRouteInput) {
     const resolved = await this.resolveRouteDetails(data);
+    const existing = await this.prisma.route.findUnique({
+      where: { normalizedKey: resolved.normalizedKey },
+    });
+
+    if (existing) {
+      return this.prisma.route.update({
+        where: { id: existing.id },
+        data: resolved,
+        include: {
+          fromPlace: true,
+          toPlace: true,
+        },
+      });
+    }
 
     return this.prisma.route.create({
       data: resolved,
@@ -93,18 +171,8 @@ export class RoutesService {
   }
 
   async duplicate(id: string) {
-    const existing = await this.findOne(id);
-
-    return this.create({
-      fromPlaceId: existing.fromPlaceId,
-      toPlaceId: existing.toPlaceId,
-      name: buildDuplicateRouteName(existing.name),
-      routeType: existing.routeType,
-      durationMinutes: existing.durationMinutes,
-      distanceKm: existing.distanceKm,
-      notes: existing.notes,
-      isActive: true,
-    });
+    await this.findOne(id);
+    throw new BadRequestException('Routes are unique by origin and destination and cannot be duplicated');
   }
 
   async update(id: string, data: UpdateRouteInput) {
@@ -123,6 +191,14 @@ export class RoutesService {
       notes: data.notes === undefined ? existing.notes : data.notes,
       isActive: data.isActive === undefined ? existing.isActive : data.isActive,
     });
+    const duplicate = await this.prisma.route.findUnique({
+      where: { normalizedKey: resolved.normalizedKey },
+      select: { id: true },
+    });
+
+    if (duplicate && duplicate.id !== id) {
+      throw new BadRequestException('Route already exists for this origin and destination');
+    }
 
     return this.prisma.route.update({
       where: { id },
@@ -176,7 +252,8 @@ export class RoutesService {
     return {
       fromPlaceId: fromPlace.id,
       toPlaceId: toPlace.id,
-      name: normalizeOptionalString(data.name) || buildRouteName(fromPlace.name, toPlace.name),
+      name: normalizeRouteDisplayName(data.name, fromPlace.name, toPlace.name),
+      normalizedKey: buildRouteNormalizedKey(fromPlace.name, toPlace.name),
       routeType: normalizeOptionalString(data.routeType),
       durationMinutes,
       distanceKm,

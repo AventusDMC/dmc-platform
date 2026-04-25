@@ -34,6 +34,37 @@ function normalizeKey(value: string) {
   return value.trim().toLowerCase();
 }
 
+function routeNormalizedKey(fromName: string, toName: string) {
+  const normalizeRoutePart = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+
+  return [normalizeRoutePart(fromName), normalizeRoutePart(toName)].filter(Boolean).join('_');
+}
+
+function routeDisplayName(fromName: string, toName: string) {
+  return `${fromName.trim()} → ${toName.trim()}`;
+}
+
+const JORDAN_CITY_COORDINATES: Record<string, { latitude: number; longitude: number }> = {
+  amman: { latitude: 31.9539, longitude: 35.9106 },
+  petra: { latitude: 30.3285, longitude: 35.4444 },
+  'wadi rum': { latitude: 29.5321, longitude: 35.421 },
+  'dead sea': { latitude: 31.559, longitude: 35.4732 },
+  aqaba: { latitude: 29.5321, longitude: 35.0063 },
+  jerash: { latitude: 32.2808, longitude: 35.8997 },
+  madaba: { latitude: 31.7167, longitude: 35.7939 },
+};
+
+function cityCoordinates(name: string) {
+  return JORDAN_CITY_COORDINATES[normalizeKey(name)] || { latitude: 0, longitude: 0 };
+}
+
 async function upsertCompany(data: {
   name: string;
   type: string;
@@ -669,8 +700,8 @@ async function seedTargetDemoQuote() {
         ['Amman', 'Petra', 'Wadi Rum'].map(async (name) => {
           const record = await upsertLookupRecord(
             () => prisma.city.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } }),
-            (id) => prisma.city.update({ where: { id }, data: { name, country: 'Jordan', isActive: true } }),
-            () => prisma.city.create({ data: { name, country: 'Jordan', isActive: true } }),
+            (id) => prisma.city.update({ where: { id }, data: { name, country: 'Jordan', ...cityCoordinates(name), isActive: true } }),
+            () => prisma.city.create({ data: { name, country: 'Jordan', ...cityCoordinates(name), isActive: true } }),
           );
           return [normalizeKey(name), record] as const;
         }),
@@ -896,13 +927,13 @@ async function seedTargetDemoQuote() {
         routeFixtures.map(async ({ fromName, toName, durationMinutes, distanceKm }) => {
           const fromPlace = places[normalizeKey(fromName)];
           const toPlace = places[normalizeKey(toName)];
-          const routeName = `${fromName} - ${toName}`;
+          const routeName = routeDisplayName(fromName, toName);
+          const normalizedKey = routeNormalizedKey(fromName, toName);
           const record = await upsertLookupRecord(
             () =>
               prisma.route.findFirst({
                 where: {
-                  fromPlaceId: fromPlace.id,
-                  toPlaceId: toPlace.id,
+                  normalizedKey,
                 },
               }),
             (id) =>
@@ -912,6 +943,7 @@ async function seedTargetDemoQuote() {
                   fromPlaceId: fromPlace.id,
                   toPlaceId: toPlace.id,
                   name: routeName,
+                  normalizedKey,
                   routeType: 'private-transfer',
                   durationMinutes,
                   distanceKm,
@@ -925,6 +957,7 @@ async function seedTargetDemoQuote() {
                   fromPlaceId: fromPlace.id,
                   toPlaceId: toPlace.id,
                   name: routeName,
+                  normalizedKey,
                   routeType: 'private-transfer',
                   durationMinutes,
                   distanceKm,

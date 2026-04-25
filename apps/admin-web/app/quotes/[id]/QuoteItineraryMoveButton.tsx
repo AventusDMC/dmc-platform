@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { buildAuthHeaders } from '../../lib/auth-client';
-import { getErrorMessage } from '../../lib/api';
+import { getErrorMessage, logFetchUrl } from '../../lib/api';
 
 type QuoteItineraryMoveButtonProps = {
   apiBaseUrl: string;
@@ -29,7 +29,7 @@ export function QuoteItineraryMoveButton({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}${path}`, {
+      const response = await fetch(logFetchUrl(`${apiBaseUrl}${path}`), {
         method: 'PATCH',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

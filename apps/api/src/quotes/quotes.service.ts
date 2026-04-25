@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   BookingServiceLifecycleStatus,
   BookingServiceStatus,
@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
+import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
@@ -45,6 +46,8 @@ type QuoteFocType = 'none' | 'ratio' | 'fixed';
 type QuoteFocRoomType = 'single' | 'double';
 type QuoteTypeValue = 'FIT' | 'GROUP';
 type QuoteBookingType = 'FIT' | 'GROUP' | 'SERIES';
+type JordanPassTypeValue = 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT';
+const JORDAN_PASS_TYPES: JordanPassTypeValue[] = ['NONE', 'WANDERER', 'EXPLORER', 'EXPERT'];
 
 type QuotePricingSlabInput = {
   id?: string;
@@ -71,6 +74,7 @@ type CreateQuoteInput = {
   contactId: string;
   agentId?: string | null;
   quoteType?: QuoteTypeValue;
+  jordanPassType?: JordanPassTypeValue;
   bookingType?: QuoteBookingType;
   title: string;
   description?: string;
@@ -149,6 +153,7 @@ type CreateQuoteItemInput = {
   markupPercent: number;
   transportServiceTypeId?: string;
   routeId?: string;
+  normalizedKey?: string;
   routeName?: string;
 };
 
@@ -867,6 +872,7 @@ export class QuotesService {
               contactId: data.contactId,
               agentId: normalizedAgentId ?? null,
               quoteType: this.normalizeQuoteType(data.quoteType),
+              jordanPassType: this.normalizeJordanPassType(data.jordanPassType),
               bookingType: this.normalizeBookingType(data.bookingType),
               title: data.title,
               description: data.description || null,
@@ -1314,6 +1320,7 @@ export class QuotesService {
           contactId,
           agentId,
           quoteType: data.quoteType === undefined ? undefined : this.normalizeQuoteType(data.quoteType),
+          jordanPassType: data.jordanPassType === undefined ? undefined : this.normalizeJordanPassType(data.jordanPassType),
           bookingType: data.bookingType === undefined ? undefined : this.normalizeBookingType(data.bookingType),
           title: data.title === undefined ? undefined : data.title.trim(),
           description: data.description === undefined ? undefined : data.description || null,
@@ -1880,6 +1887,23 @@ export class QuotesService {
       include: values.include,
     } as any);
 
+    if (values.quoteItineraryDayId) {
+      const lastDayItem = await this.prisma.quoteItineraryDayItem.findFirst({
+        where: { dayId: values.quoteItineraryDayId },
+        orderBy: { sortOrder: 'desc' },
+        select: { sortOrder: true },
+      });
+
+      await this.prisma.quoteItineraryDayItem.create({
+        data: {
+          dayId: values.quoteItineraryDayId,
+          quoteServiceId: item.id,
+          sortOrder: (lastDayItem?.sortOrder ?? -1) + 1,
+          isActive: true,
+        },
+      });
+    }
+
     await this.recalculateQuoteTotals(quote.id);
 
     return {
@@ -2172,7 +2196,7 @@ export class QuotesService {
   }
 
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
-    const [quote, service, itinerary, option] = await Promise.all([
+    const [quote, service, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
@@ -2180,10 +2204,16 @@ export class QuotesService {
         where: { id: data.serviceId },
         include: {
           serviceType: true,
+          entranceFee: true,
         },
       }),
       data.itineraryId
         ? this.prisma.itinerary.findUnique({
+            where: { id: data.itineraryId },
+          })
+        : Promise.resolve(null),
+      data.itineraryId
+        ? this.prisma.quoteItineraryDay.findUnique({
             where: { id: data.itineraryId },
           })
         : Promise.resolve(null),
@@ -2202,11 +2232,15 @@ export class QuotesService {
       throw new BadRequestException('Service not found');
     }
 
-    if (data.itineraryId && !itinerary) {
+    if (data.itineraryId && !legacyItinerary && !quoteItineraryDay) {
       throw new BadRequestException('Itinerary not found');
     }
 
-    if (itinerary && itinerary.quoteId !== data.quoteId) {
+    if (legacyItinerary && legacyItinerary.quoteId !== data.quoteId) {
+      throw new BadRequestException('Itinerary does not belong to the selected quote');
+    }
+
+    if (quoteItineraryDay && quoteItineraryDay.quoteId !== data.quoteId) {
       throw new BadRequestException('Itinerary does not belong to the selected quote');
     }
 
@@ -2248,6 +2282,9 @@ export class QuotesService {
     let vehicleId: string | null = null;
     let transportPricingMode: TransportPricingMode | null = null;
     let unitCount: number | null = null;
+    let entranceFeeId: string | null = null;
+    let jordanPassCovered = false;
+    let jordanPassSavingsJod = 0;
     let hotelId: string | null = null;
     let contractId: string | null = null;
     let seasonId: string | null = null;
@@ -2337,13 +2374,16 @@ export class QuotesService {
         throw new BadRequestException('Transport service type is required');
       }
 
-      if (!data.routeId && !data.routeName?.trim()) {
+      const routeNormalizedKey = data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined);
+
+      if (!data.routeId && !routeNormalizedKey) {
         throw new BadRequestException('Transport route is required');
       }
 
-      if (data.routeId) {
+      try {
         const resolvedPricing = await this.transportPricingService.resolvePricingRule({
           routeId: data.routeId,
+          normalizedKey: routeNormalizedKey,
           transportServiceTypeId: data.transportServiceTypeId,
           pax: paxCount,
         });
@@ -2363,11 +2403,15 @@ export class QuotesService {
             ? `Capacity unit x ${resolvedPricing.unitCount}`
             : 'Per vehicle',
         ].join(' | ');
-      } else {
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+
         const vehicleRate = await this.transportPricingService.findMatchingRate({
           serviceTypeId: data.transportServiceTypeId,
           routeId: data.routeId,
-          routeName: data.routeName?.trim(),
+          normalizedKey: routeNormalizedKey,
           paxCount,
         });
 
@@ -2417,6 +2461,31 @@ export class QuotesService {
           : data.participantCount === null
             ? derivedParticipantCount
             : Math.max(0, Math.floor(data.participantCount));
+
+      const entranceFee = (service as any).entranceFee as
+        | { id: string; siteName: string; foreignerFeeJod: number; includedInJordanPass: boolean }
+        | null
+        | undefined;
+
+      if (entranceFee) {
+        const coverage = await this.resolveJordanPassEntranceCoverage({
+          quoteId: quote.id,
+          optionId: data.optionId || null,
+          jordanPassType: (quote as any).jordanPassType || 'NONE',
+          entranceFee,
+        });
+
+        entranceFeeId = entranceFee.id;
+        jordanPassCovered = coverage.covered;
+        jordanPassSavingsJod = coverage.covered ? entranceFee.foreignerFeeJod : 0;
+        baseCost = coverage.covered ? 0 : entranceFee.foreignerFeeJod;
+        currency = 'JOD';
+        supplierCostBaseAmount = baseCost;
+        supplierCostCurrency = 'JOD';
+        pricingDescription = coverage.covered
+          ? `${entranceFee.siteName} | Covered by Jordan Pass`
+          : `${entranceFee.siteName} | Entrance fee`;
+      }
     }
 
     if (data.currency !== undefined) {
@@ -2483,7 +2552,7 @@ export class QuotesService {
         quoteId: data.quoteId,
         optionId: data.optionId || null,
         serviceId: data.serviceId,
-        itineraryId: data.itineraryId || null,
+        itineraryId: legacyItinerary?.id || null,
         serviceDate,
         startTime,
         pickupTime,
@@ -2525,10 +2594,14 @@ export class QuotesService {
         currency: quoteCurrency,
         pricingDescription,
         appliedVehicleRateId,
+        entranceFeeId,
+        jordanPassCovered,
+        jordanPassSavingsJod,
         markupPercent: data.markupPercent,
         totalCost: pricing.totalCost,
         totalSell: promotionResult?.adjustedPricing.adjustedSell ?? pricing.totalSell,
       },
+      quoteItineraryDayId: quoteItineraryDay?.id ?? null,
       promotionExplanation: promotionResult?.explanation ?? null,
       include: {
         service: {
@@ -3965,60 +4038,69 @@ export class QuotesService {
   }
 
   private async recalculateQuoteTotals(quoteId: string) {
-    const [quote, items] = await Promise.all([
-      this.prisma.quote.findUnique({
-        where: { id: quoteId },
-        select: {
-          id: true,
-          adults: true,
-          children: true,
-          roomCount: true,
-          nightCount: true,
-          focType: true,
-          focRatio: true,
-          focCount: true,
-          focRoomType: true,
-          pricingType: true,
-          pricingMode: true,
-          pricingSlabs: {
-            orderBy: [{ minPax: 'asc' }, { maxPax: 'asc' }, { createdAt: 'asc' }],
-            select: {
-              id: true,
-              minPax: true,
-              maxPax: true,
-              price: true,
-            },
+    const quote = await this.prisma.quote.findUnique({
+      where: { id: quoteId },
+      select: {
+        id: true,
+        adults: true,
+        children: true,
+        roomCount: true,
+        nightCount: true,
+        focType: true,
+        focRatio: true,
+        focCount: true,
+        focRoomType: true,
+        pricingType: true,
+        pricingMode: true,
+        quoteCurrency: true,
+        jordanPassType: true,
+        pricingSlabs: {
+          orderBy: [{ minPax: 'asc' }, { maxPax: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            minPax: true,
+            maxPax: true,
+            price: true,
           },
         },
-      }),
-      this.prisma.quoteItem.findMany({
-        where: {
-          quoteId,
-          optionId: null,
-        },
-        include: {
-          service: {
-            include: {
-              serviceType: true,
-            },
-          },
-          appliedVehicleRate: {
-            include: {
-              serviceType: true,
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    });
 
     if (!quote) {
       throw new BadRequestException('Quote not found');
     }
 
-    const { totalCost, totalSell, pricePerPax } = this.calculateTotalsFromItems(
+    await this.syncJordanPassEntranceFees(quote);
+
+    const items = await this.prisma.quoteItem.findMany({
+      where: {
+        quoteId,
+        optionId: null,
+      },
+      include: {
+        service: {
+          include: {
+            serviceType: true,
+            entranceFee: true,
+          },
+        },
+        entranceFee: true,
+        appliedVehicleRate: {
+          include: {
+            serviceType: true,
+          },
+        },
+      },
+    });
+
+    const itemTotals = this.calculateTotalsFromItems(
       items,
       quote.adults + quote.children,
     );
+    const passTotals = await this.calculateJordanPassTotals(quote);
+    const totalCost = Number((itemTotals.totalCost + passTotals.totalCost).toFixed(2));
+    const totalSell = Number((itemTotals.totalSell + passTotals.totalSell).toFixed(2));
+    const pricePerPax = quote.adults + quote.children > 0 ? Number((totalSell / (quote.adults + quote.children)).toFixed(2)) : 0;
 
     const updatedQuote = await this.prisma.quote.update({
       where: { id: quoteId },
@@ -4172,6 +4254,195 @@ export class QuotesService {
     };
   }
 
+  private async resolveJordanPassEntranceCoverage(values: {
+    quoteId: string;
+    optionId: string | null;
+    jordanPassType: string;
+    entranceFee: { id: string; siteName: string; includedInJordanPass: boolean };
+  }) {
+    const passType = this.normalizeJordanPassType(values.jordanPassType);
+
+    if (passType === 'NONE' || !values.entranceFee.includedInJordanPass) {
+      return { covered: false };
+    }
+
+    if (!this.isPetraEntranceSite(values.entranceFee.siteName)) {
+      return { covered: true };
+    }
+
+    const product = await this.prisma.jordanPassProduct.findUnique({
+      where: { code: passType },
+      select: { petraDayCount: true },
+    });
+    const coveredPetraVisits = await this.prisma.quoteItem.count({
+      where: {
+        quoteId: values.quoteId,
+        optionId: values.optionId,
+        jordanPassCovered: true,
+        entranceFee: {
+          siteName: { contains: 'Petra', mode: 'insensitive' },
+        },
+      },
+    });
+
+    return { covered: coveredPetraVisits < (product?.petraDayCount ?? 0) };
+  }
+
+  private async syncJordanPassEntranceFees(quote: {
+    id: string;
+    adults: number;
+    children: number;
+    roomCount: number;
+    nightCount: number;
+    quoteCurrency: string;
+    jordanPassType: string;
+  }) {
+    const items = await this.prisma.quoteItem.findMany({
+      where: {
+        quoteId: quote.id,
+        entranceFeeId: { not: null },
+      },
+      include: {
+        entranceFee: true,
+        service: {
+          include: {
+            serviceType: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    const petraCoverageByOption = new Map<string, number>();
+    const passType = this.normalizeJordanPassType(quote.jordanPassType);
+    const passProduct =
+      passType === 'NONE'
+        ? null
+        : await this.prisma.jordanPassProduct.findUnique({
+            where: { code: passType },
+            select: { petraDayCount: true },
+          });
+
+    for (const item of items) {
+      if (!item.entranceFee) {
+        continue;
+      }
+
+      let covered = passType !== 'NONE' && item.entranceFee.includedInJordanPass;
+
+      if (covered && this.isPetraEntranceSite(item.entranceFee.siteName)) {
+        const key = item.optionId || 'base';
+        const used = petraCoverageByOption.get(key) || 0;
+        covered = used < (passProduct?.petraDayCount ?? 0);
+        if (covered) {
+          petraCoverageByOption.set(key, used + 1);
+        }
+      }
+
+      const unitCost = covered ? 0 : item.entranceFee.foreignerFeeJod;
+      const pricing = this.calculateCentralizedQuoteItemPricing({
+        service: item.service,
+        quantity: item.quantity,
+        paxCount: item.paxCount ?? quote.adults + quote.children,
+        roomCount: item.roomCount ?? quote.roomCount,
+        nightCount: item.nightCount ?? quote.nightCount,
+        dayCount: item.dayCount ?? 1,
+        unitCost,
+        markupPercent: item.markupPercent,
+        quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
+        supplierPricing: {
+          costBaseAmount: unitCost,
+          costCurrency: 'JOD',
+          salesTaxPercent: item.salesTaxPercent ?? 0,
+          salesTaxIncluded: item.salesTaxIncluded ?? false,
+          serviceChargePercent: item.serviceChargePercent ?? 0,
+          serviceChargeIncluded: item.serviceChargeIncluded ?? false,
+          tourismFeeAmount: item.tourismFeeAmount ?? 0,
+          tourismFeeCurrency: item.tourismFeeCurrency ?? 'JOD',
+          tourismFeeMode: item.tourismFeeMode ?? null,
+        },
+        legacyCurrency: 'JOD',
+      });
+
+      await this.prisma.quoteItem.update({
+        where: { id: item.id },
+        data: {
+          jordanPassCovered: covered,
+          jordanPassSavingsJod: covered ? item.entranceFee.foreignerFeeJod : 0,
+          pricingDescription: covered
+            ? `${item.entranceFee.siteName} | Covered by Jordan Pass`
+            : `${item.entranceFee.siteName} | Entrance fee`,
+          baseCost: pricing.totalCost,
+          costBaseAmount: unitCost,
+          costCurrency: 'JOD',
+          currency: pricing.quoteCurrency,
+          quoteCurrency: pricing.quoteCurrency,
+          fxRate: pricing.fxRate,
+          fxFromCurrency: pricing.fxFromCurrency,
+          fxToCurrency: pricing.fxToCurrency,
+          fxRateDate: pricing.fxRateDate,
+          totalCost: pricing.totalCost,
+          totalSell: pricing.totalSell,
+        },
+      });
+    }
+  }
+
+  private async calculateJordanPassTotals(quote: {
+    adults: number;
+    children: number;
+    quoteCurrency: string;
+    jordanPassType: string;
+  }) {
+    const passType = this.normalizeJordanPassType(quote.jordanPassType);
+
+    if (passType === 'NONE') {
+      return { totalCost: 0, totalSell: 0 };
+    }
+
+    const product = await this.prisma.jordanPassProduct.findUnique({
+      where: { code: passType },
+      select: { priceJod: true },
+    });
+
+    if (!product) {
+      return { totalCost: 0, totalSell: 0 };
+    }
+
+    const pax = Math.max(1, quote.adults + quote.children);
+    const pricing = calculateMultiCurrencyQuoteItemPricing({
+      supplierPricing: {
+        costBaseAmount: product.priceJod,
+        costCurrency: 'JOD',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: 0,
+        tourismFeeCurrency: 'JOD',
+        tourismFeeMode: null,
+      },
+      pricingUnits: {
+        pricingUnits: pax,
+        roomCount: 1,
+        nightCount: 1,
+        paxCount: pax,
+      },
+      quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
+      markupPercent: 0,
+      legacyPricing: {
+        totalCost: product.priceJod * pax,
+        totalSell: product.priceJod * pax,
+        currency: 'JOD',
+      },
+    });
+
+    return { totalCost: pricing.totalCost, totalSell: pricing.totalSell };
+  }
+
+  private isPetraEntranceSite(siteName: string) {
+    return /\bpetra\b/i.test(siteName);
+  }
+
   private async calculateQuoteItemsTotalCostForPax(
     items: Array<{
       quantity: number;
@@ -4269,6 +4540,16 @@ export class QuotesService {
 
     if (!QUOTE_TYPES.includes(normalized)) {
       throw new BadRequestException('quoteType must be FIT or GROUP');
+    }
+
+    return normalized;
+  }
+
+  private normalizeJordanPassType(value: string | undefined | null): JordanPassTypeValue {
+    const normalized = String(value || 'NONE').trim().toUpperCase() as JordanPassTypeValue;
+
+    if (!JORDAN_PASS_TYPES.includes(normalized)) {
+      throw new BadRequestException('jordanPassType must be NONE, WANDERER, EXPLORER, or EXPERT');
     }
 
     return normalized;

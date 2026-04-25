@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
@@ -1093,7 +1093,7 @@ export function QuoteAutoItineraryBuilder({
   }
 
   async function postJson<T>(url: string, body: unknown, fallbackMessage: string) {
-    const response = await fetch(url, {
+    const response = await fetch(logFetchUrl(url), {
       method: 'POST',
       headers: buildAuthHeaders({
         'Content-Type': 'application/json',

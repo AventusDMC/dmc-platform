@@ -61,7 +61,7 @@ export function HotelContractChildPolicyBandForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/child-policy/bands${bandId ? `/${bandId}` : ''}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/child-policy/bands${bandId ? `/${bandId}` : ''}`, {
         method: bandId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

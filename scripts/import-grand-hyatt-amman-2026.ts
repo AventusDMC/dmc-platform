@@ -98,6 +98,8 @@ async function findOrCreateCity(tx: DbClient) {
       data: {
         name: CITY_NAME,
         country: COUNTRY_NAME,
+        latitude: 31.9539,
+        longitude: 35.9106,
         isActive: true,
       },
     });
@@ -107,6 +109,8 @@ async function findOrCreateCity(tx: DbClient) {
     data: {
       name: CITY_NAME,
       country: COUNTRY_NAME,
+      latitude: 31.9539,
+      longitude: 35.9106,
       isActive: true,
     },
   });

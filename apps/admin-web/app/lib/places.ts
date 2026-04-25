@@ -16,6 +16,8 @@ export type PlaceOption = {
     id: string;
     name: string;
     country: string | null;
+    latitude: number;
+    longitude: number;
     isActive: boolean;
   } | null;
 };

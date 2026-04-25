@@ -1,4 +1,4 @@
-export const ROLE_NAMES = ['admin', 'viewer', 'operations', 'finance'] as const;
+export const ROLE_NAMES = ['admin', 'viewer', 'operations', 'finance', 'agent'] as const;
 
 export type DmcRole = (typeof ROLE_NAMES)[number];
 

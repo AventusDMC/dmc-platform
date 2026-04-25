@@ -102,8 +102,36 @@ export function normalizeKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+export function routeNormalizedKey(route: Pick<AlphaRouteInput, 'fromName' | 'toName'>) {
+  const normalizeRoutePart = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+
+  return [normalizeRoutePart(route.fromName), normalizeRoutePart(route.toName)].filter(Boolean).join('_');
+}
+
 export function routeName(route: AlphaRouteInput) {
-  return `${route.fromName} - ${route.toName}`;
+  return `${route.fromName.trim()} → ${route.toName.trim()}`;
+}
+
+const JORDAN_CITY_COORDINATES: Record<string, { latitude: number; longitude: number }> = {
+  amman: { latitude: 31.9539, longitude: 35.9106 },
+  petra: { latitude: 30.3285, longitude: 35.4444 },
+  'wadi-rum': { latitude: 29.5321, longitude: 35.421 },
+  'dead-sea': { latitude: 31.559, longitude: 35.4732 },
+  aqaba: { latitude: 29.5321, longitude: 35.0063 },
+  jerash: { latitude: 32.2808, longitude: 35.8997 },
+  madaba: { latitude: 31.7167, longitude: 35.7939 },
+  'jordan-borders': { latitude: 31.9539, longitude: 35.9106 },
+};
+
+function cityCoordinates(name: string) {
+  return JORDAN_CITY_COORDINATES[normalizeKey(name)] || { latitude: 0, longitude: 0 };
 }
 
 export async function ensureAlphaSupplier(tx: DbClient) {
@@ -185,8 +213,7 @@ export async function ensureRoute(tx: DbClient, input: AlphaRouteInput) {
 
   const existing = await tx.route.findFirst({
     where: {
-      fromPlaceId: fromPlace.id,
-      toPlaceId: toPlace.id,
+      normalizedKey: routeNormalizedKey(input),
     },
   });
 
@@ -194,6 +221,7 @@ export async function ensureRoute(tx: DbClient, input: AlphaRouteInput) {
     fromPlaceId: fromPlace.id,
     toPlaceId: toPlace.id,
     name: routeName(input),
+    normalizedKey: routeNormalizedKey(input),
     routeType: input.routeType,
     durationMinutes: input.durationMinutes ?? null,
     distanceKm: input.distanceKm ?? null,
@@ -302,11 +330,11 @@ async function ensureCity(tx: DbClient, name: string) {
   if (existing) {
     return tx.city.update({
       where: { id: existing.id },
-      data: { name, country: 'Jordan', isActive: true },
+      data: { name, country: 'Jordan', ...cityCoordinates(name), isActive: true },
     });
   }
 
-  return tx.city.create({ data: { name, country: 'Jordan', isActive: true } });
+  return tx.city.create({ data: { name, country: 'Jordan', ...cityCoordinates(name), isActive: true } });
 }
 
 async function ensurePlaceType(tx: DbClient, name: string) {

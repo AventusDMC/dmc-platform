@@ -61,7 +61,7 @@ export function HotelContractOccupancyRulesTable({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/occupancy-rules/${rule.id}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/occupancy-rules/${rule.id}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getErrorMessage } from '../../lib/api';
+import { getErrorMessage, logFetchUrl } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { CurrencySelect } from '../../components/CurrencySelect';
 import { type SupportedCurrency } from '../../lib/currencyOptions';
@@ -187,7 +187,7 @@ export function QuotePricingBulkTools({
           ? `${apiBaseUrl}/quotes/${quoteId}/options/${item.optionId}/items/${item.id}`
           : `${apiBaseUrl}/quotes/${quoteId}/items/${item.id}`;
 
-        const response = await fetch(endpoint, {
+        const response = await fetch(logFetchUrl(endpoint), {
           method: 'PATCH',
           headers: buildAuthHeaders({
             'Content-Type': 'application/json',

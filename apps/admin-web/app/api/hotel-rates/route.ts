@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildActorHeaders } from '../bookings/actorHeaders';
 import { forwardProxyJsonResponse } from '../proxy-response';
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   const response = await fetch(`${API_BASE_URL}/hotel-rates`, {
     method: 'POST',
@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
       ...buildActorHeaders(request),
     },
     body: JSON.stringify(body),
+    cache: 'no-store',
+    redirect: 'manual',
   });
 
-  const data = await response.json().catch(() => null);
-
-  return NextResponse.json(data, { status: response.status });
+  return forwardProxyJsonResponse(response);
 }

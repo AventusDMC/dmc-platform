@@ -66,7 +66,7 @@ export function HotelContractCancellationRulesTable({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/cancellation-policy/rules/${ruleId}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/cancellation-policy/rules/${ruleId}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

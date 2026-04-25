@@ -1,13 +1,13 @@
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelContractMealPlanForm } from './HotelContractMealPlanForm';
 import { HotelContractMealPlansTable } from './HotelContractMealPlansTable';
 import { HotelContractSupplementForm } from './HotelContractSupplementForm';
 import { HotelContractSupplementsTable } from './HotelContractSupplementsTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type ContractOption = {
   id: string;
@@ -57,13 +57,13 @@ async function getHotelContracts(): Promise<ContractOption[]> {
 }
 
 async function getMealPlans(contractId: string): Promise<MealPlan[]> {
-  return adminPageFetchJson<MealPlan[]>(`${API_BASE_URL}/hotel-contracts/${contractId}/meal-plans`, 'Hotel meal plans', {
+  return adminPageFetchJson<MealPlan[]>(`${API_BASE_URL}/contracts/${contractId}/meal-plans`, 'Hotel meal plans', {
     cache: 'no-store',
   });
 }
 
 async function getSupplements(contractId: string): Promise<Supplement[]> {
-  return adminPageFetchJson<Supplement[]>(`${API_BASE_URL}/hotel-contracts/${contractId}/supplements`, 'Hotel supplements', {
+  return adminPageFetchJson<Supplement[]>(`${API_BASE_URL}/contracts/${contractId}/supplements`, 'Hotel supplements', {
     cache: 'no-store',
   });
 }
@@ -128,13 +128,13 @@ export async function HotelMealPlansSupplementsSection({ contractId }: HotelMeal
             description="Enable another board basis for this contract."
             triggerLabelOpen="Add meal plan"
           >
-            <HotelContractMealPlanForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} />
+            <HotelContractMealPlanForm apiBaseUrl="/api" contractId={currentContract.id} />
           </CollapsibleCreatePanel>
         }
         emptyState={mealPlans.length === 0 ? <p className="empty-state">No meal plans configured for this contract yet.</p> : undefined}
       >
         {mealPlans.length > 0 ? (
-          <HotelContractMealPlansTable apiBaseUrl={API_BASE_URL} contractId={currentContract.id} mealPlans={mealPlans} />
+          <HotelContractMealPlansTable apiBaseUrl="/api" contractId={currentContract.id} mealPlans={mealPlans} />
         ) : null}
       </TableSectionShell>
 
@@ -148,14 +148,14 @@ export async function HotelMealPlansSupplementsSection({ contractId }: HotelMeal
             description="Configure a contract-level or room-specific supplement."
             triggerLabelOpen="Add supplement"
           >
-            <HotelContractSupplementForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} roomCategories={roomCategories} />
+            <HotelContractSupplementForm apiBaseUrl="/api" contractId={currentContract.id} roomCategories={roomCategories} />
           </CollapsibleCreatePanel>
         }
         emptyState={supplements.length === 0 ? <p className="empty-state">No supplements configured for this contract yet.</p> : undefined}
       >
         {supplements.length > 0 ? (
           <HotelContractSupplementsTable
-            apiBaseUrl={API_BASE_URL}
+            apiBaseUrl="/api"
             contractId={currentContract.id}
             roomCategories={roomCategories}
             supplements={supplements}

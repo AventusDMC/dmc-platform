@@ -6,7 +6,7 @@
     "build": "nest build",
     "start": "npm run build && node dist/main",
     "start:dev": "nest start --watch",
-    "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts src/quotes/multi-currency-pricing.test.ts src/quotes/quote-pricing-scenarios.test.ts src/common/currency-validation.test.ts src/services/services.service.test.ts src/hotel-rates/hotel-rates.service.test.ts src/quote-itinerary/quote-itinerary.service.test.ts",
+    "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts src/quotes/multi-currency-pricing.test.ts src/quotes/quote-pricing-scenarios.test.ts src/quotes/quote-create-agent-assignment.test.ts src/common/currency-validation.test.ts src/services/services.service.test.ts src/hotel-rates/hotel-rates.service.test.ts src/quote-itinerary/quote-itinerary.service.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -26,7 +26,8 @@
     "pdfkit": "^0.18.0",
     "puppeteer": "^24.8.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",

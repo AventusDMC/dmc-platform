@@ -1,9 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildRouteNormalizedKey, formatRouteName, normalizeRouteName } from '../routes/route-normalization';
 
 type FindTransportRateInput = {
   serviceTypeId: string;
   routeId?: string | null;
+  normalizedKey?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
   routeName?: string;
@@ -33,7 +35,8 @@ type TransportPricingCandidate = {
 };
 
 type ResolveTransportPricingRuleInput = {
-  routeId: string;
+  routeId?: string | null;
+  normalizedKey?: string | null;
   transportServiceTypeId: string;
   pax: number;
 };
@@ -53,7 +56,7 @@ type UpsertTransportPricingRuleInput = {
 };
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
-  return `${fromPlaceName} - ${toPlaceName}`;
+  return formatRouteName(fromPlaceName, toPlaceName);
 }
 
 @Injectable()
@@ -125,10 +128,6 @@ export class TransportPricingService {
   }
 
   async resolvePricingRule(data: ResolveTransportPricingRuleInput) {
-    if (!data.routeId) {
-      throw new BadRequestException('routeId is required');
-    }
-
     if (!data.transportServiceTypeId) {
       throw new BadRequestException('transportServiceTypeId is required');
     }
@@ -137,9 +136,10 @@ export class TransportPricingService {
       throw new BadRequestException('pax must be at least 1');
     }
 
+    const route = await this.resolveRouteReference(data);
     const rule = await this.prisma.transportPricingRule.findFirst({
       where: {
-        routeId: data.routeId,
+        routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
         isActive: true,
         minPax: {
@@ -197,10 +197,6 @@ export class TransportPricingService {
   }
 
   async resolvePricingRuleCandidates(data: ResolveTransportPricingRuleInput): Promise<TransportPricingCandidate[]> {
-    if (!data.routeId) {
-      throw new BadRequestException('routeId is required');
-    }
-
     if (!data.transportServiceTypeId) {
       throw new BadRequestException('transportServiceTypeId is required');
     }
@@ -209,9 +205,10 @@ export class TransportPricingService {
       throw new BadRequestException('pax must be at least 1');
     }
 
+    const route = await this.resolveRouteReference(data);
     const rules = await this.prisma.transportPricingRule.findMany({
       where: {
-        routeId: data.routeId,
+        routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
         isActive: true,
         minPax: {
@@ -400,15 +397,17 @@ export class TransportPricingService {
   }
 
   async calculate(data: FindTransportRateInput) {
-    if (data.routeId) {
+    if (data.routeId || data.normalizedKey || data.routeName?.trim()) {
       try {
         const resolvedPricing = await this.resolvePricingRule({
           routeId: data.routeId,
+          normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
           transportServiceTypeId: data.serviceTypeId,
           pax: data.paxCount,
         });
         const candidates = await this.resolvePricingRuleCandidates({
           routeId: data.routeId,
+          normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
           transportServiceTypeId: data.serviceTypeId,
           pax: data.paxCount,
         });
@@ -482,22 +481,11 @@ export class TransportPricingService {
   }
 
   private async buildRouteFilter(data: FindTransportRateInput) {
-    if (data.routeId) {
-      const route = await this.prisma.route.findUnique({
-        where: { id: data.routeId },
-        include: {
-          fromPlace: {
-            select: { id: true, name: true },
-          },
-          toPlace: {
-            select: { id: true, name: true },
-          },
-        },
+    if (data.routeId || data.normalizedKey || data.routeName?.trim()) {
+      const route = await this.resolveRouteReference({
+        routeId: data.routeId,
+        normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
       });
-
-      if (!route) {
-        throw new BadRequestException('Route not found');
-      }
 
       return {
         OR: [
@@ -507,12 +495,6 @@ export class TransportPricingService {
           {
             fromPlaceId: route.fromPlaceId,
             toPlaceId: route.toPlaceId,
-          },
-          {
-            routeName: {
-              equals: route.name || buildRouteName(route.fromPlace.name, route.toPlace.name),
-              mode: 'insensitive' as const,
-            },
           },
         ],
       };
@@ -545,33 +527,49 @@ export class TransportPricingService {
         throw new BadRequestException('To place not found');
       }
 
+      const route = await this.prisma.route.findUnique({
+        where: { normalizedKey: buildRouteNormalizedKey(fromPlace.name, toPlace.name) },
+        select: { id: true, fromPlaceId: true, toPlaceId: true },
+      });
+
       return {
         OR: [
+          ...(route ? [{ routeId: route.id }] : []),
           {
             fromPlaceId: fromPlace.id,
             toPlaceId: toPlace.id,
-          },
-          {
-            routeName: {
-              equals: buildRouteName(fromPlace.name, toPlace.name),
-              mode: 'insensitive' as const,
-            },
           },
         ],
       };
     }
 
-    const routeName = data.routeName?.trim();
+    throw new BadRequestException('routeId or normalizedKey is required');
+  }
 
-    if (!routeName) {
-      throw new BadRequestException('routeName is required when places are not provided');
+  private async resolveRouteReference(data: { routeId?: string | null; normalizedKey?: string | null }) {
+    const routeId = data.routeId?.trim();
+    const normalizedKey = data.normalizedKey?.trim();
+
+    if (!routeId && !normalizedKey) {
+      throw new BadRequestException('routeId or normalizedKey is required');
     }
 
-    return {
-      routeName: {
-        equals: routeName,
-        mode: 'insensitive' as const,
+    const route = await this.prisma.route.findUnique({
+      where: routeId ? { id: routeId } : { normalizedKey },
+      include: {
+        fromPlace: {
+          select: { id: true, name: true },
+        },
+        toPlace: {
+          select: { id: true, name: true },
+        },
       },
-    };
+    });
+
+    if (!route) {
+      throw new BadRequestException('Route not found');
+    }
+
+    return route;
   }
 }

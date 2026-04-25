@@ -64,7 +64,7 @@ export function HotelContractCancellationRuleForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/cancellation-policy/rules${ruleId ? `/${ruleId}` : ''}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/cancellation-policy/rules${ruleId ? `/${ruleId}` : ''}`, {
         method: ruleId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

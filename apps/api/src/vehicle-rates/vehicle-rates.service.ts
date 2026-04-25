@@ -33,7 +33,7 @@ type UpdateVehicleRateInput = {
 };
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
-  return `${fromPlaceName} - ${toPlaceName}`;
+  return `${fromPlaceName.trim()} → ${toPlaceName.trim()}`;
 }
 
 @Injectable()

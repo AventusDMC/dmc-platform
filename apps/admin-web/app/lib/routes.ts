@@ -5,6 +5,7 @@ export type RouteOption = {
   fromPlaceId: string;
   toPlaceId: string;
   name: string;
+  normalizedKey: string;
   routeType: string | null;
   durationMinutes: number | null;
   distanceKm: number | null;

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteCombobox } from '../../components/RouteCombobox';
-import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
@@ -14,6 +14,7 @@ type SupplierService = {
   supplierId: string;
   name: string;
   category: string;
+  serviceTypeId?: string | null;
   serviceType?: {
     id: string;
     name: string;
@@ -291,23 +292,6 @@ function isRecommendedVehicleCategory(quoteType: QuoteType, pax: number, categor
   return getRecommendedVehicleCategories(quoteType, pax).includes(category);
 }
 
-function isInvalidTransportRouteText(value: string) {
-  const normalized = value.toLowerCase();
-  const invalidPatterns = ['extra km', 'extra kilometer', 'stationary', 'per hour', 'hourly'];
-
-  return invalidPatterns.some((pattern) => normalized.includes(pattern));
-}
-
-function isValidTransportRoute(route: RouteOption) {
-  const routeText = [route.name, route.routeType, route.notes].filter(Boolean).join(' ').toLowerCase();
-
-  if (isInvalidTransportRouteText(routeText)) {
-    return false;
-  }
-
-  return Boolean(route.fromPlaceId && route.toPlaceId && route.fromPlace?.name && route.toPlace?.name && route.fromPlaceId !== route.toPlaceId);
-}
-
 const SERVICE_TYPE_BUTTONS = [
   { key: 'hotel', label: 'Add Hotel' },
   { key: 'transport', label: 'Add Transport' },
@@ -508,12 +492,11 @@ export function QuoteItemsForm({
   const initialActiveServiceType = initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null;
   const initialActivityServiceDate =
     initialActiveServiceType === 'activity' && !itineraryId && travelStartDate ? travelStartDate.slice(0, 10) : '';
-  const validTransportRoutes = useMemo(() => routes.filter((route) => (route.isActive || route.id === initialValues?.routeId || route.id === preferredRouteId) && isValidTransportRoute(route)), [initialValues?.routeId, preferredRouteId, routes]);
+  const validTransportRoutes = routes;
   const initialRouteId = [initialValues?.routeId, preferredRouteId].find((candidateRouteId) =>
     Boolean(candidateRouteId && validTransportRoutes.some((route) => route.id === candidateRouteId)),
   ) || '';
-  const initialRouteName =
-    initialValues?.routeName && !isInvalidTransportRouteText(initialValues.routeName) ? initialValues.routeName : '';
+  const initialRouteName = initialValues?.routeName || '';
   const [activeServiceType, setActiveServiceType] = useState<ServiceTypeKey | null>(
     initialActiveServiceType,
   );
@@ -563,8 +546,10 @@ export function QuoteItemsForm({
   const [manualHotelRateDraft, setManualHotelRateDraft] = useState<QuoteHotelRateDraftRow | null>(null);
   const [hotelRateReference, setHotelRateReference] = useState<HotelRateReference | null>(null);
   const [pendingHotelRateSubmit, setPendingHotelRateSubmit] = useState(false);
+  const [transportSuggestionOverridden, setTransportSuggestionOverridden] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
+
   const transportCandidates = useMemo(() => {
     const candidates = resolvedTransportPricing?.candidates || [];
     const seen = new Set<string>();
@@ -624,6 +609,28 @@ export function QuoteItemsForm({
     }));
   }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
   const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
+  const autoTransportCandidate =
+    transportCandidates.find((candidate) => candidate.isRecommended && candidate.isBestValue) ||
+    transportCandidates.find((candidate) => candidate.isRecommended) ||
+    transportCandidates.find((candidate) => candidate.isBestValue) ||
+    transportCandidates[0] ||
+    null;
+  const selectedTransportCandidate = resolvedTransportPricing
+    ? transportCandidates.find(
+        (candidate) =>
+          candidate.vehicle.id === resolvedTransportPricing.vehicle.id &&
+          candidate.serviceType.id === resolvedTransportPricing.serviceType.id &&
+          (candidate.routeId || candidate.routeName) === (routeId || resolvedTransportPricing.routeName),
+      ) || null
+    : null;
+  const transportRecommendationReasons = selectedTransportCandidate
+    ? [
+        selectedTransportCandidate.isRecommended
+          ? `Recommended for ${Number(paxCount) || defaultPaxCount || 1} pax (${quoteType})`
+          : null,
+        selectedTransportCandidate.isBestValue ? 'Best value based on price per pax' : null,
+      ].filter((reason): reason is string => Boolean(reason))
+    : [];
 
   const filteredServices = activeServiceType
     ? services.filter((service) => {
@@ -644,6 +651,35 @@ export function QuoteItemsForm({
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
+
+  useEffect(() => {
+    if (!isTransportService || process.env.NODE_ENV === 'production') {
+      return;
+    }
+
+    console.debug('[QuoteItemsForm] transport routes returned', {
+      count: routes.length,
+      routes: routes.map((route) => ({
+        id: route.id,
+        name: route.name,
+        routeType: route.routeType,
+        from: route.fromPlace?.name,
+        to: route.toPlace?.name,
+        isActive: route.isActive,
+      })),
+    });
+    console.debug('[QuoteItemsForm] valid transport routes', {
+      count: validTransportRoutes.length,
+      routes: validTransportRoutes.map((route) => ({
+        id: route.id,
+        name: route.name,
+        routeType: route.routeType,
+        from: route.fromPlace?.name,
+        to: route.toPlace?.name,
+      })),
+    });
+  }, [isTransportService, routes, validTransportRoutes]);
+
   const filteredHotelContracts = hotelContracts.filter((contract) => contract.hotelId === hotelId);
   const filteredSeasonRates = hotelRates.filter((rate) => rate.contractId === contractId);
   const seasonOptions = Array.from(new Set(filteredSeasonRates.map((rate) => rate.seasonName))).sort((left, right) =>
@@ -978,6 +1014,45 @@ export function QuoteItemsForm({
     }
   }, [isTransportService]);
 
+  function applyTransportCandidate(candidate: (typeof transportCandidates)[number], options?: { userInitiated?: boolean }) {
+    const matchingService =
+      filteredServices.find((service) => service.serviceTypeId === candidate.serviceType.id) ||
+      filteredServices.find((service) => getServiceTypeKey(service) === 'transport') ||
+      null;
+
+    if (matchingService) {
+      setServiceId(matchingService.id);
+    }
+
+    setTransportServiceTypeId(candidate.serviceType.id);
+    setRouteId(candidate.routeId || '');
+    setRouteName(candidate.routeId ? '' : candidate.routeName);
+    setBaseCost(String(candidate.price));
+    setResolvedTransportPricing({
+      routeName: candidate.routeName,
+      currency: candidate.currency,
+      price: candidate.price,
+      unitCount: candidate.unitCount,
+      pricingMode: candidate.pricingMode,
+      unitCapacity: candidate.unitCapacity,
+      vehicle: candidate.vehicle,
+      serviceType: candidate.serviceType,
+      candidates: resolvedTransportPricing?.candidates,
+    });
+
+    if (options?.userInitiated) {
+      setTransportSuggestionOverridden(true);
+    }
+  }
+
+  useEffect(() => {
+    if (!isTransportService || isEditing || transportSuggestionOverridden || !routeId || !autoTransportCandidate) {
+      return;
+    }
+
+    applyTransportCandidate(autoTransportCandidate);
+  }, [autoTransportCandidate, isEditing, isTransportService, routeId, transportSuggestionOverridden]);
+
   useEffect(() => {
     if (!isTransportService || !routeId) {
       return;
@@ -1238,7 +1313,7 @@ export function QuoteItemsForm({
         }
       }
 
-      const response = await fetch(endpoint, {
+      const response = await fetch(logFetchUrl(endpoint), {
         method: isEditing ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',
@@ -1409,7 +1484,17 @@ export function QuoteItemsForm({
                 : activeServiceType === 'activity'
                   ? 'Activity selector'
                   : 'Service'}
-              <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={filteredServices.length === 0}>
+              <select
+                value={serviceId}
+                onChange={(event) => {
+                  setServiceId(event.target.value);
+                  if (isTransportService) {
+                    setTransportSuggestionOverridden(true);
+                  }
+                }}
+                required
+                disabled={filteredServices.length === 0}
+              >
                 {filteredServices.length === 0 ? (
                   <option value="">No services available for this type</option>
                 ) : (
@@ -1918,7 +2003,14 @@ export function QuoteItemsForm({
             <div className="form-row">
               <label>
                 Transport selector
-                <select value={transportServiceTypeId} onChange={(event) => setTransportServiceTypeId(event.target.value)} required>
+                <select
+                  value={transportServiceTypeId}
+                  onChange={(event) => {
+                    setTransportServiceTypeId(event.target.value);
+                    setTransportSuggestionOverridden(true);
+                  }}
+                  required
+                >
                   <option value="">Select service type</option>
                   {transportServiceTypes.map((serviceType) => (
                     <option key={serviceType.id} value={serviceType.id}>
@@ -1937,6 +2029,7 @@ export function QuoteItemsForm({
                   setRouteName('');
                   setBaseCost('');
                   setResolvedTransportPricing(null);
+                  setTransportSuggestionOverridden(false);
                 }}
                 placeholder="Select origin -> destination route"
               />
@@ -1949,7 +2042,10 @@ export function QuoteItemsForm({
                 Legacy route text
                 <input
                   value={routeName}
-                  onChange={(event) => setRouteName(event.target.value)}
+                  onChange={(event) => {
+                    setRouteName(event.target.value);
+                    setTransportSuggestionOverridden(true);
+                  }}
                   placeholder="Airport - Hotel"
                   disabled={Boolean(routeId)}
                 />
@@ -1958,54 +2054,75 @@ export function QuoteItemsForm({
           ) : null}
 
           {isTransportService ? (
-            <div className="form-row form-row-3">
-              <label>
-                Resolved vehicle
-                <input
-                  value={resolvedTransportPricing?.vehicle.name || ''}
-                  readOnly
-                  placeholder={isLoadingTransportCost ? 'Resolving vehicle...' : 'Auto from pricing rule'}
-                />
-              </label>
-
-              <label>
-                Resolved pricing
-                <input
-                  value={
-                    resolvedTransportPricing
-                      ? `${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)}`
-                      : ''
-                  }
-                  readOnly
-                  placeholder={isLoadingTransportCost ? 'Resolving cost...' : 'Auto from pricing rule'}
-                />
-              </label>
-
-              <label>
-                Pricing rule
-                <input
-                  value={
-                    resolvedTransportPricing
-                      ? `${resolvedTransportPricing.serviceType.name} | ${resolvedTransportPricing.routeName}`
-                      : ''
-                  }
-                  readOnly
-                  placeholder={isLoadingTransportCost ? 'Resolving rule...' : 'Auto from route, service type, and pax'}
-                />
-              </label>
-
-              {resolvedTransportPricing?.unitCount ? (
+            <div className="quote-selected-transport-card">
+              <div className="form-row form-row-3">
                 <label>
-                  Unit count
+                  Resolved vehicle
                   <input
-                    value={
-                      resolvedTransportPricing.unitCapacity
-                        ? `${resolvedTransportPricing.unitCount} units required (${resolvedTransportPricing.unitCapacity} pax each)`
-                        : `${resolvedTransportPricing.unitCount} units required`
-                    }
+                    value={resolvedTransportPricing?.vehicle.name || ''}
                     readOnly
+                    placeholder={isLoadingTransportCost ? 'Resolving vehicle...' : 'Auto from pricing rule'}
                   />
                 </label>
+
+                <label>
+                  Resolved pricing
+                  <input
+                    value={
+                      resolvedTransportPricing
+                        ? `${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)}`
+                        : ''
+                    }
+                    readOnly
+                    placeholder={isLoadingTransportCost ? 'Resolving cost...' : 'Auto from pricing rule'}
+                  />
+                </label>
+
+                <label>
+                  Pricing rule
+                  <input
+                    value={
+                      resolvedTransportPricing
+                        ? `${resolvedTransportPricing.serviceType.name} | ${resolvedTransportPricing.routeName}`
+                        : ''
+                    }
+                    readOnly
+                    placeholder={isLoadingTransportCost ? 'Resolving rule...' : 'Auto from route, service type, and pax'}
+                  />
+                </label>
+
+                {resolvedTransportPricing?.unitCount ? (
+                  <label>
+                    Unit count
+                    <input
+                      value={
+                        resolvedTransportPricing.unitCapacity
+                          ? `${resolvedTransportPricing.unitCount} units required (${resolvedTransportPricing.unitCapacity} pax each)`
+                          : `${resolvedTransportPricing.unitCount} units required`
+                      }
+                      readOnly
+                    />
+                  </label>
+                ) : null}
+              </div>
+
+              {resolvedTransportPricing ? (
+                <div className="quote-selected-transport-explanation">
+                  <strong>{transportSuggestionOverridden ? 'Selected transport option' : 'Auto-selected for you. You can change this.'}</strong>
+                  {transportRecommendationReasons.length > 0 ? (
+                    <ul>
+                      {transportRecommendationReasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>
+                      {transportSuggestionOverridden
+                        ? 'You changed the transport selection. Pricing is based on the selected route, service type, and pax.'
+                        : 'Selected from the best available pricing for this route and pax.'}
+                    </p>
+                  )}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -2032,8 +2149,11 @@ export function QuoteItemsForm({
 
               <div className="quote-preview-total-list">
                 {transportCandidates.map((candidate) => (
-                  <div
+                  <button
                     key={`${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`}
+                    type="button"
+                    className="quote-transport-suggestion-option"
+                    onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
                     style={
                       candidate.isRecommended || candidate.isBestValue
                         ? { borderColor: 'var(--color-accent)', background: 'var(--color-surface-muted)' }
@@ -2052,7 +2172,7 @@ export function QuoteItemsForm({
                       {candidate.category} / {candidate.vehicle.maxPax} pax capacity
                       {candidate.unitCount ? ` / ${candidate.unitCount} unit${candidate.unitCount === 1 ? '' : 's'}` : ''}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
 

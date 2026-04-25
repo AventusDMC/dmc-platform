@@ -40,6 +40,7 @@ type QuotesFormProps = {
     contactId: string;
     agentId: string;
     quoteType: 'FIT' | 'GROUP';
+    jordanPassType: 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT';
     bookingType: 'FIT' | 'GROUP' | 'SERIES';
     title: string;
     description: string;
@@ -93,6 +94,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
   const [contactId, setContactId] = useState(initialValues?.contactId || availableContacts[0]?.id || '');
   const [agentId, setAgentId] = useState(initialValues?.agentId || '');
   const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(initialValues?.quoteType || 'FIT');
+  const [jordanPassType, setJordanPassType] = useState<'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT'>(initialValues?.jordanPassType || 'NONE');
   const [bookingType, setBookingType] = useState<'FIT' | 'GROUP' | 'SERIES'>(initialValues?.bookingType || 'FIT');
   const [title, setTitle] = useState(initialValues?.title || '');
   const [description, setDescription] = useState(initialValues?.description || '');
@@ -252,6 +254,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
           contactId,
           agentId: agentId.trim() || (isEditing ? null : undefined),
           quoteType,
+          jordanPassType,
           bookingType,
           title,
           description,
@@ -442,6 +445,16 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
             <option value="FIT">FIT</option>
             <option value="GROUP">GROUP</option>
             <option value="SERIES">SERIES</option>
+          </select>
+        </label>
+
+        <label>
+          Jordan Pass
+          <select value={jordanPassType} onChange={(event) => setJordanPassType(event.target.value as 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT')}>
+            <option value="NONE">None</option>
+            <option value="WANDERER">Wanderer</option>
+            <option value="EXPLORER">Explorer</option>
+            <option value="EXPERT">Expert</option>
           </select>
         </label>
       </div>

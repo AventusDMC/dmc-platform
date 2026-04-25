@@ -72,7 +72,7 @@ export function HotelContractOccupancyRuleForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/occupancy-rules${ruleId ? `/${ruleId}` : ''}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/occupancy-rules${ruleId ? `/${ruleId}` : ''}`, {
         method: ruleId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

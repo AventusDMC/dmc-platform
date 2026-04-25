@@ -4,7 +4,7 @@ import { ReactNode, useState } from 'react';
 import { InlineRowEditorShell } from './InlineRowEditorShell';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../lib/auth-client';
-import { getErrorMessage } from '../lib/api';
+import { getErrorMessage, logFetchUrl } from '../lib/api';
 
 type InlineEntityActionsProps = {
   apiBaseUrl: string;
@@ -35,7 +35,7 @@ export function InlineEntityActions({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}${deletePath}`, {
+      const response = await fetch(logFetchUrl(`${apiBaseUrl}${deletePath}`), {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

@@ -4,6 +4,8 @@ import { CitiesService } from './cities.service';
 type CreateCityBody = {
   name: string;
   country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isActive?: boolean;
 };
 

@@ -63,7 +63,7 @@ export function HotelContractChildPolicyTable({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/child-policy/bands/${bandId}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/child-policy/bands/${bandId}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

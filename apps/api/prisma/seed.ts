@@ -132,6 +132,7 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
       { name: 'viewer', description: 'Read-only commercial users reviewing dashboards, quotes, and invoices.' },
       { name: 'operations', description: 'Operations users managing bookings and workflow actions.' },
       { name: 'finance', description: 'Finance users managing rates and transport pricing.' },
+      { name: 'agent', description: 'Agent portal users viewing only their assigned commercial records.' },
     ].map((role) =>
       prisma.role.upsert({
         where: { name: role.name },
@@ -171,6 +172,13 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
       password: 'finance123',
       role: 'finance',
     },
+    {
+      email: 'agent@dmc.local',
+      firstName: 'Agent',
+      lastName: 'User',
+      password: 'agent123',
+      role: 'agent',
+    },
   ] as const;
 
   for (const user of users) {
@@ -197,6 +205,37 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
 
 function normalizeKey(value: string) {
   return value.trim().toLowerCase();
+}
+
+function routeNormalizedKey(fromName: string, toName: string) {
+  const normalizeRoutePart = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_+/g, '_');
+
+  return [normalizeRoutePart(fromName), normalizeRoutePart(toName)].filter(Boolean).join('_');
+}
+
+function routeDisplayName(fromName: string, toName: string) {
+  return `${fromName.trim()} → ${toName.trim()}`;
+}
+
+const JORDAN_CITY_COORDINATES: Record<string, { latitude: number; longitude: number }> = {
+  amman: { latitude: 31.9539, longitude: 35.9106 },
+  petra: { latitude: 30.3285, longitude: 35.4444 },
+  'wadi rum': { latitude: 29.5321, longitude: 35.421 },
+  'dead sea': { latitude: 31.559, longitude: 35.4732 },
+  aqaba: { latitude: 29.5321, longitude: 35.0063 },
+  jerash: { latitude: 32.2808, longitude: 35.8997 },
+  madaba: { latitude: 31.7167, longitude: 35.7939 },
+};
+
+function cityCoordinates(name: string) {
+  return JORDAN_CITY_COORDINATES[normalizeKey(name)] || { latitude: 0, longitude: 0 };
 }
 
 async function findOrCreateByName<T extends NamedRecord>(
@@ -288,31 +327,27 @@ async function seedHotelCategories(prisma: PrismaService) {
 }
 
 async function seedCities(prisma: PrismaService) {
-  const entries = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Jerash'];
+  const entries = ['Amman', 'Dead Sea', 'Petra', 'Wadi Rum', 'Aqaba', 'Jerash', 'Madaba'];
 
   const records = await Promise.all(
-    entries.map((name) =>
-      findOrCreateByName(
-        (currentName) =>
-          prisma.city.findFirst({
-            where: {
-              name: {
-                equals: currentName,
-                mode: 'insensitive',
-              },
-            },
-          }),
-        (currentName) =>
-          prisma.city.create({
-            data: {
-              name: currentName,
-              country: 'Jordan',
-              isActive: true,
-            },
-          }),
+    entries.map(async (name) => {
+      const data = {
         name,
-      ),
-    ),
+        country: 'Jordan',
+        ...cityCoordinates(name),
+        isActive: true,
+      };
+      const existing = await prisma.city.findFirst({
+        where: {
+          name: {
+            equals: name,
+            mode: 'insensitive',
+          },
+        },
+      });
+
+      return existing ? prisma.city.update({ where: { id: existing.id }, data }) : prisma.city.create({ data });
+    }),
   );
 
   return toRecordMap(records);
@@ -641,11 +676,11 @@ async function seedRoutes(prisma: PrismaService, places: Record<string, NamedRec
     entries.map(async ([fromName, toName, durationMinutes, distanceKm]) => {
       const fromPlace = places[normalizeKey(fromName)];
       const toPlace = places[normalizeKey(toName)];
-      const routeName = `${fromName} - ${toName}`;
+      const routeName = routeDisplayName(fromName, toName);
+      const normalizedKey = routeNormalizedKey(fromName, toName);
       const existing = await prisma.route.findFirst({
         where: {
-          fromPlaceId: fromPlace.id,
-          toPlaceId: toPlace.id,
+          normalizedKey,
         },
       });
 
@@ -653,6 +688,7 @@ async function seedRoutes(prisma: PrismaService, places: Record<string, NamedRec
         fromPlaceId: fromPlace.id,
         toPlaceId: toPlace.id,
         name: routeName,
+        normalizedKey,
         routeType: 'private-transfer',
         durationMinutes,
         distanceKm,
@@ -3201,12 +3237,13 @@ async function seedMultiCurrencyQAScenario(
 
   const departureRoute = await prisma.route.upsert({
     where: {
-      id: '11111111-1111-1111-1111-111111111111',
+      normalizedKey: routeNormalizedKey(wadiRumPlace.name, airportPlace.name),
     },
     update: {
       fromPlaceId: wadiRumPlace.id,
       toPlaceId: airportPlace.id,
-      name: 'Wadi Rum Camp Area - Queen Alia International Airport',
+      name: routeDisplayName(wadiRumPlace.name, airportPlace.name),
+      normalizedKey: routeNormalizedKey(wadiRumPlace.name, airportPlace.name),
       routeType: 'private-transfer',
       durationMinutes: 240,
       distanceKm: 320,
@@ -3217,7 +3254,8 @@ async function seedMultiCurrencyQAScenario(
       id: '11111111-1111-1111-1111-111111111111',
       fromPlaceId: wadiRumPlace.id,
       toPlaceId: airportPlace.id,
-      name: 'Wadi Rum Camp Area - Queen Alia International Airport',
+      name: routeDisplayName(wadiRumPlace.name, airportPlace.name),
+      normalizedKey: routeNormalizedKey(wadiRumPlace.name, airportPlace.name),
       routeType: 'private-transfer',
       durationMinutes: 240,
       distanceKm: 320,
@@ -3535,7 +3573,7 @@ async function seedMultiCurrencyQAScenario(
       paxCount: 4,
       markupPercent: 18,
       routeId: (await prisma.route.findFirstOrThrow({
-        where: { name: { equals: 'Queen Alia International Airport - Amman City Center', mode: 'insensitive' } },
+        where: { normalizedKey: routeNormalizedKey('Queen Alia International Airport', 'Amman City Center') },
         select: { id: true },
       })).id,
       transportServiceTypeId: (await prisma.transportServiceType.findFirstOrThrow({
@@ -3592,7 +3630,7 @@ async function seedMultiCurrencyQAScenario(
       paxCount: 4,
       markupPercent: 18,
       routeId: (await prisma.route.findFirstOrThrow({
-        where: { name: { equals: 'Amman City Center - Petra Visitor Center', mode: 'insensitive' } },
+        where: { normalizedKey: routeNormalizedKey('Amman City Center', 'Petra Visitor Center') },
         select: { id: true },
       })).id,
       transportServiceTypeId: intercityTransferType.id,
@@ -3646,7 +3684,7 @@ async function seedMultiCurrencyQAScenario(
       paxCount: 4,
       markupPercent: 18,
       routeId: (await prisma.route.findFirstOrThrow({
-        where: { name: { equals: 'Petra Visitor Center - Wadi Rum Camp Area', mode: 'insensitive' } },
+        where: { normalizedKey: routeNormalizedKey('Petra Visitor Center', 'Wadi Rum Camp Area') },
         select: { id: true },
       })).id,
       transportServiceTypeId: intercityTransferType.id,

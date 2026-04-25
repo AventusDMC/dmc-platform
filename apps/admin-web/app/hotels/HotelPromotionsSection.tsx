@@ -1,11 +1,11 @@
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelPromotionsForm } from './HotelPromotionsForm';
 import { HotelPromotionsTable } from './HotelPromotionsTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type HotelRoomCategory = {
   id: string;
@@ -98,7 +98,7 @@ export async function HotelPromotionsSection({ contractId }: HotelPromotionsSect
           description="Add a promotion rule set on top of existing contract pricing."
           triggerLabelOpen="Add promotion"
         >
-          <HotelPromotionsForm apiBaseUrl={API_BASE_URL} contracts={contracts} />
+          <HotelPromotionsForm apiBaseUrl="/api" contracts={contracts} />
         </CollapsibleCreatePanel>
       }
       emptyState={
@@ -140,7 +140,7 @@ export async function HotelPromotionsSection({ contractId }: HotelPromotionsSect
         />
 
         {visiblePromotions.length > 0 ? (
-          <HotelPromotionsTable apiBaseUrl={API_BASE_URL} contracts={contracts} promotions={visiblePromotions} />
+          <HotelPromotionsTable apiBaseUrl="/api" contracts={contracts} promotions={visiblePromotions} />
         ) : null}
       </>
     </TableSectionShell>

@@ -1,11 +1,11 @@
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { HotelContractInventoryPanel } from './HotelContractInventoryPanel';
 import { HotelAllotmentsForm } from './HotelAllotmentsForm';
 import { HotelAllotmentsTable } from './HotelAllotmentsTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type HotelRoomCategory = {
   id: string;
@@ -80,7 +80,7 @@ export async function HotelAllotmentsSection({ contractId }: HotelAllotmentsSect
           description="Add inventory controls to the current contract scope."
           triggerLabelOpen="Add allotment"
         >
-          <HotelAllotmentsForm apiBaseUrl={API_BASE_URL} contracts={contracts} contractId={contractId} />
+          <HotelAllotmentsForm apiBaseUrl="/api" contracts={contracts} contractId={contractId} />
         </CollapsibleCreatePanel>
       }
       emptyState={
@@ -108,12 +108,12 @@ export async function HotelAllotmentsSection({ contractId }: HotelAllotmentsSect
               <p>Valid: {new Date(contract.validFrom).toLocaleDateString()} - {new Date(contract.validTo).toLocaleDateString()}</p>
               <p>Currency: {contract.currency}</p>
 
-              <HotelContractInventoryPanel apiBaseUrl={API_BASE_URL} contractId={contract.id} />
+              <HotelContractInventoryPanel apiBaseUrl="/api" contractId={contract.id} />
 
               {contract.allotments.length === 0 ? (
                 <p className="empty-state">No allotments for this contract yet.</p>
               ) : (
-                <HotelAllotmentsTable apiBaseUrl={API_BASE_URL} contracts={contracts} contract={contract} />
+                <HotelAllotmentsTable apiBaseUrl="/api" contracts={contracts} contract={contract} />
               )}
             </article>
           ))}

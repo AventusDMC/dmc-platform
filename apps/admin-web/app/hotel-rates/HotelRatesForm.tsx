@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CurrencySelect } from '../components/CurrencySelect';
-import { getErrorMessage } from '../lib/api';
+import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type ContractOption = {
@@ -139,7 +139,8 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
     setError('');
 
     try {
-      const response = await fetch(`/api/hotel-rates${rateId ? `/${rateId}` : ''}`, {
+      const url = `/api/hotel-rates${rateId ? `/${rateId}` : ''}`;
+      const response = await fetch(logFetchUrl(url), {
         method: rateId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',

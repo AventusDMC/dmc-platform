@@ -5,6 +5,7 @@ import { TransportPricingService } from './transport-pricing.service';
 type CalculateTransportPricingBody = {
   serviceTypeId: string;
   routeId?: string | null;
+  normalizedKey?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
   routeName?: string;
@@ -85,6 +86,7 @@ export class TransportPricingController {
     return this.transportPricingService.calculate({
       serviceTypeId: body.serviceTypeId,
       routeId: body.routeId,
+      normalizedKey: body.normalizedKey,
       fromPlaceId: body.fromPlaceId,
       toPlaceId: body.toPlaceId,
       routeName: body.routeName,

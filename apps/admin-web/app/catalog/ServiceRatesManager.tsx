@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CurrencySelect } from '../components/CurrencySelect';
-import { getErrorMessage } from '../lib/api';
+import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type ServiceRate = {
@@ -110,10 +110,10 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
     setError('');
 
     try {
-      const targetUrl = editingRateId
-        ? `${apiBaseUrl}/services/rates/${editingRateId}`
+      const url = editingRateId
+        ? `${apiBaseUrl}/service-rates/${editingRateId}`
         : `${apiBaseUrl}/services/${serviceId}/rates`;
-      const response = await fetch(targetUrl, {
+      const response = await fetch(logFetchUrl(url), {
         method: editingRateId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -153,7 +153,8 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
     }
 
     try {
-      const response = await fetch(`${apiBaseUrl}/services/rates/${rateId}`, {
+      const url = `${apiBaseUrl}/service-rates/${rateId}`;
+      const response = await fetch(logFetchUrl(url), {
         method: 'DELETE',
       });
 

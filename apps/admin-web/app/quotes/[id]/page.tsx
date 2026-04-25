@@ -211,6 +211,8 @@ type QuoteItem = {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  jordanPassCovered?: boolean;
+  jordanPassSavingsJod?: number;
   promotionExplanation?: PromotionExplanationItem[] | null;
   markupPercent: number;
   totalCost: number;
@@ -261,6 +263,7 @@ type Quote = {
   id: string;
   quoteNumber: string | null;
   quoteType: 'FIT' | 'GROUP';
+  jordanPassType: 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT';
   bookingType: 'FIT' | 'GROUP' | 'SERIES';
   title: string;
   description: string | null;
@@ -498,7 +501,7 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${DATA_API_BASE_URL}/routes`, 'Quote detail routes', {
+  return adminPageFetchJson<RouteOption[]>(`${DATA_API_BASE_URL}/routes?type=transfer`, 'Quote detail routes', {
     cache: 'no-store',
   });
 }
@@ -675,6 +678,8 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     useOverride: Boolean(item?.useOverride),
     currency: item?.currency || item?.quoteCurrency || item?.costCurrency || 'USD',
     pricingDescription: item?.pricingDescription ?? null,
+    jordanPassCovered: Boolean(item?.jordanPassCovered),
+    jordanPassSavingsJod: item?.jordanPassSavingsJod ?? 0,
     promotionExplanation: item?.promotionExplanation ?? null,
     markupPercent: item?.markupPercent ?? 0,
     totalCost: item?.totalCost ?? 0,
@@ -1402,6 +1407,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           <section className="quote-builder-stat-grid">
             <QuoteBuilderStatCard label="Quote Type" value={quote.quoteType} helper="Controls quote behavior" />
             <QuoteBuilderStatCard label="Booking Type" value={quote.bookingType} helper="Carried into booking conversion" />
+            <QuoteBuilderStatCard label="Jordan Pass" value={quote.jordanPassType === 'NONE' ? 'None' : quote.jordanPassType} helper="Entrance fee coverage" />
             <QuoteBuilderStatCard label="Group" value={`${totalPax} pax`} helper={`${quote.adults} adults / ${quote.children} children`} />
             <QuoteBuilderStatCard
               label="Stay"
@@ -1513,6 +1519,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       contactId: quote.contact.id,
                       agentId: quote.agent?.id || '',
                       quoteType: quote.quoteType,
+                      jordanPassType: quote.jordanPassType,
                       bookingType: quote.bookingType,
                       title: quote.title,
                       description: quote.description || '',

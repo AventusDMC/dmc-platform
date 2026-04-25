@@ -1,13 +1,13 @@
 import { CityOption } from '../lib/cities';
 import { HotelCategoryOption } from '../lib/hotelCategories';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { QueryDropdownFilters, type QueryDropdownFilterOption } from '../components/QueryDropdownFilters';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { HotelsCatalogBrowser } from './HotelsCatalogBrowser';
 import { HotelsForm } from './HotelsForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type Hotel = {
   id: string;
@@ -311,7 +311,7 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
         context={<p>{filteredHotels.length} hotels in scope</p>}
         createPanel={
           <CollapsibleCreatePanel title="Create hotel" description="Add a hotel record without leaving the Hotels workspace." triggerLabelOpen="Add hotel">
-            <HotelsForm apiBaseUrl={API_BASE_URL} cities={cities} hotelCategories={hotelCategories} />
+            <HotelsForm apiBaseUrl="/api" cities={cities} hotelCategories={hotelCategories} />
           </CollapsibleCreatePanel>
         }
         emptyState={filteredHotels.length === 0 ? <p className="empty-state">No hotels match the current filters.</p> : undefined}

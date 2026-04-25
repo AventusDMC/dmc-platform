@@ -1,12 +1,12 @@
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelContractCancellationPolicyForm } from './HotelContractCancellationPolicyForm';
 import { HotelContractCancellationRuleForm } from './HotelContractCancellationRuleForm';
 import { HotelContractCancellationRulesTable } from './HotelContractCancellationRulesTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type ContractOption = {
   id: string;
@@ -43,7 +43,7 @@ async function getHotelContracts(): Promise<ContractOption[]> {
 }
 
 async function getCancellationPolicy(contractId: string): Promise<CancellationPolicy> {
-  return adminPageFetchJson<CancellationPolicy>(`${API_BASE_URL}/hotel-contracts/${contractId}/cancellation-policy`, 'Hotel cancellation policy', {
+  return adminPageFetchJson<CancellationPolicy>(`${API_BASE_URL}/contracts/${contractId}/cancellation-policy`, 'Hotel cancellation policy', {
     cache: 'no-store',
     allow404: true,
   });
@@ -128,7 +128,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
               description="Set the contract summary and no-show penalty foundation."
               triggerLabelOpen="Create cancellation policy"
             >
-              <HotelContractCancellationPolicyForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} />
+              <HotelContractCancellationPolicyForm apiBaseUrl="/api" contractId={currentContract.id} />
             </CollapsibleCreatePanel>
           ) : undefined
         }
@@ -142,7 +142,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
               <p className="table-subcopy">{cancellationPolicy.notes || 'No notes'}</p>
             </div>
             <HotelContractCancellationPolicyForm
-              apiBaseUrl={API_BASE_URL}
+              apiBaseUrl="/api"
               contractId={currentContract.id}
               submitLabel="Save policy"
               initialValues={{
@@ -167,7 +167,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
               description="Add a new active or inactive cancellation penalty window."
               triggerLabelOpen="Add cancellation rule"
             >
-              <HotelContractCancellationRuleForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} />
+              <HotelContractCancellationRuleForm apiBaseUrl="/api" contractId={currentContract.id} />
             </CollapsibleCreatePanel>
           ) : undefined
         }
@@ -178,7 +178,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
         }
       >
         {cancellationPolicy ? (
-          <HotelContractCancellationRulesTable apiBaseUrl={API_BASE_URL} contractId={currentContract.id} policy={cancellationPolicy} />
+          <HotelContractCancellationRulesTable apiBaseUrl="/api" contractId={currentContract.id} policy={cancellationPolicy} />
         ) : null}
       </TableSectionShell>
     </section>

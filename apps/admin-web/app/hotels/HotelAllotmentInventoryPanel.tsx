@@ -61,7 +61,7 @@ export function HotelAllotmentInventoryPanel({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/allotments/${allotmentId}/daily-summary`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/allotments/${allotmentId}/daily-summary`, {
         headers: buildAuthHeaders(),
       });
 

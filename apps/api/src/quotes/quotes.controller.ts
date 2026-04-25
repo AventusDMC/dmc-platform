@@ -23,6 +23,7 @@ type QuoteFocType = 'none' | 'ratio' | 'fixed';
 type QuoteFocRoomType = 'single' | 'double';
 type QuoteTypeValue = 'FIT' | 'GROUP';
 type QuoteBookingType = 'FIT' | 'GROUP' | 'SERIES';
+type JordanPassTypeValue = 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT';
 
 type QuotePricingSlabBody = {
   minPax: number;
@@ -39,6 +40,7 @@ type CreateQuoteBody = {
   contactId: string;
   agentId?: string | null;
   quoteType?: QuoteTypeValue;
+  jordanPassType?: JordanPassTypeValue;
   bookingType?: QuoteBookingType;
   title: string;
   description?: string;
@@ -106,6 +108,7 @@ type CreateQuoteItemBody = {
   markupPercent?: number;
   transportServiceTypeId?: string;
   routeId?: string;
+  normalizedKey?: string;
   routeName?: string;
 };
 
@@ -349,6 +352,7 @@ export class QuotesController {
       contactId: body.contactId,
       agentId: body.agentId === undefined ? undefined : body.agentId || null,
       quoteType: body.quoteType,
+      jordanPassType: body.jordanPassType,
       bookingType: body.bookingType,
       title: body.title,
       description: body.description,
@@ -400,6 +404,7 @@ export class QuotesController {
       contactId: body.contactId,
       agentId: body.agentId === undefined ? undefined : body.agentId || null,
       quoteType: body.quoteType,
+      jordanPassType: body.jordanPassType,
       bookingType: body.bookingType,
       title: body.title,
       description: body.description,
@@ -663,6 +668,7 @@ export class QuotesController {
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
+      normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
     }, actor);
   }
@@ -725,6 +731,7 @@ export class QuotesController {
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
+      normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
     }, actor);
   }
@@ -919,6 +926,7 @@ export class QuotesController {
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
+      normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
     }, actor);
   }
@@ -981,6 +989,7 @@ export class QuotesController {
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
+      normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
     }, actor);
   }

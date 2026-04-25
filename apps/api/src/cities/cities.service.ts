@@ -10,6 +10,8 @@ type FindCitiesInput = {
 type CreateCityInput = {
   name: string;
   country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isActive?: boolean;
 };
 
@@ -64,6 +66,8 @@ export class CitiesService {
       data: {
         name,
         country,
+        latitude: ensureCoordinate(data.latitude, 'latitude'),
+        longitude: ensureCoordinate(data.longitude, 'longitude'),
         isActive: data.isActive ?? true,
       },
     });
@@ -77,6 +81,8 @@ export class CitiesService {
     const existing = await this.findOne(id);
     const name = data.name === undefined ? existing.name : requireTrimmedString(data.name, 'name');
     const country = data.country === undefined ? existing.country : normalizeOptionalString(data.country) ?? null;
+    const latitude = data.latitude === undefined ? existing.latitude : ensureCoordinate(data.latitude, 'latitude');
+    const longitude = data.longitude === undefined ? existing.longitude : ensureCoordinate(data.longitude, 'longitude');
 
     await this.ensureUnique(name, country, id);
 
@@ -85,6 +91,8 @@ export class CitiesService {
       data: {
         name,
         country,
+        latitude,
+        longitude,
         isActive: data.isActive,
       },
     });
@@ -114,4 +122,14 @@ export class CitiesService {
       throw new BadRequestException('City already exists');
     }
   }
+}
+
+function ensureCoordinate(value: number | null | undefined, field: string) {
+  const coordinate = Number(value ?? 0);
+
+  if (!Number.isFinite(coordinate)) {
+    throw new BadRequestException(`${field} must be a valid number`);
+  }
+
+  return coordinate;
 }

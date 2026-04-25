@@ -77,7 +77,7 @@ export function HotelContractSupplementForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/supplements${supplementId ? `/${supplementId}` : ''}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/supplements${supplementId ? `/${supplementId}` : ''}`, {
         method: supplementId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

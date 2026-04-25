@@ -1,11 +1,11 @@
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { HotelContractsForm } from '../hotel-contracts/HotelContractsForm';
 import { HotelContractsTable } from './HotelContractsTable';
 import Link from 'next/link';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type Hotel = {
   id: string;
@@ -135,13 +135,13 @@ export async function HotelContractsSection({ contractId }: HotelContractsSectio
             description="Add a supplier agreement before configuring rates or allotments."
             triggerLabelOpen="Add contract"
           >
-            <HotelContractsForm apiBaseUrl={API_BASE_URL} hotels={hotels} />
+            <HotelContractsForm apiBaseUrl="/api" hotels={hotels} />
           </CollapsibleCreatePanel>
         }
         emptyState={hotelContracts.length === 0 ? <p className="empty-state">No hotel contracts yet.</p> : undefined}
       >
         {hotelContracts.length > 0 ? (
-          <HotelContractsTable apiBaseUrl={API_BASE_URL} hotels={hotels} hotelContracts={hotelContracts} />
+          <HotelContractsTable apiBaseUrl="/api" hotels={hotels} hotelContracts={hotelContracts} />
         ) : null}
       </TableSectionShell>
     </div>

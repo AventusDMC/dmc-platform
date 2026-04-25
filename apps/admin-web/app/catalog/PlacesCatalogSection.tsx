@@ -2,12 +2,12 @@ import { InlineEntityActions } from '../components/InlineEntityActions';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { CityOption } from '../lib/cities';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { PlaceOption, formatPlaceLabel } from '../lib/places';
 import { PlacesForm } from '../places/PlacesForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 async function getPlaces(): Promise<PlaceOption[]> {
   return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places`, 'Catalog places', {
@@ -37,7 +37,7 @@ export async function PlacesCatalogSection() {
       context={<p>{places.length} places in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create place" description="Add reusable location records while keeping the library visible." triggerLabelOpen="Add place">
-          <PlacesForm apiBaseUrl={API_BASE_URL} cities={cities} placeTypes={placeTypes} />
+          <PlacesForm cities={cities} placeTypes={placeTypes} />
         </CollapsibleCreatePanel>
       }
       emptyState={places.length === 0 ? <p className="empty-state">No places yet.</p> : undefined}
@@ -68,13 +68,12 @@ export async function PlacesCatalogSection() {
                   <td>{place.isActive ? 'Active' : 'Inactive'}</td>
                   <td>
                     <InlineEntityActions
-                      apiBaseUrl={API_BASE_URL}
+                      apiBaseUrl="/api"
                       deletePath={`/places/${place.id}`}
                       deleteLabel="place"
                       confirmMessage={`Delete ${place.name}?`}
                     >
                       <PlacesForm
-                        apiBaseUrl={API_BASE_URL}
                         cities={cities}
                         placeTypes={placeTypes}
                         placeId={place.id}

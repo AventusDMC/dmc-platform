@@ -44,7 +44,7 @@ export function HotelContractChildPolicyForm({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/child-policy`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/child-policy`, {
         method: 'PUT',
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',

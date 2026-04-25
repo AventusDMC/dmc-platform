@@ -39,7 +39,7 @@ export function HotelContractMealPlansTable({
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/meal-plans/${mealPlan.id}`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/meal-plans/${mealPlan.id}`, {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });

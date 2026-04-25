@@ -137,6 +137,8 @@ type QuoteItem = {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  jordanPassCovered?: boolean;
+  jordanPassSavingsJod?: number;
   markupPercent: number;
   totalCost: number;
   totalSell: number;
@@ -503,6 +505,12 @@ export function QuoteItemCard({
             <p>
               {currentItem.appliedVehicleRate.routeName} | {currentItem.appliedVehicleRate.vehicle.name} |{' '}
               {currentItem.appliedVehicleRate.serviceType.name}
+            </p>
+          ) : null}
+          {currentItem.jordanPassCovered ? (
+            <p className="form-success">
+              Covered by Jordan Pass
+              {currentItem.jordanPassSavingsJod ? ` | Avoided ${currentItem.jordanPassSavingsJod.toFixed(2)} JOD per person` : ''}
             </p>
           ) : null}
 

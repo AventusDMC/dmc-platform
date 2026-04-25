@@ -1,14 +1,14 @@
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelContractChildPolicyBandForm } from './HotelContractChildPolicyBandForm';
 import { HotelContractChildPolicyForm } from './HotelContractChildPolicyForm';
 import { HotelContractChildPolicyTable } from './HotelContractChildPolicyTable';
 import { HotelContractOccupancyRuleForm } from './HotelContractOccupancyRuleForm';
 import { HotelContractOccupancyRulesTable } from './HotelContractOccupancyRulesTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type ContractOption = {
   id: string;
@@ -68,13 +68,13 @@ async function getHotelContracts(): Promise<ContractOption[]> {
 }
 
 async function getOccupancyRules(contractId: string): Promise<OccupancyRule[]> {
-  return adminPageFetchJson<OccupancyRule[]>(`${API_BASE_URL}/hotel-contracts/${contractId}/occupancy-rules`, 'Hotel occupancy rules', {
+  return adminPageFetchJson<OccupancyRule[]>(`${API_BASE_URL}/contracts/${contractId}/occupancy-rules`, 'Hotel occupancy rules', {
     cache: 'no-store',
   });
 }
 
 async function getChildPolicy(contractId: string): Promise<ChildPolicy> {
-  return adminPageFetchJson<ChildPolicy>(`${API_BASE_URL}/hotel-contracts/${contractId}/child-policy`, 'Hotel child policy', {
+  return adminPageFetchJson<ChildPolicy>(`${API_BASE_URL}/contracts/${contractId}/child-policy`, 'Hotel child policy', {
     cache: 'no-store',
     allow404: true,
   });
@@ -142,14 +142,14 @@ export async function HotelOccupancyChildPolicySection({ contractId }: HotelOccu
             description="Capture the allowed adult and child mix without opening a separate page."
             triggerLabelOpen="Add occupancy rule"
           >
-            <HotelContractOccupancyRuleForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} roomCategories={roomCategories} />
+            <HotelContractOccupancyRuleForm apiBaseUrl="/api" contractId={currentContract.id} roomCategories={roomCategories} />
           </CollapsibleCreatePanel>
         }
         emptyState={safeOccupancyRules.length === 0 ? <p className="empty-state">No occupancy rules for this contract yet.</p> : undefined}
       >
         {safeOccupancyRules.length > 0 ? (
           <HotelContractOccupancyRulesTable
-            apiBaseUrl={API_BASE_URL}
+            apiBaseUrl="/api"
             contractId={currentContract.id}
             roomCategories={roomCategories}
             rules={safeOccupancyRules}
@@ -168,7 +168,7 @@ export async function HotelOccupancyChildPolicySection({ contractId }: HotelOccu
               description="Add a new age band with its charging basis."
               triggerLabelOpen="Add child band"
             >
-              <HotelContractChildPolicyBandForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} />
+              <HotelContractChildPolicyBandForm apiBaseUrl="/api" contractId={currentContract.id} />
             </CollapsibleCreatePanel>
           ) : (
             <CollapsibleCreatePanel
@@ -176,14 +176,14 @@ export async function HotelOccupancyChildPolicySection({ contractId }: HotelOccu
               description="Set the age cutoffs before adding charge bands."
               triggerLabelOpen="Create child policy"
             >
-              <HotelContractChildPolicyForm apiBaseUrl={API_BASE_URL} contractId={currentContract.id} />
+              <HotelContractChildPolicyForm apiBaseUrl="/api" contractId={currentContract.id} />
             </CollapsibleCreatePanel>
           )
         }
         emptyState={!childPolicy ? <p className="empty-state">No child policy configured for this contract yet.</p> : undefined}
       >
         {childPolicy ? (
-          <HotelContractChildPolicyTable apiBaseUrl={API_BASE_URL} contractId={currentContract.id} policy={childPolicy} />
+          <HotelContractChildPolicyTable apiBaseUrl="/api" contractId={currentContract.id} policy={childPolicy} />
         ) : null}
       </TableSectionShell>
     </section>

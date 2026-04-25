@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
+import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
@@ -121,6 +122,8 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  jordanPassCovered?: boolean;
+  jordanPassSavingsJod?: number;
   markupPercent: number;
   appliedVehicleRate: {
     id: string;
@@ -657,6 +660,11 @@ function StarterAction({
   optionId?: string;
   recommendedCategory?: ServicePlannerCategory;
 }) {
+  const router = useRouter();
+  const [createdDay, setCreatedDay] = useState<QuoteReadinessDay | null>(null);
+  const [isCreatingDay, setIsCreatingDay] = useState(false);
+  const [error, setError] = useState('');
+  const targetDay = plannerProps.quote.itineraries[0] || createdDay || null;
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     addCategory: category,
   });
@@ -682,40 +690,123 @@ function StarterAction({
           Browse {category === 'hotel' ? 'Hotels' : category === 'transport' ? 'Transport' : 'Experiences'}
         </Link>
       </div>
-      <QuoteItemsForm
-        apiBaseUrl={plannerProps.apiBaseUrl}
-        quoteId={plannerProps.quote.id}
-        optionId={optionId}
-        blocks={plannerProps.quoteBlocks}
-        services={plannerProps.services}
-        transportServiceTypes={plannerProps.transportServiceTypes}
-        routes={plannerProps.routes}
-        hotels={plannerProps.hotels}
-        hotelContracts={plannerProps.hotelContracts}
-        hotelRates={plannerProps.hotelRates}
-        seasons={plannerProps.seasons}
-        quoteType={plannerProps.quote.quoteType}
-        defaultPaxCount={plannerProps.totalPax}
-        defaultAdultCount={plannerProps.quote.adults}
-        defaultChildCount={plannerProps.quote.children}
-        defaultRoomCount={plannerProps.quote.roomCount}
-        defaultNightCount={plannerProps.quote.nightCount}
-        travelStartDate={plannerProps.quote.travelStartDate}
-        initialServiceTypeKey={category}
-        preferredServiceId={category !== 'hotel' && category !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
-        preferredHotelId={category === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
-        preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
-        preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
-        preferredMealPlan={category === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
-        preferredOccupancyType={category === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
-        preferredRateCost={category === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
-        preferredRateCurrency={category === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
-        preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
-        preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
-        submitLabel={label}
-      />
+      {!targetDay ? (
+        <AutoCreateDayOne
+          apiBaseUrl={plannerProps.apiBaseUrl}
+          quoteId={plannerProps.quote.id}
+          onCreatingChange={setIsCreatingDay}
+          onCreated={(day) => {
+            setCreatedDay(day);
+            router.refresh();
+          }}
+          onError={setError}
+        />
+      ) : null}
+      {isCreatingDay ? <p className="form-helper">Creating Day 1 before opening the service form...</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
+      {targetDay ? (
+        <QuoteItemsForm
+          apiBaseUrl={plannerProps.apiBaseUrl}
+          quoteId={plannerProps.quote.id}
+          optionId={optionId}
+          blocks={plannerProps.quoteBlocks}
+          services={plannerProps.services}
+          transportServiceTypes={plannerProps.transportServiceTypes}
+          routes={plannerProps.routes}
+          hotels={plannerProps.hotels}
+          hotelContracts={plannerProps.hotelContracts}
+          hotelRates={plannerProps.hotelRates}
+          seasons={plannerProps.seasons}
+          quoteType={plannerProps.quote.quoteType}
+          defaultPaxCount={plannerProps.totalPax}
+          defaultAdultCount={plannerProps.quote.adults}
+          defaultChildCount={plannerProps.quote.children}
+          defaultRoomCount={plannerProps.quote.roomCount}
+          defaultNightCount={plannerProps.quote.nightCount}
+          travelStartDate={plannerProps.quote.travelStartDate}
+          itineraryDayNumber={targetDay.dayNumber}
+          itineraryId={targetDay.id}
+          initialServiceTypeKey={category}
+          preferredServiceId={category !== 'hotel' && category !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
+          preferredHotelId={category === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
+          preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
+          preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
+          preferredMealPlan={category === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
+          preferredOccupancyType={category === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
+          preferredRateCost={category === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
+          preferredRateCurrency={category === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
+          preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
+          preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
+          submitLabel={label}
+        />
+      ) : null}
     </RowDetailsPanel>
   );
+}
+
+function AutoCreateDayOne({
+  apiBaseUrl,
+  quoteId,
+  onCreatingChange,
+  onCreated,
+  onError,
+}: {
+  apiBaseUrl: string;
+  quoteId: string;
+  onCreatingChange: (value: boolean) => void;
+  onCreated: (day: QuoteReadinessDay) => void;
+  onError: (message: string) => void;
+}) {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function createDay() {
+      onCreatingChange(true);
+      onError('');
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/itinerary/day`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dayNumber: 1,
+            title: 'Day 1',
+            notes: '',
+            sortOrder: 0,
+            isActive: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not create Day 1.'));
+        }
+
+        const day = await readJsonResponse<QuoteReadinessDay>(response, 'Could not create Day 1.');
+
+        if (isMounted) {
+          onCreated(day);
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          onError(caughtError instanceof Error ? caughtError.message : 'Could not create Day 1.');
+        }
+      } finally {
+        if (isMounted) {
+          onCreatingChange(false);
+        }
+      }
+    }
+
+    void createDay();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [apiBaseUrl, onCreated, onCreatingChange, onError, quoteId]);
+
+  return null;
 }
 
 function AddServiceLauncher({
@@ -1352,6 +1443,17 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             Focused day mode is active. Use the highlighted day card below to complete the targeted operating task.
           </p>
         ) : null}
+        <QuoteAutoItineraryBuilder
+          apiBaseUrl={props.apiBaseUrl}
+          quote={props.quote}
+          services={props.services}
+          transportServiceTypes={props.transportServiceTypes}
+          routes={props.routes}
+          hotels={props.hotels}
+          hotelContracts={props.hotelContracts}
+          hotelRates={props.hotelRates}
+          totalPax={props.totalPax}
+        />
         <AddServiceLauncher scope={scopes[0]} plannerProps={props} days={props.quote.itineraries} />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getErrorMessage } from '../../lib/api';
+import { getErrorMessage, logFetchUrl } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { QuoteBulkActionNotice, type QuoteBulkActionNoticeState } from './QuoteBulkActionNotice';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
@@ -109,7 +109,7 @@ export function QuoteTransportBulkAssign({
           const endpoint = item.optionId
             ? `${apiBaseUrl}/quotes/${quoteId}/options/${item.optionId}/items/${item.id}`
             : `${apiBaseUrl}/quotes/${quoteId}/items/${item.id}`;
-          const response = await fetch(endpoint, {
+          const response = await fetch(logFetchUrl(endpoint), {
             method: 'PATCH',
             headers: buildAuthHeaders({
               'Content-Type': 'application/json',

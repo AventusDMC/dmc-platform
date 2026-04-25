@@ -52,7 +52,7 @@ export function HotelContractInventoryPanel({ apiBaseUrl, contractId }: HotelCon
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contractId}/allotments/daily-summary`, {
+      const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/allotments/daily-summary`, {
         headers: buildAuthHeaders(),
       });
 

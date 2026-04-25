@@ -4,7 +4,7 @@ import { Fragment, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { HotelRatesForm } from './HotelRatesForm';
-import { getErrorMessage } from '../lib/api';
+import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 
 type HotelRoomCategory = {
@@ -152,7 +152,8 @@ export function HotelContractRatesSection({
     setActionError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-rates/${rate.id}`, {
+      const url = `${apiBaseUrl}/hotel-rates/${rate.id}`;
+      const response = await fetch(logFetchUrl(url), {
         method: 'DELETE',
       });
 

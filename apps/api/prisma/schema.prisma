@@ -119,6 +119,8 @@ model City {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   country   String?
+  latitude  Float
+  longitude Float
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -277,6 +279,53 @@ model HotelContract {
 
   @@index([hotelId])
   @@map("hotel_contracts")
+}
+
+model ContractImport {
+  id                String                   @id @default(uuid()) @db.Uuid
+  contractType      ContractImportType
+  supplierId        String?                  @db.Uuid
+  supplierName      String?
+  sourceFileName    String
+  sourceFilePath    String
+  sourceContentType String?
+  contractYear      Int?
+  validFrom         DateTime?
+  validTo           DateTime?
+  status            ContractImportStatus     @default(DRAFT)
+  extractedJson     Json?
+  approvedJson      Json?
+  warnings          Json?
+  errors            Json?
+  importedEntityId  String?                  @db.Uuid
+  approvedByUserId  String?                  @db.Uuid
+  approvedAt        DateTime?
+  importedAt        DateTime?
+  createdByUserId   String?                  @db.Uuid
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  auditLogs         ContractImportAuditLog[]
+
+  @@index([contractType, status, createdAt])
+  @@index([supplierId])
+  @@map("contract_imports")
+}
+
+model ContractImportAuditLog {
+  id               String               @id @default(uuid()) @db.Uuid
+  contractImportId String               @db.Uuid
+  action           String
+  status           ContractImportStatus
+  actorUserId      String?              @db.Uuid
+  actor            String?
+  note             String?
+  metadata         Json?
+  createdAt        DateTime             @default(now())
+  contractImport   ContractImport       @relation(fields: [contractImportId], references: [id], onDelete: Cascade)
+
+  @@index([contractImportId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("contract_import_audit_logs")
 }
 
 model HotelContractOccupancyRule {
@@ -782,6 +831,9 @@ model QuoteItem {
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   appliedVehicleRateId   String?                 @db.Uuid
+  entranceFeeId          String?                 @db.Uuid
+  jordanPassCovered      Boolean                 @default(false)
+  jordanPassSavingsJod   Float                   @default(0)
   currency               String
   quoteCurrency          String                  @default("USD")
   pricingDescription     String?
@@ -818,6 +870,7 @@ model QuoteItem {
   useOverride            Boolean                 @default(false)
   appliedVehicleRate     VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
   contract               HotelContract?          @relation(fields: [contractId], references: [id])
+  entranceFee            EntranceFee?            @relation(fields: [entranceFeeId], references: [id])
   hotel                  Hotel?                  @relation(fields: [hotelId], references: [id])
   itinerary              Itinerary?              @relation(fields: [itineraryId], references: [id])
   option                 QuoteOption?            @relation(fields: [optionId], references: [id], onDelete: Cascade)
@@ -827,6 +880,7 @@ model QuoteItem {
   service                SupplierService         @relation(fields: [serviceId], references: [id])
 
   @@index([contractId])
+  @@index([entranceFeeId])
   @@index([hotelId])
   @@index([quoteId, optionId])
   @@index([roomCategoryId])
@@ -969,6 +1023,7 @@ model Quote {
   contactId                  String                   @db.Uuid
   agentId                    String?                  @db.Uuid
   quoteType                  QuoteType                @default(FIT)
+  jordanPassType             JordanPassType           @default(NONE)
   bookingType                BookingType              @default(FIT)
   title                      String
   description                String?
@@ -1078,6 +1133,7 @@ model Route {
   fromPlaceId     String                 @db.Uuid
   toPlaceId       String                 @db.Uuid
   name            String
+  normalizedKey   String                 @unique
   routeType       String?
   durationMinutes Int?
   distanceKm      Float?
@@ -1131,12 +1187,47 @@ model SupplierService {
   updatedAt             DateTime        @updatedAt
   serviceTypeId         String?         @db.Uuid
   serviceRates          ServiceRate[]
+  entranceFee           EntranceFee?
   quoteBlocks           QuoteBlock[]
   quoteItems            QuoteItem[]
   serviceType           ServiceType?    @relation(fields: [serviceTypeId], references: [id])
 
   @@index([serviceTypeId])
   @@map("supplier_services")
+}
+
+model EntranceFee {
+  id                   String          @id @default(uuid()) @db.Uuid
+  siteName             String
+  category             String?
+  foreignerFeeJod      Float
+  includedInJordanPass Boolean         @default(false)
+  notes                String?
+  source               String?
+  serviceId            String          @unique @db.Uuid
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  service              SupplierService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  quoteItems           QuoteItem[]
+
+  @@index([includedInJordanPass, siteName])
+  @@map("entrance_fees")
+}
+
+model JordanPassProduct {
+  id              String         @id @default(uuid()) @db.Uuid
+  code            JordanPassType @unique
+  name            String
+  priceJod        Float
+  petraDayCount   Int
+  visaWaiverNote  String?
+  optionalUpgrade Boolean        @default(true)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([isActive, priceJod])
+  @@map("jordan_pass_products")
 }
 
 model ServiceRate {
@@ -1457,6 +1548,20 @@ enum HotelRatePricingMode {
   PER_PERSON_PER_NIGHT
 }
 
+enum ContractImportType {
+  HOTEL
+  TRANSPORT
+  ACTIVITY
+}
+
+enum ContractImportStatus {
+  DRAFT
+  ANALYZED
+  APPROVED
+  IMPORTED
+  FAILED
+}
+
 enum ServiceRatePricingMode {
   PER_PERSON
   PER_GROUP
@@ -1538,6 +1643,13 @@ enum QuoteStatus {
 enum QuoteType {
   FIT
   GROUP
+}
+
+enum JordanPassType {
+  NONE
+  WANDERER
+  EXPLORER
+  EXPERT
 }
 
 enum InvoiceStatus {

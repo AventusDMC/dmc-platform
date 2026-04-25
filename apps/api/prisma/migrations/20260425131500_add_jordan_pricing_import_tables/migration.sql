@@ -1,0 +1,2 @@
+-- No-op placeholder. The Jordan pricing import tables are created by
+-- 20260425130000_add_entrance_fees_jordan_pass.

@@ -2,10 +2,10 @@ import { InlineEntityActions } from '../components/InlineEntityActions';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { CityOption, formatCityLabel } from '../lib/cities';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 import { CitiesForm } from '../cities/CitiesForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 async function getCities(): Promise<CityOption[]> {
   return adminPageFetchJson<CityOption[]>(`${API_BASE_URL}/cities`, 'Catalog cities', {
@@ -23,7 +23,7 @@ export async function CitiesCatalogSection() {
       context={<p>{cities.length} destination records in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create city" description="Add destination records while keeping the registry visible." triggerLabelOpen="Add city">
-          <CitiesForm apiBaseUrl={API_BASE_URL} />
+          <CitiesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
       emptyState={cities.length === 0 ? <p className="empty-state">No cities yet.</p> : undefined}
@@ -49,13 +49,13 @@ export async function CitiesCatalogSection() {
                   <td>{city.isActive ? 'Active' : 'Inactive'}</td>
                   <td>
                     <InlineEntityActions
-                      apiBaseUrl={API_BASE_URL}
+                      apiBaseUrl="/api"
                       deletePath={`/cities/${city.id}`}
                       deleteLabel="city"
                       confirmMessage={`Delete ${city.name}?`}
                     >
                       <CitiesForm
-                        apiBaseUrl={API_BASE_URL}
+                        apiBaseUrl="/api"
                         cityId={city.id}
                         submitLabel="Save city"
                         initialValues={{

@@ -4,7 +4,7 @@ import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
-import { getErrorMessage } from '../lib/api';
+import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { HotelContractsForm } from '../hotel-contracts/HotelContractsForm';
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
@@ -72,7 +72,8 @@ export function HotelContractsTable({ apiBaseUrl, hotels, hotelContracts }: Hote
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/hotel-contracts/${contract.id}`, {
+      const url = `${apiBaseUrl}/contracts/${contract.id}`;
+      const response = await fetch(logFetchUrl(url), {
         method: 'DELETE',
         headers: buildAuthHeaders(),
       });
