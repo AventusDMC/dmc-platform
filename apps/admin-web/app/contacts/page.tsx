@@ -14,6 +14,7 @@ import { ContactsTable } from './ContactsTable';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Company = {
   id: string;
@@ -120,12 +121,12 @@ export default async function ContactsPage() {
               context={<p>{contacts.length} contacts in scope</p>}
               createPanel={
                 <CollapsibleCreatePanel title="Create contact" description="Add contact records while keeping the list visible." triggerLabelOpen="Add contact">
-                  <ContactsForm apiBaseUrl={API_BASE_URL} companies={companies} />
+                  <ContactsForm apiBaseUrl={ACTION_API_BASE_URL} companies={companies} />
                 </CollapsibleCreatePanel>
               }
               emptyState={contacts.length === 0 ? <p className="empty-state">No contacts yet.</p> : undefined}
             >
-              {contacts.length > 0 ? <ContactsTable apiBaseUrl={API_BASE_URL} contacts={contacts} companies={companies} /> : null}
+              {contacts.length > 0 ? <ContactsTable apiBaseUrl={ACTION_API_BASE_URL} contacts={contacts} companies={companies} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

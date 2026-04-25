@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getErrorMessage } from '../lib/api';
+import { ApiValidationError, getApiError } from '../lib/api';
 
 type CompanyOption = {
   id: string;
@@ -34,31 +34,36 @@ export function ContactsForm({ apiBaseUrl, companies, contactId, submitLabel, in
   const [title, setTitle] = useState(initialValues?.title || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [validationErrors, setValidationErrors] = useState<ApiValidationError[]>([]);
   const isEditing = Boolean(contactId);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
     setError('');
+    setValidationErrors([]);
 
     try {
+      const payload = {
+        companyId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        title: title.trim() || undefined,
+      };
       const response = await fetch(`${apiBaseUrl}/contacts${contactId ? `/${contactId}` : ''}`, {
         method: contactId ? 'PATCH' : 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          companyId,
-          firstName,
-          lastName,
-          email,
-          phone,
-          title,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'create'} contact.`));
+        const apiError = await getApiError(response, `Could not ${isEditing ? 'update' : 'create'} contact.`);
+        setValidationErrors(apiError.errors);
+        throw new Error(apiError.message);
       }
 
       if (!isEditing) {
@@ -137,6 +142,13 @@ export function ContactsForm({ apiBaseUrl, companies, contactId, submitLabel, in
       </button>
 
       {error ? <p className="form-error">{error}</p> : null}
+      {validationErrors.length > 0 ? (
+        <div className="form-error">
+          {validationErrors.map((validationError) => (
+            <p key={`${validationError.path}:${validationError.code}`}>{validationError.message}</p>
+          ))}
+        </div>
+      ) : null}
     </form>
   );
 }
