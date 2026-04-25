@@ -18,12 +18,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
+  const headers = {
+    'Content-Type': 'application/json',
+    ...buildActorHeaders(request),
+  };
+  console.log(headers);
+
   const response = await fetch(`${API_BASE_URL}/companies`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildActorHeaders(request),
-    },
+    headers,
     body: JSON.stringify(body),
     cache: 'no-store',
     redirect: 'manual',
