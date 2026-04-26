@@ -475,7 +475,8 @@ export class ContractImportsService {
     const tableRows = input.workbookRows.length > 0 ? input.workbookRows : this.textToRows(text);
     const extractedSeasons = this.extractSeasons(tableRows, text, year, validFrom, validTo);
     const defaultSeasonName = extractedSeasons[0]?.name || `${hotelName} ${year} Full Year`;
-    const tableRates = this.extractHotelRatesFromTable(tableRows, text, currency);
+    const mealPlanTableRates = this.extractSeasonMealPlanRates(tableRows, text, currency);
+    const tableRates = mealPlanTableRates.length > 0 ? mealPlanTableRates : this.extractHotelRatesFromTable(tableRows, text, currency);
     const extractedRates = tableRates.length > 0 ? tableRates : this.extractHotelRatesFromRows(tableRows, currency, defaultSeasonName);
     const fallbackRates = extractedRates.length > 0 ? [] : this.extractHotelRatesFromText(text, currency, defaultSeasonName);
     const rates =
@@ -509,6 +510,8 @@ export class ContractImportsService {
     }
     if (rates.length === 0) {
       uncertainFields.push('rates');
+    } else if (mealPlanTableRates.length > 0) {
+      uncertainFields.push('rates extracted from season meal-plan table');
     } else if (tableRates.length > 0) {
       uncertainFields.push('rates extracted from table header');
     } else if (extractedRates.length === 0 && fallbackRates.length > 0) {
@@ -706,6 +709,86 @@ export class ContractImportsService {
     }
 
     return this.dedupeRates(rates);
+  }
+
+  private extractSeasonMealPlanRates(rows: string[][], text: string, fallbackCurrency: string): PreviewRate[] {
+    const rates: PreviewRate[] = [];
+    const tableLines = [
+      ...rows.map((row) => row.map((cell) => String(cell || '').trim()).filter(Boolean)),
+      ...text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => [line]),
+    ].filter((row) => row.length > 0);
+    let headerDetected = false;
+
+    for (const rawCells of tableLines) {
+      const line = rawCells.join(' ').trim();
+      if (this.isSeasonMealPlanHeader(line)) {
+        console.log('SEASON MEAL PLAN HEADER DETECTED:', line);
+        headerDetected = true;
+        continue;
+      }
+
+      if (!headerDetected) continue;
+
+      const parsed = this.parseSeasonMealPlanRow(line, fallbackCurrency || 'USD');
+      if (!parsed) continue;
+
+      rates.push({
+        roomType: 'Standard',
+        occupancyType: 'DBL',
+        mealPlan: 'HB',
+        seasonName: parsed.seasonName,
+        cost: parsed.hb,
+        currency: parsed.currency,
+      });
+      rates.push({
+        roomType: 'Standard',
+        occupancyType: 'DBL',
+        mealPlan: 'BB',
+        seasonName: parsed.seasonName,
+        cost: parsed.bb,
+        currency: parsed.currency,
+      });
+      if (typeof parsed.singleSupplement === 'number') {
+        rates.push({
+          roomType: 'Standard',
+          occupancyType: 'SGL',
+          mealPlan: 'BB',
+          seasonName: parsed.seasonName,
+          cost: parsed.bb + parsed.singleSupplement,
+          currency: parsed.currency,
+          notes: 'Single rate calculated from BB plus single supplement.',
+        });
+      }
+    }
+
+    return this.dedupeRates(rates);
+  }
+
+  private isSeasonMealPlanHeader(line: string) {
+    const normalized = line.toLowerCase();
+    return /\bhb\b|half\s*board/.test(normalized) && /\bbb\b|bed\s*(?:and|&)\s*breakfast/.test(normalized) && /single\s*(?:supp|supplement)/.test(normalized);
+  }
+
+  private parseSeasonMealPlanRow(line: string, fallbackCurrency: string) {
+    const amounts = this.extractMoneyAmounts(line);
+    if (amounts.length < 2) return null;
+
+    const firstAmountMatch = line.match(/(?:(?:JOD|USD|EUR|\$)\s*)?\d+(?:,\d{3})*(?:\.\d{1,2})?(?:\s*(?:JOD|USD|EUR))?/i);
+    const seasonRaw = firstAmountMatch ? line.slice(0, firstAmountMatch.index).trim() : line.replace(/\d+(?:\.\d+)?/g, '').trim();
+    const seasonName = this.normalizeSeasonLabel(seasonRaw);
+    if (!seasonName) return null;
+
+    return {
+      seasonName,
+      hb: amounts[0].amount,
+      bb: amounts[1].amount,
+      singleSupplement: amounts[2]?.amount,
+      currency: amounts.find((amount) => amount.currency)?.currency || (line.includes('$') ? 'USD' : fallbackCurrency || 'USD'),
+    };
   }
 
   private extractFlattenedTableRates(line: string, fallbackCurrency: string): PreviewRate[] {
@@ -951,6 +1034,14 @@ export class ContractImportsService {
     if (!Number.isFinite(parsedDay) || !Number.isFinite(parsedMonth) || !Number.isFinite(parsedYear)) return '';
     if (parsedDay < 1 || parsedDay > 31 || parsedMonth < 1 || parsedMonth > 12) return '';
     return `${parsedYear}-${String(parsedMonth).padStart(2, '0')}-${String(parsedDay).padStart(2, '0')}`;
+  }
+
+  private normalizeSeasonLabel(value: string) {
+    return value
+      .replace(/\b(\d+)(st|nd|rd|th)\b/gi, '$1')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*-\s*/g, ' - ')
+      .trim();
   }
 
   private addPreviewAliases(preview: ContractPreview): ContractPreview {
