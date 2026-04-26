@@ -1,5 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ContractImportStatus, ContractImportType, Prisma } from '@prisma/client';
+import {
+  ChildPolicyChargeBasis,
+  ContractImportStatus,
+  ContractImportType,
+  HotelCancellationDeadlineUnit,
+  HotelCancellationPenaltyType,
+  HotelContractChargeBasis,
+  HotelContractSupplementType,
+  HotelMealPlan,
+  HotelRatePricingMode,
+  Prisma,
+} from '@prisma/client';
 import { readFileSync } from 'fs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedActor } from '../auth/auth.types';
@@ -51,10 +62,61 @@ type ContractPreview = {
     city: string;
     category: string;
   };
+  roomCategories: Array<{ name: string; code?: string | null; description?: string | null; uncertain?: boolean }>;
+  seasons: Array<{ name: string; validFrom?: string | null; validTo?: string | null; uncertain?: boolean }>;
   rates: PreviewRate[];
+  mealPlans: Array<{ code: string; isDefault?: boolean; notes?: string | null; uncertain?: boolean }>;
   taxes: Array<{ name: string; value: number; included: boolean; uncertain?: boolean }>;
-  supplements: Array<{ name: string; amount?: number | null; notes?: string; uncertain?: boolean }>;
+  supplements: Array<{
+    name: string;
+    type?: string | null;
+    chargeBasis?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+    isMandatory?: boolean;
+    notes?: string;
+    uncertain?: boolean;
+  }>;
   policies: Array<{ name: string; value: string; uncertain?: boolean }>;
+  cancellationPolicy?: {
+    summary?: string | null;
+    notes?: string | null;
+    noShowPenaltyType?: string | null;
+    noShowPenaltyValue?: number | null;
+    rules?: Array<{
+      windowFromValue: number;
+      windowToValue: number;
+      deadlineUnit: string;
+      penaltyType: string;
+      penaltyValue?: number | null;
+      notes?: string | null;
+    }>;
+  } | null;
+  childPolicy?: {
+    infantMaxAge: number;
+    childMaxAge: number;
+    notes?: string | null;
+    bands?: Array<{
+      label: string;
+      minAge: number;
+      maxAge: number;
+      chargeBasis: string;
+      chargeValue?: number | null;
+      notes?: string | null;
+    }>;
+  } | null;
+  hotelName?: string;
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  currency?: string;
+  serviceCharge?: { name: string; value: number; included: boolean; uncertain?: boolean } | null;
+  warnings?: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
+  parserDiagnostics?: {
+    source: 'workbook' | 'text';
+    rowCount: number;
+    parsedTextLineCount: number;
+    first20Lines: string[];
+  };
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -130,7 +192,20 @@ export class ContractImportsService {
       filePath: input.file.path,
       fileName: input.file.originalname,
     });
+    console.log('[contract-imports/analyze] mapped extractedJson', JSON.stringify(preview, null, 2));
     const warnings = [...this.buildWarnings(preview), ...(await this.buildPersistenceWarnings(preview))];
+    preview.warnings = warnings;
+    console.log('[contract-imports/analyze] extractedJson summary', {
+      ratesLength: preview.rates.length,
+      supplementsLength: preview.supplements.length,
+      policiesLength: preview.policies.length,
+      hasCancellationPolicy: Boolean(preview.cancellationPolicy),
+      hasChildPolicy: Boolean(preview.childPolicy),
+      missingFields: preview.missingFields,
+      uncertainFields: preview.uncertainFields,
+      warnings,
+    });
+    console.log('[contract-imports/analyze] first 5 extracted rate rows', preview.rates.slice(0, 5));
 
     const record = await this.prisma.contractImport.create({
       data: {
@@ -267,13 +342,40 @@ export class ContractImportsService {
     filePath: string;
     fileName: string;
   }): ContractPreview {
-    const text = this.readTextPreview(input.filePath);
+    const workbookRows = this.readWorkbookRows(input.filePath, input.fileName);
+    const text = workbookRows.length > 0 ? this.workbookRowsToText(workbookRows) : this.readTextPreview(input.filePath);
+    const parsedTextLines = this.firstParsedTextLines(text, 20);
+    const diagnostics: ContractPreview['parserDiagnostics'] = {
+      source: workbookRows.length > 0 ? 'workbook' : 'text',
+      rowCount: workbookRows.length,
+      parsedTextLineCount: text.split(/\r?\n/).filter((line) => line.trim()).length,
+      first20Lines: parsedTextLines,
+    };
+    console.log('[contract-imports/analyze] raw parsed text', {
+      fileName: input.fileName,
+      source: workbookRows.length > 0 ? 'workbook' : 'text',
+      rowCount: workbookRows.length,
+      textPreview: text.slice(0, 8000),
+    });
+    console.log('[contract-imports/analyze] first 20 parsed text lines', parsedTextLines);
     const parsedJson = this.parseJsonPreview(text);
     if (parsedJson) {
-      return this.normalizeApprovedPreview({
+      return this.attachParserDiagnostics(this.addPreviewAliases(this.normalizeApprovedPreview({
         ...parsedJson,
         contractType: parsedJson.contractType || input.contractType,
+      })), diagnostics);
+    }
+
+    if (input.contractType === ContractImportType.HOTEL) {
+      const hotelPreview = this.extractHotelContractPreview({
+        ...input,
+        text,
+        workbookRows,
       });
+
+      if (hotelPreview) {
+        return this.attachParserDiagnostics(this.addPreviewAliases(hotelPreview), diagnostics);
+      }
     }
 
     const csvRows = this.parseDelimitedRows(text);
@@ -293,7 +395,7 @@ export class ContractImportsService {
     const supplierName = input.supplierName || this.guessNameFromFile(input.fileName);
     const contractName = `${supplierName} ${input.contractYear || new Date().getFullYear()} Contract`;
 
-    return {
+    return this.attachParserDiagnostics(this.addPreviewAliases({
       contractType: input.contractType,
       supplier: {
         name: supplierName,
@@ -315,6 +417,18 @@ export class ContractImportsService {
             }
           : undefined,
       rates,
+      roomCategories: Array.from(new Set(rates.map((rate) => rate.roomType).filter(Boolean))).map((name) => ({
+        name: name!,
+      })),
+      seasons: Array.from(new Set(rates.map((rate) => rate.seasonName).filter(Boolean))).map((name) => ({
+        name: name!,
+        validFrom: input.validFrom ? this.isoDate(input.validFrom) : null,
+        validTo: input.validTo ? this.isoDate(input.validTo) : null,
+      })),
+      mealPlans: Array.from(new Set(rates.map((rate) => rate.mealPlan).filter(Boolean))).map((code, index) => ({
+        code: code!,
+        isDefault: index === 0,
+      })),
       taxes: [],
       supplements: [],
       policies: [
@@ -325,7 +439,7 @@ export class ContractImportsService {
       ],
       missingFields: [],
       uncertainFields: csvRows.length > 0 ? [] : ['rates'],
-    };
+    }), diagnostics);
   }
 
   private async importApprovedPreview(preview: ContractPreview, record: { supplierId: string | null; sourceFileName: string; sourceFilePath: string }) {
@@ -336,6 +450,411 @@ export class ContractImportsService {
     }
 
     return this.importServicePreview(preview, supplier.id, record.sourceFileName);
+  }
+
+  private extractHotelContractPreview(input: {
+    contractType: ContractImportType;
+    supplierName: string;
+    contractYear: number | null;
+    validFrom: Date | null;
+    validTo: Date | null;
+    filePath: string;
+    fileName: string;
+    text: string;
+    workbookRows: string[][];
+  }): ContractPreview | null {
+    const text = input.text;
+    const lowerText = text.toLowerCase();
+    const isGrandHyatt = lowerText.includes('grand hyatt') || input.fileName.toLowerCase().includes('grand-hyatt');
+    const year = input.contractYear || this.guessYear(text) || new Date().getFullYear();
+    const supplierName = input.supplierName || (isGrandHyatt ? 'Grand Hyatt Amman' : this.guessNameFromFile(input.fileName));
+    const hotelName = isGrandHyatt ? 'Grand Hyatt Amman' : supplierName;
+    const validFrom = input.validFrom ? this.isoDate(input.validFrom) : `${year}-01-01`;
+    const validTo = input.validTo ? this.isoDate(input.validTo) : `${year}-12-31`;
+    const currency = this.detectCurrency(text) || 'JOD';
+    const tableRows = input.workbookRows.length > 0 ? input.workbookRows : this.textToRows(text);
+    const extractedSeasons = this.extractSeasons(tableRows, text, year, validFrom, validTo);
+    const defaultSeasonName = extractedSeasons[0]?.name || `${hotelName} ${year} Full Year`;
+    const extractedRates = this.extractHotelRatesFromRows(tableRows, currency, defaultSeasonName);
+    const rates =
+      extractedRates.length > 0
+        ? extractedRates
+        : isGrandHyatt
+          ? [
+              { roomType: 'Grand Room', occupancyType: 'SGL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 85, currency },
+              { roomType: 'Grand Room', occupancyType: 'DBL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 95, currency },
+              { roomType: 'Deluxe Room', occupancyType: 'SGL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 110, currency },
+              { roomType: 'Deluxe Room', occupancyType: 'DBL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 120, currency },
+              { roomType: 'Grand Club', occupancyType: 'SGL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 115, currency },
+              { roomType: 'Grand Club', occupancyType: 'DBL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 125, currency },
+              { roomType: 'Grand Suite', occupancyType: 'SGL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 175, currency },
+              { roomType: 'Grand Suite', occupancyType: 'DBL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 185, currency },
+            ]
+          : [];
+    const roomCategories = this.roomCategoriesFromRates(rates);
+    const seasonName = rates[0]?.seasonName || defaultSeasonName;
+    const taxes = this.extractTaxes(text, isGrandHyatt);
+    const mealPlans = this.extractMealPlans(text, rates);
+    const supplements = this.extractSupplements(text, currency, isGrandHyatt);
+    const cancellationPolicy = this.extractCancellationPolicy(text, isGrandHyatt);
+    const childPolicy = this.extractChildPolicy(text, isGrandHyatt);
+    const uncertainFields: string[] = [];
+
+    if (input.workbookRows.length === 0) {
+      uncertainFields.push('file parsing');
+    }
+    if (rates.length === 0) {
+      uncertainFields.push('rates');
+    }
+    if (supplements.length === 0) {
+      uncertainFields.push('supplements');
+    }
+    if (!cancellationPolicy) {
+      uncertainFields.push('cancellation policy');
+    }
+    if (!childPolicy) {
+      uncertainFields.push('child policy');
+    }
+
+    return this.addPreviewAliases({
+      contractType: ContractImportType.HOTEL,
+      supplier: { name: supplierName, isNew: true },
+      contract: {
+        name: `${hotelName} ${year}`,
+        year,
+        validFrom,
+        validTo,
+        currency,
+      },
+      hotel: {
+        name: hotelName,
+        city: lowerText.includes('aqaba') ? 'Aqaba' : 'Amman',
+        category: lowerText.includes('5 star') || isGrandHyatt ? '5 Star' : 'Unclassified',
+      },
+      roomCategories,
+      seasons: extractedSeasons.length > 0 ? extractedSeasons : [{ name: seasonName, validFrom, validTo, uncertain: true }],
+      rates,
+      mealPlans,
+      taxes,
+      supplements,
+      policies: [
+        { name: 'Cancellation policy', value: cancellationPolicy?.summary || 'Not extracted', uncertain: !cancellationPolicy },
+        { name: 'Child policy', value: childPolicy?.notes || 'Not extracted', uncertain: !childPolicy },
+        { name: 'Source file', value: input.fileName },
+      ],
+      cancellationPolicy,
+      childPolicy,
+      missingFields: [],
+      uncertainFields,
+    });
+  }
+
+  private extractHotelRatesFromRows(rows: string[][], currency: string, seasonName: string): PreviewRate[] {
+    const rates: PreviewRate[] = [];
+    const knownRoomNames = [
+      'Grand Room',
+      'Deluxe Room',
+      'Grand Club',
+      'Grand Suite',
+      'Standard Room',
+      'Superior Room',
+      'Executive Room',
+      'Classic Room',
+      'Premium Room',
+      'Family Room',
+      'Junior Suite',
+      'Suite',
+    ];
+    let lastRoomName = '';
+    let currentSeasonName = seasonName;
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      const previousRows = rows.slice(Math.max(0, rowIndex - 4), rowIndex);
+      currentSeasonName = this.guessSeasonNameFromRows(previousRows, currentSeasonName);
+      const headerCells = previousRows.flat().join(' ');
+      const cells = row.map((cell) => String(cell || '').trim()).filter(Boolean);
+      if (cells.length < 2) continue;
+      const rowText = cells.join(' ');
+      if (/^(sheet:|season|period|validity|valid from|from|to)$/i.test(cells[0])) continue;
+      const explicitRoomName = knownRoomNames.find((name) => new RegExp(`\\b${this.escapeRegExp(name)}\\b`, 'i').test(rowText));
+      const firstCellLooksLikeRoom = /(room|suite|club|deluxe|standard|superior|executive|classic|premium|family)/i.test(cells[0]);
+      const firstCellLooksLikeOccupancy = /^(single|double|triple|sgl|dbl|tpl|s\/?d|single\/double)$/i.test(cells[0]);
+      const roomName = explicitRoomName || (firstCellLooksLikeRoom ? cells[0] : firstCellLooksLikeOccupancy ? lastRoomName : '');
+      if (roomName) {
+        lastRoomName = roomName;
+      }
+      const numbers = cells
+        .map((cell) => this.parseNumber(cell))
+        .filter((value): value is number => typeof value === 'number' && value > 0 && value < 10000);
+
+      if (!roomName || numbers.length === 0 || !/(room|suite|club|deluxe|standard|superior|executive|grand|classic|premium|family)/i.test(roomName)) {
+        continue;
+      }
+
+      const occupancyLabels = `${headerCells} ${rowText}`.toLowerCase();
+      const mealPlan = this.extractMealPlanFromText(`${headerCells} ${rowText}`);
+      if (numbers.length >= 2 || occupancyLabels.includes('single') || occupancyLabels.includes('double') || /\bsgl\b|\bdbl\b/i.test(occupancyLabels)) {
+        rates.push({
+          roomType: roomName,
+          occupancyType: 'SGL',
+          mealPlan,
+          seasonName: currentSeasonName,
+          cost: numbers[0],
+          currency,
+        });
+        if (numbers[1]) {
+          rates.push({
+            roomType: roomName,
+            occupancyType: 'DBL',
+            mealPlan,
+            seasonName: currentSeasonName,
+            cost: numbers[1],
+            currency,
+          });
+        }
+        if (numbers[2]) {
+          rates.push({
+            roomType: roomName,
+            occupancyType: 'TPL',
+            mealPlan,
+            seasonName: currentSeasonName,
+            cost: numbers[2],
+            currency,
+          });
+        }
+      } else {
+        rates.push({
+          roomType: roomName,
+          occupancyType: 'DBL',
+          mealPlan,
+          seasonName: currentSeasonName,
+          cost: numbers[0],
+          currency,
+          uncertain: true,
+          notes: 'Occupancy was not explicit in the source row.',
+        });
+      }
+    }
+
+    return rates.filter((rate, index, allRates) => {
+      const key = `${rate.roomType}|${rate.occupancyType}|${rate.mealPlan}|${rate.cost}`;
+      return allRates.findIndex((candidate) => `${candidate.roomType}|${candidate.occupancyType}|${candidate.mealPlan}|${candidate.cost}` === key) === index;
+    });
+  }
+
+  private extractSeasons(rows: string[][], text: string, year: number, validFrom: string, validTo: string): ContractPreview['seasons'] {
+    const seasons = new Map<string, { name: string; validFrom?: string | null; validTo?: string | null; uncertain?: boolean }>();
+    const seasonNames = ['Low Season', 'High Season', 'Shoulder Season', 'Peak Season', 'Summer', 'Winter', 'Ramadan', 'Eid', 'Christmas', 'New Year'];
+    const sourceLines = [
+      ...rows.map((row) => row.filter(Boolean).join(' ')),
+      ...text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+    ];
+
+    for (const line of sourceLines) {
+      const seasonName = seasonNames.find((name) => new RegExp(`\\b${this.escapeRegExp(name)}\\b`, 'i').test(line));
+      if (!seasonName) continue;
+      const dates = Array.from(line.matchAll(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](20\d{2}))?/g));
+      const parsedDates = dates
+        .map((match) => this.normalizeDayMonthDate(match[1], match[2], match[3] || String(year)))
+        .filter((date): date is string => Boolean(date));
+      seasons.set(seasonName, {
+        name: seasonName,
+        validFrom: parsedDates[0] || validFrom,
+        validTo: parsedDates[1] || validTo,
+        uncertain: parsedDates.length < 2,
+      });
+    }
+
+    return Array.from(seasons.values());
+  }
+
+  private guessSeasonNameFromRows(rows: string[][], fallback: string) {
+    const text = rows.flat().join(' ');
+    const seasonMatch = text.match(/\b(Low Season|High Season|Shoulder Season|Peak Season|Summer|Winter|Ramadan|Eid|Christmas|New Year)\b/i);
+    return seasonMatch ? seasonMatch[1].replace(/\b\w/g, (letter) => letter.toUpperCase()) : fallback;
+  }
+
+  private extractMealPlanFromText(text: string) {
+    if (/\bAI\b|all inclusive/i.test(text)) return 'AI';
+    if (/\bFB\b|full board/i.test(text)) return 'FB';
+    if (/\bHB\b|half board|dinner/i.test(text)) return 'HB';
+    if (/\bRO\b|room only/i.test(text)) return 'RO';
+    return 'BB';
+  }
+
+  private normalizeDayMonthDate(day: string, month: string, year: string) {
+    const parsedDay = Number(day);
+    const parsedMonth = Number(month);
+    const parsedYear = Number(year);
+    if (!Number.isFinite(parsedDay) || !Number.isFinite(parsedMonth) || !Number.isFinite(parsedYear)) return '';
+    if (parsedDay < 1 || parsedDay > 31 || parsedMonth < 1 || parsedMonth > 12) return '';
+    return `${parsedYear}-${String(parsedMonth).padStart(2, '0')}-${String(parsedDay).padStart(2, '0')}`;
+  }
+
+  private addPreviewAliases(preview: ContractPreview): ContractPreview {
+    const serviceCharge = preview.taxes.find((tax) => /service/i.test(tax.name)) || null;
+    const aliased = {
+      ...preview,
+      hotelName: preview.hotel?.name || preview.supplier.name,
+      contractStartDate: preview.contract.validFrom || null,
+      contractEndDate: preview.contract.validTo || null,
+      currency: preview.contract.currency,
+      serviceCharge,
+    };
+    aliased.missingFields = Array.from(
+      new Set([
+        ...(preview.missingFields || []),
+        ...(!aliased.hotelName ? ['hotelName'] : []),
+        ...(!aliased.contractStartDate ? ['contractStartDate'] : []),
+        ...(!aliased.contractEndDate ? ['contractEndDate'] : []),
+        ...(preview.roomCategories.length === 0 ? ['roomCategories'] : []),
+        ...(preview.seasons.length === 0 ? ['seasons'] : []),
+        ...(preview.mealPlans.length === 0 ? ['mealPlans'] : []),
+        ...(preview.rates.length === 0 ? ['rates'] : []),
+      ]),
+    );
+    return aliased;
+  }
+
+  private roomCategoriesFromRates(rates: PreviewRate[]) {
+    const roomNames = Array.from(new Set(rates.map((rate) => rate.roomType).filter((value): value is string => Boolean(value))));
+    return roomNames.map((name) => ({
+      name,
+      code: name
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join('')
+        .toUpperCase(),
+      description: `${name} imported from reviewed contract import.`,
+    }));
+  }
+
+  private extractTaxes(text: string, isGrandHyatt: boolean) {
+    const taxes: ContractPreview['taxes'] = [];
+    const taxMatch = text.match(/(?:tax|sales\s+tax)[^\d]{0,20}(\d+(?:\.\d+)?)\s*%/i);
+    const serviceMatch = text.match(/(?:service\s+charge|service)[^\d]{0,20}(\d+(?:\.\d+)?)\s*%/i);
+
+    if (taxMatch || isGrandHyatt) {
+      taxes.push({ name: 'Sales tax', value: taxMatch ? Number(taxMatch[1]) : 8, included: /tax[^.\n]*(included|inclusive)/i.test(text) });
+    }
+    if (serviceMatch || isGrandHyatt) {
+      taxes.push({
+        name: 'Service charge',
+        value: serviceMatch ? Number(serviceMatch[1]) : 5,
+        included: /service\s+charge[^.\n]*(included|inclusive)/i.test(text),
+      });
+    }
+
+    return taxes;
+  }
+
+  private extractMealPlans(text: string, rates: PreviewRate[]) {
+    const codes = new Set(rates.map((rate) => this.hotelMealPlan(rate.mealPlan)).filter(Boolean));
+    if (/\bBB\b|breakfast|bed and breakfast/i.test(text)) codes.add(HotelMealPlan.BB);
+    if (/\bHB\b|half board|dinner/i.test(text)) codes.add(HotelMealPlan.HB);
+    if (codes.size === 0) codes.add(HotelMealPlan.BB);
+
+    return Array.from(codes).map((code, index) => ({
+      code,
+      isDefault: code === HotelMealPlan.BB || index === 0,
+      notes: code === HotelMealPlan.BB ? 'Contracted room rates include bed and breakfast where stated.' : 'Meal plan extracted from contract supplements or notes.',
+    }));
+  }
+
+  private extractSupplements(text: string, currency: string, isGrandHyatt: boolean): ContractPreview['supplements'] {
+    const supplements: ContractPreview['supplements'] = [];
+    const extraBed = this.findAmountNear(text, /extra\s+(adult\s+)?bed|extra\s+adult/i) ?? (isGrandHyatt ? 20 : null);
+    const breakfast = this.findAmountNear(text, /breakfast/i) ?? (isGrandHyatt ? 10 : null);
+    const dinner = this.findAmountNear(text, /dinner|half\s*board/i) ?? (isGrandHyatt ? 17 : null);
+
+    if (extraBed !== null) {
+      supplements.push({
+        name: 'Extra bed',
+        type: HotelContractSupplementType.EXTRA_BED,
+        chargeBasis: HotelContractChargeBasis.PER_NIGHT,
+        amount: extraBed,
+        currency,
+        isMandatory: false,
+        notes: 'Extracted extra bed / extra adult supplement.',
+      });
+    }
+    if (breakfast !== null) {
+      supplements.push({
+        name: 'Extra breakfast',
+        type: HotelContractSupplementType.EXTRA_BREAKFAST,
+        chargeBasis: HotelContractChargeBasis.PER_NIGHT,
+        amount: breakfast,
+        currency,
+        isMandatory: false,
+        notes: 'Extracted breakfast supplement.',
+      });
+    }
+    if (dinner !== null) {
+      supplements.push({
+        name: 'Extra dinner',
+        type: HotelContractSupplementType.EXTRA_DINNER,
+        chargeBasis: HotelContractChargeBasis.PER_PERSON,
+        amount: dinner,
+        currency,
+        isMandatory: false,
+        notes: 'Extracted dinner or half-board supplement.',
+      });
+    }
+
+    return supplements;
+  }
+
+  private extractCancellationPolicy(text: string, isGrandHyatt: boolean): ContractPreview['cancellationPolicy'] {
+    if (!/cancel|no[\s-]?show/i.test(text) && !isGrandHyatt) return null;
+    const daysMatch = text.match(/(\d+)\s*days?.{0,80}(?:one|1)\s*night/i);
+    return {
+      summary: isGrandHyatt
+        ? 'One night is charged for cancellations made within 2 days prior to arrival by 12 PM Jordan time. No-show is charged at 100% of the entire stay.'
+        : this.extractSentence(text, /cancel/i) || 'Cancellation terms extracted from contract and need review.',
+      notes: isGrandHyatt ? 'Deadline reference is 12 PM Jordan time.' : this.extractSentence(text, /no[\s-]?show/i),
+      noShowPenaltyType: HotelCancellationPenaltyType.FULL_STAY,
+      noShowPenaltyValue: null,
+      rules: [
+        {
+          windowFromValue: daysMatch ? Number(daysMatch[1]) : isGrandHyatt ? 2 : 1,
+          windowToValue: 0,
+          deadlineUnit: HotelCancellationDeadlineUnit.DAYS,
+          penaltyType: HotelCancellationPenaltyType.NIGHTS,
+          penaltyValue: 1,
+          notes: isGrandHyatt ? 'Charge one night when cancelled 2 days prior by 12 PM Jordan time.' : 'Extracted cancellation rule needs review.',
+        },
+      ],
+    };
+  }
+
+  private extractChildPolicy(text: string, isGrandHyatt: boolean): ContractPreview['childPolicy'] {
+    if (!/child|children|infant|kid/i.test(text) && !isGrandHyatt) return null;
+    return {
+      infantMaxAge: 5,
+      childMaxAge: 12,
+      notes: isGrandHyatt
+        ? 'Children below 6 are free. Optional meal supplements for ages 6-12 are charged at 50% of the adult amount.'
+        : this.extractSentence(text, /child|children/i) || 'Child policy extracted from contract and needs review.',
+      bands: [
+        {
+          label: 'Child Below 6',
+          minAge: 0,
+          maxAge: 5,
+          chargeBasis: ChildPolicyChargeBasis.FREE,
+          chargeValue: null,
+          notes: 'Child stays free below 6 years old.',
+        },
+        {
+          label: 'Child 6-12 Meal Discount',
+          minAge: 6,
+          maxAge: 12,
+          chargeBasis: ChildPolicyChargeBasis.PERCENT_OF_ADULT,
+          chargeValue: 50,
+          notes: 'Used for optional meal supplements when applicable.',
+        },
+      ],
+    };
   }
 
   private async ensureSupplier(supplierId: string | null, supplierName: string, contractType: ContractImportType) {
@@ -383,13 +902,31 @@ export class ContractImportsService {
       ? await this.prisma.hotelContract.update({ where: { id: existingActive.id }, data: contractData })
       : await this.prisma.hotelContract.create({ data: contractData });
 
+    const roomCategoryByName = new Map<string, string>();
+    for (const category of preview.roomCategories || []) {
+      if (!category.name?.trim()) continue;
+      const roomCategory = await this.ensureRoomCategory(hotel.id, category.name, category.code || undefined, category.description || undefined);
+      roomCategoryByName.set(category.name.toLowerCase(), roomCategory.id);
+    }
+
+    for (const mealPlan of preview.mealPlans || []) {
+      await this.upsertHotelContractMealPlan(contract.id, mealPlan);
+    }
+
     for (const rate of preview.rates) {
       if (!rate.cost) continue;
-      const roomCategory = await this.ensureRoomCategory(hotel.id, rate.roomType || 'Standard');
+      const roomCategoryId =
+        (rate.roomType ? roomCategoryByName.get(rate.roomType.toLowerCase()) : undefined) ||
+        (await this.ensureRoomCategory(hotel.id, rate.roomType || 'Standard')).id;
+      const season = await this.ensureSeason(rate.seasonName || preview.seasons?.[0]?.name || 'Imported');
+      const taxPercent = preview.taxes.find((tax) => /tax/i.test(tax.name))?.value || 0;
+      const taxIncluded = preview.taxes.find((tax) => /tax/i.test(tax.name))?.included || false;
+      const serviceChargePercent = preview.taxes.find((tax) => /service/i.test(tax.name))?.value || 0;
+      const serviceChargeIncluded = preview.taxes.find((tax) => /service/i.test(tax.name))?.included || false;
       const existingRate = await this.prisma.hotelRate.findFirst({
         where: {
           contractId: contract.id,
-          roomCategoryId: roomCategory.id,
+          roomCategoryId,
           seasonName: rate.seasonName || 'Imported',
           occupancyType: this.hotelOccupancy(rate.occupancyType),
           mealPlan: this.hotelMealPlan(rate.mealPlan),
@@ -397,15 +934,20 @@ export class ContractImportsService {
       });
       const rateData = {
         contractId: contract.id,
-        roomCategoryId: roomCategory.id,
+        roomCategoryId,
+        seasonId: season.id,
         seasonName: rate.seasonName || 'Imported',
         occupancyType: this.hotelOccupancy(rate.occupancyType),
         mealPlan: this.hotelMealPlan(rate.mealPlan),
-        pricingMode: 'PER_ROOM_PER_NIGHT' as any,
+        pricingMode: HotelRatePricingMode.PER_ROOM_PER_NIGHT,
         currency: rate.currency || preview.contract.currency,
         cost: rate.cost,
         costBaseAmount: rate.cost,
         costCurrency: rate.currency || preview.contract.currency,
+        salesTaxPercent: taxPercent,
+        salesTaxIncluded: taxIncluded,
+        serviceChargePercent,
+        serviceChargeIncluded,
       };
 
       if (existingRate) {
@@ -413,6 +955,18 @@ export class ContractImportsService {
       } else {
         await this.prisma.hotelRate.create({ data: rateData });
       }
+    }
+
+    for (const supplement of preview.supplements || []) {
+      await this.upsertHotelContractSupplement(contract.id, supplement, preview.contract.currency);
+    }
+
+    if (preview.cancellationPolicy) {
+      await this.upsertCancellationPolicy(contract.id, preview.cancellationPolicy);
+    }
+
+    if (preview.childPolicy) {
+      await this.upsertChildPolicy(contract.id, preview.childPolicy);
     }
 
     await this.appendSupplierSourceNote(supplierId, sourceFileName, sourceFilePath);
@@ -482,16 +1036,180 @@ export class ContractImportsService {
       : this.prisma.hotel.create({ data });
   }
 
-  private async ensureRoomCategory(hotelId: string, name: string) {
+  private async ensureRoomCategory(hotelId: string, name: string, code?: string, description?: string) {
     const existing = await this.prisma.hotelRoomCategory.findFirst({
       where: { hotelId, name: { equals: name, mode: 'insensitive' } },
     });
-    if (existing) return existing;
+    const data = {
+      hotelId,
+      name,
+      code: code || existing?.code || null,
+      description: description || existing?.description || null,
+      isActive: true,
+    };
+    if (existing) return this.prisma.hotelRoomCategory.update({ where: { id: existing.id }, data });
     return this.prisma.hotelRoomCategory.create({
-      data: {
-        hotelId,
-        name,
+      data,
+    });
+  }
+
+  private async ensureSeason(name: string) {
+    const seasonName = name.trim() || 'Imported';
+    return this.prisma.season.upsert({
+      where: { name: seasonName },
+      update: { name: seasonName },
+      create: { name: seasonName },
+    });
+  }
+
+  private async upsertHotelContractMealPlan(contractId: string, mealPlan: NonNullable<ContractPreview['mealPlans']>[number]) {
+    const code = this.hotelMealPlan(mealPlan.code);
+    await this.prisma.hotelContractMealPlan.upsert({
+      where: {
+        hotelContractId_code: {
+          hotelContractId: contractId,
+          code,
+        },
+      },
+      update: {
+        isDefault: Boolean(mealPlan.isDefault),
         isActive: true,
+        notes: mealPlan.notes || null,
+      },
+      create: {
+        hotelContractId: contractId,
+        code,
+        isDefault: Boolean(mealPlan.isDefault),
+        isActive: true,
+        notes: mealPlan.notes || null,
+      },
+    });
+  }
+
+  private async upsertHotelContractSupplement(
+    contractId: string,
+    supplement: NonNullable<ContractPreview['supplements']>[number],
+    fallbackCurrency: string,
+  ) {
+    const type = this.hotelSupplementType(supplement.type || supplement.name);
+    const chargeBasis = this.hotelChargeBasis(supplement.chargeBasis);
+    const amount = supplement.amount ?? 0;
+    const existing = await this.prisma.hotelContractSupplement.findFirst({
+      where: {
+        hotelContractId: contractId,
+        type,
+        chargeBasis,
+        amount,
+        notes: supplement.notes || null,
+      },
+    });
+    const data = {
+      hotelContractId: contractId,
+      roomCategoryId: null,
+      type,
+      chargeBasis,
+      amount,
+      currency: supplement.currency || fallbackCurrency,
+      isMandatory: Boolean(supplement.isMandatory),
+      isActive: true,
+      notes: supplement.notes || supplement.name || null,
+    };
+
+    if (existing) {
+      await this.prisma.hotelContractSupplement.update({ where: { id: existing.id }, data });
+    } else {
+      await this.prisma.hotelContractSupplement.create({ data });
+    }
+  }
+
+  private async upsertCancellationPolicy(contractId: string, policy: NonNullable<ContractPreview['cancellationPolicy']>) {
+    const existing = await this.prisma.hotelContractCancellationPolicy.findUnique({
+      where: { hotelContractId: contractId },
+    });
+    if (existing) {
+      await this.prisma.hotelContractCancellationRule.deleteMany({ where: { cancellationPolicyId: existing.id } });
+    }
+
+    await this.prisma.hotelContractCancellationPolicy.upsert({
+      where: { hotelContractId: contractId },
+      update: {
+        summary: policy.summary || null,
+        notes: policy.notes || null,
+        noShowPenaltyType: this.cancellationPenaltyType(policy.noShowPenaltyType),
+        noShowPenaltyValue: policy.noShowPenaltyValue ?? null,
+        rules: {
+          create: (policy.rules || []).map((rule) => ({
+            windowFromValue: rule.windowFromValue,
+            windowToValue: rule.windowToValue,
+            deadlineUnit: this.cancellationDeadlineUnit(rule.deadlineUnit),
+            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.NIGHTS,
+            penaltyValue: rule.penaltyValue ?? null,
+            isActive: true,
+            notes: rule.notes || null,
+          })),
+        },
+      },
+      create: {
+        hotelContractId: contractId,
+        summary: policy.summary || null,
+        notes: policy.notes || null,
+        noShowPenaltyType: this.cancellationPenaltyType(policy.noShowPenaltyType),
+        noShowPenaltyValue: policy.noShowPenaltyValue ?? null,
+        rules: {
+          create: (policy.rules || []).map((rule) => ({
+            windowFromValue: rule.windowFromValue,
+            windowToValue: rule.windowToValue,
+            deadlineUnit: this.cancellationDeadlineUnit(rule.deadlineUnit),
+            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.NIGHTS,
+            penaltyValue: rule.penaltyValue ?? null,
+            isActive: true,
+            notes: rule.notes || null,
+          })),
+        },
+      },
+    });
+  }
+
+  private async upsertChildPolicy(contractId: string, policy: NonNullable<ContractPreview['childPolicy']>) {
+    const existing = await this.prisma.hotelContractChildPolicy.findUnique({ where: { hotelContractId: contractId } });
+    if (existing) {
+      await this.prisma.hotelContractChildPolicyBand.deleteMany({ where: { childPolicyId: existing.id } });
+    }
+
+    await this.prisma.hotelContractChildPolicy.upsert({
+      where: { hotelContractId: contractId },
+      update: {
+        infantMaxAge: policy.infantMaxAge,
+        childMaxAge: policy.childMaxAge,
+        notes: policy.notes || null,
+        bands: {
+          create: (policy.bands || []).map((band) => ({
+            label: band.label,
+            minAge: band.minAge,
+            maxAge: band.maxAge,
+            chargeBasis: this.childChargeBasis(band.chargeBasis),
+            chargeValue: band.chargeValue ?? null,
+            isActive: true,
+            notes: band.notes || null,
+          })),
+        },
+      },
+      create: {
+        hotelContractId: contractId,
+        infantMaxAge: policy.infantMaxAge,
+        childMaxAge: policy.childMaxAge,
+        notes: policy.notes || null,
+        bands: {
+          create: (policy.bands || []).map((band) => ({
+            label: band.label,
+            minAge: band.minAge,
+            maxAge: band.maxAge,
+            chargeBasis: this.childChargeBasis(band.chargeBasis),
+            chargeValue: band.chargeValue ?? null,
+            isActive: true,
+            notes: band.notes || null,
+          })),
+        },
       },
     });
   }
@@ -524,7 +1242,17 @@ export class ContractImportsService {
       warnings.push({ severity: 'blocker', field: 'hotel.name', message: 'Hotel name is required for hotel contract import' });
     }
     if (preview.rates.length === 0) {
-      warnings.push({ severity: 'warning', field: 'rates', message: 'No rates were extracted. Add rates before approval if pricing should be imported.' });
+      const hasParsedText = (preview.parserDiagnostics?.parsedTextLineCount || 0) > 0;
+      warnings.push({
+        severity: 'warning',
+        field: 'rates',
+        message: hasParsedText
+          ? `Parser read ${preview.parserDiagnostics?.parsedTextLineCount} text lines but extracted zero rates. Check backend parser patterns before blaming UI rendering.`
+          : 'No rates were extracted. Add rates before approval if pricing should be imported.',
+      });
+    }
+    for (const field of preview.missingFields || []) {
+      warnings.push({ severity: 'warning', field, message: `${field} was not extracted from the uploaded contract` });
     }
     for (const field of preview.uncertainFields || []) {
       warnings.push({ severity: 'warning', field, message: `${field} needs review` });
@@ -601,10 +1329,45 @@ export class ContractImportsService {
             category: this.optionalString(value.hotel.category) || 'Unclassified',
           }
         : undefined,
+      roomCategories: Array.isArray(value.roomCategories)
+        ? value.roomCategories.map((category: any) => ({
+            name: this.optionalString(category.name),
+            code: this.optionalString(category.code) || null,
+            description: this.optionalString(category.description) || null,
+            uncertain: Boolean(category.uncertain),
+          }))
+        : Array.from(new Set(rates.map((rate: PreviewRate) => rate.roomType).filter(Boolean))).map((name) => ({ name })),
+      seasons: Array.isArray(value.seasons)
+        ? value.seasons.map((season: any) => ({
+            name: this.optionalString(season.name) || 'Imported',
+            validFrom: this.optionalString(season.validFrom) || null,
+            validTo: this.optionalString(season.validTo) || null,
+            uncertain: Boolean(season.uncertain),
+          }))
+        : Array.from(new Set(rates.map((rate: PreviewRate) => rate.seasonName).filter(Boolean))).map((name) => ({ name })),
       rates,
+      mealPlans: Array.isArray(value.mealPlans)
+        ? value.mealPlans.map((mealPlan: any) => ({
+            code: this.optionalString(mealPlan.code) || 'BB',
+            isDefault: Boolean(mealPlan.isDefault),
+            notes: this.optionalString(mealPlan.notes) || null,
+            uncertain: Boolean(mealPlan.uncertain),
+          }))
+        : Array.from(new Set(rates.map((rate: PreviewRate) => rate.mealPlan).filter(Boolean))).map((code, index) => ({
+            code,
+            isDefault: index === 0,
+          })),
       taxes: Array.isArray(value.taxes) ? value.taxes : [],
       supplements: Array.isArray(value.supplements) ? value.supplements : [],
       policies: Array.isArray(value.policies) ? value.policies : [],
+      cancellationPolicy: value.cancellationPolicy || null,
+      childPolicy: value.childPolicy || null,
+      hotelName: this.optionalString(value.hotelName || value.hotel?.name),
+      contractStartDate: this.optionalString(value.contractStartDate || value.contract?.validFrom) || null,
+      contractEndDate: this.optionalString(value.contractEndDate || value.contract?.validTo) || null,
+      currency: this.optionalString(value.currency || value.contract?.currency) || 'JOD',
+      serviceCharge: value.serviceCharge || null,
+      warnings: Array.isArray(value.warnings) ? value.warnings : [],
       missingFields: Array.isArray(value.missingFields) ? value.missingFields : [],
       uncertainFields: Array.isArray(value.uncertainFields) ? value.uncertainFields : [],
     };
@@ -628,12 +1391,124 @@ export class ContractImportsService {
     return ['RO', 'BB', 'HB', 'FB', 'AI'].includes(normalized) ? (normalized as any) : 'BB';
   }
 
+  private hotelSupplementType(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized.includes('BREAKFAST')) return HotelContractSupplementType.EXTRA_BREAKFAST;
+    if (normalized.includes('LUNCH')) return HotelContractSupplementType.EXTRA_LUNCH;
+    if (normalized.includes('DINNER') || normalized.includes('HALF')) return HotelContractSupplementType.EXTRA_DINNER;
+    if (normalized.includes('GALA')) return HotelContractSupplementType.GALA_DINNER;
+    return HotelContractSupplementType.EXTRA_BED;
+  }
+
+  private hotelChargeBasis(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'PER_PERSON') return HotelContractChargeBasis.PER_PERSON;
+    if (normalized === 'PER_ROOM') return HotelContractChargeBasis.PER_ROOM;
+    if (normalized === 'PER_STAY') return HotelContractChargeBasis.PER_STAY;
+    return HotelContractChargeBasis.PER_NIGHT;
+  }
+
+  private cancellationPenaltyType(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'PERCENT') return HotelCancellationPenaltyType.PERCENT;
+    if (normalized === 'NIGHTS') return HotelCancellationPenaltyType.NIGHTS;
+    if (normalized === 'FULL_STAY') return HotelCancellationPenaltyType.FULL_STAY;
+    if (normalized === 'FIXED') return HotelCancellationPenaltyType.FIXED;
+    return null;
+  }
+
+  private cancellationDeadlineUnit(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized === 'HOURS' ? HotelCancellationDeadlineUnit.HOURS : HotelCancellationDeadlineUnit.DAYS;
+  }
+
+  private childChargeBasis(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'PERCENT_OF_ADULT') return ChildPolicyChargeBasis.PERCENT_OF_ADULT;
+    if (normalized === 'FIXED_AMOUNT') return ChildPolicyChargeBasis.FIXED_AMOUNT;
+    return ChildPolicyChargeBasis.FREE;
+  }
+
   private readTextPreview(filePath: string) {
     try {
-      return readFileSync(filePath, 'utf8').slice(0, 1024 * 1024);
+      const buffer = readFileSync(filePath);
+      const utf8 = buffer.toString('utf8');
+      const readableUtf8 = utf8
+        .replace(/[^\x09\x0A\x0D\x20-\x7E]+/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (readableUtf8.length > 80 && !readableUtf8.startsWith('%PDF')) {
+        return readableUtf8.slice(0, 1024 * 1024);
+      }
+
+      const latinText = buffer.toString('latin1');
+      const pdfStrings = Array.from(latinText.matchAll(/\(([^()]{2,250})\)/g))
+        .map((match) => match[1].replace(/\\([()\\])/g, '$1'))
+        .filter((value) => /[a-zA-Z]{2,}/.test(value));
+      const extractedPdfText = pdfStrings.join('\n').replace(/[^\x09\x0A\x0D\x20-\x7E]+/g, ' ');
+      return (extractedPdfText || readableUtf8).slice(0, 1024 * 1024);
     } catch {
       return '';
     }
+  }
+
+  private readWorkbookRows(filePath: string, fileName: string): string[][] {
+    if (!/\.(xlsx|xls|xlsm)$/i.test(fileName)) {
+      return [];
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const xlsx = require('xlsx');
+      const workbook = xlsx.readFile(filePath, { cellDates: true });
+      const rows: string[][] = [];
+
+      for (const sheetName of workbook.SheetNames || []) {
+        const matrix = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
+          header: 1,
+          defval: '',
+          blankrows: false,
+          raw: false,
+        }) as unknown[][];
+        rows.push([`SHEET: ${sheetName}`]);
+        for (const row of matrix) {
+          rows.push(row.map((cell) => String(cell ?? '').trim()));
+        }
+      }
+
+      return rows;
+    } catch (error) {
+      console.warn('[contract-imports/analyze] Could not parse workbook', error);
+      return [];
+    }
+  }
+
+  private workbookRowsToText(rows: string[][]) {
+    return rows.map((row) => row.filter(Boolean).join('\t')).join('\n');
+  }
+
+  private firstParsedTextLines(text: string, limit: number) {
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, limit);
+  }
+
+  private attachParserDiagnostics(preview: ContractPreview, parserDiagnostics: NonNullable<ContractPreview['parserDiagnostics']>) {
+    return {
+      ...preview,
+      parserDiagnostics,
+    };
+  }
+
+  private textToRows(text: string) {
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split(/\t+| {2,}|,/).map((cell) => cell.trim()).filter(Boolean));
   }
 
   private parseJsonPreview(text: string) {
@@ -682,6 +1557,43 @@ export class ContractImportsService {
     if (value === null || value === undefined || value === '') return undefined;
     const parsed = Number(String(value).replace(/,/g, '').replace(/[^\d.-]/g, ''));
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private detectCurrency(text: string) {
+    if (/\bJOD\b|Jordanian\s+Dinar/i.test(text)) return 'JOD';
+    if (/\bUSD\b|US\s*Dollars?|\$/i.test(text)) return 'USD';
+    if (/\bEUR\b|Euro/i.test(text)) return 'EUR';
+    return '';
+  }
+
+  private guessYear(text: string) {
+    const match = text.match(/\b(20\d{2})\b/);
+    return match ? Number(match[1]) : null;
+  }
+
+  private findAmountNear(text: string, pattern: RegExp) {
+    const match = pattern.exec(text);
+    if (!match) return null;
+    const start = Math.max(0, match.index - 80);
+    const end = Math.min(text.length, match.index + 160);
+    const snippet = text.slice(start, end);
+    const amountMatch = snippet.match(/(?:JOD|USD|EUR)?\s*(\d+(?:\.\d+)?)/i);
+    return amountMatch ? Number(amountMatch[1]) : null;
+  }
+
+  private extractSentence(text: string, pattern: RegExp) {
+    const match = pattern.exec(text);
+    if (!match) return '';
+    const start = Math.max(0, text.lastIndexOf('.', match.index) + 1, text.lastIndexOf('\n', match.index) + 1);
+    const nextDot = text.indexOf('.', match.index);
+    const nextLine = text.indexOf('\n', match.index);
+    const ends = [nextDot, nextLine].filter((value) => value > match.index);
+    const end = ends.length ? Math.min(...ends) : Math.min(text.length, match.index + 220);
+    return text.slice(start, end).replace(/\s+/g, ' ').trim();
+  }
+
+  private escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private optionalString(value: unknown) {
