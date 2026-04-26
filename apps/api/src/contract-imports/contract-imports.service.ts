@@ -117,6 +117,7 @@ type ContractPreview = {
       notes?: string | null;
     }>;
   } | null;
+  cancellationPolicies?: Array<NonNullable<ContractPreview['cancellationPolicy']>>;
   childPolicy?: {
     infantMaxAge: number;
     childMaxAge: number;
@@ -130,6 +131,7 @@ type ContractPreview = {
       notes?: string | null;
     }>;
   } | null;
+  meta?: Record<string, unknown>;
   hotelName?: string;
   contractStartDate?: string | null;
   contractEndDate?: string | null;
@@ -224,6 +226,8 @@ export class ContractImportsService {
       ratesLength: preview.rates.length,
       supplementsLength: preview.supplements.length,
       policiesLength: preview.policies.length,
+      ratePoliciesLength: preview.ratePolicies?.length || 0,
+      hasMeta: Boolean(preview.meta),
       hasCancellationPolicy: Boolean(preview.cancellationPolicy),
       hasChildPolicy: Boolean(preview.childPolicy),
       missingFields: preview.missingFields,
@@ -254,7 +258,10 @@ export class ContractImportsService {
       sourceFileName: input.file.originalname,
       warnings: warnings.length,
     });
-    return record;
+    return {
+      ...record,
+      extractedJson: preview,
+    };
   }
 
   async findOne(id: string) {
@@ -522,8 +529,8 @@ export class ContractImportsService {
     const contractValidFrom = this.isoDateFromTemplate(meta.validFrom || meta.contractStartDate || meta.startDate) || (input.validFrom ? this.isoDate(input.validFrom) : null);
     const contractValidTo = this.isoDateFromTemplate(meta.validTo || meta.contractEndDate || meta.endDate) || (input.validTo ? this.isoDate(input.validTo) : null);
     const contractCurrency = (meta.currency || 'USD').trim().toUpperCase();
-    const defaultTaxPercent = this.parseNumber(meta.defaultTax || meta.defaultTaxPercent || meta.taxPercent);
-    const defaultServicePercent = this.parseNumber(meta.defaultService || meta.defaultServicePercent || meta.servicePercent);
+    const defaultTaxPercent = this.parseNumber(meta.defaultTaxPercent || meta.defaultTax || meta.taxPercent);
+    const defaultServicePercent = this.parseNumber(meta.defaultServicePercent || meta.defaultService || meta.servicePercent);
     const defaultTaxIncluded = this.parseBoolean(meta.taxIncluded);
     const defaultServiceIncluded = this.parseBoolean(meta.serviceIncluded);
     const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = missingColumns.map((column) => ({
@@ -632,7 +639,15 @@ export class ContractImportsService {
       policies,
       ratePolicies,
       cancellationPolicy,
+      cancellationPolicies: cancellationPolicy ? [cancellationPolicy] : [],
       childPolicy: null,
+      meta: {
+        ...meta,
+        defaultTaxPercent: defaultTaxPercent ?? null,
+        defaultServicePercent: defaultServicePercent ?? null,
+        taxIncluded: defaultTaxIncluded ?? null,
+        serviceIncluded: defaultServiceIncluded ?? null,
+      },
       warnings,
       missingFields: missingColumns.map((column) => `Rates.${column}`),
       uncertainFields: [],
@@ -1303,6 +1318,9 @@ export class ContractImportsService {
     const serviceCharge = preview.taxes.find((tax) => /service/i.test(tax.name)) || null;
     const aliased = {
       ...preview,
+      meta: this.normalizeExtractedMeta(preview.meta),
+      ratePolicies: preview.ratePolicies || [],
+      cancellationPolicies: preview.cancellationPolicies || (preview.cancellationPolicy ? [preview.cancellationPolicy] : []),
       hotelName: preview.hotel?.name || preview.supplier.name,
       contractStartDate: preview.contract.validFrom || null,
       contractEndDate: preview.contract.validTo || null,
@@ -1322,6 +1340,17 @@ export class ContractImportsService {
       ]),
     );
     return aliased;
+  }
+
+  private normalizeExtractedMeta(value: unknown) {
+    const meta = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+    return {
+      ...meta,
+      defaultTaxPercent: this.parseNumber(meta.defaultTaxPercent) ?? null,
+      defaultServicePercent: this.parseNumber(meta.defaultServicePercent) ?? null,
+      taxIncluded: this.parseBoolean(meta.taxIncluded) ?? null,
+      serviceIncluded: this.parseBoolean(meta.serviceIncluded) ?? null,
+    };
   }
 
   private roomCategoriesFromRates(rates: PreviewRate[]) {
@@ -2103,7 +2132,13 @@ export class ContractImportsService {
           }))
         : [],
       cancellationPolicy: value.cancellationPolicy || null,
+      cancellationPolicies: Array.isArray(value.cancellationPolicies)
+        ? value.cancellationPolicies
+        : value.cancellationPolicy
+          ? [value.cancellationPolicy]
+          : [],
       childPolicy: value.childPolicy || null,
+      meta: this.normalizeExtractedMeta(value.meta),
       hotelName: this.optionalString(value.hotelName || value.hotel?.name),
       contractStartDate: this.optionalString(value.contractStartDate || value.contract?.validFrom) || null,
       contractEndDate: this.optionalString(value.contractEndDate || value.contract?.validTo) || null,
@@ -2379,16 +2414,35 @@ export class ContractImportsService {
       contractenddate: 'contractEndDate',
       enddate: 'endDate',
       currency: 'currency',
-      defaulttax: 'defaultTax',
+      defaulttax: 'defaultTaxPercent',
       defaulttaxpercent: 'defaultTaxPercent',
+      defaulttaxpercentage: 'defaultTaxPercent',
       defaulttaxpct: 'defaultTaxPercent',
+      governmenttax: 'defaultTaxPercent',
+      governmenttaxpercent: 'defaultTaxPercent',
+      governmenttaxpercentage: 'defaultTaxPercent',
+      governmenttaxpct: 'defaultTaxPercent',
       taxpercent: 'taxPercent',
+      taxpercentage: 'taxPercent',
+      taxpct: 'taxPercent',
       taxincluded: 'taxIncluded',
-      defaultservice: 'defaultService',
+      defaulttaxincluded: 'taxIncluded',
+      governmenttaxincluded: 'taxIncluded',
+      defaultservice: 'defaultServicePercent',
       defaultservicepercent: 'defaultServicePercent',
+      defaultservicepercentage: 'defaultServicePercent',
       defaultservicepct: 'defaultServicePercent',
+      defaultservicecharge: 'defaultServicePercent',
+      defaultservicechargepercent: 'defaultServicePercent',
+      defaultservicechargepercentage: 'defaultServicePercent',
+      defaultservicechargepct: 'defaultServicePercent',
       servicepercent: 'servicePercent',
+      servicepercentage: 'servicePercent',
+      servicepct: 'servicePercent',
       serviceincluded: 'serviceIncluded',
+      defaultserviceincluded: 'serviceIncluded',
+      servicechargeincluded: 'serviceIncluded',
+      defaultservicechargeincluded: 'serviceIncluded',
       city: 'city',
       category: 'category',
       hotelcategory: 'hotelCategory',

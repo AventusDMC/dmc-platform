@@ -151,34 +151,16 @@ function optionalNumber(value: unknown) {
     return null;
   }
 
-  const normalized = Number(value);
+  const normalized = Number(String(value).replace(/,/g, '').replace(/[^\d.-]/g, ''));
   return Number.isFinite(normalized) ? normalized : null;
 }
 
-function readMetaDefault(source: Record<string, any>, keys: string[]) {
-  for (const key of keys) {
-    const direct = optionalNumber(source[key]);
-    if (direct !== null) return direct;
-    const meta = source.meta && typeof source.meta === 'object' ? optionalNumber(source.meta[key]) : null;
-    if (meta !== null) return meta;
-    const contractMeta = source.contract && typeof source.contract === 'object' ? optionalNumber(source.contract[key]) : null;
-    if (contractMeta !== null) return contractMeta;
-  }
-
-  return null;
-}
-
 function deriveTaxes(source: Record<string, any>, rates: PreviewRate[]) {
+  const meta = source.meta && typeof source.meta === 'object' ? source.meta : {};
   const rateTaxPercent = rates.map((rate) => optionalNumber(rate.salesTaxPercent)).find((value) => value !== null) ?? null;
   const rateServicePercent = rates.map((rate) => optionalNumber(rate.serviceChargePercent)).find((value) => value !== null) ?? null;
-  const defaultTaxPercent = readMetaDefault(source, ['defaultTaxPercent', 'defaultTax', 'Default Tax %']);
-  const defaultServicePercent = readMetaDefault(source, [
-    'defaultServicePercent',
-    'defaultServiceChargePercent',
-    'defaultService',
-    'Default Service %',
-    'Default Service Charge %',
-  ]);
+  const defaultTaxPercent = optionalNumber(meta.defaultTaxPercent);
+  const defaultServicePercent = optionalNumber(meta.defaultServicePercent);
   const salesTaxPercent = rateTaxPercent ?? defaultTaxPercent;
   const serviceChargePercent = rateServicePercent ?? defaultServicePercent;
   const taxes: ContractPreview['taxes'] = [];
@@ -187,7 +169,7 @@ function deriveTaxes(source: Record<string, any>, rates: PreviewRate[]) {
     taxes.push({
       name: 'Government Tax',
       value: salesTaxPercent,
-      included: Boolean(rates.find((rate) => optionalNumber(rate.salesTaxPercent) !== null)?.salesTaxIncluded ?? source.taxIncluded ?? source.meta?.taxIncluded),
+      included: Boolean(rates.find((rate) => optionalNumber(rate.salesTaxPercent) !== null)?.salesTaxIncluded ?? meta.taxIncluded),
     });
   }
 
@@ -195,11 +177,7 @@ function deriveTaxes(source: Record<string, any>, rates: PreviewRate[]) {
     taxes.push({
       name: 'Service Charge',
       value: serviceChargePercent,
-      included: Boolean(
-        rates.find((rate) => optionalNumber(rate.serviceChargePercent) !== null)?.serviceChargeIncluded ??
-          source.serviceIncluded ??
-          source.meta?.serviceIncluded,
-      ),
+      included: Boolean(rates.find((rate) => optionalNumber(rate.serviceChargePercent) !== null)?.serviceChargeIncluded ?? meta.serviceIncluded),
     });
   }
 
