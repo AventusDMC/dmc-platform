@@ -123,7 +123,9 @@ type QuoteItem = {
   nightCount: number | null;
   dayCount: number | null;
   baseCost: number;
+  finalCost?: number | null;
   overrideCost: number | null;
+  overrideReason?: string | null;
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
@@ -199,6 +201,7 @@ type QuoteItemInitialValues = {
   reconfirmationDueAt: string;
   baseCost: string;
   overrideCost: string;
+  overrideReason?: string;
   useOverride: boolean;
   transportServiceTypeId: string;
   routeId: string;
@@ -278,6 +281,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     reconfirmationDueAt: item.reconfirmationDueAt ? item.reconfirmationDueAt.slice(0, 16) : '',
     baseCost: String(item.baseCost),
     overrideCost: item.overrideCost === null ? '' : String(item.overrideCost),
+    overrideReason: item.overrideReason || '',
     useOverride: item.useOverride,
     transportServiceTypeId: item.appliedVehicleRate?.serviceType.id || '',
     routeId: item.appliedVehicleRate?.routeId || '',
@@ -642,9 +646,10 @@ function QuoteServiceRow({
                   <p>
                     Base cost: {formatMoney(currentItem.baseCost, currentItem.currency)}
                     {currentItem.useOverride && currentItem.overrideCost !== null
-                      ? ` | Override active: ${formatMoney(currentItem.overrideCost, currentItem.currency)}`
+                      ? ` | Override active: ${formatMoney(currentItem.overrideCost, currentItem.currency)} | Final: ${formatMoney(currentItem.finalCost ?? currentItem.totalCost, currentItem.currency)}`
                       : ' | Override inactive'}
                   </p>
+                  {currentItem.useOverride && currentItem.overrideReason ? <p>Reason: {currentItem.overrideReason}</p> : null}
                   <p>
                     Qty: {currentItem.quantity}
                     {' | '}Markup: {currentItem.markupPercent.toFixed(2)}%

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { getErrorMessage } from '../../../lib/api';
-import { getDefaultProposalPdfHref } from '../proposal-paths';
+import { getQuoteExportPdfHref } from '../proposal-paths';
 
 type DownloadPdfButtonProps = {
   apiBaseUrl: string;
@@ -18,12 +18,12 @@ export function DownloadPdfButton({ apiBaseUrl, quoteId }: DownloadPdfButtonProp
       setIsDownloading(true);
       setError('');
 
-      const response = await fetch(getDefaultProposalPdfHref(apiBaseUrl, quoteId));
+      const response = await fetch(getQuoteExportPdfHref(apiBaseUrl, quoteId));
 
       const contentType = response.headers.get('content-type') || '';
 
       if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
-        throw new Error(await getErrorMessage(response, 'Failed to download PDF'));
+        throw new Error(await getErrorMessage(response, 'Failed to export quote PDF'));
       }
 
       const blob = await response.blob();
@@ -31,7 +31,7 @@ export function DownloadPdfButton({ apiBaseUrl, quoteId }: DownloadPdfButtonProp
       const link = document.createElement('a');
 
       link.href = url;
-      link.download = `quote-${quoteId}.pdf`;
+      link.download = `quote-${quoteId}-export.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -46,7 +46,7 @@ export function DownloadPdfButton({ apiBaseUrl, quoteId }: DownloadPdfButtonProp
   return (
     <div className="section-stack">
       <button type="button" className="secondary-button" onClick={handleDownload} disabled={isDownloading}>
-        {isDownloading ? 'Downloading...' : 'Download proposal PDF'}
+        {isDownloading ? 'Exporting...' : 'Export quote PDF'}
       </button>
       {error ? <p className="form-error">{error}</p> : null}
     </div>

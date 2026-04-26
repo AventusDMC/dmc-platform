@@ -12,6 +12,7 @@ import { QuotePreviewLink } from './preview-link';
 import { DownloadPdfButton } from './preview/DownloadPdfButton';
 import { QuoteOptionsForm } from './QuoteOptionsForm';
 import { QuotePricingTable } from './QuotePricingTable';
+import { QuoteSummaryPanel } from './QuoteSummaryPanel';
 import { ShareQuoteButton } from './ShareQuoteButton';
 import { SaveQuoteVersionButton } from './SaveQuoteVersionButton';
 import { SendQuoteButton } from './SendQuoteButton';
@@ -207,7 +208,10 @@ type QuoteItem = {
   fxToCurrency?: string | null;
   fxRateDate?: string | null;
   baseSell?: number | null;
+  finalCost?: number | null;
   overrideCost: number | null;
+  markupAmount?: number | null;
+  sellPrice?: number | null;
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
@@ -674,7 +678,10 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     fxToCurrency: item?.fxToCurrency ?? null,
     fxRateDate: item?.fxRateDate ?? null,
     baseSell: item?.baseSell ?? null,
+    finalCost: item?.finalCost ?? null,
     overrideCost: item?.overrideCost ?? null,
+    markupAmount: item?.markupAmount ?? null,
+    sellPrice: item?.sellPrice ?? null,
     useOverride: Boolean(item?.useOverride),
     currency: item?.currency || item?.quoteCurrency || item?.costCurrency || 'USD',
     pricingDescription: item?.pricingDescription ?? null,
@@ -1699,6 +1706,14 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       { id: 'pricing-unpriced', label: 'Unpriced', value: String(readiness.unpricedServices), helper: readiness.unpricedServices > 0 ? 'Complete missing commercial inputs' : 'No unpriced service rows' },
                       { id: 'pricing-blockers', label: 'Blockers', value: String(quotePricingBlockerCount), helper: quotePricingBlockerCount > 0 ? 'Resolve service pricing blockers first' : 'No pricing blockers in scope' },
                     ]}
+                  />
+
+                  <QuoteSummaryPanel
+                    items={allQuotePricingItems}
+                    totalCost={quote.totalCost}
+                    totalSell={quote.totalSell}
+                    pax={totalPax}
+                    currency={quote.quoteCurrency}
                   />
 
                   <QuotePricingTable

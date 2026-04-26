@@ -97,13 +97,19 @@ type CreateQuoteItemBody = {
   guideType?: string;
   guideDuration?: string;
   overnight?: boolean;
+  customServiceName?: string | null;
+  unitCost?: number | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   quantity?: number;
   paxCount?: number;
   roomCount?: number;
   nightCount?: number;
   dayCount?: number;
   overrideCost?: number | null;
+  overrideReason?: string | null;
   useOverride?: boolean;
+  markupAmount?: number | null;
+  sellPrice?: number | null;
   currency?: string | null;
   markupPercent?: number;
   transportServiceTypeId?: string;
@@ -224,6 +230,34 @@ export class QuotesController {
 
     response.setHeader('Content-Type', 'application/pdf');
     response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+    response.setHeader('X-Proposal-Renderer', DEFAULT_PROPOSAL_VARIANT);
+
+    return new StreamableFile(pdfBuffer);
+  }
+
+  @Get(':id/export')
+  async exportQuotePdf(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
+    console.info('[quote-export] controller:pdf-request', { quoteId: id });
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    const pdfBuffer = await this.proposalV3Service.getProposalPdf(id, actor);
+
+    if (!pdfBuffer) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    const fileName = `${quote.title || 'quote'}`
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'quote';
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${fileName}-export.pdf"`);
     response.setHeader('X-Proposal-Renderer', DEFAULT_PROPOSAL_VARIANT);
 
     return new StreamableFile(pdfBuffer);
@@ -657,6 +691,9 @@ export class QuotesController {
       guideType: body.guideType || undefined,
       guideDuration: body.guideDuration || undefined,
       overnight: body.overnight,
+      customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
+      unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
+      pricingBasis: body.pricingBasis ?? undefined,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -664,7 +701,11 @@ export class QuotesController {
       dayCount: body.dayCount === undefined ? undefined : Number(body.dayCount),
       overrideCost:
         body.overrideCost === undefined ? undefined : body.overrideCost === null ? null : Number(body.overrideCost),
+      overrideReason: body.overrideReason === undefined ? undefined : body.overrideReason || null,
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
+      markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
+      sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
@@ -719,6 +760,9 @@ export class QuotesController {
       guideType: body.guideType || undefined,
       guideDuration: body.guideDuration || undefined,
       overnight: body.overnight,
+      customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
+      unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
+      pricingBasis: body.pricingBasis ?? undefined,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -726,7 +770,10 @@ export class QuotesController {
       dayCount: body.dayCount === undefined ? undefined : Number(body.dayCount),
       overrideCost:
         body.overrideCost === undefined ? undefined : body.overrideCost === null ? null : Number(body.overrideCost),
+      overrideReason: body.overrideReason === undefined ? undefined : body.overrideReason || null,
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
+      markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
+      sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
@@ -915,6 +962,9 @@ export class QuotesController {
       guideType: body.guideType || undefined,
       guideDuration: body.guideDuration || undefined,
       overnight: body.overnight,
+      customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
+      unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
+      pricingBasis: body.pricingBasis ?? undefined,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -922,7 +972,11 @@ export class QuotesController {
       dayCount: body.dayCount === undefined ? undefined : Number(body.dayCount),
       overrideCost:
         body.overrideCost === undefined ? undefined : body.overrideCost === null ? null : Number(body.overrideCost),
+      overrideReason: body.overrideReason === undefined ? undefined : body.overrideReason || null,
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
+      markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
+      sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       routeId: body.routeId || undefined,
@@ -977,6 +1031,9 @@ export class QuotesController {
       guideType: body.guideType || undefined,
       guideDuration: body.guideDuration || undefined,
       overnight: body.overnight,
+      customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
+      unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
+      pricingBasis: body.pricingBasis ?? undefined,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -984,7 +1041,10 @@ export class QuotesController {
       dayCount: body.dayCount === undefined ? undefined : Number(body.dayCount),
       overrideCost:
         body.overrideCost === undefined ? undefined : body.overrideCost === null ? null : Number(body.overrideCost),
+      overrideReason: body.overrideReason === undefined ? undefined : body.overrideReason || null,
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
+      markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
+      sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,

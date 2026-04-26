@@ -22,10 +22,49 @@ type PreviewRate = {
   occupancyType?: string;
   mealPlan?: string;
   seasonName?: string;
+  seasonFrom?: string;
+  seasonTo?: string;
   cost?: number;
   currency?: string;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  salesTaxPercent?: number | null;
+  serviceChargePercent?: number | null;
+  salesTaxIncluded?: boolean | null;
+  serviceChargeIncluded?: boolean | null;
   uncertain?: boolean;
   notes?: string;
+};
+
+type RatePolicyPreview = {
+  policyType: string;
+  appliesTo?: string | null;
+  ageFrom?: number | null;
+  ageTo?: number | null;
+  amount?: number | null;
+  percent?: number | null;
+  currency?: string | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  mealPlan?: string | null;
+  notes?: string | null;
+};
+
+type CancellationRulePreview = {
+  daysBefore?: number;
+  penaltyPercent?: number;
+  windowFromValue: number;
+  windowToValue: number;
+  deadlineUnit: 'DAYS' | 'HOURS' | string;
+  penaltyType: 'PERCENT' | 'NIGHTS' | 'FULL_STAY' | 'FIXED' | string;
+  penaltyValue?: number | null;
+  notes?: string | null;
+};
+
+type CancellationPolicyPreview = {
+  summary?: string | null;
+  notes?: string | null;
+  noShowPenaltyType?: string | null;
+  noShowPenaltyValue?: number | null;
+  rules?: CancellationRulePreview[];
 };
 
 type ContractPreview = {
@@ -52,10 +91,11 @@ type ContractPreview = {
   rates: PreviewRate[];
   mealPlans?: Array<{ code: string; isDefault?: boolean; notes?: string | null; uncertain?: boolean }>;
   taxes: Array<{ name: string; value: number; included: boolean; uncertain?: boolean }>;
-  supplements: Array<{ name: string; amount?: number | null; notes?: string; uncertain?: boolean }>;
+  supplements: Array<{ name: string; amount?: number | null; pricingBasis?: 'PER_PERSON' | 'PER_ROOM'; notes?: string; uncertain?: boolean }>;
   policies: Array<{ name: string; value: string; uncertain?: boolean }>;
-  cancellationPolicy?: Record<string, unknown> | null;
-  childPolicy?: Record<string, unknown> | null;
+  ratePolicies?: RatePolicyPreview[];
+  cancellationPolicy?: CancellationPolicyPreview | null;
+  childPolicy?: { rules: string[] } | null;
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -84,6 +124,7 @@ function emptyPreview(contractType: ContractPreview['contractType']): ContractPr
     taxes: [],
     supplements: [],
     policies: [],
+    ratePolicies: [],
     missingFields: [],
     uncertainFields: [],
   };
@@ -105,14 +146,117 @@ function stringifyPolicy(value: unknown, fallback: string) {
   );
 }
 
+function optionalNumber(value: unknown) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function readMetaDefault(source: Record<string, any>, keys: string[]) {
+  for (const key of keys) {
+    const direct = optionalNumber(source[key]);
+    if (direct !== null) return direct;
+    const meta = source.meta && typeof source.meta === 'object' ? optionalNumber(source.meta[key]) : null;
+    if (meta !== null) return meta;
+    const contractMeta = source.contract && typeof source.contract === 'object' ? optionalNumber(source.contract[key]) : null;
+    if (contractMeta !== null) return contractMeta;
+  }
+
+  return null;
+}
+
+function deriveTaxes(source: Record<string, any>, rates: PreviewRate[]) {
+  const rateTaxPercent = rates.map((rate) => optionalNumber(rate.salesTaxPercent)).find((value) => value !== null) ?? null;
+  const rateServicePercent = rates.map((rate) => optionalNumber(rate.serviceChargePercent)).find((value) => value !== null) ?? null;
+  const defaultTaxPercent = readMetaDefault(source, ['defaultTaxPercent', 'defaultTax', 'Default Tax %']);
+  const defaultServicePercent = readMetaDefault(source, [
+    'defaultServicePercent',
+    'defaultServiceChargePercent',
+    'defaultService',
+    'Default Service %',
+    'Default Service Charge %',
+  ]);
+  const salesTaxPercent = rateTaxPercent ?? defaultTaxPercent;
+  const serviceChargePercent = rateServicePercent ?? defaultServicePercent;
+  const taxes: ContractPreview['taxes'] = [];
+
+  if (salesTaxPercent !== null) {
+    taxes.push({
+      name: 'Government Tax',
+      value: salesTaxPercent,
+      included: Boolean(rates.find((rate) => optionalNumber(rate.salesTaxPercent) !== null)?.salesTaxIncluded ?? source.taxIncluded ?? source.meta?.taxIncluded),
+    });
+  }
+
+  if (serviceChargePercent !== null) {
+    taxes.push({
+      name: 'Service Charge',
+      value: serviceChargePercent,
+      included: Boolean(
+        rates.find((rate) => optionalNumber(rate.serviceChargePercent) !== null)?.serviceChargeIncluded ??
+          source.serviceIncluded ??
+          source.meta?.serviceIncluded,
+      ),
+    });
+  }
+
+  return taxes;
+}
+
+function formatAgeRange(policy: RatePolicyPreview) {
+  if (policy.ageFrom !== null && policy.ageFrom !== undefined && policy.ageTo !== null && policy.ageTo !== undefined) {
+    return `${policy.ageFrom}-${policy.ageTo}`;
+  }
+
+  if (policy.ageFrom !== null && policy.ageFrom !== undefined) {
+    return `${policy.ageFrom}+`;
+  }
+
+  if (policy.ageTo !== null && policy.ageTo !== undefined) {
+    return `0-${policy.ageTo}`;
+  }
+
+  return 'eligible';
+}
+
+function formatChildPolicy(policy: RatePolicyPreview) {
+  const policyType = String(policy.policyType || '').trim().toUpperCase();
+  const ageRange = formatAgeRange(policy);
+
+  if (policyType === 'CHILD_FREE') {
+    return `Children ${ageRange} free`;
+  }
+
+  if (policyType === 'CHILD_DISCOUNT') {
+    const percent = optionalNumber(policy.percent);
+    return `Children ${ageRange} pay ${percent !== null ? `${percent}%` : 'discounted rate'}`;
+  }
+
+  return '';
+}
+
+function deriveChildPolicy(ratePolicies: RatePolicyPreview[]) {
+  const rules = ratePolicies
+    .filter((policy) => {
+      const policyType = String(policy.policyType || '').trim().toUpperCase();
+      return policyType === 'CHILD_FREE' || policyType === 'CHILD_DISCOUNT';
+    })
+    .map(formatChildPolicy)
+    .filter(Boolean);
+
+  return rules.length > 0 ? { rules } : null;
+}
+
 function mapExtractedToUI(extractedJson: unknown): ContractPreview {
   const source = (extractedJson && typeof extractedJson === 'object' ? extractedJson : {}) as Record<string, any>;
   const contractType = String(source.contractType || 'HOTEL').toUpperCase() as ContractPreview['contractType'];
   const contract = source.contract && typeof source.contract === 'object' ? source.contract : {};
   const supplier = source.supplier && typeof source.supplier === 'object' ? source.supplier : {};
   const hotel = source.hotel && typeof source.hotel === 'object' ? source.hotel : {};
-  const cancellationPolicy = source.cancellationPolicy || null;
-  const childPolicy = source.childPolicy || null;
+  const cancellationPolicy = normalizeCancellationPolicy(source.cancellationPolicy || null);
   const policies = Array.isArray(source.policies) ? [...source.policies] : [];
 
   if (cancellationPolicy && !policies.some((policy) => /cancel/i.test(String(policy?.name || '')))) {
@@ -122,12 +266,42 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
     });
   }
 
-  if (childPolicy && !policies.some((policy) => /child/i.test(String(policy?.name || '')))) {
-    policies.push({
-      name: 'Child policy',
-      value: stringifyPolicy(childPolicy, 'Child policy extracted.'),
-    });
-  }
+  const rates: PreviewRate[] = Array.isArray(source.rates)
+    ? source.rates.map((rate: any) => ({
+        roomType: rate.roomType || rate.roomCategory || rate.roomName || '',
+        serviceName: rate.serviceName || '',
+        routeName: rate.routeName || '',
+        occupancyType: rate.occupancyType || rate.occupancy || 'DBL',
+        mealPlan: rate.mealPlan || 'BB',
+        seasonName: rate.seasonName || rate.season || 'Imported',
+        seasonFrom: rate.seasonFrom || '',
+        seasonTo: rate.seasonTo || '',
+        cost: typeof rate.cost === 'number' ? rate.cost : Number(rate.cost ?? rate.price ?? rate.rate) || undefined,
+        currency: rate.currency || contract.currency || source.currency || 'JOD',
+        pricingBasis: rate.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
+        salesTaxPercent: rate.salesTaxPercent ?? null,
+        serviceChargePercent: rate.serviceChargePercent ?? null,
+        salesTaxIncluded: rate.salesTaxIncluded ?? null,
+        serviceChargeIncluded: rate.serviceChargeIncluded ?? null,
+        uncertain: Boolean(rate.uncertain),
+        notes: rate.notes || undefined,
+      }))
+    : [];
+  const ratePolicies: RatePolicyPreview[] = Array.isArray(source.ratePolicies)
+    ? source.ratePolicies.map((policy: any) => ({
+        policyType: String(policy.policyType || policy.type || ''),
+        appliesTo: policy.appliesTo || null,
+        ageFrom: policy.ageFrom ?? null,
+        ageTo: policy.ageTo ?? null,
+        amount: policy.amount ?? null,
+        percent: policy.percent ?? null,
+        currency: policy.currency || contract.currency || source.currency || 'JOD',
+        pricingBasis: policy.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
+        mealPlan: policy.mealPlan || null,
+        notes: policy.notes || null,
+      }))
+    : [];
+  const childPolicy = deriveChildPolicy(ratePolicies);
 
   return {
     contractType,
@@ -153,35 +327,47 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
         : undefined,
     roomCategories: Array.isArray(source.roomCategories) ? source.roomCategories : [],
     seasons: Array.isArray(source.seasons) ? source.seasons : [],
-    rates: Array.isArray(source.rates)
-      ? source.rates.map((rate: any) => ({
-          roomType: rate.roomType || rate.roomCategory || rate.roomName || '',
-          serviceName: rate.serviceName || '',
-          routeName: rate.routeName || '',
-          occupancyType: rate.occupancyType || rate.occupancy || 'DBL',
-          mealPlan: rate.mealPlan || 'BB',
-          seasonName: rate.seasonName || rate.season || 'Imported',
-          cost: typeof rate.cost === 'number' ? rate.cost : Number(rate.cost ?? rate.price ?? rate.rate) || undefined,
-          currency: rate.currency || contract.currency || source.currency || 'JOD',
-          uncertain: Boolean(rate.uncertain),
-          notes: rate.notes || undefined,
-        }))
-      : [],
+    rates,
     mealPlans: Array.isArray(source.mealPlans) ? source.mealPlans : [],
-    taxes: Array.isArray(source.taxes) ? source.taxes : [],
+    taxes: deriveTaxes(source, rates),
     supplements: Array.isArray(source.supplements)
       ? source.supplements.map((supplement: any) => ({
           name: supplement.name || supplement.type || 'Supplement',
           amount: supplement.amount ?? supplement.cost ?? null,
+          pricingBasis: supplement.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
           notes: supplement.notes || supplement.chargeBasis || undefined,
           uncertain: Boolean(supplement.uncertain),
         }))
       : [],
     policies,
+    ratePolicies,
     cancellationPolicy,
     childPolicy,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
+  };
+}
+
+function normalizeCancellationPolicy(value: unknown): CancellationPolicyPreview | null {
+  if (!value || typeof value !== 'object') return null;
+  const policy = value as Record<string, any>;
+  return {
+    summary: policy.summary || null,
+    notes: policy.notes || null,
+    noShowPenaltyType: policy.noShowPenaltyType || null,
+    noShowPenaltyValue: policy.noShowPenaltyValue ?? null,
+    rules: Array.isArray(policy.rules)
+      ? policy.rules.map((rule: any) => ({
+          daysBefore: Number(rule.daysBefore ?? rule.windowFromValue ?? 0),
+          penaltyPercent: rule.penaltyPercent ?? (rule.penaltyType === 'PERCENT' ? rule.penaltyValue : undefined),
+          windowFromValue: Number(rule.windowFromValue ?? rule.daysBefore ?? 0),
+          windowToValue: Number(rule.windowToValue ?? 0),
+          deadlineUnit: rule.deadlineUnit || 'DAYS',
+          penaltyType: rule.penaltyType || 'PERCENT',
+          penaltyValue: rule.penaltyValue ?? rule.penaltyPercent ?? null,
+          notes: rule.notes || null,
+        }))
+      : [],
   };
 }
 
@@ -337,8 +523,52 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
     setPreview((current) => ({
       ...current,
       rates: current.rates.map((rate, rateIndex) =>
-        rateIndex === index ? { ...rate, [field]: field === 'cost' ? Number(value) || 0 : value } : rate,
+        rateIndex === index
+          ? {
+              ...rate,
+              [field]: ['cost', 'salesTaxPercent', 'serviceChargePercent'].includes(field)
+                ? Number(value) || 0
+                : ['salesTaxIncluded', 'serviceChargeIncluded'].includes(field)
+                  ? value === 'true'
+                  : value,
+            }
+          : rate,
       ),
+    }));
+  }
+
+  function updateRatePolicy(index: number, field: keyof RatePolicyPreview, value: string) {
+    setPreview((current) => ({
+      ...current,
+      ratePolicies: (current.ratePolicies || []).map((policy, policyIndex) =>
+        policyIndex === index
+          ? {
+              ...policy,
+              [field]: ['ageFrom', 'ageTo', 'amount', 'percent'].includes(field) ? Number(value) || 0 : value,
+            }
+          : policy,
+      ),
+    }));
+  }
+
+  function addRatePolicy() {
+    setPreview((current) => ({
+      ...current,
+      ratePolicies: [
+        ...(current.ratePolicies || []),
+        {
+          policyType: 'CHILD_DISCOUNT',
+          appliesTo: 'All rooms',
+          ageFrom: 6,
+          ageTo: 11,
+          amount: null,
+          percent: 50,
+          currency: current.contract.currency || 'JOD',
+          pricingBasis: 'PER_PERSON',
+          mealPlan: 'BB',
+          notes: '',
+        },
+      ],
     }));
   }
 
@@ -356,9 +586,101 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
           seasonName: 'Imported',
           cost: 0,
           currency: current.contract.currency || 'JOD',
+          pricingBasis: 'PER_ROOM',
         },
       ],
     }));
+  }
+
+  function updateCancellationPolicy(field: keyof CancellationPolicyPreview, value: string) {
+    setPreview((current) => ({
+      ...current,
+      cancellationPolicy: {
+        ...(current.cancellationPolicy || { rules: [] }),
+        [field]: field === 'noShowPenaltyValue' ? Number(value) || null : value,
+      },
+    }));
+  }
+
+  function updateCancellationRule(index: number, field: keyof CancellationRulePreview, value: string) {
+    setPreview((current) => {
+      const policy = current.cancellationPolicy || { rules: [] };
+      const rules = policy.rules || [];
+      return {
+        ...current,
+        cancellationPolicy: {
+          ...policy,
+          rules: rules.map((rule, ruleIndex) => {
+            if (ruleIndex !== index) return rule;
+            const numericFields: Array<keyof CancellationRulePreview> = ['daysBefore', 'penaltyPercent', 'windowFromValue', 'windowToValue', 'penaltyValue'];
+            const nextValue = numericFields.includes(field) ? Number(value) || 0 : value;
+            const nextRule = { ...rule, [field]: nextValue };
+            if (field === 'daysBefore') {
+              nextRule.windowFromValue = Number(value) || 0;
+            }
+            if (field === 'penaltyPercent') {
+              nextRule.penaltyType = 'PERCENT';
+              nextRule.penaltyValue = Number(value) || 0;
+            }
+            return nextRule;
+          }),
+        },
+      };
+    });
+  }
+
+  function addCancellationRule() {
+    setPreview((current) => ({
+      ...current,
+      cancellationPolicy: {
+        ...(current.cancellationPolicy || {
+          summary: 'Cancellation policy extracted from contract.',
+          notes: null,
+          noShowPenaltyType: 'FULL_STAY',
+          noShowPenaltyValue: null,
+        }),
+        rules: [
+          ...(current.cancellationPolicy?.rules || []),
+          {
+            daysBefore: 1,
+            penaltyPercent: 100,
+            windowFromValue: 1,
+            windowToValue: 0,
+            deadlineUnit: 'DAYS',
+            penaltyType: 'PERCENT',
+            penaltyValue: 100,
+            notes: 'Manual cancellation rule.',
+          },
+        ],
+      },
+    }));
+  }
+
+  async function handleDownloadExcel() {
+    if (!contractImport) return;
+    setError('');
+    try {
+      const response = await fetch(`/api/contract-imports/${contractImport.id}/export-excel`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not export extracted contract.'));
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const fileName = disposition.match(/filename="?([^"]+)"?/i)?.[1] || 'extracted-contract.xlsx';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not export extracted contract.');
+    }
   }
 
   return (
@@ -420,9 +742,14 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
               <h2>Review extracted data</h2>
               <p>{contractImport.sourceFileName} | Status: {contractImport.status}</p>
             </div>
-            <button className="primary-button" onClick={handleApprove} disabled={isApproving || blockers.length > 0}>
-              {isApproving ? 'Importing...' : 'Approve import'}
-            </button>
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => void handleDownloadExcel()}>
+                Download Extracted Excel
+              </button>
+              <button className="primary-button" onClick={handleApprove} disabled={isApproving || blockers.length > 0}>
+                {isApproving ? 'Importing...' : 'Approve import'}
+              </button>
+            </div>
           </div>
 
           {warnings.length > 0 ? (
@@ -494,6 +821,11 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
                     <th>Meal</th>
                     <th>Cost</th>
                     <th>Currency</th>
+                    <th>Pricing Basis</th>
+                    <th>Tax %</th>
+                    <th>Service %</th>
+                    <th>Tax Incl.</th>
+                    <th>Svc Incl.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,6 +844,26 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
                       <td><input value={rate.mealPlan || ''} onChange={(event) => updateRate(index, 'mealPlan', event.target.value)} /></td>
                       <td><input value={String(rate.cost ?? '')} onChange={(event) => updateRate(index, 'cost', event.target.value)} inputMode="decimal" /></td>
                       <td><input value={rate.currency || ''} onChange={(event) => updateRate(index, 'currency', event.target.value.toUpperCase())} /></td>
+                      <td>
+                        <select value={rate.pricingBasis || 'PER_ROOM'} onChange={(event) => updateRate(index, 'pricingBasis', event.target.value)}>
+                          <option value="PER_ROOM">PER_ROOM</option>
+                          <option value="PER_PERSON">PER_PERSON</option>
+                        </select>
+                      </td>
+                      <td><input value={String(rate.salesTaxPercent ?? '')} onChange={(event) => updateRate(index, 'salesTaxPercent', event.target.value)} inputMode="decimal" /></td>
+                      <td><input value={String(rate.serviceChargePercent ?? '')} onChange={(event) => updateRate(index, 'serviceChargePercent', event.target.value)} inputMode="decimal" /></td>
+                      <td>
+                        <select value={String(Boolean(rate.salesTaxIncluded))} onChange={(event) => updateRate(index, 'salesTaxIncluded', event.target.value)}>
+                          <option value="false">No</option>
+                          <option value="true">Yes</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select value={String(Boolean(rate.serviceChargeIncluded))} onChange={(event) => updateRate(index, 'serviceChargeIncluded', event.target.value)}>
+                          <option value="false">No</option>
+                          <option value="true">Yes</option>
+                        </select>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -520,10 +872,129 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
           ) : null}
 
           <PreviewList title="Meal plans" items={preview.mealPlans || []} empty="No meal plans extracted." />
-          <PreviewList title="Taxes and service charges" items={preview.taxes} empty="No taxes or service charges extracted." />
+          <TaxesPreview taxes={preview.taxes} />
           <PreviewList title="Supplements and add-ons" items={preview.supplements} empty="No supplements extracted." />
-          <PreviewObject title="Cancellation policy" value={preview.cancellationPolicy} empty="No cancellation policy extracted." />
-          <PreviewObject title="Child policy" value={preview.childPolicy} empty="No child policy extracted." />
+          <section>
+            <div className="section-header">
+              <h3>Rate policies</h3>
+              <button className="secondary-button" type="button" onClick={addRatePolicy}>
+                Add rate policy
+              </button>
+            </div>
+            {(preview.ratePolicies || []).length === 0 ? <p className="empty-state">No rate policies extracted.</p> : null}
+            {(preview.ratePolicies || []).length > 0 ? (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Policy Type</th>
+                      <th>Applies To</th>
+                      <th>Age From</th>
+                      <th>Age To</th>
+                      <th>Amount</th>
+                      <th>Percent</th>
+                      <th>Currency</th>
+                      <th>Pricing Basis</th>
+                      <th>Meal Plan</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.ratePolicies || []).map((policy, index) => (
+                      <tr key={index}>
+                        <td><input value={policy.policyType} onChange={(event) => updateRatePolicy(index, 'policyType', event.target.value.toUpperCase())} /></td>
+                        <td><input value={policy.appliesTo || ''} onChange={(event) => updateRatePolicy(index, 'appliesTo', event.target.value)} /></td>
+                        <td><input value={String(policy.ageFrom ?? '')} onChange={(event) => updateRatePolicy(index, 'ageFrom', event.target.value)} inputMode="numeric" /></td>
+                        <td><input value={String(policy.ageTo ?? '')} onChange={(event) => updateRatePolicy(index, 'ageTo', event.target.value)} inputMode="numeric" /></td>
+                        <td><input value={String(policy.amount ?? '')} onChange={(event) => updateRatePolicy(index, 'amount', event.target.value)} inputMode="decimal" /></td>
+                        <td><input value={String(policy.percent ?? '')} onChange={(event) => updateRatePolicy(index, 'percent', event.target.value)} inputMode="decimal" /></td>
+                        <td><input value={policy.currency || ''} onChange={(event) => updateRatePolicy(index, 'currency', event.target.value.toUpperCase())} /></td>
+                        <td>
+                          <select value={policy.pricingBasis || 'PER_ROOM'} onChange={(event) => updateRatePolicy(index, 'pricingBasis', event.target.value)}>
+                            <option value="PER_ROOM">PER_ROOM</option>
+                            <option value="PER_PERSON">PER_PERSON</option>
+                          </select>
+                        </td>
+                        <td><input value={policy.mealPlan || ''} onChange={(event) => updateRatePolicy(index, 'mealPlan', event.target.value.toUpperCase())} /></td>
+                        <td><input value={policy.notes || ''} onChange={(event) => updateRatePolicy(index, 'notes', event.target.value)} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+          <section>
+            <div className="section-header">
+              <h3>Cancellation policy</h3>
+              <button className="secondary-button" type="button" onClick={addCancellationRule}>
+                Add cancellation rule
+              </button>
+            </div>
+            {!preview.cancellationPolicy ? <p className="empty-state">No cancellation policy extracted.</p> : null}
+            {preview.cancellationPolicy ? (
+              <div className="section-stack">
+                <div className="form-grid">
+                  <label>
+                    Summary
+                    <input
+                      value={preview.cancellationPolicy.summary || ''}
+                      onChange={(event) => updateCancellationPolicy('summary', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Notes
+                    <input
+                      value={preview.cancellationPolicy.notes || ''}
+                      onChange={(event) => updateCancellationPolicy('notes', event.target.value)}
+                    />
+                  </label>
+                </div>
+                {(preview.cancellationPolicy.rules || []).length > 0 ? (
+                  <div className="table-scroll">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Days before arrival</th>
+                          <th>Penalty %</th>
+                          <th>Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(preview.cancellationPolicy.rules || []).map((rule, index) => (
+                          <tr key={index}>
+                            <td>
+                              <input
+                                value={String(rule.daysBefore ?? rule.windowFromValue ?? '')}
+                                onChange={(event) => updateCancellationRule(index, 'daysBefore', event.target.value)}
+                                inputMode="numeric"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={String(rule.penaltyPercent ?? (rule.penaltyType === 'PERCENT' ? rule.penaltyValue ?? '' : ''))}
+                                onChange={(event) => updateCancellationRule(index, 'penaltyPercent', event.target.value)}
+                                inputMode="decimal"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={rule.notes || ''}
+                                onChange={(event) => updateCancellationRule(index, 'notes', event.target.value)}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="empty-state">No cancellation rules extracted.</p>
+                )}
+              </div>
+            ) : null}
+          </section>
+          <ChildPolicyPreview value={preview.childPolicy} />
           <PreviewList title="Policies" items={preview.policies} empty="No policies extracted." />
         </section>
       ) : null}
@@ -546,6 +1017,48 @@ function PreviewList({ title, items, empty }: { title: string; items: Array<Reco
                   <strong>{String(value)}</strong>
                 </p>
               ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TaxesPreview({ taxes }: { taxes: ContractPreview['taxes'] }) {
+  return (
+    <section>
+      <h3>Taxes and service charges:</h3>
+      {taxes.length === 0 ? <p className="empty-state">No taxes defined</p> : null}
+      {taxes.length > 0 ? (
+        <div className="summary-strip">
+          {taxes.map((tax) => (
+            <div className="summary-card" key={tax.name}>
+              <p>
+                <span>{tax.name}</span>
+                <strong>{Number(tax.value).toFixed(2)}%</strong>
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ChildPolicyPreview({ value }: { value?: { rules: string[] } | null }) {
+  return (
+    <section>
+      <h3>Child policy</h3>
+      {!value?.rules?.length ? <p className="empty-state">No child policy extracted.</p> : null}
+      {value?.rules?.length ? (
+        <div className="summary-strip">
+          {value.rules.map((rule) => (
+            <div className="summary-card" key={rule}>
+              <p>
+                <span>Rule</span>
+                <strong>{rule}</strong>
+              </p>
             </div>
           ))}
         </div>

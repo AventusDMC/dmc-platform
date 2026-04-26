@@ -50,6 +50,17 @@ type HotelContract = {
     id: string;
     name: string;
   };
+  ratePolicies?: Array<{
+    policyType: string;
+    appliesTo?: string | null;
+    ageFrom?: number | null;
+    ageTo?: number | null;
+    amount?: number | null;
+    percent?: number | null;
+    currency?: string | null;
+    mealPlan?: string | null;
+    notes?: string | null;
+  }> | null;
 };
 
 type TransportServiceType = {
@@ -134,6 +145,10 @@ type QuoteItem = {
   fxFromCurrency?: string | null;
   fxToCurrency?: string | null;
   overrideCost: number | null;
+  finalCost?: number | null;
+  overrideReason?: string | null;
+  markupAmount?: number | null;
+  sellPrice?: number | null;
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
@@ -210,6 +225,8 @@ type QuoteItemCardProps = {
     serviceId: string;
     quantity: string;
     markupPercent: string;
+    markupAmount?: string;
+    sellPrice?: string;
     paxCount: string;
     participantCount: string;
     adultCount: string;
@@ -259,7 +276,11 @@ function formatMoney(value: number, currency = 'USD') {
   }
 }
 
-function getFinalItemCost(item: Pick<QuoteItem, 'baseCost' | 'overrideCost' | 'useOverride'>) {
+function getFinalItemCost(item: Pick<QuoteItem, 'baseCost' | 'overrideCost' | 'finalCost' | 'useOverride'>) {
+  if (item.finalCost !== undefined && item.finalCost !== null) {
+    return item.finalCost;
+  }
+
   if (item.useOverride && item.overrideCost !== null) {
     return item.overrideCost;
   }
@@ -287,6 +308,22 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
   }
 
   return `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
+}
+
+function formatRatePolicy(policy: NonNullable<HotelContract['ratePolicies']>[number], fallbackCurrency: string) {
+  const label = String(policy.policyType || 'Rate policy').replace(/_/g, ' ').toLowerCase();
+  const title = label.charAt(0).toUpperCase() + label.slice(1);
+  const ageRange =
+    policy.ageFrom !== null && policy.ageFrom !== undefined && policy.ageTo !== null && policy.ageTo !== undefined
+      ? `ages ${policy.ageFrom}-${policy.ageTo}`
+      : '';
+  const value =
+    policy.percent !== null && policy.percent !== undefined
+      ? `${Number(policy.percent).toFixed(0)}%`
+      : policy.amount !== null && policy.amount !== undefined
+        ? `${Number(policy.amount).toFixed(2)} ${policy.currency || fallbackCurrency}`
+        : '';
+  return [title, ageRange, value, policy.notes || ''].filter(Boolean).join(' | ');
 }
 
 function getReconfirmationWarning(reconfirmationDueAt: string | null, confirmationLikeResolved = false) {
@@ -334,6 +371,7 @@ export function QuoteItemCard({
   const [assigningServiceId, setAssigningServiceId] = useState('');
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
   const hotelItemSummary = getHotelItemSummary(currentItem);
+  const selectedContract = currentItem.contractId ? hotelContracts.find((contract) => contract.id === currentItem.contractId) || null : null;
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
   const marginMetrics = getMarginMetrics(currentItem);
   const itineraryDayNumber = currentItem.itineraryId
@@ -444,9 +482,10 @@ export function QuoteItemCard({
           <p>
             Quote currency {currentItem.quoteCurrency || quote.quoteCurrency || currentItem.currency} | Base {formatMoney(currentItem.baseCost, currentItem.currency)}
             {currentItem.useOverride && currentItem.overrideCost !== null
-              ? ` | Override ${formatMoney(currentItem.overrideCost, currentItem.currency)}`
+              ? ` | Override ${formatMoney(currentItem.overrideCost, currentItem.currency)} | Final ${formatMoney(getFinalItemCost(currentItem), currentItem.currency)}`
               : ''}
           </p>
+          {currentItem.useOverride && currentItem.overrideReason ? <p>Override reason: {currentItem.overrideReason}</p> : null}
           {currentItem.costCurrency ? (
             <p>
               Supplier cost {formatMoney(currentItem.costBaseAmount || 0, currentItem.costCurrency)}
@@ -467,6 +506,16 @@ export function QuoteItemCard({
                 .filter(Boolean)
                 .join(' | ')}
             </p>
+          ) : null}
+          {selectedContract?.ratePolicies?.length ? (
+            <div className="quote-preview-total-list">
+              {selectedContract.ratePolicies.map((policy, index) => (
+                <div key={`${policy.policyType}-${index}`}>
+                  <span>{policy.policyType.replace(/_/g, ' ')}</span>
+                  <strong>{formatRatePolicy(policy, selectedContract.currency || currentItem.currency)}</strong>
+                </div>
+              ))}
+            </div>
           ) : null}
           {currentItem.totalSell > 0 || currentItem.totalCost > 0 ? (
             <p>

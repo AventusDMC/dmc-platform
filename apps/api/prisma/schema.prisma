@@ -259,6 +259,7 @@ model HotelContract {
   validFrom                   DateTime
   validTo                     DateTime
   currency                    String
+  ratePolicies                Json?
   createdAt                   DateTime                            @default(now())
   updatedAt                   DateTime                            @updatedAt
   allotments                  HotelAllotment[]
@@ -593,14 +594,18 @@ model HotelAllotment {
 model HotelRate {
   id                    String                @id @default(uuid()) @db.Uuid
   contractId            String                @db.Uuid
+  hotelId               String                @db.Uuid
   seasonId              String?               @db.Uuid
   seasonName            String
+  seasonFrom            DateTime
+  seasonTo              DateTime
   mealPlan              HotelMealPlan
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
   roomCategoryId        String                @db.Uuid
   occupancyType         HotelOccupancyType
   pricingMode           HotelRatePricingMode?
+  pricingBasis          HotelRatePricingBasis @default(PER_ROOM)
   currency              String
   cost                  Float
   costBaseAmount        Float                 @default(0)
@@ -613,10 +618,12 @@ model HotelRate {
   tourismFeeCurrency    String?
   tourismFeeMode        TourismFeeMode?
   contract              HotelContract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  hotel                 Hotel                 @relation(fields: [hotelId], references: [id], onDelete: Cascade)
   roomCategory          HotelRoomCategory     @relation(fields: [roomCategoryId], references: [id])
   season                Season?               @relation(fields: [seasonId], references: [id])
 
   @@index([contractId])
+  @@index([hotelId, seasonFrom, seasonTo, occupancyType, mealPlan])
   @@index([seasonId])
   @@index([roomCategoryId])
   @@map("hotel_rates")
@@ -701,6 +708,7 @@ model Hotel {
   cityId          String?             @db.Uuid
   hotelCategoryId String?             @db.Uuid
   contracts       HotelContract[]
+  rates           HotelRate[]
   roomCategories  HotelRoomCategory[]
   cityRecord      City?               @relation(fields: [cityId], references: [id])
   hotelCategory   HotelCategory?      @relation(fields: [hotelCategoryId], references: [id])
@@ -826,6 +834,8 @@ model QuoteItem {
   nightCount             Int?
   dayCount               Int?
   markupPercent          Float                   @default(0)
+  markupAmount           Float?
+  sellPrice              Float?
   totalCost              Float
   totalSell              Float
   createdAt              DateTime                @default(now())
@@ -867,6 +877,8 @@ model QuoteItem {
   fxToCurrency           String?
   fxRateDate             DateTime?
   overrideCost           Float?
+  finalCost              Float?
+  overrideReason         String?
   useOverride            Boolean                 @default(false)
   appliedVehicleRate     VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
   contract               HotelContract?          @relation(fields: [contractId], references: [id])
@@ -1546,6 +1558,11 @@ enum HotelOccupancyType {
 enum HotelRatePricingMode {
   PER_ROOM_PER_NIGHT
   PER_PERSON_PER_NIGHT
+}
+
+enum HotelRatePricingBasis {
+  PER_PERSON
+  PER_ROOM
 }
 
 enum ContractImportType {

@@ -5,6 +5,8 @@ import {
   Get,
   Param,
   Post,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -96,5 +98,13 @@ export class ContractImportsController {
   @Post(':id/reimport')
   reimport(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
     return this.contractImportsService.reimport(id, actor);
+  }
+
+  @Post(':id/export-excel')
+  async exportExcel(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
+    const exported = await this.contractImportsService.exportExcel(id);
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
+    return new StreamableFile(exported.buffer);
   }
 }

@@ -8,6 +8,7 @@ import {
   HotelContractChargeBasis,
   HotelContractSupplementType,
   HotelMealPlan,
+  HotelRatePricingBasis,
   HotelRatePricingMode,
   Prisma,
 } from '@prisma/client';
@@ -37,10 +38,30 @@ type PreviewRate = {
   occupancyType?: string;
   mealPlan?: string;
   seasonName?: string;
+  seasonFrom?: string;
+  seasonTo?: string;
   cost?: number;
   currency?: string;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  salesTaxPercent?: number | null;
+  serviceChargePercent?: number | null;
+  salesTaxIncluded?: boolean | null;
+  serviceChargeIncluded?: boolean | null;
   uncertain?: boolean;
   notes?: string;
+};
+
+type RatePolicyPreview = {
+  policyType: string;
+  appliesTo?: string | null;
+  ageFrom?: number | null;
+  ageTo?: number | null;
+  amount?: number | null;
+  percent?: number | null;
+  currency?: string | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  mealPlan?: string | null;
+  notes?: string | null;
 };
 
 type ContractPreview = {
@@ -71,6 +92,7 @@ type ContractPreview = {
     name: string;
     type?: string | null;
     chargeBasis?: string | null;
+    pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
     amount?: number | null;
     currency?: string | null;
     isMandatory?: boolean;
@@ -78,12 +100,15 @@ type ContractPreview = {
     uncertain?: boolean;
   }>;
   policies: Array<{ name: string; value: string; uncertain?: boolean }>;
+  ratePolicies?: RatePolicyPreview[];
   cancellationPolicy?: {
     summary?: string | null;
     notes?: string | null;
     noShowPenaltyType?: string | null;
     noShowPenaltyValue?: number | null;
     rules?: Array<{
+      daysBefore?: number;
+      penaltyPercent?: number;
       windowFromValue: number;
       windowToValue: number;
       deadlineUnit: string;
@@ -333,6 +358,16 @@ export class ContractImportsService {
     return updated;
   }
 
+  async exportExcel(id: string) {
+    const record = await this.findOne(id);
+    if (!record.extractedJson) {
+      throw new BadRequestException('No extracted contract data is available to export');
+    }
+
+    const preview = this.normalizeApprovedPreview(record.extractedJson);
+    return this.generateExcel(preview, record.sourceFileName || preview.contract.name || 'contract-import');
+  }
+
   private extractPreview(input: {
     contractType: ContractImportType;
     supplierName: string;
@@ -474,13 +509,24 @@ export class ContractImportsService {
       return null;
     }
 
+    const meta = this.readMetaSheet(workbook);
     const ratesRows: Array<Record<string, string>> = this.sheetToObjects(workbook, ratesSheet);
     const requiredColumns = ['Room Type', 'Occupancy', 'Meal Plan', 'Cost'];
     const actualColumns = Object.keys(ratesRows[0] || {});
-    const missingColumns = requiredColumns.filter((column) => !actualColumns.some((actual) => this.normalizeTemplateHeader(actual) === this.normalizeTemplateHeader(column)));
+    const rateHeaderText = actualColumns.join(' ');
+    const missingColumns = requiredColumns.filter((column) => !actualColumns.some((actual) => this.templateHeaderMatches(actual, column)));
     const year = input.contractYear || new Date().getFullYear();
-    const supplierName = input.supplierName || this.guessNameFromFile(input.fileName);
-    const warnings = missingColumns.map((column) => ({
+    const hotelName = meta.hotelName || meta.hotel || input.supplierName || this.guessNameFromFile(input.fileName);
+    const supplierName = meta.supplierName || meta.supplier || input.supplierName || hotelName;
+    const contractName = meta.contractName || meta.contract || `${hotelName} ${year}`;
+    const contractValidFrom = this.isoDateFromTemplate(meta.validFrom || meta.contractStartDate || meta.startDate) || (input.validFrom ? this.isoDate(input.validFrom) : null);
+    const contractValidTo = this.isoDateFromTemplate(meta.validTo || meta.contractEndDate || meta.endDate) || (input.validTo ? this.isoDate(input.validTo) : null);
+    const contractCurrency = (meta.currency || 'USD').trim().toUpperCase();
+    const defaultTaxPercent = this.parseNumber(meta.defaultTax || meta.defaultTaxPercent || meta.taxPercent);
+    const defaultServicePercent = this.parseNumber(meta.defaultService || meta.defaultServicePercent || meta.servicePercent);
+    const defaultTaxIncluded = this.parseBoolean(meta.taxIncluded);
+    const defaultServiceIncluded = this.parseBoolean(meta.serviceIncluded);
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = missingColumns.map((column) => ({
       severity: 'blocker' as const,
       field: `Rates.${column}`,
       message: `Rates sheet is missing required column: ${column}`,
@@ -498,23 +544,45 @@ export class ContractImportsService {
               if (!roomType || !occupancyType || !mealPlan || !cost) return null;
               const seasonFrom = this.templateCell(row, 'Season From');
               const seasonTo = this.templateCell(row, 'Season To');
+              const pricingBasis = this.templatePricingBasis(row, rateHeaderText);
+              const normalizedSeasonFrom = this.isoDateFromTemplate(seasonFrom);
+              const normalizedSeasonTo = this.isoDateFromTemplate(seasonTo);
+              const rateTaxPercent = this.parseNumber(this.templateCell(row, 'Tax %') || this.templateCell(row, 'Tax Percent'));
+              const rateServicePercent = this.parseNumber(this.templateCell(row, 'Service %') || this.templateCell(row, 'Service Percent'));
+              const rateTaxIncluded = this.parseBoolean(this.templateCell(row, 'Tax Included'));
+              const rateServiceIncluded = this.parseBoolean(this.templateCell(row, 'Service Included'));
               return {
                 roomType,
                 occupancyType: this.normalizeTemplateOccupancy(occupancyType),
                 mealPlan: this.hotelMealPlan(mealPlan),
-                seasonName: seasonFrom || seasonTo ? `${seasonFrom || 'Start'} - ${seasonTo || 'End'}` : 'Imported',
+                seasonName: normalizedSeasonFrom || normalizedSeasonTo ? `${normalizedSeasonFrom || 'Start'} - ${normalizedSeasonTo || 'End'}` : 'Imported',
+                seasonFrom: normalizedSeasonFrom || undefined,
+                seasonTo: normalizedSeasonTo || undefined,
                 cost,
-                currency: this.templateCell(row, 'Currency') || 'USD',
+                currency: this.templateCell(row, 'Currency') || contractCurrency,
+                pricingBasis,
+                salesTaxPercent: rateTaxPercent ?? defaultTaxPercent ?? null,
+                serviceChargePercent: rateServicePercent ?? defaultServicePercent ?? null,
+                salesTaxIncluded: rateTaxIncluded ?? defaultTaxIncluded ?? false,
+                serviceChargeIncluded: rateServiceIncluded ?? defaultServiceIncluded ?? false,
               };
             })
             .filter((rate: PreviewRate | null): rate is PreviewRate => Boolean(rate));
 
+    const roomCategoriesFromSheet = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RoomCategories'))
+      .map((row: Record<string, string>) => ({
+        name: this.templateCell(row, 'Name') || this.templateCell(row, 'Room Type') || this.templateCell(row, 'Room Category'),
+        code: this.templateCell(row, 'Code') || null,
+        description: this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || null,
+      }))
+      .filter((category) => category.name);
     const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => ({
       name: this.templateCell(row, 'Name') || this.templateCell(row, 'Supplement') || this.templateCell(row, 'Type') || 'Supplement',
       type: this.templateCell(row, 'Type') || null,
       chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
       amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
-      currency: this.templateCell(row, 'Currency') || 'USD',
+      currency: this.templateCell(row, 'Currency') || contractCurrency,
+      pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
       isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
       notes: this.templateCell(row, 'Notes') || undefined,
     }));
@@ -522,37 +590,97 @@ export class ContractImportsService {
       name: this.templateCell(row, 'Name') || this.templateCell(row, 'Policy') || 'Policy',
       value: this.templateCell(row, 'Value') || this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || '',
     }));
+    const cancellationPolicy = this.readCancellationPolicySheet(workbook);
+    const ratePolicyResult = this.readRatePoliciesSheet(workbook, contractCurrency);
+    warnings.push(...ratePolicyResult.warnings);
+    const ratePolicies = ratePolicyResult.policies;
+    const taxes: ContractPreview['taxes'] = [];
+    if (defaultTaxPercent !== undefined) {
+      taxes.push({ name: 'Sales tax', value: defaultTaxPercent, included: defaultTaxIncluded ?? false });
+    }
+    if (defaultServicePercent !== undefined) {
+      taxes.push({ name: 'Service charge', value: defaultServicePercent, included: defaultServiceIncluded ?? false });
+    }
 
     return {
       contractType: ContractImportType.HOTEL,
       supplier: { name: supplierName, isNew: true },
       contract: {
-        name: `${supplierName} ${year}`,
+        name: contractName,
         year,
-        validFrom: input.validFrom ? this.isoDate(input.validFrom) : null,
-        validTo: input.validTo ? this.isoDate(input.validTo) : null,
-        currency: rates[0]?.currency || 'USD',
+        validFrom: contractValidFrom,
+        validTo: contractValidTo,
+        currency: rates[0]?.currency || contractCurrency,
       },
       hotel: {
-        name: supplierName,
-        city: 'Amman',
-        category: 'Unclassified',
+        name: hotelName,
+        city: meta.city || 'Amman',
+        category: meta.category || meta.hotelCategory || 'Unclassified',
       },
-      roomCategories: this.roomCategoriesFromRates(rates),
-      seasons: Array.from(new Set<string>(rates.map((rate: PreviewRate) => rate.seasonName || 'Imported'))).map((name) => ({ name })),
+      roomCategories: roomCategoriesFromSheet.length > 0 ? roomCategoriesFromSheet : this.roomCategoriesFromRates(rates),
+      seasons: Array.from(new Set<string>(rates.map((rate: PreviewRate) => rate.seasonName || 'Imported'))).map((name) => {
+        const matchingRate = rates.find((rate) => (rate.seasonName || 'Imported') === name);
+        return { name, validFrom: matchingRate?.seasonFrom || contractValidFrom, validTo: matchingRate?.seasonTo || contractValidTo };
+      }),
       rates,
       mealPlans: Array.from(new Set<string>(rates.map((rate: PreviewRate) => rate.mealPlan || 'BB'))).map((code, index) => ({
         code,
         isDefault: index === 0,
       })),
-      taxes: [],
+      taxes,
       supplements,
       policies,
-      cancellationPolicy: null,
+      ratePolicies,
+      cancellationPolicy,
       childPolicy: null,
       warnings,
       missingFields: missingColumns.map((column) => `Rates.${column}`),
       uncertainFields: [],
+    };
+  }
+
+  private generateExcel(preview: ContractPreview, sourceName: string) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const xlsx = require('xlsx');
+    const workbook = xlsx.utils.book_new();
+    const hotelName = preview.hotel?.name || preview.hotelName || preview.supplier.name || '';
+    const rates = preview.rates.map((rate) => {
+      const season = this.splitSeasonName(rate.seasonName);
+      return {
+        Hotel: hotelName,
+        'Room Type': rate.roomType || rate.serviceName || rate.routeName || '',
+        'Season From': rate.seasonFrom || season.from,
+        'Season To': rate.seasonTo || season.to,
+        Occupancy: rate.occupancyType || '',
+        'Meal Plan': rate.mealPlan || '',
+        Cost: rate.cost ?? '',
+        Currency: rate.currency || preview.contract.currency || 'USD',
+        'Pricing Basis': rate.pricingBasis || 'PER_ROOM',
+      };
+    });
+
+    const supplements = preview.supplements.map((supplement) => ({
+      Name: supplement.name,
+      Type: supplement.type || '',
+      'Charge Basis': supplement.chargeBasis || '',
+      Amount: supplement.amount ?? '',
+      Currency: supplement.currency || preview.contract.currency || 'USD',
+      'Pricing Basis': supplement.pricingBasis || 'PER_ROOM',
+      Mandatory: supplement.isMandatory ? 'Yes' : 'No',
+      Notes: supplement.notes || '',
+    }));
+    const policies = preview.policies.map((policy) => ({
+      Name: policy.name,
+      Value: policy.value,
+    }));
+
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rates), 'Rates');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(supplements), 'Supplements');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(policies), 'Policies');
+
+    return {
+      buffer: xlsx.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
+      fileName: `${this.safeExportFileName(preview.contract.name || hotelName || sourceName)}-extracted-contract.xlsx`,
     };
   }
 
@@ -707,6 +835,7 @@ export class ContractImportsService {
 
       const occupancyLabels = `${headerCells} ${rowText}`.toLowerCase();
       const mealPlan = this.extractMealPlanFromText(`${headerCells} ${rowText}`);
+      const pricingBasis = this.detectPricingBasis(`${headerCells} ${rowText}`);
       if (numbers.length >= 2 || occupancyLabels.includes('single') || occupancyLabels.includes('double') || /\bsgl\b|\bdbl\b/i.test(occupancyLabels)) {
         rates.push({
           roomType: roomName,
@@ -715,6 +844,7 @@ export class ContractImportsService {
           seasonName: currentSeasonName,
           cost: numbers[0],
           currency,
+          pricingBasis,
         });
         if (numbers[1]) {
           rates.push({
@@ -724,6 +854,7 @@ export class ContractImportsService {
             seasonName: currentSeasonName,
             cost: numbers[1],
             currency,
+            pricingBasis,
           });
         }
         if (numbers[2]) {
@@ -734,6 +865,7 @@ export class ContractImportsService {
             seasonName: currentSeasonName,
             cost: numbers[2],
             currency,
+            pricingBasis,
           });
         }
       } else {
@@ -744,6 +876,7 @@ export class ContractImportsService {
           seasonName: currentSeasonName,
           cost: numbers[0],
           currency,
+          pricingBasis,
           uncertain: true,
           notes: 'Occupancy was not explicit in the source row.',
         });
@@ -765,6 +898,7 @@ export class ContractImportsService {
     ].filter((row) => row.length > 0);
     let activeHeader: Array<{ occupancyType: string; index: number; amountOffset: number }> = [];
     let activeSplitPattern: RegExp = /\s+/;
+    let activePricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM';
 
     for (const rawCells of tableLines) {
       const line = rawCells.join(' ').trim();
@@ -773,6 +907,7 @@ export class ContractImportsService {
         console.log('TABLE HEADER DETECTED:', line);
         activeHeader = header.columns;
         activeSplitPattern = header.splitPattern;
+        activePricingBasis = this.detectPricingBasis(line);
         continue;
       }
 
@@ -781,7 +916,7 @@ export class ContractImportsService {
         .map((cell) => cell.trim())
         .filter(Boolean);
       if (strictCells.length < 2) {
-        rates.push(...this.extractFlattenedTableRates(line, fallbackCurrency));
+        rates.push(...this.extractFlattenedTableRates(line, fallbackCurrency, activePricingBasis));
         continue;
       }
       const cells = strictCells;
@@ -808,6 +943,7 @@ export class ContractImportsService {
           seasonName: 'Imported',
           cost: amount.amount,
           currency: amount.currency || fallbackCurrency,
+          pricingBasis: this.detectPricingBasis(line, activePricingBasis),
         });
       });
     }
@@ -847,6 +983,7 @@ export class ContractImportsService {
         seasonName: parsed.seasonName,
         cost: parsed.hb,
         currency: parsed.currency,
+        pricingBasis: this.detectPricingBasis(line, 'PER_PERSON'),
       });
       rates.push({
         roomType: 'Standard',
@@ -855,6 +992,7 @@ export class ContractImportsService {
         seasonName: parsed.seasonName,
         cost: parsed.bb,
         currency: parsed.currency,
+        pricingBasis: this.detectPricingBasis(line, 'PER_PERSON'),
       });
       if (typeof parsed.singleSupplement === 'number') {
         rates.push({
@@ -864,6 +1002,7 @@ export class ContractImportsService {
           seasonName: parsed.seasonName,
           cost: parsed.bb + parsed.singleSupplement,
           currency: parsed.currency,
+          pricingBasis: this.detectPricingBasis(line, 'PER_PERSON'),
           notes: 'Single rate calculated from BB plus single supplement.',
         });
       }
@@ -895,7 +1034,7 @@ export class ContractImportsService {
     };
   }
 
-  private extractFlattenedTableRates(line: string, fallbackCurrency: string): PreviewRate[] {
+  private extractFlattenedTableRates(line: string, fallbackCurrency: string, fallbackPricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM'): PreviewRate[] {
     const numberMatches = line.match(/\d+(?:\.\d+)?/g) || [];
     const numbers = numberMatches
       .map((value) => Number(value))
@@ -913,6 +1052,7 @@ export class ContractImportsService {
       seasonName: 'Imported',
       cost,
       currency: fallbackCurrency,
+      pricingBasis: this.detectPricingBasis(line, fallbackPricingBasis),
       uncertain: true,
       notes: 'Extracted from flattened table row.',
     }));
@@ -940,6 +1080,7 @@ export class ContractImportsService {
       const occupancy = this.detectOccupancy(line);
       const mealPlan = this.extractMealPlanFromText(line);
       const explicitOccupancy = occupancy !== 'DBL' || /\b(single|double|triple|sgl|dbl|tpl|trp)\b/i.test(line);
+      const pricingBasis = this.detectPricingBasis(line);
 
       if (amounts.length >= 2 && !explicitOccupancy) {
         rates.push({
@@ -949,6 +1090,7 @@ export class ContractImportsService {
           seasonName,
           cost: amounts[0].amount,
           currency: amounts[0].currency || fallbackCurrency,
+          pricingBasis,
           uncertain: true,
           notes: 'Single rate inferred from first amount in table-like row.',
         });
@@ -959,6 +1101,7 @@ export class ContractImportsService {
           seasonName,
           cost: amounts[1].amount,
           currency: amounts[1].currency || fallbackCurrency,
+          pricingBasis,
           uncertain: true,
           notes: 'Double rate inferred from second amount in table-like row.',
         });
@@ -970,6 +1113,7 @@ export class ContractImportsService {
             seasonName,
             cost: amounts[2].amount,
             currency: amounts[2].currency || fallbackCurrency,
+            pricingBasis,
             uncertain: true,
             notes: 'Triple rate inferred from third amount in table-like row.',
           });
@@ -984,6 +1128,7 @@ export class ContractImportsService {
         seasonName,
         cost: amounts[0].amount,
         currency: amounts[0].currency || fallbackCurrency,
+        pricingBasis,
         uncertain: !explicitOccupancy,
         notes: explicitOccupancy ? 'Extracted from text line.' : 'Occupancy defaulted to DBL from table-like text line.',
       });
@@ -1064,6 +1209,12 @@ export class ContractImportsService {
     if (/\b(DBL|double|twin)\b/i.test(line)) return 'DBL';
     if (/\b(TPL|TRP|triple)\b/i.test(line)) return 'TRP';
     return 'DBL';
+  }
+
+  private detectPricingBasis(text: string, fallback: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM') {
+    if (/\bper\s+person\b|\bpp\b|\bper\s+pax\b/i.test(text)) return 'PER_PERSON';
+    if (/\bper\s+room\b|\bper\s+unit\b/i.test(text)) return 'PER_ROOM';
+    return fallback;
   }
 
   private extractMoneyAmounts(line: string) {
@@ -1231,6 +1382,7 @@ export class ContractImportsService {
         chargeBasis: HotelContractChargeBasis.PER_NIGHT,
         amount: extraBed,
         currency,
+        pricingBasis: 'PER_ROOM',
         isMandatory: false,
         notes: 'Extracted extra bed / extra adult supplement.',
       });
@@ -1242,6 +1394,7 @@ export class ContractImportsService {
         chargeBasis: HotelContractChargeBasis.PER_NIGHT,
         amount: breakfast,
         currency,
+        pricingBasis: 'PER_ROOM',
         isMandatory: false,
         notes: 'Extracted breakfast supplement.',
       });
@@ -1253,6 +1406,7 @@ export class ContractImportsService {
         chargeBasis: HotelContractChargeBasis.PER_PERSON,
         amount: dinner,
         currency,
+        pricingBasis: 'PER_ROOM',
         isMandatory: false,
         notes: 'Extracted dinner or half-board supplement.',
       });
@@ -1264,6 +1418,30 @@ export class ContractImportsService {
   private extractCancellationPolicy(text: string, isGrandHyatt: boolean): ContractPreview['cancellationPolicy'] {
     if (!/cancel|no[\s-]?show/i.test(text) && !isGrandHyatt) return null;
     const daysMatch = text.match(/(\d+)\s*days?.{0,80}(?:one|1)\s*night/i);
+    const percentRules = this.extractCancellationPercentRules(text);
+    if (percentRules.length > 0) {
+      const summary = percentRules
+        .map((rule) => `${rule.penaltyPercent}% cancellation penalty within ${rule.daysBefore} days before arrival`)
+        .join('; ');
+
+      return {
+        summary,
+        notes: this.extractSentence(text, /cancel/i) || 'Cancellation percentage rules extracted from contract.',
+        noShowPenaltyType: HotelCancellationPenaltyType.FULL_STAY,
+        noShowPenaltyValue: null,
+        rules: percentRules.map((rule) => ({
+          daysBefore: rule.daysBefore,
+          penaltyPercent: rule.penaltyPercent,
+          windowFromValue: rule.daysBefore,
+          windowToValue: 0,
+          deadlineUnit: HotelCancellationDeadlineUnit.DAYS,
+          penaltyType: HotelCancellationPenaltyType.PERCENT,
+          penaltyValue: rule.penaltyPercent,
+          notes: `${rule.penaltyPercent}% penalty when cancelled within ${rule.daysBefore} days before arrival.`,
+        })),
+      };
+    }
+
     return {
       summary: isGrandHyatt
         ? 'One night is charged for cancellations made within 2 days prior to arrival by 12 PM Jordan time. No-show is charged at 100% of the entire stay.'
@@ -1282,6 +1460,34 @@ export class ContractImportsService {
         },
       ],
     };
+  }
+
+  private extractCancellationPercentRules(text: string) {
+    const rules: Array<{ daysBefore: number; penaltyPercent: number }> = [];
+    const patterns = [
+      /(?:within|less\s+than|inside)?\s*(\d+)\s*days?\s*(?:before|prior\s+to|of)?\s*(?:arrival|check[\s-]?in)?.{0,100}?(\d+(?:\.\d+)?)\s*%/gi,
+      /(\d+(?:\.\d+)?)\s*%.{0,100}?(?:within|less\s+than|inside)\s*(\d+)\s*days?/gi,
+    ];
+
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        const first = Number(match[1]);
+        const second = Number(match[2]);
+        const daysBefore = pattern.source.startsWith('(\\d') ? second : first;
+        const penaltyPercent = pattern.source.startsWith('(\\d') ? first : second;
+
+        if (Number.isFinite(daysBefore) && Number.isFinite(penaltyPercent) && daysBefore >= 0 && penaltyPercent > 0) {
+          rules.push({
+            daysBefore: Math.floor(daysBefore),
+            penaltyPercent: Number(penaltyPercent.toFixed(2)),
+          });
+        }
+      }
+    }
+
+    return Array.from(
+      new Map(rules.map((rule) => [`${rule.daysBefore}:${rule.penaltyPercent}`, rule])).values(),
+    ).sort((left, right) => right.daysBefore - left.daysBefore);
   }
 
   private extractChildPolicy(text: string, isGrandHyatt: boolean): ContractPreview['childPolicy'] {
@@ -1353,6 +1559,7 @@ export class ContractImportsService {
       validFrom: new Date(preview.contract.validFrom),
       validTo: new Date(preview.contract.validTo),
       currency: preview.contract.currency.trim().toUpperCase(),
+      ratePolicies: (preview.ratePolicies || []) as unknown as Prisma.InputJsonValue,
     };
     const contract = existingActive
       ? await this.prisma.hotelContract.update({ where: { id: existingActive.id }, data: contractData })
@@ -1375,27 +1582,39 @@ export class ContractImportsService {
         (rate.roomType ? roomCategoryByName.get(rate.roomType.toLowerCase()) : undefined) ||
         (await this.ensureRoomCategory(hotel.id, rate.roomType || 'Standard')).id;
       const season = await this.ensureSeason(rate.seasonName || preview.seasons?.[0]?.name || 'Imported');
-      const taxPercent = preview.taxes.find((tax) => /tax/i.test(tax.name))?.value || 0;
-      const taxIncluded = preview.taxes.find((tax) => /tax/i.test(tax.name))?.included || false;
-      const serviceChargePercent = preview.taxes.find((tax) => /service/i.test(tax.name))?.value || 0;
-      const serviceChargeIncluded = preview.taxes.find((tax) => /service/i.test(tax.name))?.included || false;
+      const defaultTax = preview.taxes.find((tax) => /tax/i.test(tax.name));
+      const defaultServiceCharge = preview.taxes.find((tax) => /service/i.test(tax.name));
+      const taxPercent = rate.salesTaxPercent ?? defaultTax?.value ?? 0;
+      const taxIncluded = rate.salesTaxIncluded ?? defaultTax?.included ?? false;
+      const serviceChargePercent = rate.serviceChargePercent ?? defaultServiceCharge?.value ?? 0;
+      const serviceChargeIncluded = rate.serviceChargeIncluded ?? defaultServiceCharge?.included ?? false;
+      const seasonBounds = this.normalizeRateSeasonBounds(rate, preview.contract.validFrom, preview.contract.validTo);
       const existingRate = await this.prisma.hotelRate.findFirst({
         where: {
           contractId: contract.id,
+          hotelId: hotel.id,
+          seasonFrom: seasonBounds.seasonFrom,
+          seasonTo: seasonBounds.seasonTo,
           roomCategoryId,
-          seasonName: rate.seasonName || 'Imported',
           occupancyType: this.hotelOccupancy(rate.occupancyType),
           mealPlan: this.hotelMealPlan(rate.mealPlan),
         },
       });
       const rateData = {
         contractId: contract.id,
+        hotelId: hotel.id,
         roomCategoryId,
         seasonId: season.id,
         seasonName: rate.seasonName || 'Imported',
+        seasonFrom: seasonBounds.seasonFrom,
+        seasonTo: seasonBounds.seasonTo,
         occupancyType: this.hotelOccupancy(rate.occupancyType),
         mealPlan: this.hotelMealPlan(rate.mealPlan),
-        pricingMode: HotelRatePricingMode.PER_ROOM_PER_NIGHT,
+        pricingMode:
+          rate.pricingBasis === HotelRatePricingBasis.PER_PERSON
+            ? HotelRatePricingMode.PER_PERSON_PER_NIGHT
+            : HotelRatePricingMode.PER_ROOM_PER_NIGHT,
+        pricingBasis: this.hotelRatePricingBasis(rate.pricingBasis),
         currency: rate.currency || preview.contract.currency,
         cost: rate.cost,
         costBaseAmount: rate.cost,
@@ -1595,11 +1814,11 @@ export class ContractImportsService {
         noShowPenaltyValue: policy.noShowPenaltyValue ?? null,
         rules: {
           create: (policy.rules || []).map((rule) => ({
-            windowFromValue: rule.windowFromValue,
-            windowToValue: rule.windowToValue,
+            windowFromValue: rule.windowFromValue ?? rule.daysBefore ?? 0,
+            windowToValue: rule.windowToValue ?? 0,
             deadlineUnit: this.cancellationDeadlineUnit(rule.deadlineUnit),
-            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.NIGHTS,
-            penaltyValue: rule.penaltyValue ?? null,
+            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.PERCENT,
+            penaltyValue: rule.penaltyValue ?? rule.penaltyPercent ?? null,
             isActive: true,
             notes: rule.notes || null,
           })),
@@ -1613,11 +1832,11 @@ export class ContractImportsService {
         noShowPenaltyValue: policy.noShowPenaltyValue ?? null,
         rules: {
           create: (policy.rules || []).map((rule) => ({
-            windowFromValue: rule.windowFromValue,
-            windowToValue: rule.windowToValue,
+            windowFromValue: rule.windowFromValue ?? rule.daysBefore ?? 0,
+            windowToValue: rule.windowToValue ?? 0,
             deadlineUnit: this.cancellationDeadlineUnit(rule.deadlineUnit),
-            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.NIGHTS,
-            penaltyValue: rule.penaltyValue ?? null,
+            penaltyType: this.cancellationPenaltyType(rule.penaltyType) || HotelCancellationPenaltyType.PERCENT,
+            penaltyValue: rule.penaltyValue ?? rule.penaltyPercent ?? null,
             isActive: true,
             notes: rule.notes || null,
           })),
@@ -1707,6 +1926,33 @@ export class ContractImportsService {
           : 'No rates were extracted. Add rates before approval if pricing should be imported.',
       });
     }
+    for (const [index, policy] of (preview.ratePolicies || []).entries()) {
+      const field = `ratePolicies.${index + 1}`;
+      if (!this.isKnownRatePolicyType(policy.policyType)) {
+        warnings.push({ severity: 'blocker', field, message: `Unknown rate policy type: ${policy.policyType || 'blank'}` });
+      }
+      if (policy.ageFrom !== null && policy.ageFrom !== undefined && policy.ageFrom < 0) {
+        warnings.push({ severity: 'blocker', field, message: 'Age From must be zero or greater' });
+      }
+      if (policy.ageTo !== null && policy.ageTo !== undefined && policy.ageTo < 0) {
+        warnings.push({ severity: 'blocker', field, message: 'Age To must be zero or greater' });
+      }
+      if (
+        policy.ageFrom !== null &&
+        policy.ageFrom !== undefined &&
+        policy.ageTo !== null &&
+        policy.ageTo !== undefined &&
+        policy.ageTo < policy.ageFrom
+      ) {
+        warnings.push({ severity: 'blocker', field, message: 'Age To cannot be lower than Age From' });
+      }
+      if (policy.amount !== null && policy.amount !== undefined && policy.amount < 0) {
+        warnings.push({ severity: 'blocker', field, message: 'Amount must be zero or greater' });
+      }
+      if (policy.percent !== null && policy.percent !== undefined && (policy.percent < 0 || policy.percent > 100)) {
+        warnings.push({ severity: 'blocker', field, message: 'Percent must be between 0 and 100' });
+      }
+    }
     for (const field of preview.missingFields || []) {
       warnings.push({ severity: 'warning', field, message: `${field} was not extracted from the uploaded contract` });
     }
@@ -1714,6 +1960,20 @@ export class ContractImportsService {
       warnings.push({ severity: 'warning', field, message: `${field} needs review` });
     }
     return warnings;
+  }
+
+  private isKnownRatePolicyType(value: unknown) {
+    return [
+      'CHILD_FREE',
+      'CHILD_DISCOUNT',
+      'CHILD_EXTRA_BED',
+      'ADULT_EXTRA_BED',
+      'CHILD_EXTRA_MEAL',
+      'ADULT_EXTRA_MEAL',
+      'SINGLE_SUPPLEMENT',
+      'THIRD_PERSON_SUPPLEMENT',
+      'SPECIAL_EVENT_SUPPLEMENT',
+    ].includes(String(value || '').trim().toUpperCase());
   }
 
   private async buildPersistenceWarnings(preview: ContractPreview) {
@@ -1757,8 +2017,15 @@ export class ContractImportsService {
           occupancyType: this.optionalString(rate.occupancyType) || 'DBL',
           mealPlan: this.optionalString(rate.mealPlan) || 'BB',
           seasonName: this.optionalString(rate.seasonName) || 'Imported',
+          seasonFrom: this.optionalString(rate.seasonFrom),
+          seasonTo: this.optionalString(rate.seasonTo),
           cost: this.parseNumber(rate.cost),
           currency: this.optionalString(rate.currency) || value.contract?.currency || 'JOD',
+          pricingBasis: this.normalizePricingBasis(rate.pricingBasis),
+          salesTaxPercent: this.parseNumber(rate.salesTaxPercent),
+          serviceChargePercent: this.parseNumber(rate.serviceChargePercent),
+          salesTaxIncluded: this.parseBoolean(rate.salesTaxIncluded) ?? null,
+          serviceChargeIncluded: this.parseBoolean(rate.serviceChargeIncluded) ?? null,
           uncertain: Boolean(rate.uncertain),
           notes: this.optionalString(rate.notes),
         }))
@@ -1814,8 +2081,27 @@ export class ContractImportsService {
             isDefault: index === 0,
           })),
       taxes: Array.isArray(value.taxes) ? value.taxes : [],
-      supplements: Array.isArray(value.supplements) ? value.supplements : [],
+      supplements: Array.isArray(value.supplements)
+        ? value.supplements.map((supplement: any) => ({
+            ...supplement,
+            pricingBasis: this.normalizePricingBasis(supplement.pricingBasis),
+          }))
+        : [],
       policies: Array.isArray(value.policies) ? value.policies : [],
+      ratePolicies: Array.isArray(value.ratePolicies)
+        ? value.ratePolicies.map((policy: any) => ({
+            policyType: this.optionalString(policy.policyType).toUpperCase(),
+            appliesTo: this.optionalString(policy.appliesTo) || null,
+            ageFrom: this.parseNumber(policy.ageFrom) ?? null,
+            ageTo: this.parseNumber(policy.ageTo) ?? null,
+            amount: this.parseNumber(policy.amount) ?? null,
+            percent: this.parseNumber(policy.percent) ?? null,
+            currency: this.optionalString(policy.currency) || value.contract?.currency || 'JOD',
+            pricingBasis: this.normalizePricingBasis(policy.pricingBasis) || 'PER_ROOM',
+            mealPlan: this.optionalString(policy.mealPlan) || null,
+            notes: this.optionalString(policy.notes) || null,
+          }))
+        : [],
       cancellationPolicy: value.cancellationPolicy || null,
       childPolicy: value.childPolicy || null,
       hotelName: this.optionalString(value.hotelName || value.hotel?.name),
@@ -1960,9 +2246,173 @@ export class ContractImportsService {
     });
   }
 
+  private readMetaSheet(workbook: any) {
+    const rows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Meta'));
+    const meta: Record<string, string> = {};
+
+    for (const row of rows) {
+      const explicitKey = this.templateCell(row, 'Key') || this.templateCell(row, 'Field') || this.templateCell(row, 'Name');
+      const explicitValue = this.templateCell(row, 'Value') || this.templateCell(row, 'Data');
+      if (explicitKey) {
+        meta[this.normalizeMetaKey(explicitKey)] = explicitValue;
+      }
+
+      for (const [key, value] of Object.entries(row)) {
+        if (value && !/^key$|^field$|^name$|^value$|^data$/i.test(key)) {
+          meta[this.normalizeMetaKey(key)] = this.normalizeMetaValue(value);
+        }
+      }
+    }
+
+    return meta;
+  }
+
+  private readCancellationPolicySheet(workbook: any): ContractPreview['cancellationPolicy'] {
+    const rows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'CancellationPolicy'));
+    if (rows.length === 0) return null;
+
+    const rules = rows
+      .map((row) => {
+        const daysBefore = this.parseNumber(
+          this.templateCell(row, 'Days Before') ||
+            this.templateCell(row, 'DaysBefore') ||
+            this.templateCell(row, 'Window From') ||
+            this.templateCell(row, 'WindowFromValue'),
+        );
+        const penaltyPercent = this.parseNumber(
+          this.templateCell(row, 'Penalty Percent') ||
+            this.templateCell(row, 'Penalty %') ||
+            this.templateCell(row, 'PenaltyPercent') ||
+            this.templateCell(row, 'Penalty Value'),
+        );
+        const penaltyType = this.templateCell(row, 'Penalty Type') || (penaltyPercent ? 'PERCENT' : 'NIGHTS');
+        const penaltyValue =
+          penaltyType.trim().toUpperCase() === 'PERCENT'
+            ? penaltyPercent
+            : this.parseNumber(this.templateCell(row, 'Penalty Value')) ?? penaltyPercent;
+
+        if (daysBefore === undefined && penaltyValue === undefined) return null;
+
+        return {
+          daysBefore: daysBefore ?? 0,
+          penaltyPercent: penaltyType.trim().toUpperCase() === 'PERCENT' ? penaltyValue ?? 0 : undefined,
+          windowFromValue: daysBefore ?? 0,
+          windowToValue: this.parseNumber(this.templateCell(row, 'Window To') || this.templateCell(row, 'WindowToValue')) ?? 0,
+          deadlineUnit: this.templateCell(row, 'Deadline Unit') || 'DAYS',
+          penaltyType,
+          penaltyValue: penaltyValue ?? null,
+          notes: this.templateCell(row, 'Notes') || null,
+        };
+      })
+      .filter((rule): rule is NonNullable<typeof rule> => Boolean(rule));
+
+    const first = rows[0] || {};
+    return {
+      summary: this.templateCell(first, 'Summary') || 'Cancellation policy imported from Excel template.',
+      notes: this.templateCell(first, 'Notes') || null,
+      noShowPenaltyType: this.templateCell(first, 'No Show Penalty Type') || 'FULL_STAY',
+      noShowPenaltyValue: this.parseNumber(this.templateCell(first, 'No Show Penalty Value')) ?? null,
+      rules,
+    };
+  }
+
+  private readRatePoliciesSheet(workbook: any, fallbackCurrency: string): {
+    policies: RatePolicyPreview[];
+    warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
+  } {
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [];
+    const policies = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RatePolicies'))
+      .map((row, index) => {
+        const amountRaw = this.templateCell(row, 'Amount');
+        const percentRaw = this.templateCell(row, 'Percent');
+        const ageFromRaw = this.templateCell(row, 'Age From');
+        const ageToRaw = this.templateCell(row, 'Age To');
+        const amount = this.parseNumber(amountRaw);
+        const percent = this.parseNumber(percentRaw);
+        const ageFrom = this.parseNumber(ageFromRaw);
+        const ageTo = this.parseNumber(ageToRaw);
+
+        if (amountRaw && amount === undefined) {
+          warnings.push({ severity: 'blocker', field: `RatePolicies.${index + 1}.Amount`, message: 'RatePolicies Amount must be numeric' });
+        }
+        if (percentRaw && percent === undefined) {
+          warnings.push({ severity: 'blocker', field: `RatePolicies.${index + 1}.Percent`, message: 'RatePolicies Percent must be numeric' });
+        }
+        if (ageFromRaw && ageFrom === undefined) {
+          warnings.push({ severity: 'blocker', field: `RatePolicies.${index + 1}.Age From`, message: 'RatePolicies Age From must be numeric' });
+        }
+        if (ageToRaw && ageTo === undefined) {
+          warnings.push({ severity: 'blocker', field: `RatePolicies.${index + 1}.Age To`, message: 'RatePolicies Age To must be numeric' });
+        }
+
+        return {
+          policyType: (this.templateCell(row, 'Policy Type') || '').trim().toUpperCase(),
+          appliesTo: this.templateCell(row, 'Applies To') || null,
+          ageFrom: ageFrom ?? null,
+          ageTo: ageTo ?? null,
+          amount: amount ?? null,
+          percent: percent ?? null,
+          currency: this.templateCell(row, 'Currency') || fallbackCurrency,
+          pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
+          mealPlan: this.templateCell(row, 'Meal Plan') || null,
+          notes: this.templateCell(row, 'Notes') || null,
+        };
+      })
+      .filter((policy) => Boolean(policy.policyType));
+
+    return { policies, warnings };
+  }
+
+  private normalizeMetaKey(value: string) {
+    const normalized = this.normalizeTemplateHeader(value);
+    const aliases: Record<string, string> = {
+      hotelname: 'hotelName',
+      hotel: 'hotel',
+      suppliername: 'supplierName',
+      supplier: 'supplier',
+      contractname: 'contractName',
+      contract: 'contract',
+      validfrom: 'validFrom',
+      contractstartdate: 'contractStartDate',
+      startdate: 'startDate',
+      validto: 'validTo',
+      contractenddate: 'contractEndDate',
+      enddate: 'endDate',
+      currency: 'currency',
+      defaulttax: 'defaultTax',
+      defaulttaxpercent: 'defaultTaxPercent',
+      defaulttaxpct: 'defaultTaxPercent',
+      taxpercent: 'taxPercent',
+      taxincluded: 'taxIncluded',
+      defaultservice: 'defaultService',
+      defaultservicepercent: 'defaultServicePercent',
+      defaultservicepct: 'defaultServicePercent',
+      servicepercent: 'servicePercent',
+      serviceincluded: 'serviceIncluded',
+      city: 'city',
+      category: 'category',
+      hotelcategory: 'hotelCategory',
+    };
+    return aliases[normalized] || normalized;
+  }
+
+  private normalizeMetaValue(value: unknown) {
+    const text = this.optionalString(value);
+    const date = this.isoDateFromTemplate(text);
+    return date || text;
+  }
+
   private templateCell(row: Record<string, string>, header: string) {
-    const match = Object.entries(row).find(([key]) => this.normalizeTemplateHeader(key) === this.normalizeTemplateHeader(header));
+    const match = Object.entries(row).find(([key]) => this.templateHeaderMatches(key, header));
     return match?.[1]?.trim() || '';
+  }
+
+  private templateHeaderMatches(actual: string, expected: string) {
+    const actualHeader = this.normalizeTemplateHeader(actual);
+    const expectedHeader = this.normalizeTemplateHeader(expected);
+    if (actualHeader === expectedHeader) return true;
+    if (expectedHeader === 'cost' && actualHeader.startsWith('cost')) return true;
+    return false;
   }
 
   private normalizeTemplateHeader(value: string) {
@@ -1976,6 +2426,79 @@ export class ContractImportsService {
     if (normalized === 'SINGLE') return 'SGL';
     if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
     return normalized || 'DBL';
+  }
+
+  private templatePricingBasis(row: Record<string, string>, headerText: string) {
+    return this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || this.detectPricingBasis(`${headerText} ${Object.values(row).join(' ')}`);
+  }
+
+  private normalizePricingBasis(value: unknown): 'PER_PERSON' | 'PER_ROOM' | undefined {
+    const raw = this.optionalString(value);
+    if (/\bper\s+person\b|\bpp\b|\bper\s+pax\b/i.test(raw)) return 'PER_PERSON';
+    if (/\bper\s+room\b|\bper\s+unit\b/i.test(raw)) return 'PER_ROOM';
+    const normalized = raw.replace(/[\s-]+/g, '_').toUpperCase();
+    if (normalized === 'PER_PERSON') return 'PER_PERSON';
+    if (normalized === 'PER_ROOM') return 'PER_ROOM';
+    return undefined;
+  }
+
+  private hotelRatePricingBasis(value: unknown) {
+    return this.normalizePricingBasis(value) === 'PER_PERSON' ? HotelRatePricingBasis.PER_PERSON : HotelRatePricingBasis.PER_ROOM;
+  }
+
+  private normalizeRateSeasonBounds(rate: PreviewRate, contractValidFrom?: string | null, contractValidTo?: string | null) {
+    const seasonFrom =
+      this.parseDateOnly(rate.seasonFrom) ||
+      this.parseDateOnly(this.splitSeasonName(rate.seasonName).from) ||
+      this.parseDateOnly(contractValidFrom) ||
+      new Date();
+    const seasonTo =
+      this.parseDateOnly(rate.seasonTo) ||
+      this.parseDateOnly(this.splitSeasonName(rate.seasonName).to) ||
+      this.parseDateOnly(contractValidTo) ||
+      seasonFrom;
+
+    return {
+      seasonFrom,
+      seasonTo: seasonTo < seasonFrom ? seasonFrom : seasonTo,
+    };
+  }
+
+  private isoDateFromTemplate(value: string) {
+    const parsed = this.parseDateOnly(value);
+    return parsed ? this.isoDate(parsed) : '';
+  }
+
+  private parseDateOnly(value: unknown) {
+    const raw = this.optionalString(value);
+    if (!raw || /^start$|^end$|^imported$/i.test(raw)) return null;
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) {
+      return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+    }
+
+    const numeric = raw.match(/\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](20\d{2}))?\b/);
+    if (numeric) {
+      const year = Number(numeric[3] || new Date().getUTCFullYear());
+      const month = Number(numeric[2]);
+      const day = Number(numeric[1]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return new Date(Date.UTC(year, month - 1, day));
+      }
+    }
+
+    return null;
+  }
+
+  private splitSeasonName(seasonName: string | undefined) {
+    const [from = '', to = ''] = String(seasonName || '')
+      .split(/\s+-\s+|\s+to\s+/i)
+      .map((part) => part.trim());
+    return { from, to };
+  }
+
+  private safeExportFileName(value: string) {
+    return value.trim().replace(/\.[^.]+$/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'contract-import';
   }
 
   private workbookRowsToText(rows: string[][]) {
@@ -2051,6 +2574,14 @@ export class ContractImportsService {
     if (value === null || value === undefined || value === '') return undefined;
     const parsed = Number(String(value).replace(/,/g, '').replace(/[^\d.-]/g, ''));
     return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private parseBoolean(value: unknown): boolean | undefined {
+    const raw = this.optionalString(value).toLowerCase();
+    if (!raw) return undefined;
+    if (['true', 'yes', 'y', '1', 'included', 'inclusive'].includes(raw)) return true;
+    if (['false', 'no', 'n', '0', 'excluded', 'exclusive'].includes(raw)) return false;
+    return undefined;
   }
 
   private detectCurrency(text: string) {

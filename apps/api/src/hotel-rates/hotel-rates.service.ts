@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { HotelMealPlan, HotelOccupancyType } from '@prisma/client';
+import { HotelMealPlan, HotelOccupancyType, HotelRatePricingBasis } from '@prisma/client';
 import { ensureValidNumber, normalizeOptionalSupportedCurrency, requireSupportedCurrency, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -10,10 +10,13 @@ type CreateHotelRateInput = {
   contractId: string;
   seasonId?: string;
   seasonName: string;
+  seasonFrom?: Date | null;
+  seasonTo?: Date | null;
   roomCategoryId: string;
   occupancyType: HotelOccupancyType;
   mealPlan: HotelMealPlan;
   pricingMode?: HotelRatePricingMode | null;
+  pricingBasis?: HotelRatePricingBasis | null;
   currency: string;
   cost: number;
   costBaseAmount?: number;
@@ -28,6 +31,38 @@ type CreateHotelRateInput = {
 };
 
 type UpdateHotelRateInput = Partial<CreateHotelRateInput>;
+
+type LookupHotelRateInput = {
+  hotelId: string;
+  date: Date | string;
+  occupancy: HotelOccupancyType;
+  mealPlan: HotelMealPlan;
+  roomCategoryId?: string | null;
+  pax?: number | null;
+};
+
+type CalculateHotelCostInput = {
+  hotelId: string;
+  checkInDate: Date | string;
+  checkOutDate: Date | string;
+  occupancy: HotelOccupancyType;
+  mealPlan: HotelMealPlan;
+  pax: number;
+  adults?: number | null;
+  childrenAges?: number[] | null;
+  roomCategoryId?: string | null;
+};
+
+type RatePolicy = {
+  policyType?: string | null;
+  appliesTo?: string | null;
+  ageFrom?: number | string | null;
+  ageTo?: number | string | null;
+  amount?: number | string | null;
+  percent?: number | string | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
+  mealPlan?: string | null;
+};
 
 @Injectable()
 export class HotelRatesService {
@@ -96,12 +131,16 @@ export class HotelRatesService {
     return this.prisma.hotelRate.create({
       data: {
         contractId: data.contractId,
+        hotelId: contract.hotelId,
         seasonId: data.seasonId || null,
         seasonName: data.seasonName.trim(),
+        seasonFrom: data.seasonFrom ?? contract.validFrom,
+        seasonTo: data.seasonTo ?? contract.validTo,
         roomCategoryId: data.roomCategoryId,
-        occupancyType: data.occupancyType,
-        mealPlan: data.mealPlan,
+        occupancyType: this.normalizeOccupancyType(data.occupancyType),
+        mealPlan: this.normalizeMealPlan(data.mealPlan),
         pricingMode: this.normalizePricingMode(data.pricingMode),
+        pricingBasis: this.normalizePricingBasis(data.pricingBasis),
         currency: costCurrency,
         cost: costBaseAmount,
         costBaseAmount,
@@ -163,12 +202,16 @@ export class HotelRatesService {
       where: { id },
       data: {
         contractId,
+        hotelId: contract.hotelId,
         seasonId: data.seasonId === undefined ? undefined : data.seasonId || null,
         seasonName: data.seasonName === undefined ? undefined : data.seasonName.trim(),
+        seasonFrom: data.seasonFrom === undefined ? undefined : data.seasonFrom ?? contract.validFrom,
+        seasonTo: data.seasonTo === undefined ? undefined : data.seasonTo ?? contract.validTo,
         roomCategoryId,
-        occupancyType: data.occupancyType,
-        mealPlan: data.mealPlan,
+        occupancyType: data.occupancyType === undefined ? undefined : this.normalizeOccupancyType(data.occupancyType),
+        mealPlan: data.mealPlan === undefined ? undefined : this.normalizeMealPlan(data.mealPlan),
         pricingMode: data.pricingMode === undefined ? undefined : this.normalizePricingMode(data.pricingMode),
+        pricingBasis: data.pricingBasis === undefined ? undefined : this.normalizePricingBasis(data.pricingBasis),
         currency: costCurrency,
         cost: costBaseAmount,
         costBaseAmount,
@@ -211,6 +254,338 @@ export class HotelRatesService {
     });
   }
 
+  async lookup(data: LookupHotelRateInput) {
+    const pax = Math.max(1, Number(data.pax ?? 1));
+    const date = this.normalizeLookupDate(data.date);
+    const occupancy = this.normalizeOccupancyType(data.occupancy);
+    const mealPlan = this.normalizeMealPlan(data.mealPlan);
+    console.log('Hotel rate lookup requested', {
+      hotelId: data.hotelId,
+      lookupDate: date,
+    });
+    const rates = await this.prisma.hotelRate.findMany({
+      where: {
+        hotelId: data.hotelId,
+      },
+      include: {
+        contract: { include: { hotel: true } },
+        roomCategory: true,
+      },
+      orderBy: [{ cost: 'asc' }, { createdAt: 'desc' }],
+    });
+    console.log('Hotel rate lookup hotel row count', {
+      hotelId: data.hotelId,
+      count: rates.length,
+    });
+    console.log(
+      'Hotel rate lookup DB sample',
+      rates.slice(0, 5).map((rate) => ({
+        hotelId: rate.hotelId,
+        seasonFrom: rate.seasonFrom,
+        seasonTo: rate.seasonTo,
+        occupancyType: rate.occupancyType,
+        mealPlan: rate.mealPlan,
+        cost: rate.cost,
+        pricingBasis: rate.pricingBasis,
+      })),
+    );
+    const dateDebug = rates.map((rate) => {
+      const from = this.normalizeDateForLookupComparison(rate.seasonFrom);
+      const to = this.normalizeDateForLookupComparison(rate.seasonTo);
+      return {
+        hotelId: rate.hotelId,
+        seasonFrom: rate.seasonFrom,
+        seasonTo: rate.seasonTo,
+        normalizedSeasonFrom: from,
+        normalizedSeasonTo: to,
+        lookupDate: date,
+        insideRange: date >= from && date <= to,
+      };
+    });
+    const dateMatchedRates = rates.filter((rate) => this.lookupDateInSeason(date, rate.seasonFrom, rate.seasonTo));
+
+    if (dateMatchedRates.length === 0) {
+      console.log('Hotel rate lookup date mismatch', dateDebug);
+      throw new BadRequestException('No rates found for this hotel and date');
+    }
+
+    const matchedRates = dateMatchedRates.filter((rate) => {
+      return (
+        this.normalizeOccupancyType(rate.occupancyType) === occupancy &&
+        this.normalizeMealPlan(rate.mealPlan) === mealPlan &&
+        (!data.roomCategoryId || rate.roomCategoryId === data.roomCategoryId)
+      );
+    });
+
+    if (matchedRates.length === 0) {
+      console.log('Hotel rate lookup mismatch', {
+        requested: {
+          occupancy,
+          mealPlan,
+          roomCategoryId: data.roomCategoryId || null,
+        },
+        availableOccupancyTypes: Array.from(new Set(dateMatchedRates.map((rate) => rate.occupancyType))),
+        availableMealPlans: Array.from(new Set(dateMatchedRates.map((rate) => rate.mealPlan))),
+      });
+      throw new BadRequestException('Rates exist but occupancy/mealPlan mismatch');
+    }
+
+    const pricedRates = matchedRates
+      .filter((rate) => rate.roomCategory.isActive)
+      .map((rate) => ({
+        ...rate,
+        finalPrice: this.calculateFinalPrice(rate.cost, rate.pricingBasis, pax),
+      }))
+      .sort((left, right) => left.finalPrice - right.finalPrice || left.cost - right.cost);
+
+    const selected = pricedRates[0];
+    if (!selected) {
+      throw new BadRequestException('Matching hotel rate not found for the selected date, occupancy, and meal plan');
+    }
+
+    return selected;
+  }
+
+  async calculateHotelCost(data: CalculateHotelCostInput) {
+    const checkInDate = this.normalizeLookupDate(data.checkInDate);
+    const checkOutDate = this.normalizeLookupDate(data.checkOutDate);
+    const childrenAges = this.normalizeChildrenAges(data.childrenAges);
+    const adults = this.normalizeAdults(data.adults, data.pax, childrenAges.length);
+    const pax = Math.max(1, adults + childrenAges.length);
+    const occupancy = this.normalizeOccupancyType(data.occupancy);
+    const mealPlan = this.normalizeMealPlan(data.mealPlan);
+
+    if (checkOutDate <= checkInDate) {
+      throw new BadRequestException('checkOutDate must be after checkInDate');
+    }
+
+    const breakdown: Array<{ date: string; adultsCost: number; childrenCost: number; supplementsCost: number; cost: number }> = [];
+
+    for (let current = new Date(checkInDate); current < checkOutDate; current = this.addDays(current, 1)) {
+      const rate = await this.lookup({
+        hotelId: data.hotelId,
+        date: current,
+        occupancy,
+        mealPlan,
+        roomCategoryId: data.roomCategoryId || null,
+        pax,
+      });
+      const pricedNight = this.calculateNightlyGuestCost(
+        rate.cost,
+        rate.pricingBasis,
+        adults,
+        childrenAges,
+        this.getRatePolicies(rate),
+        occupancy,
+        mealPlan,
+      );
+      breakdown.push({
+        date: this.formatDateOnly(current),
+        adultsCost: pricedNight.adultsCost,
+        childrenCost: pricedNight.childrenCost,
+        supplementsCost: pricedNight.supplementsCost,
+        cost: pricedNight.totalCost,
+      });
+    }
+
+    const adultsCost = Number(breakdown.reduce((sum, item) => sum + item.adultsCost, 0).toFixed(2));
+    const childrenCost = Number(breakdown.reduce((sum, item) => sum + item.childrenCost, 0).toFixed(2));
+    const supplementsCost = Number(breakdown.reduce((sum, item) => sum + item.supplementsCost, 0).toFixed(2));
+
+    return {
+      adultsCost,
+      childrenCost,
+      supplementsCost,
+      totalCost: Number((adultsCost + childrenCost + supplementsCost).toFixed(2)),
+      nights: breakdown.length,
+      breakdown,
+    };
+  }
+
+  calculateFinalPrice(cost: number, pricingBasis: HotelRatePricingBasis | null | undefined, passengers: number) {
+    if (pricingBasis === HotelRatePricingBasis.PER_PERSON) {
+      return Number((cost * Math.max(1, passengers)).toFixed(2));
+    }
+
+    return Number(cost.toFixed(2));
+  }
+
+  private calculateNightlyGuestCost(
+    adultRate: number,
+    pricingBasis: HotelRatePricingBasis | null | undefined,
+    adults: number,
+    childrenAges: number[],
+    policies: RatePolicy[],
+    occupancy: HotelOccupancyType,
+    mealPlan: HotelMealPlan,
+  ) {
+    const supplementsCost = this.calculateSupplementsCost(adultRate, adults, childrenAges, policies, occupancy, mealPlan);
+
+    if (pricingBasis !== HotelRatePricingBasis.PER_PERSON) {
+      return {
+        adultsCost: Number(adultRate.toFixed(2)),
+        childrenCost: 0,
+        supplementsCost,
+        totalCost: Number((adultRate + supplementsCost).toFixed(2)),
+      };
+    }
+
+    const adultsCost = Number((adultRate * Math.max(0, adults)).toFixed(2));
+    const childrenCost = Number(
+      childrenAges.reduce((sum, age) => sum + this.calculateChildCost(age, adultRate, policies), 0).toFixed(2),
+    );
+
+    return {
+      adultsCost,
+      childrenCost,
+      supplementsCost,
+      totalCost: Number((adultsCost + childrenCost + supplementsCost).toFixed(2)),
+    };
+  }
+
+  private calculateSupplementsCost(
+    adultRate: number,
+    adults: number,
+    childrenAges: number[],
+    policies: RatePolicy[],
+    occupancy: HotelOccupancyType,
+    mealPlan: HotelMealPlan,
+  ) {
+    const totalExtraBedCount = Math.max(0, adults + childrenAges.length - 2);
+    const childExtraBedCount = Math.min(childrenAges.length, totalExtraBedCount);
+    const adultExtraBedCount = Math.max(0, totalExtraBedCount - childExtraBedCount);
+    const thirdPersonCount = Math.max(0, adults + childrenAges.length - 2);
+    const charges = [
+      this.sumPolicyCharges('CHILD_EXTRA_BED', policies, adultRate, childExtraBedCount, mealPlan, childrenAges),
+      this.sumPolicyCharges('ADULT_EXTRA_BED', policies, adultRate, adultExtraBedCount, mealPlan),
+      this.sumPolicyCharges('CHILD_EXTRA_MEAL', policies, adultRate, childrenAges.length, mealPlan, childrenAges),
+      this.sumPolicyCharges('ADULT_EXTRA_MEAL', policies, adultRate, adults, mealPlan),
+      occupancy === HotelOccupancyType.SGL ? this.sumPolicyCharges('SINGLE_SUPPLEMENT', policies, adultRate, 1, mealPlan) : 0,
+      thirdPersonCount > 0 || occupancy === HotelOccupancyType.TPL
+        ? this.sumPolicyCharges('THIRD_PERSON_SUPPLEMENT', policies, adultRate, Math.max(1, thirdPersonCount), mealPlan)
+        : 0,
+    ];
+
+    return Number(charges.reduce((sum, value) => sum + value, 0).toFixed(2));
+  }
+
+  private sumPolicyCharges(
+    policyType: string,
+    policies: RatePolicy[],
+    adultRate: number,
+    quantity: number,
+    mealPlan: HotelMealPlan,
+    ages?: number[],
+  ) {
+    if (quantity <= 0) {
+      return 0;
+    }
+
+    return policies
+      .filter((policy) => String(policy.policyType || '').trim().toUpperCase() === policyType)
+      .filter((policy) => this.policyMatchesMealPlan(policy, mealPlan))
+      .reduce((sum, policy) => {
+        const matchedQuantity = ages ? ages.filter((age) => this.policyMatchesAge(policy, age)).length : quantity;
+        if (matchedQuantity <= 0) {
+          return sum;
+        }
+
+        return sum + this.calculatePolicyCharge(policy, adultRate, matchedQuantity);
+      }, 0);
+  }
+
+  private calculatePolicyCharge(policy: RatePolicy, adultRate: number, quantity: number) {
+    const amount = this.optionalNumber(policy.amount);
+    const percent = this.optionalNumber(policy.percent);
+    const unitCost = amount !== null ? amount : percent !== null ? adultRate * this.normalizePolicyPercent(percent) : 0;
+    const pricingBasis = String(policy.pricingBasis || '').trim().toUpperCase();
+    const multiplier = pricingBasis === 'PER_ROOM' ? 1 : quantity;
+    return Number((unitCost * multiplier).toFixed(2));
+  }
+
+  private policyMatchesMealPlan(policy: RatePolicy, mealPlan: HotelMealPlan) {
+    if (!policy.mealPlan) {
+      return true;
+    }
+
+    try {
+      return this.normalizeMealPlan(policy.mealPlan) === mealPlan;
+    } catch {
+      return false;
+    }
+  }
+
+  private policyMatchesAge(policy: RatePolicy, age: number) {
+    const ageFrom = this.optionalNumber(policy.ageFrom);
+    const ageTo = this.optionalNumber(policy.ageTo);
+    return (ageFrom === null || age >= ageFrom) && (ageTo === null || age <= ageTo);
+  }
+
+  private calculateChildCost(age: number, adultRate: number, policies: RatePolicy[]) {
+    if (this.findChildPolicy(age, policies, 'CHILD_FREE')) {
+      return 0;
+    }
+
+    const discountPolicy = this.findChildPolicy(age, policies, 'CHILD_DISCOUNT');
+    if (discountPolicy) {
+      return Number((adultRate * this.normalizePolicyPercent(discountPolicy.percent)).toFixed(2));
+    }
+
+    return adultRate;
+  }
+
+  private findChildPolicy(age: number, policies: RatePolicy[], policyType: 'CHILD_FREE' | 'CHILD_DISCOUNT') {
+    return policies.find((policy) => {
+      if (String(policy.policyType || '').trim().toUpperCase() !== policyType) {
+        return false;
+      }
+
+      const ageFrom = this.optionalNumber(policy.ageFrom);
+      const ageTo = this.optionalNumber(policy.ageTo);
+      return (ageFrom === null || age >= ageFrom) && (ageTo === null || age <= ageTo);
+    });
+  }
+
+  private getRatePolicies(rate: { contract?: { ratePolicies?: unknown } | null }) {
+    const policies = rate.contract?.ratePolicies;
+    return Array.isArray(policies) ? (policies as RatePolicy[]) : [];
+  }
+
+  private normalizeChildrenAges(value: number[] | null | undefined) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.map((age) => Number(age)).filter((age) => Number.isFinite(age) && age >= 0);
+  }
+
+  private normalizeAdults(adults: number | null | undefined, pax: number, childCount: number) {
+    const normalizedAdults = Number(adults);
+    if (Number.isFinite(normalizedAdults) && normalizedAdults >= 0) {
+      return Math.floor(normalizedAdults);
+    }
+
+    return Math.max(0, Math.floor(Number(pax || 1)) - childCount);
+  }
+
+  private normalizePolicyPercent(value: number | string | null | undefined) {
+    const percent = Number(value);
+    if (!Number.isFinite(percent) || percent <= 0) {
+      return 0;
+    }
+
+    return percent > 1 ? percent / 100 : percent;
+  }
+
+  private optionalNumber(value: number | string | null | undefined) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   private normalizePricingMode(value: HotelRatePricingMode | null | undefined) {
     if (value === undefined || value === null) {
       return null;
@@ -221,5 +596,72 @@ export class HotelRatesService {
     }
 
     throw new BadRequestException('Unsupported hotel rate pricing mode');
+  }
+
+  private normalizePricingBasis(value: HotelRatePricingBasis | null | undefined) {
+    if (value === HotelRatePricingBasis.PER_PERSON) return HotelRatePricingBasis.PER_PERSON;
+    return HotelRatePricingBasis.PER_ROOM;
+  }
+
+  private normalizeOccupancyType(value: HotelOccupancyType | string) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === HotelOccupancyType.SGL || normalized === 'SINGLE') return HotelOccupancyType.SGL;
+    if (normalized === HotelOccupancyType.DBL || normalized === 'DOUBLE' || normalized === 'TWIN') return HotelOccupancyType.DBL;
+    if (normalized === HotelOccupancyType.TPL || normalized === 'TRP' || normalized === 'TRIPLE') return HotelOccupancyType.TPL;
+    throw new BadRequestException('Unsupported hotel occupancy type');
+  }
+
+  private normalizeMealPlan(value: HotelMealPlan | string) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === HotelMealPlan.RO) return HotelMealPlan.RO;
+    if (normalized === HotelMealPlan.BB || normalized === 'BED_BREAKFAST') return HotelMealPlan.BB;
+    if (normalized === HotelMealPlan.HB || normalized === 'HALF_BOARD') return HotelMealPlan.HB;
+    if (normalized === HotelMealPlan.FB) return HotelMealPlan.FB;
+    if (normalized === HotelMealPlan.AI) return HotelMealPlan.AI;
+    throw new BadRequestException('Unsupported hotel meal plan');
+  }
+
+  private normalizeLookupDate(value: Date | string) {
+    if (typeof value === 'string') {
+      const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dateOnly) {
+        return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 0, 0, 0, 0);
+      }
+    }
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('A valid lookup date is required');
+    }
+
+    const lookupDate = new Date(parsed);
+    lookupDate.setHours(0, 0, 0, 0);
+    return lookupDate;
+  }
+
+  private addDays(value: Date, days: number) {
+    const next = new Date(value);
+    next.setDate(next.getDate() + days);
+    next.setHours(0, 0, 0, 0);
+    return next;
+  }
+
+  private formatDateOnly(value: Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private lookupDateInSeason(lookupDate: Date, seasonFrom: Date, seasonTo: Date) {
+    const from = this.normalizeDateForLookupComparison(seasonFrom);
+    const to = this.normalizeDateForLookupComparison(seasonTo);
+    return lookupDate >= from && lookupDate <= to;
+  }
+
+  private normalizeDateForLookupComparison(value: Date | string) {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
   }
 }

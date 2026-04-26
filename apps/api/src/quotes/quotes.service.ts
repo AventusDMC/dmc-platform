@@ -142,13 +142,19 @@ type CreateQuoteItemInput = {
   guideType?: string;
   guideDuration?: string;
   overnight?: boolean;
+  customServiceName?: string | null;
+  unitCost?: number | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   quantity: number;
   paxCount?: number;
   roomCount?: number;
   nightCount?: number;
   dayCount?: number;
   overrideCost?: number | null;
+  overrideReason?: string | null;
   useOverride?: boolean;
+  markupAmount?: number | null;
+  sellPrice?: number | null;
   currency?: string | null;
   markupPercent: number;
   transportServiceTypeId?: string;
@@ -1075,6 +1081,7 @@ export class QuotesService {
               nightCount: null,
               dayCount: 1,
               baseCost: 0,
+              finalCost: 0,
               costBaseAmount: 0,
               costCurrency: 'USD',
               quoteCurrency: 'USD',
@@ -1090,6 +1097,7 @@ export class QuotesService {
               fxToCurrency: null,
               fxRateDate: null,
               overrideCost: null,
+              overrideReason: null,
               useOverride: false,
               currency: 'USD',
               pricingDescription: this.buildImportedItemPricingDescription(item),
@@ -1121,6 +1129,7 @@ export class QuotesService {
               nightCount: null,
               dayCount: 1,
               baseCost: 0,
+              finalCost: 0,
               costBaseAmount: 0,
               costCurrency: 'USD',
               quoteCurrency: 'USD',
@@ -1136,6 +1145,7 @@ export class QuotesService {
               fxToCurrency: null,
               fxRateDate: null,
               overrideCost: null,
+              overrideReason: null,
               useOverride: false,
               currency: 'USD',
               pricingDescription: this.buildImportedItemPricingDescription(item),
@@ -1987,7 +1997,19 @@ export class QuotesService {
       nightCount: data.nightCount === undefined ? existingItem.nightCount || undefined : data.nightCount,
       dayCount: data.dayCount === undefined ? existingItem.dayCount || undefined : data.dayCount,
       overrideCost: data.overrideCost === undefined ? existingItem.overrideCost : data.overrideCost,
+      overrideReason:
+        data.overrideReason === undefined
+          ? (existingItem as { overrideReason?: string | null }).overrideReason ?? undefined
+          : data.overrideReason,
       useOverride: data.useOverride === undefined ? existingItem.useOverride : data.useOverride,
+      markupAmount:
+        data.markupAmount === undefined
+          ? (existingItem as { markupAmount?: number | null }).markupAmount ?? undefined
+          : data.markupAmount,
+      sellPrice:
+        data.sellPrice === undefined
+          ? (existingItem as { sellPrice?: number | null }).sellPrice ?? undefined
+          : data.sellPrice,
       currency: data.currency === undefined ? existingItem.currency : data.currency,
       markupPercent: data.markupPercent ?? existingItem.markupPercent,
       transportServiceTypeId: data.transportServiceTypeId,
@@ -2292,6 +2314,7 @@ export class QuotesService {
     let roomCategoryId: string | null = null;
     let occupancyType: HotelOccupancyType | null = null;
     let mealPlan: HotelMealPlan | null = null;
+    let hotelRatePricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null = null;
     let participantCount: number | null = null;
     let adultCount: number | null = null;
     let childCount: number | null = null;
@@ -2322,10 +2345,16 @@ export class QuotesService {
       const hotelRate = await this.prisma.hotelRate.findFirst({
         where: {
           contractId: data.contractId,
-          seasonName: requestedSeasonName,
+          ...(serviceDate
+            ? {
+                seasonFrom: { lte: serviceDate },
+                seasonTo: { gte: serviceDate },
+              }
+            : { seasonName: requestedSeasonName }),
           roomCategoryId: data.roomCategoryId,
           occupancyType: data.occupancyType,
           mealPlan: data.mealPlan,
+          hotelId: data.hotelId,
           contract: {
             hotelId: data.hotelId,
           },
@@ -2359,6 +2388,7 @@ export class QuotesService {
       tourismFeeAmount = (hotelRate as any).tourismFeeAmount ?? null;
       tourismFeeCurrency = (hotelRate as any).tourismFeeCurrency ?? null;
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
+      hotelRatePricingBasis = (hotelRate as any).pricingBasis ?? null;
       pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${hotelRate.mealPlan}`;
       hotelId = data.hotelId;
       contractId = hotelRate.contract.id;
@@ -2488,12 +2518,32 @@ export class QuotesService {
       }
     }
 
+    if (this.isMealService(service)) {
+      const mealName = this.normalizeQuoteItemOperationalText(data.customServiceName);
+      const mealUnitCost = data.unitCost === undefined || data.unitCost === null ? service.baseCost : Number(data.unitCost);
+
+      if (!mealName) {
+        throw new BadRequestException('Meal items require a name');
+      }
+
+      if (!Number.isFinite(mealUnitCost) || mealUnitCost < 0) {
+        throw new BadRequestException('Meal cost must be zero or greater');
+      }
+
+      baseCost = mealUnitCost;
+      currency = data.currency?.trim().toUpperCase() || service.currency;
+      supplierCostBaseAmount = mealUnitCost;
+      supplierCostCurrency = currency;
+      pricingDescription = `${mealName} | Meal | PER_PERSON | ${paxCount} pax`;
+    }
+
     if (data.currency !== undefined) {
       supplierCostCurrency = data.currency?.trim().toUpperCase() || supplierCostCurrency;
     }
 
     const overrideCost = data.overrideCost === undefined ? null : data.overrideCost;
     const useOverride = Boolean(data.useOverride);
+    const overrideReason = useOverride ? this.normalizeQuoteItemOperationalText(data.overrideReason) : null;
 
     if (overrideCost !== null && overrideCost < 0) {
       throw new BadRequestException('Override cost must be zero or greater');
@@ -2503,22 +2553,24 @@ export class QuotesService {
       throw new BadRequestException('Override cost is required when override is enabled');
     }
 
-    const effectiveUnitCost = this.getFinalItemCost(baseCost, overrideCost, useOverride);
+    const markupAmount = this.normalizeOptionalNonNegativeNumber(data.markupAmount, 'Markup amount');
+    const sellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
+
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
 
     const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
-    const pricing = this.calculateCentralizedQuoteItemPricing({
+    const basePricing = this.calculateCentralizedQuoteItemPricing({
       service,
       quantity: transportQuantity,
       paxCount,
       roomCount,
       nightCount,
       dayCount,
-      unitCost: effectiveUnitCost,
+      unitCost: baseCost,
       markupPercent: data.markupPercent,
       quoteCurrency,
       supplierPricing: {
-        costBaseAmount: effectiveUnitCost,
+        costBaseAmount: supplierCostBaseAmount,
         costCurrency: supplierCostCurrency,
         salesTaxPercent,
         salesTaxIncluded,
@@ -2529,7 +2581,17 @@ export class QuotesService {
         tourismFeeMode,
       },
       transportPricingMode,
+      hotelRatePricingBasis,
       unitCount,
+    });
+    const manualOverrideApplied = useOverride && overrideCost !== null;
+    const finalCost = manualOverrideApplied ? Number(overrideCost.toFixed(2)) : basePricing.totalCost;
+    const pricing = this.applyQuoteItemSellingLayer({
+      pricing: manualOverrideApplied ? { ...basePricing, totalCost: finalCost } : basePricing,
+      cost: finalCost,
+      markupPercent: data.markupPercent,
+      markupAmount,
+      sellPriceOverride,
     });
     const promotionTravelDate = serviceDate ?? quote.travelStartDate;
     const promotionResult =
@@ -2574,7 +2636,10 @@ export class QuotesService {
         roomCount,
         nightCount,
         dayCount,
-        baseCost: pricing.totalCost,
+        baseCost: basePricing.totalCost,
+        finalCost: pricing.totalCost,
+        markupAmount,
+        sellPrice: sellPriceOverride,
         costBaseAmount: supplierCostBaseAmount,
         costCurrency: supplierCostCurrency,
         quoteCurrency,
@@ -2590,6 +2655,7 @@ export class QuotesService {
         fxToCurrency: pricing.fxToCurrency,
         fxRateDate: pricing.fxRateDate,
         overrideCost,
+        overrideReason,
         useOverride,
         currency: quoteCurrency,
         pricingDescription,
@@ -3650,6 +3716,7 @@ export class QuotesService {
     unitCost: number;
     markupPercent: number;
     transportPricingMode?: TransportPricingMode | null;
+    hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     unitCount?: number | null;
   }) {
     if (this.isHotelService(values.service)) {
@@ -3710,11 +3777,14 @@ export class QuotesService {
       tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
     };
     transportPricingMode?: TransportPricingMode | null;
+    hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     unitCount?: number | null;
     legacyCurrency?: string | null;
   }) {
     const pricingUnits = this.isHotelService(values.service)
-      ? Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
+      ? values.hotelRatePricingBasis === 'PER_PERSON'
+        ? Math.max(1, values.paxCount) * Math.max(1, values.nightCount)
+        : Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
       : this.isTransportService(values.service) &&
           values.transportPricingMode === 'capacity_unit' &&
           values.unitCount
@@ -3768,6 +3838,41 @@ export class QuotesService {
         currency: values.legacyCurrency ?? values.supplierPricing.costCurrency ?? values.quoteCurrency,
       },
     });
+  }
+
+  private applyQuoteItemSellingLayer(values: {
+    pricing: ReturnType<typeof calculateMultiCurrencyQuoteItemPricing>;
+    cost: number;
+    markupPercent: number;
+    markupAmount: number | null;
+    sellPriceOverride: number | null;
+  }) {
+    const cost = Number(values.cost.toFixed(2));
+    const totalSell =
+      values.sellPriceOverride !== null
+        ? values.sellPriceOverride
+        : values.markupAmount !== null
+          ? Number((cost + values.markupAmount).toFixed(2))
+          : Number((cost * (1 + Math.max(0, values.markupPercent) / 100)).toFixed(2));
+
+    return {
+      ...values.pricing,
+      totalCost: cost,
+      totalSell: Number(totalSell.toFixed(2)),
+    };
+  }
+
+  private normalizeOptionalNonNegativeNumber(value: number | null | undefined, fieldName: string) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = Number(value);
+    if (!Number.isFinite(normalized) || normalized < 0) {
+      throw new BadRequestException(`${fieldName} must be zero or greater`);
+    }
+
+    return Number(normalized.toFixed(2));
   }
 
   private getFinalItemCost(baseCost: number, overrideCost: number | null, useOverride: boolean) {
@@ -3864,6 +3969,20 @@ export class QuotesService {
       normalizedCategory.includes('sightseeing') ||
       normalizedCategory.includes('entrance') ||
       normalizedCategory.includes('ticket')
+    );
+  }
+
+  private isMealService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
+    const normalizedCategory = this.getNormalizedServiceCategory(service);
+
+    return (
+      normalizedCategory === 'meal' ||
+      normalizedCategory === 'dining' ||
+      normalizedCategory.includes('meal') ||
+      normalizedCategory.includes('dinner') ||
+      normalizedCategory.includes('lunch') ||
+      normalizedCategory.includes('breakfast') ||
+      normalizedCategory.includes('food')
     );
   }
 
@@ -4380,6 +4499,7 @@ export class QuotesService {
           fxFromCurrency: pricing.fxFromCurrency,
           fxToCurrency: pricing.fxToCurrency,
           fxRateDate: pricing.fxRateDate,
+          finalCost: pricing.totalCost,
           totalCost: pricing.totalCost,
           totalSell: pricing.totalSell,
         },

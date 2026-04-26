@@ -36,8 +36,53 @@ type CancellationPolicyRecord = {
   rules: CancellationRuleRecord[];
 };
 
+type CancellationPenaltyRuleInput = {
+  windowFromValue: number;
+  windowToValue: number;
+  deadlineUnit: CancellationDeadlineUnitValue;
+  penaltyType: CancellationPenaltyTypeValue;
+  penaltyValue: number | null;
+  isActive?: boolean;
+};
+
 const PENALTY_TYPES: CancellationPenaltyTypeValue[] = ['PERCENT', 'NIGHTS', 'FULL_STAY', 'FIXED'];
 const DEADLINE_UNITS: CancellationDeadlineUnitValue[] = ['DAYS', 'HOURS'];
+
+export function calculateCancellationPenalty(
+  arrivalDate: Date | string,
+  cancelDate: Date | string,
+  rules: CancellationPenaltyRuleInput[] = [],
+) {
+  const arrival = normalizePenaltyDate(arrivalDate);
+  const cancelledAt = normalizePenaltyDate(cancelDate);
+  const hoursBeforeArrival = Math.max(0, Math.floor((arrival.getTime() - cancelledAt.getTime()) / 36e5));
+  const daysBefore = Math.floor(hoursBeforeArrival / 24);
+  const matchedRule = rules
+    .filter((rule) => rule.isActive !== false)
+    .find((rule) => {
+      const factor = rule.deadlineUnit === 'DAYS' ? 24 : 1;
+      const from = rule.windowFromValue * factor;
+      const to = rule.windowToValue * factor;
+      return hoursBeforeArrival <= from && hoursBeforeArrival >= to;
+    });
+
+  return {
+    daysBefore,
+    hoursBeforeArrival,
+    applies: Boolean(matchedRule),
+    penaltyType: matchedRule?.penaltyType ?? null,
+    penaltyValue: matchedRule?.penaltyValue ?? null,
+    penaltyPercent: matchedRule?.penaltyType === 'PERCENT' ? matchedRule.penaltyValue ?? 0 : null,
+  };
+}
+
+function normalizePenaltyDate(value: Date | string) {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException('Invalid cancellation penalty date');
+  }
+  return date;
+}
 
 @Injectable()
 export class ContractPoliciesService {

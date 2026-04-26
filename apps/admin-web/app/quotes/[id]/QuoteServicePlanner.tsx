@@ -118,7 +118,11 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   nightCount: number | null;
   dayCount: number | null;
   baseCost: number;
+  finalCost?: number | null;
   overrideCost: number | null;
+  overrideReason?: string | null;
+  markupAmount?: number | null;
+  sellPrice?: number | null;
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
@@ -216,6 +220,8 @@ type QuoteItemInitialValues = {
   serviceId: string;
   quantity: string;
   markupPercent: string;
+  markupAmount?: string;
+  sellPrice?: string;
   paxCount: string;
   participantCount: string;
   adultCount: string;
@@ -232,6 +238,7 @@ type QuoteItemInitialValues = {
   reconfirmationDueAt: string;
   baseCost: string;
   overrideCost: string;
+  overrideReason?: string;
   useOverride: boolean;
   transportServiceTypeId: string;
   routeId: string;
@@ -294,10 +301,11 @@ const STARTER_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }
   { category: 'activity', label: 'Add experience' },
 ];
 
-const ADD_SERVICE_OPTIONS: Array<{ category: 'hotel' | 'transport' | 'activity'; label: string }> = [
+const ADD_SERVICE_OPTIONS: Array<{ category: 'hotel' | 'transport' | 'activity' | 'meal'; label: string }> = [
   { category: 'hotel', label: 'Hotel' },
   { category: 'transport', label: 'Transport' },
   { category: 'activity', label: 'Activity' },
+  { category: 'meal', label: 'Meal' },
 ];
 
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
@@ -338,6 +346,8 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     serviceId: item.service.id,
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
+    markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),
+    sellPrice: item.sellPrice === null || item.sellPrice === undefined ? '' : String(item.sellPrice),
     paxCount: String(item.paxCount ?? totalPax),
     participantCount: String(item.participantCount ?? totalPax),
     adultCount: String(item.adultCount ?? 0),
@@ -354,6 +364,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     reconfirmationDueAt: item.reconfirmationDueAt ? item.reconfirmationDueAt.slice(0, 16) : '',
     baseCost: String(item.baseCost),
     overrideCost: item.overrideCost === null ? '' : String(item.overrideCost),
+    overrideReason: item.overrideReason || '',
     useOverride: item.useOverride,
     transportServiceTypeId: item.appliedVehicleRate?.serviceType.id || '',
     routeId: item.appliedVehicleRate?.routeId || '',
@@ -821,10 +832,10 @@ function AddServiceLauncher({
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const initialCategory =
-    plannerProps.initialAddCategory && ['hotel', 'transport', 'activity'].includes(plannerProps.initialAddCategory)
-      ? (plannerProps.initialAddCategory as 'hotel' | 'transport' | 'activity')
+    plannerProps.initialAddCategory && ['hotel', 'transport', 'activity', 'meal'].includes(plannerProps.initialAddCategory)
+      ? (plannerProps.initialAddCategory as 'hotel' | 'transport' | 'activity' | 'meal')
       : null;
-  const [selectedCategory, setSelectedCategory] = useState<'hotel' | 'transport' | 'activity' | null>(initialCategory);
+  const [selectedCategory, setSelectedCategory] = useState<'hotel' | 'transport' | 'activity' | 'meal' | null>(initialCategory);
   const [createdDay, setCreatedDay] = useState<QuoteReadinessDay | null>(null);
   const [isCreatingDay, setIsCreatingDay] = useState(false);
   const [error, setError] = useState('');
@@ -869,7 +880,7 @@ function AddServiceLauncher({
     }
   }
 
-  async function handleSelectCategory(category: 'hotel' | 'transport' | 'activity') {
+  async function handleSelectCategory(category: 'hotel' | 'transport' | 'activity' | 'meal') {
     setIsOpen(true);
     setError('');
 

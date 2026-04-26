@@ -44,6 +44,18 @@ type HotelContract = {
   currency: string;
   validFrom: string;
   validTo: string;
+  ratePolicies?: Array<{
+    policyType: string;
+    appliesTo?: string | null;
+    ageFrom?: number | null;
+    ageTo?: number | null;
+    amount?: number | null;
+    percent?: number | null;
+    currency?: string | null;
+    pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+    mealPlan?: string | null;
+    notes?: string | null;
+  }> | null;
 };
 
 type HotelRate = {
@@ -117,6 +129,15 @@ type ResolvedTransportPricing = {
   candidates?: TransportPricingCandidate[];
 };
 
+type HotelCostCalculation = {
+  totalCost: number;
+  nights: number;
+  breakdown: Array<{
+    date: string;
+    cost: number;
+  }>;
+};
+
 type QuoteBlock = {
   id: string;
   name: string;
@@ -170,6 +191,9 @@ type QuoteItemInitialValues = {
   reconfirmationDueAt: string;
   baseCost: string;
   overrideCost: string;
+  overrideReason?: string;
+  markupAmount?: string;
+  sellPrice?: string;
   useOverride: boolean;
   transportServiceTypeId: string;
   routeId: string;
@@ -450,6 +474,34 @@ function resolveDerivedServiceDate(travelStartDate: string | null | undefined, i
   return resolvedDate.toISOString().slice(0, 10);
 }
 
+function addDaysToDateString(value: string, days: number) {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatRatePolicy(policy: NonNullable<HotelContract['ratePolicies']>[number], fallbackCurrency: string) {
+  const type = String(policy.policyType || '').replace(/_/g, ' ').toLowerCase();
+  const title = type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Rate policy';
+  const ageRange =
+    policy.ageFrom !== null && policy.ageFrom !== undefined && policy.ageTo !== null && policy.ageTo !== undefined
+      ? `ages ${policy.ageFrom}-${policy.ageTo}`
+      : policy.ageFrom !== null && policy.ageFrom !== undefined
+        ? `from age ${policy.ageFrom}`
+        : policy.ageTo !== null && policy.ageTo !== undefined
+          ? `up to age ${policy.ageTo}`
+          : '';
+  const value =
+    policy.percent !== null && policy.percent !== undefined
+      ? `${Number(policy.percent).toFixed(0)}%`
+      : policy.amount !== null && policy.amount !== undefined
+        ? `${Number(policy.amount).toFixed(2)} ${policy.currency || fallbackCurrency}`
+        : '';
+  return [title, ageRange, value, policy.mealPlan || '', policy.notes || ''].filter(Boolean).join(' | ');
+}
+
 export function QuoteItemsForm({
   apiBaseUrl,
   quoteId,
@@ -490,8 +542,10 @@ export function QuoteItemsForm({
   const isEditing = Boolean(itemId);
   const initialService = services.find((service) => service.id === (initialValues?.serviceId || preferredServiceId));
   const initialActiveServiceType = initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null;
-  const initialActivityServiceDate =
-    initialActiveServiceType === 'activity' && !itineraryId && travelStartDate ? travelStartDate.slice(0, 10) : '';
+  const initialServiceDate =
+    (initialActiveServiceType === 'activity' || initialActiveServiceType === 'hotel' || initialActiveServiceType === 'meal') && !itineraryId && travelStartDate
+      ? travelStartDate.slice(0, 10)
+      : '';
   const validTransportRoutes = routes;
   const initialRouteId = [initialValues?.routeId, preferredRouteId].find((candidateRouteId) =>
     Boolean(candidateRouteId && validTransportRoutes.some((route) => route.id === candidateRouteId)),
@@ -503,6 +557,8 @@ export function QuoteItemsForm({
   const [serviceId, setServiceId] = useState(initialValues?.serviceId || preferredServiceId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
   const [markupPercent, setMarkupPercent] = useState(initialValues?.markupPercent || '20');
+  const [markupAmount, setMarkupAmount] = useState(initialValues?.markupAmount || '');
+  const [sellPrice, setSellPrice] = useState(initialValues?.sellPrice || '');
   const [paxCount, setPaxCount] = useState(initialValues?.paxCount || String(defaultPaxCount || 1));
   const [participantCount, setParticipantCount] = useState(initialValues?.participantCount || String(defaultPaxCount || 1));
   const [adultCount, setAdultCount] = useState(initialValues?.adultCount || String(defaultAdultCount || 0));
@@ -510,7 +566,7 @@ export function QuoteItemsForm({
   const [roomCount, setRoomCount] = useState(initialValues?.roomCount || String(defaultRoomCount || 1));
   const [nightCount, setNightCount] = useState(initialValues?.nightCount || String(defaultNightCount || 1));
   const [dayCount, setDayCount] = useState(initialValues?.dayCount || '1');
-  const [serviceDate, setServiceDate] = useState(initialValues?.serviceDate || initialActivityServiceDate);
+  const [serviceDate, setServiceDate] = useState(initialValues?.serviceDate || initialServiceDate);
   const [startTime, setStartTime] = useState(initialValues?.startTime || '');
   const [pickupTime, setPickupTime] = useState(initialValues?.pickupTime || '');
   const [pickupLocation, setPickupLocation] = useState(initialValues?.pickupLocation || '');
@@ -519,6 +575,7 @@ export function QuoteItemsForm({
   const [reconfirmationDueAt, setReconfirmationDueAt] = useState(initialValues?.reconfirmationDueAt || '');
   const [baseCost, setBaseCost] = useState(initialValues?.baseCost || '');
   const [overrideCost, setOverrideCost] = useState(initialValues?.overrideCost || '');
+  const [overrideReason, setOverrideReason] = useState(initialValues?.overrideReason || '');
   const [useOverride, setUseOverride] = useState(initialValues?.useOverride || false);
   const [transportServiceTypeId, setTransportServiceTypeId] = useState(
     initialValues?.transportServiceTypeId || (initialActiveServiceType === 'transport' ? transportServiceTypes[0]?.id || '' : ''),
@@ -537,10 +594,15 @@ export function QuoteItemsForm({
   const [guideType, setGuideType] = useState<'local' | 'escort'>(initialValues?.guideType || 'local');
   const [guideDuration, setGuideDuration] = useState<'half_day' | 'full_day'>(initialValues?.guideDuration || 'full_day');
   const [overnight, setOvernight] = useState<'no' | 'yes'>(initialValues?.overnight || 'no');
+  const [mealName, setMealName] = useState('');
+  const [mealCost, setMealCost] = useState('');
+  const [mealCurrency, setMealCurrency] = useState('USD');
   const [resolvedTransportPricing, setResolvedTransportPricing] = useState<ResolvedTransportPricing | null>(null);
+  const [hotelCostCalculation, setHotelCostCalculation] = useState<HotelCostCalculation | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingTransportCost, setIsLoadingTransportCost] = useState(false);
+  const [isLoadingHotelCost, setIsLoadingHotelCost] = useState(false);
   const [error, setError] = useState('');
   const [showHotelRateModal, setShowHotelRateModal] = useState(false);
   const [manualHotelRateDraft, setManualHotelRateDraft] = useState<QuoteHotelRateDraftRow | null>(null);
@@ -651,6 +713,7 @@ export function QuoteItemsForm({
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
+  const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
 
   useEffect(() => {
     if (!isTransportService || process.env.NODE_ENV === 'production') {
@@ -681,6 +744,7 @@ export function QuoteItemsForm({
   }, [isTransportService, routes, validTransportRoutes]);
 
   const filteredHotelContracts = hotelContracts.filter((contract) => contract.hotelId === hotelId);
+  const selectedHotelContract = filteredHotelContracts.find((contract) => contract.id === contractId) || null;
   const filteredSeasonRates = hotelRates.filter((rate) => rate.contractId === contractId);
   const seasonOptions = Array.from(new Set(filteredSeasonRates.map((rate) => rate.seasonName))).sort((left, right) =>
     left.localeCompare(right),
@@ -720,8 +784,35 @@ export function QuoteItemsForm({
         rate.occupancyType === occupancyType &&
         rate.mealPlan === mealPlan,
     ) || null;
-  const displayCurrency = preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
+  const hotelCheckInDate = isHotelService ? serviceDate || travelStartDate?.slice(0, 10) || '' : '';
+  const hotelCheckOutDate = hotelCheckInDate ? addDaysToDateString(hotelCheckInDate, Math.max(1, Number(nightCount || 1))) : '';
+  const displayCurrency = isMealService ? mealCurrency : preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
+  const finalCost = useMemo(() => {
+    if (isMealService) {
+      const unitCost = Number(mealCost || 0);
+      const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
+      return Number.isFinite(unitCost) ? Number((unitCost * pax).toFixed(2)) : null;
+    }
+
+    if (useOverride && overrideCost.trim()) {
+      return Number(overrideCost);
+    }
+
+    return baseCost ? Number(baseCost) : null;
+  }, [baseCost, defaultPaxCount, isMealService, mealCost, overrideCost, paxCount, useOverride]);
+  const finalSellPrice = useMemo(() => {
+    if (sellPrice.trim()) {
+      return Number(sellPrice);
+    }
+
+    if (markupAmount.trim()) {
+      return finalCost === null ? null : Number((finalCost + Number(markupAmount)).toFixed(2));
+    }
+
+    return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
+  }, [finalCost, markupAmount, markupPercent, sellPrice]);
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
+  const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const activityIssues =
     isActivityService
       ? [
@@ -812,7 +903,7 @@ export function QuoteItemsForm({
     }
 
     if (isHotelService) {
-      setBaseCost(selectedHotelRate ? String(selectedHotelRate.cost) : '');
+      setBaseCost(hotelCostCalculation ? String(hotelCostCalculation.totalCost) : selectedHotelRate ? String(selectedHotelRate.cost) : '');
       return;
     }
 
@@ -825,17 +916,87 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (isMealService) {
+      if (!mealName.trim()) {
+        setMealName(selectedService.name);
+      }
+      if (!mealCost.trim()) {
+        setMealCost(String(selectedService.baseCost));
+      }
+      if (!mealCurrency.trim() || mealCurrency === 'USD') {
+        setMealCurrency(selectedService.currency || 'USD');
+      }
+      setBaseCost(mealCost.trim() || String(selectedService.baseCost));
+      return;
+    }
+
     setBaseCost(String(selectedService.baseCost));
   }, [
     guideDuration,
     guideType,
     isGuideService,
     isHotelService,
+    isMealService,
     isTransportService,
+    hotelCostCalculation,
+    mealCost,
+    mealCurrency,
+    mealName,
     overnight,
     selectedHotelRate,
     selectedService,
   ]);
+
+  useEffect(() => {
+    if (!isHotelService) {
+      setHotelCostCalculation(null);
+      setIsLoadingHotelCost(false);
+      return;
+    }
+
+    if (!hotelId || !hotelCheckInDate || !hotelCheckOutDate || !occupancyType || !mealPlan || !(Number(paxCount) > 0)) {
+      setHotelCostCalculation(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      hotelId,
+      checkInDate: hotelCheckInDate,
+      checkOutDate: hotelCheckOutDate,
+      occupancy: occupancyType,
+      mealPlan,
+      pax: String(Number(paxCount) || 1),
+    });
+
+    setIsLoadingHotelCost(true);
+    fetch(`/api/hotel-rates/calculate-hotel-cost?${params.toString()}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not calculate hotel contract pricing.'));
+        }
+
+        return readJsonResponse<HotelCostCalculation>(response, 'Hotel contract pricing');
+      })
+      .then((result) => {
+        setHotelCostCalculation(result);
+        setBaseCost(String(result.totalCost));
+      })
+      .catch((caughtError) => {
+        if (caughtError instanceof DOMException && caughtError.name === 'AbortError') return;
+        setHotelCostCalculation(null);
+        setError(caughtError instanceof Error ? caughtError.message : 'Could not calculate hotel contract pricing.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoadingHotelCost(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [hotelCheckInDate, hotelCheckOutDate, hotelId, isHotelService, mealPlan, occupancyType, paxCount]);
 
   useEffect(() => {
     if (!isHotelService) {
@@ -877,6 +1038,7 @@ export function QuoteItemsForm({
     if (isHotelService && !useOverride && manualHotelRateDraft) {
       setManualHotelRateDraft(null);
       setOverrideCost('');
+      setOverrideReason('');
     }
   }, [isHotelService, manualHotelRateDraft, useOverride]);
 
@@ -1186,6 +1348,7 @@ export function QuoteItemsForm({
     setMealPlan(row.mealPlan);
     setOccupancyType(row.occupancyType);
     setOverrideCost(row.cost);
+    setOverrideReason(row.notes || '');
     setUseOverride(true);
     setMarkupPercent(nextMarkupPercent);
     setManualHotelRateDraft(row);
@@ -1260,11 +1423,11 @@ export function QuoteItemsForm({
         : `${apiBaseUrl}/quotes/${quoteId}/items${itemId ? `/${itemId}` : ''}`;
 
       if (isHotelService) {
-        if (!hotelId || !contractId || !seasonName || !roomCategoryId || !occupancyType || !mealPlan) {
+        if (!hotelId || !contractId || !seasonName || !roomCategoryId || !occupancyType || !mealPlan || !hotelCheckInDate || !hotelCheckOutDate) {
           throw new Error('Complete the hotel pricing selection.');
         }
 
-        if (!selectedHotelRate && !manualHotelRateDraft) {
+        if (!hotelCostCalculation && !selectedHotelRate && !manualHotelRateDraft) {
           throw new Error('Matching hotel rate not found for the selected combination.');
         }
       }
@@ -1279,8 +1442,34 @@ export function QuoteItemsForm({
         }
       }
 
+      if (isMealService) {
+        if (!mealName.trim()) {
+          throw new Error('Meal name is required.');
+        }
+
+        if (!serviceDate && !resolvedMealServiceDate) {
+          throw new Error('Meal date is required.');
+        }
+
+        if (!mealCost.trim() || Number(mealCost) < 0) {
+          throw new Error('Meal cost must be zero or greater.');
+        }
+
+        if (!mealCurrency.trim()) {
+          throw new Error('Meal currency is required.');
+        }
+      }
+
       if (useOverride && !overrideCost.trim()) {
         throw new Error('Override cost is required when override is enabled.');
+      }
+
+      if (markupAmount.trim() && Number(markupAmount) < 0) {
+        throw new Error('Markup amount must be zero or greater.');
+      }
+
+      if (sellPrice.trim() && Number(sellPrice) < 0) {
+        throw new Error('Sell price must be zero or greater.');
       }
 
       if (isActivityService) {
@@ -1321,7 +1510,10 @@ export function QuoteItemsForm({
         body: JSON.stringify({
           serviceId,
           itineraryId,
-          serviceDate: isActivityService && serviceDate ? new Date(`${serviceDate}T09:00:00`).toISOString() : undefined,
+          serviceDate:
+            (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
+              ? new Date(`${serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate}T09:00:00`).toISOString()
+              : undefined,
           startTime: isActivityService ? startTime || null : undefined,
           pickupTime: isActivityService ? pickupTime || null : undefined,
           pickupLocation: isActivityService ? pickupLocation.trim() || null : undefined,
@@ -1343,13 +1535,19 @@ export function QuoteItemsForm({
           roomCategoryId: isHotelService ? roomCategoryId : undefined,
           occupancyType: isHotelService ? occupancyType : undefined,
           mealPlan: isHotelService ? mealPlan : undefined,
+          customServiceName: isMealService ? mealName.trim() : undefined,
+          unitCost: isMealService ? Number(mealCost) : undefined,
+          pricingBasis: isMealService ? 'PER_PERSON' : undefined,
           quantity: Number(quantity),
           paxCount: Number(paxCount),
-          roomCount: isTransportService || isGuideService ? undefined : Number(roomCount),
-          nightCount: isTransportService || isGuideService ? undefined : Number(nightCount),
-          dayCount: isTransportService || isGuideService ? undefined : Number(dayCount),
+          roomCount: isTransportService || isGuideService || isMealService ? undefined : Number(roomCount),
+          nightCount: isTransportService || isGuideService || isMealService ? undefined : Number(nightCount),
+          dayCount: isTransportService || isGuideService || isMealService ? undefined : Number(dayCount),
           overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
+          overrideReason: useOverride ? overrideReason.trim() || null : null,
           useOverride,
+          markupAmount: markupAmount.trim() ? Number(markupAmount) : null,
+          sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
           markupPercent: Number(markupPercent),
           transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
           routeId: isTransportService ? routeId || undefined : undefined,
@@ -1357,6 +1555,7 @@ export function QuoteItemsForm({
           guideType: isGuideService ? guideType : undefined,
           guideDuration: isGuideService ? guideDuration : undefined,
           overnight: isGuideService ? overnight === 'yes' : undefined,
+          currency: isMealService ? mealCurrency.trim().toUpperCase() : undefined,
         }),
       });
 
@@ -1369,6 +1568,8 @@ export function QuoteItemsForm({
       if (!isEditing) {
         setQuantity('1');
         setMarkupPercent('20');
+        setMarkupAmount('');
+        setSellPrice('');
         setPaxCount(String(defaultPaxCount || 1));
         setParticipantCount(String(defaultPaxCount || 1));
         setAdultCount(String(defaultAdultCount || 0));
@@ -1385,6 +1586,7 @@ export function QuoteItemsForm({
         setReconfirmationDueAt('');
         setBaseCost('');
         setOverrideCost('');
+        setOverrideReason('');
         setUseOverride(false);
         setTransportServiceTypeId('');
         setRouteId('');
@@ -1398,6 +1600,9 @@ export function QuoteItemsForm({
         setGuideType('local');
         setGuideDuration('full_day');
         setOvernight('no');
+        setMealName('');
+        setMealCost('');
+        setMealCurrency('USD');
         setActiveServiceType(null);
       }
       router.refresh();
@@ -1483,6 +1688,8 @@ export function QuoteItemsForm({
                 ? 'Transport selector'
                 : activeServiceType === 'activity'
                   ? 'Activity selector'
+                  : activeServiceType === 'meal'
+                    ? 'Meal service'
                   : 'Service'}
               <select
                 value={serviceId}
@@ -1522,7 +1729,7 @@ export function QuoteItemsForm({
             {!isTransportService ? (
               <label>
                 Quantity
-                <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="1" required />
+                <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="1" required disabled={isMealService} />
               </label>
             ) : null}
 
@@ -1538,9 +1745,9 @@ export function QuoteItemsForm({
               />
             </label>
 
-            {!isTransportService ? (
+            {!isTransportService && !isMealService ? (
               <label>
-                Base cost
+                Contract price / base cost
                 <input
                   value={baseCost}
                   type="number"
@@ -1558,7 +1765,7 @@ export function QuoteItemsForm({
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService ? (
+            {!isTransportService && !isGuideService && !isMealService ? (
               <label>
                 Day count
                 <input value={dayCount} onChange={(event) => setDayCount(event.target.value)} type="number" min="1" required />
@@ -1566,7 +1773,47 @@ export function QuoteItemsForm({
             ) : null}
           </div>
 
-          {!isHotelService ? (
+          <div className="form-row form-row-4">
+            <label>
+              Cost
+              <input value={finalCost !== null && Number.isFinite(finalCost) ? finalCost.toFixed(2) : ''} readOnly placeholder="Select cost inputs" />
+            </label>
+
+            <label>
+              Markup amount
+              <input
+                value={markupAmount}
+                onChange={(event) => setMarkupAmount(event.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Overrides percent"
+              />
+            </label>
+
+            <label>
+              Sell price override
+              <input
+                value={sellPrice}
+                onChange={(event) => setSellPrice(event.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optional"
+              />
+            </label>
+
+            <div className={sellPrice.trim() ? 'quote-item-override-status quote-item-override-status-active' : 'quote-item-override-status'}>
+              <strong>Final sell price</strong>
+              <span>
+                {finalSellPrice !== null && Number.isFinite(finalSellPrice)
+                  ? `${displayCurrency} ${finalSellPrice.toFixed(2)}`
+                  : 'Waiting for cost'}
+              </span>
+            </div>
+          </div>
+
+          {!isHotelService && !isMealService ? (
             <div className="form-row form-row-3">
               <label className={useOverride ? 'quote-item-override quote-item-override-active' : 'quote-item-override'}>
                 <span>Override cost</span>
@@ -1587,17 +1834,28 @@ export function QuoteItemsForm({
               </label>
 
               <div className={useOverride ? 'quote-item-override-status quote-item-override-status-active' : 'quote-item-override-status'}>
-                <strong>{useOverride ? 'Override active' : 'Using base cost'}</strong>
+                <strong>{useOverride ? 'Manual override applied' : 'Using contract/base cost'}</strong>
                 <span>
-                  {useOverride && overrideCost.trim()
-                    ? `${displayCurrency} ${Number(overrideCost).toFixed(2)}`
-                    : baseCost
-                      ? `${displayCurrency} ${Number(baseCost).toFixed(2)}`
+                  {finalCost !== null && Number.isFinite(finalCost)
+                    ? `Final cost ${displayCurrency} ${finalCost.toFixed(2)}`
                       : isLoadingTransportCost
                         ? 'Loading transport rate...'
                         : 'Select pricing inputs'}
                 </span>
               </div>
+            </div>
+          ) : null}
+
+          {!isHotelService && !isMealService && useOverride ? (
+            <div className="form-row">
+              <label>
+                Override reason
+                <input
+                  value={overrideReason}
+                  onChange={(event) => setOverrideReason(event.target.value)}
+                  placeholder="Reason for this quote-only rate"
+                />
+              </label>
             </div>
           ) : null}
 
@@ -1607,14 +1865,14 @@ export function QuoteItemsForm({
               <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
             </label>
 
-            {!isHotelService && !isTransportService && !isGuideService ? (
+            {!isHotelService && !isTransportService && !isGuideService && !isMealService ? (
               <label>
                 Room count
                 <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService ? (
+            {!isTransportService && !isGuideService && !isMealService ? (
               <label>
                 Night count
                 <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
@@ -1652,6 +1910,44 @@ export function QuoteItemsForm({
                 </select>
               </label>
             </div>
+          ) : null}
+
+          {isMealService ? (
+            <>
+              <div className="form-row form-row-4">
+                <label>
+                  Meal name
+                  <input value={mealName} onChange={(event) => setMealName(event.target.value)} placeholder="Lunch in Petra" required />
+                </label>
+
+                <label>
+                  Meal date
+                  <input value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} type="date" required={!resolvedMealServiceDate} />
+                </label>
+
+                <label>
+                  Cost per person
+                  <input value={mealCost} onChange={(event) => setMealCost(event.target.value)} type="number" min="0" step="0.01" required />
+                </label>
+
+                <label>
+                  Currency
+                  <input value={mealCurrency} onChange={(event) => setMealCurrency(event.target.value.toUpperCase())} maxLength={3} required />
+                </label>
+              </div>
+
+              <div className="quote-item-override-status quote-item-override-status-active">
+                <strong>Pricing basis: PER_PERSON</strong>
+                <span>
+                  {Number.isFinite(finalCost ?? Number.NaN)
+                    ? `Meal total ${displayCurrency} ${(finalCost ?? 0).toFixed(2)} for ${Math.max(1, Number(paxCount || defaultPaxCount || 1))} pax`
+                    : 'Enter cost and pax to price this meal'}
+                </span>
+              </div>
+              {resolvedMealServiceDate && !serviceDate ? (
+                <p className="form-helper">Resolved from travel start date and itinerary day: {resolvedMealServiceDate}</p>
+              ) : null}
+            </>
           ) : null}
 
           {isActivityService ? (
@@ -1860,20 +2156,34 @@ export function QuoteItemsForm({
               </label>
 
               <label>
+                Check-in date
+                <input value={hotelCheckInDate} onChange={(event) => setServiceDate(event.target.value)} type="date" required />
+              </label>
+
+              <label>
+                Check-out date
+                <input value={hotelCheckOutDate} readOnly />
+              </label>
+
+              <label>
                 Room count
                 <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
               </label>
 
               <label>
-                Source rate
+                Contract pricing
                 <input
                   value={
-                    activeHotelSourceRate
-                      ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
+                    hotelCostCalculation
+                      ? `${displayCurrency} ${Number(hotelCostCalculation.totalCost || 0).toFixed(2)}`
+                      : isLoadingHotelCost
+                        ? 'Loading contract pricing...'
+                        : activeHotelSourceRate
+                          ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
                         : ''
                   }
                   readOnly
-                  placeholder="Select a contract rate reference"
+                  placeholder="Select hotel dates and rate inputs"
                 />
               </label>
             </div>
@@ -1904,6 +2214,34 @@ export function QuoteItemsForm({
                   <strong>{activeHotelSourceRate?.note || 'Select a contract rate'}</strong>
                 </div>
               </div>
+              {hotelCostCalculation ? (
+                <div className="quote-preview-total-list quote-hotel-nightly-breakdown">
+                  <div>
+                    <span>Total contract cost</span>
+                    <strong>
+                      {displayCurrency} {Number(hotelCostCalculation.totalCost || 0).toFixed(2)}
+                    </strong>
+                  </div>
+                  {hotelCostCalculation.breakdown.map((night) => (
+                    <div key={night.date}>
+                      <span>{night.date}</span>
+                      <strong>
+                        {displayCurrency} {Number(night.cost || 0).toFixed(2)}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {selectedHotelContract?.ratePolicies?.length ? (
+                <div className="quote-preview-total-list">
+                  {selectedHotelContract.ratePolicies.map((policy, index) => (
+                    <div key={`${policy.policyType}-${index}`}>
+                      <span>{policy.policyType.replace(/_/g, ' ')}</span>
+                      <strong>{formatRatePolicy(policy, selectedHotelContract.currency || displayCurrency)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -1935,11 +2273,20 @@ export function QuoteItemsForm({
                     />
                   </label>
 
+                  <label>
+                    Override reason
+                    <input
+                      value={overrideReason}
+                      onChange={(event) => setOverrideReason(event.target.value)}
+                      placeholder="Reason for this quote-only rate"
+                    />
+                  </label>
+
                   <div className="quote-item-override-status quote-item-override-status-active">
-                    <strong>Quote override active</strong>
+                    <strong>Manual override applied</strong>
                     <span>
-                      {overrideCost.trim()
-                        ? `${displayCurrency} ${Number(overrideCost).toFixed(2)}`
+                      {finalCost !== null && Number.isFinite(finalCost)
+                        ? `Final cost ${displayCurrency} ${finalCost.toFixed(2)}`
                         : 'Enter a quote-only override or use the popup below.'}
                     </span>
                   </div>
@@ -1948,9 +2295,11 @@ export function QuoteItemsForm({
                 <div className="quote-item-override-status">
                   <strong>Using source contract rate</strong>
                   <span>
-                    {activeHotelSourceRate
-                      ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)} from the selected contract reference`
-                      : 'Choose a source rate first, or enable quote-only override.'}
+                    {baseCost
+                      ? `Final cost ${displayCurrency} ${Number(baseCost).toFixed(2)}`
+                      : activeHotelSourceRate
+                        ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)} from the selected contract reference`
+                        : 'Choose a source rate first, or enable quote-only override.'}
                   </span>
                 </div>
               )}

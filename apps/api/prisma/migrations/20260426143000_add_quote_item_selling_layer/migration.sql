@@ -1,0 +1,2 @@
+ALTER TABLE "quote_items" ADD COLUMN "markupAmount" DOUBLE PRECISION;
+ALTER TABLE "quote_items" ADD COLUMN "sellPrice" DOUBLE PRECISION;
