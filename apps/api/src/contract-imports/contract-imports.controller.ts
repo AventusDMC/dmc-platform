@@ -32,6 +32,7 @@ type AnalyzeBody = {
 
 type ApproveBody = {
   data?: unknown;
+  mode?: 'replace' | 'version' | 'cancel';
 };
 
 @Controller('contract-imports')
@@ -92,7 +93,7 @@ export class ContractImportsController {
 
   @Post(':id/approve')
   approve(@Param('id') id: string, @Body() body: ApproveBody, @Actor() actor: AuthenticatedActor) {
-    return this.contractImportsService.approve(id, body.data, actor);
+    return this.contractImportsService.approve(id, body.data, actor, body.mode === 'replace' || body.mode === 'version' ? body.mode : undefined);
   }
 
   @Post(':id/reimport')

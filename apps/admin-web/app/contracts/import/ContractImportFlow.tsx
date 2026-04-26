@@ -110,6 +110,17 @@ type ContractImport = {
   sourceFileName: string;
 };
 
+type ContractConflict = {
+  code: 'CONTRACT_EXISTS';
+  message: string;
+  existingContract?: {
+    id: string;
+    name: string;
+    validFrom?: string;
+    validTo?: string;
+  };
+};
+
 type ContractImportFlowProps = {
   suppliers: Supplier[];
 };
@@ -363,6 +374,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
   const [isApproving, setIsApproving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [contractConflict, setContractConflict] = useState<ContractConflict | null>(null);
 
   const warnings = useMemo(() => contractImport?.warnings || [], [contractImport]);
   const blockers = warnings.filter((warning) => warning.severity === 'blocker');
@@ -372,6 +384,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
     console.log('Starting contract analysis');
     setError('');
     setMessage('');
+    setContractConflict(null);
 
     if (!file) {
       console.error('Analyze error', 'No contract file selected');
@@ -443,7 +456,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
     }
   }
 
-  async function handleApprove() {
+  async function handleApprove(mode?: 'replace' | 'version') {
     if (!contractImport) return;
     setError('');
     setMessage('');
@@ -453,17 +466,25 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
       const response = await fetch(`/api/contract-imports/${contractImport.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: preview }),
+        body: JSON.stringify({ data: contractImport.extractedJson, mode }),
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not approve contract import.'));
+        const payload = await response.json().catch(() => null);
+        if (payload?.code === 'CONTRACT_EXISTS') {
+          setContractConflict(payload as ContractConflict);
+          setMessage('');
+          return;
+        }
+        const parsedMessage = Array.isArray(payload?.message) ? payload.message.join(', ') : payload?.message || payload?.error;
+        throw new Error(parsedMessage || (await getErrorMessage(response, 'Could not approve contract import.')));
       }
 
       const data = await readJsonResponse<ContractImport>(response, 'Contract import approve');
       const mappedPreview = mapExtractedToUI(data.approvedJson || data.extractedJson);
       setContractImport(data);
       setPreview(mappedPreview);
+      setContractConflict(null);
       setMessage('Contract approved and imported.');
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not approve contract import.');
@@ -724,11 +745,34 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
               <button className="secondary-button" type="button" onClick={() => void handleDownloadExcel()}>
                 Download Extracted Excel
               </button>
-              <button className="primary-button" onClick={handleApprove} disabled={isApproving || blockers.length > 0}>
+              <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0}>
                 {isApproving ? 'Importing...' : 'Approve import'}
               </button>
             </div>
           </div>
+
+          {contractConflict ? (
+            <div className="warning-list">
+              <p className="form-error">A contract already exists for this hotel/year.</p>
+              {contractConflict.existingContract ? (
+                <p className="empty-state">
+                  Existing contract: {contractConflict.existingContract.name} ({contractConflict.existingContract.validFrom || '-'} to{' '}
+                  {contractConflict.existingContract.validTo || '-'})
+                </p>
+              ) : null}
+              <div className="button-row">
+                <button className="danger-button" type="button" onClick={() => void handleApprove('replace')} disabled={isApproving}>
+                  Replace existing contract
+                </button>
+                <button className="secondary-button" type="button" onClick={() => void handleApprove('version')} disabled={isApproving}>
+                  Create new version
+                </button>
+                <button className="secondary-button" type="button" onClick={() => setContractConflict(null)} disabled={isApproving}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {warnings.length > 0 ? (
             <div className="warning-list">

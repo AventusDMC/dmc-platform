@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import {
   ChildPolicyChargeBasis,
   ContractImportStatus,
@@ -30,6 +30,8 @@ type AnalyzeInput = {
     mimetype?: string;
   };
 };
+
+type ContractImportApprovalMode = 'replace' | 'version';
 
 type PreviewRate = {
   roomType?: string;
@@ -279,55 +281,98 @@ export class ContractImportsService {
     return record;
   }
 
-  async approve(id: string, approvedData: unknown, actor: AuthenticatedActor) {
-    const record = await this.findOne(id);
-    if (
-      record.status !== ContractImportStatus.ANALYZED &&
-      record.status !== ContractImportStatus.APPROVED &&
-      record.status !== ContractImportStatus.FAILED
-    ) {
-      throw new BadRequestException('Only analyzed imports can be approved');
-    }
+  async approve(id: string, approvedData: unknown, actor: AuthenticatedActor, approvalMode?: ContractImportApprovalMode) {
+    try {
+      const record = await this.findOne(id);
+      if (
+        record.status !== ContractImportStatus.ANALYZED &&
+        record.status !== ContractImportStatus.APPROVED &&
+        record.status !== ContractImportStatus.FAILED
+      ) {
+        throw new BadRequestException('Only analyzed imports can be approved');
+      }
 
-    const preview = this.normalizeApprovedPreview(approvedData || record.extractedJson);
-    const warnings = [...this.buildWarnings(preview), ...(await this.buildPersistenceWarnings(preview))];
-    const blockingWarnings = warnings.filter((warning) => warning.severity === 'blocker');
-    if (blockingWarnings.length > 0) {
-      await this.prisma.contractImport.update({
+      const preview = this.normalizeApprovedPreview(approvedData || record.extractedJson);
+      const warnings = [...this.buildWarnings(preview), ...(await this.buildPersistenceWarnings(preview))];
+      const blockingWarnings = warnings.filter((warning) => warning.severity === 'blocker');
+      if (blockingWarnings.length > 0) {
+        await this.prisma.contractImport.update({
+          where: { id },
+          data: {
+            status: ContractImportStatus.FAILED,
+            approvedJson: preview as unknown as Prisma.InputJsonValue,
+            warnings: warnings as unknown as Prisma.InputJsonValue,
+            errors: blockingWarnings as unknown as Prisma.InputJsonValue,
+          },
+        });
+        await this.writeAuditLog(id, 'FAILED', ContractImportStatus.FAILED, actor, {
+          blockers: blockingWarnings,
+        });
+        throw new BadRequestException(blockingWarnings.map((warning) => warning.message).join('; '));
+      }
+
+      let importedEntityId: string;
+      try {
+        console.log('[contract-imports/approve] starting import', this.buildApprovalDebugContext(id, preview));
+        importedEntityId = await this.importApprovedPreview(preview, record, approvalMode);
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          throw error;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
+        console.error('[contract-imports/approve] import failed', {
+          ...this.buildApprovalDebugContext(id, preview),
+          errorMessage: message,
+          stack,
+        });
+
+        await this.prisma.contractImport.update({
+          where: { id },
+          data: {
+            status: ContractImportStatus.FAILED,
+            approvedJson: preview as unknown as Prisma.InputJsonValue,
+            warnings: warnings as unknown as Prisma.InputJsonValue,
+            errors: [{ message }] as unknown as Prisma.InputJsonValue,
+          },
+        });
+        await this.writeAuditLog(id, 'FAILED', ContractImportStatus.FAILED, actor, {
+          errorMessage: message,
+        });
+
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        throw new BadRequestException(`Contract import approval failed: ${message}`);
+      }
+
+      const updated = await this.prisma.contractImport.update({
         where: { id },
         data: {
-          status: ContractImportStatus.FAILED,
+          status: ContractImportStatus.IMPORTED,
           approvedJson: preview as unknown as Prisma.InputJsonValue,
           warnings: warnings as unknown as Prisma.InputJsonValue,
-          errors: blockingWarnings as unknown as Prisma.InputJsonValue,
+          errors: [],
+          approvedByUserId: actor.id,
+          approvedAt: new Date(),
+          importedAt: new Date(),
+          importedEntityId,
         },
       });
-      await this.writeAuditLog(id, 'FAILED', ContractImportStatus.FAILED, actor, {
-        blockers: blockingWarnings,
-      });
-      throw new BadRequestException(blockingWarnings.map((warning) => warning.message).join('; '));
-    }
-
-    const importedEntityId = await this.importApprovedPreview(preview, record);
-
-    const updated = await this.prisma.contractImport.update({
-      where: { id },
-      data: {
-        status: ContractImportStatus.IMPORTED,
-        approvedJson: preview as unknown as Prisma.InputJsonValue,
-        warnings: warnings as unknown as Prisma.InputJsonValue,
-        errors: [],
-        approvedByUserId: actor.id,
-        approvedAt: new Date(),
-        importedAt: new Date(),
+      await this.writeAuditLog(id, 'IMPORTED', ContractImportStatus.IMPORTED, actor, {
         importedEntityId,
-      },
-    });
-    await this.writeAuditLog(id, 'IMPORTED', ContractImportStatus.IMPORTED, actor, {
-      importedEntityId,
-      warnings: warnings.length,
-    });
-    return updated;
+        warnings: warnings.length,
+      });
+      return updated;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('APPROVE ERROR FULL:', error);
+      if (error instanceof Error) {
+        console.error(error.stack);
+      }
+      throw new BadRequestException(`Contract import approval failed: ${message}`);
+    }
   }
 
   async reimport(id: string, actor: AuthenticatedActor) {
@@ -491,14 +536,33 @@ export class ContractImportsService {
     }), diagnostics);
   }
 
-  private async importApprovedPreview(preview: ContractPreview, record: { supplierId: string | null; sourceFileName: string; sourceFilePath: string }) {
+  private async importApprovedPreview(
+    preview: ContractPreview,
+    record: { supplierId: string | null; sourceFileName: string; sourceFilePath: string },
+    approvalMode?: ContractImportApprovalMode,
+  ) {
     const supplier = await this.ensureSupplier(record.supplierId, preview.supplier.name, preview.contractType);
 
     if (preview.contractType === ContractImportType.HOTEL) {
-      return this.importHotelPreview(preview, supplier.id, record.sourceFileName, record.sourceFilePath);
+      return this.importHotelPreview(preview, supplier.id, record.sourceFileName, record.sourceFilePath, approvalMode);
     }
 
     return this.importServicePreview(preview, supplier.id, record.sourceFileName);
+  }
+
+  private buildApprovalDebugContext(id: string, preview: ContractPreview) {
+    return {
+      contractImportId: id,
+      contractType: preview.contractType,
+      hotelName: preview.hotel?.name || preview.hotelName || null,
+      hotelId: null,
+      ratesCount: preview.rates.length,
+      roomCategoriesCount: preview.roomCategories.length,
+      supplementsCount: preview.supplements.length,
+      ratePoliciesCount: preview.ratePolicies?.length || 0,
+      cancellationRulesCount: preview.cancellationPolicy?.rules?.length || preview.cancellationPolicies?.reduce((count, policy) => count + (policy?.rules?.length || 0), 0) || 0,
+      mealPlansCount: preview.mealPlans.length,
+    };
   }
 
   private extractHotelExcelTemplatePreview(input: {
@@ -1353,6 +1417,32 @@ export class ContractImportsService {
     };
   }
 
+  private normalizeChildPolicyForApproval(value: unknown): ContractPreview['childPolicy'] {
+    if (!value || typeof value !== 'object') return null;
+    const policy = value as Record<string, unknown>;
+    const infantMaxAge = this.parseNumber(policy.infantMaxAge);
+    const childMaxAge = this.parseNumber(policy.childMaxAge);
+    if (infantMaxAge === undefined || childMaxAge === undefined) {
+      return null;
+    }
+
+    return {
+      infantMaxAge,
+      childMaxAge,
+      notes: this.optionalString(policy.notes) || null,
+      bands: Array.isArray(policy.bands)
+        ? policy.bands.map((band: any) => ({
+            label: this.optionalString(band.label) || 'Child policy band',
+            minAge: this.parseNumber(band.minAge) ?? 0,
+            maxAge: this.parseNumber(band.maxAge) ?? childMaxAge,
+            chargeBasis: this.optionalString(band.chargeBasis) || ChildPolicyChargeBasis.FREE,
+            chargeValue: this.parseNumber(band.chargeValue) ?? null,
+            notes: this.optionalString(band.notes) || null,
+          }))
+        : [],
+    };
+  }
+
   private roomCategoriesFromRates(rates: PreviewRate[]) {
     const roomNames = Array.from(new Set(rates.map((rate) => rate.roomType).filter((value): value is string => Boolean(value))));
     return roomNames.map((name) => ({
@@ -1569,19 +1659,27 @@ export class ContractImportsService {
     });
   }
 
-  private async importHotelPreview(preview: ContractPreview, supplierId: string, sourceFileName: string, sourceFilePath: string) {
+  private async importHotelPreview(
+    preview: ContractPreview,
+    supplierId: string,
+    sourceFileName: string,
+    sourceFilePath: string,
+    approvalMode?: ContractImportApprovalMode,
+  ) {
     if (!preview.hotel?.name || !preview.contract.validFrom || !preview.contract.validTo) {
       throw new BadRequestException('Hotel imports require hotel name, validFrom, and validTo before approval');
     }
 
     const hotel = await this.ensureHotel(preview, supplierId);
-    const existingActive = await this.prisma.hotelContract.findFirst({
-      where: {
-        hotelId: hotel.id,
-        name: { equals: preview.contract.name, mode: 'insensitive' },
-      },
+    console.log('[contract-imports/approve] hotel resolved', {
+      hotelId: hotel.id,
+      hotelName: hotel.name,
+      ratesCount: preview.rates.length,
+      roomCategoriesCount: preview.roomCategories.length,
+      supplementsCount: preview.supplements.length,
+      ratePoliciesCount: preview.ratePolicies?.length || 0,
+      cancellationRulesCount: preview.cancellationPolicy?.rules?.length || 0,
     });
-
     const contractData = {
       hotelId: hotel.id,
       name: preview.contract.name.trim(),
@@ -1590,9 +1688,25 @@ export class ContractImportsService {
       currency: preview.contract.currency.trim().toUpperCase(),
       ratePolicies: (preview.ratePolicies || []) as unknown as Prisma.InputJsonValue,
     };
-    const contract = existingActive
-      ? await this.prisma.hotelContract.update({ where: { id: existingActive.id }, data: contractData })
-      : await this.prisma.hotelContract.create({ data: contractData });
+    const existingContract = await this.findOverlappingHotelContract(hotel.id, preview, contractData.validFrom, contractData.validTo);
+    if (existingContract && !approvalMode) {
+      throw new ConflictException({
+        code: 'CONTRACT_EXISTS',
+        message: 'A contract already exists for this hotel/year.',
+        existingContract: {
+          id: existingContract.id,
+          name: existingContract.name,
+          validFrom: this.isoDate(existingContract.validFrom),
+          validTo: this.isoDate(existingContract.validTo),
+          createdAt: existingContract.createdAt,
+        },
+      });
+    }
+
+    const contract =
+      existingContract && approvalMode === 'replace'
+        ? await this.replaceHotelContract(existingContract.id, contractData)
+        : await this.prisma.hotelContract.create({ data: contractData });
 
     const roomCategoryByName = new Map<string, string>();
     for (const category of preview.roomCategories || []) {
@@ -1675,6 +1789,57 @@ export class ContractImportsService {
 
     await this.appendSupplierSourceNote(supplierId, sourceFileName, sourceFilePath);
     return contract.id;
+  }
+
+  private async findOverlappingHotelContract(hotelId: string, preview: ContractPreview, validFrom: Date, validTo: Date) {
+    const contractYear = this.parseOptionalInt(preview.contract.year) || validFrom.getFullYear();
+    const yearStart = new Date(Date.UTC(contractYear, 0, 1));
+    const yearEnd = new Date(Date.UTC(contractYear, 11, 31, 23, 59, 59, 999));
+
+    return this.prisma.hotelContract.findFirst({
+      where: {
+        hotelId,
+        validFrom: { lte: validTo },
+        validTo: { gte: validFrom },
+        OR: [
+          { validFrom: { gte: yearStart, lte: yearEnd } },
+          { validTo: { gte: yearStart, lte: yearEnd } },
+          {
+            AND: [{ validFrom: { lte: yearStart } }, { validTo: { gte: yearEnd } }],
+          },
+        ],
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+  }
+
+  private async replaceHotelContract(contractId: string, data: Prisma.HotelContractUncheckedUpdateInput) {
+    const cancellationPolicy = await this.prisma.hotelContractCancellationPolicy.findUnique({
+      where: { hotelContractId: contractId },
+      select: { id: true },
+    });
+    if (cancellationPolicy) {
+      await this.prisma.hotelContractCancellationRule.deleteMany({ where: { cancellationPolicyId: cancellationPolicy.id } });
+      await this.prisma.hotelContractCancellationPolicy.delete({ where: { id: cancellationPolicy.id } });
+    }
+
+    const childPolicy = await this.prisma.hotelContractChildPolicy.findUnique({
+      where: { hotelContractId: contractId },
+      select: { id: true },
+    });
+    if (childPolicy) {
+      await this.prisma.hotelContractChildPolicyBand.deleteMany({ where: { childPolicyId: childPolicy.id } });
+      await this.prisma.hotelContractChildPolicy.delete({ where: { id: childPolicy.id } });
+    }
+
+    await this.prisma.hotelRate.deleteMany({ where: { contractId } });
+    await this.prisma.hotelContractSupplement.deleteMany({ where: { hotelContractId: contractId } });
+    await this.prisma.hotelContractMealPlan.deleteMany({ where: { hotelContractId: contractId } });
+
+    return this.prisma.hotelContract.update({
+      where: { id: contractId },
+      data,
+    });
   }
 
   private async importServicePreview(preview: ContractPreview, supplierId: string, sourceFileName: string) {
@@ -2119,7 +2284,7 @@ export class ContractImportsService {
       policies: Array.isArray(value.policies) ? value.policies : [],
       ratePolicies: Array.isArray(value.ratePolicies)
         ? value.ratePolicies.map((policy: any) => ({
-            policyType: this.optionalString(policy.policyType).toUpperCase(),
+            policyType: this.optionalString(policy.policyType || policy.type).toUpperCase(),
             appliesTo: this.optionalString(policy.appliesTo) || null,
             ageFrom: this.parseNumber(policy.ageFrom) ?? null,
             ageTo: this.parseNumber(policy.ageTo) ?? null,
@@ -2137,7 +2302,7 @@ export class ContractImportsService {
         : value.cancellationPolicy
           ? [value.cancellationPolicy]
           : [],
-      childPolicy: value.childPolicy || null,
+      childPolicy: this.normalizeChildPolicyForApproval(value.childPolicy),
       meta: this.normalizeExtractedMeta(value.meta),
       hotelName: this.optionalString(value.hotelName || value.hotel?.name),
       contractStartDate: this.optionalString(value.contractStartDate || value.contract?.validFrom) || null,
