@@ -5,8 +5,12 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 
+const { json, urlencoded } = require('express');
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ extended: true, limit: '25mb' }));
  app.enableCors({
   origin: [
     'http://localhost:3000',

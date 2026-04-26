@@ -62,7 +62,7 @@ export class ContractImportsController {
         },
       }),
       limits: {
-        fileSize: 20 * 1024 * 1024,
+        fileSize: 25 * 1024 * 1024,
       },
     }),
   )
