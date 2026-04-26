@@ -669,7 +669,15 @@ export class ContractImportsService {
         continue;
       }
 
-      const cells = this.splitTableLine(line, activeSplitPattern);
+      const strictCells = line
+        .split(activeSplitPattern)
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+      if (strictCells.length < 2) {
+        rates.push(...this.extractFlattenedTableRates(line, fallbackCurrency));
+        continue;
+      }
+      const cells = strictCells;
       if (cells.length < 2) continue;
 
       if (activeHeader.length === 0) continue;
@@ -698,6 +706,29 @@ export class ContractImportsService {
     }
 
     return this.dedupeRates(rates);
+  }
+
+  private extractFlattenedTableRates(line: string, fallbackCurrency: string): PreviewRate[] {
+    const numberMatches = line.match(/\d+(?:\.\d+)?/g) || [];
+    const numbers = numberMatches
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0 && value < 10000);
+    if (numbers.length === 0) return [];
+
+    const room = this.normalizeRoomName(line.replace(/\d+(?:\.\d+)?/g, '').trim());
+    if (!room) return [];
+
+    const occupancyTypes = numbers.length >= 3 ? ['SGL', 'DBL', 'TRP'] : numbers.length === 2 ? ['DBL', 'TRP'] : ['DBL'];
+    return numbers.slice(0, occupancyTypes.length).map((cost, index) => ({
+      roomType: room,
+      occupancyType: occupancyTypes[index],
+      mealPlan: 'BB',
+      seasonName: 'Imported',
+      cost,
+      currency: fallbackCurrency,
+      uncertain: true,
+      notes: 'Extracted from flattened table row.',
+    }));
   }
 
   private extractHotelRatesFromText(text: string, fallbackCurrency: string, seasonName: string): PreviewRate[] {
