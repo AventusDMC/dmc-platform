@@ -654,32 +654,37 @@ export class ContractImportsService {
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean)
-        .map((line) => line.split(/\s+/)),
+        .map((line) => [line]),
     ].filter((row) => row.length > 0);
-    let activeHeader: Array<{ occupancyType: string; index: number }> = [];
+    let activeHeader: Array<{ occupancyType: string; index: number; amountOffset: number }> = [];
+    let activeSplitPattern: RegExp = /\s+/;
 
     for (const rawCells of tableLines) {
-      const cells = this.expandTableCells(rawCells);
-      if (cells.length < 2) continue;
-
-      const header = this.detectRateHeader(cells);
-      if (header.length > 0) {
-        activeHeader = header;
+      const line = rawCells.join(' ').trim();
+      const header = this.detectRateHeader(line);
+      if (header.columns.length > 0) {
+        console.log('TABLE HEADER DETECTED:', line);
+        activeHeader = header.columns;
+        activeSplitPattern = header.splitPattern;
         continue;
       }
 
+      const cells = this.splitTableLine(line, activeSplitPattern);
+      if (cells.length < 2) continue;
+
       if (activeHeader.length === 0) continue;
 
-      const amounts = this.extractMoneyAmounts(cells.join(' '));
-      if (amounts.length === 0) continue;
-
       const firstAmountIndex = cells.findIndex((cell) => this.extractMoneyAmounts(cell).length > 0);
-      const roomCells = firstAmountIndex > 0 ? cells.slice(0, firstAmountIndex) : [cells[0]];
+      const roomCells = cells.filter((cell, index) => index < firstAmountIndex || (firstAmountIndex < 0 && this.extractMoneyAmounts(cell).length === 0));
       const roomName = this.normalizeRoomName(roomCells.join(' '));
       if (!roomName) continue;
 
-      activeHeader.forEach((column, index) => {
-        const amount = amounts[index];
+      const rowAmountCells = cells.slice(firstAmountIndex >= 0 ? firstAmountIndex : 1);
+      const rowAmounts = rowAmountCells.flatMap((cell) => this.extractMoneyAmounts(cell));
+      if (rowAmounts.length === 0) continue;
+
+      activeHeader.forEach((column) => {
+        const amount = rowAmounts[column.amountOffset];
         if (!amount) return;
         rates.push({
           roomType: roomName,
@@ -794,24 +799,38 @@ export class ContractImportsService {
     return '';
   }
 
-  private expandTableCells(cells: string[]) {
-    return cells
-      .flatMap((cell) => String(cell || '').trim().split(/\s+/))
+  private splitTableLine(line: string, splitPattern: RegExp) {
+    const splitCells = line
+      .split(splitPattern)
       .map((cell) => cell.trim())
       .filter(Boolean);
+
+    return splitCells.length > 1 ? splitCells : line.split(/\s+/).map((cell) => cell.trim()).filter(Boolean);
   }
 
-  private detectRateHeader(cells: string[]) {
-    const header: Array<{ occupancyType: string; index: number }> = [];
+  private detectRateHeader(line: string) {
+    const lowerLine = line.toLowerCase();
+    const hasSingle = lowerLine.includes('sgl') || lowerLine.includes('single');
+    const hasDouble = lowerLine.includes('dbl') || lowerLine.includes('double') || lowerLine.includes('twin');
+    const hasTriple = lowerLine.includes('tpl') || lowerLine.includes('trp') || lowerLine.includes('triple');
+    const keywordCount = [hasSingle, hasDouble, hasTriple].filter(Boolean).length;
+    if (keywordCount < 2) {
+      return { columns: [], splitPattern: /\s+/ };
+    }
+
+    const splitPattern = /\s{2,}|\t|\|/;
+    const cells = this.splitTableLine(line, splitPattern);
+    let amountOffset = 0;
+    const columns: Array<{ occupancyType: string; index: number; amountOffset: number }> = [];
 
     cells.forEach((cell, index) => {
       const occupancyType = this.normalizeRateHeaderOccupancy(cell);
-      if (occupancyType) {
-        header.push({ occupancyType, index });
-      }
+      if (!occupancyType) return;
+      columns.push({ occupancyType, index, amountOffset });
+      amountOffset += 1;
     });
 
-    return header.length >= 2 ? header : [];
+    return { columns: columns.length >= 2 ? columns : [], splitPattern };
   }
 
   private normalizeRateHeaderOccupancy(value: string) {
