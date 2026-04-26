@@ -358,6 +358,13 @@ export class ContractImportsService {
       textPreview: text.slice(0, 8000),
     });
     console.log('[contract-imports/analyze] first 20 parsed text lines', parsedTextLines);
+    if (input.contractType === ContractImportType.HOTEL) {
+      const templatePreview = this.extractHotelExcelTemplatePreview(input);
+      if (templatePreview) {
+        return this.attachParserDiagnostics(this.addPreviewAliases(templatePreview), diagnostics);
+      }
+    }
+
     const parsedJson = this.parseJsonPreview(text);
     if (parsedJson) {
       return this.attachParserDiagnostics(this.addPreviewAliases(this.normalizeApprovedPreview({
@@ -450,6 +457,103 @@ export class ContractImportsService {
     }
 
     return this.importServicePreview(preview, supplier.id, record.sourceFileName);
+  }
+
+  private extractHotelExcelTemplatePreview(input: {
+    contractType: ContractImportType;
+    supplierName: string;
+    contractYear: number | null;
+    validFrom: Date | null;
+    validTo: Date | null;
+    filePath: string;
+    fileName: string;
+  }): ContractPreview | null {
+    const workbook = this.readWorkbook(input.filePath, input.fileName);
+    const ratesSheet = this.getWorkbookSheet(workbook, 'Rates');
+    if (!workbook || !ratesSheet) {
+      return null;
+    }
+
+    const ratesRows: Array<Record<string, string>> = this.sheetToObjects(workbook, ratesSheet);
+    const requiredColumns = ['Room Type', 'Occupancy', 'Meal Plan', 'Cost'];
+    const actualColumns = Object.keys(ratesRows[0] || {});
+    const missingColumns = requiredColumns.filter((column) => !actualColumns.some((actual) => this.normalizeTemplateHeader(actual) === this.normalizeTemplateHeader(column)));
+    const year = input.contractYear || new Date().getFullYear();
+    const supplierName = input.supplierName || this.guessNameFromFile(input.fileName);
+    const warnings = missingColumns.map((column) => ({
+      severity: 'blocker' as const,
+      field: `Rates.${column}`,
+      message: `Rates sheet is missing required column: ${column}`,
+    }));
+
+    const rates: PreviewRate[] =
+      missingColumns.length > 0
+        ? []
+        : ratesRows
+            .map((row: Record<string, string>): PreviewRate | null => {
+              const roomType = this.templateCell(row, 'Room Type');
+              const occupancyType = this.templateCell(row, 'Occupancy');
+              const mealPlan = this.templateCell(row, 'Meal Plan');
+              const cost = this.parseNumber(this.templateCell(row, 'Cost'));
+              if (!roomType || !occupancyType || !mealPlan || !cost) return null;
+              const seasonFrom = this.templateCell(row, 'Season From');
+              const seasonTo = this.templateCell(row, 'Season To');
+              return {
+                roomType,
+                occupancyType: this.normalizeTemplateOccupancy(occupancyType),
+                mealPlan: this.hotelMealPlan(mealPlan),
+                seasonName: seasonFrom || seasonTo ? `${seasonFrom || 'Start'} - ${seasonTo || 'End'}` : 'Imported',
+                cost,
+                currency: this.templateCell(row, 'Currency') || 'USD',
+              };
+            })
+            .filter((rate: PreviewRate | null): rate is PreviewRate => Boolean(rate));
+
+    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => ({
+      name: this.templateCell(row, 'Name') || this.templateCell(row, 'Supplement') || this.templateCell(row, 'Type') || 'Supplement',
+      type: this.templateCell(row, 'Type') || null,
+      chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
+      amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
+      currency: this.templateCell(row, 'Currency') || 'USD',
+      isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
+      notes: this.templateCell(row, 'Notes') || undefined,
+    }));
+    const policies: ContractPreview['policies'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')).map((row: Record<string, string>) => ({
+      name: this.templateCell(row, 'Name') || this.templateCell(row, 'Policy') || 'Policy',
+      value: this.templateCell(row, 'Value') || this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || '',
+    }));
+
+    return {
+      contractType: ContractImportType.HOTEL,
+      supplier: { name: supplierName, isNew: true },
+      contract: {
+        name: `${supplierName} ${year}`,
+        year,
+        validFrom: input.validFrom ? this.isoDate(input.validFrom) : null,
+        validTo: input.validTo ? this.isoDate(input.validTo) : null,
+        currency: rates[0]?.currency || 'USD',
+      },
+      hotel: {
+        name: supplierName,
+        city: 'Amman',
+        category: 'Unclassified',
+      },
+      roomCategories: this.roomCategoriesFromRates(rates),
+      seasons: Array.from(new Set<string>(rates.map((rate: PreviewRate) => rate.seasonName || 'Imported'))).map((name) => ({ name })),
+      rates,
+      mealPlans: Array.from(new Set<string>(rates.map((rate: PreviewRate) => rate.mealPlan || 'BB'))).map((code, index) => ({
+        code,
+        isDefault: index === 0,
+      })),
+      taxes: [],
+      supplements,
+      policies,
+      cancellationPolicy: null,
+      childPolicy: null,
+      warnings,
+      missingFields: missingColumns.map((column) => `Rates.${column}`),
+      uncertainFields: [],
+    };
   }
 
   private extractHotelContractPreview(input: {
@@ -1580,7 +1684,7 @@ export class ContractImportsService {
   }
 
   private buildWarnings(preview: ContractPreview) {
-    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [];
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [...(preview.warnings || [])];
     if (!preview.supplier.name?.trim()) {
       warnings.push({ severity: 'blocker', field: 'supplier.name', message: 'Supplier name is required before approval' });
     }
@@ -1807,34 +1911,71 @@ export class ContractImportsService {
   }
 
   private readWorkbookRows(filePath: string, fileName: string): string[][] {
-    if (!/\.(xlsx|xls|xlsm)$/i.test(fileName)) {
-      return [];
-    }
+    const workbook = this.readWorkbook(filePath, fileName);
+    if (!workbook) return [];
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const xlsx = require('xlsx');
-      const workbook = xlsx.readFile(filePath, { cellDates: true });
       const rows: string[][] = [];
-
       for (const sheetName of workbook.SheetNames || []) {
-        const matrix = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-          header: 1,
-          defval: '',
-          blankrows: false,
-          raw: false,
-        }) as unknown[][];
+        const matrix = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false, raw: false }) as unknown[][];
         rows.push([`SHEET: ${sheetName}`]);
-        for (const row of matrix) {
-          rows.push(row.map((cell) => String(cell ?? '').trim()));
-        }
+        rows.push(...matrix.map((row) => row.map((cell) => String(cell ?? '').trim())));
       }
-
       return rows;
     } catch (error) {
       console.warn('[contract-imports/analyze] Could not parse workbook', error);
       return [];
     }
+  }
+
+  private readWorkbook(filePath: string, fileName: string) {
+    if (!/\.(xlsx|xls|xlsm)$/i.test(fileName)) return null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const xlsx = require('xlsx');
+      return xlsx.readFile(filePath, { cellDates: true });
+    } catch (error) {
+      console.warn('[contract-imports/analyze] Could not read workbook', error);
+      return null;
+    }
+  }
+
+  private getWorkbookSheet(workbook: any, expectedName: string) {
+    if (!workbook) return null;
+    const sheetName = (workbook.SheetNames || []).find((name: string) => name.trim().toLowerCase() === expectedName.toLowerCase());
+    return sheetName || null;
+  }
+
+  private sheetToObjects(workbook: any, sheetName: string | null): Array<Record<string, string>> {
+    if (!workbook || !sheetName) return [] as Array<Record<string, string>>;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const xlsx = require('xlsx');
+    return xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: false }).map((row: Record<string, unknown>) => {
+      return Object.entries(row).reduce<Record<string, string>>((mapped, [key, value]) => {
+        mapped[String(key).trim()] = String(value ?? '').trim();
+        return mapped;
+      }, {});
+    });
+  }
+
+  private templateCell(row: Record<string, string>, header: string) {
+    const match = Object.entries(row).find(([key]) => this.normalizeTemplateHeader(key) === this.normalizeTemplateHeader(header));
+    return match?.[1]?.trim() || '';
+  }
+
+  private normalizeTemplateHeader(value: string) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  private normalizeTemplateOccupancy(value: string) {
+    const normalized = value.trim().toUpperCase();
+    if (normalized === 'TRP') return 'TRP';
+    if (normalized === 'TPL') return 'TRP';
+    if (normalized === 'SINGLE') return 'SGL';
+    if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
+    return normalized || 'DBL';
   }
 
   private workbookRowsToText(rows: string[][]) {
