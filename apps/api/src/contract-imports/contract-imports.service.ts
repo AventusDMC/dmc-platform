@@ -475,7 +475,8 @@ export class ContractImportsService {
     const tableRows = input.workbookRows.length > 0 ? input.workbookRows : this.textToRows(text);
     const extractedSeasons = this.extractSeasons(tableRows, text, year, validFrom, validTo);
     const defaultSeasonName = extractedSeasons[0]?.name || `${hotelName} ${year} Full Year`;
-    const extractedRates = this.extractHotelRatesFromRows(tableRows, currency, defaultSeasonName);
+    const tableRates = this.extractHotelRatesFromTable(tableRows, text, currency);
+    const extractedRates = tableRates.length > 0 ? tableRates : this.extractHotelRatesFromRows(tableRows, currency, defaultSeasonName);
     const fallbackRates = extractedRates.length > 0 ? [] : this.extractHotelRatesFromText(text, currency, defaultSeasonName);
     const rates =
       extractedRates.length > 0
@@ -508,6 +509,8 @@ export class ContractImportsService {
     }
     if (rates.length === 0) {
       uncertainFields.push('rates');
+    } else if (tableRates.length > 0) {
+      uncertainFields.push('rates extracted from table header');
     } else if (extractedRates.length === 0 && fallbackRates.length > 0) {
       uncertainFields.push('rates extracted from text fallback');
     }
@@ -643,6 +646,55 @@ export class ContractImportsService {
     return this.dedupeRates(rates);
   }
 
+  private extractHotelRatesFromTable(rows: string[][], text: string, fallbackCurrency: string): PreviewRate[] {
+    const rates: PreviewRate[] = [];
+    const tableLines = [
+      ...rows.map((row) => row.map((cell) => String(cell || '').trim()).filter(Boolean)),
+      ...text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.split(/\s+/)),
+    ].filter((row) => row.length > 0);
+    let activeHeader: Array<{ occupancyType: string; index: number }> = [];
+
+    for (const rawCells of tableLines) {
+      const cells = this.expandTableCells(rawCells);
+      if (cells.length < 2) continue;
+
+      const header = this.detectRateHeader(cells);
+      if (header.length > 0) {
+        activeHeader = header;
+        continue;
+      }
+
+      if (activeHeader.length === 0) continue;
+
+      const amounts = this.extractMoneyAmounts(cells.join(' '));
+      if (amounts.length === 0) continue;
+
+      const firstAmountIndex = cells.findIndex((cell) => this.extractMoneyAmounts(cell).length > 0);
+      const roomCells = firstAmountIndex > 0 ? cells.slice(0, firstAmountIndex) : [cells[0]];
+      const roomName = this.normalizeRoomName(roomCells.join(' '));
+      if (!roomName) continue;
+
+      activeHeader.forEach((column, index) => {
+        const amount = amounts[index];
+        if (!amount) return;
+        rates.push({
+          roomType: roomName,
+          occupancyType: column.occupancyType,
+          mealPlan: 'BB',
+          seasonName: 'Imported',
+          cost: amount.amount,
+          currency: amount.currency || fallbackCurrency,
+        });
+      });
+    }
+
+    return this.dedupeRates(rates);
+  }
+
   private extractHotelRatesFromText(text: string, fallbackCurrency: string, seasonName: string): PreviewRate[] {
     const rates: PreviewRate[] = [];
     const lines = text
@@ -725,10 +777,55 @@ export class ContractImportsService {
     return match[1].replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
+  private normalizeRoomName(value: string) {
+    const cleaned = value
+      .replace(/\b(room|type|category|rates?|rate|price|prices?|nett|net|jod|usd|eur)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned || /^\d/.test(cleaned)) return '';
+
+    const detected = this.detectRoomName(cleaned);
+    if (detected) return detected;
+
+    if (/\b(standard|deluxe|suite|twin|double|triple|superior|executive|classic|premium|family|grand)\b/i.test(cleaned)) {
+      return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+
+    return '';
+  }
+
+  private expandTableCells(cells: string[]) {
+    return cells
+      .flatMap((cell) => String(cell || '').trim().split(/\s+/))
+      .map((cell) => cell.trim())
+      .filter(Boolean);
+  }
+
+  private detectRateHeader(cells: string[]) {
+    const header: Array<{ occupancyType: string; index: number }> = [];
+
+    cells.forEach((cell, index) => {
+      const occupancyType = this.normalizeRateHeaderOccupancy(cell);
+      if (occupancyType) {
+        header.push({ occupancyType, index });
+      }
+    });
+
+    return header.length >= 2 ? header : [];
+  }
+
+  private normalizeRateHeaderOccupancy(value: string) {
+    const normalized = value.trim().replace(/[^a-zA-Z]/g, '').toUpperCase();
+    if (normalized === 'SGL' || normalized === 'SINGLE') return 'SGL';
+    if (normalized === 'DBL' || normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
+    if (normalized === 'TRP' || normalized === 'TPL' || normalized === 'TRIPLE') return 'TRP';
+    return '';
+  }
+
   private detectOccupancy(line: string) {
     if (/\b(SGL|single)\b/i.test(line)) return 'SGL';
     if (/\b(DBL|double|twin)\b/i.test(line)) return 'DBL';
-    if (/\b(TPL|TRP|triple)\b/i.test(line)) return 'TPL';
+    if (/\b(TPL|TRP|triple)\b/i.test(line)) return 'TRP';
     return 'DBL';
   }
 
@@ -1497,6 +1594,7 @@ export class ContractImportsService {
 
   private hotelOccupancy(value: unknown) {
     const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'TRP') return 'TPL' as any;
     return ['SGL', 'DBL', 'TPL'].includes(normalized) ? (normalized as any) : 'DBL';
   }
 
