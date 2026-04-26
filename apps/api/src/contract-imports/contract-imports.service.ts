@@ -476,9 +476,12 @@ export class ContractImportsService {
     const extractedSeasons = this.extractSeasons(tableRows, text, year, validFrom, validTo);
     const defaultSeasonName = extractedSeasons[0]?.name || `${hotelName} ${year} Full Year`;
     const extractedRates = this.extractHotelRatesFromRows(tableRows, currency, defaultSeasonName);
+    const fallbackRates = extractedRates.length > 0 ? [] : this.extractHotelRatesFromText(text, currency, defaultSeasonName);
     const rates =
       extractedRates.length > 0
         ? extractedRates
+        : fallbackRates.length > 0
+          ? fallbackRates
         : isGrandHyatt
           ? [
               { roomType: 'Grand Room', occupancyType: 'SGL', mealPlan: 'BB', seasonName: `Grand Hyatt Amman ${year} Full Year`, cost: 85, currency },
@@ -505,6 +508,8 @@ export class ContractImportsService {
     }
     if (rates.length === 0) {
       uncertainFields.push('rates');
+    } else if (extractedRates.length === 0 && fallbackRates.length > 0) {
+      uncertainFields.push('rates extracted from text fallback');
     }
     if (supplements.length === 0) {
       uncertainFields.push('supplements');
@@ -577,16 +582,14 @@ export class ContractImportsService {
       if (cells.length < 2) continue;
       const rowText = cells.join(' ');
       if (/^(sheet:|season|period|validity|valid from|from|to)$/i.test(cells[0])) continue;
-      const explicitRoomName = knownRoomNames.find((name) => new RegExp(`\\b${this.escapeRegExp(name)}\\b`, 'i').test(rowText));
+      const explicitRoomName = knownRoomNames.find((name) => new RegExp(`\\b${this.escapeRegExp(name)}\\b`, 'i').test(rowText)) || this.detectRoomName(rowText);
       const firstCellLooksLikeRoom = /(room|suite|club|deluxe|standard|superior|executive|classic|premium|family)/i.test(cells[0]);
       const firstCellLooksLikeOccupancy = /^(single|double|triple|sgl|dbl|tpl|s\/?d|single\/double)$/i.test(cells[0]);
       const roomName = explicitRoomName || (firstCellLooksLikeRoom ? cells[0] : firstCellLooksLikeOccupancy ? lastRoomName : '');
       if (roomName) {
         lastRoomName = roomName;
       }
-      const numbers = cells
-        .map((cell) => this.parseNumber(cell))
-        .filter((value): value is number => typeof value === 'number' && value > 0 && value < 10000);
+      const numbers = this.extractMoneyAmounts(rowText).map((amount) => amount.amount);
 
       if (!roomName || numbers.length === 0 || !/(room|suite|club|deluxe|standard|superior|executive|grand|classic|premium|family)/i.test(roomName)) {
         continue;
@@ -637,9 +640,120 @@ export class ContractImportsService {
       }
     }
 
+    return this.dedupeRates(rates);
+  }
+
+  private extractHotelRatesFromText(text: string, fallbackCurrency: string, seasonName: string): PreviewRate[] {
+    const rates: PreviewRate[] = [];
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    let lastRoomName = '';
+
+    for (const line of lines) {
+      const roomName = this.detectRoomName(line) || lastRoomName;
+      if (!roomName) continue;
+
+      if (this.detectRoomName(line)) {
+        lastRoomName = roomName;
+      }
+
+      const amounts = this.extractMoneyAmounts(line);
+      if (amounts.length === 0) continue;
+
+      const occupancy = this.detectOccupancy(line);
+      const mealPlan = this.extractMealPlanFromText(line);
+      const explicitOccupancy = occupancy !== 'DBL' || /\b(single|double|triple|sgl|dbl|tpl|trp)\b/i.test(line);
+
+      if (amounts.length >= 2 && !explicitOccupancy) {
+        rates.push({
+          roomType: roomName,
+          occupancyType: 'SGL',
+          mealPlan,
+          seasonName,
+          cost: amounts[0].amount,
+          currency: amounts[0].currency || fallbackCurrency,
+          uncertain: true,
+          notes: 'Single rate inferred from first amount in table-like row.',
+        });
+        rates.push({
+          roomType: roomName,
+          occupancyType: 'DBL',
+          mealPlan,
+          seasonName,
+          cost: amounts[1].amount,
+          currency: amounts[1].currency || fallbackCurrency,
+          uncertain: true,
+          notes: 'Double rate inferred from second amount in table-like row.',
+        });
+        if (amounts[2]) {
+          rates.push({
+            roomType: roomName,
+            occupancyType: 'TPL',
+            mealPlan,
+            seasonName,
+            cost: amounts[2].amount,
+            currency: amounts[2].currency || fallbackCurrency,
+            uncertain: true,
+            notes: 'Triple rate inferred from third amount in table-like row.',
+          });
+        }
+        continue;
+      }
+
+      rates.push({
+        roomType: roomName,
+        occupancyType: occupancy,
+        mealPlan,
+        seasonName,
+        cost: amounts[0].amount,
+        currency: amounts[0].currency || fallbackCurrency,
+        uncertain: !explicitOccupancy,
+        notes: explicitOccupancy ? 'Extracted from text line.' : 'Occupancy defaulted to DBL from table-like text line.',
+      });
+    }
+
+    return this.dedupeRates(rates);
+  }
+
+  private detectRoomName(line: string) {
+    const roomPattern =
+      /\b((?:standard|deluxe|superior|executive|classic|premium|family|grand|twin|double|triple)\s+(?:room|suite)|(?:junior|executive|grand|family)\s+suite|suite|twin|double|triple)\b/i;
+    const match = line.match(roomPattern);
+    if (!match) return '';
+    return match[1].replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  private detectOccupancy(line: string) {
+    if (/\b(SGL|single)\b/i.test(line)) return 'SGL';
+    if (/\b(DBL|double|twin)\b/i.test(line)) return 'DBL';
+    if (/\b(TPL|TRP|triple)\b/i.test(line)) return 'TPL';
+    return 'DBL';
+  }
+
+  private extractMoneyAmounts(line: string) {
+    const amounts: Array<{ amount: number; currency?: string }> = [];
+    const moneyPattern = /(?:(JOD|USD|EUR)\s*)?(\d{2,4}(?:,\d{3})*(?:\.\d{1,2})?)(?:\s*(JOD|USD|EUR))?/gi;
+
+    for (const match of line.matchAll(moneyPattern)) {
+      const amount = this.parseNumber(match[2]);
+      if (!amount || amount <= 0 || amount > 10000) continue;
+      amounts.push({ amount, currency: (match[1] || match[3] || '').toUpperCase() || undefined });
+    }
+
+    return amounts;
+  }
+
+  private dedupeRates(rates: PreviewRate[]) {
     return rates.filter((rate, index, allRates) => {
-      const key = `${rate.roomType}|${rate.occupancyType}|${rate.mealPlan}|${rate.cost}`;
-      return allRates.findIndex((candidate) => `${candidate.roomType}|${candidate.occupancyType}|${candidate.mealPlan}|${candidate.cost}` === key) === index;
+      const key = `${rate.roomType}|${rate.occupancyType}|${rate.mealPlan}|${rate.seasonName}|${rate.cost}|${rate.currency}`;
+      return (
+        allRates.findIndex(
+          (candidate) =>
+            `${candidate.roomType}|${candidate.occupancyType}|${candidate.mealPlan}|${candidate.seasonName}|${candidate.cost}|${candidate.currency}` === key,
+        ) === index
+      );
     });
   }
 
