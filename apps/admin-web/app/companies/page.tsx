@@ -13,6 +13,8 @@ import { CompaniesTable } from './CompaniesTable';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
 type Company = {

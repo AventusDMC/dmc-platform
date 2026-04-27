@@ -74,6 +74,8 @@ export function CompaniesForm({ apiBaseUrl, companyId, submitLabel, initialValue
         setPrimaryColor('#0F766E');
         setCountry('');
         setCity('');
+        window.location.reload();
+        return;
       }
       router.refresh();
     } catch (caughtError) {
