@@ -2240,7 +2240,7 @@ export class QuotesService {
         versionNumber: 'desc',
       },
     }).catch((error) => {
-      console.error('[quote/findById] versions', error);
+      console.error('[quote/findById]', 'versions', error);
       return [];
     });
   }
@@ -5863,7 +5863,7 @@ export class QuotesService {
       try {
         return await load();
       } catch (error) {
-        console.error(`[quote/findById] ${label}`, error);
+        console.error('[quote/findById]', label, error);
         return fallback;
       }
     };
@@ -5974,7 +5974,7 @@ export class QuotesService {
       }), null),
     ]);
 
-    return this.attachResolvedQuoteFields({
+    const hydratedQuote = {
       ...quote,
       clientCompany,
       brandCompany,
@@ -5991,7 +5991,14 @@ export class QuotesService {
       scenarios,
       invoice,
       booking,
-    });
+    };
+
+    try {
+      return this.attachResolvedQuoteFields(hydratedQuote);
+    } catch (error) {
+      console.error('[quote/findById]', error);
+      return hydratedQuote;
+    }
   }
 
   private attachResolvedQuoteFields<

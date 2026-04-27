@@ -443,7 +443,7 @@ test('GET /bookings/:id returns base booking when optional relation loads fail a
     assert.deepEqual(booking.services, []);
     assert.equal(booking.quote.clientCompany, null);
     assert.equal(booking.finance.quotedTotalSell, 120);
-    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[booking/findById] services')));
+    assert.ok(loggedErrors.some((entry) => entry[0] === '[booking/findById]' && entry[1] === 'services'));
   } finally {
     console.error = originalConsoleError;
   }

@@ -302,7 +302,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       try {
         return await load();
       } catch (error) {
-        console.error(`[booking/findById] ${label}`, error);
+        console.error('[booking/findById]', label, error);
         return fallback;
       }
     };
@@ -406,6 +406,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       services,
     };
 
+    try {
       const payments: DerivedPaymentRecord[] = this.sortPaymentRecords(
         (booking.payments || []).map((payment: any) => this.mapPaymentRecord(payment)),
       );
@@ -413,6 +414,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return {
         ...booking,
         passengers: (booking.passengers || []).map((passenger: any) => this.mapPassengerForList(passenger)),
+        bookingDays: booking.days || [],
         payments,
         invoiceDelivery: this.getBookingInvoiceDelivery(booking.auditLogs || []),
         paymentReminderDelivery: this.getBookingPaymentReminderDelivery(booking.auditLogs || []),
@@ -437,6 +439,35 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         },
         sourceQuoteId: booking.quoteId,
       };
+    } catch (error) {
+      console.error('[booking/findById]', error);
+      const safeQuote: any = quote;
+      return {
+        ...baseBooking,
+        quote: {
+          ...(safeQuote || {}),
+          company: safeQuote?.clientCompany || null,
+          clientCompany: safeQuote?.clientCompany || null,
+          brandCompany: safeQuote?.brandCompany ?? safeQuote?.clientCompany ?? null,
+        },
+        acceptedVersion,
+        auditLogs: auditLogs || [],
+        passengers: [],
+        days: days || [],
+        bookingDays: days || [],
+        roomingEntries: [],
+        payments: [],
+        services: services || [],
+        finance: this.buildBookingFinanceSummary({ ...baseBooking, payments: [], services: [] }),
+        operations: this.buildBookingOperationsSummary(services || []),
+        rooming: this.buildBookingRoomingSummary({
+          expectedRoomCount: baseBooking.roomCount,
+          passengers: [],
+          roomingEntries: [],
+        }),
+        sourceQuoteId: baseBooking.quoteId,
+      };
+    }
   }
 
   findPortalBooking(id: string, token?: string) {

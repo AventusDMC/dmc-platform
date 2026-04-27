@@ -119,7 +119,7 @@ test('quote detail returns base quote when optional relation loads fail after mi
     assert.deepEqual(quote.scenarios, []);
     assert.equal(quote.invoice, null);
     assert.equal(quote.booking, null);
-    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[quote/findById] quoteItems')));
+    assert.ok(loggedErrors.some((entry) => entry[0] === '[quote/findById]' && entry[1] === 'quoteItems'));
   } finally {
     console.error = originalConsoleError;
   }
@@ -144,7 +144,7 @@ test('quote versions endpoint returns empty list when versions relation fails af
     const versions = await service.findVersions('quote-1');
 
     assert.deepEqual(versions, []);
-    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[quote/findById] versions')));
+    assert.ok(loggedErrors.some((entry) => entry[0] === '[quote/findById]' && entry[1] === 'versions'));
   } finally {
     console.error = originalConsoleError;
   }
