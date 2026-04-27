@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildActorHeaders } from '../../actorHeaders';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const PDF_CONTENT_TYPE = 'application/pdf';
+const DEFAULT_EXPORT_FILENAME = 'guarantee-letter.pdf';
 
 export async function GET(
   request: NextRequest,
@@ -13,12 +15,24 @@ export async function GET(
     cache: 'no-store',
   });
 
-  const body = await response.arrayBuffer();
-  return new NextResponse(body, {
+  if (!response.ok) {
+    const errorText = await response.text();
+    return new Response(errorText || `Guarantee letter export failed with status ${response.status}`, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
+
+  const buffer = await response.arrayBuffer();
+  return new Response(buffer, {
     status: response.status,
+    statusText: response.statusText,
     headers: {
-      'Content-Type': response.headers.get('content-type') || 'application/pdf',
-      'Content-Disposition': response.headers.get('content-disposition') || `attachment; filename="${id}-guarantee-letter.pdf"`,
+      'Content-Type': PDF_CONTENT_TYPE,
+      'Content-Disposition': `attachment; filename="${DEFAULT_EXPORT_FILENAME}"`,
     },
   });
 }
