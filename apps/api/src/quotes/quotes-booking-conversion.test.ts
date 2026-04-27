@@ -84,6 +84,124 @@ test('accepted quote conversion creates booking with client company pax dates an
   assert.equal(bookingCreateData.days.create.length, 3);
 });
 
+test('accepted multi-country quote conversion creates booking with hotel and external package services', async () => {
+  let bookingCreateData: any;
+  const tx = {
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        status: 'ACCEPTED',
+        acceptedVersionId: 'version-1',
+        booking: null,
+      }),
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        quoteId: 'quote-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'FIT',
+          clientCompany: { id: 'company-1', name: 'Client Co' },
+          contact: { firstName: 'Lina', lastName: 'Haddad', email: 'lina@example.test' },
+          adults: 2,
+          children: 0,
+          roomCount: 1,
+          nightCount: 4,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [
+            { id: 'day-1', dayNumber: 1, title: 'Arrival Amman', description: 'Jordan arrival and hotel' },
+            { id: 'day-3', dayNumber: 3, title: 'Egypt extension', description: 'Partner Egypt program' },
+          ],
+          quoteItems: [
+            {
+              id: 'item-jordan-hotel',
+              itineraryId: 'day-1',
+              quantity: 2,
+              pricingDescription: 'Jordan hotel confirmed from contract',
+              totalCost: 240,
+              totalSell: 300,
+              service: {
+                name: 'Amman Hotel',
+                category: 'Hotel',
+                supplierId: 'supplier-hotel',
+              },
+            },
+            {
+              id: 'item-egypt-package',
+              itineraryId: 'day-3',
+              quantity: 1,
+              pricingDescription: 'Egypt external package | per group',
+              totalCost: 900,
+              totalSell: 1170,
+              service: {
+                name: 'Egypt Cairo Extension',
+                category: 'External Package',
+                supplierId: 'supplier-egypt',
+              },
+            },
+          ],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async ({ where }: any) =>
+        [
+          { id: 'supplier-hotel', name: 'Jordan Hotel Supplier' },
+          { id: 'supplier-egypt', name: 'Egypt Partner DMC' },
+        ].filter((supplier) => where.id.in.includes(supplier.id)),
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return {
+          id: 'booking-1',
+          bookingRef: data.bookingRef,
+          quoteId: data.quoteId,
+          ...data,
+        };
+      },
+    },
+    bookingPassenger: {
+      create: async () => ({ id: 'passenger-1' }),
+    },
+    bookingRoomingEntry: {
+      create: async () => ({ id: 'room-1' }),
+    },
+    bookingRoomingAssignment: {
+      create: async () => ({}),
+    },
+  };
+  const service = createQuotesService({
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  await service.convertToBooking('quote-1', { companyId: 'company-1' });
+
+  assert.equal(bookingCreateData.clientCompanyId, 'company-1');
+  assert.equal(bookingCreateData.pax, 2);
+  assert.equal(bookingCreateData.days.create.length, 5);
+  assert.equal(bookingCreateData.services.create.length, 2);
+
+  const hotelService = bookingCreateData.services.create.find((entry: any) => entry.sourceQuoteItemId === 'item-jordan-hotel');
+  assert.equal(hotelService.operationType, 'HOTEL');
+  assert.equal(hotelService.supplierId, 'supplier-hotel');
+  assert.equal(hotelService.supplierName, 'Jordan Hotel Supplier');
+  assert.equal(hotelService.totalCost, 240);
+  assert.equal(hotelService.totalSell, 300);
+
+  const externalPackageService = bookingCreateData.services.create.find((entry: any) => entry.sourceQuoteItemId === 'item-egypt-package');
+  assert.equal(externalPackageService.operationType, 'EXTERNAL_PACKAGE');
+  assert.equal(externalPackageService.serviceType, 'External Package');
+  assert.equal(externalPackageService.supplierId, 'supplier-egypt');
+  assert.equal(externalPackageService.supplierName, 'Egypt Partner DMC');
+  assert.equal(externalPackageService.description, 'Egypt Cairo Extension');
+  assert.equal(externalPackageService.notes, 'Egypt external package | per group');
+  assert.equal(externalPackageService.totalCost, 900);
+  assert.equal(externalPackageService.totalSell, 1170);
+});
+
 test('buildBookingServicesFromAcceptedVersion carries resolved supplier and ready status into booking services', async () => {
   const service = createQuotesService();
 

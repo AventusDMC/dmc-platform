@@ -419,7 +419,7 @@ export class BookingsController {
     return new StreamableFile(pdfBuffer);
   }
 
-  @Get(':id/passengers/export.xlsx')
+  @Get(':id/passengers/export')
   @Roles('admin', 'operations')
   async downloadPassengerManifestExcel(
     @Param('id') id: string,

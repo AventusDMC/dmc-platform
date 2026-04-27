@@ -1,8 +1,10 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
 import * as XLSX from 'xlsx';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { mapQuoteToProposalV3 } from '../quotes/proposal-v3.mapper';
 const { BookingsService } = require('./bookings.service');
+const { BookingsController } = require('./bookings.controller');
 
 function createService(prisma: any) {
   return new BookingsService(prisma, { log: async () => null });
@@ -48,6 +50,32 @@ function capturePdfText(service: any) {
 
   return lines;
 }
+
+test('passenger manifest export route uses extensionless URL and Excel response headers', async () => {
+  const routePath = (Reflect as any).getMetadata(PATH_METADATA, BookingsController.prototype.downloadPassengerManifestExcel);
+  assert.equal(routePath, ':id/passengers/export');
+
+  const controller = new BookingsController(
+    {
+      exportPassengerManifestExcel: async () => ({
+        fileName: 'BK-1-passenger-manifest.xlsx',
+        buffer: Buffer.from('excel'),
+      }),
+    },
+    {},
+  );
+  const headers: Record<string, string> = {};
+  const response = {
+    setHeader: (name: string, value: string) => {
+      headers[name] = value;
+    },
+  };
+
+  await controller.downloadPassengerManifestExcel('booking-1', { companyId: 'company-1' }, response);
+
+  assert.equal(headers['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.equal(headers['Content-Disposition'], 'attachment; filename="BK-1-passenger-manifest.xlsx"');
+});
 
 test('passenger manifest validates required fields and dates', async () => {
   const service = createService({
