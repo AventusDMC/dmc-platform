@@ -7,6 +7,13 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
 import { QuoteItemsForm } from './QuoteItemsForm';
+import {
+  ExternalPackageFormState,
+  ExternalPackagePricingBasis,
+  getExternalPackageClientLines,
+  getExternalPackageInternalLines,
+  isExternalPackageCategory,
+} from './external-package-ui';
 
 type SupplierService = {
   id: string;
@@ -96,6 +103,7 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   roomCategory: {
@@ -152,6 +160,18 @@ type QuoteItem = {
   useOverride: boolean;
   currency: string;
   pricingDescription: string | null;
+  externalPackageCountry?: string | null;
+  externalSupplierName?: string | null;
+  externalStartDay?: number | null;
+  externalEndDay?: number | null;
+  externalStartDate?: string | null;
+  externalEndDate?: string | null;
+  externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+  externalNetCost?: number | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalInternalNotes?: string | null;
+  externalClientDescription?: string | null;
   jordanPassCovered?: boolean;
   jordanPassSavingsJod?: number;
   markupPercent: number;
@@ -257,6 +277,7 @@ type QuoteItemCardProps = {
     guideType: 'local' | 'escort';
     guideDuration: 'half_day' | 'full_day';
     overnight: 'no' | 'yes';
+    externalPackage?: ExternalPackageFormState;
   };
 };
 
@@ -308,6 +329,14 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
   }
 
   return `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
+}
+
+function isExternalPackageItem(item: Pick<QuoteItem, 'service'>) {
+  return isExternalPackageCategory(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+}
+
+function toDateInputValue(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : '';
 }
 
 function formatRatePolicy(policy: NonNullable<HotelContract['ratePolicies']>[number], fallbackCurrency: string) {
@@ -370,10 +399,13 @@ export function QuoteItemCard({
   const [suggestionsError, setSuggestionsError] = useState('');
   const [assigningServiceId, setAssigningServiceId] = useState('');
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
+  const isExternalPackage = isExternalPackageItem(currentItem);
   const hotelItemSummary = getHotelItemSummary(currentItem);
   const selectedContract = currentItem.contractId ? hotelContracts.find((contract) => contract.id === currentItem.contractId) || null : null;
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
   const marginMetrics = getMarginMetrics(currentItem);
+  const externalPackageInternalLines = isExternalPackage ? getExternalPackageInternalLines(currentItem) : [];
+  const externalPackageClientLines = isExternalPackage ? getExternalPackageClientLines(currentItem) : [];
   const itineraryDayNumber = currentItem.itineraryId
     ? quote.itineraries.find((day) => day.id === currentItem.itineraryId)?.dayNumber ?? null
     : null;
@@ -430,8 +462,23 @@ export function QuoteItemCard({
     () => ({
       ...initialValues,
       serviceId: currentItem.service.id,
+      externalPackage: {
+        country: currentItem.externalPackageCountry || '',
+        supplierName: currentItem.externalSupplierName || '',
+        startDay: currentItem.externalStartDay !== null && currentItem.externalStartDay !== undefined ? String(currentItem.externalStartDay) : '',
+        endDay: currentItem.externalEndDay !== null && currentItem.externalEndDay !== undefined ? String(currentItem.externalEndDay) : '',
+        startDate: toDateInputValue(currentItem.externalStartDate),
+        endDate: toDateInputValue(currentItem.externalEndDate),
+        pricingBasis: (currentItem.externalPricingBasis === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON') as ExternalPackagePricingBasis,
+        netCost: currentItem.externalNetCost !== null && currentItem.externalNetCost !== undefined ? String(currentItem.externalNetCost) : '',
+        currency: currentItem.currency || quote.quoteCurrency || 'USD',
+        includes: currentItem.externalIncludes || '',
+        excludes: currentItem.externalExcludes || '',
+        internalNotes: currentItem.externalInternalNotes || '',
+        clientDescription: currentItem.externalClientDescription || '',
+      },
     }),
-    [currentItem.service.id, initialValues],
+    [currentItem, initialValues, quote.quoteCurrency],
   );
 
   async function handleAssign(serviceId: string) {
@@ -478,6 +525,22 @@ export function QuoteItemCard({
               {currentItem.pricingDescription ||
                 `Qty ${currentItem.quantity} at ${formatMoney(getFinalItemCost(currentItem), currentItem.currency)}`}
             </p>
+          ) : null}
+          {isExternalPackage && externalPackageInternalLines.length > 0 ? (
+            <div className="quote-preview-total-list">
+              {externalPackageInternalLines.map((line) => {
+                const [label, ...valueParts] = line.split(': ');
+                return (
+                  <div key={line}>
+                    <span>{label}</span>
+                    <strong>{valueParts.join(': ')}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {isExternalPackage && externalPackageClientLines.length > 0 ? (
+            <p>{externalPackageClientLines.join(' | ')}</p>
           ) : null}
           <p>
             Quote currency {currentItem.quoteCurrency || quote.quoteCurrency || currentItem.currency} | Base {formatMoney(currentItem.baseCost, currentItem.currency)}

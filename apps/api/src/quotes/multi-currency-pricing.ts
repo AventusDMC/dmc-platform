@@ -51,8 +51,12 @@ function normalizeCurrency(
 ): SupportedCurrency {
   const currency = value?.trim().toUpperCase() as SupportedCurrency | undefined;
 
-  if (!currency || !(currency in FX_TO_USD)) {
+  if (!currency) {
     return fallback;
+  }
+
+  if (!(currency in FX_TO_USD)) {
+    throw new Error(`${fieldName} must be one of USD, EUR, or JOD`);
   }
 
   return currency;

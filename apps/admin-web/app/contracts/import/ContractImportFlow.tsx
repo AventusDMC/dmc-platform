@@ -211,6 +211,18 @@ function formatAgeRange(policy: RatePolicyPreview) {
   return 'eligible';
 }
 
+function normalizePricingBasis(value: unknown): 'PER_PERSON' | 'PER_ROOM' | undefined {
+  const raw = String(value || '').trim();
+  if (!raw) return undefined;
+  if (/\bper\s+person\b|\bpp\b|\bper\s+pax\b/i.test(raw)) return 'PER_PERSON';
+  if (/\bper\s+room\b|\bper\s+unit\b/i.test(raw)) return 'PER_ROOM';
+
+  const normalized = raw.replace(/[\s-]+/g, '_').toUpperCase();
+  if (normalized === 'PER_PERSON' || normalized === 'PERSON' || normalized === 'PAX') return 'PER_PERSON';
+  if (normalized === 'PER_ROOM' || normalized === 'ROOM' || normalized === 'UNIT') return 'PER_ROOM';
+  return undefined;
+}
+
 function formatChildPolicy(policy: RatePolicyPreview) {
   const policyType = String(policy.policyType || '').trim().toUpperCase();
   const ageRange = formatAgeRange(policy);
@@ -267,7 +279,7 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
         seasonTo: rate.seasonTo || '',
         cost: typeof rate.cost === 'number' ? rate.cost : Number(rate.cost ?? rate.price ?? rate.rate) || undefined,
         currency: rate.currency || contract.currency || source.currency || 'JOD',
-        pricingBasis: rate.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
+        pricingBasis: normalizePricingBasis(rate.pricingBasis),
         salesTaxPercent: rate.salesTaxPercent ?? null,
         serviceChargePercent: rate.serviceChargePercent ?? null,
         salesTaxIncluded: rate.salesTaxIncluded ?? null,
@@ -285,7 +297,7 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
         amount: policy.amount ?? null,
         percent: policy.percent ?? null,
         currency: policy.currency || contract.currency || source.currency || 'JOD',
-        pricingBasis: policy.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
+        pricingBasis: normalizePricingBasis(policy.pricingBasis),
         mealPlan: policy.mealPlan || null,
         notes: policy.notes || null,
       }))
@@ -323,7 +335,7 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
       ? source.supplements.map((supplement: any) => ({
           name: supplement.name || supplement.type || 'Supplement',
           amount: supplement.amount ?? supplement.cost ?? null,
-          pricingBasis: supplement.pricingBasis === 'PER_PERSON' ? 'PER_PERSON' : 'PER_ROOM',
+          pricingBasis: normalizePricingBasis(supplement.pricingBasis),
           notes: supplement.notes || supplement.chargeBasis || undefined,
           uncertain: Boolean(supplement.uncertain),
         }))

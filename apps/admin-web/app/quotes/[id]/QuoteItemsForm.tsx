@@ -8,6 +8,16 @@ import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
+import {
+  buildExternalPackagePayload,
+  createEmptyExternalPackageFormState,
+  EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS,
+  ExternalPackageFormState,
+  ExternalPackagePricingBasis,
+  getExternalPackageCalculatedCost,
+  isExternalPackageCategory,
+  validateExternalPackageFormState,
+} from './external-package-ui';
 
 type SupplierService = {
   id: string;
@@ -65,6 +75,7 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   roomCategory: {
@@ -208,6 +219,7 @@ type QuoteItemInitialValues = {
   guideType: 'local' | 'escort';
   guideDuration: 'half_day' | 'full_day';
   overnight: 'no' | 'yes';
+  externalPackage?: ExternalPackageFormState;
 };
 
 type HotelRateReference = {
@@ -322,6 +334,7 @@ const SERVICE_TYPE_BUTTONS = [
   { key: 'guide', label: 'Add Guide' },
   { key: 'activity', label: 'Add Activity' },
   { key: 'meal', label: 'Add Meal' },
+  { key: 'externalPackage', label: 'Add External Package' },
   { key: 'other', label: 'Add Other' },
 ] as const;
 
@@ -351,6 +364,10 @@ function getServiceCategorySource(service: Pick<SupplierService, 'category' | 's
 
 function getServiceTypeKey(service: Pick<SupplierService, 'category' | 'serviceType'>): ServiceTypeKey {
   const normalized = normalizeCategory(getServiceCategorySource(service));
+
+  if (isExternalPackageCategory(getServiceCategorySource(service))) {
+    return 'externalPackage';
+  }
 
   if (normalized.includes('hotel') || normalized.includes('accommodation')) {
     return 'hotel';
@@ -393,6 +410,10 @@ function getServiceTypeKeyFromText(value: string | null | undefined): ServiceTyp
 
   if (!normalized) {
     return null;
+  }
+
+  if (isExternalPackageCategory(value)) {
+    return 'externalPackage';
   }
 
   if (normalized.includes('hotel') || normalized.includes('accommodation')) {
@@ -502,6 +523,10 @@ function formatRatePolicy(policy: NonNullable<HotelContract['ratePolicies']>[num
   return [title, ageRange, value, policy.mealPlan || '', policy.notes || ''].filter(Boolean).join(' | ');
 }
 
+function formatHotelRatePricingBasis(value: HotelRate['pricingBasis']) {
+  return value === 'PER_PERSON' ? 'per person/night' : 'per room/night';
+}
+
 export function QuoteItemsForm({
   apiBaseUrl,
   quoteId,
@@ -594,6 +619,9 @@ export function QuoteItemsForm({
   const [guideType, setGuideType] = useState<'local' | 'escort'>(initialValues?.guideType || 'local');
   const [guideDuration, setGuideDuration] = useState<'half_day' | 'full_day'>(initialValues?.guideDuration || 'full_day');
   const [overnight, setOvernight] = useState<'no' | 'yes'>(initialValues?.overnight || 'no');
+  const [externalPackage, setExternalPackage] = useState<ExternalPackageFormState>(
+    initialValues?.externalPackage || createEmptyExternalPackageFormState(initialService?.currency || 'USD'),
+  );
   const [mealName, setMealName] = useState('');
   const [mealCost, setMealCost] = useState('');
   const [mealCurrency, setMealCurrency] = useState('USD');
@@ -714,6 +742,7 @@ export function QuoteItemsForm({
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
+  const isExternalPackageService = selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false;
 
   useEffect(() => {
     if (!isTransportService || process.env.NODE_ENV === 'production') {
@@ -786,8 +815,20 @@ export function QuoteItemsForm({
     ) || null;
   const hotelCheckInDate = isHotelService ? serviceDate || travelStartDate?.slice(0, 10) || '' : '';
   const hotelCheckOutDate = hotelCheckInDate ? addDaysToDateString(hotelCheckInDate, Math.max(1, Number(nightCount || 1))) : '';
-  const displayCurrency = isMealService ? mealCurrency : preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
+  const displayCurrency = isExternalPackageService
+    ? externalPackage.currency
+    : isMealService
+      ? mealCurrency
+      : preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
   const finalCost = useMemo(() => {
+    if (isExternalPackageService) {
+      if (useOverride && overrideCost.trim()) {
+        return Number(overrideCost);
+      }
+
+      return getExternalPackageCalculatedCost(externalPackage, Number(paxCount || defaultPaxCount || 1));
+    }
+
     if (isMealService) {
       const unitCost = Number(mealCost || 0);
       const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
@@ -799,7 +840,7 @@ export function QuoteItemsForm({
     }
 
     return baseCost ? Number(baseCost) : null;
-  }, [baseCost, defaultPaxCount, isMealService, mealCost, overrideCost, paxCount, useOverride]);
+  }, [baseCost, defaultPaxCount, externalPackage, isExternalPackageService, isMealService, mealCost, overrideCost, paxCount, useOverride]);
   const finalSellPrice = useMemo(() => {
     if (sellPrice.trim()) {
       return Number(sellPrice);
@@ -916,6 +957,15 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (isExternalPackageService) {
+      setExternalPackage((current) => ({
+        ...current,
+        currency: current.currency || selectedService.currency || 'USD',
+      }));
+      setBaseCost(externalPackage.netCost.trim() || String(selectedService.baseCost || ''));
+      return;
+    }
+
     if (isMealService) {
       if (!mealName.trim()) {
         setMealName(selectedService.name);
@@ -936,8 +986,10 @@ export function QuoteItemsForm({
     guideType,
     isGuideService,
     isHotelService,
+    isExternalPackageService,
     isMealService,
     isTransportService,
+    externalPackage.netCost,
     hotelCostCalculation,
     mealCost,
     mealCurrency,
@@ -1366,7 +1418,7 @@ export function QuoteItemsForm({
         occupancyType,
         cost: String(selectedHotelRate.cost),
         currency: selectedHotelRate.currency,
-        note: effectiveSeasonName || 'Contract rate',
+        note: `${effectiveSeasonName || 'Contract rate'} | ${formatHotelRatePricingBasis(selectedHotelRate.pricingBasis)}`,
       }
     : hotelRateReference
       ? {
@@ -1460,6 +1512,13 @@ export function QuoteItemsForm({
         }
       }
 
+      if (isExternalPackageService) {
+        const validationErrors = validateExternalPackageFormState(externalPackage);
+        if (validationErrors.length > 0) {
+          throw new Error(validationErrors[0]);
+        }
+      }
+
       if (useOverride && !overrideCost.trim()) {
         throw new Error('Override cost is required when override is enabled.');
       }
@@ -1537,12 +1596,13 @@ export function QuoteItemsForm({
           mealPlan: isHotelService ? mealPlan : undefined,
           customServiceName: isMealService ? mealName.trim() : undefined,
           unitCost: isMealService ? Number(mealCost) : undefined,
-          pricingBasis: isMealService ? 'PER_PERSON' : undefined,
+          pricingBasis: isMealService ? 'PER_PERSON' : isExternalPackageService ? externalPackage.pricingBasis : undefined,
+          ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
           quantity: Number(quantity),
           paxCount: Number(paxCount),
-          roomCount: isTransportService || isGuideService || isMealService ? undefined : Number(roomCount),
-          nightCount: isTransportService || isGuideService || isMealService ? undefined : Number(nightCount),
-          dayCount: isTransportService || isGuideService || isMealService ? undefined : Number(dayCount),
+          roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
+          nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
+          dayCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
           overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
           overrideReason: useOverride ? overrideReason.trim() || null : null,
           useOverride,
@@ -1555,7 +1615,7 @@ export function QuoteItemsForm({
           guideType: isGuideService ? guideType : undefined,
           guideDuration: isGuideService ? guideDuration : undefined,
           overnight: isGuideService ? overnight === 'yes' : undefined,
-          currency: isMealService ? mealCurrency.trim().toUpperCase() : undefined,
+          currency: isMealService ? mealCurrency.trim().toUpperCase() : isExternalPackageService ? externalPackage.currency.trim().toUpperCase() : undefined,
         }),
       });
 
@@ -1603,6 +1663,7 @@ export function QuoteItemsForm({
         setMealName('');
         setMealCost('');
         setMealCurrency('USD');
+        setExternalPackage(createEmptyExternalPackageFormState(selectedService?.currency || 'USD'));
         setActiveServiceType(null);
       }
       router.refresh();
@@ -1690,7 +1751,9 @@ export function QuoteItemsForm({
                   ? 'Activity selector'
                   : activeServiceType === 'meal'
                     ? 'Meal service'
-                  : 'Service'}
+                    : activeServiceType === 'externalPackage'
+                      ? 'External package service'
+                      : 'Service'}
               <select
                 value={serviceId}
                 onChange={(event) => {
@@ -1745,7 +1808,7 @@ export function QuoteItemsForm({
               />
             </label>
 
-            {!isTransportService && !isMealService ? (
+            {!isTransportService && !isMealService && !isExternalPackageService ? (
               <label>
                 Contract price / base cost
                 <input
@@ -1765,7 +1828,7 @@ export function QuoteItemsForm({
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService && !isMealService ? (
+            {!isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
               <label>
                 Day count
                 <input value={dayCount} onChange={(event) => setDayCount(event.target.value)} type="number" min="1" required />
@@ -1865,14 +1928,14 @@ export function QuoteItemsForm({
               <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
             </label>
 
-            {!isHotelService && !isTransportService && !isGuideService && !isMealService ? (
+            {!isHotelService && !isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
               <label>
                 Room count
                 <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService && !isMealService ? (
+            {!isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
               <label>
                 Night count
                 <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
@@ -1947,6 +2010,165 @@ export function QuoteItemsForm({
               {resolvedMealServiceDate && !serviceDate ? (
                 <p className="form-helper">Resolved from travel start date and itinerary day: {resolvedMealServiceDate}</p>
               ) : null}
+            </>
+          ) : null}
+
+          {isExternalPackageService ? (
+            <>
+              <div className="form-row form-row-4">
+                <label>
+                  Country
+                  <input
+                    value={externalPackage.country}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, country: event.target.value }))}
+                    placeholder="Egypt"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Supplier name
+                  <input
+                    value={externalPackage.supplierName}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, supplierName: event.target.value }))}
+                    placeholder="Internal supplier"
+                  />
+                </label>
+
+                <label>
+                  Start day
+                  <input
+                    value={externalPackage.startDay}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, startDay: event.target.value }))}
+                    type="number"
+                    min="1"
+                  />
+                </label>
+
+                <label>
+                  End day
+                  <input
+                    value={externalPackage.endDay}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, endDay: event.target.value }))}
+                    type="number"
+                    min="1"
+                  />
+                </label>
+              </div>
+
+              <div className="form-row form-row-4">
+                <label>
+                  Start date
+                  <input
+                    value={externalPackage.startDate}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, startDate: event.target.value }))}
+                    type="date"
+                  />
+                </label>
+
+                <label>
+                  End date
+                  <input
+                    value={externalPackage.endDate}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, endDate: event.target.value }))}
+                    type="date"
+                  />
+                </label>
+
+                <label>
+                  Pricing basis
+                  <select
+                    value={externalPackage.pricingBasis}
+                    onChange={(event) =>
+                      setExternalPackage((current) => ({
+                        ...current,
+                        pricingBasis: event.target.value as ExternalPackagePricingBasis,
+                      }))
+                    }
+                    required
+                  >
+                    {EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Currency
+                  <input
+                    value={externalPackage.currency}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
+                    maxLength={3}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="form-row form-row-3">
+                <label>
+                  Net cost
+                  <input
+                    value={externalPackage.netCost}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, netCost: event.target.value }))}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </label>
+
+                <div className="quote-item-override-status quote-item-override-status-active">
+                  <strong>External package cost</strong>
+                  <span>
+                    {finalCost !== null && Number.isFinite(finalCost)
+                      ? `${displayCurrency} ${finalCost.toFixed(2)} ${externalPackage.pricingBasis === 'PER_PERSON' ? `for ${Math.max(1, Number(paxCount || defaultPaxCount || 1))} pax` : 'per group'}`
+                      : 'Enter net cost'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="form-row form-row-3">
+                <label>
+                  Client description
+                  <textarea
+                    value={externalPackage.clientDescription}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, clientDescription: event.target.value }))}
+                    placeholder="Client-facing program description"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Includes
+                  <textarea
+                    value={externalPackage.includes}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, includes: event.target.value }))}
+                    placeholder="Client-facing inclusions"
+                  />
+                </label>
+
+                <label>
+                  Excludes
+                  <textarea
+                    value={externalPackage.excludes}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, excludes: event.target.value }))}
+                    placeholder="Client-facing exclusions"
+                  />
+                </label>
+              </div>
+
+              <div className="form-row">
+                <label>
+                  Internal notes
+                  <textarea
+                    value={externalPackage.internalNotes}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, internalNotes: event.target.value }))}
+                    placeholder="Internal only"
+                  />
+                </label>
+              </div>
             </>
           ) : null}
 

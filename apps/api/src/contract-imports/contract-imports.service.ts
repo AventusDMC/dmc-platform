@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import {
   ChildPolicyChargeBasis,
   ContractImportStatus,
@@ -15,6 +15,7 @@ import {
 import { readFileSync } from 'fs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedActor } from '../auth/auth.types';
+import { requireActorCompanyId } from '../auth/company-scope';
 
 type AnalyzeInput = {
   contractType?: 'HOTEL' | 'TRANSPORT' | 'ACTIVITY';
@@ -150,12 +151,31 @@ type ContractPreview = {
   uncertainFields: string[];
 };
 
+const HOTEL_MEAL_PLAN_VALUES = ['RO', 'BB', 'HB', 'FB', 'AI'];
+const HOTEL_SUPPLEMENT_TYPE_VALUES = [
+  'EXTRA_BED',
+  'EXTRA_BREAKFAST',
+  'EXTRA_LUNCH',
+  'EXTRA_DINNER',
+  'GALA_DINNER',
+  'MANDATORY_SUPPLEMENT',
+  'OPTIONAL_SUPPLEMENT',
+];
+const HOTEL_CONTRACT_CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'];
+const CHILD_POLICY_CHARGE_BASIS_VALUES = ['FREE', 'PERCENT_OF_ADULT', 'FIXED_AMOUNT'];
+const SUPPORTED_CONTRACT_CURRENCIES = ['USD', 'EUR', 'JOD'];
+
 @Injectable()
 export class ContractImportsService {
+  private readonly logger = new Logger(ContractImportsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(actor?: AuthenticatedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const scopedUserIds = await this.findCompanyUserIds(companyId);
     const records: any[] = await (this.prisma as any).contractImport.findMany({
+      where: this.buildImportOwnershipWhere(scopedUserIds),
       orderBy: [{ createdAt: 'desc' }],
       include: {
         auditLogs: {
@@ -266,7 +286,7 @@ export class ContractImportsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, actor?: AuthenticatedActor) {
     const record = await (this.prisma as any).contractImport.findUnique({
       where: { id },
       include: {
@@ -278,18 +298,24 @@ export class ContractImportsService {
     if (!record) {
       throw new BadRequestException('Contract import not found');
     }
+    await this.assertImportAccess(record, actor);
     return record;
   }
 
   async approve(id: string, approvedData: unknown, actor: AuthenticatedActor, approvalMode?: ContractImportApprovalMode) {
     try {
-      const record = await this.findOne(id);
-      if (
-        record.status !== ContractImportStatus.ANALYZED &&
-        record.status !== ContractImportStatus.APPROVED &&
-        record.status !== ContractImportStatus.FAILED
-      ) {
+      const record = await this.findOne(id, actor);
+      if (record.status !== ContractImportStatus.ANALYZED) {
         throw new BadRequestException('Only analyzed imports can be approved');
+      }
+      if (typeof (this.prisma.contractImport as any).updateMany === 'function') {
+        const claim = await (this.prisma.contractImport as any).updateMany({
+          where: { id, status: ContractImportStatus.ANALYZED },
+          data: { status: ContractImportStatus.APPROVED },
+        });
+        if (claim.count !== 1) {
+          throw new ConflictException('Contract import approval is already in progress or completed');
+        }
       }
 
       const preview = this.normalizeApprovedPreview(approvedData || record.extractedJson);
@@ -308,13 +334,13 @@ export class ContractImportsService {
         await this.writeAuditLog(id, 'FAILED', ContractImportStatus.FAILED, actor, {
           blockers: blockingWarnings,
         });
-        throw new BadRequestException(blockingWarnings.map((warning) => warning.message).join('; '));
+        throw new BadRequestException(blockingWarnings.map((warning) => `${warning.field}: ${warning.message}`).join('; '));
       }
 
       let importedEntityId: string;
       try {
         console.log('[contract-imports/approve] starting import', this.buildApprovalDebugContext(id, preview));
-        importedEntityId = await this.importApprovedPreview(preview, record, approvalMode);
+        importedEntityId = await this.importApprovedPreviewTransactionally(preview, record, approvalMode);
       } catch (error) {
         if (error instanceof ConflictException) {
           throw error;
@@ -371,12 +397,15 @@ export class ContractImportsService {
       if (error instanceof Error) {
         console.error(error.stack);
       }
+      if (error instanceof ConflictException) {
+        throw error;
+      }
       throw new BadRequestException(`Contract import approval failed: ${message}`);
     }
   }
 
   async reimport(id: string, actor: AuthenticatedActor) {
-    const record = await this.findOne(id);
+    const record = await this.findOne(id, actor);
     const sourceData = record.approvedJson || record.extractedJson;
     if (!sourceData) {
       throw new BadRequestException('No reviewed import data is available to re-import');
@@ -410,8 +439,8 @@ export class ContractImportsService {
     return updated;
   }
 
-  async exportExcel(id: string) {
-    const record = await this.findOne(id);
+  async exportExcel(id: string, actor?: AuthenticatedActor) {
+    const record = await this.findOne(id, actor);
     if (!record.extractedJson) {
       throw new BadRequestException('No extracted contract data is available to export');
     }
@@ -548,6 +577,24 @@ export class ContractImportsService {
     }
 
     return this.importServicePreview(preview, supplier.id, record.sourceFileName);
+  }
+
+  private async importApprovedPreviewTransactionally(
+    preview: ContractPreview,
+    record: { supplierId: string | null; sourceFileName: string; sourceFilePath: string },
+    approvalMode?: ContractImportApprovalMode,
+  ) {
+    if (typeof (this.prisma as any).$transaction !== 'function') {
+      return this.importApprovedPreview(preview, record, approvalMode);
+    }
+
+    return (this.prisma as any).$transaction(
+      async (tx: PrismaService) => {
+        const transactionalService = new ContractImportsService(tx);
+        return transactionalService.importApprovedPreview(preview, record, approvalMode);
+      },
+      { timeout: 30000 },
+    );
   }
 
   private buildApprovalDebugContext(id: string, preview: ContractPreview) {
@@ -1683,8 +1730,8 @@ export class ContractImportsService {
     const contractData = {
       hotelId: hotel.id,
       name: preview.contract.name.trim(),
-      validFrom: new Date(preview.contract.validFrom),
-      validTo: new Date(preview.contract.validTo),
+      validFrom: this.parseDateOnly(preview.contract.validFrom) || new Date(preview.contract.validFrom),
+      validTo: this.parseDateOnly(preview.contract.validTo) || new Date(preview.contract.validTo),
       currency: preview.contract.currency.trim().toUpperCase(),
       ratePolicies: (preview.ratePolicies || []) as unknown as Prisma.InputJsonValue,
     };
@@ -1743,6 +1790,7 @@ export class ContractImportsService {
           mealPlan: this.hotelMealPlan(rate.mealPlan),
         },
       });
+      const pricingBasis = this.hotelRatePricingBasis(rate.pricingBasis);
       const rateData = {
         contractId: contract.id,
         hotelId: hotel.id,
@@ -1754,10 +1802,10 @@ export class ContractImportsService {
         occupancyType: this.hotelOccupancy(rate.occupancyType),
         mealPlan: this.hotelMealPlan(rate.mealPlan),
         pricingMode:
-          rate.pricingBasis === HotelRatePricingBasis.PER_PERSON
+          pricingBasis === HotelRatePricingBasis.PER_PERSON
             ? HotelRatePricingMode.PER_PERSON_PER_NIGHT
             : HotelRatePricingMode.PER_ROOM_PER_NIGHT,
-        pricingBasis: this.hotelRatePricingBasis(rate.pricingBasis),
+        pricingBasis,
         currency: rate.currency || preview.contract.currency,
         cost: rate.cost,
         costBaseAmount: rate.cost,
@@ -1773,6 +1821,9 @@ export class ContractImportsService {
       } else {
         await this.prisma.hotelRate.create({ data: rateData });
       }
+      this.logger.debug(
+        `Imported hotel rate pricingBasis persisted as ${pricingBasis} for contract=${contract.id} roomCategory=${roomCategoryId} occupancy=${rateData.occupancyType} mealPlan=${rateData.mealPlan}`,
+      );
     }
 
     for (const supplement of preview.supplements || []) {
@@ -2107,6 +2158,20 @@ export class ContractImportsService {
     if (!preview.contract.validTo) {
       warnings.push({ severity: 'blocker', field: 'contract.validTo', message: 'Contract valid to date is required' });
     }
+    const contractValidFrom = preview.contract.validFrom ? this.parseDateOnly(preview.contract.validFrom) : null;
+    const contractValidTo = preview.contract.validTo ? this.parseDateOnly(preview.contract.validTo) : null;
+    if (preview.contract.validFrom && !contractValidFrom) {
+      warnings.push({ severity: 'blocker', field: 'contract.validFrom', message: `Invalid contract valid from date: ${preview.contract.validFrom}` });
+    }
+    if (preview.contract.validTo && !contractValidTo) {
+      warnings.push({ severity: 'blocker', field: 'contract.validTo', message: `Invalid contract valid to date: ${preview.contract.validTo}` });
+    }
+    if (contractValidFrom && contractValidTo && contractValidFrom > contractValidTo) {
+      warnings.push({ severity: 'blocker', field: 'contract.validTo', message: 'Contract valid to date cannot be before valid from date' });
+    }
+    if (!this.isSupportedCurrency(preview.contract.currency)) {
+      warnings.push({ severity: 'blocker', field: 'contract.currency', message: `Unsupported contract currency: ${preview.contract.currency}` });
+    }
     if (preview.contractType === ContractImportType.HOTEL && !preview.hotel?.name?.trim()) {
       warnings.push({ severity: 'blocker', field: 'hotel.name', message: 'Hotel name is required for hotel contract import' });
     }
@@ -2119,6 +2184,47 @@ export class ContractImportsService {
           ? `Parser read ${preview.parserDiagnostics?.parsedTextLineCount} text lines but extracted zero rates. Check backend parser patterns before blaming UI rendering.`
           : 'No rates were extracted. Add rates before approval if pricing should be imported.',
       });
+    }
+    for (const [index, rate] of (preview.rates || []).entries()) {
+      const field = `rates.${index + 1}`;
+      if (rate.cost === null || rate.cost === undefined || !Number.isFinite(Number(rate.cost))) {
+        warnings.push({ severity: 'blocker', field: `${field}.cost`, message: `Rate ${index + 1} cost is required` });
+      }
+      if (rate.seasonFrom && !this.parseDateOnly(rate.seasonFrom)) {
+        warnings.push({ severity: 'blocker', field: `${field}.seasonFrom`, message: `Invalid rate ${index + 1} season from date: ${rate.seasonFrom}` });
+      }
+      if (rate.seasonTo && !this.parseDateOnly(rate.seasonTo)) {
+        warnings.push({ severity: 'blocker', field: `${field}.seasonTo`, message: `Invalid rate ${index + 1} season to date: ${rate.seasonTo}` });
+      }
+      if (rate.currency && !this.isSupportedCurrency(rate.currency)) {
+        warnings.push({ severity: 'blocker', field: `${field}.currency`, message: `Unsupported rate currency for rate ${index + 1}: ${rate.currency}` });
+      }
+      const normalizedMealPlan = String(rate.mealPlan || '').trim().toUpperCase();
+      if (normalizedMealPlan && !HOTEL_MEAL_PLAN_VALUES.includes(normalizedMealPlan)) {
+        warnings.push({ severity: 'blocker', field: `${field}.mealPlan`, message: `Unknown meal plan for rate ${index + 1}: ${rate.mealPlan}` });
+      }
+    }
+    for (const [index, supplement] of (preview.supplements || []).entries()) {
+      const field = `supplements.${index + 1}`;
+      if (supplement.amount === null || supplement.amount === undefined || !Number.isFinite(Number(supplement.amount))) {
+        warnings.push({ severity: 'blocker', field: `${field}.amount`, message: `Supplement ${index + 1} amount is required` });
+      }
+      if (supplement.type && !this.normalizeHotelSupplementType(supplement.type)) {
+        warnings.push({ severity: 'blocker', field: `${field}.type`, message: `Unknown supplement type for supplement ${index + 1}: ${supplement.type}` });
+      }
+      if (supplement.chargeBasis && !this.normalizeHotelChargeBasis(supplement.chargeBasis)) {
+        warnings.push({ severity: 'blocker', field: `${field}.chargeBasis`, message: `Unknown supplement charge basis for supplement ${index + 1}: ${supplement.chargeBasis}` });
+      }
+      if (supplement.currency && !this.isSupportedCurrency(supplement.currency)) {
+        warnings.push({ severity: 'blocker', field: `${field}.currency`, message: `Unsupported supplement currency for supplement ${index + 1}: ${supplement.currency}` });
+      }
+    }
+    for (const [index, band] of (preview.childPolicy?.bands || []).entries()) {
+      const field = `childPolicy.bands.${index + 1}`;
+      const normalizedChargeBasis = String(band.chargeBasis || '').trim().toUpperCase();
+      if (normalizedChargeBasis && !CHILD_POLICY_CHARGE_BASIS_VALUES.includes(normalizedChargeBasis)) {
+        warnings.push({ severity: 'blocker', field: `${field}.chargeBasis`, message: `Unknown child policy charge basis for band ${index + 1}: ${band.chargeBasis}` });
+      }
     }
     for (const [index, policy] of (preview.ratePolicies || []).entries()) {
       const field = `ratePolicies.${index + 1}`;
@@ -2278,6 +2384,7 @@ export class ContractImportsService {
       supplements: Array.isArray(value.supplements)
         ? value.supplements.map((supplement: any) => ({
             ...supplement,
+            amount: this.parseNumber(supplement.amount) ?? null,
             pricingBasis: this.normalizePricingBasis(supplement.pricingBasis),
           }))
         : [],
@@ -2335,20 +2442,32 @@ export class ContractImportsService {
   }
 
   private hotelSupplementType(value: unknown) {
+    return this.normalizeHotelSupplementType(value) || HotelContractSupplementType.EXTRA_BED;
+  }
+
+  private normalizeHotelSupplementType(value: unknown) {
     const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (HOTEL_SUPPLEMENT_TYPE_VALUES.includes(normalized)) return normalized as HotelContractSupplementType;
     if (normalized.includes('BREAKFAST')) return HotelContractSupplementType.EXTRA_BREAKFAST;
     if (normalized.includes('LUNCH')) return HotelContractSupplementType.EXTRA_LUNCH;
-    if (normalized.includes('DINNER') || normalized.includes('HALF')) return HotelContractSupplementType.EXTRA_DINNER;
     if (normalized.includes('GALA')) return HotelContractSupplementType.GALA_DINNER;
-    return HotelContractSupplementType.EXTRA_BED;
+    if (normalized.includes('DINNER') || normalized.includes('HALF')) return HotelContractSupplementType.EXTRA_DINNER;
+    if (normalized.includes('BED')) return HotelContractSupplementType.EXTRA_BED;
+    return null;
   }
 
   private hotelChargeBasis(value: unknown) {
-    const normalized = String(value || '').trim().toUpperCase();
+    return this.normalizeHotelChargeBasis(value) || HotelContractChargeBasis.PER_NIGHT;
+  }
+
+  private normalizeHotelChargeBasis(value: unknown) {
+    const normalized = String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
     if (normalized === 'PER_PERSON') return HotelContractChargeBasis.PER_PERSON;
     if (normalized === 'PER_ROOM') return HotelContractChargeBasis.PER_ROOM;
     if (normalized === 'PER_STAY') return HotelContractChargeBasis.PER_STAY;
-    return HotelContractChargeBasis.PER_NIGHT;
+    if (normalized === 'PER_NIGHT') return HotelContractChargeBasis.PER_NIGHT;
+    return null;
   }
 
   private cancellationPenaltyType(value: unknown) {
@@ -2658,11 +2777,16 @@ export class ContractImportsService {
     const normalized = raw.replace(/[\s-]+/g, '_').toUpperCase();
     if (normalized === 'PER_PERSON') return 'PER_PERSON';
     if (normalized === 'PER_ROOM') return 'PER_ROOM';
+    if (normalized === 'PERSON' || normalized === 'PAX') return 'PER_PERSON';
+    if (normalized === 'ROOM' || normalized === 'UNIT') return 'PER_ROOM';
     return undefined;
   }
 
   private hotelRatePricingBasis(value: unknown) {
-    return this.normalizePricingBasis(value) === 'PER_PERSON' ? HotelRatePricingBasis.PER_PERSON : HotelRatePricingBasis.PER_ROOM;
+    const normalized = this.normalizePricingBasis(value);
+    if (normalized === 'PER_PERSON') return HotelRatePricingBasis.PER_PERSON;
+    if (normalized === 'PER_ROOM') return HotelRatePricingBasis.PER_ROOM;
+    return HotelRatePricingBasis.PER_ROOM;
   }
 
   private normalizeRateSeasonBounds(rate: PreviewRate, contractValidFrom?: string | null, contractValidTo?: string | null) {
@@ -2691,6 +2815,19 @@ export class ContractImportsService {
   private parseDateOnly(value: unknown) {
     const raw = this.optionalString(value);
     if (!raw || /^start$|^end$|^imported$/i.test(raw)) return null;
+
+    const isoLike = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+    if (isoLike) {
+      const year = Number(isoLike[1]);
+      const month = Number(isoLike[2]);
+      const day = Number(isoLike[3]);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+      if (parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day) {
+        return parsed;
+      }
+      return null;
+    }
+
     const parsed = new Date(raw);
     if (!Number.isNaN(parsed.getTime())) {
       return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
@@ -2844,6 +2981,10 @@ export class ContractImportsService {
     return value === null || value === undefined ? '' : String(value).trim();
   }
 
+  private isSupportedCurrency(value: string | null | undefined) {
+    return SUPPORTED_CONTRACT_CURRENCIES.includes(String(value || '').trim().toUpperCase());
+  }
+
   private isoDate(value: Date) {
     return value.toISOString().slice(0, 10);
   }
@@ -2853,6 +2994,52 @@ export class ContractImportsService {
       return value ? this.normalizeApprovedPreview(value) : null;
     } catch {
       return null;
+    }
+  }
+
+  private async findCompanyUserIds(companyId: string) {
+    const users = await (this.prisma as any).user?.findMany?.({
+      where: { companyId },
+      select: { id: true },
+    });
+
+    return (users || []).map((user: { id: string }) => user.id);
+  }
+
+  private buildImportOwnershipWhere(userIds: string[]) {
+    if (userIds.length === 0) {
+      return { id: { in: [] } };
+    }
+
+    return {
+      OR: [{ createdByUserId: { in: userIds } }, { approvedByUserId: { in: userIds } }],
+    };
+  }
+
+  private async assertImportAccess(
+    record: { createdByUserId?: string | null; approvedByUserId?: string | null },
+    actor?: AuthenticatedActor,
+  ) {
+    const ownerUserIds = [record.createdByUserId, record.approvedByUserId].filter((value): value is string => Boolean(value));
+
+    if (ownerUserIds.length === 0) {
+      if (!actor) {
+        throw new ForbiddenException('Company context is required');
+      }
+      return;
+    }
+
+    const companyId = requireActorCompanyId(actor);
+    const users = await (this.prisma as any).user?.findMany?.({
+      where: {
+        id: { in: ownerUserIds },
+        companyId,
+      },
+      select: { id: true },
+    });
+
+    if (!users?.length) {
+      throw new ForbiddenException('Contract import is not accessible for the current company');
     }
   }
 

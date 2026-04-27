@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  BookingOperationServiceStatus,
+  BookingOperationServiceType,
   BookingServiceLifecycleStatus,
   BookingServiceStatus,
+  BookingDayStatus,
   HotelMealPlan,
   HotelOccupancyType,
   Prisma,
@@ -144,7 +147,18 @@ type CreateQuoteItemInput = {
   overnight?: boolean;
   customServiceName?: string | null;
   unitCost?: number | null;
-  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | 'PER_GROUP' | null;
+  country?: string | null;
+  supplierName?: string | null;
+  startDay?: number | null;
+  endDay?: number | null;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  netCost?: number | null;
+  includes?: string | null;
+  excludes?: string | null;
+  internalNotes?: string | null;
+  clientDescription?: string | null;
   quantity: number;
   paxCount?: number;
   roomCount?: number;
@@ -192,7 +206,7 @@ type CreateQuoteVersionInput = {
   label?: string;
 };
 
-type ImportedItineraryItemType = 'hotel' | 'transport' | 'activity' | 'meal' | 'flight' | 'guide' | 'other';
+type ImportedItineraryItemType = 'hotel' | 'transport' | 'activity' | 'meal' | 'flight' | 'guide' | 'other' | 'external_package';
 
 type CreateQuoteDraftFromImportedItineraryInput = {
   sourceType: 'text';
@@ -207,6 +221,20 @@ type CreateQuoteDraftFromImportedItineraryInput = {
     title: string;
     description: string;
     notes: string;
+    serviceType?: string;
+    country?: string;
+    supplierName?: string;
+    startDay?: number;
+    endDay?: number;
+    startDate?: string;
+    endDate?: string;
+    pricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string;
+    netCost?: number;
+    currency?: string;
+    includes?: string;
+    excludes?: string;
+    internalNotes?: string;
+    clientDescription?: string;
   }>;
   unresolved: Array<{
     type: ImportedItineraryItemType;
@@ -954,13 +982,7 @@ export class QuotesService {
 
   async createDraftFromImportedItinerary(data: CreateQuoteDraftFromImportedItineraryInput) {
     const normalizedDays = this.normalizeImportedItineraryDays(data.days, data.items);
-    const normalizedItems = data.items.map((item, index) => ({
-      dayNumber: this.normalizeImportedDayNumber(item.dayNumber, normalizedDays[0]?.dayNumber || 1),
-      type: this.normalizeImportedItemType(item.type),
-      title: item.title?.trim() || `Imported item ${index + 1}`,
-      description: item.description?.trim() || '',
-      notes: item.notes?.trim() || '',
-    }));
+    const normalizedItems = data.items.map((item, index) => this.normalizeImportedDraftItem(item, index, normalizedDays[0]?.dayNumber || 1));
     const normalizedUnresolvedItems = (data.unresolved || []).map((item, index) => ({
       type: this.normalizeImportedItemType(item.type),
       title: item.title?.trim() || `Unresolved item ${index + 1}`,
@@ -1070,6 +1092,7 @@ export class QuotesService {
       if (normalizedItems.length > 0) {
         for (const item of normalizedItems) {
           const matchedServiceId = this.matchImportedItemToSupplierService(item, serviceCandidates);
+          const externalPackageData = this.buildImportedExternalPackageQuoteItemData(item, quote.id, (quote as any).quoteCurrency || 'USD');
           const createdItem = await tx.quoteItem.create({
             data: {
               quoteId: quote.id,
@@ -1104,6 +1127,7 @@ export class QuotesService {
               markupPercent: 0,
               totalCost: 0,
               totalSell: 0,
+              ...externalPackageData,
             } as any,
             select: {
               id: true,
@@ -1754,13 +1778,19 @@ export class QuotesService {
 
       const bookingSnapshot = this.buildBookingSnapshotFromAcceptedVersion(acceptedVersion.snapshotJson);
       const bookingServices = await this.buildBookingServicesFromAcceptedVersion(acceptedVersion.snapshotJson, tx);
+      const bookingDays = this.buildBookingDaysFromAcceptedVersion(acceptedVersion.snapshotJson);
       const bookingRef = await this.generateNextBookingRef(tx);
+      const startDate = this.parseDateLike(bookingSnapshot.travelStartDate);
+      const endDate = startDate
+        ? new Date(startDate.getTime() + Math.max(0, bookingSnapshot.nightCount) * 24 * 60 * 60 * 1000)
+        : null;
 
       const createdBooking = await tx.booking.create({
         data: {
           bookingRef,
           accessToken: this.generateBookingAccessToken(),
           quoteId: quote.id,
+          clientCompanyId: companyId,
           acceptedVersionId: acceptedVersion.id,
           bookingType: bookingSnapshot.bookingType,
           snapshotJson: bookingSnapshot.snapshotJson,
@@ -1771,8 +1801,12 @@ export class QuotesService {
           pricingSnapshotJson: bookingSnapshot.pricingSnapshotJson,
           adults: bookingSnapshot.adults,
           children: bookingSnapshot.children,
+          pax: bookingSnapshot.adults + bookingSnapshot.children,
           roomCount: bookingSnapshot.roomCount,
           nightCount: bookingSnapshot.nightCount,
+          startDate,
+          endDate,
+          days: bookingDays.length > 0 ? { create: bookingDays } : undefined,
           services: bookingServices.length > 0 ? { create: bookingServices } : undefined,
         },
         include: {
@@ -2318,6 +2352,7 @@ export class QuotesService {
     let participantCount: number | null = null;
     let adultCount: number | null = null;
     let childCount: number | null = null;
+    let externalPackageData: Record<string, unknown> = {};
 
     if (this.isHotelService(service)) {
       const season = data.seasonId
@@ -2537,22 +2572,73 @@ export class QuotesService {
       pricingDescription = `${mealName} | Meal | PER_PERSON | ${paxCount} pax`;
     }
 
+    if (this.isExternalPackageService(service)) {
+      const country = this.normalizeQuoteItemOperationalText(data.country);
+      const supplierName = this.normalizeQuoteItemOperationalText(data.supplierName);
+      const clientDescription = this.normalizeQuoteItemOperationalText(data.clientDescription);
+      const includes = this.normalizeQuoteItemOperationalText(data.includes);
+      const excludes = this.normalizeQuoteItemOperationalText(data.excludes);
+      const internalNotes = this.normalizeQuoteItemOperationalText(data.internalNotes);
+      const pricingBasis = this.normalizeExternalPackagePricingBasis(data.pricingBasis);
+      if (data.netCost === undefined || data.netCost === null || String(data.netCost).trim() === '') {
+        throw new BadRequestException('External package netCost is required');
+      }
+      if (!data.currency?.trim()) {
+        throw new BadRequestException('External package currency is required');
+      }
+      const netCost = this.normalizeExternalPackageNetCost(data.netCost);
+      const startDay = this.normalizeOptionalPositiveInteger(data.startDay, 'startDay');
+      const endDay = this.normalizeOptionalPositiveInteger(data.endDay, 'endDay');
+      const startDate = this.normalizeQuoteItemOperationalDate(data.startDate ?? data.serviceDate);
+      const endDate = this.normalizeQuoteItemOperationalDate(data.endDate ?? null);
+
+      if (!country) {
+        throw new BadRequestException('External package country is required');
+      }
+      if (!clientDescription) {
+        throw new BadRequestException('External package client description is required');
+      }
+      if (startDay !== null && endDay !== null && endDay < startDay) {
+        throw new BadRequestException('External package endDay cannot be before startDay');
+      }
+      if (startDate && endDate && endDate < startDate) {
+        throw new BadRequestException('External package endDate cannot be before startDate');
+      }
+
+      baseCost = netCost;
+      currency = data.currency.trim().toUpperCase();
+      supplierCostBaseAmount = netCost;
+      supplierCostCurrency = currency;
+      pricingDescription = `${country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`;
+      externalPackageData = {
+        externalPackageCountry: country,
+        externalSupplierName: supplierName,
+        externalStartDay: startDay,
+        externalEndDay: endDay,
+        externalStartDate: startDate,
+        externalEndDate: endDate,
+        externalPricingBasis: pricingBasis,
+        externalNetCost: netCost,
+        externalIncludes: includes,
+        externalExcludes: excludes,
+        externalInternalNotes: internalNotes,
+        externalClientDescription: clientDescription,
+      };
+    }
+
     if (data.currency !== undefined) {
       supplierCostCurrency = data.currency?.trim().toUpperCase() || supplierCostCurrency;
     }
 
-    const overrideCost = data.overrideCost === undefined ? null : data.overrideCost;
+    const overrideCost = this.normalizeOptionalNonNegativeNumber(data.overrideCost, 'Override cost');
     const useOverride = Boolean(data.useOverride);
     const overrideReason = useOverride ? this.normalizeQuoteItemOperationalText(data.overrideReason) : null;
-
-    if (overrideCost !== null && overrideCost < 0) {
-      throw new BadRequestException('Override cost must be zero or greater');
-    }
 
     if (useOverride && overrideCost === null) {
       throw new BadRequestException('Override cost is required when override is enabled');
     }
 
+    const markupPercent = this.normalizeOptionalNonNegativeNumber(data.markupPercent, 'Markup percent') ?? 0;
     const markupAmount = this.normalizeOptionalNonNegativeNumber(data.markupAmount, 'Markup amount');
     const sellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
 
@@ -2567,7 +2653,7 @@ export class QuotesService {
       nightCount,
       dayCount,
       unitCost: baseCost,
-      markupPercent: data.markupPercent,
+      markupPercent,
       quoteCurrency,
       supplierPricing: {
         costBaseAmount: supplierCostBaseAmount,
@@ -2582,6 +2668,7 @@ export class QuotesService {
       },
       transportPricingMode,
       hotelRatePricingBasis,
+      externalPackagePricingBasis: typeof externalPackageData.externalPricingBasis === 'string' ? externalPackageData.externalPricingBasis : null,
       unitCount,
     });
     const manualOverrideApplied = useOverride && overrideCost !== null;
@@ -2589,7 +2676,7 @@ export class QuotesService {
     const pricing = this.applyQuoteItemSellingLayer({
       pricing: manualOverrideApplied ? { ...basePricing, totalCost: finalCost } : basePricing,
       cost: finalCost,
-      markupPercent: data.markupPercent,
+      markupPercent,
       markupAmount,
       sellPriceOverride,
     });
@@ -2657,13 +2744,14 @@ export class QuotesService {
         overrideCost,
         overrideReason,
         useOverride,
+        ...externalPackageData,
         currency: quoteCurrency,
         pricingDescription,
         appliedVehicleRateId,
         entranceFeeId,
         jordanPassCovered,
         jordanPassSavingsJod,
-        markupPercent: data.markupPercent,
+        markupPercent,
         totalCost: pricing.totalCost,
         totalSell: promotionResult?.adjustedPricing.adjustedSell ?? pricing.totalSell,
       },
@@ -2732,15 +2820,105 @@ export class QuotesService {
     return Number.isFinite(normalized) && normalized > 0 ? Math.floor(normalized) : fallback;
   }
 
+  private normalizeImportedDraftItem(item: CreateQuoteDraftFromImportedItineraryInput['items'][number], index: number, fallbackDayNumber: number) {
+    const type = this.normalizeImportedItemType(item.type);
+    const normalized = {
+      dayNumber: this.normalizeImportedDayNumber(item.dayNumber, fallbackDayNumber),
+      type,
+      title: item.title?.trim() || `Imported item ${index + 1}`,
+      description: item.description?.trim() || '',
+      notes: item.notes?.trim() || '',
+      serviceType: item.serviceType?.trim() || undefined,
+      country: item.country?.trim() || undefined,
+      supplierName: item.supplierName?.trim() || undefined,
+      startDay: this.normalizeImportedOptionalPositiveInteger(item.startDay),
+      endDay: this.normalizeImportedOptionalPositiveInteger(item.endDay),
+      startDate: item.startDate?.trim() || undefined,
+      endDate: item.endDate?.trim() || undefined,
+      pricingBasis: item.pricingBasis?.trim() || undefined,
+      netCost: item.netCost,
+      currency: item.currency?.trim().toUpperCase() || undefined,
+      includes: item.includes?.trim() || undefined,
+      excludes: item.excludes?.trim() || undefined,
+      internalNotes: item.internalNotes?.trim() || undefined,
+      clientDescription: item.clientDescription?.trim() || undefined,
+    };
+
+    if (type === 'external_package') {
+      this.validateImportedExternalPackageDraftItem(normalized, index + 1);
+    }
+
+    return normalized;
+  }
+
+  private normalizeImportedOptionalPositiveInteger(value: number | undefined) {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+  }
+
+  private validateImportedExternalPackageDraftItem(
+    item: {
+      country?: string;
+      pricingBasis?: string;
+      netCost?: number;
+      currency?: string;
+      clientDescription?: string;
+      startDay?: number;
+      endDay?: number;
+      startDate?: string;
+      endDate?: string;
+    },
+    rowNumber: number,
+  ) {
+    const field = (name: string, message: string) => `row ${rowNumber} ${name}: ${message}`;
+    if (!item.country) {
+      throw new BadRequestException(field('country', 'required'));
+    }
+    if (!item.pricingBasis || !this.tryNormalizeExternalPackagePricingBasis(item.pricingBasis)) {
+      throw new BadRequestException(field('pricingBasis', 'must be PER_PERSON or PER_GROUP'));
+    }
+    if (item.netCost === undefined || item.netCost === null || !Number.isFinite(Number(item.netCost)) || Number(item.netCost) < 0) {
+      throw new BadRequestException(field('netCost', 'must be zero or greater'));
+    }
+    if (!item.currency) {
+      throw new BadRequestException(field('currency', 'required'));
+    }
+    requireSupportedCurrency(item.currency, field('currency', 'invalid currency'));
+    if (!item.clientDescription) {
+      throw new BadRequestException(field('clientDescription', 'required'));
+    }
+    if (item.startDay !== undefined && item.endDay !== undefined && item.endDay < item.startDay) {
+      throw new BadRequestException(field('endDay', 'cannot be before startDay'));
+    }
+    const startDate = this.parseDateLike(item.startDate);
+    const endDate = this.parseDateLike(item.endDate);
+    if (item.startDate && !startDate) {
+      throw new BadRequestException(field('startDate', 'invalid date'));
+    }
+    if (item.endDate && !endDate) {
+      throw new BadRequestException(field('endDate', 'invalid date'));
+    }
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequestException(field('endDate', 'cannot be before startDate'));
+    }
+  }
+
   private normalizeImportedItemType(value: string): ImportedItineraryItemType {
-    switch (value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    switch (normalized) {
       case 'hotel':
       case 'transport':
       case 'activity':
       case 'meal':
       case 'flight':
       case 'guide':
-        return value;
+        return normalized;
+      case 'external_package':
+      case 'partner_package':
+        return 'external_package';
       default:
         return 'other';
     }
@@ -2786,6 +2964,85 @@ export class QuotesService {
     }
 
     return parts.join(' | ') || `Imported ${item.type}`;
+  }
+
+  private buildImportedExternalPackageQuoteItemData(
+    item: ImportedDraftItem,
+    quoteId: string,
+    quoteCurrency: string,
+  ) {
+    if (item.type !== 'external_package') {
+      return null;
+    }
+
+    const pricingBasis = this.tryNormalizeExternalPackagePricingBasis(item.pricingBasis)!;
+    const netCost = Number(item.netCost);
+    const costCurrency = requireSupportedCurrency(item.currency || '', 'row currency');
+    const normalizedQuoteCurrency = requireSupportedCurrency(quoteCurrency || 'USD', 'quoteCurrency');
+    const startDate = this.parseDateLike(item.startDate);
+    const endDate = this.parseDateLike(item.endDate);
+    const paxCount = 1;
+    const basePricing = this.calculateCentralizedQuoteItemPricing({
+      service: {
+        category: 'external_package',
+        unitType: pricingBasis === 'PER_PERSON' ? ServiceUnitType.per_person : ServiceUnitType.per_group,
+        serviceType: { name: 'External Package', code: 'EXTERNAL_PACKAGE' },
+      },
+      quantity: 1,
+      paxCount,
+      roomCount: 1,
+      nightCount: 1,
+      dayCount: 1,
+      unitCost: netCost,
+      markupPercent: 0,
+      quoteCurrency: normalizedQuoteCurrency,
+      supplierPricing: {
+        costBaseAmount: netCost,
+        costCurrency,
+      },
+      externalPackagePricingBasis: pricingBasis,
+    });
+    const pricing = this.applyQuoteItemSellingLayer({
+      pricing: basePricing,
+      cost: basePricing.totalCost,
+      markupPercent: 0,
+      markupAmount: null,
+      sellPriceOverride: null,
+    });
+
+    return {
+      quoteId,
+      serviceDate: startDate,
+      paxCount,
+      roomCount: 1,
+      nightCount: 1,
+      dayCount: 1,
+      baseCost: basePricing.totalCost,
+      finalCost: pricing.totalCost,
+      costBaseAmount: netCost,
+      costCurrency,
+      quoteCurrency: normalizedQuoteCurrency,
+      fxRate: pricing.fxRate,
+      fxFromCurrency: pricing.fxFromCurrency,
+      fxToCurrency: pricing.fxToCurrency,
+      fxRateDate: pricing.fxRateDate,
+      currency: normalizedQuoteCurrency,
+      pricingDescription: `${item.country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`,
+      totalCost: pricing.totalCost,
+      totalSell: pricing.totalSell,
+      externalPackageCountry: item.country,
+      externalSupplierName: item.supplierName || null,
+      externalStartDay: item.startDay ?? item.dayNumber,
+      externalEndDay: item.endDay ?? item.startDay ?? item.dayNumber,
+      externalStartDate: startDate,
+      externalEndDate: endDate,
+      externalPricingBasis: pricingBasis,
+      externalNetCost: netCost,
+      externalIncludes: item.includes || null,
+      externalExcludes: item.excludes || null,
+      externalInternalNotes: item.internalNotes || null,
+      externalClientDescription: item.clientDescription,
+    };
   }
 
   private async getOrCreateImportedQuoteDefaults(prismaClient: Prisma.TransactionClient | PrismaService) {
@@ -3717,6 +3974,7 @@ export class QuotesService {
     markupPercent: number;
     transportPricingMode?: TransportPricingMode | null;
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
+    externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
   }) {
     if (this.isHotelService(values.service)) {
@@ -3735,6 +3993,19 @@ export class QuotesService {
           values.transportPricingMode === 'capacity_unit' && values.unitCount
             ? values.unitCount * values.unitCost
             : values.unitCost,
+        markupPercent: values.markupPercent,
+      });
+    }
+
+    if (this.isExternalPackageService(values.service)) {
+      return this.calculateItemPricing({
+        unitType: values.externalPackagePricingBasis === 'PER_PERSON' ? ServiceUnitType.per_person : ServiceUnitType.per_group,
+        quantity: 1,
+        paxCount: values.paxCount,
+        roomCount: values.roomCount,
+        nightCount: values.nightCount,
+        dayCount: values.dayCount,
+        unitCost: values.unitCost,
         markupPercent: values.markupPercent,
       });
     }
@@ -3778,6 +4049,7 @@ export class QuotesService {
     };
     transportPricingMode?: TransportPricingMode | null;
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
+    externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
     legacyCurrency?: string | null;
   }) {
@@ -3785,6 +4057,10 @@ export class QuotesService {
       ? values.hotelRatePricingBasis === 'PER_PERSON'
         ? Math.max(1, values.paxCount) * Math.max(1, values.nightCount)
         : Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
+      : this.isExternalPackageService(values.service)
+        ? values.externalPackagePricingBasis === 'PER_PERSON'
+          ? Math.max(1, values.paxCount)
+          : 1
       : this.isTransportService(values.service) &&
           values.transportPricingMode === 'capacity_unit' &&
           values.unitCount
@@ -3807,6 +4083,7 @@ export class QuotesService {
       markupPercent: values.markupPercent,
       transportPricingMode: values.transportPricingMode,
       unitCount: values.unitCount,
+      externalPackagePricingBasis: values.externalPackagePricingBasis,
     });
 
     return calculateMultiCurrencyQuoteItemPricing({
@@ -3986,11 +4263,60 @@ export class QuotesService {
     );
   }
 
+  private isExternalPackageService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
+    const normalizedCategory = this.getNormalizedServiceCategory(service).replace(/[\s-]+/g, '_');
+
+    return normalizedCategory === 'external_package' || normalizedCategory.includes('external_package') || normalizedCategory.includes('partner_package');
+  }
+
   private getNormalizedServiceCategory(service: {
     category: string;
     serviceType?: { name: string; code: string | null } | null;
   }) {
     return (service.serviceType?.code || service.serviceType?.name || service.category).trim().toLowerCase();
+  }
+
+  private normalizeExternalPackagePricingBasis(value: CreateQuoteItemInput['pricingBasis']) {
+    const normalizedBasis = this.tryNormalizeExternalPackagePricingBasis(value);
+    if (normalizedBasis) {
+      return normalizedBasis;
+    }
+
+    throw new BadRequestException('External package pricingBasis must be PER_PERSON or PER_GROUP');
+  }
+
+  private tryNormalizeExternalPackagePricingBasis(value: CreateQuoteItemInput['pricingBasis'] | string | undefined) {
+    const normalized = String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+
+    if (normalized === 'PER_PERSON' || normalized === 'PERSON') {
+      return 'PER_PERSON' as const;
+    }
+
+    if (normalized === 'PER_GROUP' || normalized === 'GROUP') {
+      return 'PER_GROUP' as const;
+    }
+
+    return null;
+  }
+
+  private normalizeExternalPackageNetCost(value: number | null | undefined) {
+    const normalized = Number(value);
+    if (!Number.isFinite(normalized) || normalized < 0) {
+      throw new BadRequestException('External package netCost must be zero or greater');
+    }
+    return Number(normalized.toFixed(2));
+  }
+
+  private normalizeOptionalPositiveInteger(value: number | null | undefined, fieldName: string) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = Math.floor(Number(value));
+    if (!Number.isFinite(normalized) || normalized < 1) {
+      throw new BadRequestException(`${fieldName} must be one or greater`);
+    }
+    return normalized;
   }
 
   private normalizeQuoteItemOperationalText(value: string | null | undefined) {
@@ -4805,6 +5131,7 @@ export class QuotesService {
       children?: number | null;
       roomCount?: number | null;
       nightCount?: number | null;
+      travelStartDate?: string | Date | null;
     };
     const clientSnapshotJson = (snapshot.clientCompany ?? snapshot.company ?? {}) as Prisma.JsonObject;
     const brandSnapshotJson = ((snapshot.brandCompany ?? snapshot.clientCompany ?? snapshot.company ?? null) || null) as
@@ -4834,6 +5161,7 @@ export class QuotesService {
       children: Math.max(0, Number(snapshot.children ?? 0)),
       roomCount: Math.max(0, Number(snapshot.roomCount ?? 0)),
       nightCount: Math.max(0, Number(snapshot.nightCount ?? 0)),
+      travelStartDate: snapshot.travelStartDate ?? null,
       bookingType: this.normalizeBookingType(snapshot.bookingType),
     };
   }
@@ -4858,6 +5186,7 @@ export class QuotesService {
     const leadPassenger = await prismaClient.bookingPassenger.create({
       data: {
         bookingId,
+        fullName: [firstName, lastName].filter(Boolean).join(' ').trim() || null,
         firstName: firstName || 'Lead',
         lastName: lastName || 'Passenger',
         title: contactSnapshot.title?.trim() || null,
@@ -5042,6 +5371,7 @@ export class QuotesService {
         const serviceDate = resolvedServiceDate ? resolvedServiceDate.toISOString() : null;
         const normalizedServiceType = item.service?.category?.trim() || 'other';
         const normalizedCategory = normalizedServiceType.toLowerCase();
+        const operationType = this.inferBookingOperationServiceType(normalizedCategory, item.service?.name);
         const isActivityService =
           normalizedCategory.includes('activity') ||
           normalizedCategory.includes('tour') ||
@@ -5067,6 +5397,8 @@ export class QuotesService {
           sourceQuoteItemId: item.id ?? null,
           serviceOrder: index,
           serviceType: normalizedServiceType,
+          operationType,
+          operationStatus: BookingOperationServiceStatus.PENDING,
           serviceDate,
           startTime: isActivityService ? item.startTime?.trim() || null : null,
           pickupTime: isActivityService ? item.pickupTime?.trim() || null : null,
@@ -5100,6 +5432,53 @@ export class QuotesService {
       });
   }
 
+  private buildBookingDaysFromAcceptedVersion(snapshotJson: unknown) {
+    const snapshot = (snapshotJson || {}) as {
+      travelStartDate?: string | Date | null;
+      nightCount?: number | null;
+      itineraries?: Array<{
+        dayNumber?: number | null;
+        title?: string | null;
+        description?: string | null;
+        summary?: string | null;
+        notes?: string | null;
+        serviceDate?: string | Date | null;
+      }>;
+    };
+    const travelStartDate = this.parseDateLike(snapshot.travelStartDate);
+    const byDayNumber = new Map<number, { dayNumber: number; date: Date | null; title: string; notes: string | null; status: BookingDayStatus }>();
+
+    for (const day of snapshot.itineraries || []) {
+      const dayNumber = Math.max(1, Math.floor(Number(day.dayNumber || 1)));
+      const explicitDate = this.parseDateLike(day.serviceDate);
+      const date = explicitDate || (travelStartDate ? new Date(travelStartDate.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000) : null);
+      if (!byDayNumber.has(dayNumber)) {
+        byDayNumber.set(dayNumber, {
+          dayNumber,
+          date,
+          title: day.title?.trim() || `Day ${dayNumber}`,
+          notes: day.notes?.trim() || day.description?.trim() || day.summary?.trim() || null,
+          status: BookingDayStatus.PENDING,
+        });
+      }
+    }
+
+    const expectedDayCount = Math.max(byDayNumber.size, Math.max(1, Number(snapshot.nightCount || 0) + 1));
+    for (let dayNumber = 1; dayNumber <= expectedDayCount; dayNumber += 1) {
+      if (!byDayNumber.has(dayNumber)) {
+        byDayNumber.set(dayNumber, {
+          dayNumber,
+          date: travelStartDate ? new Date(travelStartDate.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000) : null,
+          title: `Day ${dayNumber}`,
+          notes: null,
+          status: BookingDayStatus.PENDING,
+        });
+      }
+    }
+
+    return Array.from(byDayNumber.values()).sort((left, right) => left.dayNumber - right.dayNumber);
+  }
+
   private getBookingServiceSupplierIdFromSnapshotItem(item: {
     service?: {
       supplierId?: string | null;
@@ -5119,6 +5498,28 @@ export class QuotesService {
       item.appliedVehicleRate?.vehicle?.supplierId?.trim() ||
       null
     );
+  }
+
+  private inferBookingOperationServiceType(category?: string | null, serviceName?: string | null): BookingOperationServiceType {
+    const normalized = `${category || ''} ${serviceName || ''}`.trim().toLowerCase();
+
+    if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
+      return BookingOperationServiceType.TRANSPORT;
+    }
+
+    if (normalized.includes('guide') || normalized.includes('escort')) {
+      return BookingOperationServiceType.GUIDE;
+    }
+
+    if (normalized.includes('hotel') || normalized.includes('accommodation')) {
+      return BookingOperationServiceType.HOTEL;
+    }
+
+    if (normalized.includes('external') || normalized.includes('package')) {
+      return BookingOperationServiceType.EXTERNAL_PACKAGE;
+    }
+
+    return BookingOperationServiceType.ACTIVITY;
   }
 
   private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {

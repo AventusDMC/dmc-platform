@@ -49,6 +49,7 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   roomCategory: {
@@ -342,6 +343,7 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
                   roomCategoryId: rate.roomCategoryId,
                   occupancyType: rate.occupancyType,
                   mealPlan: rate.mealPlan,
+                  pricingBasis: rate.pricingBasis,
                   currency: rate.currency,
                   cost: rate.cost,
                   roomCategory: rate.roomCategory,

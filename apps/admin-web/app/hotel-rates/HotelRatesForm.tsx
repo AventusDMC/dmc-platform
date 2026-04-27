@@ -52,6 +52,7 @@ type HotelRatesFormProps = {
     occupancyType: (typeof occupancyTypes)[number];
     mealPlan: (typeof mealPlans)[number];
     pricingMode?: '' | 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT';
+    pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
     currency: SupportedCurrency;
     cost: string;
     salesTaxPercent?: string;
@@ -87,6 +88,7 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
   const [pricingMode, setPricingMode] = useState<'' | 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT'>(
     initialValues?.pricingMode || '',
   );
+  const [pricingBasis, setPricingBasis] = useState<'PER_PERSON' | 'PER_ROOM'>(initialValues?.pricingBasis || 'PER_ROOM');
   const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
   const [cost, setCost] = useState(initialValues?.cost || '');
   const [salesTaxPercent, setSalesTaxPercent] = useState(initialValues?.salesTaxPercent || '');
@@ -153,6 +155,7 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
           occupancyType,
           mealPlan,
           pricingMode: pricingMode || undefined,
+          pricingBasis,
           currency,
           cost: Number(cost),
           salesTaxPercent: salesTaxPercent.trim() ? Number(salesTaxPercent) : undefined,
@@ -175,6 +178,7 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
         setOccupancyType('SGL');
         setMealPlan('BB');
         setPricingMode('');
+        setPricingBasis('PER_ROOM');
         setCurrency(selectedContract?.hotel ? 'USD' : currency);
         setCost('');
         setSalesTaxPercent('');
@@ -197,7 +201,7 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
-      <div className="form-row form-row-2">
+      <div className="form-row form-row-3">
         <label>
           Contract
           <select value={contractId} onChange={(event) => setContractId(event.target.value)} disabled={contracts.length === 0} required>
@@ -288,6 +292,14 @@ export function HotelRatesForm({ apiBaseUrl, contracts, hotels, seasons, rateId,
       </div>
 
       <div className="form-row form-row-2">
+        <label>
+          Pricing basis
+          <select value={pricingBasis} onChange={(event) => setPricingBasis(event.target.value as 'PER_PERSON' | 'PER_ROOM')}>
+            <option value="PER_PERSON">Per person/night</option>
+            <option value="PER_ROOM">Per room/night</option>
+          </select>
+        </label>
+
         <label>
           Pricing mode
           <select

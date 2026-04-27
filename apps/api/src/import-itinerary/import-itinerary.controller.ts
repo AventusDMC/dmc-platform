@@ -16,7 +16,9 @@ type ParsedItineraryItemType =
   | 'hotel'
   | 'transport'
   | 'flight'
-  | 'guide';
+  | 'guide'
+  | 'external_package'
+  | 'EXTERNAL_PACKAGE';
 
 type CreateQuoteDraftBody = {
   sourceType?: 'text';
@@ -31,6 +33,20 @@ type CreateQuoteDraftBody = {
     title?: string;
     description?: string;
     notes?: string;
+    serviceType?: string;
+    country?: string;
+    supplierName?: string;
+    startDay?: number;
+    endDay?: number;
+    startDate?: string;
+    endDate?: string;
+    pricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string;
+    netCost?: number;
+    currency?: string;
+    includes?: string;
+    excludes?: string;
+    internalNotes?: string;
+    clientDescription?: string;
   }>;
   unresolved?: Array<{
     type?: ParsedItineraryItemType;
@@ -80,6 +96,20 @@ export class ImportItineraryController {
         title: typeof item.title === 'string' ? item.title : `Imported item ${index + 1}`,
         description: typeof item.description === 'string' ? item.description : '',
         notes: typeof item.notes === 'string' ? item.notes : '',
+        serviceType: typeof item.serviceType === 'string' ? item.serviceType : undefined,
+        country: typeof item.country === 'string' ? item.country : undefined,
+        supplierName: typeof item.supplierName === 'string' ? item.supplierName : undefined,
+        startDay: item.startDay === undefined ? undefined : Number(item.startDay),
+        endDay: item.endDay === undefined ? undefined : Number(item.endDay),
+        startDate: typeof item.startDate === 'string' ? item.startDate : undefined,
+        endDate: typeof item.endDate === 'string' ? item.endDate : undefined,
+        pricingBasis: typeof item.pricingBasis === 'string' ? item.pricingBasis : undefined,
+        netCost: item.netCost === undefined ? undefined : Number(item.netCost),
+        currency: typeof item.currency === 'string' ? item.currency : undefined,
+        includes: typeof item.includes === 'string' ? item.includes : undefined,
+        excludes: typeof item.excludes === 'string' ? item.excludes : undefined,
+        internalNotes: typeof item.internalNotes === 'string' ? item.internalNotes : undefined,
+        clientDescription: typeof item.clientDescription === 'string' ? item.clientDescription : undefined,
       })),
       unresolved: Array.isArray(body.unresolved)
         ? body.unresolved.map((item, index) => ({
@@ -103,6 +133,10 @@ export class ImportItineraryController {
 
     if (value === 'activity' || value === 'meal' || value === 'other' || value === 'hotel' || value === 'transport') {
       return value;
+    }
+
+    if (value === 'external_package' || value === 'EXTERNAL_PACKAGE') {
+      return 'external_package' as const;
     }
 
     if (value === 'flight' || value === 'guide') {

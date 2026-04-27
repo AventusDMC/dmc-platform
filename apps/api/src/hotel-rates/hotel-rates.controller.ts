@@ -16,7 +16,7 @@ type CreateHotelRateBody = {
   occupancyType: HotelOccupancyType;
   mealPlan: HotelMealPlan;
   pricingMode?: HotelRatePricingMode | null;
-  pricingBasis?: HotelRatePricingBasis | null;
+  pricingBasis?: HotelRatePricingBasis | string | null;
   currency: string;
   cost: number;
   costBaseAmount?: number;
@@ -45,6 +45,7 @@ export class HotelRatesController {
   @Get('lookup')
   lookup(
     @Query('hotelId') hotelId: string,
+    @Query('contractId') contractId: string | undefined,
     @Query('date') date: string,
     @Query('occupancy') occupancy: HotelOccupancyType,
     @Query('mealPlan') mealPlan: HotelMealPlan,
@@ -53,6 +54,7 @@ export class HotelRatesController {
   ) {
     return this.hotelRatesService.lookup({
       hotelId,
+      contractId: contractId || null,
       date,
       occupancy,
       mealPlan,
@@ -65,25 +67,31 @@ export class HotelRatesController {
   @Get('calculate-hotel-cost')
   calculateHotelCost(
     @Query('hotelId') hotelId: string,
+    @Query('contractId') contractId: string | undefined,
     @Query('checkInDate') checkInDate: string,
     @Query('checkOutDate') checkOutDate: string,
     @Query('occupancy') occupancy: HotelOccupancyType,
     @Query('mealPlan') mealPlan: HotelMealPlan,
     @Query('pax') pax: string,
+    @Query('roomCount') roomCount?: string,
     @Query('roomCategoryId') roomCategoryId?: string,
     @Query('adults') adults?: string,
     @Query('childrenAges') childrenAges?: string | string[],
+    @Query('selectedSupplementIds') selectedSupplementIds?: string | string[],
   ) {
     return this.hotelRatesService.calculateHotelCost({
       hotelId,
+      contractId: contractId || null,
       checkInDate,
       checkOutDate,
       occupancy,
       mealPlan,
       pax: Number(pax),
+      roomCount: roomCount === undefined ? null : Number(roomCount),
       adults: adults === undefined ? null : Number(adults),
       childrenAges: this.parseChildrenAges(childrenAges),
       roomCategoryId: roomCategoryId || null,
+      selectedSupplementIds: this.parseStringList(selectedSupplementIds),
     });
   }
 
@@ -159,5 +167,14 @@ export class HotelRatesController {
 
     const parts = Array.isArray(value) ? value : value.split(',');
     return parts.map((age) => Number(age)).filter((age) => Number.isFinite(age) && age >= 0);
+  }
+
+  private parseStringList(value: string | string[] | undefined) {
+    if (value === undefined) {
+      return [];
+    }
+
+    const parts = Array.isArray(value) ? value : value.split(',');
+    return parts.map((part) => part.trim()).filter(Boolean);
   }
 }

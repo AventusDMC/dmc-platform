@@ -1,15 +1,20 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import {
   BookingAuditEntityType,
+  BookingOperationServiceStatus,
+  BookingOperationServiceType,
   BookingRoomOccupancy,
   BookingServiceLifecycleStatus,
   BookingServiceStatus,
   BookingStatus,
   Prisma,
+  VoucherStatus,
+  VoucherType,
 } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import PDFDocument = require('pdfkit');
 import nodemailer = require('nodemailer');
+import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
@@ -72,6 +77,19 @@ type BookingPdfContact = {
 type BookingPdfCompany = {
   name?: string | null;
   logoUrl?: string | null;
+  website?: string | null;
+  country?: string | null;
+  city?: string | null;
+  branding?: {
+    displayName?: string | null;
+    logoUrl?: string | null;
+    headerTitle?: string | null;
+    headerSubtitle?: string | null;
+    footerText?: string | null;
+    website?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
 };
 
 type BookingDocumentType = 'voucher' | 'supplier-confirmation';
@@ -115,6 +133,9 @@ const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
 const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
 const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
+const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'EXTERNAL_PACKAGE'] as const;
+const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'DONE'] as const;
+const VOUCHER_STATUSES = ['DRAFT', 'ISSUED', 'CANCELLED'] as const;
 
 @Injectable()
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
@@ -256,6 +277,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             },
           },
         },
+        days: {
+          orderBy: [{ dayNumber: 'asc' }],
+        },
         roomingEntries: {
           orderBy: [
             { sortOrder: 'asc' },
@@ -277,6 +301,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         },
         services: {
           include: {
+            bookingDay: true,
+            vehicle: true,
+            vouchers: true,
             auditLogs: {
               orderBy: {
                 createdAt: 'desc',
@@ -301,6 +328,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return {
         ...booking,
+        passengers: (booking.passengers || []).map((passenger: any) => this.mapPassengerForList(passenger)),
         payments,
         invoiceDelivery: this.getBookingInvoiceDelivery(booking.auditLogs || []),
         paymentReminderDelivery: this.getBookingPaymentReminderDelivery(booking.auditLogs || []),
@@ -487,6 +515,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             totalCost: true,
             totalSell: true,
           },
+        },
+        vouchers: {
+          include: {
+            supplier: true,
+            bookingService: {
+              include: {
+                bookingDay: true,
+                vehicle: true,
+              },
+            },
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         },
       },
     });
@@ -2346,18 +2386,33 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   async createPassenger(
     bookingId: string,
     data: {
+      fullName?: string;
       firstName: string;
       lastName: string;
       title?: string | null;
+      gender?: string | null;
+      dateOfBirth?: string | null;
+      nationality?: string | null;
+      passportNumber?: string | null;
+      passportIssueDate?: string | null;
+      passportExpiryDate?: string | null;
+      arrivalFlight?: string | null;
+      departureFlight?: string | null;
+      entryPoint?: string | null;
+      visaStatus?: string | null;
+      roomingNotes?: string | null;
       notes?: string | null;
       isLead?: boolean;
       actor?: AuditActor;
       companyActor?: CompanyScopedActor;
     },
   ) {
-    const firstName = this.normalizeRequiredText(data.firstName, 'Passenger first name is required');
-    const lastName = this.normalizeRequiredText(data.lastName, 'Passenger last name is required');
+    const fullName = this.normalizeRequiredText(data.fullName || [data.firstName, data.lastName].filter(Boolean).join(' '), 'Passenger full name is required');
+    const splitName = this.splitManifestFullName(fullName);
+    const firstName = this.normalizeOptionalText(data.firstName) || splitName.firstName;
+    const lastName = this.normalizeOptionalText(data.lastName) || splitName.lastName;
     const title = this.normalizeOptionalText(data.title);
+    const manifest = this.normalizePassengerManifestFields(data, true);
     const notes = this.normalizeOptionalText(data.notes);
     const shouldSetLead = Boolean(data.isLead);
 
@@ -2384,9 +2439,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const passenger = await tx.bookingPassenger.create({
         data: {
           bookingId,
+          fullName,
           firstName,
           lastName,
           title,
+          ...manifest,
           notes,
           isLead: shouldSetLead,
         },
@@ -2409,9 +2466,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     bookingId: string,
     passengerId: string,
     data: {
+      fullName?: string;
       firstName?: string;
       lastName?: string;
       title?: string | null;
+      gender?: string | null;
+      dateOfBirth?: string | null;
+      nationality?: string | null;
+      passportNumber?: string | null;
+      passportIssueDate?: string | null;
+      passportExpiryDate?: string | null;
+      arrivalFlight?: string | null;
+      departureFlight?: string | null;
+      entryPoint?: string | null;
+      visaStatus?: string | null;
+      roomingNotes?: string | null;
       notes?: string | null;
       isLead?: boolean;
       actor?: AuditActor;
@@ -2432,9 +2501,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         select: {
           id: true,
           bookingId: true,
+          fullName: true,
           firstName: true,
           lastName: true,
           title: true,
+          gender: true,
+          dateOfBirth: true,
+          nationality: true,
+          passportNumber: true,
+          passportIssueDate: true,
+          passportExpiryDate: true,
+          arrivalFlight: true,
+          departureFlight: true,
+          entryPoint: true,
+          visaStatus: true,
+          roomingNotes: true,
           notes: true,
           isLead: true,
         },
@@ -2444,15 +2525,36 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking passenger not found');
       }
 
+      const nextFullName =
+        data.fullName === undefined
+          ? passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' ')
+          : this.normalizeRequiredText(data.fullName, 'Passenger full name is required');
+      const splitName = this.splitManifestFullName(nextFullName);
       const nextFirstName =
         data.firstName === undefined
-          ? passenger.firstName
-          : this.normalizeRequiredText(data.firstName, 'Passenger first name is required');
+          ? passenger.firstName || splitName.firstName
+          : this.normalizeOptionalText(data.firstName) || splitName.firstName;
       const nextLastName =
         data.lastName === undefined
-          ? passenger.lastName
-          : this.normalizeRequiredText(data.lastName, 'Passenger last name is required');
+          ? passenger.lastName || splitName.lastName
+          : this.normalizeOptionalText(data.lastName) || splitName.lastName;
       const nextTitle = data.title === undefined ? passenger.title : this.normalizeOptionalText(data.title);
+      const nextManifest = this.normalizePassengerManifestFields(
+        {
+          gender: data.gender === undefined ? passenger.gender : data.gender,
+          dateOfBirth: data.dateOfBirth === undefined ? passenger.dateOfBirth : data.dateOfBirth,
+          nationality: data.nationality === undefined ? passenger.nationality : data.nationality,
+          passportNumber: data.passportNumber === undefined ? passenger.passportNumber : data.passportNumber,
+          passportIssueDate: data.passportIssueDate === undefined ? passenger.passportIssueDate : data.passportIssueDate,
+          passportExpiryDate: data.passportExpiryDate === undefined ? passenger.passportExpiryDate : data.passportExpiryDate,
+          arrivalFlight: data.arrivalFlight === undefined ? passenger.arrivalFlight : data.arrivalFlight,
+          departureFlight: data.departureFlight === undefined ? passenger.departureFlight : data.departureFlight,
+          entryPoint: data.entryPoint === undefined ? passenger.entryPoint : data.entryPoint,
+          visaStatus: data.visaStatus === undefined ? passenger.visaStatus : data.visaStatus,
+          roomingNotes: data.roomingNotes === undefined ? passenger.roomingNotes : data.roomingNotes,
+        },
+        true,
+      );
       const nextNotes = data.notes === undefined ? passenger.notes : this.normalizeOptionalText(data.notes);
       const nextIsLead = data.isLead === undefined ? passenger.isLead : Boolean(data.isLead);
 
@@ -2469,9 +2571,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const updatedPassenger = await tx.bookingPassenger.update({
         where: { id: passengerId },
         data: {
+          fullName: nextFullName,
           firstName: nextFirstName,
           lastName: nextLastName,
           title: nextTitle,
+          ...nextManifest,
           notes: nextNotes,
           isLead: nextIsLead,
         },
@@ -2984,6 +3088,268 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
 
       return { bookingRoomingEntryId: roomingEntryId, bookingPassengerId: normalizedPassengerId };
+    });
+  }
+
+  async listBookingServicesByDay(bookingId: string, bookingDayId: string, actor?: CompanyScopedActor) {
+    const bookingDay = await this.prisma.bookingDay.findFirst({
+      where: {
+        id: bookingDayId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(actor),
+      },
+      select: { id: true },
+    });
+
+    if (!bookingDay) {
+      throw new NotFoundException('Booking day not found');
+    }
+
+    return (this.prisma.bookingService as any).findMany({
+      where: {
+        bookingDayId,
+        ...this.buildBookingServiceCompanyWhere(actor),
+      },
+      include: {
+        supplier: true,
+        vehicle: true,
+        bookingDay: true,
+      },
+      orderBy: [{ serviceOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async createBookingService(
+    bookingId: string,
+    bookingDayId: string,
+    data: {
+      type: string;
+      supplierId?: string | null;
+      referenceId?: string | null;
+      assignedTo?: string | null;
+      guidePhone?: string | null;
+      vehicleId?: string | null;
+      pickupTime?: string | null;
+      confirmationNumber?: string | null;
+      notes?: string | null;
+      status?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const bookingDay = await this.prisma.bookingDay.findFirst({
+      where: {
+        id: bookingDayId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: {
+        booking: {
+          select: {
+            id: true,
+            adults: true,
+            children: true,
+          },
+        },
+      },
+    });
+
+    if (!bookingDay) {
+      throw new NotFoundException('Booking day not found');
+    }
+
+    const normalized = await this.normalizeBookingOperationServiceInput(data, null);
+    const nextServiceOrder = await this.prisma.bookingService.count({ where: { bookingId } });
+    const description = this.buildOperationServiceDescription(normalized.type, normalized);
+    const lifecycleStatus = this.mapOperationStatusToLifecycleStatus(normalized.status);
+    const confirmationStatus = this.mapOperationStatusToConfirmationStatus(normalized.status);
+
+    return this.prisma.$transaction(async (tx) => {
+      const createdService = await (tx.bookingService as any).create({
+        data: {
+          bookingId,
+          bookingDayId,
+          serviceOrder: nextServiceOrder,
+          serviceType: normalized.type,
+          operationType: normalized.type,
+          operationStatus: normalized.status,
+          referenceId: normalized.referenceId,
+          assignedTo: normalized.assignedTo,
+          guidePhone: normalized.guidePhone,
+          vehicleId: normalized.vehicleId,
+          serviceDate: bookingDay.date,
+          pickupTime: normalized.pickupTime,
+          supplierId: normalized.supplierId,
+          supplierName: normalized.supplierName,
+          confirmationNumber: normalized.confirmationNumber,
+          supplierReference: normalized.confirmationNumber,
+          description,
+          notes: normalized.notes,
+          confirmationNotes: normalized.notes,
+          qty: 1,
+          unitCost: 0,
+          unitSell: 0,
+          totalCost: 0,
+          totalSell: 0,
+          participantCount: bookingDay.booking.adults + bookingDay.booking.children,
+          adultCount: bookingDay.booking.adults,
+          childCount: bookingDay.booking.children,
+          status: lifecycleStatus,
+          confirmationStatus,
+        },
+        include: {
+          supplier: true,
+          vehicle: true,
+          bookingDay: true,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        bookingServiceId: createdService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: createdService.id,
+        action: 'booking_service_created',
+        newValue: `${normalized.type}: ${description}`,
+        note: normalized.notes,
+        actor: data.actor,
+      });
+
+      return createdService;
+    });
+  }
+
+  async updateBookingService(
+    bookingId: string,
+    bookingDayId: string,
+    bookingServiceId: string,
+    data: {
+      type?: string | null;
+      supplierId?: string | null;
+      referenceId?: string | null;
+      assignedTo?: string | null;
+      guidePhone?: string | null;
+      vehicleId?: string | null;
+      pickupTime?: string | null;
+      confirmationNumber?: string | null;
+      notes?: string | null;
+      status?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const currentService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: bookingServiceId,
+        bookingId,
+        bookingDayId,
+        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+      },
+      include: {
+        supplier: true,
+        vehicle: true,
+        bookingDay: true,
+      },
+    });
+
+    if (!currentService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    if (currentService.operationType === BookingOperationServiceType.EXTERNAL_PACKAGE) {
+      const hasAssignmentChange = ['supplierId', 'referenceId', 'assignedTo', 'guidePhone', 'vehicleId', 'pickupTime', 'confirmationNumber'].some(
+        (key) => (data as any)[key] !== undefined,
+      );
+      const typeChangesAway = data.type !== undefined && data.type !== BookingOperationServiceType.EXTERNAL_PACKAGE;
+
+      if (hasAssignmentChange || typeChangesAway) {
+        throw new BadRequestException('External package operations services only support status and notes updates');
+      }
+    }
+
+    const normalized = await this.normalizeBookingOperationServiceInput(data, currentService);
+    const description = this.buildOperationServiceDescription(normalized.type, normalized);
+    const lifecycleStatus = this.mapOperationStatusToLifecycleStatus(normalized.status);
+    const confirmationStatus = this.mapOperationStatusToConfirmationStatus(normalized.status);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedService = await (tx.bookingService as any).update({
+        where: { id: bookingServiceId },
+        data: {
+          serviceType: normalized.type,
+          operationType: normalized.type,
+          operationStatus: normalized.status,
+          referenceId: normalized.referenceId,
+          assignedTo: normalized.assignedTo,
+          guidePhone: normalized.guidePhone,
+          vehicleId: normalized.vehicleId,
+          pickupTime: normalized.pickupTime,
+          supplierId: normalized.supplierId,
+          supplierName: normalized.supplierName,
+          confirmationNumber: normalized.confirmationNumber,
+          supplierReference: normalized.confirmationNumber,
+          description,
+          notes: normalized.notes,
+          confirmationNotes: normalized.notes,
+          status: lifecycleStatus,
+          confirmationStatus,
+        },
+        include: {
+          supplier: true,
+          vehicle: true,
+          bookingDay: true,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        bookingServiceId,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingServiceId,
+        action: 'booking_service_updated',
+        oldValue: `${currentService.operationType || currentService.serviceType}: ${currentService.description}`,
+        newValue: `${normalized.type}: ${description}`,
+        note: normalized.notes,
+        actor: data.actor,
+      });
+
+      return updatedService;
+    });
+  }
+
+  async deleteBookingService(bookingId: string, bookingDayId: string, bookingServiceId: string, actor?: AuditActor, companyActor?: CompanyScopedActor) {
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        bookingId,
+        bookingDayId,
+        ...this.buildBookingServiceCompanyWhere(companyActor),
+      } as any,
+      select: {
+        id: true,
+        bookingId: true,
+        description: true,
+        serviceType: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.bookingService.delete({ where: { id: bookingServiceId } });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingServiceId,
+        action: 'booking_service_deleted',
+        oldValue: `${bookingService.serviceType}: ${bookingService.description}`,
+        actor,
+      });
+
+      return { id: bookingServiceId, deleted: true };
     });
   }
 
@@ -4350,9 +4716,558 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
+  private normalizeBookingOperationServiceType(value: string | null | undefined, currentValue?: string | null): BookingOperationServiceType {
+    const raw = this.normalizeOptionalText(value) || currentValue || '';
+    const normalized = raw.trim().toUpperCase();
+
+    if ((BOOKING_OPERATION_SERVICE_TYPES as readonly string[]).includes(normalized)) {
+      return normalized as BookingOperationServiceType;
+    }
+
+    throw new BadRequestException(`Unsupported booking service type: ${raw || 'missing'}`);
+  }
+
+  private normalizeBookingOperationServiceStatus(
+    value: string | null | undefined,
+    currentValue?: string | null,
+  ): BookingOperationServiceStatus {
+    const raw = this.normalizeOptionalText(value) || currentValue || BookingOperationServiceStatus.PENDING;
+    const normalized = raw.trim().toUpperCase();
+
+    if ((BOOKING_OPERATION_SERVICE_STATUSES as readonly string[]).includes(normalized)) {
+      return normalized as BookingOperationServiceStatus;
+    }
+
+    throw new BadRequestException(`Unsupported booking service status: ${raw}`);
+  }
+
+  private async normalizeBookingOperationServiceInput(
+    data: {
+      type?: string | null;
+      supplierId?: string | null;
+      referenceId?: string | null;
+      assignedTo?: string | null;
+      guidePhone?: string | null;
+      vehicleId?: string | null;
+      pickupTime?: string | null;
+      confirmationNumber?: string | null;
+      notes?: string | null;
+      status?: string | null;
+    },
+    currentService: any | null,
+  ) {
+    const type = this.normalizeBookingOperationServiceType(data.type, currentService?.operationType || currentService?.serviceType);
+    const status = this.normalizeBookingOperationServiceStatus(data.status, currentService?.operationStatus);
+    const referenceId =
+      data.referenceId === undefined ? currentService?.referenceId ?? null : this.normalizeOptionalText(data.referenceId);
+    const vehicleId = data.vehicleId === undefined ? currentService?.vehicleId ?? null : this.normalizeOptionalText(data.vehicleId);
+    const guidePhone = data.guidePhone === undefined ? currentService?.guidePhone ?? null : this.normalizeOptionalText(data.guidePhone);
+    const assignedTo = data.assignedTo === undefined ? currentService?.assignedTo ?? null : this.normalizeOptionalText(data.assignedTo);
+    const pickupTime =
+      data.pickupTime === undefined ? currentService?.pickupTime ?? null : this.normalizeTimeInput(data.pickupTime, 'Pickup time');
+    const confirmationNumber =
+      data.confirmationNumber === undefined
+        ? currentService?.confirmationNumber ?? null
+        : this.normalizeOptionalText(data.confirmationNumber);
+    const notes = data.notes === undefined ? currentService?.notes ?? null : this.normalizeOptionalText(data.notes);
+
+    let supplierId =
+      data.supplierId === undefined ? currentService?.supplierId ?? null : this.normalizeOptionalText(data.supplierId);
+    let supplierName = currentService?.supplierName ?? null;
+    let vehicleName = currentService?.vehicle?.name ?? null;
+    let routeName: string | null = null;
+
+    if (type === BookingOperationServiceType.TRANSPORT) {
+      if (!referenceId) {
+        throw new BadRequestException('Transport booking service requires a route referenceId');
+      }
+
+      if (!vehicleId) {
+        throw new BadRequestException('Transport booking service requires a vehicleId');
+      }
+
+      const [route, vehicle] = await Promise.all([
+        this.prisma.route.findUnique({
+          where: { id: referenceId },
+          select: { id: true, name: true },
+        }),
+        this.prisma.vehicle.findUnique({
+          where: { id: vehicleId },
+          select: { id: true, name: true, supplierId: true },
+        }),
+      ]);
+
+      if (!route) {
+        throw new NotFoundException('Transport route not found');
+      }
+
+      if (!vehicle) {
+        throw new NotFoundException('Vehicle not found');
+      }
+
+      supplierId = vehicle.supplierId || null;
+      vehicleName = vehicle.name;
+      routeName = route.name;
+    }
+
+    if (supplierId) {
+      const supplier = await this.prisma.supplier.findUnique({
+        where: { id: supplierId },
+        select: { id: true, name: true },
+      });
+
+      if (!supplier) {
+        throw new NotFoundException('Supplier not found');
+      }
+
+      supplierName = supplier.name;
+    } else {
+      supplierName = null;
+    }
+
+    if (type === BookingOperationServiceType.GUIDE && !assignedTo) {
+      throw new BadRequestException('Guide booking service requires assignedTo');
+    }
+
+    if (type !== BookingOperationServiceType.TRANSPORT) {
+      routeName = null;
+    }
+
+    if (type === BookingOperationServiceType.EXTERNAL_PACKAGE) {
+      return {
+        type,
+        status,
+        referenceId: null,
+        assignedTo: null,
+        guidePhone: null,
+        vehicleId: null,
+        vehicleName: null,
+        routeName: null,
+        pickupTime: null,
+        supplierId: null,
+        supplierName: null,
+        confirmationNumber: null,
+        notes,
+      };
+    }
+
+    return {
+      type,
+      status,
+      referenceId,
+      assignedTo,
+      guidePhone,
+      vehicleId: type === BookingOperationServiceType.TRANSPORT ? vehicleId : null,
+      vehicleName,
+      routeName,
+      pickupTime: type === BookingOperationServiceType.TRANSPORT ? pickupTime : null,
+      supplierId,
+      supplierName,
+      confirmationNumber,
+      notes,
+    };
+  }
+
+  private buildOperationServiceDescription(
+    type: BookingOperationServiceType,
+    values: {
+      assignedTo?: string | null;
+      vehicleName?: string | null;
+      routeName?: string | null;
+      confirmationNumber?: string | null;
+    },
+  ) {
+    if (type === BookingOperationServiceType.TRANSPORT) {
+      return [values.routeName || 'Transport', values.vehicleName].filter(Boolean).join(' - ');
+    }
+
+    if (type === BookingOperationServiceType.GUIDE) {
+      return values.assignedTo ? `Guide: ${values.assignedTo}` : 'Guide assignment';
+    }
+
+    if (type === BookingOperationServiceType.HOTEL) {
+      return values.confirmationNumber ? `Hotel confirmation ${values.confirmationNumber}` : 'Hotel confirmation';
+    }
+
+    if (type === BookingOperationServiceType.EXTERNAL_PACKAGE) {
+      return 'External package operations';
+    }
+
+    return 'Activity operations';
+  }
+
+  private mapOperationStatusToLifecycleStatus(status: BookingOperationServiceStatus): BookingServiceLifecycleStatus {
+    if (status === BookingOperationServiceStatus.DONE || status === BookingOperationServiceStatus.CONFIRMED) {
+      return BookingServiceLifecycleStatus.confirmed;
+    }
+
+    if (status === BookingOperationServiceStatus.REQUESTED) {
+      return BookingServiceLifecycleStatus.in_progress;
+    }
+
+    return BookingServiceLifecycleStatus.pending;
+  }
+
+  private mapOperationStatusToConfirmationStatus(status: BookingOperationServiceStatus): BookingServiceStatus {
+    if (status === BookingOperationServiceStatus.DONE || status === BookingOperationServiceStatus.CONFIRMED) {
+      return BookingServiceStatus.confirmed;
+    }
+
+    if (status === BookingOperationServiceStatus.REQUESTED) {
+      return BookingServiceStatus.requested;
+    }
+
+    return BookingServiceStatus.pending;
+  }
+
+  private isOperationServiceType(service: any, type: BookingOperationServiceType) {
+    const normalized = String(service?.operationType || service?.serviceType || '').trim().toUpperCase();
+    if (normalized === type) {
+      return true;
+    }
+
+    const text = [service?.serviceType, service?.description].filter(Boolean).join(' ').toLowerCase();
+    if (type === BookingOperationServiceType.TRANSPORT) {
+      return text.includes('transport') || text.includes('transfer') || text.includes('vehicle');
+    }
+
+    if (type === BookingOperationServiceType.GUIDE) {
+      return text.includes('guide') || text.includes('escort');
+    }
+
+    return false;
+  }
+
+  private resolveVoucherType(service: any): VoucherType {
+    const normalized = String(service?.operationType || service?.serviceType || '').trim().toUpperCase();
+
+    if (normalized === VoucherType.TRANSPORT) return VoucherType.TRANSPORT;
+    if (normalized === VoucherType.HOTEL) return VoucherType.HOTEL;
+    if (normalized === VoucherType.GUIDE) return VoucherType.GUIDE;
+    if (normalized === VoucherType.EXTERNAL_PACKAGE) return VoucherType.EXTERNAL_PACKAGE;
+
+    const text = [service?.serviceType, service?.description].filter(Boolean).join(' ').toLowerCase();
+    if (text.includes('transport') || text.includes('transfer') || text.includes('vehicle')) return VoucherType.TRANSPORT;
+    if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
+    if (text.includes('guide') || text.includes('escort')) return VoucherType.GUIDE;
+    if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
+
+    throw new BadRequestException('Only transport, hotel, guide, and external package services can generate vouchers');
+  }
+
+  private normalizeVoucherStatus(status: string | null | undefined): VoucherStatus {
+    const normalized = String(status || '').trim().toUpperCase();
+
+    if ((VOUCHER_STATUSES as readonly string[]).includes(normalized)) {
+      return normalized as VoucherStatus;
+    }
+
+    throw new BadRequestException(`Unsupported voucher status: ${status || 'missing'}`);
+  }
+
+  private async assertVoucherRequiredFields(service: any, type: VoucherType) {
+    if (type === VoucherType.TRANSPORT) {
+      if (!service.referenceId) throw new BadRequestException('Transport voucher requires a route');
+      if (!service.pickupTime) throw new BadRequestException('Transport voucher requires pickup time');
+      if (!service.vehicleId) throw new BadRequestException('Transport voucher requires a vehicle');
+      if (!service.assignedTo) throw new BadRequestException('Transport voucher requires a driver name');
+      return;
+    }
+
+    if (type === VoucherType.HOTEL) {
+      if (!service.confirmationNumber && !service.supplierReference) {
+        throw new BadRequestException('Hotel voucher requires a confirmation number');
+      }
+      return;
+    }
+
+    if (type === VoucherType.GUIDE) {
+      if (!service.assignedTo) throw new BadRequestException('Guide voucher requires guide name');
+      return;
+    }
+
+    if (type === VoucherType.EXTERNAL_PACKAGE && !service.notes && !service.description) {
+      throw new BadRequestException('External package voucher requires package notes or description');
+    }
+  }
+
+  private async getRouteName(routeId: string | null | undefined) {
+    const normalizedRouteId = this.normalizeOptionalText(routeId);
+    if (!normalizedRouteId) {
+      return null;
+    }
+
+    const route = await this.prisma.route.findUnique({
+      where: { id: normalizedRouteId },
+      select: { name: true },
+    });
+
+    return route?.name || null;
+  }
+
+  private findServiceDayTitle(days: Array<{ id?: string; dayNumber?: number; title?: string | null }>, service: any) {
+    if (service.bookingDayId) {
+      return days.find((day) => day.id === service.bookingDayId)?.title || null;
+    }
+
+    if (!service.serviceDate) {
+      return null;
+    }
+
+    return days.find((day: any) => day.date && String(day.date).slice(0, 10) === String(service.serviceDate).slice(0, 10))?.title || null;
+  }
+
+  private normalizeDashboardDate(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalText(value);
+    if (!normalized) {
+      return new Date();
+    }
+
+    const parsed = new Date(`${normalized.slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException('Dashboard date must be a valid YYYY-MM-DD date');
+    }
+
+    return parsed;
+  }
+
+  private startOfUtcDay(value: Date) {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  }
+
+  private formatDashboardDateOnly(value: Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  private normalizeDashboardBookingStatus(value: string | null | undefined): BookingStatus | null {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase();
+    if (!normalized || normalized === 'ALL') {
+      return null;
+    }
+
+    if (normalized === 'NEW') return BookingStatus.draft;
+    if (normalized === 'IN_PROGRESS') return BookingStatus.in_progress;
+
+    const lower = normalized.toLowerCase();
+    if ((Object.values(BookingStatus) as string[]).includes(lower)) {
+      return lower as BookingStatus;
+    }
+
+    throw new BadRequestException(`Unsupported booking status filter: ${value}`);
+  }
+
+  private normalizeDashboardServiceStatus(value: string | null | undefined): BookingOperationServiceStatus | null {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase();
+    if (!normalized || normalized === 'ALL') {
+      return null;
+    }
+
+    if (normalized === 'PENDING') return BookingOperationServiceStatus.PENDING;
+    if (normalized === 'REQUESTED' || normalized === 'IN_PROGRESS') return BookingOperationServiceStatus.REQUESTED;
+    if (normalized === 'CONFIRMED' || normalized === 'READY') return BookingOperationServiceStatus.CONFIRMED;
+    if (normalized === 'DONE') return BookingOperationServiceStatus.DONE;
+
+    if ((Object.values(BookingOperationServiceStatus) as string[]).includes(normalized)) {
+      return normalized as BookingOperationServiceStatus;
+    }
+
+    throw new BadRequestException(`Unsupported service status filter: ${value}`);
+  }
+
+  private buildDashboardBucket<T>(items: T[]) {
+    return {
+      count: items.length,
+      items,
+    };
+  }
+
+  private mapDashboardBooking(booking: any) {
+    return {
+      id: booking.id,
+      bookingRef: booking.bookingRef,
+      title: this.getOperationsDashboardBookingTitle(booking),
+      status: booking.status,
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+      pax: booking.pax || Number(booking.adults || 0) + Number(booking.children || 0),
+    };
+  }
+
+  private mapDashboardService(service: any) {
+    return {
+      id: service.id,
+      bookingId: service.bookingId,
+      bookingRef: service.booking?.bookingRef || null,
+      bookingTitle: service.booking ? this.getOperationsDashboardBookingTitle(service.booking) : null,
+      description: service.description,
+      serviceType: service.serviceType,
+      operationType: service.operationType,
+      operationStatus: service.operationStatus,
+      serviceDate: service.serviceDate,
+      pickupTime: service.pickupTime,
+      assignedTo: service.assignedTo,
+      supplierId: service.supplierId,
+      supplierName: service.supplierName,
+      vehicleId: service.vehicleId,
+    };
+  }
+
+  private getOperationsDashboardBookingTitle(booking: any) {
+    const snapshot = booking?.snapshotJson && typeof booking.snapshotJson === 'object' ? booking.snapshotJson : {};
+    return this.normalizeOptionalText(snapshot.title) || booking?.bookingRef || 'Booking';
+  }
+
+  private getMissingPassengerReasons(booking: any) {
+    const reasons: string[] = [];
+    const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+    const expectedPax = Number(booking.pax || booking.adults + booking.children || 0);
+
+    if (passengers.length === 0) {
+      reasons.push('no passengers');
+    }
+
+    if (expectedPax > 0 && passengers.length < expectedPax) {
+      reasons.push(`passenger list incomplete (${passengers.length}/${expectedPax})`);
+    }
+
+    if (
+      passengers.some(
+        (passenger: any) =>
+          !this.normalizeOptionalText(passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' ')) ||
+          !this.normalizeOptionalText(passenger.nationality) ||
+          !this.normalizeOptionalText(passenger.passportNumber) ||
+          !passenger.passportExpiryDate,
+      )
+    ) {
+      reasons.push('missing required passport fields');
+    }
+
+    return Array.from(new Set(reasons));
+  }
+
+  private isMissingServiceAssignment(service: any) {
+    if (!service.supplierId) {
+      return true;
+    }
+
+    if (this.isOperationServiceType(service, BookingOperationServiceType.TRANSPORT)) {
+      return this.isMissingTransportAssignment(service);
+    }
+
+    if (this.isOperationServiceType(service, BookingOperationServiceType.GUIDE)) {
+      return !this.normalizeOptionalText(service.assignedTo);
+    }
+
+    return false;
+  }
+
+  private isMissingTransportAssignment(service: any) {
+    return !service.supplierId || !service.vehicleId || !this.normalizeOptionalText(service.assignedTo) || !this.normalizeOptionalText(service.pickupTime);
+  }
+
   private normalizeOptionalText(value: string | null | undefined) {
     const normalized = value?.trim() || '';
     return normalized ? normalized.slice(0, 250) : null;
+  }
+
+  private splitManifestFullName(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) {
+      return { firstName: parts[0] || 'Passenger', lastName: 'Traveler' };
+    }
+    return {
+      firstName: parts.slice(0, -1).join(' '),
+      lastName: parts[parts.length - 1],
+    };
+  }
+
+  private normalizePassengerManifestFields(
+    values: {
+      gender?: string | null;
+      dateOfBirth?: string | Date | null;
+      nationality?: string | null;
+      passportNumber?: string | null;
+      passportIssueDate?: string | Date | null;
+      passportExpiryDate?: string | Date | null;
+      arrivalFlight?: string | null;
+      departureFlight?: string | null;
+      entryPoint?: string | null;
+      visaStatus?: string | null;
+      roomingNotes?: string | null;
+    },
+    required: boolean,
+  ) {
+    const nationality = required
+      ? this.normalizeRequiredText(values.nationality, 'Passenger nationality is required')
+      : this.normalizeOptionalText(values.nationality);
+    const passportNumber = required
+      ? this.normalizeRequiredText(values.passportNumber, 'Passenger passport number is required')
+      : this.normalizeOptionalText(values.passportNumber);
+    const passportExpiryDate = this.normalizeManifestDate(values.passportExpiryDate, 'Passport expiry date', required);
+    const passportIssueDate = this.normalizeManifestDate(values.passportIssueDate, 'Passport issue date', false);
+    const dateOfBirth = this.normalizeManifestDate(values.dateOfBirth, 'Date of birth', false);
+
+    if (passportIssueDate && passportExpiryDate && passportExpiryDate < passportIssueDate) {
+      throw new BadRequestException('Passport expiry date cannot be before issue date.');
+    }
+
+    return {
+      gender: this.normalizeOptionalText(values.gender),
+      dateOfBirth,
+      nationality,
+      passportNumber,
+      passportIssueDate,
+      passportExpiryDate,
+      arrivalFlight: this.normalizeOptionalText(values.arrivalFlight),
+      departureFlight: this.normalizeOptionalText(values.departureFlight),
+      entryPoint: this.normalizeOptionalText(values.entryPoint),
+      visaStatus: this.normalizeOptionalText(values.visaStatus),
+      roomingNotes: this.normalizeOptionalText(values.roomingNotes),
+    };
+  }
+
+  private normalizeManifestDate(value: string | Date | null | undefined, fieldLabel: string, required: boolean) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      if (required) {
+        throw new BadRequestException(`${fieldLabel} is required.`);
+      }
+      return null;
+    }
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`${fieldLabel} is invalid.`);
+    }
+
+    return parsed;
+  }
+
+  private maskPassportNumber(value?: string | null) {
+    const normalized = value?.trim() || '';
+    if (!normalized) {
+      return null;
+    }
+    const visible = normalized.slice(-4);
+    return `${'*'.repeat(Math.max(0, normalized.length - 4))}${visible}`;
+  }
+
+  private mapPassengerForList(passenger: any) {
+    return {
+      ...passenger,
+      passportNumberMasked: this.maskPassportNumber(passenger.passportNumber),
+      passportNumber: undefined,
+    };
+  }
+
+  private formatManifestDate(value: string | Date | null | undefined) {
+    if (!value) {
+      return '';
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(0, 10);
   }
 
   private normalizeDateTimeInput(value: string | Date | null | undefined) {
@@ -5298,6 +6213,89 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async exportPassengerManifestExcel(id: string, actor?: CompanyScopedActor) {
+    const booking = await (this.prisma.booking as any).findFirst({
+      where: {
+        id,
+        ...this.buildBookingCompanyWhere(actor),
+      },
+      include: {
+        quote: {
+          include: {
+            clientCompany: true,
+          },
+        },
+        passengers: {
+          orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const bookingName =
+      booking.snapshotJson?.title ||
+      booking.quote?.title ||
+      booking.bookingRef ||
+      'Booking';
+    const arrivalDate = this.formatManifestDate(booking.startDate || booking.snapshotJson?.travelStartDate || null);
+    const rows = (booking.passengers || []).map((passenger: any) => ({
+      'Booking Name': bookingName,
+      'Arrival Date': arrivalDate,
+      'Entry Point': passenger.entryPoint || '',
+      'Full Name': passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' '),
+      Gender: passenger.gender || '',
+      DOB: this.formatManifestDate(passenger.dateOfBirth),
+      Nationality: passenger.nationality || '',
+      'Passport Number': passenger.passportNumber || '',
+      'Issue Date': this.formatManifestDate(passenger.passportIssueDate),
+      'Expiry Date': this.formatManifestDate(passenger.passportExpiryDate),
+      Flight: passenger.arrivalFlight || passenger.departureFlight || '',
+      'Visa Status': passenger.visaStatus || '',
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        'Booking Name',
+        'Arrival Date',
+        'Entry Point',
+        'Full Name',
+        'Gender',
+        'DOB',
+        'Nationality',
+        'Passport Number',
+        'Issue Date',
+        'Expiry Date',
+        'Flight',
+        'Visa Status',
+      ],
+    });
+    worksheet['!cols'] = [
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 16 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Passenger Manifest');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const safeRef = String(booking.bookingRef || 'booking').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    return {
+      buffer,
+      fileName: `${safeRef || 'booking'}-passenger-manifest.xlsx`,
+    };
+  }
+
   async generateSupplierConfirmationPdf(id: string) {
     const booking = await this.findOne(id);
 
@@ -5371,6 +6369,778 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         }
       }
       });
+  }
+
+  async generateGuaranteeLetterPdf(id: string, actor?: CompanyScopedActor) {
+    const booking = await (this.prisma.booking as any).findFirst({
+      where: {
+        id,
+        ...this.buildBookingCompanyWhere(actor),
+      },
+      include: {
+        quote: {
+          include: {
+            clientCompany: true,
+            brandCompany: {
+              include: {
+                branding: true,
+              },
+            },
+            contact: true,
+          },
+        },
+        passengers: {
+          orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
+        },
+        days: {
+          orderBy: [{ dayNumber: 'asc' }],
+        },
+        services: {
+          include: {
+            supplier: true,
+            vehicle: true,
+          },
+          orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot & {
+      travelStartDate?: string | Date | null;
+      travelEndDate?: string | Date | null;
+    };
+    const brandSnapshot = (booking.brandSnapshotJson || {}) as BookingPdfCompany;
+    const brandCompany = (booking.quote?.brandCompany || {}) as BookingPdfCompany;
+    const branding = brandCompany.branding || brandSnapshot.branding || null;
+    const companyName =
+      branding?.displayName ||
+      branding?.headerTitle ||
+      brandSnapshot.name ||
+      brandCompany.name ||
+      booking.quote?.clientCompany?.name ||
+      'DMC';
+    const companyLogoUrl = branding?.logoUrl || brandSnapshot.logoUrl || brandCompany.logoUrl || null;
+    const logoBuffer = await this.fetchImageBuffer(companyLogoUrl);
+    const companyAddress = [branding?.headerSubtitle, brandCompany.city || brandSnapshot.city, brandCompany.country || brandSnapshot.country]
+      .map((value) => this.normalizeOptionalText(value))
+      .filter(Boolean)
+      .join(', ');
+    const companyContact = [branding?.email, branding?.phone, branding?.website || brandCompany.website || brandSnapshot.website]
+      .map((value) => this.normalizeOptionalText(value))
+      .filter(Boolean)
+      .join(' | ');
+    const passengers = booking.passengers || [];
+    const firstPassenger = passengers[0] || null;
+    const arrivalDate = booking.startDate || snapshot.travelStartDate || null;
+    const departureDate = booking.endDate || snapshot.travelEndDate || null;
+    const entryPoint = this.normalizeOptionalText(firstPassenger?.entryPoint) || 'To be advised';
+    const exitPoint = this.normalizeOptionalText((firstPassenger as any)?.exitPoint) || 'To be advised';
+    const flightNumber =
+      this.normalizeOptionalText(firstPassenger?.arrivalFlight) ||
+      this.normalizeOptionalText(firstPassenger?.departureFlight) ||
+      'To be advised';
+    const nationalities = Array.from(
+      new Set(
+        passengers
+          .map((passenger: any) => this.normalizeOptionalText(passenger.nationality))
+          .filter((value: string | null): value is string => Boolean(value)),
+      ),
+    );
+    const transportServices = (booking.services || []).filter((service: any) =>
+      this.isOperationServiceType(service, BookingOperationServiceType.TRANSPORT),
+    );
+    const guideServices = (booking.services || []).filter((service: any) =>
+      this.isOperationServiceType(service, BookingOperationServiceType.GUIDE),
+    );
+    const primaryTransport = transportServices[0] || null;
+    const primaryGuide = guideServices[0] || null;
+    const totalPax = Number(booking.pax || 0) || Number(booking.adults || 0) + Number(booking.children || 0) || passengers.length;
+    const representativeName =
+      this.normalizeOptionalText(process.env.GUARANTEE_LETTER_REPRESENTATIVE_NAME) ||
+      (this.normalizeOptionalText(booking.quote?.contact?.firstName) ? this.formatFullName(booking.quote?.contact) : null);
+
+    return this.createPdf((doc) => {
+      this.writeGuaranteeLetterHeader(doc, {
+        companyName,
+        address: companyAddress,
+        contact: companyContact,
+        logoBuffer,
+      });
+
+      this.writeDocumentTitle(doc, 'Guarantee Letter', 'To whom it may concern');
+      this.writeMetaLine(doc, `Booking reference: ${booking.bookingRef || booking.id}`);
+
+      this.writeBodyLine(
+        doc,
+        `We hereby confirm that all travel arrangements for the passengers listed below are arranged and supported by ${companyName}.`,
+      );
+      this.writeBodyLine(
+        doc,
+        'We confirm responsibility for the booked ground arrangements during the passengers travel program, including operational assistance, transport coordination, and itinerary support as arranged in the booking.',
+      );
+      this.writeBodyLine(
+        doc,
+        'We guarantee that the passengers will comply with applicable entry, stay, and departure requirements. If entry is refused by the competent authority, we will assist with the required return-ticket or onward-travel arrangements according to official instructions.',
+      );
+
+      this.writeSectionTitle(doc, 'Travel Details');
+      this.writeKeyValue(doc, 'Arrival date', this.formatManifestDate(arrivalDate));
+      this.writeKeyValue(doc, 'Departure date', this.formatManifestDate(departureDate));
+      this.writeKeyValue(doc, 'Entry point', entryPoint);
+      this.writeKeyValue(doc, 'Exit point', exitPoint);
+      this.writeKeyValue(doc, 'Flight number', flightNumber);
+      this.writeKeyValue(doc, 'Pax count', String(totalPax));
+      this.writeKeyValue(doc, 'Nationality', nationalities.length ? nationalities.join(', ') : 'To be advised');
+
+      this.writeSectionTitle(doc, 'Operations Details');
+      this.writeKeyValue(doc, 'Transport company', primaryTransport?.supplierName || primaryTransport?.supplier?.name || 'To be advised');
+      this.writeKeyValue(doc, 'Driver name', primaryTransport?.assignedTo || 'To be advised');
+      this.writeKeyValue(doc, 'Driver phone', primaryTransport?.guidePhone || primaryTransport?.supplier?.phone || 'To be advised');
+      this.writeKeyValue(doc, 'Vehicle number', primaryTransport?.vehicle?.name || primaryTransport?.vehicleId || 'To be advised');
+      this.writeKeyValue(doc, 'Guide name', primaryGuide?.assignedTo || 'To be advised');
+      this.writeKeyValue(doc, 'Guide phone', primaryGuide?.guidePhone || primaryGuide?.supplier?.phone || 'To be advised');
+      if (representativeName) {
+        this.writeKeyValue(doc, 'Representative name', representativeName);
+      }
+
+      this.writeSectionTitle(doc, 'Program');
+      if ((booking.days || []).length === 0) {
+        this.writeBodyLine(doc, 'Program details will be provided separately.');
+      } else {
+        for (const day of booking.days || []) {
+          this.writeBodyLine(doc, `Day ${day.dayNumber}: ${day.title || day.notes || 'Program day'}`);
+        }
+      }
+
+      this.writeSectionTitle(doc, 'Passenger Details');
+      if (passengers.length === 0) {
+        this.writeBodyLine(doc, 'Passenger manifest is pending.');
+      } else {
+        this.writePassengerManifestTable(doc, passengers);
+      }
+
+      doc.moveDown(1);
+      this.writeBodyLine(doc, 'This letter is issued upon request for official travel and entry formalities.');
+      doc.moveDown(1.2);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#111111').text(companyName);
+    });
+  }
+
+  async createServiceVoucher(
+    bookingId: string,
+    bookingServiceId: string,
+    data: { notes?: string | null; actor?: AuditActor; companyActor?: CompanyScopedActor },
+  ) {
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: bookingServiceId,
+        bookingId,
+        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+      },
+      include: {
+        bookingDay: true,
+        vehicle: true,
+        supplier: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    const voucherType = this.resolveVoucherType(bookingService);
+    const supplierId = this.normalizeOptionalText(bookingService.supplierId);
+    if (!supplierId) {
+      throw new BadRequestException('Supplier must be assigned before voucher generation');
+    }
+
+    await this.assertVoucherRequiredFields(bookingService, voucherType);
+    const notes = this.normalizeOptionalText(data.notes) || bookingService.notes || null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const voucher = await (tx.voucher as any).create({
+        data: {
+          bookingId,
+          bookingServiceId,
+          type: voucherType,
+          supplierId,
+          status: VoucherStatus.DRAFT,
+          notes,
+        },
+        include: {
+          supplier: true,
+          bookingService: {
+            include: {
+              bookingDay: true,
+              vehicle: true,
+            },
+          },
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        bookingServiceId,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingServiceId,
+        action: 'service_voucher_created',
+        newValue: `${voucher.type}: ${voucher.id}`,
+        note: notes,
+        actor: data.actor,
+      });
+
+      return voucher;
+    });
+  }
+
+  async getOperationsDashboard(input: {
+    actor?: CompanyScopedActor;
+    date?: string | null;
+    bookingStatus?: string | null;
+    serviceStatus?: string | null;
+  }) {
+    const companyId = requireActorCompanyId(input.actor);
+    const selectedDate = this.normalizeDashboardDate(input.date);
+    const dayStart = this.startOfUtcDay(selectedDate);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    const borderWindowEnd = new Date(dayStart.getTime() + 48 * 60 * 60 * 1000);
+    const bookingStatusFilter = this.normalizeDashboardBookingStatus(input.bookingStatus);
+    const serviceStatusFilter = this.normalizeDashboardServiceStatus(input.serviceStatus);
+    const bookingCompanyWhere = { quote: { clientCompanyId: companyId } };
+
+    const bookingWhere: Prisma.BookingWhereInput = {
+      ...bookingCompanyWhere,
+      ...(bookingStatusFilter ? { status: bookingStatusFilter } : {}),
+    };
+    const serviceWhere: Prisma.BookingServiceWhereInput = {
+      booking: bookingWhere,
+      ...(serviceStatusFilter ? { operationStatus: serviceStatusFilter } : {}),
+    };
+    const activeStatusValues = [BookingStatus.draft, BookingStatus.in_progress].filter(
+      (status) => !bookingStatusFilter || status === bookingStatusFilter,
+    );
+    const pendingServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
+      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: BookingOperationServiceStatus.PENDING }] }
+      : { operationStatus: BookingOperationServiceStatus.PENDING };
+    const unconfirmedServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
+      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: { not: BookingOperationServiceStatus.CONFIRMED } }] }
+      : { operationStatus: { not: BookingOperationServiceStatus.CONFIRMED } };
+
+    const bookingSelect = {
+      id: true,
+      bookingRef: true,
+      status: true,
+      startDate: true,
+      endDate: true,
+      pax: true,
+      adults: true,
+      children: true,
+      snapshotJson: true,
+      passengers: {
+        select: {
+          id: true,
+          fullName: true,
+          firstName: true,
+          lastName: true,
+          nationality: true,
+          passportNumber: true,
+          passportExpiryDate: true,
+          entryPoint: true,
+        },
+      },
+    } satisfies Prisma.BookingSelect;
+
+    const serviceSelect = {
+      id: true,
+      bookingId: true,
+      description: true,
+      serviceType: true,
+      operationType: true,
+      operationStatus: true,
+      serviceDate: true,
+      pickupTime: true,
+      assignedTo: true,
+      supplierId: true,
+      supplierName: true,
+      vehicleId: true,
+      booking: {
+        select: {
+          id: true,
+          bookingRef: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          snapshotJson: true,
+        },
+      },
+    } satisfies Prisma.BookingServiceSelect;
+
+    const [
+      todayArrivals,
+      todayDepartures,
+      activeBookings,
+      pendingServices,
+      unconfirmedServices,
+      passengerCandidates,
+      upcomingBorderCrossings,
+      alertServices,
+      todayTransportServices,
+    ] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          ...bookingWhere,
+          startDate: { gte: dayStart, lt: dayEnd },
+        },
+        select: bookingSelect,
+        orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          ...bookingWhere,
+          endDate: { gte: dayStart, lt: dayEnd },
+        },
+        select: bookingSelect,
+        orderBy: { endDate: 'asc' },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          ...bookingWhere,
+          status: { in: activeStatusValues },
+        },
+        select: bookingSelect,
+        orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.bookingService.findMany({
+        where: {
+          ...serviceWhere,
+          ...pendingServiceStatusWhere,
+        },
+        select: serviceSelect,
+        orderBy: [{ serviceDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.bookingService.findMany({
+        where: {
+          ...serviceWhere,
+          ...unconfirmedServiceStatusWhere,
+        },
+        select: serviceSelect,
+        orderBy: [{ serviceDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.booking.findMany({
+        where: bookingWhere,
+        select: bookingSelect,
+        orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          ...bookingWhere,
+          OR: [
+            { startDate: { gte: dayStart, lt: borderWindowEnd } },
+            { endDate: { gte: dayStart, lt: borderWindowEnd } },
+          ],
+        },
+        select: bookingSelect,
+        orderBy: { startDate: 'asc' },
+      }),
+      this.prisma.bookingService.findMany({
+        where: serviceWhere,
+        select: serviceSelect,
+        orderBy: [{ serviceDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.bookingService.findMany({
+        where: {
+          ...serviceWhere,
+          operationType: BookingOperationServiceType.TRANSPORT,
+          serviceDate: { gte: dayStart, lt: dayEnd },
+        },
+        select: serviceSelect,
+        orderBy: [{ serviceDate: 'asc' }, { createdAt: 'asc' }],
+      }),
+    ]);
+
+    const missingPassengers = passengerCandidates
+      .map((booking) => ({
+        booking,
+        reasons: this.getMissingPassengerReasons(booking),
+      }))
+      .filter((entry) => entry.reasons.length > 0);
+    const servicesWithoutAssignment = alertServices.filter((service) => this.isMissingServiceAssignment(service));
+    const missingTransportAssignmentForToday = todayTransportServices.filter((service) => this.isMissingTransportAssignment(service));
+
+    return {
+      filters: {
+        date: this.formatDashboardDateOnly(dayStart),
+        bookingStatus: bookingStatusFilter || 'all',
+        serviceStatus: serviceStatusFilter || 'all',
+      },
+      todayArrivals: this.buildDashboardBucket(todayArrivals.map((booking) => this.mapDashboardBooking(booking))),
+      todayDepartures: this.buildDashboardBucket(todayDepartures.map((booking) => this.mapDashboardBooking(booking))),
+      activeBookings: this.buildDashboardBucket(activeBookings.map((booking) => this.mapDashboardBooking(booking))),
+      pendingServices: this.buildDashboardBucket(pendingServices.map((service) => this.mapDashboardService(service))),
+      unconfirmedServices: this.buildDashboardBucket(unconfirmedServices.map((service) => this.mapDashboardService(service))),
+      missingPassengers: this.buildDashboardBucket(
+        missingPassengers.map((entry) => ({
+          ...this.mapDashboardBooking(entry.booking),
+          reasons: entry.reasons,
+        })),
+      ),
+      upcomingBorderCrossings: this.buildDashboardBucket(
+        upcomingBorderCrossings.map((booking) => this.mapDashboardBooking(booking)),
+      ),
+      alerts: {
+        bookingsWithNoPassengers: this.buildDashboardBucket(
+          passengerCandidates
+            .filter((booking) => booking.passengers.length === 0)
+            .map((booking) => this.mapDashboardBooking(booking)),
+        ),
+        servicesWithoutSupplierOrAssignment: this.buildDashboardBucket(
+          servicesWithoutAssignment.map((service) => this.mapDashboardService(service)),
+        ),
+        missingTransportAssignmentForToday: this.buildDashboardBucket(
+          missingTransportAssignmentForToday.map((service) => this.mapDashboardService(service)),
+        ),
+      },
+    };
+  }
+
+  async getOperationsMobileData(input: { actor?: CompanyScopedActor; date?: string | null }) {
+    const companyId = requireActorCompanyId(input.actor);
+    const selectedDate = this.normalizeDashboardDate(input.date);
+    const dayStart = this.startOfUtcDay(selectedDate);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+        status: {
+          not: BookingStatus.cancelled,
+        },
+        OR: [
+          {
+            startDate: { gte: dayStart, lt: dayEnd },
+          },
+          {
+            endDate: { gte: dayStart, lt: dayEnd },
+          },
+          {
+            AND: [
+              { startDate: { lte: dayStart } },
+              { endDate: { gte: dayEnd } },
+            ],
+          },
+          {
+            days: {
+              some: {
+                date: { gte: dayStart, lt: dayEnd },
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        bookingRef: true,
+        status: true,
+        startDate: true,
+        endDate: true,
+        pax: true,
+        adults: true,
+        children: true,
+        roomCount: true,
+        snapshotJson: true,
+        passengers: {
+          select: {
+            id: true,
+            fullName: true,
+            firstName: true,
+            lastName: true,
+            nationality: true,
+            passportNumber: true,
+            passportExpiryDate: true,
+          },
+        },
+        days: {
+          orderBy: [{ dayNumber: 'asc' }],
+          select: {
+            id: true,
+            dayNumber: true,
+            date: true,
+            title: true,
+            notes: true,
+            status: true,
+            services: {
+              orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
+              select: {
+                id: true,
+                bookingDayId: true,
+                serviceType: true,
+                operationType: true,
+                operationStatus: true,
+                supplierId: true,
+                referenceId: true,
+                vehicleId: true,
+                description: true,
+                serviceDate: true,
+                startTime: true,
+                pickupTime: true,
+                pickupLocation: true,
+                meetingPoint: true,
+                assignedTo: true,
+                guidePhone: true,
+                supplierName: true,
+                confirmationNumber: true,
+                notes: true,
+                status: true,
+                vouchers: {
+                  select: {
+                    id: true,
+                    status: true,
+                    type: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ startDate: 'asc' }, { bookingRef: 'asc' }],
+    });
+
+    return {
+      date: this.formatDashboardDateOnly(dayStart),
+      bookings: bookings.map((booking: any) => {
+        const expectedPax = Number(booking.pax || booking.adults + booking.children || 0);
+        const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+        const missingReasons = this.getMissingPassengerReasons(booking);
+
+        return {
+          id: booking.id,
+          bookingRef: booking.bookingRef,
+          title: this.getOperationsDashboardBookingTitle(booking),
+          status: booking.status,
+          startDate: booking.startDate,
+          endDate: booking.endDate,
+          pax: expectedPax,
+          roomCount: booking.roomCount,
+          passengerSummary: {
+            expected: expectedPax,
+            received: passengers.length,
+            manifestStatus: missingReasons.length === 0 ? 'complete' : 'incomplete',
+            missingReasons,
+            maskedPassportSamples: passengers.slice(0, 3).map((passenger: any) => ({
+              id: passenger.id,
+              name: passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' '),
+              passportNumberMasked: this.maskPassportNumber(passenger.passportNumber),
+            })),
+          },
+          days: (booking.days || []).map((day: any) => ({
+            id: day.id,
+            dayNumber: day.dayNumber,
+            date: day.date,
+            title: day.title,
+            notes: day.notes,
+            status: day.status,
+            services: (day.services || []).map((service: any) => ({
+              id: service.id,
+              bookingDayId: service.bookingDayId,
+              type: service.operationType || service.serviceType,
+              serviceType: service.serviceType,
+              operationType: service.operationType,
+              supplierId: service.supplierId,
+              referenceId: service.referenceId,
+              vehicleId: service.vehicleId,
+              operationStatus: service.operationStatus,
+              description: service.description,
+              serviceDate: service.serviceDate,
+              startTime: service.startTime,
+              pickupTime: service.pickupTime,
+              pickupLocation: service.pickupLocation,
+              meetingPoint: service.meetingPoint,
+              assignedTo: service.assignedTo,
+              guidePhone: service.guidePhone,
+              supplierName: service.supplierName,
+              confirmationNumber: service.confirmationNumber,
+              notes: service.notes,
+              status: service.status,
+              vouchers: service.vouchers || [],
+            })),
+          })),
+        };
+      }),
+    };
+  }
+
+  async updateVoucherStatus(voucherId: string, status: string, actor?: AuditActor, companyActor?: CompanyScopedActor) {
+    const normalizedStatus = this.normalizeVoucherStatus(status);
+    const voucher = await (this.prisma.voucher as any).findFirst({
+      where: {
+        id: voucherId,
+        ...this.buildVoucherCompanyWhere(companyActor),
+      },
+      include: {
+        bookingService: true,
+      },
+    });
+
+    if (!voucher) {
+      throw new NotFoundException('Voucher not found');
+    }
+
+    if (voucher.status === VoucherStatus.CANCELLED && normalizedStatus !== VoucherStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled vouchers cannot be reissued');
+    }
+
+    if (voucher.status === VoucherStatus.DRAFT && normalizedStatus !== VoucherStatus.ISSUED && normalizedStatus !== VoucherStatus.CANCELLED) {
+      throw new BadRequestException('Draft vouchers can only be issued or cancelled');
+    }
+
+    if (voucher.status === VoucherStatus.ISSUED && normalizedStatus === VoucherStatus.DRAFT) {
+      throw new BadRequestException('Issued vouchers cannot return to draft');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await (tx.voucher as any).update({
+        where: { id: voucherId },
+        data: {
+          status: normalizedStatus,
+          issuedAt:
+            normalizedStatus === VoucherStatus.ISSUED
+              ? voucher.issuedAt || new Date()
+              : normalizedStatus === VoucherStatus.CANCELLED
+                ? null
+                : voucher.issuedAt,
+        },
+        include: {
+          supplier: true,
+          bookingService: true,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: voucher.bookingId,
+        bookingServiceId: voucher.bookingServiceId,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: voucher.bookingServiceId,
+        action: 'service_voucher_status_updated',
+        oldValue: voucher.status,
+        newValue: normalizedStatus,
+        actor,
+      });
+
+      return updated;
+    });
+  }
+
+  async generateServiceVoucherPdf(voucherId: string, actor?: CompanyScopedActor) {
+    const voucher = await (this.prisma.voucher as any).findFirst({
+      where: {
+        id: voucherId,
+        ...this.buildVoucherCompanyWhere(actor),
+      },
+      include: {
+        supplier: true,
+        booking: {
+          include: {
+            quote: {
+              include: {
+                clientCompany: true,
+                brandCompany: {
+                  include: { branding: true },
+                },
+                contact: true,
+              },
+            },
+            passengers: {
+              orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
+            },
+            days: {
+              orderBy: [{ dayNumber: 'asc' }],
+            },
+          },
+        },
+        bookingService: {
+          include: {
+            bookingDay: true,
+            vehicle: true,
+            supplier: true,
+          },
+        },
+      },
+    });
+
+    if (!voucher) {
+      throw new NotFoundException('Voucher not found');
+    }
+
+    const service = voucher.bookingService;
+    const booking = voucher.booking;
+    const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot & { title?: string | null; travelStartDate?: string | null };
+    const brandSnapshot = (booking.brandSnapshotJson || {}) as BookingPdfCompany;
+    const brandCompany = (booking.quote?.brandCompany || {}) as BookingPdfCompany;
+    const branding = brandCompany.branding || brandSnapshot.branding || null;
+    const companyName = branding?.displayName || branding?.headerTitle || brandSnapshot.name || brandCompany.name || 'DMC';
+    const logoBuffer = await this.fetchImageBuffer(branding?.logoUrl || brandSnapshot.logoUrl || brandCompany.logoUrl || null);
+    const clientName = snapshot.title || booking.clientSnapshotJson?.name || booking.quote?.clientCompany?.name || 'Client group';
+    const pax = Number(booking.pax || 0) || Number(booking.adults || 0) + Number(booking.children || 0) || booking.passengers.length;
+    const dayTitle = service.bookingDay?.title || this.findServiceDayTitle(booking.days || [], service) || 'Program day';
+    const serviceDate = service.serviceDate || service.bookingDay?.date || booking.startDate || snapshot.travelStartDate || null;
+    const routeName = service.referenceId ? await this.getRouteName(service.referenceId) : null;
+    const notes = voucher.notes || service.notes || service.confirmationNotes || '-';
+
+    return this.createPdf((doc) => {
+      this.writeGuaranteeLetterHeader(doc, {
+        companyName,
+        address: [brandCompany.city || brandSnapshot.city, brandCompany.country || brandSnapshot.country].filter(Boolean).join(', '),
+        contact: [branding?.email, branding?.phone, branding?.website || brandCompany.website].filter(Boolean).join(' | '),
+        logoBuffer,
+      });
+      this.writeDocumentTitle(doc, `${voucher.type} Voucher`, `Voucher ${voucher.id}`);
+      this.writeMetaLine(doc, `Booking reference: ${booking.bookingRef || booking.id} | Supplier: ${voucher.supplier?.name || service.supplierName || '-'}`);
+
+      if (voucher.type === VoucherType.TRANSPORT) {
+        this.writeSectionTitle(doc, 'Transport Voucher');
+        this.writeKeyValue(doc, 'Client / group', clientName);
+        this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
+        this.writeKeyValue(doc, 'Route', routeName || service.description || '-');
+        this.writeKeyValue(doc, 'Pickup time', service.pickupTime || service.startTime || '-');
+        this.writeKeyValue(doc, 'Vehicle type', service.vehicle?.name || '-');
+        this.writeKeyValue(doc, 'Driver', [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || '-');
+        this.writeKeyValue(doc, 'Pax', String(pax));
+        this.writeKeyValue(doc, 'Notes', notes);
+      } else if (voucher.type === VoucherType.HOTEL) {
+        this.writeSectionTitle(doc, 'Hotel Voucher');
+        this.writeKeyValue(doc, 'Client', clientName);
+        this.writeKeyValue(doc, 'Hotel', voucher.supplier?.name || service.supplierName || service.description || '-');
+        this.writeKeyValue(doc, 'Check-in', this.formatManifestDate(booking.startDate || serviceDate));
+        this.writeKeyValue(doc, 'Check-out', this.formatManifestDate(booking.endDate || null));
+        this.writeKeyValue(doc, 'Rooms / pax', `${booking.roomCount || 0} rooms / ${pax} pax`);
+        this.writeKeyValue(doc, 'Confirmation number', service.confirmationNumber || service.supplierReference || '-');
+        this.writeKeyValue(doc, 'Notes', notes);
+      } else if (voucher.type === VoucherType.GUIDE) {
+        this.writeSectionTitle(doc, 'Guide Voucher');
+        this.writeKeyValue(doc, 'Guide name', service.assignedTo || voucher.supplier?.name || '-');
+        this.writeKeyValue(doc, 'Language', service.supplierReference || 'To be advised');
+        this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
+        this.writeKeyValue(doc, 'Program', dayTitle);
+        this.writeKeyValue(doc, 'Pickup', [service.pickupTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-');
+        this.writeKeyValue(doc, 'Pax', String(pax));
+        this.writeKeyValue(doc, 'Notes', notes);
+      } else {
+        this.writeSectionTitle(doc, 'External Package Voucher');
+        this.writeKeyValue(doc, 'Country / package', service.description || voucher.supplier?.name || clientName);
+        this.writeKeyValue(doc, 'Date range', `${this.formatManifestDate(booking.startDate || serviceDate)} - ${this.formatManifestDate(booking.endDate || serviceDate)}`);
+        this.writeKeyValue(doc, 'Notes', notes);
+      }
+
+      doc.moveDown(0.8);
+      this.writeBodyLine(doc, 'Supplier-facing operational voucher for service delivery and confirmation.');
+    });
   }
 
   async generateInvoicePdf(id: string, mode: BookingInvoiceMode = 'ITEMIZED') {
@@ -6014,6 +7784,46 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     doc.moveDown(0.5);
   }
 
+  private writeGuaranteeLetterHeader(
+    doc: PDFKit.PDFDocument,
+    values: {
+      companyName: string;
+      address: string;
+      contact: string;
+      logoBuffer: Buffer | null;
+    },
+  ) {
+    const topY = doc.y;
+    const leftX = doc.page.margins.left;
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    let textX = leftX;
+    let textWidth = pageWidth;
+
+    if (values.logoBuffer) {
+      try {
+        doc.image(values.logoBuffer, leftX, topY, { fit: [110, 42] });
+        textX = leftX + 126;
+        textWidth = pageWidth - 126;
+      } catch {
+        textX = leftX;
+        textWidth = pageWidth;
+      }
+    }
+
+    doc.font('Helvetica-Bold').fontSize(14).fillColor('#111111').text(values.companyName, textX, topY, { width: textWidth });
+    if (values.address) {
+      doc.font('Helvetica').fontSize(9).fillColor('#555555').text(values.address, textX, doc.y + 2, { width: textWidth });
+    }
+
+    if (values.contact) {
+      doc.font('Helvetica').fontSize(9).fillColor('#555555').text(values.contact, textX, doc.y + 2, { width: textWidth });
+    }
+
+    doc.y = Math.max(doc.y, topY + 58);
+    doc.moveTo(leftX, doc.y).lineTo(leftX + pageWidth, doc.y).strokeColor('#dddddd').stroke();
+    doc.moveDown(1.1);
+  }
+
   private writeMetaLine(doc: PDFKit.PDFDocument, text: string) {
     if (!text.trim()) {
       return;
@@ -6038,6 +7848,49 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       continued: true,
     });
     doc.font('Helvetica').text(value || '-');
+  }
+
+  private writePassengerManifestTable(doc: PDFKit.PDFDocument, passengers: any[]) {
+    const headers = ['Full Name', 'Nationality', 'DOB', 'Passport Number', 'Issue Date', 'Expiry Date'];
+    const widths = [116, 78, 66, 94, 66, 66];
+    const leftX = doc.page.margins.left;
+
+    const writeRow = (values: string[], isHeader = false) => {
+      this.ensurePageSpace(doc, 34);
+      const startY = doc.y;
+      let x = leftX;
+
+      values.forEach((value, index) => {
+        doc
+          .font(isHeader ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(isHeader ? 8 : 7.5)
+          .fillColor('#111111')
+          .text(value || '-', x, startY, {
+            width: widths[index],
+            height: 28,
+            ellipsis: true,
+          });
+        x += widths[index];
+      });
+
+      doc.y = startY + 30;
+      doc.moveTo(leftX, doc.y - 3).lineTo(leftX + widths.reduce((sum, width) => sum + width, 0), doc.y - 3).strokeColor('#eeeeee').stroke();
+    };
+
+    writeRow(headers, true);
+
+    for (const passenger of passengers) {
+      writeRow([
+        passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' '),
+        passenger.nationality || '',
+        this.formatManifestDate(passenger.dateOfBirth),
+        passenger.passportNumber || '',
+        this.formatManifestDate(passenger.passportIssueDate),
+        this.formatManifestDate(passenger.passportExpiryDate),
+      ]);
+    }
+
+    doc.moveDown(0.5);
   }
 
   private writeBodyLine(doc: PDFKit.PDFDocument, text: string) {
@@ -6573,6 +8426,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildBookingServiceCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
+  }
+
+  private buildVoucherCompanyWhere(actor?: CompanyScopedActor) {
     const companyId = requireActorCompanyId(actor);
     return {
       booking: {

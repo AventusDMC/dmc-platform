@@ -40,8 +40,8 @@ export class ContractImportsController {
   constructor(private readonly contractImportsService: ContractImportsService) {}
 
   @Get()
-  findAll() {
-    return this.contractImportsService.findAll();
+  findAll(@Actor() actor: AuthenticatedActor) {
+    return this.contractImportsService.findAll(actor);
   }
 
   @Post('analyze')
@@ -87,8 +87,8 @@ export class ContractImportsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.contractImportsService.findOne(id);
+  findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.contractImportsService.findOne(id, actor);
   }
 
   @Post(':id/approve')
@@ -102,8 +102,8 @@ export class ContractImportsController {
   }
 
   @Post(':id/export-excel')
-  async exportExcel(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
-    const exported = await this.contractImportsService.exportExcel(id);
+  async exportExcel(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
+    const exported = await this.contractImportsService.exportExcel(id, actor);
     response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     response.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
     return new StreamableFile(exported.buffer);

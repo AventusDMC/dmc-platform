@@ -6,6 +6,7 @@ import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { HotelRatesForm } from './HotelRatesForm';
 import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
+import { formatPricingBasis } from '../hotels/hotel-contract-display';
 
 type HotelRoomCategory = {
   id: string;
@@ -45,6 +46,7 @@ type HotelRate = {
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
   pricingMode?: 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT' | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   salesTaxPercent?: number | null;
@@ -188,6 +190,7 @@ export function HotelContractRatesSection({
             occupancyType: rate?.occupancyType || 'SGL',
             mealPlan: rate?.mealPlan || 'BB',
             pricingMode: rate?.pricingMode || '',
+            pricingBasis: rate?.pricingBasis || 'PER_ROOM',
             currency: normalizeSupportedCurrency(rate?.currency || contract.currency),
             cost: rate ? String(rate.cost) : '',
             salesTaxPercent:
@@ -263,6 +266,7 @@ export function HotelContractRatesSection({
                 <th>Occupancy</th>
                 <th>Validity / season</th>
                 <th>Rate</th>
+                <th>Basis</th>
                 <th>Currency</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -289,6 +293,7 @@ export function HotelContractRatesSection({
                         </div>
                       </td>
                       <td>{hotelRate.cost.toFixed(2)}</td>
+                      <td>{formatPricingBasis(hotelRate.pricingBasis)}</td>
                       <td>{hotelRate.currency}</td>
                       <td>{seasonLabel || 'Open'}</td>
                       <td>
@@ -318,7 +323,7 @@ export function HotelContractRatesSection({
 
                     {isEditingRate ? (
                       <tr>
-                        <td colSpan={8}>{renderRateForm(hotelRate)}</td>
+                        <td colSpan={9}>{renderRateForm(hotelRate)}</td>
                       </tr>
                     ) : null}
                   </Fragment>

@@ -8,6 +8,7 @@ import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
 import { HotelContractSupplementForm } from './HotelContractSupplementForm';
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
+import { formatSupplementCharge, formatSupplementType } from './hotel-contract-display';
 
 type RoomCategoryOption = {
   id: string;
@@ -18,10 +19,10 @@ type RoomCategoryOption = {
 type Supplement = {
   id: string;
   roomCategoryId: string | null;
-  type: 'EXTRA_BREAKFAST' | 'EXTRA_LUNCH' | 'EXTRA_DINNER' | 'GALA_DINNER' | 'EXTRA_BED';
-  chargeBasis: 'PER_PERSON' | 'PER_ROOM' | 'PER_STAY' | 'PER_NIGHT';
-  amount: number;
-  currency: string;
+  type: 'EXTRA_BREAKFAST' | 'EXTRA_LUNCH' | 'EXTRA_DINNER' | 'GALA_DINNER' | 'EXTRA_BED' | string | null;
+  chargeBasis: 'PER_PERSON' | 'PER_ROOM' | 'PER_STAY' | 'PER_NIGHT' | string | null;
+  amount: number | string | null;
+  currency: string | null;
   isMandatory: boolean;
   isActive: boolean;
   notes: string | null;
@@ -39,26 +40,15 @@ type HotelContractSupplementsTableProps = {
   supplements: Supplement[];
 };
 
-function formatSupplementType(value: Supplement['type']) {
-  return value === 'EXTRA_BREAKFAST'
-    ? 'Extra breakfast'
-    : value === 'EXTRA_LUNCH'
-      ? 'Extra lunch'
-      : value === 'EXTRA_DINNER'
-        ? 'Extra dinner'
-        : value === 'GALA_DINNER'
-          ? 'Gala dinner'
-          : 'Extra bed';
+const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER', 'EXTRA_BED'] as const;
+const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
+
+function normalizeSupplementType(value: Supplement['type']): (typeof SUPPLEMENT_TYPES)[number] {
+  return SUPPLEMENT_TYPES.includes(value as (typeof SUPPLEMENT_TYPES)[number]) ? (value as (typeof SUPPLEMENT_TYPES)[number]) : 'EXTRA_BED';
 }
 
-function formatChargeBasis(value: Supplement['chargeBasis']) {
-  return value === 'PER_PERSON'
-    ? 'Per person'
-    : value === 'PER_ROOM'
-      ? 'Per room'
-      : value === 'PER_STAY'
-        ? 'Per stay'
-        : 'Per night';
+function normalizeChargeBasis(value: Supplement['chargeBasis']): (typeof CHARGE_BASIS_VALUES)[number] {
+  return CHARGE_BASIS_VALUES.includes(value as (typeof CHARGE_BASIS_VALUES)[number]) ? (value as (typeof CHARGE_BASIS_VALUES)[number]) : 'PER_NIGHT';
 }
 
 export function HotelContractSupplementsTable({
@@ -125,8 +115,8 @@ export function HotelContractSupplementsTable({
                   : 'All room categories'}
               </td>
               <td>
-                {supplement.amount.toFixed(2)} {supplement.currency}
-                <div className="table-subcopy">{formatChargeBasis(supplement.chargeBasis)}</div>
+                {formatSupplementCharge(supplement).amountLabel}
+                <div className="table-subcopy">{formatSupplementCharge(supplement).basisLabel}</div>
               </td>
               <td>
                 <span className={`quote-ui-badge ${supplement.isActive ? 'quote-ui-badge-success' : 'quote-ui-badge-info'}`}>
@@ -152,10 +142,10 @@ export function HotelContractSupplementsTable({
                         submitLabel="Save supplement"
                         initialValues={{
                           roomCategoryId: supplement.roomCategoryId || '',
-                          type: supplement.type,
-                          chargeBasis: supplement.chargeBasis,
-                          amount: String(supplement.amount),
-                          currency: normalizeSupportedCurrency(supplement.currency),
+                          type: normalizeSupplementType(supplement.type),
+                          chargeBasis: normalizeChargeBasis(supplement.chargeBasis),
+                          amount: supplement.amount === null || supplement.amount === undefined ? '' : String(supplement.amount),
+                          currency: normalizeSupportedCurrency(supplement.currency || undefined),
                           isMandatory: supplement.isMandatory,
                           isActive: supplement.isActive,
                           notes: supplement.notes || '',

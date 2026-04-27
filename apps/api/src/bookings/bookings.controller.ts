@@ -98,17 +98,41 @@ type SendBookingPaymentRemindersBatchBody = {
 };
 
 type CreateBookingPassengerBody = {
+  fullName?: string;
   firstName: string;
   lastName: string;
   title?: string | null;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  passportNumber?: string | null;
+  passportIssueDate?: string | null;
+  passportExpiryDate?: string | null;
+  arrivalFlight?: string | null;
+  departureFlight?: string | null;
+  entryPoint?: string | null;
+  visaStatus?: string | null;
+  roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
 };
 
 type UpdateBookingPassengerBody = {
+  fullName?: string;
   firstName?: string;
   lastName?: string;
   title?: string | null;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  passportNumber?: string | null;
+  passportIssueDate?: string | null;
+  passportExpiryDate?: string | null;
+  arrivalFlight?: string | null;
+  departureFlight?: string | null;
+  entryPoint?: string | null;
+  visaStatus?: string | null;
+  roomingNotes?: string | null;
   notes?: string | null;
   isLead?: boolean;
 };
@@ -145,6 +169,23 @@ type BulkBookingServiceActionBody = {
 type SupplierConfirmBookingServiceBody = {
   confirmationNumber?: string | null;
   supplierReference?: string | null;
+  notes?: string | null;
+};
+
+type BookingOperationServiceBody = {
+  type?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
+  supplierId?: string | null;
+  referenceId?: string | null;
+  assignedTo?: string | null;
+  guidePhone?: string | null;
+  vehicleId?: string | null;
+  pickupTime?: string | null;
+  confirmationNumber?: string | null;
+  notes?: string | null;
+  status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
+};
+
+type CreateServiceVoucherBody = {
   notes?: string | null;
 };
 
@@ -329,6 +370,27 @@ export class BookingsController {
     return new StreamableFile(pdfBuffer);
   }
 
+  @Get(':id/guarantee-letter')
+  @Roles('admin', 'operations')
+  async downloadGuaranteeLetterPdf(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const pdfBuffer = await this.bookingsService.generateGuaranteeLetterPdf(id, actor);
+    const fileName =
+      `${id}-guarantee-letter`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'booking-guarantee-letter';
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+
+    return new StreamableFile(pdfBuffer);
+  }
+
   @Get(':id/invoice/pdf')
   @Roles('admin', 'finance', 'operations')
   async downloadInvoicePdf(
@@ -355,6 +417,19 @@ export class BookingsController {
     response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
 
     return new StreamableFile(pdfBuffer);
+  }
+
+  @Get(':id/passengers/export.xlsx')
+  @Roles('admin', 'operations')
+  async downloadPassengerManifestExcel(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const exportFile = await this.bookingsService.exportPassengerManifestExcel(id, actor);
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition', `attachment; filename="${exportFile.fileName}"`);
+    return new StreamableFile(exportFile.buffer);
   }
 
   @Post('send-document-email')
@@ -505,9 +580,21 @@ export class BookingsController {
     @Actor() actor: AuthenticatedActor,
   ) {
     return this.bookingsService.createPassenger(id, {
+      fullName: body.fullName,
       firstName: body.firstName,
       lastName: body.lastName,
       title: body.title === undefined ? undefined : body.title || null,
+      gender: body.gender === undefined ? undefined : body.gender || null,
+      dateOfBirth: body.dateOfBirth === undefined ? undefined : body.dateOfBirth || null,
+      nationality: body.nationality === undefined ? undefined : body.nationality || null,
+      passportNumber: body.passportNumber === undefined ? undefined : body.passportNumber || null,
+      passportIssueDate: body.passportIssueDate === undefined ? undefined : body.passportIssueDate || null,
+      passportExpiryDate: body.passportExpiryDate === undefined ? undefined : body.passportExpiryDate || null,
+      arrivalFlight: body.arrivalFlight === undefined ? undefined : body.arrivalFlight || null,
+      departureFlight: body.departureFlight === undefined ? undefined : body.departureFlight || null,
+      entryPoint: body.entryPoint === undefined ? undefined : body.entryPoint || null,
+      visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
+      roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
       actor: this.toAuditActor(actor),
@@ -524,9 +611,21 @@ export class BookingsController {
     @Actor() actor: AuthenticatedActor,
   ) {
     return this.bookingsService.updatePassenger(id, passengerId, {
+      fullName: body.fullName,
       firstName: body.firstName,
       lastName: body.lastName,
       title: body.title === undefined ? undefined : body.title || null,
+      gender: body.gender === undefined ? undefined : body.gender || null,
+      dateOfBirth: body.dateOfBirth === undefined ? undefined : body.dateOfBirth || null,
+      nationality: body.nationality === undefined ? undefined : body.nationality || null,
+      passportNumber: body.passportNumber === undefined ? undefined : body.passportNumber || null,
+      passportIssueDate: body.passportIssueDate === undefined ? undefined : body.passportIssueDate || null,
+      passportExpiryDate: body.passportExpiryDate === undefined ? undefined : body.passportExpiryDate || null,
+      arrivalFlight: body.arrivalFlight === undefined ? undefined : body.arrivalFlight || null,
+      departureFlight: body.departureFlight === undefined ? undefined : body.departureFlight || null,
+      entryPoint: body.entryPoint === undefined ? undefined : body.entryPoint || null,
+      visaStatus: body.visaStatus === undefined ? undefined : body.visaStatus || null,
+      roomingNotes: body.roomingNotes === undefined ? undefined : body.roomingNotes || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       isLead: body.isLead === undefined ? undefined : Boolean(body.isLead),
       actor: this.toAuditActor(actor),
@@ -619,6 +718,76 @@ export class BookingsController {
     @Actor() actor: AuthenticatedActor,
   ) {
     return this.bookingsService.unassignPassengerFromRoom(id, roomingEntryId, passengerId, this.toAuditActor(actor), actor);
+  }
+
+  @Get(':id/days/:dayId/services')
+  @Roles('admin', 'operations')
+  listBookingServicesByDay(
+    @Param('id') id: string,
+    @Param('dayId') dayId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.listBookingServicesByDay(id, dayId, actor);
+  }
+
+  @Post(':id/days/:dayId/services')
+  @Roles('admin', 'operations')
+  createBookingService(
+    @Param('id') id: string,
+    @Param('dayId') dayId: string,
+    @Body() body: BookingOperationServiceBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.createBookingService(id, dayId, {
+      type: body.type || '',
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
+      referenceId: body.referenceId === undefined ? undefined : body.referenceId || null,
+      assignedTo: body.assignedTo === undefined ? undefined : body.assignedTo || null,
+      guidePhone: body.guidePhone === undefined ? undefined : body.guidePhone || null,
+      vehicleId: body.vehicleId === undefined ? undefined : body.vehicleId || null,
+      pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      status: body.status === undefined ? undefined : body.status || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch(':id/days/:dayId/services/:serviceId')
+  @Roles('admin', 'operations')
+  updateBookingService(
+    @Param('id') id: string,
+    @Param('dayId') dayId: string,
+    @Param('serviceId') serviceId: string,
+    @Body() body: BookingOperationServiceBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updateBookingService(id, dayId, serviceId, {
+      type: body.type === undefined ? undefined : body.type || null,
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
+      referenceId: body.referenceId === undefined ? undefined : body.referenceId || null,
+      assignedTo: body.assignedTo === undefined ? undefined : body.assignedTo || null,
+      guidePhone: body.guidePhone === undefined ? undefined : body.guidePhone || null,
+      vehicleId: body.vehicleId === undefined ? undefined : body.vehicleId || null,
+      pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      status: body.status === undefined ? undefined : body.status || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Delete(':id/days/:dayId/services/:serviceId')
+  @Roles('admin', 'operations')
+  deleteBookingService(
+    @Param('id') id: string,
+    @Param('dayId') dayId: string,
+    @Param('serviceId') serviceId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.deleteBookingService(id, dayId, serviceId, this.toAuditActor(actor), actor);
   }
 
   @Patch('services/:serviceId/assign-supplier')
@@ -724,6 +893,21 @@ export class BookingsController {
     return this.bookingsService.updateManualServiceStatus(serviceId, {
       action: body.action,
       note: body.note,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/services/:serviceId/voucher')
+  @Roles('admin', 'operations')
+  createServiceVoucher(
+    @Param('id') id: string,
+    @Param('serviceId') serviceId: string,
+    @Body() body: CreateServiceVoucherBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.createServiceVoucher(id, serviceId, {
+      notes: body.notes === undefined ? undefined : body.notes || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

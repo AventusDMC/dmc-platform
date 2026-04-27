@@ -259,6 +259,7 @@ async function seedServiceTypes(prisma: PrismaService) {
     { name: 'Guiding', code: 'GUIDE' },
     { name: 'Dining', code: 'MEAL' },
     { name: 'Meet And Assist', code: 'MEET' },
+    { name: 'External Package', code: 'EXTERNAL_PACKAGE' },
   ];
 
   const records = await Promise.all(

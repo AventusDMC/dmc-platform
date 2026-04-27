@@ -3,13 +3,86 @@ import assert = require('node:assert/strict');
 const { QuotesService } = require('./quotes.service');
 const { QuotePricingService } = require('./quote-pricing.service');
 
-function createQuotesService() {
+function createQuotesService(prisma: any = {}) {
   return new QuotesService(
-    {} as any,
-    {} as any,
+    prisma,
+    { log: async () => null } as any,
     new QuotePricingService(),
   );
 }
+
+test('accepted quote conversion creates booking with client company pax dates and booking days', async () => {
+  let bookingCreateData: any;
+  const tx = {
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        status: 'ACCEPTED',
+        acceptedVersionId: 'version-1',
+        booking: null,
+      }),
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        quoteId: 'quote-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'FIT',
+          clientCompany: { id: 'company-1', name: 'Client Co' },
+          contact: { firstName: 'Lina', lastName: 'Haddad' },
+          adults: 2,
+          children: 1,
+          roomCount: 2,
+          nightCount: 2,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [
+            { id: 'day-1', dayNumber: 1, title: 'Arrival', description: 'Arrival day' },
+            { id: 'day-2', dayNumber: 2, title: 'Petra', description: 'Touring day' },
+          ],
+          quoteItems: [],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async () => [],
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return {
+          id: 'booking-1',
+          bookingRef: data.bookingRef,
+          quoteId: data.quoteId,
+          ...data,
+        };
+      },
+    },
+    bookingPassenger: {
+      create: async () => ({ id: 'passenger-1' }),
+    },
+    bookingRoomingEntry: {
+      create: async () => ({ id: 'room-1' }),
+    },
+    bookingRoomingAssignment: {
+      create: async () => ({}),
+    },
+  };
+  const service = createQuotesService({
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  const booking = await service.convertToBooking('quote-1', { companyId: 'company-1' });
+
+  assert.equal(booking.id, 'booking-1');
+  assert.equal(bookingCreateData.quoteId, 'quote-1');
+  assert.equal(bookingCreateData.clientCompanyId, 'company-1');
+  assert.equal(bookingCreateData.pax, 3);
+  assert.equal(bookingCreateData.startDate.toISOString(), '2026-06-01T00:00:00.000Z');
+  assert.equal(bookingCreateData.endDate.toISOString(), '2026-06-03T00:00:00.000Z');
+  assert.equal(bookingCreateData.days.create.length, 3);
+});
 
 test('buildBookingServicesFromAcceptedVersion carries resolved supplier and ready status into booking services', async () => {
   const service = createQuotesService();
@@ -96,21 +169,23 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
   assert.equal(bookingServices[0].notes, 'Airport transfer');
   assert.equal(bookingServices[0].confirmationStatus, 'pending');
 
-  assert.equal(bookingServices[1].supplierId, null);
-  assert.equal(bookingServices[1].supplierName, null);
-  assert.equal(bookingServices[1].status, 'pending');
+  const meetAssist = bookingServices.find((entry: any) => entry.description === 'Meet and Assist');
+  assert.equal(meetAssist.supplierId, null);
+  assert.equal(meetAssist.supplierName, null);
+  assert.equal(meetAssist.status, 'pending');
 
-  assert.equal(bookingServices[2].serviceType, 'Activity');
-  assert.equal(bookingServices[2].serviceDate, '2026-05-10T09:00:00.000Z');
-  assert.equal(bookingServices[2].startTime, '08:30');
-  assert.equal(bookingServices[2].pickupTime, '08:00');
-  assert.equal(bookingServices[2].pickupLocation, 'Hotel lobby');
-  assert.equal(bookingServices[2].meetingPoint, 'Visitor center');
-  assert.equal(bookingServices[2].participantCount, 5);
-  assert.equal(bookingServices[2].adultCount, 4);
-  assert.equal(bookingServices[2].childCount, 1);
-  assert.equal(bookingServices[2].reconfirmationRequired, true);
-  assert.equal(bookingServices[2].reconfirmationDueAt, '2026-05-09T18:00:00.000Z');
+  const activity = bookingServices.find((entry: any) => entry.description === 'Sunrise Jeep Tour');
+  assert.equal(activity.serviceType, 'Activity');
+  assert.equal(activity.serviceDate, '2026-05-10T09:00:00.000Z');
+  assert.equal(activity.startTime, '08:30');
+  assert.equal(activity.pickupTime, '08:00');
+  assert.equal(activity.pickupLocation, 'Hotel lobby');
+  assert.equal(activity.meetingPoint, 'Visitor center');
+  assert.equal(activity.participantCount, 5);
+  assert.equal(activity.adultCount, 4);
+  assert.equal(activity.childCount, 1);
+  assert.equal(activity.reconfirmationRequired, true);
+  assert.equal(activity.reconfirmationDueAt, '2026-05-09T18:00:00.000Z');
 });
 
 test('buildBookingServicesFromAcceptedVersion resolves activity dates from itinerary day and quote travel start date', async () => {
@@ -156,25 +231,31 @@ test('buildBookingServicesFromAcceptedVersion resolves activity dates from itine
   assert.equal(bookingServices[0].serviceDate, '2026-06-03T00:00:00.000Z');
 });
 
-test('accepted activity snapshots must be operationally complete', () => {
+test('buildBookingDaysFromAcceptedVersion creates dated booking days from quote timeline', () => {
   const service = createQuotesService();
 
-  assert.throws(
-    () =>
-      (service as any).assertAcceptedActivityItemsAreOperationallyComplete({
-        quoteItems: [
-          {
-            itineraryId: 'day-2',
-            participantCount: 2,
-            adultCount: 2,
-            childCount: 0,
-            pickupLocation: 'Hotel lobby',
-            service: {
-              category: 'Activity',
-            },
-          },
-        ],
-      }),
-    /operationally incomplete/i,
-  );
+  const bookingDays = (service as any).buildBookingDaysFromAcceptedVersion({
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    nightCount: 2,
+    itineraries: [
+      {
+        dayNumber: 1,
+        title: 'Arrival in Amman',
+        description: 'Meet and assist.',
+      },
+      {
+        dayNumber: 3,
+        title: 'Petra touring',
+        description: 'Full day touring.',
+      },
+    ],
+  });
+
+  assert.equal(bookingDays.length, 3);
+  assert.equal(bookingDays[0].dayNumber, 1);
+  assert.equal(bookingDays[0].date.toISOString(), '2026-06-01T00:00:00.000Z');
+  assert.equal(bookingDays[0].status, 'PENDING');
+  assert.equal(bookingDays[1].dayNumber, 2);
+  assert.equal(bookingDays[1].title, 'Day 2');
+  assert.equal(bookingDays[2].date.toISOString(), '2026-06-03T00:00:00.000Z');
 });

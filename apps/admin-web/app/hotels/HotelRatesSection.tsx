@@ -43,6 +43,7 @@ type HotelRate = {
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
   pricingMode?: 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT' | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   salesTaxPercent?: number | null;

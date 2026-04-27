@@ -6,7 +6,7 @@ type ParseItineraryInput = {
 };
 
 type ParsedItineraryConfidence = 'high' | 'medium' | 'low';
-type ParsedItineraryItemType = 'stay' | 'transfer' | 'activity' | 'meal' | 'other';
+type ParsedItineraryItemType = 'stay' | 'transfer' | 'activity' | 'meal' | 'other' | 'external_package';
 
 type ParsedItineraryDay = {
   dayNumber: number;
@@ -27,6 +27,20 @@ type ParsedItineraryItem = {
   confidence: ParsedItineraryConfidence;
   needsReview: boolean;
   sourceText?: string;
+  serviceType?: string;
+  country?: string;
+  supplierName?: string;
+  startDay?: number;
+  endDay?: number;
+  startDate?: string;
+  endDate?: string;
+  pricingBasis?: string;
+  netCost?: number;
+  currency?: string;
+  includes?: string;
+  excludes?: string;
+  internalNotes?: string;
+  clientDescription?: string;
 };
 
 type ParsedItineraryUnresolved = {
@@ -69,6 +83,20 @@ type ParsedItineraryAiResponse = {
     confidence?: unknown;
     needsReview?: unknown;
     sourceText?: unknown;
+    serviceType?: unknown;
+    country?: unknown;
+    supplierName?: unknown;
+    startDay?: unknown;
+    endDay?: unknown;
+    startDate?: unknown;
+    endDate?: unknown;
+    pricingBasis?: unknown;
+    netCost?: unknown;
+    currency?: unknown;
+    includes?: unknown;
+    excludes?: unknown;
+    internalNotes?: unknown;
+    clientDescription?: unknown;
   }>;
   unresolved?: Array<{
     id?: unknown;
@@ -99,11 +127,26 @@ type NormalizedItemDraft = {
   confidence: ParsedItineraryConfidence;
   needsReview: boolean;
   sourceText?: string;
+  serviceType?: string;
+  country?: string;
+  supplierName?: string;
+  startDay?: number;
+  endDay?: number;
+  startDate?: string;
+  endDate?: string;
+  pricingBasis?: string;
+  netCost?: number;
+  currency?: string;
+  includes?: string;
+  excludes?: string;
+  internalNotes?: string;
+  clientDescription?: string;
 };
 
 const AI_MODEL = process.env.OPENAI_ITINERARY_MODEL || 'gpt-4.1-mini';
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
-const ITEM_TYPES: ParsedItineraryItemType[] = ['stay', 'transfer', 'activity', 'meal', 'other'];
+const ITEM_TYPES: ParsedItineraryItemType[] = ['stay', 'transfer', 'activity', 'meal', 'other', 'external_package'];
+const SUPPORTED_TEMPLATE_CURRENCIES = new Set(['USD', 'EUR', 'JOD']);
 const DESTINATION_STOP_WORDS = new Set([
   'arrival',
   'departure',
@@ -128,6 +171,11 @@ const DESTINATION_STOP_WORDS = new Set([
 @Injectable()
 export class ImportItineraryService {
   async parse(input: ParseItineraryInput): Promise<ParsedItineraryResult> {
+    const templateParsed = this.parseTemplateRows(input);
+    if (templateParsed) {
+      return templateParsed;
+    }
+
     const aiParsed = await this.parseWithAi(input.rawText);
 
     if (aiParsed) {
@@ -135,6 +183,134 @@ export class ImportItineraryService {
     }
 
     return this.buildFallbackResult(input);
+  }
+
+  private parseTemplateRows(input: ParseItineraryInput): ParsedItineraryResult | null {
+    const lines = input.rawText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length < 2) {
+      return null;
+    }
+
+    const delimiter = this.detectTemplateDelimiter(lines[0]);
+    if (!delimiter) {
+      return null;
+    }
+
+    const headers = this.splitTemplateLine(lines[0], delimiter).map((header) => this.normalizeTemplateHeader(header));
+    const hasServiceType = headers.includes('servicetype') || headers.includes('type');
+    const hasExternalFields = headers.includes('country') && headers.includes('pricingbasis') && headers.includes('netcost');
+    if (!hasServiceType || !hasExternalFields) {
+      return null;
+    }
+
+    const daysByNumber = new Map<number, NormalizedDayDraft>();
+    const items: NormalizedItemDraft[] = [];
+    const unresolved: ParsedItineraryUnresolved[] = [];
+    const parseWarnings: string[] = ['Parsed itinerary/service template rows.'];
+
+    lines.slice(1).forEach((line, rowIndex) => {
+      const rowNumber = rowIndex + 2;
+      const cells = this.splitTemplateLine(line, delimiter);
+      const row = new Map<string, string>();
+      headers.forEach((header, index) => row.set(header, cells[index]?.trim() || ''));
+      const rawServiceType = this.templateValue(row, 'servicetype') || this.templateValue(row, 'type');
+      const normalizedServiceType = this.normalizeTemplateServiceType(rawServiceType);
+      const startDay = this.parsePositiveInteger(this.templateValue(row, 'startday') || this.templateValue(row, 'day'));
+      const endDay = this.parsePositiveInteger(this.templateValue(row, 'endday')) ?? startDay;
+      const dayNumber = startDay ?? 1;
+      const title = this.templateValue(row, 'title') || this.templateValue(row, 'service') || this.templateValue(row, 'clientdescription') || `Imported row ${rowNumber}`;
+      const clientDescription = this.templateValue(row, 'clientdescription') || this.templateValue(row, 'description');
+      const country = this.templateValue(row, 'country');
+
+      if (!daysByNumber.has(dayNumber)) {
+        daysByNumber.set(dayNumber, {
+          originalDayNumber: dayNumber,
+          title: `Day ${dayNumber}${country ? `: ${country}` : ''}`,
+          summary: clientDescription || title,
+          destination: country || undefined,
+        });
+      }
+      if (endDay && endDay > dayNumber) {
+        for (let rangeDay = dayNumber + 1; rangeDay <= endDay; rangeDay += 1) {
+          if (!daysByNumber.has(rangeDay)) {
+            daysByNumber.set(rangeDay, {
+              originalDayNumber: rangeDay,
+              title: `Day ${rangeDay}${country ? `: ${country}` : ''}`,
+              summary: clientDescription || title,
+              destination: country || undefined,
+            });
+          }
+        }
+      }
+
+      if (normalizedServiceType !== 'external_package') {
+        items.push({
+          id: `item-${items.length + 1}`,
+          originalDayNumber: dayNumber,
+          type: this.normalizeItemType(rawServiceType),
+          title,
+          description: clientDescription || this.templateValue(row, 'description') || title,
+          location: country || undefined,
+          confidence: 'high',
+          needsReview: false,
+          sourceText: line,
+        });
+        return;
+      }
+
+      const validationErrors = this.validateExternalPackageTemplateRow(row, rowNumber);
+      if (validationErrors.length > 0) {
+        parseWarnings.push(...validationErrors);
+        unresolved.push({
+          id: `unresolved-row-${rowNumber}`,
+          text: line,
+          suggestedType: 'external_package',
+          confidence: 'low',
+          reason: validationErrors.join('; '),
+        });
+        return;
+      }
+
+      const pricingBasis = this.normalizeExternalPackageTemplatePricingBasis(this.templateValue(row, 'pricingbasis'))!;
+      items.push({
+        id: `item-${items.length + 1}`,
+        originalDayNumber: dayNumber,
+        type: 'external_package',
+        serviceType: 'EXTERNAL_PACKAGE',
+        title,
+        description: clientDescription,
+        location: country,
+        confidence: 'high',
+        needsReview: false,
+        sourceText: line,
+        country,
+        supplierName: this.templateValue(row, 'suppliername'),
+        startDay: dayNumber,
+        endDay: endDay ?? dayNumber,
+        startDate: this.templateValue(row, 'startdate') || undefined,
+        endDate: this.templateValue(row, 'enddate') || undefined,
+        pricingBasis,
+        netCost: Number(this.templateValue(row, 'netcost')),
+        currency: this.templateValue(row, 'currency').toUpperCase(),
+        includes: this.templateValue(row, 'includes'),
+        excludes: this.templateValue(row, 'excludes'),
+        internalNotes: this.templateValue(row, 'internalnotes'),
+        clientDescription,
+      });
+    });
+
+    return this.finalizeResult({
+      input,
+      tripTitle: '',
+      explicitDestinations: [],
+      days: Array.from(daysByNumber.values()),
+      items,
+      unresolved,
+      parseWarnings,
+    });
   }
 
   private async parseWithAi(rawText: string): Promise<ParsedItineraryAiResponse | null> {
@@ -240,6 +416,20 @@ export class ImportItineraryService {
         confidence,
         needsReview: this.normalizeNeedsReview(item.needsReview, confidence, !this.hasDayNumber(item.dayNumber)),
         sourceText,
+        serviceType: this.emptyToUndefined(item.serviceType),
+        country: this.emptyToUndefined(item.country),
+        supplierName: this.emptyToUndefined(item.supplierName),
+        startDay: this.hasDayNumber(item.startDay) ? this.normalizeDayNumber(item.startDay, 1) : undefined,
+        endDay: this.hasDayNumber(item.endDay) ? this.normalizeDayNumber(item.endDay, 1) : undefined,
+        startDate: this.emptyToUndefined(item.startDate),
+        endDate: this.emptyToUndefined(item.endDate),
+        pricingBasis: this.emptyToUndefined(item.pricingBasis),
+        netCost: this.parseOptionalNumber(item.netCost),
+        currency: this.emptyToUndefined(item.currency),
+        includes: this.emptyToUndefined(item.includes),
+        excludes: this.emptyToUndefined(item.excludes),
+        internalNotes: this.emptyToUndefined(item.internalNotes),
+        clientDescription: this.emptyToUndefined(item.clientDescription),
       } satisfies NormalizedItemDraft;
     });
     const normalizedUnresolved = (parsed.unresolved || [])
@@ -411,6 +601,20 @@ export class ImportItineraryService {
         confidence: item.confidence,
         needsReview: item.needsReview,
         sourceText: item.sourceText,
+        serviceType: item.serviceType,
+        country: item.country,
+        supplierName: item.supplierName,
+        startDay: item.startDay,
+        endDay: item.endDay,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        pricingBasis: item.pricingBasis,
+        netCost: item.netCost,
+        currency: item.currency,
+        includes: item.includes,
+        excludes: item.excludes,
+        internalNotes: item.internalNotes,
+        clientDescription: item.clientDescription,
       }))
       .filter((item) => item.title || item.description || item.sourceText)
       .sort((left, right) => {
@@ -483,6 +687,120 @@ export class ImportItineraryService {
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
   }
 
+  private detectTemplateDelimiter(headerLine: string) {
+    if (headerLine.includes('\t')) {
+      return '\t';
+    }
+    if (headerLine.includes('|')) {
+      return '|';
+    }
+    if (headerLine.includes(',')) {
+      return ',';
+    }
+    return null;
+  }
+
+  private splitTemplateLine(line: string, delimiter: string) {
+    return line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, ''));
+  }
+
+  private normalizeTemplateHeader(value: string) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  }
+
+  private templateValue(row: Map<string, string>, header: string) {
+    return row.get(header) || '';
+  }
+
+  private normalizeTemplateServiceType(value: string) {
+    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (normalized === 'external_package' || normalized === 'partner_package') {
+      return 'external_package';
+    }
+    return normalized;
+  }
+
+  private normalizeExternalPackageTemplatePricingBasis(value: string) {
+    const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (normalized === 'PER_PERSON' || normalized === 'PERSON') {
+      return 'PER_PERSON';
+    }
+    if (normalized === 'PER_GROUP' || normalized === 'GROUP') {
+      return 'PER_GROUP';
+    }
+    return null;
+  }
+
+  private parsePositiveInteger(value: string) {
+    if (!value.trim()) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+  }
+
+  private parseOptionalNumber(value: unknown) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private parseTemplateDate(value: string) {
+    if (!value.trim()) {
+      return null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private validateExternalPackageTemplateRow(row: Map<string, string>, rowNumber: number) {
+    const errors: string[] = [];
+    const requiredFields = ['country', 'pricingbasis', 'netcost', 'currency', 'clientdescription'];
+    for (const field of requiredFields) {
+      if (!this.templateValue(row, field)) {
+        errors.push(`row ${rowNumber} ${field}: required`);
+      }
+    }
+
+    if (this.templateValue(row, 'pricingbasis') && !this.normalizeExternalPackageTemplatePricingBasis(this.templateValue(row, 'pricingbasis'))) {
+      errors.push(`row ${rowNumber} pricingBasis: invalid pricingBasis`);
+    }
+
+    const netCost = Number(this.templateValue(row, 'netcost'));
+    if (this.templateValue(row, 'netcost') && (!Number.isFinite(netCost) || netCost < 0)) {
+      errors.push(`row ${rowNumber} netCost: invalid netCost`);
+    }
+
+    const currency = this.templateValue(row, 'currency').toUpperCase();
+    if (currency && !SUPPORTED_TEMPLATE_CURRENCIES.has(currency)) {
+      errors.push(`row ${rowNumber} currency: invalid currency`);
+    }
+
+    const startDay = this.parsePositiveInteger(this.templateValue(row, 'startday') || this.templateValue(row, 'day'));
+    const endDay = this.parsePositiveInteger(this.templateValue(row, 'endday'));
+    if (startDay !== null && endDay !== null && endDay < startDay) {
+      errors.push(`row ${rowNumber} endDay: cannot be before startDay`);
+    }
+
+    const startDateRaw = this.templateValue(row, 'startdate');
+    const endDateRaw = this.templateValue(row, 'enddate');
+    const startDate = this.parseTemplateDate(startDateRaw);
+    const endDate = this.parseTemplateDate(endDateRaw);
+    if (startDateRaw && !startDate) {
+      errors.push(`row ${rowNumber} startDate: invalid date`);
+    }
+    if (endDateRaw && !endDate) {
+      errors.push(`row ${rowNumber} endDate: invalid date`);
+    }
+    if (startDate && endDate && endDate < startDate) {
+      errors.push(`row ${rowNumber} endDate: cannot be before startDate`);
+    }
+
+    return errors;
+  }
+
   private hasDayNumber(value: unknown) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0;
@@ -509,6 +827,10 @@ export class ImportItineraryService {
 
     if (normalized === 'meal' || normalized === 'breakfast' || normalized === 'lunch' || normalized === 'dinner') {
       return 'meal';
+    }
+
+    if (normalized === 'external_package' || normalized === 'external package' || normalized === 'partner_package' || normalized === 'partner package') {
+      return 'external_package';
     }
 
     return ITEM_TYPES.includes(normalized as ParsedItineraryItemType) ? (normalized as ParsedItineraryItemType) : 'other';

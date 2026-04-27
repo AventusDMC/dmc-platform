@@ -16,7 +16,7 @@ type CreateHotelRateInput = {
   occupancyType: HotelOccupancyType;
   mealPlan: HotelMealPlan;
   pricingMode?: HotelRatePricingMode | null;
-  pricingBasis?: HotelRatePricingBasis | null;
+  pricingBasis?: HotelRatePricingBasis | string | null;
   currency: string;
   cost: number;
   costBaseAmount?: number;
@@ -34,6 +34,7 @@ type UpdateHotelRateInput = Partial<CreateHotelRateInput>;
 
 type LookupHotelRateInput = {
   hotelId: string;
+  contractId?: string | null;
   date: Date | string;
   occupancy: HotelOccupancyType;
   mealPlan: HotelMealPlan;
@@ -43,14 +44,17 @@ type LookupHotelRateInput = {
 
 type CalculateHotelCostInput = {
   hotelId: string;
+  contractId?: string | null;
   checkInDate: Date | string;
   checkOutDate: Date | string;
   occupancy: HotelOccupancyType;
   mealPlan: HotelMealPlan;
   pax: number;
+  roomCount?: number | null;
   adults?: number | null;
   childrenAges?: number[] | null;
   roomCategoryId?: string | null;
+  selectedSupplementIds?: string[] | null;
 };
 
 type RatePolicy = {
@@ -62,6 +66,17 @@ type RatePolicy = {
   percent?: number | string | null;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
   mealPlan?: string | null;
+  notes?: string | null;
+};
+
+type ContractSupplementPolicy = {
+  id?: string | null;
+  type?: string | null;
+  amount?: number | string | null;
+  chargeBasis?: string | null;
+  isMandatory?: boolean | null;
+  isActive?: boolean | null;
+  notes?: string | null;
 };
 
 @Injectable()
@@ -266,9 +281,10 @@ export class HotelRatesService {
     const rates = await this.prisma.hotelRate.findMany({
       where: {
         hotelId: data.hotelId,
+        ...(data.contractId ? { contractId: data.contractId } : {}),
       },
       include: {
-        contract: { include: { hotel: true } },
+        contract: { include: { hotel: true, supplements: true } },
         roomCategory: true,
       },
       orderBy: [{ cost: 'asc' }, { createdAt: 'desc' }],
@@ -309,13 +325,15 @@ export class HotelRatesService {
       throw new BadRequestException('No rates found for this hotel and date');
     }
 
-    const matchedRates = dateMatchedRates.filter((rate) => {
-      return (
-        this.normalizeOccupancyType(rate.occupancyType) === occupancy &&
-        this.normalizeMealPlan(rate.mealPlan) === mealPlan &&
-        (!data.roomCategoryId || rate.roomCategoryId === data.roomCategoryId)
-      );
-    });
+    const matchedRates = dateMatchedRates
+      .filter((rate) => !data.roomCategoryId || rate.roomCategoryId === data.roomCategoryId)
+      .filter((rate) => rate.roomCategory.isActive)
+      .map((rate) => ({
+        rate,
+        occupancyScore: this.matchDimensionScore(rate.occupancyType, occupancy, (value) => this.normalizeOccupancyType(value)),
+        mealPlanScore: this.matchDimensionScore(rate.mealPlan, mealPlan, (value) => this.normalizeMealPlan(value)),
+      }))
+      .filter((match) => match.occupancyScore !== null && match.mealPlanScore !== null);
 
     if (matchedRates.length === 0) {
       console.log('Hotel rate lookup mismatch', {
@@ -331,12 +349,26 @@ export class HotelRatesService {
     }
 
     const pricedRates = matchedRates
-      .filter((rate) => rate.roomCategory.isActive)
-      .map((rate) => ({
-        ...rate,
-        finalPrice: this.calculateFinalPrice(rate.cost, rate.pricingBasis, pax),
+      .map((match) => ({
+        ...match.rate,
+        occupancyScore: match.occupancyScore ?? 0,
+        mealPlanScore: match.mealPlanScore ?? 0,
+        seasonSpecificityMs: this.seasonSpecificityMs(match.rate.seasonFrom, match.rate.seasonTo),
+        createdAtMs: this.dateTimeMs(match.rate.createdAt),
+        finalPrice: this.calculateFinalPrice(match.rate.cost, match.rate.pricingBasis, pax),
       }))
-      .sort((left, right) => left.finalPrice - right.finalPrice || left.cost - right.cost);
+      .sort(
+        (left, right) =>
+          right.occupancyScore - left.occupancyScore ||
+          right.mealPlanScore - left.mealPlanScore ||
+          left.seasonSpecificityMs - right.seasonSpecificityMs ||
+          right.createdAtMs - left.createdAtMs ||
+          left.cost - right.cost,
+      );
+
+    if (this.hasAmbiguousTopRate(pricedRates)) {
+      throw new BadRequestException('Ambiguous hotel rates match the selected date, occupancy, meal plan, and room category');
+    }
 
     const selected = pricedRates[0];
     if (!selected) {
@@ -352,6 +384,7 @@ export class HotelRatesService {
     const childrenAges = this.normalizeChildrenAges(data.childrenAges);
     const adults = this.normalizeAdults(data.adults, data.pax, childrenAges.length);
     const pax = Math.max(1, adults + childrenAges.length);
+    const roomCount = this.normalizeRoomCount(data.roomCount);
     const occupancy = this.normalizeOccupancyType(data.occupancy);
     const mealPlan = this.normalizeMealPlan(data.mealPlan);
 
@@ -361,9 +394,11 @@ export class HotelRatesService {
 
     const breakdown: Array<{ date: string; adultsCost: number; childrenCost: number; supplementsCost: number; cost: number }> = [];
 
+    let nightIndex = 0;
     for (let current = new Date(checkInDate); current < checkOutDate; current = this.addDays(current, 1)) {
       const rate = await this.lookup({
         hotelId: data.hotelId,
+        contractId: data.contractId || null,
         date: current,
         occupancy,
         mealPlan,
@@ -375,9 +410,11 @@ export class HotelRatesService {
         rate.pricingBasis,
         adults,
         childrenAges,
-        this.getRatePolicies(rate),
+        roomCount,
+        this.getRatePolicies(rate, data.selectedSupplementIds),
         occupancy,
         mealPlan,
+        nightIndex === 0,
       );
       breakdown.push({
         date: this.formatDateOnly(current),
@@ -386,6 +423,7 @@ export class HotelRatesService {
         supplementsCost: pricedNight.supplementsCost,
         cost: pricedNight.totalCost,
       });
+      nightIndex += 1;
     }
 
     const adultsCost = Number(breakdown.reduce((sum, item) => sum + item.adultsCost, 0).toFixed(2));
@@ -415,18 +453,21 @@ export class HotelRatesService {
     pricingBasis: HotelRatePricingBasis | null | undefined,
     adults: number,
     childrenAges: number[],
+    roomCount: number,
     policies: RatePolicy[],
     occupancy: HotelOccupancyType,
     mealPlan: HotelMealPlan,
+    applyOneTimeSupplements: boolean,
   ) {
-    const supplementsCost = this.calculateSupplementsCost(adultRate, adults, childrenAges, policies, occupancy, mealPlan);
+    const supplementsCost = this.calculateSupplementsCost(adultRate, adults, childrenAges, roomCount, policies, occupancy, mealPlan, applyOneTimeSupplements);
 
     if (pricingBasis !== HotelRatePricingBasis.PER_PERSON) {
+      const roomCost = Number((adultRate * roomCount).toFixed(2));
       return {
-        adultsCost: Number(adultRate.toFixed(2)),
+        adultsCost: roomCost,
         childrenCost: 0,
         supplementsCost,
-        totalCost: Number((adultRate + supplementsCost).toFixed(2)),
+        totalCost: Number((roomCost + supplementsCost).toFixed(2)),
       };
     }
 
@@ -447,22 +488,25 @@ export class HotelRatesService {
     adultRate: number,
     adults: number,
     childrenAges: number[],
+    roomCount: number,
     policies: RatePolicy[],
     occupancy: HotelOccupancyType,
     mealPlan: HotelMealPlan,
+    applyOneTimeSupplements: boolean,
   ) {
-    const totalExtraBedCount = Math.max(0, adults + childrenAges.length - 2);
+    const standardBedCapacity = Math.max(1, roomCount) * 2;
+    const totalExtraBedCount = Math.max(0, adults + childrenAges.length - standardBedCapacity);
     const childExtraBedCount = Math.min(childrenAges.length, totalExtraBedCount);
     const adultExtraBedCount = Math.max(0, totalExtraBedCount - childExtraBedCount);
-    const thirdPersonCount = Math.max(0, adults + childrenAges.length - 2);
+    const thirdPersonCount = Math.max(0, adults + childrenAges.length - standardBedCapacity);
     const charges = [
-      this.sumPolicyCharges('CHILD_EXTRA_BED', policies, adultRate, childExtraBedCount, mealPlan, childrenAges),
-      this.sumPolicyCharges('ADULT_EXTRA_BED', policies, adultRate, adultExtraBedCount, mealPlan),
-      this.sumPolicyCharges('CHILD_EXTRA_MEAL', policies, adultRate, childrenAges.length, mealPlan, childrenAges),
-      this.sumPolicyCharges('ADULT_EXTRA_MEAL', policies, adultRate, adults, mealPlan),
-      occupancy === HotelOccupancyType.SGL ? this.sumPolicyCharges('SINGLE_SUPPLEMENT', policies, adultRate, 1, mealPlan) : 0,
+      this.sumPolicyCharges('CHILD_EXTRA_BED', policies, adultRate, childExtraBedCount, mealPlan, applyOneTimeSupplements, roomCount, childrenAges),
+      this.sumPolicyCharges('ADULT_EXTRA_BED', policies, adultRate, adultExtraBedCount, mealPlan, applyOneTimeSupplements, roomCount),
+      this.sumPolicyCharges('CHILD_EXTRA_MEAL', policies, adultRate, childrenAges.length, mealPlan, applyOneTimeSupplements, roomCount, childrenAges),
+      this.sumPolicyCharges('ADULT_EXTRA_MEAL', policies, adultRate, adults, mealPlan, applyOneTimeSupplements, roomCount),
+      occupancy === HotelOccupancyType.SGL ? this.sumPolicyCharges('SINGLE_SUPPLEMENT', policies, adultRate, 1, mealPlan, applyOneTimeSupplements, roomCount) : 0,
       thirdPersonCount > 0 || occupancy === HotelOccupancyType.TPL
-        ? this.sumPolicyCharges('THIRD_PERSON_SUPPLEMENT', policies, adultRate, Math.max(1, thirdPersonCount), mealPlan)
+        ? this.sumPolicyCharges('THIRD_PERSON_SUPPLEMENT', policies, adultRate, Math.max(1, thirdPersonCount), mealPlan, applyOneTimeSupplements, roomCount)
         : 0,
     ];
 
@@ -475,6 +519,8 @@ export class HotelRatesService {
     adultRate: number,
     quantity: number,
     mealPlan: HotelMealPlan,
+    applyOneTimeSupplements: boolean,
+    roomCount: number,
     ages?: number[],
   ) {
     if (quantity <= 0) {
@@ -485,21 +531,24 @@ export class HotelRatesService {
       .filter((policy) => String(policy.policyType || '').trim().toUpperCase() === policyType)
       .filter((policy) => this.policyMatchesMealPlan(policy, mealPlan))
       .reduce((sum, policy) => {
-        const matchedQuantity = ages ? ages.filter((age) => this.policyMatchesAge(policy, age)).length : quantity;
+        const matchedQuantity = ages ? Math.min(quantity, ages.filter((age) => this.policyMatchesAge(policy, age)).length) : quantity;
         if (matchedQuantity <= 0) {
           return sum;
         }
 
-        return sum + this.calculatePolicyCharge(policy, adultRate, matchedQuantity);
+        return sum + this.calculatePolicyCharge(policy, adultRate, matchedQuantity, applyOneTimeSupplements, roomCount);
       }, 0);
   }
 
-  private calculatePolicyCharge(policy: RatePolicy, adultRate: number, quantity: number) {
+  private calculatePolicyCharge(policy: RatePolicy, adultRate: number, quantity: number, applyOneTimeSupplements: boolean, roomCount: number) {
     const amount = this.optionalNumber(policy.amount);
     const percent = this.optionalNumber(policy.percent);
     const unitCost = amount !== null ? amount : percent !== null ? adultRate * this.normalizePolicyPercent(percent) : 0;
     const pricingBasis = String(policy.pricingBasis || '').trim().toUpperCase();
-    const multiplier = pricingBasis === 'PER_ROOM' ? 1 : quantity;
+    if (pricingBasis === 'PER_STAY' && !applyOneTimeSupplements) {
+      return 0;
+    }
+    const multiplier = pricingBasis === 'PER_ROOM' ? roomCount : pricingBasis === 'PER_STAY' ? 1 : quantity;
     return Number((unitCost * multiplier).toFixed(2));
   }
 
@@ -534,6 +583,33 @@ export class HotelRatesService {
     return adultRate;
   }
 
+  private matchDimensionScore<T extends string>(value: T | string | null | undefined, requested: T, normalize: (value: T | string) => T) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return 0;
+    }
+
+    try {
+      return normalize(value) === requested ? 1 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private hasAmbiguousTopRate(rates: Array<{ occupancyScore: number; mealPlanScore: number; seasonSpecificityMs: number; createdAtMs: number; cost: number }>) {
+    if (rates.length < 2) {
+      return false;
+    }
+
+    const [first, second] = rates;
+    return (
+      first.occupancyScore === second.occupancyScore &&
+      first.mealPlanScore === second.mealPlanScore &&
+      first.seasonSpecificityMs === second.seasonSpecificityMs &&
+      first.createdAtMs === second.createdAtMs &&
+      first.cost === second.cost
+    );
+  }
+
   private findChildPolicy(age: number, policies: RatePolicy[], policyType: 'CHILD_FREE' | 'CHILD_DISCOUNT') {
     return policies.find((policy) => {
       if (String(policy.policyType || '').trim().toUpperCase() !== policyType) {
@@ -546,9 +622,60 @@ export class HotelRatesService {
     });
   }
 
-  private getRatePolicies(rate: { contract?: { ratePolicies?: unknown } | null }) {
+  private getRatePolicies(rate: { contract?: { ratePolicies?: unknown; supplements?: unknown } | null }, selectedSupplementIds?: string[] | null) {
     const policies = rate.contract?.ratePolicies;
-    return Array.isArray(policies) ? (policies as RatePolicy[]) : [];
+    const ratePolicies = Array.isArray(policies) ? (policies as RatePolicy[]) : [];
+    return [...ratePolicies, ...this.getIncludedSupplementPolicies(rate.contract?.supplements, selectedSupplementIds)];
+  }
+
+  private getIncludedSupplementPolicies(supplements: unknown, selectedSupplementIds?: string[] | null): RatePolicy[] {
+    if (!Array.isArray(supplements)) {
+      return [];
+    }
+
+    const selectedIds = new Set((selectedSupplementIds || []).map((id) => String(id)));
+    return supplements
+      .filter((supplement): supplement is ContractSupplementPolicy => Boolean(supplement))
+      .filter((supplement) => supplement.isActive !== false)
+      .filter((supplement) => supplement.isMandatory === true || (supplement.id ? selectedIds.has(String(supplement.id)) : false))
+      .map((supplement): RatePolicy | null => {
+        const policyType = this.contractSupplementPolicyType(supplement.type);
+        if (!policyType) {
+          return null;
+        }
+
+        return {
+          policyType,
+          amount: supplement.amount ?? null,
+          pricingBasis: this.contractSupplementPricingBasis(supplement.chargeBasis),
+          notes: supplement.notes ?? null,
+        };
+      })
+      .filter((policy): policy is RatePolicy => Boolean(policy));
+  }
+
+  private contractSupplementPolicyType(type: string | null | undefined) {
+    const normalized = String(type || '').trim().toUpperCase();
+    if (normalized === 'EXTRA_BED') {
+      return 'THIRD_PERSON_SUPPLEMENT';
+    }
+
+    if (['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER'].includes(normalized)) {
+      return 'ADULT_EXTRA_MEAL';
+    }
+
+    return null;
+  }
+
+  private contractSupplementPricingBasis(chargeBasis: string | null | undefined) {
+    const normalized = String(chargeBasis || '').trim().toUpperCase();
+    if (normalized === 'PER_PERSON') {
+      return 'PER_PERSON';
+    }
+    if (normalized === 'PER_STAY') {
+      return 'PER_STAY';
+    }
+    return 'PER_ROOM';
   }
 
   private normalizeChildrenAges(value: number[] | null | undefined) {
@@ -566,6 +693,15 @@ export class HotelRatesService {
     }
 
     return Math.max(0, Math.floor(Number(pax || 1)) - childCount);
+  }
+
+  private normalizeRoomCount(value: number | null | undefined) {
+    const normalized = Number(value);
+    if (Number.isFinite(normalized) && normalized > 0) {
+      return Math.floor(normalized);
+    }
+
+    return 1;
   }
 
   private normalizePolicyPercent(value: number | string | null | undefined) {
@@ -598,13 +734,29 @@ export class HotelRatesService {
     throw new BadRequestException('Unsupported hotel rate pricing mode');
   }
 
-  private normalizePricingBasis(value: HotelRatePricingBasis | null | undefined) {
-    if (value === HotelRatePricingBasis.PER_PERSON) return HotelRatePricingBasis.PER_PERSON;
+  private normalizePricingBasis(value: HotelRatePricingBasis | string | null | undefined) {
+    if (value === undefined || value === null || value === '') {
+      return HotelRatePricingBasis.PER_ROOM;
+    }
+
+    const raw = String(value).trim();
+    if (/\bper\s+person\b|\bpp\b|\bper\s+pax\b/i.test(raw)) return HotelRatePricingBasis.PER_PERSON;
+    if (/\bper\s+room\b|\bper\s+unit\b/i.test(raw)) return HotelRatePricingBasis.PER_ROOM;
+
+    const normalized = raw.replace(/[\s-]+/g, '_').toUpperCase();
+    if (normalized === HotelRatePricingBasis.PER_PERSON || normalized === 'PERSON' || normalized === 'PAX') {
+      return HotelRatePricingBasis.PER_PERSON;
+    }
+    if (normalized === HotelRatePricingBasis.PER_ROOM || normalized === 'ROOM' || normalized === 'UNIT') {
+      return HotelRatePricingBasis.PER_ROOM;
+    }
+
     return HotelRatePricingBasis.PER_ROOM;
   }
 
   private normalizeOccupancyType(value: HotelOccupancyType | string) {
     const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return HotelOccupancyType.DBL;
     if (normalized === HotelOccupancyType.SGL || normalized === 'SINGLE') return HotelOccupancyType.SGL;
     if (normalized === HotelOccupancyType.DBL || normalized === 'DOUBLE' || normalized === 'TWIN') return HotelOccupancyType.DBL;
     if (normalized === HotelOccupancyType.TPL || normalized === 'TRP' || normalized === 'TRIPLE') return HotelOccupancyType.TPL;
@@ -613,6 +765,7 @@ export class HotelRatesService {
 
   private normalizeMealPlan(value: HotelMealPlan | string) {
     const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return HotelMealPlan.BB;
     if (normalized === HotelMealPlan.RO) return HotelMealPlan.RO;
     if (normalized === HotelMealPlan.BB || normalized === 'BED_BREAKFAST') return HotelMealPlan.BB;
     if (normalized === HotelMealPlan.HB || normalized === 'HALF_BOARD') return HotelMealPlan.HB;
@@ -623,7 +776,7 @@ export class HotelRatesService {
 
   private normalizeLookupDate(value: Date | string) {
     if (typeof value === 'string') {
-      const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
       if (dateOnly) {
         return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 0, 0, 0, 0);
       }
@@ -660,8 +813,27 @@ export class HotelRatesService {
   }
 
   private normalizeDateForLookupComparison(value: Date | string) {
+    if (typeof value === 'string') {
+      const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+      if (dateOnly) {
+        return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 0, 0, 0, 0);
+      }
+    }
+
     const date = new Date(value);
     date.setHours(0, 0, 0, 0);
     return date;
+  }
+
+  private seasonSpecificityMs(seasonFrom: Date | string, seasonTo: Date | string) {
+    const from = this.normalizeDateForLookupComparison(seasonFrom);
+    const to = this.normalizeDateForLookupComparison(seasonTo);
+    return Math.max(0, to.getTime() - from.getTime());
+  }
+
+  private dateTimeMs(value: Date | string | null | undefined) {
+    const date = value ? new Date(value) : new Date(0);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : 0;
   }
 }

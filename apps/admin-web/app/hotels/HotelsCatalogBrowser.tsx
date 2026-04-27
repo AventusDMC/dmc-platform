@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { formatPricingBasis } from './hotel-contract-display';
 
 type HotelContract = {
   id: string;
@@ -19,6 +20,7 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   roomCategory: {
@@ -406,7 +408,7 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
                             </div>
                             <div className="quote-hotel-rate-option-price-block">
                               <div className="quote-hotel-rate-option-price">{formatMoney(rate.cost, rate.currency)}</div>
-                              <span>per room / night</span>
+                              <span>{formatPricingBasis(rate.pricingBasis)}</span>
                             </div>
                           </div>
 

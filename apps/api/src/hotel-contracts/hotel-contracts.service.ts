@@ -46,6 +46,13 @@ const hotelContractInclude = Prisma.validator<Prisma.HotelContractInclude>()({
     },
     orderBy: [{ dateFrom: 'asc' }, { createdAt: 'asc' }],
   },
+  cancellationPolicy: {
+    include: {
+      rules: {
+        orderBy: [{ deadlineUnit: 'asc' }, { windowFromValue: 'asc' }, { createdAt: 'asc' }],
+      },
+    },
+  },
   _count: {
     select: {
       rates: true,

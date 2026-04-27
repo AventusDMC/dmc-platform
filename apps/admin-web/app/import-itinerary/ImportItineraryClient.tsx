@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../lib/api';
 
 type ParsedItineraryConfidence = 'high' | 'medium' | 'low';
-type ParsedItemType = 'stay' | 'transfer' | 'activity' | 'meal' | 'other';
+type ParsedItemType = 'stay' | 'transfer' | 'activity' | 'meal' | 'other' | 'external_package';
 
 type ParsedDay = {
   dayNumber: number;
@@ -26,6 +26,20 @@ type ParsedItem = {
   confidence: ParsedItineraryConfidence;
   needsReview: boolean;
   sourceText?: string;
+  serviceType?: string;
+  country?: string;
+  supplierName?: string;
+  startDay?: number;
+  endDay?: number;
+  startDate?: string;
+  endDate?: string;
+  pricingBasis?: string;
+  netCost?: number;
+  currency?: string;
+  includes?: string;
+  excludes?: string;
+  internalNotes?: string;
+  clientDescription?: string;
 };
 
 type ParsedUnresolvedItem = {
@@ -60,6 +74,20 @@ type CreateQuoteDraftPayload = {
     title: string;
     description: string;
     notes: string;
+    serviceType?: string;
+    country?: string;
+    supplierName?: string;
+    startDay?: number;
+    endDay?: number;
+    startDate?: string;
+    endDate?: string;
+    pricingBasis?: string;
+    netCost?: number;
+    currency?: string;
+    includes?: string;
+    excludes?: string;
+    internalNotes?: string;
+    clientDescription?: string;
   }>;
   unresolved: Array<{
     type: ParsedItemType;
@@ -89,13 +117,14 @@ const EMPTY_RESULT: ParsedItinerary = {
   sourceText: '',
 };
 
-const ITEM_TYPES: ParsedItemType[] = ['stay', 'transfer', 'activity', 'meal', 'other'];
+const ITEM_TYPES: ParsedItemType[] = ['stay', 'transfer', 'activity', 'meal', 'other', 'external_package'];
 const ITEM_TYPE_LABELS: Record<ParsedItemType, string> = {
   stay: 'Stay',
   transfer: 'Transfer',
   activity: 'Activity',
   meal: 'Meal',
   other: 'Other',
+  external_package: 'External package',
 };
 
 function formatItemMeta(item: ParsedItem) {
@@ -217,6 +246,20 @@ function buildDraftPayload(parsed: ParsedItinerary): CreateQuoteDraftPayload {
         title: sanitizeTitle(item.title, [item.sourceText, item.description], `Imported item ${index + 1}`),
         description: item.description || item.sourceText || '',
         notes: '',
+        serviceType: item.serviceType,
+        country: item.country,
+        supplierName: item.supplierName,
+        startDay: item.startDay,
+        endDay: item.endDay,
+        startDate: item.startDate,
+        endDate: item.endDate,
+        pricingBasis: item.pricingBasis,
+        netCost: item.netCost,
+        currency: item.currency,
+        includes: item.includes,
+        excludes: item.excludes,
+        internalNotes: item.internalNotes,
+        clientDescription: item.clientDescription,
       })),
     unresolved: parsed.unresolved.map((item, index) => ({
       type: item.suggestedType || 'other',

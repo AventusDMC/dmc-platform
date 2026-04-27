@@ -99,7 +99,18 @@ type CreateQuoteItemBody = {
   overnight?: boolean;
   customServiceName?: string | null;
   unitCost?: number | null;
-  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | 'PER_GROUP' | null;
+  country?: string | null;
+  supplierName?: string | null;
+  startDay?: number | null;
+  endDay?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  netCost?: number | null;
+  includes?: string | null;
+  excludes?: string | null;
+  internalNotes?: string | null;
+  clientDescription?: string | null;
   quantity?: number;
   paxCount?: number;
   roomCount?: number;
@@ -694,6 +705,17 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      country: body.country === undefined ? undefined : body.country || null,
+      supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
+      startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
+      endDay: body.endDay === undefined || body.endDay === null ? body.endDay : Number(body.endDay),
+      startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
+      endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
+      netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      includes: body.includes === undefined ? undefined : body.includes || null,
+      excludes: body.excludes === undefined ? undefined : body.excludes || null,
+      internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -763,6 +785,17 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      country: body.country === undefined ? undefined : body.country || null,
+      supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
+      startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
+      endDay: body.endDay === undefined || body.endDay === null ? body.endDay : Number(body.endDay),
+      startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
+      endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
+      netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      includes: body.includes === undefined ? undefined : body.includes || null,
+      excludes: body.excludes === undefined ? undefined : body.excludes || null,
+      internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -965,6 +998,17 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      country: body.country === undefined ? undefined : body.country || null,
+      supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
+      startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
+      endDay: body.endDay === undefined || body.endDay === null ? body.endDay : Number(body.endDay),
+      startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
+      endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
+      netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      includes: body.includes === undefined ? undefined : body.includes || null,
+      excludes: body.excludes === undefined ? undefined : body.excludes || null,
+      internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),
@@ -1034,6 +1078,17 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      country: body.country === undefined ? undefined : body.country || null,
+      supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
+      startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
+      endDay: body.endDay === undefined || body.endDay === null ? body.endDay : Number(body.endDay),
+      startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
+      endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
+      netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      includes: body.includes === undefined ? undefined : body.includes || null,
+      excludes: body.excludes === undefined ? undefined : body.excludes || null,
+      internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       roomCount: body.roomCount === undefined ? undefined : Number(body.roomCount),

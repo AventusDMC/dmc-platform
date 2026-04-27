@@ -7,17 +7,23 @@ import { AppModule } from './app.module';
 
 const { json, urlencoded } = require('express');
 
+function getCorsOrigins() {
+  const configured = (process.env.CORS_ORIGINS || process.env.ADMIN_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
+  return Array.from(new Set(['http://localhost:3000', ...configured]));
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.use(json({ limit: '25mb' }));
   app.use(urlencoded({ extended: true, limit: '25mb' }));
- app.enableCors({
-  origin: [
-    'http://localhost:3000',
-    'https://dmc-platform-admin-web.vercel.app',
-  ],
-  credentials: true,
-});
+  app.enableCors({
+    origin: getCorsOrigins(),
+    credentials: true,
+  });
   app.useStaticAssets(join(process.cwd(), 'apps', 'api', 'uploads'), {
     prefix: '/uploads/',
   });

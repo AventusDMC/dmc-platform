@@ -5,15 +5,28 @@ import { adminPageFetchJson } from '../lib/admin-server';
 import { HotelContractCancellationPolicyForm } from './HotelContractCancellationPolicyForm';
 import { HotelContractCancellationRuleForm } from './HotelContractCancellationRuleForm';
 import { HotelContractCancellationRulesTable } from './HotelContractCancellationRulesTable';
+import {
+  formatCancellationRule,
+  formatChildPolicyValue,
+  formatPolicyLabel,
+  getCancellationFallback,
+  getCancellationRules,
+  getChildPolicies,
+  toDisplayArray,
+} from './hotel-contract-display';
 
 const API_BASE_URL = '/api';
 
 type ContractOption = {
   id: string;
   name: string;
+  currency?: string | null;
   hotel: {
     name: string;
   };
+  ratePolicies?: unknown;
+  policies?: unknown;
+  cancellationPolicy?: CancellationPolicy;
   hasCancellationPolicy?: boolean;
   readinessStatus?: 'draft' | 'in_progress' | 'ready';
 };
@@ -26,6 +39,8 @@ type CancellationPolicy = {
   noShowPenaltyValue: number | null;
   rules: Array<{
     id: string;
+    daysBefore?: number | null;
+    penaltyPercent?: number | null;
     windowFromValue: number;
     windowToValue: number;
     deadlineUnit: 'DAYS' | 'HOURS';
@@ -43,7 +58,7 @@ async function getHotelContracts(): Promise<ContractOption[]> {
 }
 
 async function getCancellationPolicy(contractId: string): Promise<CancellationPolicy> {
-  return adminPageFetchJson<CancellationPolicy>(`${API_BASE_URL}/contracts/${contractId}/cancellation-policy`, 'Hotel cancellation policy', {
+  return adminPageFetchJson<CancellationPolicy>(`${API_BASE_URL}/hotel-contracts/${contractId}/cancellation-policy`, 'Hotel cancellation policy', {
     cache: 'no-store',
     allow404: true,
   });
@@ -69,8 +84,11 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
     );
   }
 
-  const cancellationPolicy = await getCancellationPolicy(currentContract.id);
-  const activeRuleCount = cancellationPolicy?.rules.filter((rule) => rule.isActive).length || 0;
+  const cancellationPolicy = (await getCancellationPolicy(currentContract.id)) || currentContract.cancellationPolicy || null;
+  const cancellationRules = getCancellationRules(cancellationPolicy);
+  const activeRuleCount = cancellationRules.filter((rule) => rule.isActive).length;
+  const childPolicies = getChildPolicies(currentContract.ratePolicies);
+  const contractPolicies = toDisplayArray<{ name?: string; value?: string; notes?: string }>(currentContract.policies);
 
   function formatNoShowValue() {
     if (!cancellationPolicy?.noShowPenaltyType) {
@@ -105,7 +123,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
           {
             id: 'cancellation-rules',
             label: 'Cancellation rules',
-            value: String(cancellationPolicy?.rules.length || 0),
+            value: String(cancellationRules.length),
             helper: `${activeRuleCount} active`,
           },
           {
@@ -120,7 +138,7 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
       <TableSectionShell
         title="Cancellation Policy"
         description="Capture the contract-level summary and no-show policy before defining individual deadline windows."
-        context={<p>{cancellationPolicy ? cancellationPolicy.rules.length : 0} cancellation rules for {currentContract.name}</p>}
+        context={<p>{cancellationRules.length} cancellation rules for {currentContract.name}</p>}
         createPanel={
           !cancellationPolicy ? (
             <CollapsibleCreatePanel
@@ -157,6 +175,41 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
       </TableSectionShell>
 
       <TableSectionShell
+        title="Rate Policies"
+        description="Review imported child policies, discounts, extra beds, and meal rules."
+        context={<p>{childPolicies.length} imported child policies for {currentContract.name}</p>}
+        emptyState={childPolicies.length === 0 ? <p className="empty-state">No child policies available</p> : undefined}
+      >
+        {childPolicies.length > 0 ? (
+          <div className="summary-strip">
+            {childPolicies.map((policy, index) => (
+              <div className="summary-card" key={`${formatPolicyLabel(policy)}-${index}`}>
+                <span>{formatPolicyLabel(policy)}</span>
+                <strong>{formatChildPolicyValue(policy, currentContract.currency || 'JOD')}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </TableSectionShell>
+
+      {contractPolicies.length > 0 ? (
+        <TableSectionShell
+          title="Contract Policies"
+          description="General policy notes imported with this contract."
+          context={<p>{contractPolicies.length} policy notes for {currentContract.name}</p>}
+        >
+          <div className="summary-strip">
+            {contractPolicies.map((policy, index) => (
+              <div className="summary-card" key={`${policy.name || 'Policy'}-${index}`}>
+                <span>{policy.name || 'Policy'}</span>
+                <strong>{policy.value || policy.notes || 'No details'}</strong>
+              </div>
+            ))}
+          </div>
+        </TableSectionShell>
+      ) : null}
+
+      <TableSectionShell
         title="Cancellation Rules"
         description="Define non-overlapping cancellation windows with their penalties in a compact list."
         context={<p>{activeRuleCount} active rules for {currentContract.name}</p>}
@@ -172,13 +225,27 @@ export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionP
           ) : undefined
         }
         emptyState={
-          cancellationPolicy && cancellationPolicy.rules.length === 0 ? (
-            <p className="empty-state">No cancellation rules configured for this contract yet.</p>
+          cancellationRules.length === 0 ? (
+            <p className="empty-state">{getCancellationFallback(cancellationPolicy)}</p>
           ) : undefined
         }
       >
-        {cancellationPolicy ? (
-          <HotelContractCancellationRulesTable apiBaseUrl="/api" contractId={currentContract.id} policy={cancellationPolicy} />
+        {cancellationRules.length > 0 ? (
+          <div className="summary-strip">
+            {cancellationRules.map((rule) => (
+              <div className="summary-card" key={rule.id}>
+                <span>{rule.isActive ? 'Active' : 'Inactive'}</span>
+                <strong>{formatCancellationRule(rule)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {cancellationPolicy && cancellationRules.length > 0 ? (
+          <HotelContractCancellationRulesTable
+            apiBaseUrl="/api"
+            contractId={currentContract.id}
+            policy={{ ...cancellationPolicy, rules: cancellationRules as NonNullable<CancellationPolicy>['rules'] }}
+          />
         ) : null}
       </TableSectionShell>
     </section>

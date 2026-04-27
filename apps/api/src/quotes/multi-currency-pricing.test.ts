@@ -94,6 +94,72 @@ test('handles service charge excluded by increasing subtotal', () => {
   assert.equal(result.totalCost, 110);
 });
 
+test('tax-exclusive rate adds VAT and service charge exactly once and sell total follows calculated cost', () => {
+  const result = calculateMultiCurrencyQuoteItemPricing(
+    createInput({
+      supplierPricing: {
+        costBaseAmount: 100,
+        costCurrency: 'USD',
+        salesTaxPercent: 16,
+        salesTaxIncluded: false,
+        serviceChargePercent: 10,
+        serviceChargeIncluded: false,
+      },
+      markupPercent: 25,
+    }),
+  );
+
+  assert.equal(result.supplierCostTotal, 127.6);
+  assert.equal(result.totalCost, 127.6);
+  assert.equal(result.totalSell, 159.5);
+});
+
+test('decimal VAT, service charge, and markup round once at quote total level', () => {
+  const result = calculateMultiCurrencyQuoteItemPricing(
+    createInput({
+      supplierPricing: {
+        costBaseAmount: 99.99,
+        costCurrency: 'USD',
+        salesTaxPercent: 16.25,
+        salesTaxIncluded: false,
+        serviceChargePercent: 7.5,
+        serviceChargeIncluded: false,
+      },
+      markupPercent: 12.345,
+    }),
+  );
+
+  assert.equal(result.supplierCostTotal, 124.96);
+  assert.equal(result.totalCost, 124.96);
+  assert.equal(result.totalSell, 140.39);
+});
+
+test('missing or invalid tax fields use the current neutral fallback instead of changing totals', () => {
+  const missing = calculateMultiCurrencyQuoteItemPricing(
+    createInput({
+      supplierPricing: {
+        costBaseAmount: 100,
+        costCurrency: 'USD',
+        salesTaxPercent: null,
+        serviceChargePercent: null,
+      },
+    }),
+  );
+  const invalid = calculateMultiCurrencyQuoteItemPricing(
+    createInput({
+      supplierPricing: {
+        costBaseAmount: 100,
+        costCurrency: 'USD',
+        salesTaxPercent: Number.NaN,
+        serviceChargePercent: -10,
+      },
+    }),
+  );
+
+  assert.equal(missing.totalCost, 100);
+  assert.equal(invalid.totalCost, 100);
+});
+
 test('applies tourism fee per night per person', () => {
   const result = calculateMultiCurrencyQuoteItemPricing(
     createInput({
@@ -196,6 +262,50 @@ test('stores FX snapshot when converting supplier cost currency into quote curre
   assert.equal(result.fxToCurrency, 'USD');
   assert.equal(result.fxRate, 1.08);
   assert.ok(result.fxRateDate instanceof Date);
+});
+
+test('quote pricing keeps totals in quote currency and flags mixed supplier currency with FX fields', () => {
+  const result = calculateMultiCurrencyQuoteItemPricing(
+    createInput({
+      supplierPricing: {
+        costBaseAmount: 100,
+        costCurrency: 'JOD',
+      },
+      quoteCurrency: 'EUR',
+      markupPercent: 20,
+    }),
+  );
+
+  assert.equal(result.quoteCurrency, 'EUR');
+  assert.equal(result.totalCost, 130.56);
+  assert.equal(result.totalSell, 156.67);
+  assert.equal(result.fxFromCurrency, 'JOD');
+  assert.equal(result.fxToCurrency, 'EUR');
+  assert.equal(result.fxRate, Number((1.41 / 1.08).toFixed(6)));
+});
+
+test('quote pricing rejects invalid quote or supplier currency codes clearly', () => {
+  assert.throws(
+    () =>
+      calculateMultiCurrencyQuoteItemPricing(
+        createInput({
+          quoteCurrency: 'GBP',
+        }),
+      ),
+    /quoteCurrency must be one of USD, EUR, or JOD/,
+  );
+  assert.throws(
+    () =>
+      calculateMultiCurrencyQuoteItemPricing(
+        createInput({
+          supplierPricing: {
+            costBaseAmount: 100,
+            costCurrency: 'AED',
+          },
+        }),
+      ),
+    /costCurrency must be one of USD, EUR, or JOD/,
+  );
 });
 
 test('falls back to legacy pricing when structured pricing is missing', () => {

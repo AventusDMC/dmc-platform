@@ -99,6 +99,7 @@ type HotelRate = {
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';
+  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
   currency: string;
   cost: number;
   roomCategory: {

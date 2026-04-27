@@ -76,6 +76,18 @@ type Supplier = {
   type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 };
 
+type Vehicle = {
+  id: string;
+  supplierId: string;
+  name: string;
+  maxPax: number;
+};
+
+type TransportRoute = {
+  id: string;
+  name: string;
+};
+
 type Itinerary = {
   id: string;
   dayNumber: number;
@@ -184,6 +196,22 @@ type QuoteSnapshot = {
   scenarios: QuoteScenario[];
 };
 
+type ServiceVoucher = {
+  id: string;
+  bookingServiceId: string;
+  type: 'TRANSPORT' | 'HOTEL' | 'GUIDE' | 'EXTERNAL_PACKAGE';
+  supplierId: string;
+  status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
+  issuedAt: string | null;
+  notes: string | null;
+  supplier?: Supplier | null;
+  bookingService?: {
+    id: string;
+    description: string;
+    serviceType: string;
+  } | null;
+};
+
 type Booking = {
   sourceQuoteId: string;
   id: string;
@@ -282,8 +310,17 @@ type Booking = {
       };
     };
   };
+  days?: Array<{
+    id: string;
+    dayNumber: number;
+    date: string | null;
+    title: string;
+    notes: string | null;
+    status: 'PENDING' | 'CONFIRMED' | 'DONE';
+  }>;
   services: Array<{
     id: string;
+    bookingDayId?: string | null;
     description: string;
     qty: number;
     totalCost: number;
@@ -291,6 +328,12 @@ type Booking = {
     supplierId: string | null;
     supplierName: string | null;
     serviceType: string;
+    operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE' | null;
+    operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
+    referenceId?: string | null;
+    assignedTo?: string | null;
+    guidePhone?: string | null;
+    vehicleId?: string | null;
     serviceDate: string | null;
     startTime: string | null;
     pickupTime: string | null;
@@ -302,6 +345,7 @@ type Booking = {
     supplierReference: string | null;
     reconfirmationRequired: boolean;
     reconfirmationDueAt: string | null;
+    notes: string | null;
     status: 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
     statusNote: string | null;
     confirmationStatus: 'pending' | 'requested' | 'confirmed';
@@ -309,13 +353,27 @@ type Booking = {
     confirmationNotes: string | null;
     confirmationRequestedAt: string | null;
     confirmationConfirmedAt: string | null;
+    vouchers?: ServiceVoucher[];
     auditLogs: AuditLog[];
   }>;
+  vouchers?: ServiceVoucher[];
   passengers: Array<{
     id: string;
+    fullName: string | null;
     firstName: string;
     lastName: string;
     title: string | null;
+    gender: string | null;
+    dateOfBirth: string | null;
+    nationality: string | null;
+    passportNumberMasked: string | null;
+    passportIssueDate: string | null;
+    passportExpiryDate: string | null;
+    arrivalFlight: string | null;
+    departureFlight: string | null;
+    entryPoint: string | null;
+    visaStatus: string | null;
+    roomingNotes: string | null;
     isLead: boolean;
     notes: string | null;
     roomingAssignments: Array<{
@@ -383,14 +441,15 @@ type BookingPageProps = {
   }>;
 };
 
-type BookingDetailTab = 'overview' | 'services' | 'passengers' | 'rooming' | 'financials' | 'audit-log';
+type BookingDetailTab = 'overview' | 'services' | 'passengers' | 'rooming' | 'financials' | 'documents' | 'audit-log';
 
 const BOOKING_DETAIL_TABS: Array<{ id: BookingDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'services', label: 'Services' },
+  { id: 'services', label: 'Operations' },
   { id: 'passengers', label: 'Passengers' },
   { id: 'rooming', label: 'Rooming' },
   { id: 'financials', label: 'Financials' },
+  { id: 'documents', label: 'Documents' },
   { id: 'audit-log', label: 'Audit Log' },
 ];
 
@@ -410,6 +469,18 @@ async function getBooking(id: string): Promise<Booking | null> {
 
 async function getSuppliers(): Promise<Supplier[]> {
   return adminPageFetchJson<Supplier[]>('/api/suppliers', 'Suppliers', {
+    cache: 'no-store',
+  });
+}
+
+async function getVehicles(): Promise<Vehicle[]> {
+  return adminPageFetchJson<Vehicle[]>('/api/vehicles', 'Vehicles', {
+    cache: 'no-store',
+  });
+}
+
+async function getRoutes(): Promise<TransportRoute[]> {
+  return adminPageFetchJson<TransportRoute[]>('/api/routes?active=true&type=transfer', 'Routes', {
     cache: 'no-store',
   });
 }
@@ -507,6 +578,11 @@ function getRoomLabel(entry: { roomType: string | null; sortOrder: number }) {
 
 function formatPassengerName(passenger: { title?: string | null; firstName: string; lastName: string }) {
   return [passenger.title, passenger.firstName, passenger.lastName].filter(Boolean).join(' ').trim();
+}
+
+function formatDateOnly(value: string | null | undefined) {
+  if (!value) return 'Not set';
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(value));
 }
 
 function formatAuditAction(action: string) {
@@ -692,6 +768,76 @@ function buildBadgeTooltip(
     .join('\n');
 }
 
+function formatOperationType(value?: string | null) {
+  if (!value) return 'Activity';
+  return value
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function renderOperationTypeOptions(defaultValue?: string | null) {
+  return (
+    <select name="type" defaultValue={defaultValue || 'TRANSPORT'} required>
+      <option value="TRANSPORT">Transport</option>
+      <option value="GUIDE">Guide</option>
+      <option value="HOTEL">Hotel</option>
+      <option value="ACTIVITY">Activity</option>
+      <option value="EXTERNAL_PACKAGE">External package</option>
+    </select>
+  );
+}
+
+function renderOperationStatusOptions(defaultValue?: string | null) {
+  return (
+    <select name="status" defaultValue={defaultValue || 'PENDING'}>
+      <option value="PENDING">Pending</option>
+      <option value="REQUESTED">Requested</option>
+      <option value="CONFIRMED">Confirmed</option>
+      <option value="DONE">Done</option>
+    </select>
+  );
+}
+
+function renderRouteOptions(routes: TransportRoute[], defaultValue?: string | null) {
+  return (
+    <select name="referenceId" defaultValue={defaultValue || ''}>
+      <option value="">Select route</option>
+      {routes.map((route) => (
+        <option key={route.id} value={route.id}>
+          {route.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function renderVehicleOptions(vehicles: Vehicle[], defaultValue?: string | null) {
+  return (
+    <select name="vehicleId" defaultValue={defaultValue || ''}>
+      <option value="">Select vehicle</option>
+      {vehicles.map((vehicle) => (
+        <option key={vehicle.id} value={vehicle.id}>
+          {vehicle.name} ({vehicle.maxPax} pax)
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function renderSupplierOptions(suppliers: Supplier[], defaultValue?: string | null) {
+  return (
+    <select name="supplierId" defaultValue={defaultValue || ''}>
+      <option value="">No supplier</option>
+      {suppliers.map((supplier) => (
+        <option key={supplier.id} value={supplier.id}>
+          {supplier.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function buildFinanceBadgeTooltip(booking: Booking) {
   return buildBadgeTooltip([
     { count: booking.finance.badge.breakdown.unpaidClient, label: 'unpaid client' },
@@ -724,7 +870,6 @@ function resolveActiveBookingTab(tab?: string): BookingDetailTab {
   if (tab === 'passengers-rooming') return 'passengers';
   if (tab === 'finance') return 'financials';
   if (tab === 'timeline') return 'audit-log';
-  if (tab === 'documents') return 'overview';
 
   return BOOKING_DETAIL_TABS.some((entry) => entry.id === tab) ? (tab as BookingDetailTab) : 'overview';
 }
@@ -734,7 +879,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveBookingTab(resolvedSearchParams?.tab);
   const highlightServiceId = resolvedSearchParams?.service?.trim() || undefined;
-  const [booking, suppliers] = await Promise.all([getBooking(id), getSuppliers()]);
+  const [booking, suppliers, vehicles, transportRoutes] = await Promise.all([getBooking(id), getSuppliers(), getVehicles(), getRoutes()]);
   const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
 
   if (!booking) {
@@ -977,6 +1122,39 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                   <section className="workspace-section booking-ops-panel-card">
                     <div className="workspace-section-head">
                       <div>
+                        <p className="eyebrow">Booking Days</p>
+                        <h2>Operations day plan</h2>
+                      </div>
+                    </div>
+                    <div className="table-wrap">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Day</th>
+                            <th>Date</th>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(booking.days || []).map((day) => (
+                            <tr key={day.id}>
+                              <td>Day {day.dayNumber}</td>
+                              <td>{formatDateOnly(day.date)}</td>
+                              <td>{day.title}</td>
+                              <td>{day.status}</td>
+                              <td>{day.notes || 'No notes'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
                         <p className="eyebrow">Program</p>
                         <h2>Booking itinerary snapshot</h2>
                       </div>
@@ -1060,9 +1238,103 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                           documentType="supplier-confirmation"
                         />
                       </article>
+                      <article className="detail-card">
+                        <p className="eyebrow">Guarantee Letter</p>
+                        <p className="detail-copy">Government-ready letter with manifest and operations assignment details.</p>
+                        <div className="workspace-document-actions">
+                          <Link href={`/api/bookings/${booking.id}/guarantee-letter`} className="secondary-button">
+                            Generate Guarantee Letter
+                          </Link>
+                        </div>
+                      </article>
                     </div>
                   </section>
                 </div>
+              ) : null}
+
+              {activeTab === 'documents' ? (
+                <section className="workspace-section booking-ops-panel-card">
+                  <div className="workspace-section-head">
+                    <div>
+                      <p className="eyebrow">Documents</p>
+                      <h2>Booking documents</h2>
+                    </div>
+                  </div>
+                  <div className="booking-ops-doc-grid">
+                    <article className="detail-card">
+                      <p className="eyebrow">Guarantee Letter</p>
+                      <p className="detail-copy">Includes passenger manifest, travel details, program, transport, and guide assignment details.</p>
+                      <div className="workspace-document-actions">
+                        <Link href={`/api/bookings/${booking.id}/guarantee-letter`} className="secondary-button">
+                          Generate Guarantee Letter
+                        </Link>
+                      </div>
+                    </article>
+                    <article className="detail-card">
+                      <p className="eyebrow">Voucher</p>
+                      <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                        Open voucher
+                      </Link>
+                    </article>
+                    <article className="detail-card">
+                      <p className="eyebrow">Supplier Confirmation</p>
+                      <Link href={`/bookings/${booking.id}/supplier-confirmation`} className="secondary-button">
+                        Supplier confirmation
+                      </Link>
+                    </article>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Voucher</th>
+                          <th>Service</th>
+                          <th>Supplier</th>
+                          <th>Status</th>
+                          <th>Issued</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(booking.vouchers || []).map((voucher) => (
+                          <tr key={voucher.id}>
+                            <td>{formatOperationType(voucher.type)}</td>
+                            <td>{voucher.bookingService?.description || voucher.bookingServiceId}</td>
+                            <td>{voucher.supplier?.name || voucher.supplierId}</td>
+                            <td>{voucher.status}</td>
+                            <td>{formatDateOnly(voucher.issuedAt)}</td>
+                            <td>
+                              <div className="quote-status-actions">
+                                <Link href={`/api/vouchers/${voucher.id}/pdf`} className="secondary-button">
+                                  PDF
+                                </Link>
+                                {voucher.status === 'DRAFT' ? (
+                                  <form action={`/api/vouchers/${voucher.id}/status`} method="POST">
+                                    <input type="hidden" name="status" value="ISSUED" />
+                                    <button type="submit">Issue</button>
+                                  </form>
+                                ) : null}
+                                {voucher.status !== 'CANCELLED' ? (
+                                  <form action={`/api/vouchers/${voucher.id}/status`} method="POST">
+                                    <input type="hidden" name="status" value="CANCELLED" />
+                                    <button type="submit" className="secondary-button">
+                                      Cancel
+                                    </button>
+                                  </form>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {(booking.vouchers || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={6}>No supplier-facing service vouchers have been generated.</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               ) : null}
 
               {activeTab === 'services' ? (
@@ -1100,6 +1372,208 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                   <section className="workspace-section booking-ops-panel-card">
                     <div className="workspace-section-head">
                       <div>
+                        <p className="eyebrow">Operations</p>
+                        <h2>Day assignments</h2>
+                      </div>
+                    </div>
+                    <div className="section-stack">
+                      {(booking.days || []).map((day) => {
+                        const dayServices = booking.services.filter((service) => {
+                          if (service.bookingDayId) {
+                            return service.bookingDayId === day.id;
+                          }
+
+                          return Boolean(day.date && service.serviceDate && day.date.slice(0, 10) === service.serviceDate.slice(0, 10));
+                        });
+
+                        return (
+                          <article key={day.id} className="detail-card">
+                            <div className="workspace-section-head">
+                              <div>
+                                <p className="eyebrow">
+                                  Day {day.dayNumber} / {formatDateOnly(day.date)}
+                                </p>
+                                <h3>{day.title}</h3>
+                              </div>
+                            </div>
+
+                            <div className="table-wrap">
+                              <table className="data-table">
+                                <thead>
+                                  <tr>
+                                    <th>Type</th>
+                                    <th>Assignment</th>
+                                    <th>Supplier</th>
+                                    <th>Status</th>
+                                    <th>Notes</th>
+                                    <th>Action</th>
+                                    <th>Voucher</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {dayServices.map((service) => (
+                                    <tr key={service.id}>
+                                      <td>{formatOperationType(service.operationType || service.serviceType)}</td>
+                                      <td>
+                                        {service.operationType === 'TRANSPORT'
+                                          ? [service.assignedTo, service.pickupTime].filter(Boolean).join(' / ') || 'Transport pending'
+                                          : service.operationType === 'GUIDE'
+                                            ? [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || 'Guide pending'
+                                            : service.operationType === 'HOTEL'
+                                              ? service.confirmationNumber || 'Confirmation pending'
+                                              : service.description}
+                                      </td>
+                                      <td>{service.supplierName || 'Not assigned'}</td>
+                                      <td>{service.operationStatus || service.confirmationStatus.toUpperCase()}</td>
+                                      <td>{service.notes || service.confirmationNotes || 'No notes'}</td>
+                                      <td>
+                                        {service.operationType === 'EXTERNAL_PACKAGE' ? (
+                                          <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
+                                            <input type="hidden" name="type" value="EXTERNAL_PACKAGE" />
+                                            <label>
+                                              Status
+                                              {renderOperationStatusOptions(service.operationStatus)}
+                                            </label>
+                                            <label>
+                                              Notes
+                                              <input type="text" name="notes" defaultValue={service.notes || ''} />
+                                            </label>
+                                            <button type="submit">Update</button>
+                                          </form>
+                                        ) : (
+                                          <details>
+                                            <summary>Edit</summary>
+                                            <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
+                                              <label>
+                                                Type
+                                                {renderOperationTypeOptions(service.operationType || service.serviceType)}
+                                              </label>
+                                              <label>
+                                                Route
+                                                {renderRouteOptions(transportRoutes, service.referenceId)}
+                                              </label>
+                                              <label>
+                                                Vehicle
+                                                {renderVehicleOptions(vehicles, service.vehicleId)}
+                                              </label>
+                                              <label>
+                                                Supplier
+                                                {renderSupplierOptions(suppliers, service.supplierId)}
+                                              </label>
+                                              <label>
+                                                Driver / guide
+                                                <input type="text" name="assignedTo" defaultValue={service.assignedTo || ''} />
+                                              </label>
+                                              <label>
+                                                Guide phone
+                                                <input type="text" name="guidePhone" defaultValue={service.guidePhone || ''} />
+                                              </label>
+                                              <label>
+                                                Pickup time
+                                                <input type="time" name="pickupTime" defaultValue={service.pickupTime || ''} />
+                                              </label>
+                                              <label>
+                                                Confirmation
+                                                <input type="text" name="confirmationNumber" defaultValue={service.confirmationNumber || ''} />
+                                              </label>
+                                              <label>
+                                                Status
+                                                {renderOperationStatusOptions(service.operationStatus)}
+                                              </label>
+                                              <label>
+                                                Notes
+                                                <input type="text" name="notes" defaultValue={service.notes || ''} />
+                                              </label>
+                                              <div className="quote-status-actions">
+                                                <button type="submit">Save</button>
+                                                <button type="submit" name="_method" value="DELETE" className="secondary-button">
+                                                  Delete
+                                                </button>
+                                              </div>
+                                            </form>
+                                          </details>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {service.vouchers && service.vouchers.length > 0 ? (
+                                          <Link href={`/api/vouchers/${service.vouchers[0].id}/pdf`} className="secondary-button">
+                                            Voucher PDF
+                                          </Link>
+                                        ) : (
+                                          <form action={`/api/bookings/${booking.id}/services/${service.id}/voucher`} method="POST" className="quote-status-form">
+                                            <input type="hidden" name="notes" value={service.notes || ''} />
+                                            <button type="submit">Generate Voucher</button>
+                                          </form>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {dayServices.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={7}>No services assigned to this booking day.</td>
+                                    </tr>
+                                  ) : null}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <details>
+                              <summary>Add service</summary>
+                              <form action={`/api/bookings/${booking.id}/days/${day.id}/services`} method="POST" className="quote-status-form">
+                                <label>
+                                  Type
+                                  {renderOperationTypeOptions()}
+                                </label>
+                                <label>
+                                  Route
+                                  {renderRouteOptions(transportRoutes)}
+                                </label>
+                                <label>
+                                  Vehicle
+                                  {renderVehicleOptions(vehicles)}
+                                </label>
+                                <label>
+                                  Supplier
+                                  {renderSupplierOptions(suppliers)}
+                                </label>
+                                <label>
+                                  Driver / guide
+                                  <input type="text" name="assignedTo" placeholder="Driver or guide name" />
+                                </label>
+                                <label>
+                                  Guide phone
+                                  <input type="text" name="guidePhone" placeholder="Guide phone" />
+                                </label>
+                                <label>
+                                  Pickup time
+                                  <input type="time" name="pickupTime" />
+                                </label>
+                                <label>
+                                  Confirmation
+                                  <input type="text" name="confirmationNumber" placeholder="Hotel confirmation number" />
+                                </label>
+                                <label>
+                                  Status
+                                  {renderOperationStatusOptions()}
+                                </label>
+                                <label>
+                                  Notes
+                                  <input type="text" name="notes" placeholder="Internal operations notes" />
+                                </label>
+                                <div className="quote-status-actions">
+                                  <button type="submit">Add service</button>
+                                </div>
+                              </form>
+                            </details>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="workspace-section booking-ops-panel-card">
+                    <div className="workspace-section-head">
+                      <div>
                         <p className="eyebrow">Services</p>
                         <h2>Service execution timeline</h2>
                       </div>
@@ -1117,23 +1591,50 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                 <section className="section-stack">
                   <TableSectionShell
                     title="Passengers"
-                    description="Traveler records, lead ownership, and special notes."
-                    context={<p>{booking.passengers.length} passengers in scope</p>}
+                    description="Traveler records, manifest fields, lead ownership, and special notes."
+                    context={
+                      <div className="quote-status-actions">
+                        <p>{booking.passengers.length} passengers in scope</p>
+                        <Link href={`/api/bookings/${booking.id}/passengers/export`} className="secondary-button">
+                          Export manifest
+                        </Link>
+                      </div>
+                    }
                     createPanel={
                       <CollapsibleCreatePanel title="Add passenger" description="Create a traveler record while keeping the manifest visible." triggerLabelOpen="Add passenger">
                         <InlineRowEditorShell>
                           <form action={`/api/bookings/${booking.id}/passengers`} method="POST" className="quote-status-form">
                             <label>
-                              Title
-                              <input type="text" name="title" placeholder="Mr / Ms / Dr" />
+                              Full name
+                              <input type="text" name="fullName" required />
                             </label>
                             <label>
-                              First name
-                              <input type="text" name="firstName" required />
+                              Nationality
+                              <input type="text" name="nationality" required />
                             </label>
                             <label>
-                              Last name
-                              <input type="text" name="lastName" required />
+                              Passport number
+                              <input type="text" name="passportNumber" required />
+                            </label>
+                            <label>
+                              Passport expiry
+                              <input type="date" name="passportExpiryDate" required />
+                            </label>
+                            <label>
+                              Gender
+                              <input type="text" name="gender" />
+                            </label>
+                            <label>
+                              Date of birth
+                              <input type="date" name="dateOfBirth" />
+                            </label>
+                            <label>
+                              Entry point
+                              <input type="text" name="entryPoint" />
+                            </label>
+                            <label>
+                              Arrival flight
+                              <input type="text" name="arrivalFlight" />
                             </label>
                             <label>
                               Notes
@@ -1164,6 +1665,9 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                           <thead>
                             <tr>
                               <th>Passenger</th>
+                              <th>Nationality</th>
+                              <th>Passport</th>
+                              <th>Expiry</th>
                               <th>Role</th>
                               <th>Assignments</th>
                               <th>Notes</th>
@@ -1174,8 +1678,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                             {booking.passengers.map((passenger) => (
                               <tr key={passenger.id}>
                                 <td>
-                                  <strong>{formatPassengerName(passenger)}</strong>
+                                  <strong>{passenger.fullName || formatPassengerName(passenger)}</strong>
                                 </td>
+                                <td>{passenger.nationality || 'Missing'}</td>
+                                <td>{passenger.passportNumberMasked || 'Missing'}</td>
+                                <td>{formatDateOnly(passenger.passportExpiryDate)}</td>
                                 <td>{passenger.isLead ? 'Lead' : 'Passenger'}</td>
                                 <td>{passenger.roomingAssignments.length}</td>
                                 <td>{passenger.notes || 'No passenger notes'}</td>
@@ -1185,16 +1692,40 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                       <form action={`/api/bookings/${booking.id}/passengers/${passenger.id}`} method="POST" className="quote-status-form">
                                         <input type="hidden" name="intent" value="update" />
                                         <label>
-                                          Title
-                                          <input type="text" name="title" defaultValue={passenger.title || ''} />
+                                          Full name
+                                          <input type="text" name="fullName" defaultValue={passenger.fullName || formatPassengerName(passenger)} required />
                                         </label>
                                         <label>
-                                          First name
-                                          <input type="text" name="firstName" defaultValue={passenger.firstName} required />
+                                          Nationality
+                                          <input type="text" name="nationality" defaultValue={passenger.nationality || ''} required />
                                         </label>
                                         <label>
-                                          Last name
-                                          <input type="text" name="lastName" defaultValue={passenger.lastName} required />
+                                          Passport number
+                                          <input type="text" name="passportNumber" placeholder={passenger.passportNumberMasked || 'Leave blank to keep current'} />
+                                        </label>
+                                        <label>
+                                          Passport expiry
+                                          <input type="date" name="passportExpiryDate" defaultValue={passenger.passportExpiryDate?.slice(0, 10) || ''} required />
+                                        </label>
+                                        <label>
+                                          Gender
+                                          <input type="text" name="gender" defaultValue={passenger.gender || ''} />
+                                        </label>
+                                        <label>
+                                          Date of birth
+                                          <input type="date" name="dateOfBirth" defaultValue={passenger.dateOfBirth?.slice(0, 10) || ''} />
+                                        </label>
+                                        <label>
+                                          Entry point
+                                          <input type="text" name="entryPoint" defaultValue={passenger.entryPoint || ''} />
+                                        </label>
+                                        <label>
+                                          Arrival flight
+                                          <input type="text" name="arrivalFlight" defaultValue={passenger.arrivalFlight || ''} />
+                                        </label>
+                                        <label>
+                                          Visa status
+                                          <input type="text" name="visaStatus" defaultValue={passenger.visaStatus || ''} />
                                         </label>
                                         <label>
                                           Notes

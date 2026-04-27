@@ -8816,3 +8816,104 @@ h1 {
     justify-items: start;
   }
 }
+
+.operations-mobile-page {
+  padding: 0.75rem;
+}
+
+.operations-mobile-shell {
+  display: grid;
+  gap: 1rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.operations-mobile-header,
+.operations-mobile-booking-head,
+.operations-mobile-service-head,
+.operations-mobile-day-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.operations-mobile-filter,
+.operations-mobile-stack,
+.operations-mobile-days,
+.operations-mobile-services {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.operations-mobile-filter {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.operations-mobile-filter label,
+.operations-mobile-note label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.operations-mobile-booking,
+.operations-mobile-day,
+.operations-mobile-service,
+.operations-mobile-manifest {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.operations-mobile-day,
+.operations-mobile-service,
+.operations-mobile-manifest {
+  border: 1px solid rgba(30, 27, 24, 0.12);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.operations-mobile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.operations-mobile-note {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.operations-mobile-note textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .operations-mobile-page {
+    padding: 0;
+  }
+
+  .operations-mobile-shell {
+    border-radius: 0;
+    padding: 0.85rem;
+  }
+
+  .operations-mobile-header,
+  .operations-mobile-booking-head,
+  .operations-mobile-service-head,
+  .operations-mobile-day-head {
+    display: grid;
+  }
+
+  .operations-mobile-filter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .operations-mobile-actions form,
+  .operations-mobile-actions a,
+  .operations-mobile-actions button {
+    width: 100%;
+  }
+}

@@ -222,7 +222,15 @@ function isActivityItem(item: ProposalV3QuoteItem) {
   );
 }
 
+function isExternalPackageItem(item: ProposalV3QuoteItem) {
+  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category).replace(/\s+/g, '_');
+  return normalized === 'external_package' || normalized.includes('external_package') || normalized.includes('partner_package');
+}
+
 function getGroupLabel(item: ProposalV3QuoteItem) {
+  if (isExternalPackageItem(item)) {
+    return 'Partner Package';
+  }
   if (isHotelItem(item)) {
     return 'Stay';
   }
@@ -307,15 +315,27 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
 function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[]): ProposalV3DayGroup[] {
   const location = extractDayLocation(day.title, day.dayNumber);
   const grouped = new Map<string, ProposalV3DayGroup['items']>();
-  const order = ['Stay', 'Transfer', 'Experience', 'Meal', 'Guide', 'Other'];
+  const order = ['Stay', 'Transfer', 'Partner Package', 'Experience', 'Meal', 'Guide', 'Other'];
 
   for (const item of dayItems) {
     const groupLabel = getGroupLabel(item);
     const items = grouped.get(groupLabel) || [];
-    const rawTitle = cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
+    const rawTitle = isExternalPackageItem(item)
+      ? cleanText(item.externalPackageCountry || item.service.name || '')
+      : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
     const importedDescription = extractImportedDescription(item);
     let description =
-      cleanText(importedDescription || item.pricingDescription || '') ||
+      cleanText(
+        isExternalPackageItem(item)
+          ? [
+              item.externalClientDescription,
+              item.externalIncludes ? `Includes: ${item.externalIncludes}` : null,
+              item.externalExcludes ? `Excludes: ${item.externalExcludes}` : null,
+            ]
+              .filter(Boolean)
+              .join(' ')
+          : importedDescription || item.pricingDescription || '',
+      ) ||
       (isTransportItem(item) && item.appliedVehicleRate
         ? cleanText(`${item.appliedVehicleRate.vehicle?.name || ''} ${item.appliedVehicleRate.serviceType?.name || ''}`)
         : null);
@@ -350,12 +370,28 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
     }));
 }
 
+function getPositiveDayNumber(value: number | null | undefined) {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : null;
+}
+
+function appendDayGroups(target: ProposalV3Day, groups: ProposalV3DayGroup[]) {
+  for (const group of groups) {
+    const existing = target.groups.find((targetGroup) => targetGroup.label === group.label);
+    if (existing) {
+      existing.items.push(...group.items);
+    } else {
+      target.groups.push(group);
+    }
+  }
+}
+
 function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
-
-  return sortedDays.map((day) => {
+  const days = sortedDays.map((day) => {
     const location = extractDayLocation(day.title, day.dayNumber);
-    const dayItems = quote.quoteItems.filter((item) => item.itineraryId === day.id);
+    const dayItems = quote.quoteItems.filter(
+      (item) => item.itineraryId === day.id && !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)),
+    );
     const summary = cleanText(day.description || '');
 
     return {
@@ -366,6 +402,54 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
       groups: buildDayGroups(day, dayItems),
     };
   });
+
+  const assignedItineraryIds = new Set(sortedDays.map((day) => day.id));
+  const externalRangeItems = quote.quoteItems.filter(
+    (item) =>
+      isExternalPackageItem(item) &&
+      (getPositiveDayNumber(item.externalStartDay) || !item.itineraryId || !assignedItineraryIds.has(item.itineraryId)),
+  );
+
+  if (externalRangeItems.length > 0) {
+    const fallbackBaseDayNumber = days.length > 0 ? Math.max(...days.map((day) => day.dayNumber)) + 1 : 1;
+    for (const [index, item] of externalRangeItems.entries()) {
+      const startDay = getPositiveDayNumber(item.externalStartDay) ?? fallbackBaseDayNumber + index;
+      const requestedEndDay = getPositiveDayNumber(item.externalEndDay);
+      const endDay = requestedEndDay && requestedEndDay >= startDay ? requestedEndDay : startDay;
+      const country = cleanText(item.externalPackageCountry || item.service.name) || 'Partner package';
+
+      for (let dayNumber = startDay; dayNumber <= endDay; dayNumber += 1) {
+        const groups = buildDayGroups(
+          {
+            id: `external-package-${item.id}`,
+            dayNumber,
+            title: country,
+            description: null,
+          },
+          [item],
+        );
+        const existingDay = days.find((day) => day.dayNumber === dayNumber);
+
+        if (existingDay) {
+          appendDayGroups(existingDay, groups);
+          if (!existingDay.overnightLocation) {
+            existingDay.overnightLocation = cleanText(item.externalPackageCountry || '') || null;
+          }
+          continue;
+        }
+
+        days.push({
+          dayNumber,
+          title: `Day ${dayNumber}: ${country}`,
+          summary: null,
+          overnightLocation: cleanText(item.externalPackageCountry || '') || null,
+          groups,
+        });
+      }
+    }
+  }
+
+  return days.sort((a, b) => a.dayNumber - b.dayNumber);
 }
 
 function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string) {
@@ -423,6 +507,7 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
   const pricing = buildProposalPricingViewModel(quote, currency, (amount, resolvedCurrency) =>
     formatProposalMoney(amount, resolvedCurrency),
   );
+  const pdfConsistencyLines = buildPdfExportConsistencyLines(quote, currency);
   const slabRows: ProposalV3InvestmentRow[] =
     pricing.mode === 'group'
       ? pricing.slabLines
@@ -458,10 +543,139 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
     snapshotHelper: pricing.snapshotHelper,
     mode: pricing.mode,
     basisLines: pricing.basisLines.filter((line) => !isPlaceholderText(line)),
-    noteLines: pricing.noteLines.filter((line) => isSafeInvestmentNote(line) && !isPlaceholderText(line)),
+    noteLines: [
+      ...pricing.noteLines.filter((line) => isSafeInvestmentNote(line) && !isPlaceholderText(line)),
+      ...pdfConsistencyLines.filter((line) => !isPlaceholderText(line)),
+    ],
     slabRows,
     isPending: false,
   };
+}
+
+function formatPricingBasisLabel(value: unknown) {
+  return String(value || '').trim().toUpperCase() === 'PER_PERSON' ? 'per person/night' : 'per room/night';
+}
+
+function formatDisplayNumber(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(Number.isInteger(numeric) ? numeric : Number(numeric.toFixed(2))) : String(value);
+}
+
+function humanizeEnum(value: unknown, fallback: string) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatSupplementBasis(value: unknown) {
+  const normalized = String(value || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+  if (normalized === 'PER_ROOM') return 'per room';
+  if (normalized === 'PER_PERSON') return 'per person';
+  if (normalized === 'PER_STAY') return 'one-time';
+  if (normalized === 'PER_NIGHT') return 'per night';
+  return humanizeEnum(value, 'basis unavailable');
+}
+
+function formatAgeRange(policy: any) {
+  if (policy.ageFrom !== null && policy.ageFrom !== undefined && policy.ageTo !== null && policy.ageTo !== undefined) {
+    return `${policy.ageFrom}-${policy.ageTo}`;
+  }
+  if (policy.ageFrom !== null && policy.ageFrom !== undefined) {
+    return `${policy.ageFrom}+`;
+  }
+  if (policy.ageTo !== null && policy.ageTo !== undefined) {
+    return `0-${policy.ageTo}`;
+  }
+  return 'eligible ages';
+}
+
+function formatChildPolicyForPdf(policy: any, currency: string) {
+  const policyType = String(policy.policyType || policy.type || '').trim().toUpperCase();
+  const ageRange = formatAgeRange(policy);
+  const amount = formatDisplayNumber(policy.amount);
+  const percent = formatDisplayNumber(policy.percent);
+  const policyCurrency = policy.currency || currency;
+
+  if (policyType === 'CHILD_FREE') {
+    return `Children ${ageRange} free`;
+  }
+  if (policyType === 'CHILD_DISCOUNT') {
+    return `Children ${ageRange} pay ${percent !== null ? `${percent}%` : 'discounted rate'}`;
+  }
+  if (policyType === 'CHILD_EXTRA_BED') {
+    return `Child extra bed: ${amount !== null ? `${amount} ${policyCurrency}` : percent !== null ? `${percent}%` : 'No details'}`;
+  }
+  if (policyType === 'CHILD_EXTRA_MEAL') {
+    return `Child extra meal: ${amount !== null ? `${amount} ${policyCurrency}` : percent !== null ? `${percent}%` : 'No details'}`;
+  }
+  return '';
+}
+
+function buildPdfExportConsistencyLines(quote: ProposalV3Quote, currency: string) {
+  const lines: string[] = [];
+  const quoteItems = quote.quoteItems || [];
+
+  for (const item of quoteItems) {
+    if (!isHotelItem(item)) {
+      continue;
+    }
+
+    lines.push(`${cleanText(item.hotel?.name || item.service.name) || 'Hotel'} rate basis: ${formatPricingBasisLabel(item.pricingBasis)}`);
+
+    const ratePolicies = Array.isArray(item.ratePolicies) ? item.ratePolicies : [];
+    const childPolicies = ratePolicies
+      .map((policy) => formatChildPolicyForPdf(policy, currency))
+      .filter(Boolean);
+    lines.push(
+      childPolicies.length > 0
+        ? `Child policy: ${childPolicies.join('; ')}`
+        : 'Child policy: No child policy available',
+    );
+
+    const supplements = Array.isArray(item.supplements) ? item.supplements : [];
+    if (supplements.length > 0) {
+      lines.push(
+        `Supplements: ${supplements
+          .map((supplement: any) => {
+            const amount = Number(supplement.amount);
+            const amountLabel = Number.isFinite(amount) ? formatProposalMoney(amount, supplement.currency || currency) : 'amount unavailable';
+            return `${humanizeEnum(supplement.type, 'Supplement')} ${amountLabel} ${formatSupplementBasis(supplement.chargeBasis)}`;
+          })
+          .join('; ')}`,
+      );
+    }
+  }
+
+  const itemCostTotal = quoteItems.reduce((sum, item) => sum + Number(item.finalCost ?? item.totalCost ?? 0), 0);
+  const itemSellTotal = quoteItems.reduce((sum, item) => sum + Number(item.totalSell ?? 0), 0);
+  const totalCost = Number((Number.isFinite(Number(quote.totalCost)) ? Number(quote.totalCost) : itemCostTotal).toFixed(2));
+  const totalSell = Number((Number.isFinite(Number(quote.totalSell)) ? Number(quote.totalSell) : itemSellTotal).toFixed(2));
+  const margin = Number((totalSell - totalCost).toFixed(2));
+  const marginPercent = totalSell > 0 ? Number(((margin / totalSell) * 100).toFixed(2)) : 0;
+
+  if (totalCost > 0 || totalSell > 0) {
+    lines.push(`PDF total cost: ${formatProposalMoney(totalCost, currency)}`);
+    lines.push(`PDF sell total: ${formatProposalMoney(totalSell, currency)}`);
+    lines.push(`PDF margin: ${formatProposalMoney(margin, currency)} (${marginPercent.toFixed(2)}%)`);
+  }
+
+  if (quoteItems.some((item) => item.useOverride || item.finalCost !== null && item.finalCost !== undefined)) {
+    lines.push('Manual finalCost override reflected in PDF totals.');
+  }
+
+  return lines;
 }
 
 function parseSupportTextList(value: string | null | undefined) {
@@ -485,6 +699,9 @@ function buildDefaultInclusions(quote: ProposalV3Quote) {
   }
   if (quote.quoteItems.some((item) => isGuideItem(item))) {
     lines.add('Guiding services where indicated.');
+  }
+  if (quote.quoteItems.some((item) => isExternalPackageItem(item))) {
+    lines.add('Partner DMC package services as described in the program.');
   }
 
   return Array.from(lines);
@@ -558,9 +775,15 @@ function formatDurationLabel(dayCount: number, nightCount: number) {
 
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
+  const days = buildDays(quote);
   const totalPax = quote.adults + quote.children;
-  const dayCount = Math.max(sortedDays.length, (quote.nightCount || 0) + 1, 1);
-  const destinations = Array.from(new Set(sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
+  const dayCount = Math.max(days.length, (quote.nightCount || 0) + 1, 1);
+  const itineraryDestinations = sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean);
+  const externalDestinations = quote.quoteItems
+    .filter((item) => isExternalPackageItem(item))
+    .map((item) => cleanText(item.externalPackageCountry || ''))
+    .filter(Boolean);
+  const destinations = Array.from(new Set([...itineraryDestinations, ...externalDestinations]));
   const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
   const coverSubtitle =
     destinations.some((value) => value.toLowerCase() === 'amman') &&
@@ -605,7 +828,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     journeySummary,
     highlights: buildHighlights(quote, destinationLine),
     accommodationRows: buildAccommodationRows(quote),
-    days: buildDays(quote),
+    days,
     investment: buildInvestment(quote, currency),
     inclusions: parseSupportTextList(quote.inclusionsText).length
       ? parseSupportTextList(quote.inclusionsText)

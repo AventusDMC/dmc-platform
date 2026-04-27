@@ -34,6 +34,7 @@ type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type BookingServiceLifecycleStatus = 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
 type BookingServiceConfirmationStatus = 'pending' | 'requested' | 'confirmed';
+type BookingOperationServiceStatus = 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
 type OperationsWarningFilter =
   | 'missing_supplier'
   | 'pending_confirmation'
@@ -131,6 +132,47 @@ type Supplier = {
   type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 };
 
+type OperationsDashboardItem = {
+  id: string;
+  bookingId?: string;
+  bookingRef?: string | null;
+  title?: string | null;
+  bookingTitle?: string | null;
+  description?: string | null;
+  status?: string | null;
+  operationStatus?: BookingOperationServiceStatus | string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  serviceDate?: string | null;
+  pax?: number | null;
+  reasons?: string[];
+};
+
+type OperationsDashboardBucket = {
+  count: number;
+  items: OperationsDashboardItem[];
+};
+
+type OperationsDashboard = {
+  filters: {
+    date: string;
+    bookingStatus: string;
+    serviceStatus: string;
+  };
+  todayArrivals: OperationsDashboardBucket;
+  todayDepartures: OperationsDashboardBucket;
+  activeBookings: OperationsDashboardBucket;
+  pendingServices: OperationsDashboardBucket;
+  unconfirmedServices: OperationsDashboardBucket;
+  missingPassengers: OperationsDashboardBucket;
+  upcomingBorderCrossings: OperationsDashboardBucket;
+  alerts: {
+    bookingsWithNoPassengers: OperationsDashboardBucket;
+    servicesWithoutSupplierOrAssignment: OperationsDashboardBucket;
+    missingTransportAssignmentForToday: OperationsDashboardBucket;
+  };
+};
+
 type OperationsPageProps = {
   searchParams?: Promise<{
     serviceStatus?: BookingServiceLifecycleStatus | 'all';
@@ -140,6 +182,7 @@ type OperationsPageProps = {
     warning?: OperationsWarningFilter | 'all';
     report?: OperationsReportFilter;
     groupBy?: GroupBy;
+    date?: string;
     filter?: string;
     warningMessage?: string;
     warningText?: string;
@@ -218,6 +261,23 @@ async function getSuppliers(): Promise<Supplier[]> {
   return adminPageFetchJson<Supplier[]>(`${API_BASE_URL}/suppliers`, 'Operations suppliers', {
     cache: 'no-store',
   });
+}
+
+async function getOperationsDashboard(params: {
+  date?: string;
+  bookingStatus?: BookingStatus | 'all';
+  serviceStatus?: BookingServiceLifecycleStatus | 'all';
+}): Promise<OperationsDashboard> {
+  const query = new URLSearchParams();
+  if (params.date) query.set('date', params.date);
+  if (params.bookingStatus && params.bookingStatus !== 'all') query.set('bookingStatus', params.bookingStatus);
+  if (params.serviceStatus && params.serviceStatus !== 'all') query.set('serviceStatus', params.serviceStatus);
+
+  return adminPageFetchJson<OperationsDashboard>(
+    `${API_BASE_URL}/operations/dashboard${query.size > 0 ? `?${query.toString()}` : ''}`,
+    'Operations dashboard',
+    { cache: 'no-store' },
+  );
 }
 
 function formatLifecycleStatus(status: BookingServiceLifecycleStatus) {
@@ -492,6 +552,7 @@ function buildOperationsHref(
     warning: OperationsWarningFilter | 'all';
     report: OperationsReportFilter;
     groupBy: GroupBy;
+    date?: string;
   },
   overrides: Partial<{
     serviceStatus: BookingServiceLifecycleStatus | 'all';
@@ -501,6 +562,7 @@ function buildOperationsHref(
     warning: OperationsWarningFilter | 'all';
     report: OperationsReportFilter;
     groupBy: GroupBy;
+    date: string;
   }>,
 ) {
   const params = new URLSearchParams();
@@ -532,6 +594,10 @@ function buildOperationsHref(
 
   if (next.groupBy !== 'booking') {
     params.set('groupBy', next.groupBy);
+  }
+
+  if (next.date) {
+    params.set('date', next.date);
   }
 
   const query = params.toString();
@@ -608,9 +674,18 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
   const warningFilter = resolvedSearchParams?.warning || 'all';
   const reportFilter = resolvedSearchParams?.report || 'all';
   const groupBy = resolvedSearchParams?.groupBy || 'booking';
+  const dashboardDate = resolvedSearchParams?.date || '';
   const warningMessage = resolvedSearchParams?.warningMessage || resolvedSearchParams?.warningText || '';
   const success = resolvedSearchParams?.success || '';
-  const [bookings, suppliers] = await Promise.all([getBookings(), getSuppliers()]);
+  const [bookings, suppliers, operationsDashboard] = await Promise.all([
+    getBookings(),
+    getSuppliers(),
+    getOperationsDashboard({
+      date: dashboardDate,
+      bookingStatus: bookingStatusFilter,
+      serviceStatus: serviceStatusFilter,
+    }),
+  ]);
 
   const rows: OperationRow[] = bookings.flatMap((booking) =>
     booking.services.map((service) => ({
@@ -900,6 +975,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
     warning: warningFilter,
     report: reportFilter,
     groupBy,
+    date: dashboardDate,
   };
 
   const bookingBulkActionPayloads =
@@ -952,6 +1028,9 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
               <Link href={buildOperationsHref(currentFilters, { groupBy: 'supplier' })} className="dashboard-toolbar-link">
                 Supplier queue
               </Link>
+              <Link href="/operations/mobile" className="dashboard-toolbar-link">
+                Mobile view
+              </Link>
             </>
           }
         />
@@ -970,6 +1049,118 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
             Low-margin bookings
           </Link>
         </PageActionBar>
+
+        <form method="GET" className="operations-filter-card">
+          <div className="operations-filter-grid">
+            <label>
+              Dashboard date
+              <input type="date" name="date" defaultValue={operationsDashboard.filters.date} />
+            </label>
+            <label>
+              Booking status
+              <select name="bookingStatus" defaultValue={bookingStatusFilter}>
+                <option value="all">All bookings</option>
+                <option value="draft">New</option>
+                <option value="in_progress">In progress</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label>
+              Service status
+              <select name="serviceStatus" defaultValue={serviceStatusFilter}>
+                <option value="all">All services</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">Requested</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="ready">Ready</option>
+              </select>
+            </label>
+            <input type="hidden" name="report" value={reportFilter} />
+            <input type="hidden" name="groupBy" value={groupBy} />
+            <button type="submit" className="primary-button">Apply dashboard filters</button>
+          </div>
+        </form>
+
+        <section className="operations-dashboard-grid" aria-label="Operations control center">
+          {[
+            {
+              id: 'arrivals',
+              label: "Today's Arrivals",
+              bucket: operationsDashboard.todayArrivals,
+              href: buildOperationsHref(currentFilters, { date: operationsDashboard.filters.date, groupBy: 'booking' }),
+              helper: 'Bookings starting on the selected date',
+            },
+            {
+              id: 'departures',
+              label: "Today's Departures",
+              bucket: operationsDashboard.todayDepartures,
+              href: buildOperationsHref(currentFilters, { date: operationsDashboard.filters.date, groupBy: 'booking' }),
+              helper: 'Bookings ending on the selected date',
+            },
+            {
+              id: 'active-bookings',
+              label: 'Active Bookings',
+              bucket: operationsDashboard.activeBookings,
+              href: buildOperationsHref(currentFilters, { bookingStatus: 'in_progress', groupBy: 'booking' }),
+              helper: 'New and in-progress bookings',
+            },
+            {
+              id: 'pending-services',
+              label: 'Pending Services',
+              bucket: operationsDashboard.pendingServices,
+              href: buildOperationsHref(currentFilters, { serviceStatus: 'pending' }),
+              helper: 'Operations services still pending',
+            },
+            {
+              id: 'missing-passports',
+              label: 'Missing Passport Info',
+              bucket: operationsDashboard.missingPassengers,
+              href: '/bookings',
+              helper: 'Passenger lists or required passport fields need review',
+            },
+            {
+              id: 'border-crossings',
+              label: 'Upcoming Border Crossings',
+              bucket: operationsDashboard.upcomingBorderCrossings,
+              href: buildOperationsHref(currentFilters, { date: operationsDashboard.filters.date, groupBy: 'booking' }),
+              helper: 'Arrivals or departures in the next 48 hours',
+            },
+          ].map((widget) => (
+            <Link key={widget.id} href={widget.href} className="detail-card operations-exception-card">
+              <div className="operations-card-head">
+                <div>
+                  <span className="detail-label">{widget.label}</span>
+                  <h2>{widget.bucket.count}</h2>
+                </div>
+                {widget.bucket.count > 0 ? <span className="dashboard-pill dashboard-pill-alert">Open</span> : <span className="dashboard-pill">Clear</span>}
+              </div>
+              <p className="detail-copy">{widget.helper}</p>
+              {widget.bucket.items.slice(0, 3).map((item) => (
+                <p key={item.id} className="detail-copy">
+                  {item.bookingRef || item.title || item.description || item.id}
+                  {item.reasons?.length ? ` - ${item.reasons.join(', ')}` : ''}
+                </p>
+              ))}
+            </Link>
+          ))}
+        </section>
+
+        <section className="operations-summary-list" aria-label="Operations alerts">
+          <div>
+            <span>Bookings with no passengers</span>
+            <strong>{operationsDashboard.alerts.bookingsWithNoPassengers.count}</strong>
+          </div>
+          <div>
+            <span>Services without supplier/assignment</span>
+            <strong>{operationsDashboard.alerts.servicesWithoutSupplierOrAssignment.count}</strong>
+          </div>
+          <div>
+            <span>Missing transport assignment for today</span>
+            <strong>{operationsDashboard.alerts.missingTransportAssignmentForToday.count}</strong>
+          </div>
+        </section>
 
         <SummaryStrip
           items={[
