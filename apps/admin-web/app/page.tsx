@@ -3,7 +3,9 @@ import dynamic from 'next/dynamic';
 import { cookies } from 'next/headers';
 import { AlertsList, type DashboardAlertItem } from './components/AlertsList';
 import { AdminForbiddenState } from './components/AdminForbiddenState';
+import { DashboardEmptyState } from './components/DashboardEmptyState';
 import { DashboardHeader } from './components/DashboardHeader';
+import { DashboardSectionCard } from './components/DashboardSectionCard';
 import { DashboardStatCard } from './components/DashboardStatCard';
 import { PipelineSummaryCard } from './components/PipelineSummaryCard';
 import { QuickActionsCard } from './components/QuickActionsCard';
@@ -14,6 +16,7 @@ import { UpcomingOperationsList } from './components/UpcomingOperationsList';
 import { adminPageFetchJson, isAdminForbiddenError } from './lib/admin-server';
 import { canAccessFinance, canAccessOperations, readSessionActor } from './lib/auth-session';
 import { type FinanceBadge, type OperationsBadge, type RoomingBadge } from './lib/bookingAttention';
+import { loadDashboardInvoices } from './lib/dashboard-invoices';
 
 const FinanceDashboardSection = dynamic(
   () => import('./components/FinanceDashboardSection').then((module) => module.FinanceDashboardSection),
@@ -218,6 +221,10 @@ async function getInvoices() {
   return adminPageFetchJson<Invoice[]>('/api/invoices', 'Dashboard invoices', {
     cache: 'no-store',
   });
+}
+
+async function getDashboardInvoices() {
+  return loadDashboardInvoices(getInvoices);
 }
 
 async function getFinanceDashboard() {
@@ -446,13 +453,15 @@ export default async function HomePage() {
     const financeAccess = canAccessFinance(session?.role);
     const operationsAccess = canAccessOperations(session?.role);
 
-    const [quotes, bookings, invoices, financeDashboard] = await Promise.all([
+    const [quotes, bookings, invoiceResult, financeDashboard] = await Promise.all([
       getQuotes(),
       getBookings(),
-      getInvoices(),
+      getDashboardInvoices(),
       financeAccess ? getFinanceDashboard() : Promise.resolve(null),
     ]);
 
+    const invoices = invoiceResult.invoices;
+    const invoicesUnavailable = invoiceResult.unavailable;
     const now = new Date();
     const activeTrips = bookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'in_progress').length;
     const pendingConfirmations = bookings.reduce((total, booking) => total + booking.operations.badge.breakdown.pendingConfirmations, 0);
@@ -570,6 +579,23 @@ export default async function HomePage() {
 
           <section className="executive-dashboard-main-grid">
             <div className="executive-dashboard-main-column">
+              {financeAccess && invoicesUnavailable ? (
+                <DashboardSectionCard
+                  eyebrow="Invoices"
+                  title="Invoice data unavailable"
+                  description="The rest of the dashboard is still available while invoice data is temporarily unavailable."
+                  action={
+                    <Link href="/invoices" className="dashboard-section-link">
+                      Open invoices
+                    </Link>
+                  }
+                >
+                  <DashboardEmptyState
+                    title="Invoice queue unavailable"
+                    description="Quotes, bookings, operations, and finance cards are still shown with invoice totals treated as empty for this load."
+                  />
+                </DashboardSectionCard>
+              ) : null}
               {financeDashboard ? <FinanceDashboardSection summary={financeDashboard} /> : null}
               <RecentQuotesList quotes={recentQuotes} />
               <RecentBookingsList bookings={recentBookings} />
