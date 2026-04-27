@@ -346,11 +346,14 @@ export class QuoteItineraryService {
   }
 
   private async ensureQuoteExists(quoteId: string, actor?: CompanyScopedActor) {
+    if (actor) {
+      requireActorCompanyId(actor);
+    }
+
     const quote = actor
       ? await this.prisma.quote.findFirst({
           where: {
             id: quoteId,
-            clientCompanyId: requireActorCompanyId(actor),
           },
           select: { id: true },
         })

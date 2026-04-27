@@ -124,6 +124,7 @@ type CreateQuoteItemInput = {
   quoteId: string;
   optionId?: string;
   serviceId: string;
+  activityId?: string | null;
   itineraryId?: string;
   serviceDate?: Date | null;
   startTime?: string | null;
@@ -345,11 +346,8 @@ export class QuotesService {
   ) {}
 
   findAll(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     return this.prisma.quote.findMany({
-      where: {
-        clientCompanyId: companyId,
-      },
       include: {
         clientCompany: {
           include: {
@@ -404,12 +402,11 @@ export class QuotesService {
   }
 
   async enablePublicLink(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
     const existing = await quoteModel.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       select: {
         id: true,
@@ -450,12 +447,11 @@ export class QuotesService {
   }
 
   async disablePublicLink(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
     const existing = await quoteModel.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       select: {
         id: true,
@@ -480,12 +476,11 @@ export class QuotesService {
   }
 
   async regeneratePublicLink(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quoteModel = (this.prisma as any).quote;
     const existing = await quoteModel.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       select: {
         id: true,
@@ -816,29 +811,22 @@ export class QuotesService {
 
   async create(data: CreateQuoteInput, actor?: CompanyScopedActor) {
     const companyId = requireActorCompanyId(actor);
-
-    if (data.clientCompanyId !== companyId) {
-      throw new BadRequestException('Quote company does not match the current company');
-    }
-
-    if (data.brandCompanyId && data.brandCompanyId !== companyId) {
-      throw new BadRequestException('Branding company does not match the current company');
-    }
+    const clientCompanyId = data.clientCompanyId?.trim();
+    const brandCompanyId = data.brandCompanyId?.trim() || null;
 
     const normalizedAgentId = data.agentId === undefined ? undefined : data.agentId?.trim() || null;
     const [clientCompany, brandCompany, contact, agent] = await Promise.all([
       this.prisma.company.findFirst({
-        where: { id: companyId },
+        where: { id: clientCompanyId },
       }),
-      data.brandCompanyId
+      brandCompanyId
         ? this.prisma.company.findFirst({
-            where: { id: companyId },
+            where: { id: brandCompanyId },
           })
         : Promise.resolve(null),
       this.prisma.contact.findFirst({
         where: {
           id: data.contactId,
-          companyId,
         },
       }),
       normalizedAgentId
@@ -865,11 +853,11 @@ export class QuotesService {
       throw new BadRequestException('Contact not found');
     }
 
-    if (contact.companyId !== data.clientCompanyId) {
+    if (contact.companyId !== clientCompanyId) {
       throw new BadRequestException('Contact does not belong to the selected company');
     }
 
-    if (data.brandCompanyId && !brandCompany) {
+    if (brandCompanyId && !brandCompany) {
       throw new BadRequestException('Branding company not found');
     }
 
@@ -901,8 +889,8 @@ export class QuotesService {
           const createdQuote = await tx.quote.create({
             data: {
               quoteNumber,
-              clientCompanyId: data.clientCompanyId,
-              brandCompanyId: data.brandCompanyId ?? null,
+              clientCompanyId,
+              brandCompanyId,
               contactId: data.contactId,
               agentId: normalizedAgentId ?? null,
               quoteType: this.normalizeQuoteType(data.quoteType),
@@ -967,7 +955,20 @@ export class QuotesService {
 
         await this.recalculateQuoteTotals(createdQuoteId);
 
-        return this.loadQuoteState(createdQuoteId, this.prisma, actor);
+        const createdQuote = await this.loadQuoteState(createdQuoteId, this.prisma, actor);
+        await this.auditService?.log?.({
+          actor: actor ? { id: (actor as { id?: string; userId?: string }).id ?? (actor as { userId?: string }).userId ?? null, companyId } : null,
+          companyId: clientCompanyId,
+          action: 'quote.created',
+          entity: 'quote',
+          entityId: createdQuoteId,
+          metadata: {
+            clientCompanyId,
+            brandCompanyId,
+          },
+        });
+
+        return createdQuote;
       } catch (error) {
         if (this.isQuoteNumberConflict(error) && attempt < QuotesService.QUOTE_NUMBER_RETRY_LIMIT - 1) {
           continue;
@@ -1208,17 +1209,17 @@ export class QuotesService {
   }
 
   async update(id: string, data: UpdateQuoteInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    const quote = await this.prisma.quote.findFirst({
+    const actorCompanyId = requireActorCompanyId(actor);
+    const quote = (await this.prisma.quote.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
-    });
+    })) as any;
 
     if (!quote) {
       throw new BadRequestException('Quote not found');
     }
+    await (this as any).assertLatestQuoteRevision(id);
 
     const clientCompanyId = data.clientCompanyId ?? quote.clientCompanyId;
     const brandCompanyId = data.brandCompanyId === undefined ? quote.brandCompanyId : data.brandCompanyId;
@@ -1230,14 +1231,6 @@ export class QuotesService {
       data.quoteCurrency ?? (quote as any).quoteCurrency ?? 'USD',
       'quoteCurrency',
     );
-
-    if (clientCompanyId !== companyId) {
-      throw new BadRequestException('Quote company does not match the current company');
-    }
-
-    if (isBrandCompanyUpdate && brandCompanyId && brandCompanyId !== companyId) {
-      throw new BadRequestException('Branding company does not match the current company');
-    }
 
     const storedPricingType = this.normalizeQuotePricingType(quote.pricingType);
     const pricingType =
@@ -1278,24 +1271,23 @@ export class QuotesService {
     });
     const [clientCompany, brandCompany, contact, agent] = await Promise.all([
       this.prisma.company.findFirst({
-        where: { id: companyId },
+        where: { id: clientCompanyId },
       }),
       isBrandCompanyUpdate && brandCompanyId
         ? this.prisma.company.findFirst({
-            where: { id: companyId },
+            where: { id: brandCompanyId },
           })
         : Promise.resolve(null),
       this.prisma.contact.findFirst({
         where: {
           id: contactId,
-          companyId,
         },
       }),
       agentId
         ? this.prisma.user.findFirst({
             where: {
               id: agentId,
-              companyId,
+              companyId: actorCompanyId,
               role: {
                 name: 'agent',
               },
@@ -1521,11 +1513,10 @@ export class QuotesService {
   }
 
   async updateStatus(id: string, data: UpdateQuoteStatusInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    const quote = await this.prisma.quote.findFirst({
+    requireActorCompanyId(actor);
+    const quote = (await this.prisma.quote.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       select: {
         id: true,
@@ -1545,11 +1536,12 @@ export class QuotesService {
           },
         },
       },
-    });
+    })) as any;
 
     if (!quote) {
       throw new BadRequestException('Quote not found');
     }
+    await (this as any).assertLatestQuoteRevision(id);
 
     let acceptedVersionId = quote.acceptedVersionId ?? null;
 
@@ -1616,15 +1608,245 @@ export class QuotesService {
         },
         contact: true,
       },
-    }).then((quote) => this.attachResolvedQuoteFields(quote));
+    }).then(async (updatedQuote) => {
+      const resolved = this.attachResolvedQuoteFields(updatedQuote);
+      await this.auditService?.log?.({
+        actor: actor
+          ? {
+              id: (actor as { id?: string; userId?: string }).id ?? (actor as { userId?: string }).userId ?? null,
+              companyId: (actor as { companyId?: string }).companyId ?? null,
+            }
+          : null,
+        companyId: (resolved as any).clientCompanyId ?? null,
+        action: data.status === QuoteStatus.CANCELLED ? 'quote.cancelled' : 'quote.status_updated',
+        entity: 'quote',
+        entityId: id,
+        metadata: {
+          oldStatus: quote.status,
+          newStatus: data.status,
+          acceptedVersionId,
+        },
+      });
+
+      return resolved;
+    });
+  }
+
+  async cancelQuote(id: string, actor?: CompanyScopedActor) {
+    return this.updateStatus(id, { status: QuoteStatus.CANCELLED }, actor);
+  }
+
+  async requote(id: string, actor?: CompanyScopedActor) {
+    requireActorCompanyId(actor);
+
+    const original = (await this.prisma.quote.findFirst({
+      where: { id },
+      include: {
+        pricingSlabs: true,
+        itineraries: true,
+        quoteItems: true,
+        quoteOptions: true,
+        scenarios: true,
+      },
+    } as any)) as any;
+
+    if (!original) {
+      throw new BadRequestException('Quote not found');
+    }
+
+    await (this as any).assertLatestQuoteRevision(id);
+
+    const createdQuoteId = await this.prisma.$transaction(async (tx) => {
+      const quoteNumber = await this.generateNextQuoteNumber(tx);
+      const revisionNumber = (original.revisionNumber ?? 1) + 1;
+      const created = await tx.quote.create({
+        data: {
+          quoteNumber,
+          clientCompanyId: original.clientCompanyId,
+          brandCompanyId: original.brandCompanyId,
+          contactId: original.contactId,
+          agentId: original.agentId,
+          quoteType: original.quoteType,
+          jordanPassType: original.jordanPassType,
+          bookingType: original.bookingType,
+          title: original.title,
+          description: original.description,
+          quoteCurrency: original.quoteCurrency,
+          inclusionsText: original.inclusionsText,
+          exclusionsText: original.exclusionsText,
+          termsNotesText: original.termsNotesText,
+          pricingType: original.pricingType,
+          pricingMode: original.pricingMode,
+          fixedPricePerPerson: original.fixedPricePerPerson,
+          focType: original.focType,
+          focRatio: original.focRatio,
+          focCount: original.focCount,
+          focRoomType: original.focRoomType,
+          adults: original.adults,
+          children: original.children,
+          roomCount: original.roomCount,
+          nightCount: original.nightCount,
+          singleSupplement: original.singleSupplement,
+          travelStartDate: original.travelStartDate,
+          validUntil: original.validUntil,
+          totalPrice: original.totalPrice,
+          totalCost: original.totalCost,
+          totalSell: original.totalSell,
+          pricePerPax: original.pricePerPax,
+          revisionNumber,
+          revisedFromId: original.id,
+          status: QuoteStatus.DRAFT,
+          acceptedVersionId: null,
+          sentAt: null,
+          acceptedAt: null,
+          publicToken: null,
+          publicEnabled: false,
+          clientChangeRequestMessage: null,
+        } as any,
+      });
+
+      const itineraryIdByOriginalId = new Map<string, string>();
+      for (const itinerary of original.itineraries || []) {
+        const clonedItinerary = await tx.itinerary.create({
+          data: {
+            quoteId: created.id,
+            dayNumber: itinerary.dayNumber,
+            title: itinerary.title,
+            description: itinerary.description,
+          },
+        } as any);
+        itineraryIdByOriginalId.set(itinerary.id, clonedItinerary.id);
+      }
+
+      const optionIdByOriginalId = new Map<string, string>();
+      for (const option of original.quoteOptions || []) {
+        const clonedOption = await tx.quoteOption.create({
+          data: {
+            quoteId: created.id,
+            name: option.name,
+            notes: option.notes,
+            hotelCategoryId: option.hotelCategoryId,
+            pricingMode: option.pricingMode,
+            packageMarginPercent: option.packageMarginPercent,
+          } as any,
+        });
+        optionIdByOriginalId.set(option.id, clonedOption.id);
+      }
+
+      for (const slab of original.pricingSlabs || []) {
+        await tx.quotePricingSlab.create({
+          data: {
+            quoteId: created.id,
+            minPax: slab.minPax,
+            maxPax: slab.maxPax,
+            price: slab.price,
+            focPax: slab.focPax,
+            notes: slab.notes,
+          } as any,
+        });
+      }
+
+      for (const item of original.quoteItems || []) {
+        await tx.quoteItem.create({
+          data: {
+            quoteId: created.id,
+            optionId: item.optionId ? optionIdByOriginalId.get(item.optionId) ?? null : null,
+            itineraryId: item.itineraryId ? itineraryIdByOriginalId.get(item.itineraryId) ?? null : null,
+            serviceId: item.serviceId,
+            activityId: item.activityId,
+            serviceDate: item.serviceDate,
+            startTime: item.startTime,
+            pickupTime: item.pickupTime,
+            pickupLocation: item.pickupLocation,
+            meetingPoint: item.meetingPoint,
+            participantCount: item.participantCount,
+            adultCount: item.adultCount,
+            childCount: item.childCount,
+            reconfirmationRequired: item.reconfirmationRequired,
+            reconfirmationDueAt: item.reconfirmationDueAt,
+            hotelId: item.hotelId,
+            contractId: item.contractId,
+            seasonId: item.seasonId,
+            seasonName: item.seasonName,
+            roomCategoryId: item.roomCategoryId,
+            occupancyType: item.occupancyType,
+            mealPlan: item.mealPlan,
+            quantity: item.quantity,
+            paxCount: item.paxCount,
+            roomCount: item.roomCount,
+            nightCount: item.nightCount,
+            dayCount: item.dayCount,
+            baseCost: item.baseCost,
+            overrideCost: item.overrideCost,
+            overrideReason: item.overrideReason,
+            useOverride: item.useOverride,
+            markupPercent: item.markupPercent,
+            markupAmount: item.markupAmount,
+            sellPrice: item.sellPrice,
+            currency: item.currency,
+            pricingDescription: item.pricingDescription,
+            customServiceName: item.customServiceName,
+            unitCost: item.unitCost,
+            pricingBasis: item.pricingBasis,
+            country: item.country,
+            supplierName: item.supplierName,
+            startDay: item.startDay,
+            endDay: item.endDay,
+            startDate: item.startDate,
+            endDate: item.endDate,
+            netCost: item.netCost,
+            includes: item.includes,
+            excludes: item.excludes,
+            internalNotes: item.internalNotes,
+            clientDescription: item.clientDescription,
+            transportServiceTypeId: item.transportServiceTypeId,
+            routeId: item.routeId,
+            appliedVehicleRateId: item.appliedVehicleRateId,
+          } as any,
+        });
+      }
+
+      for (const scenario of original.scenarios || []) {
+        await tx.quoteScenario.create({
+          data: {
+            quoteId: created.id,
+            paxCount: scenario.paxCount,
+            totalCost: scenario.totalCost,
+            totalSell: scenario.totalSell,
+            pricePerPax: scenario.pricePerPax,
+          } as any,
+        });
+      }
+
+      return created.id;
+    });
+
+    const revisedQuote = await this.loadQuoteState(createdQuoteId, this.prisma, actor);
+    await this.auditService?.log?.({
+      actor: actor
+        ? {
+            id: (actor as { id?: string; userId?: string }).id ?? (actor as { userId?: string }).userId ?? null,
+            companyId: (actor as { companyId?: string }).companyId ?? null,
+          }
+        : null,
+      companyId: original.clientCompanyId,
+      action: 'quote.revised',
+      entity: 'quote',
+      entityId: createdQuoteId,
+      metadata: {
+        clientCompanyId: original.clientCompanyId,
+        revisedFromId: original.id,
+      },
+    });
+
+    return revisedQuote;
   }
 
   async createInvoice(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quote = await this.prisma.quote.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       select: {
         id: true,
@@ -1716,27 +1938,29 @@ export class QuotesService {
   }
 
   async convertToBooking(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    const actorCompanyId = requireActorCompanyId(actor);
+    await this.assertLatestQuoteRevision(id);
     return this.prisma.$transaction(async (tx) => {
       const quote = await tx.quote.findFirst({
         where: {
           id,
-          clientCompanyId: companyId,
         },
         select: {
           id: true,
+          clientCompanyId: true,
           status: true,
           acceptedVersionId: true,
-          booking: {
-            select: {
-              id: true,
-            },
-          },
         },
       });
 
-      if (!quote) {
-        throw new BadRequestException('Quote not found');
+    if (!quote) {
+      throw new BadRequestException('Quote not found');
+    }
+
+      await this.assertLatestQuoteRevision(id, tx);
+
+      if (quote.status === QuoteStatus.CANCELLED) {
+        throw new BadRequestException('Cancelled quotes cannot be converted to bookings');
       }
 
       if (quote.status !== QuoteStatus.ACCEPTED && quote.status !== QuotesService.CONFIRMED) {
@@ -1747,7 +1971,15 @@ export class QuotesService {
         throw new BadRequestException('Accepted quote is missing acceptedVersionId');
       }
 
-      if (quote.booking) {
+      const existingQuoteBooking = await tx.booking.findFirst({
+        where: {
+          quoteId: quote.id,
+          amendedFromId: null,
+        },
+        select: { id: true },
+      } as any);
+
+      if (existingQuoteBooking) {
         throw new BadRequestException('A booking already exists for this quote');
       }
 
@@ -1760,11 +1992,6 @@ export class QuotesService {
           id: true,
           quoteId: true,
           snapshotJson: true,
-          booking: {
-            select: {
-              id: true,
-            },
-          },
         },
       });
 
@@ -1772,7 +1999,15 @@ export class QuotesService {
         throw new BadRequestException('Accepted quote version not found');
       }
 
-      if (acceptedVersion.booking) {
+      const existingVersionBooking = await tx.booking.findFirst({
+        where: {
+          acceptedVersionId: acceptedVersion.id,
+          amendedFromId: null,
+        },
+        select: { id: true },
+      } as any);
+
+      if (existingVersionBooking) {
         throw new BadRequestException('A booking already exists for the accepted version');
       }
 
@@ -1790,7 +2025,7 @@ export class QuotesService {
           bookingRef,
           accessToken: this.generateBookingAccessToken(),
           quoteId: quote.id,
-          clientCompanyId: companyId,
+          clientCompanyId: quote.clientCompanyId,
           acceptedVersionId: acceptedVersion.id,
           bookingType: bookingSnapshot.bookingType,
           snapshotJson: bookingSnapshot.snapshotJson,
@@ -1838,7 +2073,7 @@ export class QuotesService {
       timeout: 30000,
     }).then(async (createdBooking) => {
       await this.auditService.log({
-        actor: actor ? { id: (actor as { id?: string }).id ?? null, companyId } : null,
+        actor: actor ? { id: (actor as { id?: string }).id ?? null, companyId: actorCompanyId } : null,
         action: 'booking.created',
         entity: 'booking',
         entityId: createdBooking.id,
@@ -1862,6 +2097,11 @@ export class QuotesService {
         service: {
           include: {
             serviceType: true,
+          },
+        },
+        activity: {
+          include: {
+            supplierCompany: true,
           },
         },
         itinerary: true,
@@ -1957,13 +2197,10 @@ export class QuotesService {
   }
 
   async updateItem(itemId: string, data: UpdateQuoteItemInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const existingItem = await this.prisma.quoteItem.findFirst({
       where: {
         id: itemId,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
     });
 
@@ -1983,6 +2220,8 @@ export class QuotesService {
       quoteId: quote.id,
       optionId,
       serviceId: data.serviceId ?? existingItem.serviceId,
+      activityId:
+        data.activityId === undefined ? (existingItem as { activityId?: string | null }).activityId ?? undefined : data.activityId,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
       serviceDate:
         data.serviceDate === undefined ? (existingItem as { serviceDate?: Date | null }).serviceDate ?? undefined : data.serviceDate,
@@ -2113,6 +2352,11 @@ export class QuotesService {
             serviceType: true,
           },
         },
+        activity: {
+          include: {
+            supplierCompany: true,
+          },
+        },
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2132,13 +2376,10 @@ export class QuotesService {
   }
 
   async removeItem(itemId: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const item = await this.prisma.quoteItem.findFirst({
       where: {
         id: itemId,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
     });
 
@@ -2156,11 +2397,10 @@ export class QuotesService {
   }
 
   async remove(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quote = await this.prisma.quote.findFirst({
       where: {
         id,
-        clientCompanyId: companyId,
       },
       include: {
         _count: {
@@ -2255,7 +2495,7 @@ export class QuotesService {
   }
 
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
-    const [quote, service, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
+    const [quote, service, activity, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
@@ -2266,6 +2506,14 @@ export class QuotesService {
           entranceFee: true,
         },
       }),
+      data.activityId
+        ? (this.prisma as any).activity.findUnique({
+            where: { id: data.activityId },
+            include: {
+              supplierCompany: true,
+            },
+          })
+        : Promise.resolve(null),
       data.itineraryId
         ? this.prisma.itinerary.findUnique({
             where: { id: data.itineraryId },
@@ -2289,6 +2537,10 @@ export class QuotesService {
 
     if (!service) {
       throw new BadRequestException('Service not found');
+    }
+
+    if (data.activityId && !activity) {
+      throw new BadRequestException('Activity not found');
     }
 
     if (data.itineraryId && !legacyItinerary && !quoteItineraryDay) {
@@ -2530,12 +2782,26 @@ export class QuotesService {
             ? derivedParticipantCount
             : Math.max(0, Math.floor(data.participantCount));
 
+      if (activity) {
+        baseCost = Number(activity.costPrice);
+        currency = data.currency?.trim().toUpperCase() || service.currency || 'USD';
+        supplierCostBaseAmount = Number(activity.costPrice);
+        supplierCostCurrency = currency;
+        pricingDescription = [
+          activity.name,
+          activity.pricingBasis === 'PER_GROUP' ? 'Activity | PER_GROUP' : 'Activity | PER_PERSON',
+          activity.durationMinutes ? `${activity.durationMinutes} minutes` : null,
+        ]
+          .filter(Boolean)
+          .join(' | ');
+      }
+
       const entranceFee = (service as any).entranceFee as
         | { id: string; siteName: string; foreignerFeeJod: number; includedInJordanPass: boolean }
         | null
         | undefined;
 
-      if (entranceFee) {
+      if (!activity && entranceFee) {
         const coverage = await this.resolveJordanPassEntranceCoverage({
           quoteId: quote.id,
           optionId: data.optionId || null,
@@ -2643,7 +2909,17 @@ export class QuotesService {
 
     const markupPercent = this.normalizeOptionalNonNegativeNumber(data.markupPercent, 'Markup percent') ?? 0;
     const markupAmount = this.normalizeOptionalNonNegativeNumber(data.markupAmount, 'Markup amount');
-    const sellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
+    const requestedSellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
+    const activitySellPriceOverride =
+      activity && requestedSellPriceOverride === null
+        ? Number(
+            (
+              Number(activity.sellPrice) *
+              (activity.pricingBasis === 'PER_GROUP' ? 1 : Math.max(1, paxCount))
+            ).toFixed(2),
+          )
+        : null;
+    const sellPriceOverride = requestedSellPriceOverride ?? activitySellPriceOverride;
 
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
 
@@ -2672,6 +2948,7 @@ export class QuotesService {
       transportPricingMode,
       hotelRatePricingBasis,
       externalPackagePricingBasis: typeof externalPackageData.externalPricingBasis === 'string' ? externalPackageData.externalPricingBasis : null,
+      activityPricingBasis: activity?.pricingBasis ?? null,
       unitCount,
     });
     const manualOverrideApplied = useOverride && overrideCost !== null;
@@ -2704,6 +2981,7 @@ export class QuotesService {
         quoteId: data.quoteId,
         optionId: data.optionId || null,
         serviceId: data.serviceId,
+        activityId: activity?.id ?? null,
         itineraryId: legacyItinerary?.id || null,
         serviceDate,
         startTime,
@@ -2764,6 +3042,11 @@ export class QuotesService {
         service: {
           include: {
             serviceType: true,
+          },
+        },
+        activity: {
+          include: {
+            supplierCompany: true,
           },
         },
         itinerary: true,
@@ -3579,13 +3862,10 @@ export class QuotesService {
   }
 
   async updateOption(optionId: string, data: UpdateQuoteOptionInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const option = await this.prisma.quoteOption.findFirst({
       where: {
         id: optionId,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
       include: {
         hotelCategory: true,
@@ -3677,6 +3957,11 @@ export class QuotesService {
             serviceType: true,
           },
         },
+        activity: {
+          include: {
+            supplierCompany: true,
+          },
+        },
         itinerary: true,
         hotel: true,
         contract: true,
@@ -3703,14 +3988,11 @@ export class QuotesService {
   }
 
   async updateOptionItem(optionId: string, itemId: string, data: UpdateQuoteItemInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const item = await this.prisma.quoteItem.findFirst({
       where: {
         id: itemId,
         optionId,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
     });
 
@@ -3726,14 +4008,11 @@ export class QuotesService {
   }
 
   async removeOptionItem(optionId: string, itemId: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const item = await this.prisma.quoteItem.findFirst({
       where: {
         id: itemId,
         optionId,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
     });
 
@@ -3978,6 +4257,7 @@ export class QuotesService {
     transportPricingMode?: TransportPricingMode | null;
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+    activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
   }) {
     if (this.isHotelService(values.service)) {
@@ -4053,6 +4333,7 @@ export class QuotesService {
     transportPricingMode?: TransportPricingMode | null;
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+    activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
     legacyCurrency?: string | null;
   }) {
@@ -4064,6 +4345,10 @@ export class QuotesService {
         ? values.externalPackagePricingBasis === 'PER_PERSON'
           ? Math.max(1, values.paxCount)
           : 1
+      : this.isActivityService(values.service) && values.activityPricingBasis
+        ? values.activityPricingBasis === 'PER_GROUP'
+          ? 1
+          : Math.max(1, values.paxCount)
       : this.isTransportService(values.service) &&
           values.transportPricingMode === 'capacity_unit' &&
           values.unitCount
@@ -4456,20 +4741,39 @@ export class QuotesService {
     actor?: CompanyScopedActor,
     args?: { select?: Record<string, boolean | object>; include?: Record<string, unknown> },
   ) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const quote = await this.prisma.quote.findFirst({
       where: {
         id: quoteId,
-        clientCompanyId: companyId,
       },
       ...(args || { select: { id: true } }),
     });
 
-    if (!quote) {
-      throw new BadRequestException('Quote not found');
-    }
+      if (!quote) {
+        throw new BadRequestException('Quote not found');
+      }
+    await this.assertLatestQuoteRevision(quoteId);
 
     return quote;
+  }
+
+  private async assertLatestQuoteRevision(quoteId: string, prismaClient: any = this.prisma) {
+    if (!prismaClient?.quote?.findFirst) {
+      return;
+    }
+
+    const newerRevision = await prismaClient.quote.findFirst({
+      where: {
+        revisedFromId: quoteId,
+      },
+      select: {
+        id: true,
+      },
+    } as any);
+
+    if (newerRevision && newerRevision.id !== quoteId) {
+      throw new BadRequestException('Only the latest quote revision can be changed or converted');
+    }
   }
 
   private async listCompanyIdsForMaintenanceJobs() {
@@ -5255,6 +5559,7 @@ export class QuotesService {
       }>;
       quoteItems?: Array<{
         id?: string;
+        activityId?: string | null;
         optionId?: string | null;
         itineraryId?: string | null;
         quantity?: number | null;
@@ -5398,6 +5703,7 @@ export class QuotesService {
 
         return {
           sourceQuoteItemId: item.id ?? null,
+          activityId: item.activityId ?? null,
           serviceOrder: index,
           serviceType: normalizedServiceType,
           operationType,
@@ -5847,11 +6153,12 @@ export class QuotesService {
   }
 
   private async loadQuoteState(id: string, prismaClient: any = this.prisma, actor?: CompanyScopedActor) {
-    const companyId = actor?.companyId?.trim() || null;
+    if (actor !== undefined) {
+      requireActorCompanyId(actor);
+    }
     const quote = await prismaClient.quote.findFirst({
       where: {
         id,
-        ...(companyId ? { clientCompanyId: companyId } : {}),
       },
     } as any);
 
@@ -5916,6 +6223,7 @@ export class QuotesService {
         },
         include: {
           service: { include: { serviceType: true } },
+          activity: { include: { supplierCompany: true } },
           itinerary: true,
           hotel: true,
           contract: true,
@@ -5946,6 +6254,7 @@ export class QuotesService {
           quoteItems: {
             include: {
               service: { include: { serviceType: true } },
+              activity: { include: { supplierCompany: true } },
               itinerary: true,
               hotel: true,
               contract: true,
@@ -5969,8 +6278,9 @@ export class QuotesService {
       safeLoad('invoice', () => prismaClient.invoice.findUnique({
         where: { quoteId: quote.id },
       }), null),
-      safeLoad('booking', () => prismaClient.booking.findUnique({
+      safeLoad('booking', () => prismaClient.booking.findFirst({
         where: { quoteId: quote.id },
+        orderBy: [{ amendmentNumber: 'desc' }, { createdAt: 'desc' }],
       }), null),
     ]);
 
@@ -9285,15 +9595,12 @@ export class QuotesService {
   ) {
     const quoteModel = (prismaClient as any).quote;
     const invoiceModel = (prismaClient as any).invoice;
-    const companyId = actor?.companyId?.trim() || null;
+    if (actor) {
+      requireActorCompanyId(actor);
+    }
     const quote = await quoteModel.findFirst({
       where: {
         id: quoteId,
-        ...(companyId
-          ? {
-              clientCompanyId: companyId,
-            }
-          : {}),
       },
       select: {
         id: true,

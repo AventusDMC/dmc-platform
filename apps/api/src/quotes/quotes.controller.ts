@@ -76,6 +76,7 @@ type UpdateQuoteStatusBody = {
 
 type CreateQuoteItemBody = {
   serviceId: string;
+  activityId?: string | null;
   itineraryId?: string;
   serviceDate?: string | null;
   startTime?: string | null;
@@ -503,6 +504,18 @@ export class QuotesController {
     }, actor);
   }
 
+  @Patch(':id/cancel')
+  @Roles('admin', 'viewer', 'finance')
+  cancelQuote(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.quotesService.cancelQuote(id, actor);
+  }
+
+  @Post(':id/requote')
+  @Roles('admin', 'viewer', 'finance')
+  requote(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.quotesService.requote(id, actor);
+  }
+
   @Post(':id/create-invoice')
   @Roles('admin', 'viewer', 'finance')
   createInvoice(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
@@ -674,6 +687,7 @@ export class QuotesController {
     return this.quotesService.createItem({
       quoteId: id,
       serviceId: body.serviceId,
+      activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -754,6 +768,7 @@ export class QuotesController {
     return this.quotesService.updateItem(itemId, {
       quoteId: id,
       serviceId: body.serviceId,
+      activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -967,6 +982,7 @@ export class QuotesController {
     return this.quotesService.createOptionItem(optionId, {
       quoteId: id,
       serviceId: body.serviceId,
+      activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -1047,6 +1063,7 @@ export class QuotesController {
 
     return this.quotesService.updateOptionItem(optionId, itemId, {
       serviceId: body.serviceId,
+      activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,

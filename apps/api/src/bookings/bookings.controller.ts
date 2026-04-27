@@ -492,6 +492,24 @@ export class BookingsController {
     });
   }
 
+  @Patch(':id/cancel')
+  @Roles('admin', 'operations')
+  cancelBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.cancelBooking(id, {
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/amend')
+  @Roles('admin', 'operations')
+  amendBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.bookingsService.amendBooking(id, {
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Patch(':id/finance')
   @Roles('admin', 'finance')
   updateBookingFinance(

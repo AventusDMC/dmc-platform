@@ -1,6 +1,8 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
+import { PATH_METADATA } from '@nestjs/common/constants';
 const { QuotesService } = require('./quotes.service');
+const { QuotesController } = require('./quotes.controller');
 const { QuotePricingService } = require('./quote-pricing.service');
 
 function createQuotesService(prisma: any = {}) {
@@ -150,12 +152,222 @@ test('quote versions endpoint returns empty list when versions relation fails af
   }
 });
 
+test('quotes controller exposes explicit cancel route', () => {
+  const routePath = (Reflect as any).getMetadata(PATH_METADATA, QuotesController.prototype.cancelQuote);
+  assert.equal(routePath, ':id/cancel');
+  const requotePath = (Reflect as any).getMetadata(PATH_METADATA, QuotesController.prototype.requote);
+  assert.equal(requotePath, ':id/requote');
+});
+
+test('cancel quote sets status to CANCELLED without deleting the quote', async () => {
+  let updateData: any;
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        status: 'SENT',
+        acceptedVersionId: null,
+        sentAt: new Date('2026-04-27T00:00:00.000Z'),
+        acceptedAt: null,
+        pricingType: 'simple',
+        pricingMode: 'FIXED',
+        pricingSlabs: [],
+      }),
+      update: async ({ data }: any) => {
+        updateData = data;
+        return createBaseQuote({
+          status: data.status,
+          acceptedVersionId: data.acceptedVersionId,
+          sentAt: data.sentAt,
+          acceptedAt: data.acceptedAt,
+          clientCompany: { id: 'company-1', name: 'Client Co' },
+          brandCompany: null,
+          contact: { id: 'contact-1', firstName: 'Lina', lastName: 'Haddad' },
+          pricingSlabs: [],
+        });
+      },
+    },
+  });
+
+  const quote = await service.cancelQuote('quote-1', { companyId: 'company-1' });
+
+  assert.equal(quote.status, 'CANCELLED');
+  assert.equal(updateData.status, 'CANCELLED');
+});
+
+test('cancelled quote conversion is rejected before creating a booking', async () => {
+  const tx = {
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        status: 'CANCELLED',
+        acceptedVersionId: 'version-1',
+        booking: null,
+      }),
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  await assert.rejects(
+    () => service.convertToBooking('quote-1', { companyId: 'company-1' }),
+    /Cancelled quotes cannot be converted to bookings/,
+  );
+});
+
+test('re-quote clones quote into a new revision and leaves original unchanged', async () => {
+  let createdQuoteData: any;
+  const createdItems: any[] = [];
+  const original = {
+    ...createBaseQuote({
+      id: 'quote-1',
+      revisionNumber: 1,
+      revisedFromId: null,
+      clientCompanyId: 'client-company-1',
+      brandCompanyId: 'brand-company-1',
+      contactId: 'contact-1',
+      agentId: 'agent-1',
+      status: 'ACCEPTED',
+      acceptedVersionId: 'version-1',
+      sentAt: new Date('2026-04-27T00:00:00.000Z'),
+      acceptedAt: new Date('2026-04-28T00:00:00.000Z'),
+      publicToken: 'public-token',
+      publicEnabled: true,
+    }),
+    pricingSlabs: [{ minPax: 1, maxPax: null, price: 100, focPax: 0, notes: null }],
+    itineraries: [{ id: 'itinerary-1', dayNumber: 1, title: 'Arrival', description: 'Arrive' }],
+    quoteOptions: [{ id: 'option-1', name: 'Option A', notes: null, hotelCategoryId: null, pricingMode: 'itemized', packageMarginPercent: null }],
+    quoteItems: [{
+      id: 'item-1',
+      optionId: 'option-1',
+      itineraryId: 'itinerary-1',
+      serviceId: 'service-1',
+      serviceDate: null,
+      startTime: null,
+      pickupTime: null,
+      pickupLocation: null,
+      meetingPoint: null,
+      participantCount: null,
+      adultCount: null,
+      childCount: null,
+      reconfirmationRequired: false,
+      reconfirmationDueAt: null,
+      hotelId: null,
+      contractId: null,
+      seasonId: null,
+      seasonName: null,
+      roomCategoryId: null,
+      occupancyType: null,
+      mealPlan: null,
+      quantity: 1,
+      paxCount: null,
+      roomCount: null,
+      nightCount: null,
+      dayCount: null,
+      baseCost: 50,
+      overrideCost: null,
+      overrideReason: null,
+      useOverride: false,
+      markupPercent: 20,
+      markupAmount: null,
+      sellPrice: null,
+      currency: 'USD',
+      pricingDescription: null,
+      customServiceName: null,
+      unitCost: null,
+      pricingBasis: null,
+      country: null,
+      supplierName: null,
+      startDay: null,
+      endDay: null,
+      startDate: null,
+      endDate: null,
+      netCost: null,
+      includes: null,
+      excludes: null,
+      internalNotes: null,
+      clientDescription: null,
+      transportServiceTypeId: null,
+      routeId: null,
+      appliedVehicleRateId: null,
+    }],
+    scenarios: [{ paxCount: 2, totalCost: 100, totalSell: 130, pricePerPax: 65 }],
+  };
+  const tx = {
+    quote: {
+      findFirst: async ({ where }: any) => (where?.quoteNumber ? null : original),
+      create: async ({ data }: any) => {
+        createdQuoteData = data;
+        return { id: 'quote-2', ...data };
+      },
+    },
+    itinerary: {
+      create: async () => ({ id: 'itinerary-2' }),
+    },
+    quoteOption: {
+      create: async () => ({ id: 'option-2' }),
+    },
+    quotePricingSlab: {
+      create: async () => ({}),
+    },
+    quoteItem: {
+      create: async ({ data }: any) => {
+        createdItems.push(data);
+        return { id: 'item-2', ...data };
+      },
+    },
+    quoteScenario: {
+      create: async () => ({}),
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async ({ where }: any) => (where?.id === 'quote-1' ? original : null),
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+  (service as any).loadQuoteState = async (quoteId: string) => ({ id: quoteId, revisionNumber: 2, revisedFromId: 'quote-1' });
+
+  const revised = await service.requote('quote-1', { companyId: 'dmc-company-1' });
+
+  assert.equal(revised.id, 'quote-2');
+  assert.equal(createdQuoteData.clientCompanyId, 'client-company-1');
+  assert.equal(createdQuoteData.revisionNumber, 2);
+  assert.equal(createdQuoteData.revisedFromId, 'quote-1');
+  assert.equal(createdQuoteData.status, 'DRAFT');
+  assert.equal(createdQuoteData.acceptedVersionId, null);
+  assert.equal(createdItems[0].quoteId, 'quote-2');
+  assert.equal(createdItems[0].optionId, 'option-2');
+  assert.equal(createdItems[0].itineraryId, 'itinerary-2');
+});
+
+test('old quote revisions cannot be converted to bookings', async () => {
+  const service = createQuotesService({
+    $transaction: async () => {
+      throw new Error('conversion should not start');
+    },
+  });
+  (service as any).assertLatestQuoteRevision = async () => {
+    throw new Error('Only the latest quote revision can be changed or converted');
+  };
+
+  await assert.rejects(
+    () => service.convertToBooking('quote-1', { companyId: 'company-1' }),
+    /Only the latest quote revision/,
+  );
+});
+
 test('accepted quote conversion creates booking with client company pax dates and booking days', async () => {
   let bookingCreateData: any;
   const tx = {
     quote: {
       findFirst: async () => ({
         id: 'quote-1',
+        clientCompanyId: 'client-company-1',
         status: 'ACCEPTED',
         acceptedVersionId: 'version-1',
         booking: null,
@@ -168,7 +380,7 @@ test('accepted quote conversion creates booking with client company pax dates an
         booking: null,
         snapshotJson: {
           bookingType: 'FIT',
-          clientCompany: { id: 'company-1', name: 'Client Co' },
+          clientCompany: { id: 'client-company-1', name: 'Client Co' },
           contact: { firstName: 'Lina', lastName: 'Haddad' },
           adults: 2,
           children: 1,
@@ -209,14 +421,17 @@ test('accepted quote conversion creates booking with client company pax dates an
     },
   };
   const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
     $transaction: async (callback: any) => callback(tx),
   });
 
-  const booking = await service.convertToBooking('quote-1', { companyId: 'company-1' });
+  const booking = await service.convertToBooking('quote-1', { companyId: 'dmc-company-1' });
 
   assert.equal(booking.id, 'booking-1');
   assert.equal(bookingCreateData.quoteId, 'quote-1');
-  assert.equal(bookingCreateData.clientCompanyId, 'company-1');
+  assert.equal(bookingCreateData.clientCompanyId, 'client-company-1');
   assert.equal(bookingCreateData.pax, 3);
   assert.equal(bookingCreateData.startDate.toISOString(), '2026-06-01T00:00:00.000Z');
   assert.equal(bookingCreateData.endDate.toISOString(), '2026-06-03T00:00:00.000Z');
@@ -229,6 +444,7 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
     quote: {
       findFirst: async () => ({
         id: 'quote-1',
+        clientCompanyId: 'company-1',
         status: 'ACCEPTED',
         acceptedVersionId: 'version-1',
         booking: null,
@@ -313,6 +529,9 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
     },
   };
   const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
     $transaction: async (callback: any) => callback(tx),
   });
 
@@ -339,6 +558,224 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
   assert.equal(externalPackageService.notes, 'Egypt external package | per group');
   assert.equal(externalPackageService.totalCost, 900);
   assert.equal(externalPackageService.totalSell, 1170);
+});
+
+test('accepted DMC quote conversion preserves transport service for client and supplier companies different from actor', async () => {
+  let bookingCreateData: any;
+  const quoteLookupWheres: any[] = [];
+  let supplierLookupWhere: any;
+  const tx = {
+    quote: {
+      findFirst: async ({ where }: any) => {
+        quoteLookupWheres.push(where);
+        return {
+          id: 'quote-transport-1',
+          clientCompanyId: 'client-company-1',
+          status: 'ACCEPTED',
+          acceptedVersionId: 'version-transport-1',
+          booking: null,
+        };
+      },
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-transport-1',
+        quoteId: 'quote-transport-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'FIT',
+          clientCompany: { id: 'client-company-1', name: 'Agent Client Co' },
+          contact: { firstName: 'Lina', lastName: 'Haddad' },
+          adults: 3,
+          children: 1,
+          roomCount: 2,
+          nightCount: 1,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [
+            { id: 'day-1', dayNumber: 1, serviceDate: '2026-06-01T10:00:00.000Z', title: 'Arrival transfer' },
+          ],
+          quoteItems: [
+            {
+              id: 'item-transport-1',
+              itineraryId: 'day-1',
+              quantity: 1,
+              pricingDescription: 'QAIA to Petra | Mercedes Vito | Per vehicle',
+              totalCost: 120,
+              totalSell: 165,
+              service: {
+                name: 'Private arrival transfer',
+                category: 'Transport',
+                supplierId: null,
+              },
+              appliedVehicleRate: {
+                routeId: 'route-1',
+                routeName: 'QAIA to Petra',
+                vehicle: {
+                  id: 'vehicle-1',
+                  name: 'Mercedes Vito',
+                  supplierId: 'supplier-company-1',
+                },
+              },
+            },
+          ],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async ({ where }: any) => {
+        supplierLookupWhere = where;
+        return [{ id: 'supplier-company-1', name: 'Independent Transport Supplier' }];
+      },
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return { id: 'booking-transport-1', ...data };
+      },
+    },
+    bookingPassenger: {
+      create: async () => ({ id: 'passenger-1' }),
+    },
+    bookingRoomingEntry: {
+      create: async () => ({ id: 'room-1' }),
+    },
+    bookingRoomingAssignment: {
+      create: async () => ({}),
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  await service.convertToBooking('quote-transport-1', { companyId: 'dmc-company-1' });
+
+  assert.ok(quoteLookupWheres.some((where) => where.id === 'quote-transport-1'));
+  assert.ok(quoteLookupWheres.every((where) => where.clientCompanyId === undefined));
+  assert.equal(bookingCreateData.clientCompanyId, 'client-company-1');
+  assert.equal(bookingCreateData.services.create.length, 1);
+
+  const transportService = bookingCreateData.services.create[0];
+  assert.equal(transportService.operationType, 'TRANSPORT');
+  assert.equal(transportService.supplierId, 'supplier-company-1');
+  assert.equal(transportService.supplierName, 'Independent Transport Supplier');
+  assert.equal(transportService.totalCost, 120);
+  assert.equal(transportService.totalSell, 165);
+  assert.equal(transportService.status, 'ready');
+  assert.deepEqual(supplierLookupWhere, { id: { in: ['supplier-company-1'] } });
+  assert.equal((supplierLookupWhere as any).companyId, undefined);
+  assert.equal((supplierLookupWhere as any).clientCompanyId, undefined);
+});
+
+test('accepted DMC quote conversion preserves activity booking service for external client and supplier', async () => {
+  let bookingCreateData: any;
+  let supplierLookupWhere: any;
+  const tx = {
+    quote: {
+      findFirst: async ({ where }: any) => {
+        if (where.revisedFromId) return null;
+        return {
+          id: 'quote-activity-1',
+          clientCompanyId: 'client-company-1',
+          status: 'ACCEPTED',
+          acceptedVersionId: 'version-activity-1',
+          booking: null,
+        };
+      },
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-activity-1',
+        quoteId: 'quote-activity-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'FIT',
+          clientCompany: { id: 'client-company-1', name: 'Agent Client Co' },
+          contact: { firstName: 'Lina', lastName: 'Haddad' },
+          adults: 3,
+          children: 1,
+          roomCount: 2,
+          nightCount: 1,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [
+            { id: 'day-1', dayNumber: 1, serviceDate: '2026-06-01T20:30:00.000Z', title: 'Petra touring' },
+          ],
+          quoteItems: [
+            {
+              id: 'item-activity-1',
+              activityId: 'catalog-activity-1',
+              itineraryId: 'day-1',
+              quantity: 1,
+              participantCount: 4,
+              adultCount: 3,
+              childCount: 1,
+              startTime: '20:30',
+              pickupTime: '19:45',
+              pickupLocation: 'Hotel lobby',
+              meetingPoint: 'Visitor center',
+              pricingDescription: 'Petra by Night guided experience',
+              totalCost: 140,
+              totalSell: 210,
+              reconfirmationRequired: true,
+              reconfirmationDueAt: '2026-05-31T18:00:00.000Z',
+              service: {
+                name: 'Petra by Night',
+                category: 'Activity',
+                supplierId: 'supplier-activity-1',
+              },
+            },
+          ],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async ({ where }: any) => {
+        supplierLookupWhere = where;
+        return [{ id: 'supplier-activity-1', name: 'Petra Experiences Supplier' }];
+      },
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return { id: 'booking-activity-1', ...data };
+      },
+    },
+    bookingPassenger: {
+      create: async () => ({ id: 'passenger-1' }),
+    },
+    bookingRoomingEntry: {
+      create: async () => ({ id: 'room-1' }),
+    },
+    bookingRoomingAssignment: {
+      create: async () => ({}),
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  await service.convertToBooking('quote-activity-1', { companyId: 'dmc-company-1' });
+
+  assert.equal(bookingCreateData.clientCompanyId, 'client-company-1');
+  assert.equal(bookingCreateData.services.create.length, 1);
+  const activityService = bookingCreateData.services.create[0];
+  assert.equal(activityService.operationType, 'ACTIVITY');
+  assert.equal(activityService.activityId, 'catalog-activity-1');
+  assert.equal(activityService.serviceType, 'Activity');
+  assert.equal(activityService.supplierId, 'supplier-activity-1');
+  assert.equal(activityService.supplierName, 'Petra Experiences Supplier');
+  assert.equal(activityService.totalCost, 140);
+  assert.equal(activityService.totalSell, 210);
+  assert.equal(activityService.participantCount, 4);
+  assert.equal(activityService.pickupLocation, 'Hotel lobby');
+  assert.deepEqual(supplierLookupWhere, { id: { in: ['supplier-activity-1'] } });
 });
 
 test('buildBookingServicesFromAcceptedVersion carries resolved supplier and ready status into booking services', async () => {

@@ -1,0 +1,72 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { ModuleSwitcher } from '../../components/ModuleSwitcher';
+import { WorkspaceShell } from '../../components/WorkspaceShell';
+import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
+import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { ActivityActor, ActivityCompany, canManageActivities } from '../types';
+import { ActivityForm } from '../ActivityForm';
+
+export const dynamic = 'force-dynamic';
+
+const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
+
+async function getCompanies() {
+  return adminPageFetchJson<ActivityCompany[]>(`${API_BASE_URL}/companies`, 'Supplier company selector', {
+    cache: 'no-store',
+  });
+}
+
+async function getActor() {
+  return adminPageFetchJson<ActivityActor>(`${API_BASE_URL}/auth/me`, 'Current user', {
+    cache: 'no-store',
+  });
+}
+
+export default async function NewActivityPage() {
+  const [companies, actor] = await Promise.all([getCompanies(), getActor()]);
+
+  if (!canManageActivities(actor)) {
+    notFound();
+  }
+
+  return (
+    <main className="page">
+      <section className="panel workspace-panel">
+        <WorkspaceShell
+          eyebrow="Catalog"
+          title="New activity"
+          description="Create a reusable activity with supplier ownership and quote-ready pricing."
+          switcher={
+            <ModuleSwitcher
+              ariaLabel="Catalog modules"
+              activeId="activities"
+              items={[
+                { id: 'activities', label: 'Activities', href: '/activities', helper: 'Experiences catalog' },
+                { id: 'services', label: 'Services', href: '/catalog?tab=services', helper: 'Legacy service records' },
+              ]}
+            />
+          }
+        >
+          <section className="section-stack">
+            <WorkspaceSubheader
+              eyebrow="Activities Catalog"
+              title="Create activity"
+              description="Supplier company selection is intentionally independent from the signed-in actor company for DMC workflows."
+              actions={
+                <Link href="/activities" className="dashboard-toolbar-link">
+                  Back to activities
+                </Link>
+              }
+            />
+
+            <section className="workspace-section">
+              <ActivityForm apiBaseUrl={ACTION_API_BASE_URL} companies={companies} />
+            </section>
+          </section>
+        </WorkspaceShell>
+      </section>
+    </main>
+  );
+}

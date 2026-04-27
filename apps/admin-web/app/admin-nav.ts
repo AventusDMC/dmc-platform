@@ -35,6 +35,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     href: '/hotels',
     match: [
       '/catalog',
+      '/activities',
       '/services',
       '/transport',
       '/service-types',
@@ -48,6 +49,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     helper: 'Select the services you can sell',
     children: [
       { label: 'Hotels', href: '/hotels' },
+      { label: 'Activities', href: '/activities' },
       { label: 'Catalog', href: '/catalog' },
       { label: 'Import Contract', href: '/contracts/import' },
       { label: 'Import History', href: '/contracts/import/history' },

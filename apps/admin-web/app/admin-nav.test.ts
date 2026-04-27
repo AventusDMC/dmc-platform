@@ -16,3 +16,12 @@ test('companies route resolves to Admin navigation group', () => {
 
   assert.equal(activeGroup.label, 'Admin');
 });
+
+test('admin navigation exposes first-class Activities catalog', () => {
+  const groups = getVisibleNavGroups('admin');
+  const catalogGroup = groups.find((group) => group.label === 'Product Catalog');
+
+  assert.ok(catalogGroup);
+  assert.ok(catalogGroup.children.some((child) => child.label === 'Activities' && child.href === '/activities'));
+  assert.equal(getActiveNavGroup('/activities', 'admin').label, 'Product Catalog');
+});

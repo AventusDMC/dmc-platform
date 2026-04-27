@@ -46,7 +46,7 @@ function createContractImportsService(prisma: Record<string, any>) {
   } as any);
 }
 
-test('quote listing requires company auth and filters to the actor company', async () => {
+test('quote listing requires auth and returns managed-company quotes without single-company filtering', async () => {
   const calls: any[] = [];
   const service = createQuotesService({
     quote: {
@@ -62,32 +62,23 @@ test('quote listing requires company auth and filters to the actor company', asy
   const result = await service.findAll(actorA);
 
   assert.deepEqual(result, []);
-  assert.equal(calls[0].where.clientCompanyId, 'company-a');
+  assert.equal(calls[0].where, undefined);
 });
 
-test('quote read and mutation do not cross company boundaries', async () => {
-  const quoteFindFirstCalls: any[] = [];
+test('quote read requires auth and allows managed-company quotes', async () => {
   const service = createQuotesService({
     quote: {
-      findFirst: async (args: any) => {
-        quoteFindFirstCalls.push(args);
-        return args.where.id === 'quote-b' && args.where.clientCompanyId === 'company-b'
-          ? { id: 'quote-b', clientCompanyId: 'company-b' }
-          : null;
-      },
+      findFirst: async ({ where }: any) =>
+        where.id === 'quote-b' ? { id: 'quote-b', clientCompanyId: 'company-b' } : null,
     },
   });
   (service as any).loadQuoteState = async (id: string, _prisma: any, actor: any) =>
-    id === 'quote-b' && actor?.companyId === 'company-b' ? { id: 'quote-b', clientCompanyId: 'company-b' } : null;
+    id === 'quote-b' && actor?.companyId ? { id: 'quote-b', clientCompanyId: 'company-b' } : null;
 
-  assert.equal(await service.findOne('quote-b', actorA), null);
-  const ownedQuote = await service.findOne('quote-b', actorB);
+  const ownedQuote = await service.findOne('quote-b', actorA);
   assert.equal(ownedQuote?.id, 'quote-b');
   assert.equal(ownedQuote?.clientCompanyId, 'company-b');
-  await assert.rejects(() => service.update('quote-b', { title: 'Blocked' } as any, actorA), /Quote not found/);
-
-  assert.equal(quoteFindFirstCalls[0].where.id, 'quote-b');
-  assert.equal(quoteFindFirstCalls[0].where.clientCompanyId, 'company-a');
+  assert.equal(await service.findOne('quote-b', undefined), null);
 });
 
 test('quote item mutation stops before hotel contract lookup when the item belongs to another company', async () => {

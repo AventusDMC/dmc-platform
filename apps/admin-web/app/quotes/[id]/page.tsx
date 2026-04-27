@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { AdvancedFiltersPanel } from '../../components/AdvancedFiltersPanel';
-import { AdminPageTabs } from '../../components/AdminPageTabs';
 import { CompactFilterBar } from '../../components/CompactFilterBar';
 import { InlineEntityActions } from '../../components/InlineEntityActions';
 import { SummaryStrip } from '../../components/SummaryStrip';
@@ -18,8 +17,7 @@ import { SaveQuoteVersionButton } from './SaveQuoteVersionButton';
 import { SendQuoteButton } from './SendQuoteButton';
 import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
-import { QuoteBuilderHeader } from './QuoteBuilderHeader';
-import { QuoteBuilderStatCard } from './QuoteBuilderStatCard';
+import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import { QuoteStatusForm } from './QuoteStatusForm';
 import { SupportTextForm } from './SupportTextForm';
@@ -30,6 +28,8 @@ import { QuoteItineraryTab, type QuoteItineraryAssignableService, type QuoteItin
 import { QuoteHealthPanel } from './QuoteHealthPanel';
 import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
+import { CancelQuoteButton } from './CancelQuoteButton';
+import { ReviseQuoteButton } from './ReviseQuoteButton';
 import { HotelCategoryOption } from '../../lib/hotelCategories';
 import { RouteOption } from '../../lib/routes';
 import { formatNightCountLabel } from '../../lib/formatters';
@@ -171,6 +171,14 @@ type PromotionExplanationItem =
 type QuoteItem = {
   id: string;
   itineraryId: string | null;
+  activityId?: string | null;
+  activity?: {
+    id: string;
+    name: string;
+    description: string | null;
+    durationMinutes?: number | null;
+    active?: boolean;
+  } | null;
   serviceDate: string | null;
   startTime: string | null;
   pickupTime: string | null;
@@ -314,6 +322,8 @@ type Quote = {
   sentAt: string | null;
   acceptedAt: string | null;
   acceptedVersionId: string | null;
+  revisionNumber: number;
+  revisedFromId: string | null;
   invoice: {
     id: string;
     totalAmount: number;
@@ -417,6 +427,16 @@ const QUOTE_DETAIL_TABS: Array<{ id: QuoteDetailTab; label: string }> = [
   { id: 'versions', label: 'Versions' },
   { id: 'review', label: 'Notes' },
 ];
+
+const QUOTE_DASHBOARD_TABS: Array<{ id: QuoteDetailTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'itinerary', label: 'Itinerary' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'versions', label: 'Documents' },
+  { id: 'review', label: 'Internal Notes' },
+];
+
+const QUOTE_DASHBOARD_WORKFLOW = ['Draft', 'Pricing', 'Review', 'Sent', 'Accepted', 'Booking'];
 
 const QUOTE_WORKSPACE_STEPS: Array<{ id: QuoteWorkspaceStep; label: string; targetTab: QuoteDetailTab }> = [
   { id: 'overview', label: 'Overview', targetTab: 'overview' },
@@ -641,6 +661,16 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
   return {
     id: item?.id || `missing-item-${Math.random().toString(36).slice(2)}`,
     itineraryId: item?.itineraryId ?? null,
+    activityId: item?.activityId ?? item?.activity?.id ?? null,
+    activity: item?.activity
+      ? {
+          id: item.activity.id,
+          name: item.activity.name,
+          description: item.activity.description ?? null,
+          durationMinutes: item.activity.durationMinutes ?? null,
+          active: item.activity.active,
+        }
+      : null,
     serviceDate: item?.serviceDate ?? null,
     startTime: item?.startTime ?? null,
     pickupTime: item?.pickupTime ?? null,
@@ -1163,6 +1193,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   }
 
   const quote = normalizeQuoteDetail(rawQuote);
+  const quoteCancelled = quote.status === 'CANCELLED';
   const agents = users
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
     .map((user) => ({
@@ -1185,6 +1216,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     totalPax,
     nightCount: quote.nightCount,
   });
+  const destination = sortedDays[0]?.title || quoteItinerary.days[0]?.title || 'Destination pending';
+  const travelDates = quote.travelStartDate
+    ? `${formatDate(quote.travelStartDate)}${quote.nightCount > 0 ? ` - ${formatNightCountLabel(quote.nightCount)}` : ''}`
+    : 'Dates pending';
+  const quoteNumberLabel = quote.quoteNumber || quote.id.slice(0, 8).toUpperCase();
   const overviewWarnings = [
     quoteItineraryResult.status === 'error' ? 'Itinerary details could not be loaded. Showing quote detail without itinerary data.' : null,
     quoteExpired ? 'Quote validity has passed.' : null,
@@ -1395,50 +1431,77 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     <main className="page quote-builder-page">
       <section className="panel quote-workspace-page">
         <div className="quote-builder-shell">
-          <QuoteBuilderHeader
-            quoteId={quote.id}
-            title={quote.title}
-            quoteNumber={quote.quoteNumber}
-            companyName={quote.company.name}
-            contactName={`${quote.contact.firstName} ${quote.contact.lastName}`}
-            status={quote.status}
-            isExpired={quoteExpired}
-            description={tripSummary}
-            actions={
-              <>
-                <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-                <QuotePreviewLink quoteId={quote.id} />
-              </>
-            }
-          />
+          <section className="quote-dashboard-header">
+            <div className="quote-dashboard-header-main">
+              <Link href="/quotes" className="back-link">Back to quotes</Link>
+              <div className="quote-dashboard-title-row">
+                <div>
+                  <p className="eyebrow">Quote {quoteNumberLabel}</p>
+                  <h1>{quote.title}</h1>
+                </div>
+                <QuoteBuilderStatusBadge status={quote.status} expired={quoteExpired} />
+              </div>
+              <div className="quote-dashboard-meta-grid">
+                <div><span>Client</span><strong>{quote.company.name}</strong></div>
+                <div><span>Contact</span><strong>{quote.contact.firstName} {quote.contact.lastName}</strong></div>
+                <div><span>Destination</span><strong>{destination}</strong></div>
+                <div><span>Dates</span><strong>{travelDates}</strong></div>
+                <div><span>Pax</span><strong>{totalPax} pax</strong></div>
+                <div><span>Revision</span><strong>Rev {quote.revisionNumber ?? 1}</strong></div>
+              </div>
+            </div>
+            <div className="quote-dashboard-actions">
+              <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+              <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+              {!quoteCancelled ? (
+                <RowDetailsPanel
+                  summary="Accept"
+                  description="Update status"
+                  className="operations-row-details quote-dashboard-action-panel"
+                  bodyClassName="operations-row-details-body"
+                  groupId="quote-dashboard-accept"
+                >
+                  <QuoteStatusForm
+                    apiBaseUrl={ACTION_API_BASE_URL}
+                    quoteId={quote.id}
+                    currentStatus={quote.status}
+                    acceptedVersionId={quote.acceptedVersionId}
+                    versions={versions}
+                  />
+                </RowDetailsPanel>
+              ) : null}
+              {quote.booking ? (
+                <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
+              ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
+                convertBlocked || quoteCancelled ? (
+                  <button type="button" className="secondary-button" disabled>Convert</button>
+                ) : (
+                  <ConvertToBookingButton quoteId={quote.id} label="Convert" />
+                )
+              ) : (
+                <button type="button" className="secondary-button" disabled>Convert</button>
+              )}
+              <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
+              {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
+            </div>
+          </section>
 
-          <section className="quote-builder-stat-grid">
-            <QuoteBuilderStatCard label="Quote Type" value={quote.quoteType} helper="Controls quote behavior" />
-            <QuoteBuilderStatCard label="Booking Type" value={quote.bookingType} helper="Carried into booking conversion" />
-            <QuoteBuilderStatCard label="Jordan Pass" value={quote.jordanPassType === 'NONE' ? 'None' : quote.jordanPassType} helper="Entrance fee coverage" />
-            <QuoteBuilderStatCard label="Group" value={`${totalPax} pax`} helper={`${quote.adults} adults / ${quote.children} children`} />
-            <QuoteBuilderStatCard
-              label="Stay"
-              value={`${quote.roomCount} rooms / ${formatNightCountLabel(quote.nightCount)}`}
-              helper={`Base sell ${formatMoney(quote.totalSell, quote.quoteCurrency)}`}
-            />
-            <QuoteBuilderStatCard
-              label="Travel Start"
-              value={formatDate(quote.travelStartDate) || 'Not set'}
-              helper="Drives day-based service dates"
-            />
-            <QuoteBuilderStatCard
-              label="Valid Until"
-              value={formatDate(quote.validUntil) || 'Not set'}
-              helper={quoteExpired ? 'Quote validity has passed.' : 'Commercial validity window'}
-              tone={quoteExpired ? 'accent' : 'default'}
-            />
-            <QuoteBuilderStatCard
-              label="Readiness"
-              value={`${readiness.completionPercent}%`}
-              helper={reviewBlockingIssues.length > 0 ? `${reviewBlockingIssues.length} blocking issues` : 'No blocking issues'}
-              tone={reviewBlockingIssues.length > 0 ? 'accent' : 'default'}
-            />
+          <section className="quote-dashboard-workflow" aria-label="Quote workflow">
+            {QUOTE_DASHBOARD_WORKFLOW.map((label) => {
+              const active =
+                (label === 'Draft' && ['DRAFT', 'READY', 'REVISION_REQUESTED'].includes(quote.status)) ||
+                (label === 'Pricing' && activeTab === 'pricing') ||
+                (label === 'Review' && activeTab === 'review') ||
+                (label === 'Sent' && quote.status === 'SENT') ||
+                (label === 'Accepted' && (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED')) ||
+                (label === 'Booking' && Boolean(quote.booking));
+
+              return (
+                <div key={label} className={`quote-dashboard-workflow-step${active ? ' quote-dashboard-workflow-step-active' : ''}`}>
+                  <span>{label}</span>
+                </div>
+              );
+            })}
           </section>
 
           <section className="workspace-section quote-step-shell quote-builder-step-shell">
@@ -1475,25 +1538,26 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             <p className="form-helper">{nextStepHelperCopy}</p>
           </section>
 
-          <div className="quote-builder-tab-shell">
-            <AdminPageTabs
-              ariaLabel="Quote detail sections"
-              activeTab={activeTab}
-              tabs={QUOTE_DETAIL_TABS.map((tab) => ({
-                ...tab,
-                href: buildTabHref(tab.id),
-                badge:
-                  tab.id === 'services'
-                    ? quoteServicesBadgeCount
-                    : tab.id === 'pricing'
-                      ? quotePricingBadgeCount
-                      : tab.id === 'review'
-                        ? quoteReviewBadgeCount
-                        : null,
-                badgeTone: tab.id === 'services' || tab.id === 'pricing' || tab.id === 'review' ? 'warning' : 'default',
-              }))}
-            />
-          </div>
+          <nav className="quote-dashboard-tabs" aria-label="Quote detail sections">
+            {QUOTE_DASHBOARD_TABS.map((tab) => {
+              const isActive = activeTab === tab.id || (tab.id === 'itinerary' && activeTab === 'services');
+              const badge =
+                tab.id === 'itinerary'
+                  ? quoteServicesBadgeCount
+                  : tab.id === 'pricing'
+                    ? quotePricingBadgeCount
+                    : tab.id === 'review'
+                      ? quoteReviewBadgeCount
+                      : null;
+
+              return (
+                <Link key={tab.id} href={buildTabHref(tab.id)} className={`quote-dashboard-tab${isActive ? ' quote-dashboard-tab-active' : ''}`}>
+                  {tab.label}
+                  {badge && badge > 0 ? <span className="page-tab-badge page-tab-badge-warning">{badge}</span> : null}
+                </Link>
+              );
+            })}
+          </nav>
 
           <div className="quote-builder-layout">
             <div className="section-stack quote-builder-main quote-builder-main-content">
@@ -1905,20 +1969,31 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                           termsNotesText: quote.termsNotesText || '',
                         }}
                       />
-                      <QuoteStatusForm
-                        apiBaseUrl={ACTION_API_BASE_URL}
-                        quoteId={quote.id}
-                        currentStatus={quote.status}
-                        acceptedVersionId={quote.acceptedVersionId}
-                        versions={versions}
-                      />
+                      {quoteCancelled ? (
+                        <p className="detail-copy">This quote is cancelled. Status changes and booking conversion are disabled.</p>
+                      ) : (
+                        <QuoteStatusForm
+                          apiBaseUrl={ACTION_API_BASE_URL}
+                          quoteId={quote.id}
+                          currentStatus={quote.status}
+                          acceptedVersionId={quote.acceptedVersionId}
+                          versions={versions}
+                        />
+                      )}
                     </div>
                   </RowDetailsPanel>
-                  <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} />
+                  {!quoteCancelled ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                   {quote.booking ? (
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
+                  ) : quoteCancelled ? (
+                    <div className="section-stack">
+                      <button type="button" className="secondary-button" disabled>
+                        Convert to booking
+                      </button>
+                      <p className="detail-copy">Cancelled quotes cannot be converted to bookings.</p>
+                    </div>
                   ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
                     convertBlocked ? (
                       <div className="section-stack">
@@ -1950,6 +2025,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     initialPublicToken={quote.publicToken}
                     initialPublicEnabled={quote.publicEnabled}
                   />
+                  <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
+                  {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
                   <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                 </div>
               </CompactFilterBar>
@@ -2156,14 +2233,27 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
             <aside className="quote-builder-sidebar">
               <QuotePricingSummaryCard
-                eyebrow="Commercials"
-                title="Pricing summary"
+                eyebrow="Summary"
+                title="Quote snapshot"
                 items={[
-                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Current commercial sell' },
-                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier-side cost basis' },
-                  { label: 'Margin', value: formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency), helper: `${getInternalCostingMetrics(quote.totalCost, quote.totalSell).marginPercent.toFixed(2)}% margin` },
+                  { label: 'Total price', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
+                  { label: 'Pax', value: `${totalPax} pax`, helper: `${quote.adults} adults / ${quote.children} children` },
+                  { label: 'Status', value: formatQuoteStatus(quote.status), helper: quoteExpired ? 'Validity has passed' : 'Current workflow state' },
                   { label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' },
                 ]}
+                footer={
+                  quote.booking ? (
+                    <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
+                  ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
+                    convertBlocked || quoteCancelled ? (
+                      <button type="button" className="primary-button" disabled>Convert blocked</button>
+                    ) : (
+                      <ConvertToBookingButton quoteId={quote.id} />
+                    )
+                  ) : (
+                    <QuotePreviewLink quoteId={quote.id} />
+                  )
+                }
               />
 
               <QuotePricingSummaryCard
@@ -2193,7 +2283,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 footer={
                   <div className="quote-builder-sidebar-actions">
                     <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-                    <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} />
+                    {!quoteCancelled ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                     <QuotePreviewLink quoteId={quote.id} />
                     <ShareQuoteButton
                       apiBaseUrl={ACTION_API_BASE_URL}
@@ -2201,10 +2291,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       initialPublicToken={quote.publicToken}
                       initialPublicEnabled={quote.publicEnabled}
                     />
+                    <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                         View booking
                       </Link>
+                    ) : quoteCancelled ? (
+                      <QuoteBuilderEmptyState
+                        eyebrow="Conversion"
+                        title="Quote cancelled"
+                        description="Cancelled quotes remain visible but cannot be converted into bookings."
+                      />
                     ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
                       convertBlocked ? (
                         <QuoteBuilderEmptyState
@@ -2216,6 +2313,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                         <ConvertToBookingButton quoteId={quote.id} />
                       )
                     ) : null}
+                    {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
                   </div>
                 }
               />

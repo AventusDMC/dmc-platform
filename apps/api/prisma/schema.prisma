@@ -9,9 +9,11 @@ datasource db {
 
 model Booking {
   id                    String                @id @default(uuid()) @db.Uuid
-  quoteId               String                @unique @db.Uuid
-  acceptedVersionId     String                @unique @db.Uuid
+  quoteId               String                @db.Uuid
+  acceptedVersionId     String                @db.Uuid
   clientCompanyId       String?               @db.Uuid
+  amendmentNumber       Int                   @default(1)
+  amendedFromId         String?               @db.Uuid
   bookingType           BookingType           @default(FIT)
   status                BookingStatus         @default(draft)
   clientInvoiceStatus   ClientInvoiceStatus   @default(unbilled)
@@ -36,6 +38,8 @@ model Booking {
   accessToken           String                @unique
   acceptedVersion       QuoteVersion          @relation("BookingAcceptedVersion", fields: [acceptedVersionId], references: [id])
   quote                 Quote                 @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  amendedFrom           Booking?              @relation("BookingAmendments", fields: [amendedFromId], references: [id], onDelete: SetNull)
+  amendments            Booking[]             @relation("BookingAmendments")
   days                  BookingDay[]
   services              BookingService[]
   vouchers              Voucher[]
@@ -46,6 +50,7 @@ model Booking {
 
   @@index([bookingType])
   @@index([clientCompanyId])
+  @@index([amendedFromId])
   @@index([startDate])
   @@index([clientInvoiceStatus])
   @@index([supplierPaymentStatus])
@@ -181,6 +186,7 @@ model Company {
   updatedAt    DateTime         @updatedAt
   logoUrl      String?
   primaryColor String?
+  activities   Activity[]
   branding     CompanyBranding?
   contacts     Contact[]
   leads        Lead[]
@@ -248,6 +254,27 @@ model CompanyBranding {
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_branding")
+}
+
+model Activity {
+  id                String               @id @default(uuid()) @db.Uuid
+  name              String
+  description       String?
+  supplierCompanyId String               @db.Uuid
+  pricingBasis      ActivityPricingBasis
+  costPrice         Float
+  sellPrice         Float
+  durationMinutes   Int?
+  active            Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  supplierCompany   Company              @relation(fields: [supplierCompanyId], references: [id])
+  bookingServices   BookingService[]
+  quoteItems        QuoteItem[]
+
+  @@index([active, name])
+  @@index([supplierCompanyId])
+  @@map("activities")
 }
 
 model Contact {
@@ -864,6 +891,7 @@ model QuoteItem {
   id                        String                  @id @default(uuid()) @db.Uuid
   quoteId                   String                  @db.Uuid
   serviceId                 String                  @db.Uuid
+  activityId                String?                 @db.Uuid
   quantity                  Int                     @default(1)
   paxCount                  Int?
   participantCount          Int?
@@ -932,6 +960,7 @@ model QuoteItem {
   externalInternalNotes     String?
   externalClientDescription String?
   appliedVehicleRate        VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
+  activity                  Activity?               @relation(fields: [activityId], references: [id])
   contract                  HotelContract?          @relation(fields: [contractId], references: [id])
   entranceFee               EntranceFee?            @relation(fields: [entranceFeeId], references: [id])
   hotel                     Hotel?                  @relation(fields: [hotelId], references: [id])
@@ -943,6 +972,7 @@ model QuoteItem {
   service                   SupplierService         @relation(fields: [serviceId], references: [id])
 
   @@index([contractId])
+  @@index([activityId])
   @@index([entranceFeeId])
   @@index([hotelId])
   @@index([quoteId, optionId])
@@ -1065,15 +1095,15 @@ model QuoteScenario {
 }
 
 model QuoteVersion {
-  id                String   @id @default(uuid()) @db.Uuid
-  quoteId           String   @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  quoteId           String    @db.Uuid
   versionNumber     Int
   label             String?
   snapshotJson      Json
-  createdAt         DateTime @default(now())
-  booking           Booking? @relation("BookingAcceptedVersion")
-  quote             Quote    @relation("QuoteVersions", fields: [quoteId], references: [id], onDelete: Cascade)
-  acceptedForQuotes Quote[]  @relation("AcceptedQuoteVersion")
+  createdAt         DateTime  @default(now())
+  bookings          Booking[] @relation("BookingAcceptedVersion")
+  quote             Quote     @relation("QuoteVersions", fields: [quoteId], references: [id], onDelete: Cascade)
+  acceptedForQuotes Quote[]   @relation("AcceptedQuoteVersion")
 
   @@unique([quoteId, versionNumber])
   @@index([quoteId, createdAt])
@@ -1103,6 +1133,8 @@ model Quote {
   totalSell                  Float                    @default(0)
   pricePerPax                Float                    @default(0)
   acceptedVersionId          String?                  @db.Uuid
+  revisionNumber             Int                      @default(1)
+  revisedFromId              String?                  @db.Uuid
   quoteNumber                String?                  @unique
   clientChangeRequestMessage String?
   singleSupplement           Float?
@@ -1123,7 +1155,9 @@ model Quote {
   acceptedAt                 DateTime?
   publicToken                String?                  @unique
   publicEnabled              Boolean                  @default(false)
-  booking                    Booking?
+  bookings                   Booking[]
+  revisedFrom                Quote?                   @relation("QuoteRevisions", fields: [revisedFromId], references: [id], onDelete: SetNull)
+  revisions                  Quote[]                  @relation("QuoteRevisions")
   invoice                    Invoice?
   invoiceAuditLogs           InvoiceAuditLog[]
   itineraries                Itinerary[]
@@ -1143,6 +1177,7 @@ model Quote {
   @@index([agentId])
   @@index([bookingType])
   @@index([brandCompanyId])
+  @@index([revisedFromId])
   @@map("quotes")
 }
 
@@ -1462,6 +1497,7 @@ model BookingService {
   bookingId               String                        @db.Uuid
   bookingDayId            String?                       @db.Uuid
   sourceQuoteItemId       String?                       @db.Uuid
+  activityId              String?                       @db.Uuid
   serviceOrder            Int                           @default(0)
   serviceType             String
   operationType           BookingOperationServiceType?
@@ -1501,12 +1537,14 @@ model BookingService {
   updatedAt               DateTime                      @updatedAt
   booking                 Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   bookingDay              BookingDay?                   @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
+  activity                Activity?                     @relation(fields: [activityId], references: [id], onDelete: SetNull)
   auditLogs               BookingAuditLog[]
   vouchers                Voucher[]
   supplier                Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   vehicle                 Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@index([bookingDayId])
+  @@index([activityId])
   @@index([bookingId, serviceOrder])
   @@index([sourceQuoteItemId])
   @@index([supplierId])
@@ -1591,6 +1629,7 @@ enum VoucherType {
   TRANSPORT
   HOTEL
   GUIDE
+  ACTIVITY
   EXTERNAL_PACKAGE
 }
 
@@ -1703,6 +1742,11 @@ enum ServiceRatePricingMode {
   PER_PERSON
   PER_GROUP
   PER_DAY
+}
+
+enum ActivityPricingBasis {
+  PER_PERSON
+  PER_GROUP
 }
 
 enum TourismFeeMode {

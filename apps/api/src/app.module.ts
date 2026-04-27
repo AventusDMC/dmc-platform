@@ -4,6 +4,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AgentController } from './agent/agent.controller';
 import { AgentService } from './agent/agent.service';
+import { ActivitiesController } from './activities/activities.controller';
+import { ActivitiesService } from './activities/activities.service';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { AuditService } from './audit/audit.service';
@@ -95,6 +97,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
   controllers: [
     AppController,
     AgentController,
+    ActivitiesController,
     AuthController,
     BookingsController,
     OperationsDashboardController,
@@ -140,6 +143,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
   providers: [
     AppService,
     AgentService,
+    ActivitiesService,
     AuditService,
     AuthService,
     {

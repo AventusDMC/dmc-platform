@@ -22,13 +22,9 @@ export class InvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     return (this.prisma as any).invoice.findMany({
-      where: {
-        quote: {
-          clientCompanyId: companyId,
-        },
-      },
+      where: {},
       include: {
         quote: {
           include: {
@@ -48,13 +44,10 @@ export class InvoicesService {
   }
 
   findOne(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     return (this.prisma as any).invoice.findFirst({
       where: {
         id,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
       include: {
         quote: {
@@ -85,13 +78,10 @@ export class InvoicesService {
       companyActor?: CompanyScopedActor;
     },
   ) {
-    const companyId = requireActorCompanyId(data.companyActor);
+    requireActorCompanyId(data.companyActor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
         id,
-        quote: {
-          clientCompanyId: companyId,
-        },
       },
       select: {
         id: true,

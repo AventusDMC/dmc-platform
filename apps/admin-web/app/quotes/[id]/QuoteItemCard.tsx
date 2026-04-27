@@ -116,6 +116,14 @@ type HotelRate = {
 type QuoteItem = {
   id: string;
   itineraryId: string | null;
+  activityId?: string | null;
+  activity?: {
+    id: string;
+    name: string;
+    description: string | null;
+    durationMinutes?: number | null;
+    active?: boolean;
+  } | null;
   serviceDate: string | null;
   startTime: string | null;
   pickupTime: string | null;
@@ -401,6 +409,9 @@ export function QuoteItemCard({
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
   const isExternalPackage = isExternalPackageItem(currentItem);
   const hotelItemSummary = getHotelItemSummary(currentItem);
+  const activityCatalogName = currentItem.activity?.name?.trim() || '';
+  const activityCatalogDescription = currentItem.activity?.description?.trim() || '';
+  const itemDisplayName = hotelItemSummary || activityCatalogName || currentItem.service.name;
   const selectedContract = currentItem.contractId ? hotelContracts.find((contract) => contract.id === currentItem.contractId) || null : null;
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
   const marginMetrics = getMarginMetrics(currentItem);
@@ -512,17 +523,18 @@ export function QuoteItemCard({
 
   return (
     <div>
-      <article className="quote-item-row">
+      <article className="quote-item-row" data-activity-id={currentItem.activityId || currentItem.activity?.id || undefined}>
         <div className="quote-item-row-main">
           <div className="quote-item-row-head">
-            <h4>{hotelItemSummary || currentItem.service.name}</h4>
+            <h4>{itemDisplayName}</h4>
             {!hotelItemSummary ? <span>{currentItem.service.category}</span> : null}
             {isUnmatched ? <em className="quote-item-unmatched-badge">Unmatched</em> : null}
             {currentItem.useOverride ? <em className="quote-item-override-badge">Override active</em> : null}
           </div>
           {!hotelItemSummary ? (
             <p>
-              {currentItem.pricingDescription ||
+              {activityCatalogDescription ||
+                currentItem.pricingDescription ||
                 `Qty ${currentItem.quantity} at ${formatMoney(getFinalItemCost(currentItem), currentItem.currency)}`}
             </p>
           ) : null}

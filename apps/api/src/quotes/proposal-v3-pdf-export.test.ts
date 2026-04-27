@@ -90,6 +90,64 @@ function createExternalPackagePdfItem(overrides: Record<string, any> = {}) {
   };
 }
 
+function createTransportPdfItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 'transport-item-1',
+    itineraryId: 'day-1',
+    serviceDate: new Date('2026-06-01T10:00:00.000Z'),
+    service: {
+      name: 'Private arrival transfer',
+      category: 'Transport',
+      serviceType: { name: 'Transport', code: 'TRANSPORT' },
+      supplierId: 'supplier-company-1',
+    },
+    appliedVehicleRate: {
+      routeName: 'QAIA to Petra',
+      price: 120,
+      currency: 'USD',
+      vehicle: {
+        id: 'vehicle-1',
+        name: 'Mercedes Vito',
+        supplierId: 'supplier-company-1',
+        supplierName: 'Independent Transport Supplier',
+      },
+      serviceType: { name: 'Transfer', code: 'TRANSFER' },
+    },
+    pricingDescription: 'QAIA to Petra | Mercedes Vito | Per vehicle',
+    totalCost: 120,
+    totalSell: 165,
+    ...overrides,
+  };
+}
+
+function createActivityPdfItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 'activity-item-1',
+    itineraryId: 'day-1',
+    serviceDate: new Date('2026-06-01T20:30:00.000Z'),
+    startTime: '20:30',
+    pickupTime: '19:45',
+    pickupLocation: 'Hotel lobby',
+    meetingPoint: 'Visitor center',
+    participantCount: 4,
+    adultCount: 3,
+    childCount: 1,
+    service: {
+      name: 'Petra by Night',
+      category: 'Activity',
+      supplierId: 'supplier-company-1',
+      supplierName: 'Hidden Activity Supplier',
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    pricingDescription: 'Petra by Night guided experience',
+    costBaseAmount: 35,
+    costCurrency: 'USD',
+    totalCost: 140,
+    totalSell: 210,
+    ...overrides,
+  };
+}
+
 test('proposal PDF export shows persisted hotel pricing basis labels', () => {
   const perPerson = mapQuoteToProposalV3(createPdfQuote());
   const perRoom = mapQuoteToProposalV3(
@@ -222,6 +280,43 @@ test('proposal PDF export shows external package totals in quote currency withou
   assert.doesNotMatch(renderedText, /USD net cost/);
   assert.doesNotMatch(renderedText, /externalNetCost/);
   assert.doesNotMatch(renderedText, /100 USD|USD 100/);
+});
+
+test('proposal PDF export shows transport sell context without leaking supplier company or net fields', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [createTransportPdfItem()],
+      totalCost: 120,
+      totalSell: 165,
+      pricePerPax: 55,
+    }),
+  );
+  const renderedText = JSON.stringify(proposal);
+
+  assert.match(renderedText, /QAIA to Petra/);
+  assert.match(renderedText, /165/);
+  assert.doesNotMatch(renderedText, /Independent Transport Supplier/);
+  assert.doesNotMatch(renderedText, /supplier-company-1/);
+  assert.doesNotMatch(renderedText, /supplierCost|netCost|baseCost/i);
+});
+
+test('proposal PDF export shows activity details without leaking supplier cost', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [createActivityPdfItem()],
+      totalCost: 140,
+      totalSell: 210,
+      pricePerPax: 52.5,
+    }),
+  );
+  const renderedText = JSON.stringify(proposal);
+
+  assert.match(renderedText, /Petra by Night/);
+  assert.match(renderedText, /210/);
+  assert.doesNotMatch(renderedText, /Hidden Activity Supplier/);
+  assert.doesNotMatch(renderedText, /supplier-company-1/);
+  assert.doesNotMatch(renderedText, /costBaseAmount|costCurrency|supplierCost|netCost|baseCost/i);
+  assert.doesNotMatch(renderedText, /\b35\b/);
 });
 
 test('proposal renders own-operation and external package days as one continuous client itinerary', () => {

@@ -77,6 +77,208 @@ test('passenger manifest export route uses extensionless URL and Excel response 
   assert.equal(headers['Content-Disposition'], 'attachment; filename="BK-1-passenger-manifest.xlsx"');
 });
 
+test('bookings controller exposes explicit cancel route', () => {
+  const routePath = (Reflect as any).getMetadata(PATH_METADATA, BookingsController.prototype.cancelBooking);
+  assert.equal(routePath, ':id/cancel');
+  const amendPath = (Reflect as any).getMetadata(PATH_METADATA, BookingsController.prototype.amendBooking);
+  assert.equal(amendPath, ':id/amend');
+});
+
+test('cancel booking sets status to cancelled without deleting related data', async () => {
+  let updateData: any;
+  let auditLogData: any;
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async () => ({
+            id: 'booking-1',
+            status: 'confirmed',
+            services: [
+              {
+                id: 'service-1',
+                description: 'Hotel',
+                serviceType: 'HOTEL',
+                serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+                status: 'confirmed',
+                confirmationStatus: 'confirmed',
+                supplierId: 'supplier-1',
+                supplierName: 'Hotel Supplier',
+                totalCost: 100,
+                totalSell: 130,
+              },
+            ],
+          }),
+          update: async ({ data }: any) => {
+            updateData = data;
+            return { id: 'booking-1', status: data.status };
+          },
+        },
+        bookingAuditLog: {
+          create: async ({ data }: any) => {
+            auditLogData = data;
+            return data;
+          },
+        },
+      }),
+  });
+
+  const booking = await service.cancelBooking('booking-1', {
+    actor: { userId: 'user-1', label: 'Admin' },
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(booking.status, 'cancelled');
+  assert.deepEqual(updateData, {
+    status: 'cancelled',
+    statusNote: 'Booking cancelled',
+  });
+  assert.equal(auditLogData.action, 'booking_status_updated');
+  assert.equal(auditLogData.oldValue, 'confirmed');
+  assert.equal(auditLogData.newValue, 'cancelled');
+});
+
+test('amend booking clones days passengers and services without changing original', async () => {
+  let createdBookingData: any;
+  const createdDays: any[] = [];
+  const createdPassengers: any[] = [];
+  const createdServices: any[] = [];
+  const original = {
+    id: 'booking-1',
+    quoteId: 'quote-1',
+    acceptedVersionId: 'version-1',
+    clientCompanyId: 'client-company-1',
+    amendmentNumber: 1,
+    bookingType: 'FIT',
+    status: 'confirmed',
+    clientInvoiceStatus: 'unbilled',
+    supplierPaymentStatus: 'unpaid',
+    statusNote: null,
+    bookingRef: 'BK-2026-0001',
+    snapshotJson: { title: 'Original booking' },
+    clientSnapshotJson: { name: 'Client Co' },
+    brandSnapshotJson: null,
+    contactSnapshotJson: { firstName: 'Lina', lastName: 'Haddad' },
+    itinerarySnapshotJson: [],
+    pricingSnapshotJson: { totalSell: 130 },
+    adults: 2,
+    children: 0,
+    pax: 2,
+    roomCount: 1,
+    nightCount: 2,
+    startDate: new Date('2026-06-01T00:00:00.000Z'),
+    endDate: new Date('2026-06-03T00:00:00.000Z'),
+    days: [{ id: 'day-1', dayNumber: 1, date: new Date('2026-06-01T00:00:00.000Z'), title: 'Arrival', notes: null, status: 'PENDING' }],
+    passengers: [{
+      fullName: 'Lina Haddad',
+      firstName: 'Lina',
+      lastName: 'Haddad',
+      title: null,
+      gender: null,
+      dateOfBirth: null,
+      nationality: 'Jordanian',
+      passportNumber: 'P1234567',
+      passportIssueDate: null,
+      passportExpiryDate: null,
+      arrivalFlight: null,
+      departureFlight: null,
+      entryPoint: null,
+      visaStatus: null,
+      roomingNotes: null,
+      isLead: true,
+      notes: null,
+    }],
+    services: [{
+      bookingDayId: 'day-1',
+      sourceQuoteItemId: 'item-1',
+      serviceOrder: 1,
+      serviceType: 'HOTEL',
+      operationType: 'HOTEL',
+      operationStatus: 'CONFIRMED',
+      referenceId: null,
+      assignedTo: null,
+      guidePhone: null,
+      vehicleId: null,
+      serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+      startTime: null,
+      pickupTime: null,
+      pickupLocation: null,
+      meetingPoint: null,
+      participantCount: 2,
+      adultCount: 2,
+      childCount: 0,
+      supplierReference: 'SUP-1',
+      reconfirmationRequired: false,
+      reconfirmationDueAt: null,
+      description: 'Hotel',
+      notes: 'Keep data',
+      qty: 1,
+      unitCost: 100,
+      unitSell: 130,
+      totalCost: 100,
+      totalSell: 130,
+      status: 'confirmed',
+      supplierId: 'supplier-1',
+      supplierName: 'Hotel Supplier',
+      confirmationStatus: 'confirmed',
+      confirmationNumber: 'CN-1',
+      confirmationNotes: null,
+      statusNote: null,
+      confirmationRequestedAt: null,
+      confirmationConfirmedAt: null,
+    }],
+  };
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async ({ where }: any) => (where?.id === 'booking-1' ? original : null),
+          create: async ({ data }: any) => {
+            createdBookingData = data;
+            return { id: 'booking-2', ...data };
+          },
+        },
+        bookingDay: {
+          create: async ({ data }: any) => {
+            createdDays.push(data);
+            return { id: 'day-2', ...data };
+          },
+        },
+        bookingPassenger: {
+          create: async ({ data }: any) => {
+            createdPassengers.push(data);
+            return { id: 'passenger-2', ...data };
+          },
+        },
+        bookingService: {
+          create: async ({ data }: any) => {
+            createdServices.push(data);
+            return { id: 'service-2', ...data };
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const amended = await service.amendBooking('booking-1', {
+    actor: { userId: 'user-1', label: 'Admin' },
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+
+  assert.equal(amended.id, 'booking-2');
+  assert.equal(createdBookingData.quoteId, 'quote-1');
+  assert.equal(createdBookingData.clientCompanyId, 'client-company-1');
+  assert.equal(createdBookingData.amendmentNumber, 2);
+  assert.equal(createdBookingData.amendedFromId, 'booking-1');
+  assert.equal(createdDays.length, 1);
+  assert.equal(createdPassengers.length, 1);
+  assert.equal(createdServices.length, 1);
+  assert.equal(createdServices[0].bookingDayId, 'day-2');
+  assert.equal(original.bookingRef, 'BK-2026-0001');
+});
+
 test('passenger manifest validates required fields and dates', async () => {
   const service = createService({
     $transaction: async (callback: any) =>
@@ -232,7 +434,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
   assert.equal(rows[0]['Passport Number'], 'P1234567');
 });
 
-test('cross-company booking access is scoped through clientCompanyId', async () => {
+test('DMC admin booking access requires auth without single-client company filtering', async () => {
   let whereClause: any;
   const service = createService({
     booking: {
@@ -245,7 +447,195 @@ test('cross-company booking access is scoped through clientCompanyId', async () 
 
   await service.findOne('booking-1', { companyId: 'company-a' });
 
-  assert.equal(whereClause.quote.clientCompanyId, 'company-a');
+  assert.equal(whereClause.id, 'booking-1');
+  assert.equal(whereClause.quote, undefined);
+});
+
+test('booking detail loads selected client booking when actor company differs', async () => {
+  let baseWhere: any;
+  const service = createService({
+    booking: {
+      findFirst: async ({ where }: any) => {
+        baseWhere = where;
+        return {
+          id: 'booking-1',
+          quoteId: 'quote-1',
+          clientCompanyId: 'client-company-1',
+          adults: 2,
+          children: 0,
+          roomCount: 1,
+          snapshotJson: { title: 'Client booking' },
+        };
+      },
+    },
+    quote: {
+      findUnique: async () => ({
+        id: 'quote-1',
+        clientCompanyId: 'client-company-1',
+        clientCompany: { id: 'client-company-1', name: 'Client Co' },
+        brandCompany: null,
+        contact: {},
+      }),
+    },
+    quoteVersion: {
+      findUnique: async () => null,
+    },
+    bookingAuditLog: {
+      findMany: async () => [],
+    },
+    bookingPassenger: {
+      findMany: async () => [],
+    },
+    bookingDay: {
+      findMany: async () => [],
+    },
+    bookingRoomingEntry: {
+      findMany: async () => [],
+    },
+    payment: {
+      findMany: async () => [],
+    },
+    bookingService: {
+      findMany: async () => [],
+    },
+  });
+
+  const booking = await service.findOne('booking-1', { companyId: 'dmc-company-1' });
+
+  assert.equal(baseWhere.id, 'booking-1');
+  assert.equal(baseWhere.quote, undefined);
+  assert.equal(booking.id, 'booking-1');
+  assert.equal(booking.clientCompanyId, 'client-company-1');
+});
+
+test('booking passenger service manifest and voucher flows work for selected client booking', async () => {
+  const seenWheres: any[] = [];
+  const createdRows: any[] = [];
+  const updatedRows: any[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async ({ where }: any) => {
+            seenWheres.push(where);
+            return { id: 'booking-1', clientCompanyId: 'client-company-1' };
+          },
+        },
+        bookingPassenger: {
+          create: async ({ data }: any) => ({ id: 'passenger-1', ...data }),
+          updateMany: async () => ({ count: 0 }),
+        },
+        bookingService: {
+          create: async ({ data }: any) => {
+            createdRows.push(data);
+            return { id: 'service-1', ...data };
+          },
+          update: async ({ data }: any) => {
+            updatedRows.push(data);
+            return { id: 'service-1', bookingId: 'booking-1', ...data };
+          },
+        },
+        voucher: {
+          create: async ({ data }: any) => ({ id: 'voucher-1', ...data }),
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+    bookingDay: {
+      findFirst: async ({ where }: any) => {
+        seenWheres.push(where);
+        return {
+          id: 'day-1',
+          bookingId: 'booking-1',
+          date: new Date('2026-10-01T00:00:00.000Z'),
+          booking: { id: 'booking-1', clientCompanyId: 'client-company-1', adults: 2, children: 1 },
+        };
+      },
+    },
+    bookingService: {
+      count: async () => 0,
+      findFirst: async ({ where }: any) => {
+        seenWheres.push(where);
+        return {
+          id: 'service-1',
+          bookingId: 'booking-1',
+          bookingDayId: 'day-1',
+          serviceType: 'GUIDE',
+          operationType: 'GUIDE',
+          operationStatus: 'PENDING',
+          supplierId: 'supplier-1',
+          supplierName: 'Guide Supplier',
+          assignedTo: 'Guide Lina',
+          guidePhone: '+962700000000',
+          notes: 'Guide note',
+          bookingDay: { id: 'day-1' },
+          supplier: { id: 'supplier-1', name: 'Guide Supplier' },
+          vehicle: null,
+        };
+      },
+    },
+    supplier: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: 'Guide Supplier' }),
+    },
+    booking: {
+      findFirst: async ({ where }: any) => {
+        seenWheres.push(where);
+        return {
+          id: 'booking-1',
+          bookingRef: 'BK-DMC-1',
+          clientCompanyId: 'client-company-1',
+          startDate: new Date('2026-10-01T00:00:00.000Z'),
+          snapshotJson: { title: 'Client booking' },
+          quote: { title: 'Client quote', clientCompany: { id: 'client-company-1', name: 'Client Co' } },
+          passengers: [
+            {
+              fullName: 'Lina Haddad',
+              nationality: 'Jordanian',
+              passportNumber: 'P1234567',
+              passportExpiryDate: new Date('2030-01-01T00:00:00.000Z'),
+              entryPoint: 'QAIA',
+            },
+          ],
+        };
+      },
+    },
+  });
+
+  const passenger = await service.createPassenger('booking-1', {
+    fullName: 'Lina Haddad',
+    nationality: 'Jordanian',
+    passportNumber: 'P1234567',
+    passportExpiryDate: '2030-01-01',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const createdService = await service.createBookingService('booking-1', 'day-1', {
+    type: 'GUIDE',
+    supplierId: 'supplier-1',
+    assignedTo: 'Guide Lina',
+    status: 'REQUESTED',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const updatedService = await service.updateBookingService('booking-1', 'day-1', 'service-1', {
+    type: 'GUIDE',
+    supplierId: 'supplier-1',
+    assignedTo: 'Guide Lina Updated',
+    status: 'CONFIRMED',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const manifest = await service.exportPassengerManifestExcel('booking-1', { companyId: 'dmc-company-1' });
+  const voucher = await service.createServiceVoucher('booking-1', 'service-1', {
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+
+  assert.equal(passenger.bookingId, 'booking-1');
+  assert.equal(createdService.supplierId, 'supplier-1');
+  assert.equal(updatedService.assignedTo, 'Guide Lina Updated');
+  assert.equal(voucher.bookingId, 'booking-1');
+  assert.equal(manifest.fileName, 'bk-dmc-1-passenger-manifest.xlsx');
+  assert.ok(seenWheres.every((where) => !where.quote?.clientCompanyId && !where.booking?.quote?.clientCompanyId));
+  assert.ok(createdRows.some((row) => row.bookingId === 'booking-1' && row.supplierId === 'supplier-1'));
+  assert.ok(updatedRows.some((row) => row.supplierId === 'supplier-1'));
 });
 
 test('GET /bookings returns list with post-migration-safe booking service select', async () => {
@@ -297,7 +687,7 @@ test('GET /bookings returns list with post-migration-safe booking service select
 
   const bookings = await controller.findAll({ companyId: 'company-1' } as any);
 
-  assert.equal(findManyArgs.where.quote.clientCompanyId, 'company-1');
+  assert.deepEqual(findManyArgs.where, {});
   assert.equal(findManyArgs.select.services.select.operationType, undefined);
   assert.equal(findManyArgs.select.services.select.bookingDayId, undefined);
   assert.equal(bookings.length, 1);
@@ -367,7 +757,7 @@ test('GET /bookings/:id returns base booking when optional relation loads fail a
     const service = createService({
       booking: {
         findFirst: async ({ where }: any) => {
-          assert.equal(where.quote.clientCompanyId, 'company-1');
+          assert.equal(where.id, 'booking-1');
           return {
             id: 'booking-1',
             quoteId: 'quote-1',
@@ -523,7 +913,7 @@ test('operations dashboard returns scoped counts and missing passenger alerts', 
   assert.match(dashboard.missingPassengers.items[0].reasons.join(' '), /passport/i);
   assert.equal(dashboard.alerts.servicesWithoutSupplierOrAssignment.count, 1);
   assert.equal(dashboard.alerts.missingTransportAssignmentForToday.count, 1);
-  assert.ok(findManyCalls.every((call) => call.where.booking?.quote?.clientCompanyId === 'company-1' || call.where.quote?.clientCompanyId === 'company-1'));
+  assert.ok(findManyCalls.every((call) => !call.where.booking?.quote?.clientCompanyId && !call.where.quote?.clientCompanyId));
 });
 
 test('operations dashboard filters booking and service statuses', async () => {
@@ -554,7 +944,7 @@ test('operations dashboard filters booking and service statuses', async () => {
   assert.equal(dashboard.filters.bookingStatus, 'in_progress');
   assert.equal(dashboard.filters.serviceStatus, 'REQUESTED');
   assert.ok(bookingWheres.some((where) => where.status === 'in_progress' || where.status?.in?.includes('in_progress')));
-  assert.ok(serviceWheres.every((where) => where.booking.quote.clientCompanyId === 'company-1'));
+  assert.ok(serviceWheres.every((where) => !where.booking?.quote?.clientCompanyId));
   assert.ok(serviceWheres.some((where) => where.operationStatus === 'REQUESTED' || JSON.stringify(where).includes('REQUESTED')));
 });
 
@@ -649,12 +1039,172 @@ test('operations mobile data returns days services masked passports and no prici
   });
   const rendered = JSON.stringify(mobile);
 
-  assert.equal(whereClause.quote.clientCompanyId, 'company-1');
+  assert.equal(whereClause.quote, undefined);
   assert.equal(mobile.bookings[0].days[0].services[0].operationStatus, 'CONFIRMED');
   assert.equal(mobile.bookings[0].days[0].services[0].vouchers[0].id, 'voucher-1');
   assert.equal(mobile.bookings[0].passengerSummary.maskedPassportSamples[0].passportNumberMasked, '****4567');
   assert.doesNotMatch(rendered, /P1234567/);
   assert.doesNotMatch(rendered, /totalCost|totalSell|margin/i);
+});
+
+test('guarantee letter and mobile operations stay client-safe for DMC-managed booking', async () => {
+  const service = createService({
+    booking: {
+      findFirst: async ({ where }: any) => {
+        assert.equal(where.id, 'booking-1');
+        assert.equal(where.quote, undefined);
+        return {
+          id: 'booking-1',
+          bookingRef: 'BK-DMC-GL',
+          clientCompanyId: 'client-company-1',
+          pax: 2,
+          adults: 2,
+          children: 0,
+          startDate: new Date('2026-10-01T00:00:00.000Z'),
+          endDate: new Date('2026-10-03T00:00:00.000Z'),
+          snapshotJson: { title: 'Client booking' },
+          quote: {
+            clientCompanyId: 'client-company-1',
+            clientCompany: { id: 'client-company-1', name: 'Client Co' },
+            brandCompany: { name: 'DMC Brand', branding: null },
+            contact: {},
+          },
+          passengers: [
+            {
+              fullName: 'Lina Haddad',
+              nationality: 'Jordanian',
+              dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+              passportNumber: 'P1234567',
+              passportIssueDate: new Date('2020-01-01T00:00:00.000Z'),
+              passportExpiryDate: new Date('2030-01-01T00:00:00.000Z'),
+              arrivalFlight: 'RJ100',
+              departureFlight: 'RJ101',
+              entryPoint: 'QAIA',
+            },
+          ],
+          days: [
+            { dayNumber: 1, title: 'Arrival', notes: 'Arrival and transfer' },
+            { dayNumber: 2, title: 'Touring', notes: 'Program day' },
+          ],
+          services: [
+            {
+              operationType: 'TRANSPORT',
+              serviceType: 'TRANSPORT',
+              supplierName: 'Internal Supplier',
+              assignedTo: 'Driver Omar',
+              guidePhone: '+962700000000',
+              vehicle: { name: 'Bus 1234' },
+              totalCost: 999,
+              totalSell: 1200,
+              internalNotes: 'hidden supplier cost',
+            },
+          ],
+        };
+      },
+      findMany: async ({ where }: any) => {
+        assert.equal(where.quote, undefined);
+        return [
+          {
+            id: 'booking-1',
+            bookingRef: 'BK-DMC-MOB',
+            clientCompanyId: 'client-company-1',
+            status: 'in_progress',
+            startDate: new Date('2026-10-01T00:00:00.000Z'),
+            endDate: new Date('2026-10-03T00:00:00.000Z'),
+            pax: 2,
+            adults: 2,
+            children: 0,
+            roomCount: 1,
+            snapshotJson: { title: 'Client booking' },
+            passengers: [{ passportNumber: 'P1234567', passportExpiryDate: new Date('2030-01-01T00:00:00.000Z') }],
+            days: [
+              {
+                id: 'day-1',
+                dayNumber: 1,
+                date: new Date('2026-10-01T00:00:00.000Z'),
+                title: 'Arrival',
+                notes: 'Arrival',
+                status: 'PENDING',
+                services: [
+                  {
+                    id: 'service-1',
+                    bookingDayId: 'day-1',
+                    serviceType: 'TRANSPORT',
+                    operationType: 'TRANSPORT',
+                    operationStatus: 'CONFIRMED',
+                    supplierId: 'supplier-1',
+                    supplierName: 'Internal Supplier',
+                    assignedTo: 'Driver Omar',
+                    guidePhone: '+962700000000',
+                    pickupTime: '09:00',
+                    notes: 'Internal note',
+                    totalCost: 999,
+                    totalSell: 1200,
+                    vouchers: [{ id: 'voucher-1', status: 'DRAFT', type: 'TRANSPORT' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ];
+      },
+    },
+  });
+  const lines = capturePdfText(service);
+
+  const guarantee = await service.generateGuaranteeLetterPdf('booking-1', { companyId: 'dmc-company-1' });
+  const mobile = await service.getOperationsMobileData({ actor: { companyId: 'dmc-company-1' }, date: '2026-10-01' });
+  const mobileText = JSON.stringify(mobile);
+  const guaranteeText = lines.join('\n');
+
+  assert.ok(Buffer.isBuffer(guarantee));
+  assert.match(guaranteeText, /Lina Haddad/);
+  assert.doesNotMatch(guaranteeText, /999|1200|margin|pricing/i);
+  assert.equal(mobile.bookings[0].passengerSummary.maskedPassportSamples[0].passportNumberMasked, '****4567');
+  assert.doesNotMatch(mobileText, /P1234567/);
+  assert.doesNotMatch(mobileText, /999|1200|totalCost|totalSell|margin/i);
+});
+
+test('booking-side DMC operations still require authentication context', async () => {
+  const service = createService({
+    booking: {
+      findFirst: async () => ({ id: 'booking-1' }),
+    },
+    bookingDay: {
+      findFirst: async () => ({ id: 'day-1', bookingId: 'booking-1', booking: { adults: 1, children: 0 } }),
+    },
+    bookingService: {
+      findFirst: async () => ({ id: 'service-1', bookingId: 'booking-1' }),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async () => ({ id: 'booking-1' }),
+        },
+      }),
+  });
+
+  await assert.rejects(() => service.findOne('booking-1', undefined), /Company context is required/);
+  await assert.rejects(
+    () =>
+      service.createPassenger('booking-1', {
+        fullName: 'Lina Haddad',
+        nationality: 'Jordanian',
+        passportNumber: 'P1234567',
+        passportExpiryDate: '2030-01-01',
+      }),
+    /Company context is required/,
+  );
+  await assert.rejects(
+    () => service.createBookingService('booking-1', 'day-1', { type: 'GUIDE', assignedTo: 'Guide Lina' }),
+    /Company context is required/,
+  );
+  await assert.rejects(() => service.exportPassengerManifestExcel('booking-1', undefined), /Company context is required/);
+  await assert.rejects(() => service.generateGuaranteeLetterPdf('booking-1', undefined), /Company context is required/);
+  await assert.rejects(
+    () => service.createServiceVoucher('booking-1', 'service-1', { companyActor: undefined }),
+    /Company context is required/,
+  );
 });
 
 test('end-to-end operations workflow keeps field data scoped and client-safe', async () => {
@@ -968,7 +1518,7 @@ test('create update and delete booking service assignment rows', async () => {
   const service = createService({
     bookingDay: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-1');
+        assert.equal(where.booking?.quote, undefined);
         return {
           id: 'day-1',
           bookingId: 'booking-1',
@@ -1120,6 +1670,288 @@ test('transport booking service uses route and vehicle catalog and saves vehicle
   assert.match(created.description, /QAIA to Amman/);
 });
 
+test('DMC booking operations assign transport supplier and voucher across actor client and supplier companies', async () => {
+  const seen: Record<string, any[]> = {
+    bookingDay: [],
+    bookingService: [],
+    route: [],
+    vehicle: [],
+    supplier: [],
+    voucher: [],
+  };
+  const createdRows: any[] = [];
+  const updatedRows: any[] = [];
+  const vouchers: any[] = [];
+  const service = createService({
+    bookingDay: {
+      findFirst: async ({ where }: any) => {
+        seen.bookingDay.push(where);
+        return {
+          id: 'day-1',
+          bookingId: 'booking-1',
+          date: new Date('2026-10-01T00:00:00.000Z'),
+          booking: {
+            id: 'booking-1',
+            clientCompanyId: 'client-company-1',
+            adults: 3,
+            children: 1,
+          },
+        };
+      },
+    },
+    bookingService: {
+      count: async ({ where }: any) => {
+        seen.bookingService.push(where);
+        return createdRows.length;
+      },
+      findFirst: async ({ where }: any) => {
+        seen.bookingService.push(where);
+        return {
+          id: 'service-transport',
+          bookingId: 'booking-1',
+          bookingDayId: 'day-1',
+          serviceType: 'TRANSPORT',
+          operationType: 'TRANSPORT',
+          operationStatus: 'CONFIRMED',
+          referenceId: 'route-1',
+          assignedTo: 'Driver Ali',
+          guidePhone: null,
+          vehicleId: 'vehicle-1',
+          pickupTime: '09:30',
+          supplierId: 'supplier-company-1',
+          supplierName: 'Independent Transport Supplier',
+          confirmationNumber: null,
+          supplierReference: null,
+          notes: 'Arrival pickup',
+          description: 'QAIA to Petra with Driver Ali',
+          bookingDay: { id: 'day-1', dayNumber: 1, date: new Date('2026-10-01T00:00:00.000Z') },
+          supplier: { id: 'supplier-company-1', name: 'Independent Transport Supplier' },
+          vehicle: { id: 'vehicle-1', name: 'Mercedes Vito', supplierId: 'supplier-company-1' },
+        };
+      },
+    },
+    route: {
+      findUnique: async ({ where }: any) => {
+        seen.route.push(where);
+        return { id: 'route-1', name: 'QAIA to Petra' };
+      },
+    },
+    vehicle: {
+      findUnique: async ({ where }: any) => {
+        seen.vehicle.push(where);
+        return { id: 'vehicle-1', name: 'Mercedes Vito', supplierId: 'supplier-company-1' };
+      },
+    },
+    supplier: {
+      findUnique: async ({ where }: any) => {
+        seen.supplier.push(where);
+        return { id: where.id, name: 'Independent Transport Supplier' };
+      },
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        bookingService: {
+          create: async ({ data }: any) => {
+            createdRows.push(data);
+            return {
+              id: 'service-transport',
+              ...data,
+              supplier: { id: data.supplierId, name: data.supplierName },
+              vehicle: { id: data.vehicleId, name: 'Mercedes Vito', supplierId: data.supplierId },
+              bookingDay: { id: data.bookingDayId },
+            };
+          },
+          update: async ({ data }: any) => {
+            updatedRows.push(data);
+            return {
+              id: 'service-transport',
+              bookingId: 'booking-1',
+              bookingDayId: 'day-1',
+              ...data,
+              supplier: { id: data.supplierId, name: data.supplierName },
+              vehicle: { id: data.vehicleId, name: 'Mercedes Vito', supplierId: data.supplierId },
+              bookingDay: { id: 'day-1' },
+            };
+          },
+        },
+        voucher: {
+          create: async ({ data }: any) => {
+            const voucher = {
+              id: 'voucher-transport',
+              ...data,
+              supplier: { id: data.supplierId, name: 'Independent Transport Supplier' },
+              bookingService: {
+                id: data.bookingServiceId,
+                bookingDay: { id: 'day-1' },
+                vehicle: { id: 'vehicle-1', name: 'Mercedes Vito', supplierId: data.supplierId },
+              },
+            };
+            vouchers.push(voucher);
+            return voucher;
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const created = await service.createBookingService('booking-1', 'day-1', {
+    type: 'TRANSPORT',
+    referenceId: 'route-1',
+    vehicleId: 'vehicle-1',
+    assignedTo: 'Driver Ali',
+    pickupTime: '09:30',
+    status: 'REQUESTED',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const updated = await service.updateBookingService('booking-1', 'day-1', 'service-transport', {
+    type: 'TRANSPORT',
+    referenceId: 'route-1',
+    vehicleId: 'vehicle-1',
+    assignedTo: 'Driver Omar',
+    pickupTime: '10:00',
+    status: 'CONFIRMED',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const voucher = await service.createServiceVoucher('booking-1', 'service-transport', {
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+
+  assert.equal(created.supplierId, 'supplier-company-1');
+  assert.equal(updated.supplierId, 'supplier-company-1');
+  assert.equal(updated.assignedTo, 'Driver Omar');
+  assert.equal(voucher.supplierId, 'supplier-company-1');
+  assert.equal(voucher.type, 'TRANSPORT');
+  assert.equal(vouchers.length, 1);
+  assert.ok(createdRows.some((row) => row.bookingId === 'booking-1' && row.supplierId === 'supplier-company-1'));
+  assert.ok(updatedRows.some((row) => row.supplierId === 'supplier-company-1'));
+
+  const allWheres = Object.values(seen).flat();
+  assert.ok(allWheres.every((where) => where.companyId === undefined && where.clientCompanyId === undefined));
+  assert.ok(allWheres.every((where) => where.booking?.quote?.clientCompanyId === undefined));
+  assert.deepEqual(seen.route[0], { id: 'route-1' });
+  assert.deepEqual(seen.vehicle[0], { id: 'vehicle-1' });
+  assert.deepEqual(seen.supplier[0], { id: 'supplier-company-1' });
+});
+
+test('DMC booking operations assign activity service and generate supplier voucher across companies', async () => {
+  const seenWheres: any[] = [];
+  const vouchers: any[] = [];
+  const service = createService({
+    bookingDay: {
+      findFirst: async ({ where }: any) => {
+        seenWheres.push(where);
+        return {
+          id: 'day-1',
+          bookingId: 'booking-1',
+          dayNumber: 1,
+          title: 'Petra touring',
+          date: new Date('2026-10-01T00:00:00.000Z'),
+          booking: {
+            id: 'booking-1',
+            clientCompanyId: 'client-company-1',
+            adults: 3,
+            children: 1,
+          },
+        };
+      },
+    },
+    bookingService: {
+      count: async () => 0,
+      findFirst: async ({ where }: any) => {
+        seenWheres.push(where);
+        return {
+          id: 'service-activity',
+          bookingId: 'booking-1',
+          bookingDayId: 'day-1',
+          serviceType: 'ACTIVITY',
+          operationType: 'ACTIVITY',
+          operationStatus: 'CONFIRMED',
+          serviceDate: new Date('2026-10-01T00:00:00.000Z'),
+          referenceId: null,
+          assignedTo: null,
+          guidePhone: null,
+          vehicleId: null,
+          pickupTime: null,
+          supplierId: 'supplier-activity-1',
+          supplierName: 'Petra Experiences Supplier',
+          confirmationNumber: null,
+          supplierReference: null,
+          notes: 'Petra by Night confirmed',
+          description: 'Petra by Night',
+          participantCount: 4,
+          adultCount: 3,
+          childCount: 1,
+          bookingDay: { id: 'day-1', dayNumber: 1, title: 'Petra touring', date: new Date('2026-10-01T00:00:00.000Z') },
+          supplier: { id: 'supplier-activity-1', name: 'Petra Experiences Supplier' },
+          vehicle: null,
+        };
+      },
+    },
+    supplier: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: 'Petra Experiences Supplier' }),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        bookingService: {
+          create: async ({ data }: any) => ({
+            id: 'service-activity',
+            ...data,
+            supplier: { id: data.supplierId, name: data.supplierName },
+            bookingDay: { id: data.bookingDayId },
+          }),
+          update: async ({ data }: any) => ({
+            id: 'service-activity',
+            bookingId: 'booking-1',
+            bookingDayId: 'day-1',
+            ...data,
+            supplier: { id: data.supplierId, name: data.supplierName },
+            bookingDay: { id: 'day-1' },
+          }),
+        },
+        voucher: {
+          create: async ({ data }: any) => {
+            const voucher = {
+              id: 'voucher-activity',
+              ...data,
+              supplier: { id: data.supplierId, name: 'Petra Experiences Supplier' },
+              bookingService: {
+                id: data.bookingServiceId,
+                bookingDay: { id: 'day-1' },
+                vehicle: null,
+              },
+            };
+            vouchers.push(voucher);
+            return voucher;
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const created = await service.createBookingService('booking-1', 'day-1', {
+    type: 'ACTIVITY',
+    supplierId: 'supplier-activity-1',
+    notes: 'Petra by Night',
+    status: 'CONFIRMED',
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+  const voucher = await service.createServiceVoucher('booking-1', 'service-activity', {
+    companyActor: { companyId: 'dmc-company-1' },
+  });
+
+  assert.equal(created.supplierId, 'supplier-activity-1');
+  assert.equal(created.operationType, 'ACTIVITY');
+  assert.equal(voucher.type, 'ACTIVITY');
+  assert.equal(voucher.supplierId, 'supplier-activity-1');
+  assert.equal(vouchers.length, 1);
+  assert.ok(seenWheres.every((where) => where.companyId === undefined && where.clientCompanyId === undefined));
+  assert.ok(seenWheres.every((where) => where.booking?.quote?.clientCompanyId === undefined));
+});
+
 test('hotel confirmation and external package operations services persist constrained fields', async () => {
   const createdRows: any[] = [];
   const service = createService({
@@ -1197,11 +2029,11 @@ test('hotel confirmation and external package operations services persist constr
   );
 });
 
-test('booking operation service status validation and cross-company access are enforced', async () => {
+test('booking operation service status validation keeps booking-day lookup DMC scoped', async () => {
   const service = createService({
     bookingDay: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-b');
+        assert.equal(where.booking?.quote, undefined);
         return null;
       },
     },
@@ -1246,7 +2078,7 @@ test('guarantee letter PDF contains booking passenger transport and guide data w
     booking: {
       findFirst: async ({ where }: any) => {
         assert.equal(where.id, 'booking-1');
-        assert.equal(where.quote.clientCompanyId, 'company-1');
+        assert.equal(where.quote, undefined);
         return {
           id: 'booking-1',
           bookingRef: 'BK-GL-001',
@@ -1328,11 +2160,12 @@ test('guarantee letter PDF contains booking passenger transport and guide data w
   assert.doesNotMatch(text, /pricing/i);
 });
 
-test('guarantee letter cross-company access is blocked', async () => {
+test('guarantee letter returns not found when booking does not exist', async () => {
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.quote.clientCompanyId, 'company-b');
+        assert.equal(where.id, 'booking-1');
+        assert.equal(where.quote, undefined);
         return null;
       },
     },
@@ -1348,7 +2181,7 @@ test('service voucher generation creates one supplier voucher per transport serv
   const service = createService({
     bookingService: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-1');
+        assert.equal(where.booking?.quote, undefined);
         return {
           id: 'service-1',
           bookingId: 'booking-1',
@@ -1412,7 +2245,7 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
     },
     voucher: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-1');
+        assert.equal(where.booking?.quote, undefined);
         return {
           id: 'voucher-1',
           type: 'TRANSPORT',
@@ -1476,7 +2309,7 @@ test('voucher status transitions draft to issued and blocks cross-company access
   const service = createService({
     voucher: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-1');
+        assert.equal(where.booking?.quote, undefined);
         return {
           id: 'voucher-1',
           bookingId: 'booking-1',
@@ -1508,7 +2341,8 @@ test('voucher status transitions draft to issued and blocks cross-company access
   const blocked = createService({
     voucher: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking.quote.clientCompanyId, 'company-b');
+        assert.equal(where.id, 'voucher-1');
+        assert.equal(where.booking?.quote, undefined);
         return null;
       },
     },

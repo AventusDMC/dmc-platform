@@ -287,10 +287,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
+    const bookingWhere = this.buildBookingCompanyWhere(actor);
     const baseBooking = await (this.prisma.booking as any).findFirst({
       where: {
         id,
-        ...this.buildBookingCompanyWhere(actor),
+        ...bookingWhere,
       },
     });
 
@@ -980,6 +981,193 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return updatedBooking;
     });
+  }
+
+  async cancelBooking(
+    id: string,
+    data: {
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+      note?: string;
+    } = {},
+  ) {
+    return this.updateBookingStatus(id, {
+      status: BookingStatus.cancelled,
+      note: data.note || 'Booking cancelled',
+      actor: data.actor,
+      companyActor: data.companyActor,
+    });
+  }
+
+  async amendBooking(
+    id: string,
+    data: {
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    } = {},
+  ) {
+    requireActorCompanyId(data.companyActor);
+
+    return this.prisma.$transaction(async (tx) => {
+      const original = (await tx.booking.findFirst({
+        where: {
+          id,
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
+        include: {
+          days: {
+            orderBy: [{ dayNumber: 'asc' }, { id: 'asc' }],
+          },
+          passengers: true,
+          services: {
+            orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
+          },
+        },
+      } as any)) as any;
+
+      if (!original) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      const bookingRef = await this.generateNextBookingRef(tx);
+      const amendmentRootId = original.amendedFromId || original.id;
+      const latestAmendment = (await tx.booking.findFirst({
+        where: {
+          OR: [{ id: amendmentRootId }, { amendedFromId: amendmentRootId }],
+          ...this.buildBookingCompanyWhere(data.companyActor),
+        },
+        orderBy: [{ amendmentNumber: 'desc' }, { createdAt: 'desc' }],
+        select: { amendmentNumber: true },
+      } as any)) as { amendmentNumber?: number | null } | null;
+      const amendmentNumber = (latestAmendment?.amendmentNumber ?? original.amendmentNumber ?? 1) + 1;
+      const amendedBooking = await tx.booking.create({
+        data: {
+          bookingRef,
+          accessToken: this.generateBookingAccessToken(),
+          quoteId: original.quoteId,
+          acceptedVersionId: original.acceptedVersionId,
+          clientCompanyId: original.clientCompanyId,
+          amendmentNumber,
+          amendedFromId: original.id,
+          bookingType: original.bookingType,
+          status: original.status,
+          clientInvoiceStatus: original.clientInvoiceStatus,
+          supplierPaymentStatus: original.supplierPaymentStatus,
+          statusNote: original.statusNote,
+          snapshotJson: original.snapshotJson,
+          clientSnapshotJson: original.clientSnapshotJson,
+          brandSnapshotJson: original.brandSnapshotJson ?? Prisma.JsonNull,
+          contactSnapshotJson: original.contactSnapshotJson,
+          itinerarySnapshotJson: original.itinerarySnapshotJson,
+          pricingSnapshotJson: original.pricingSnapshotJson,
+          adults: original.adults,
+          children: original.children,
+          pax: original.pax,
+          roomCount: original.roomCount,
+          nightCount: original.nightCount,
+          startDate: original.startDate,
+          endDate: original.endDate,
+        } as any,
+      });
+
+      const dayIdByOriginalId = new Map<string, string>();
+      for (const day of original.days || []) {
+        const clonedDay = await tx.bookingDay.create({
+          data: {
+            bookingId: amendedBooking.id,
+            dayNumber: day.dayNumber,
+            date: day.date,
+            title: day.title,
+            notes: day.notes,
+            status: day.status,
+          } as any,
+        });
+        dayIdByOriginalId.set(day.id, clonedDay.id);
+      }
+
+      for (const passenger of original.passengers || []) {
+        await tx.bookingPassenger.create({
+          data: {
+            bookingId: amendedBooking.id,
+            fullName: passenger.fullName,
+            firstName: passenger.firstName,
+            lastName: passenger.lastName,
+            title: passenger.title,
+            gender: passenger.gender,
+            dateOfBirth: passenger.dateOfBirth,
+            nationality: passenger.nationality,
+            passportNumber: passenger.passportNumber,
+            passportIssueDate: passenger.passportIssueDate,
+            passportExpiryDate: passenger.passportExpiryDate,
+            arrivalFlight: passenger.arrivalFlight,
+            departureFlight: passenger.departureFlight,
+            entryPoint: passenger.entryPoint,
+            visaStatus: passenger.visaStatus,
+            roomingNotes: passenger.roomingNotes,
+            isLead: passenger.isLead,
+            notes: passenger.notes,
+          } as any,
+        });
+      }
+
+      for (const service of original.services || []) {
+        await tx.bookingService.create({
+          data: {
+            bookingId: amendedBooking.id,
+            bookingDayId: service.bookingDayId ? dayIdByOriginalId.get(service.bookingDayId) ?? null : null,
+            sourceQuoteItemId: service.sourceQuoteItemId,
+            serviceOrder: service.serviceOrder,
+            serviceType: service.serviceType,
+            operationType: service.operationType,
+            operationStatus: service.operationStatus,
+            referenceId: service.referenceId,
+            assignedTo: service.assignedTo,
+            guidePhone: service.guidePhone,
+            vehicleId: service.vehicleId,
+            serviceDate: service.serviceDate,
+            startTime: service.startTime,
+            pickupTime: service.pickupTime,
+            pickupLocation: service.pickupLocation,
+            meetingPoint: service.meetingPoint,
+            participantCount: service.participantCount,
+            adultCount: service.adultCount,
+            childCount: service.childCount,
+            supplierReference: service.supplierReference,
+            reconfirmationRequired: service.reconfirmationRequired,
+            reconfirmationDueAt: service.reconfirmationDueAt,
+            description: service.description,
+            notes: service.notes,
+            qty: service.qty,
+            unitCost: service.unitCost,
+            unitSell: service.unitSell,
+            totalCost: service.totalCost,
+            totalSell: service.totalSell,
+            status: service.status,
+            supplierId: service.supplierId,
+            supplierName: service.supplierName,
+            confirmationStatus: service.confirmationStatus,
+            confirmationNumber: service.confirmationNumber,
+            confirmationNotes: service.confirmationNotes,
+            statusNote: service.statusNote,
+            confirmationRequestedAt: service.confirmationRequestedAt,
+            confirmationConfirmedAt: service.confirmationConfirmedAt,
+          } as any,
+        });
+      }
+
+      await this.createAuditLog(tx, {
+        bookingId: amendedBooking.id,
+        entityType: BookingAuditEntityType.booking,
+        entityId: amendedBooking.id,
+        action: 'booking_amended',
+        oldValue: original.id,
+        newValue: amendedBooking.id,
+        note: `Amendment ${amendmentNumber} created from ${original.bookingRef || original.id}`,
+        actor: data.actor,
+      });
+
+      return amendedBooking;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async updateBookingFinance(
@@ -2606,11 +2794,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         where: {
           id: passengerId,
           bookingId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(data.companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(data.companyActor),
         },
         select: {
           id: true,
@@ -2715,11 +2899,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         where: {
           id: passengerId,
           bookingId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(companyActor),
         },
         select: {
           id: true,
@@ -2767,11 +2947,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         where: {
           id: passengerId,
           bookingId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(companyActor),
         },
         select: {
           id: true,
@@ -2894,11 +3070,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         where: {
           id: roomingEntryId,
           bookingId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(data.companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(data.companyActor),
         },
         select: {
           id: true,
@@ -2966,11 +3138,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         where: {
           id: roomingEntryId,
           bookingId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(companyActor),
         },
         select: {
           id: true,
@@ -3020,7 +3188,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     companyActor?: CompanyScopedActor,
   ) {
     const normalizedPassengerId = this.normalizeRequiredText(passengerId, 'Passenger is required for room assignment');
-    const companyId = requireActorCompanyId(companyActor);
+    requireActorCompanyId(companyActor);
 
     return this.prisma.$transaction(async (tx) => {
       const [roomingEntry, passenger] = await Promise.all([
@@ -3028,11 +3196,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           where: {
             id: roomingEntryId,
             bookingId,
-            booking: {
-              quote: {
-                clientCompanyId: companyId,
-              },
-            },
+            booking: this.buildBookingCompanyWhere(companyActor),
           },
           select: {
             id: true,
@@ -3051,11 +3215,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           where: {
             id: normalizedPassengerId,
             bookingId,
-            booking: {
-              quote: {
-                clientCompanyId: companyId,
-              },
-            },
+            booking: this.buildBookingCompanyWhere(companyActor),
           },
           select: {
             id: true,
@@ -3122,7 +3282,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     companyActor?: CompanyScopedActor,
   ) {
     const normalizedPassengerId = this.normalizeRequiredText(passengerId, 'Passenger is required for room assignment removal');
-    const companyId = requireActorCompanyId(companyActor);
+    requireActorCompanyId(companyActor);
 
     return this.prisma.$transaction(async (tx) => {
       const [roomingEntry, passenger, assignment] = await Promise.all([
@@ -3130,11 +3290,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           where: {
             id: roomingEntryId,
             bookingId,
-            booking: {
-              quote: {
-                clientCompanyId: companyId,
-              },
-            },
+            booking: this.buildBookingCompanyWhere(companyActor),
           },
           select: {
             id: true,
@@ -3148,11 +3304,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           where: {
             id: normalizedPassengerId,
             bookingId,
-            booking: {
-              quote: {
-                clientCompanyId: companyId,
-              },
-            },
+            booking: this.buildBookingCompanyWhere(companyActor),
           },
           select: {
             id: true,
@@ -3477,11 +3629,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .findFirst({
         where: {
           id: bookingServiceId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(data.companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(data.companyActor),
         },
         select: {
           id: true,
@@ -3625,11 +3773,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .findFirst({
         where: {
           id: bookingServiceId,
-          booking: {
-            quote: {
-              clientCompanyId: requireActorCompanyId(data.companyActor),
-            },
-          },
+          booking: this.buildBookingCompanyWhere(data.companyActor),
         },
         select: {
           id: true,
@@ -3933,11 +4077,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const bookingService = await this.prisma.bookingService.findFirst({
       where: {
         id: bookingServiceId,
-        booking: {
-          quote: {
-            clientCompanyId: requireActorCompanyId(data.companyActor),
-          },
-        },
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       select: {
         id: true,
@@ -4076,11 +4216,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const bookingService = await this.prisma.bookingService.findFirst({
       where: {
         id: bookingServiceId,
-        booking: {
-          quote: {
-            clientCompanyId: requireActorCompanyId(data.companyActor),
-          },
-        },
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       select: {
         id: true,
@@ -4130,11 +4266,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         id: {
           in: serviceIds,
         },
-        booking: {
-          quote: {
-            clientCompanyId: requireActorCompanyId(data.companyActor),
-          },
-        },
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       select: {
         id: true,
@@ -4974,7 +5106,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleId: type === BookingOperationServiceType.TRANSPORT ? vehicleId : null,
       vehicleName,
       routeName,
-      pickupTime: type === BookingOperationServiceType.TRANSPORT ? pickupTime : null,
+      pickupTime:
+        type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY ? pickupTime : null,
       supplierId,
       supplierName,
       confirmationNumber,
@@ -5058,15 +5191,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (normalized === VoucherType.TRANSPORT) return VoucherType.TRANSPORT;
     if (normalized === VoucherType.HOTEL) return VoucherType.HOTEL;
     if (normalized === VoucherType.GUIDE) return VoucherType.GUIDE;
+    if (normalized === 'ACTIVITY') return 'ACTIVITY' as VoucherType;
     if (normalized === VoucherType.EXTERNAL_PACKAGE) return VoucherType.EXTERNAL_PACKAGE;
 
     const text = [service?.serviceType, service?.description].filter(Boolean).join(' ').toLowerCase();
     if (text.includes('transport') || text.includes('transfer') || text.includes('vehicle')) return VoucherType.TRANSPORT;
     if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
     if (text.includes('guide') || text.includes('escort')) return VoucherType.GUIDE;
+    if (text.includes('activity') || text.includes('tour') || text.includes('experience') || text.includes('excursion')) return 'ACTIVITY' as VoucherType;
     if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
 
-    throw new BadRequestException('Only transport, hotel, guide, and external package services can generate vouchers');
+    throw new BadRequestException('Only transport, hotel, guide, activity, and external package services can generate vouchers');
   }
 
   private normalizeVoucherStatus(status: string | null | undefined): VoucherStatus {
@@ -5097,6 +5232,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (type === VoucherType.GUIDE) {
       if (!service.assignedTo) throw new BadRequestException('Guide voucher requires guide name');
+      return;
+    }
+
+    if (String(type) === 'ACTIVITY') {
+      if (!service.serviceDate && !service.bookingDay?.date) throw new BadRequestException('Activity voucher requires a service date');
+      if (!service.supplierId) throw new BadRequestException('Activity voucher requires a supplier');
       return;
     }
 
@@ -6729,14 +6870,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     bookingStatus?: string | null;
     serviceStatus?: string | null;
   }) {
-    const companyId = requireActorCompanyId(input.actor);
+    requireActorCompanyId(input.actor);
     const selectedDate = this.normalizeDashboardDate(input.date);
     const dayStart = this.startOfUtcDay(selectedDate);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     const borderWindowEnd = new Date(dayStart.getTime() + 48 * 60 * 60 * 1000);
     const bookingStatusFilter = this.normalizeDashboardBookingStatus(input.bookingStatus);
     const serviceStatusFilter = this.normalizeDashboardServiceStatus(input.serviceStatus);
-    const bookingCompanyWhere = { quote: { clientCompanyId: companyId } };
+    const bookingCompanyWhere: Prisma.BookingWhereInput = {};
 
     const bookingWhere: Prisma.BookingWhereInput = {
       ...bookingCompanyWhere,
@@ -6934,16 +7075,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOperationsMobileData(input: { actor?: CompanyScopedActor; date?: string | null }) {
-    const companyId = requireActorCompanyId(input.actor);
+    requireActorCompanyId(input.actor);
     const selectedDate = this.normalizeDashboardDate(input.date);
     const dayStart = this.startOfUtcDay(selectedDate);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
     const bookings = await this.prisma.booking.findMany({
       where: {
-        quote: {
-          clientCompanyId: companyId,
-        },
         status: {
           not: BookingStatus.cancelled,
         },
@@ -7256,6 +7394,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         this.writeKeyValue(doc, 'Program', dayTitle);
         this.writeKeyValue(doc, 'Pickup', [service.pickupTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-');
         this.writeKeyValue(doc, 'Pax', String(pax));
+        this.writeKeyValue(doc, 'Notes', notes);
+      } else if (String(voucher.type) === 'ACTIVITY') {
+        this.writeSectionTitle(doc, 'Activity Voucher');
+        this.writeKeyValue(doc, 'Activity', service.description || dayTitle);
+        this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
+        this.writeKeyValue(doc, 'Program', dayTitle);
+        this.writeKeyValue(doc, 'Pickup', [service.pickupTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-');
+        this.writeKeyValue(doc, 'Supplier', voucher.supplier?.name || service.supplierName || '-');
+        this.writeKeyValue(doc, 'Pax', String(service.participantCount || pax));
         this.writeKeyValue(doc, 'Notes', notes);
       } else {
         this.writeSectionTitle(doc, 'External Package Voucher');
@@ -8532,56 +8679,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      quote: {
-        clientCompanyId: companyId,
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildPaymentCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      booking: {
-        quote: {
-          clientCompanyId: companyId,
-        },
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildBookingServiceCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      booking: {
-        quote: {
-          clientCompanyId: companyId,
-        },
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildVoucherCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      booking: {
-        quote: {
-          clientCompanyId: companyId,
-        },
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildBookingAuditLogCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      booking: {
-        quote: {
-          clientCompanyId: companyId,
-        },
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private async assertBookingExists(bookingId: string, actor?: CompanyScopedActor) {
@@ -8646,6 +8765,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return normalized;
+  }
+
+  private async generateNextBookingRef(prismaClient: Prisma.TransactionClient | PrismaService) {
+    const year = new Date().getUTCFullYear();
+    const prefix = `BK-${year}-`;
+    const latestBooking = await (prismaClient.booking as any).findFirst({
+      where: {
+        bookingRef: {
+          startsWith: prefix,
+        },
+      },
+      select: {
+        bookingRef: true,
+      },
+      orderBy: {
+        bookingRef: 'desc',
+      },
+    });
+    const currentSequence = latestBooking?.bookingRef ? Number(latestBooking.bookingRef.slice(prefix.length)) : 0;
+    const nextSequence = Number.isInteger(currentSequence) ? currentSequence + 1 : 1;
+
+    return `${prefix}${String(nextSequence).padStart(4, '0')}`;
   }
 
   private normalizePaymentDate(value: string | Date | null | undefined, errorMessage: string) {

@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AdminPageTabs } from '../../components/AdminPageTabs';
 import { AdvancedFiltersPanel } from '../../components/AdvancedFiltersPanel';
 import { CollapsibleCreatePanel } from '../../components/CollapsibleCreatePanel';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
@@ -12,16 +11,15 @@ import { getMarginColor, getMarginMetrics } from '../../lib/financials';
 import { getItineraryDayDisplay } from '../../lib/itineraryDayDisplay';
 import { formatNightCountLabel } from '../../lib/formatters';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
-import { BookingOperationsHeader } from './BookingOperationsHeader';
-import { BookingOperationsStatCard } from './BookingOperationsStatCard';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
-import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { BookingDocumentActions } from './BookingDocumentActions';
 import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
 import { BookingServiceTimeline } from './BookingServiceTimeline';
 import { BookingPortalLinkActions } from './BookingPortalLinkActions';
 import { BookingFinancialsTab } from './BookingFinancialsTab';
 import { type BookingPaymentRecord } from './BookingPaymentsSection';
+import { CancelBookingButton } from './CancelBookingButton';
+import { AmendBookingButton } from './AmendBookingButton';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
 
@@ -217,6 +215,9 @@ type Booking = {
   id: string;
   accessToken: string;
   bookingType: BookingType;
+  amendmentNumber: number;
+  amendedFromId: string | null;
+  isLatestAmendment?: boolean;
   status: BookingStatus;
   statusNote: string | null;
   adults: number;
@@ -327,6 +328,14 @@ type Booking = {
     totalSell: number;
     supplierId: string | null;
     supplierName: string | null;
+    activityId?: string | null;
+    activity?: {
+      id: string;
+      name: string;
+      description: string | null;
+      durationMinutes?: number | null;
+      active?: boolean;
+    } | null;
     serviceType: string;
     operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE' | null;
     operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
@@ -424,6 +433,7 @@ type BookingPageProps = {
     created?: string;
     tab?:
       | 'overview'
+      | 'itinerary'
       | 'operations'
       | 'services'
       | 'passengers-rooming'
@@ -441,16 +451,17 @@ type BookingPageProps = {
   }>;
 };
 
-type BookingDetailTab = 'overview' | 'services' | 'passengers' | 'rooming' | 'financials' | 'documents' | 'audit-log';
+type BookingDetailTab = 'overview' | 'itinerary' | 'services' | 'passengers' | 'rooming' | 'financials' | 'documents' | 'audit-log';
 
-const BOOKING_DETAIL_TABS: Array<{ id: BookingDetailTab; label: string }> = [
+const BOOKING_ROUTE_TABS: BookingDetailTab[] = ['overview', 'itinerary', 'services', 'passengers', 'rooming', 'financials', 'documents', 'audit-log'];
+
+const BOOKING_DASHBOARD_TABS: Array<{ id: BookingDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'services', label: 'Operations' },
+  { id: 'itinerary', label: 'Itinerary' },
   { id: 'passengers', label: 'Passengers' },
-  { id: 'rooming', label: 'Rooming' },
-  { id: 'financials', label: 'Financials' },
+  { id: 'services', label: 'Operations' },
   { id: 'documents', label: 'Documents' },
-  { id: 'audit-log', label: 'Audit Log' },
+  { id: 'audit-log', label: 'Internal Notes' },
 ];
 
 async function getBooking(id: string): Promise<Booking | null> {
@@ -865,13 +876,58 @@ function buildRoomingBadgeTooltip(booking: Booking) {
   ]);
 }
 
+function getBookingWorkflowStep(status: BookingStatus) {
+  if (status === 'draft') return 'pending';
+  if (status === 'confirmed') return 'confirmed';
+  if (status === 'in_progress') return 'in-operation';
+  if (status === 'completed') return 'completed';
+  return 'cancelled';
+}
+
+function getBookingPrimaryAction(status: BookingStatus, allowedTransitions: BookingStatus[]) {
+  if (allowedTransitions.includes('confirmed')) {
+    return { label: 'Confirm booking', targetStatus: 'confirmed' as BookingStatus };
+  }
+
+  if (status === 'confirmed') {
+    return { label: 'Assign operations', hrefTab: 'services' as BookingDetailTab };
+  }
+
+  if (allowedTransitions.includes('completed')) {
+    return { label: 'Complete booking', targetStatus: 'completed' as BookingStatus };
+  }
+
+  return null;
+}
+
+function getBookingServiceTimeLabel(service: Booking['services'][number]) {
+  return [
+    service.serviceDate ? formatDateOnly(service.serviceDate) : null,
+    service.startTime ? `Start ${service.startTime}` : null,
+    service.pickupTime ? `Pickup ${service.pickupTime}` : null,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function getPassengerRoomAssignmentLabel(
+  passengerId: string,
+  roomingEntries: Booking['roomingEntries'],
+) {
+  const entry = roomingEntries.find((room) =>
+    room.assignments.some((assignment) => assignment.bookingPassenger.id === passengerId),
+  );
+
+  return entry ? getRoomLabel(entry) : 'Unassigned';
+}
+
 function resolveActiveBookingTab(tab?: string): BookingDetailTab {
   if (tab === 'operations') return 'services';
   if (tab === 'passengers-rooming') return 'passengers';
   if (tab === 'finance') return 'financials';
   if (tab === 'timeline') return 'audit-log';
 
-  return BOOKING_DETAIL_TABS.some((entry) => entry.id === tab) ? (tab as BookingDetailTab) : 'overview';
+  return BOOKING_ROUTE_TABS.includes(tab as BookingDetailTab) ? (tab as BookingDetailTab) : 'overview';
 }
 
 export default async function BookingPage({ params, searchParams }: BookingPageProps) {
@@ -898,14 +954,9 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const hasItineraryDays = sortedDays.length > 0;
   const quotedTotals = getMarginMetrics(booking.finance.quotedTotalSell, booking.finance.quotedTotalCost);
   const realizedTotals = getMarginMetrics(booking.finance.realizedTotalSell, booking.finance.realizedTotalCost);
-  const tripSummary = getValidatedTripSummary({
-    quoteTitle: snapshot.title,
-    quoteDescription: snapshot.description,
-    dayTitles: sortedDays.map((day) => day.title),
-    totalPax,
-    nightCount: snapshot.nightCount,
-  });
   const portalUrl = `${APP_BASE_URL}/invoice/${encodeURIComponent(booking.accessToken)}`;
+  const bookingCancelled = booking.status === 'cancelled';
+  const bookingReadOnly = bookingCancelled || booking.isLatestAmendment === false;
   const allowedTransitions = getAllowedBookingStatusTransitions(booking.status);
   const timeline = buildBookingTimeline(booking);
   const bookingPayments = booking.payments;
@@ -913,9 +964,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const assignedPassengerIds = new Set(
     booking.roomingEntries.flatMap((entry) => entry.assignments.map((assignment) => assignment.bookingPassenger.id)),
   );
-  const confirmedServicesCount = booking.services.filter((service) => service.confirmationStatus === 'confirmed').length;
   const pendingConfirmationsCount = booking.services.filter((service) => service.confirmationStatus !== 'confirmed').length;
-  const readyServicesCount = booking.services.filter((service) => service.status === 'ready' || service.status === 'confirmed').length;
   const activityServicesMissingOpsCount = booking.services.filter((service) => {
     const normalized = String(service.serviceType || '').trim().toLowerCase();
     const activityService =
@@ -966,62 +1015,130 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
     { label: 'Supplier payments tracked', complete: !booking.finance.hasUnpaidSupplierObligation },
   ];
   const buildTabHref = (tab: BookingDetailTab) => `/bookings/${booking.id}?tab=${tab}`;
+  const destinationLabel = sortedDays[0]?.title || booking.days?.[0]?.title || 'Destination pending';
+  const dateRangeLabel = snapshot.travelStartDate
+    ? `${formatDateOnly(snapshot.travelStartDate)}${snapshot.nightCount > 0 ? ` - ${formatNightCountLabel(snapshot.nightCount)}` : ''}`
+    : 'Dates pending';
+  const contactName = `${booking.contactSnapshotJson.firstName} ${booking.contactSnapshotJson.lastName}`.trim();
+  const amendmentLabel = `A${booking.amendmentNumber ?? 1}`;
+  const durationLabel = formatNightCountLabel(snapshot.nightCount);
+  const totalSell = booking.finance.realizedTotalSell || booking.finance.quotedTotalSell || booking.pricingSnapshotJson.totalSell || snapshot.totalSell || 0;
+  const workflowActiveStep = getBookingWorkflowStep(booking.status);
+  const workflowSteps = [
+    { id: 'pending', label: 'Pending' },
+    { id: 'confirmed', label: 'Confirmed' },
+    { id: 'in-operation', label: 'In Operation' },
+    { id: 'completed', label: 'Completed' },
+    { id: 'closed', label: 'Closed' },
+    { id: 'cancelled', label: 'Cancelled' },
+  ];
+  const primaryAction = bookingReadOnly ? null : getBookingPrimaryAction(booking.status, allowedTransitions);
 
   return (
     <main className="page booking-ops-page">
       <section className="panel booking-ops-workspace-page">
         <div className="booking-ops-shell">
-          <BookingOperationsHeader
-            bookingId={booking.id}
-            bookingRef={bookingRef}
-            title={snapshot.title}
-            companyName={booking.clientSnapshotJson.name}
-            contactName={`${booking.contactSnapshotJson.firstName} ${booking.contactSnapshotJson.lastName}`}
-            travelSummary={tripSummary}
-            badges={
-              <>
-                <BookingOperationsStatusBadge kind="booking" status={booking.status} />
-                <BookingOperationsStatusBadge kind="invoice" status={booking.finance.clientInvoiceStatus} />
-                <BookingOperationsStatusBadge kind="supplier-payment" status={booking.finance.supplierPaymentStatus} />
-              </>
-            }
-            actions={
-              <>
-                <Link href={`/quotes/${booking.quote.id}`} className="secondary-button">
-                  Source quote
+          <section className="booking-dashboard-header">
+            <div className="booking-dashboard-header-main">
+              <Link href="/bookings" className="back-link">
+                Back to bookings
+              </Link>
+              <div className="booking-dashboard-title-row">
+                <div>
+                  <p className="eyebrow">Booking {bookingRef}</p>
+                  <h1>{snapshot.title}</h1>
+                </div>
+                <div className="booking-dashboard-status-stack">
+                  <BookingOperationsStatusBadge kind="booking" status={booking.status} />
+                  <BookingOperationsStatusBadge kind="invoice" status={booking.finance.clientInvoiceStatus} />
+                </div>
+              </div>
+              <div className="booking-dashboard-meta-grid">
+                <div>
+                  <span>Client</span>
+                  <strong>{booking.clientSnapshotJson.name}</strong>
+                </div>
+                <div>
+                  <span>Contact</span>
+                  <strong>{contactName || 'Contact pending'}</strong>
+                </div>
+                <div>
+                  <span>Destination</span>
+                  <strong>{destinationLabel}</strong>
+                </div>
+                <div>
+                  <span>Dates</span>
+                  <strong>{dateRangeLabel}</strong>
+                </div>
+                <div>
+                  <span>Pax</span>
+                  <strong>{totalPax} pax</strong>
+                </div>
+                <div>
+                  <span>Amendment</span>
+                  <strong>{amendmentLabel}</strong>
+                </div>
+              </div>
+            </div>
+            <div className="booking-dashboard-actions" aria-label="Booking actions">
+              {allowedTransitions.length > 0 && !bookingReadOnly ? (
+                <RowDetailsPanel
+                  summary="Save"
+                  description="Update booking status"
+                  className="booking-dashboard-action-panel"
+                  bodyClassName="operations-row-details-body"
+                >
+                  <InlineRowEditorShell>
+                    <form action={`/api/bookings/${booking.id}/status`} method="POST" className="quote-status-form">
+                      <label>
+                        Booking status
+                        <select name="status" defaultValue={allowedTransitions[0]}>
+                          {allowedTransitions.map((status) => (
+                            <option key={status} value={status}>
+                              {formatBookingStatus(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Note
+                        <input type="text" name="note" placeholder="Optional workflow note" />
+                      </label>
+                      <div className="quote-status-actions">
+                        <button type="submit">Save status</button>
+                      </div>
+                    </form>
+                  </InlineRowEditorShell>
+                </RowDetailsPanel>
+              ) : (
+                <button type="button" className="secondary-button" disabled>
+                  Save
+                </button>
+              )}
+              <Link href={buildTabHref('documents')} className="secondary-button">
+                Generate documents
+              </Link>
+              {bookingReadOnly ? (
+                <button type="button" className="secondary-button" disabled>
+                  Assign operations
+                </button>
+              ) : (
+                <Link href={buildTabHref('services')} className="secondary-button">
+                  Assign operations
                 </Link>
-                <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
-                  Voucher
+              )}
+              {bookingReadOnly ? (
+                <button type="button" className="secondary-button" disabled>
+                  Add passengers
+                </button>
+              ) : (
+                <Link href={buildTabHref('passengers')} className="secondary-button">
+                  Add passengers
                 </Link>
-              </>
-            }
-          />
-
-          <section className="booking-ops-stat-grid">
-            <BookingOperationsStatCard label="Total services" value={booking.services.length} helper="Booked execution rows" />
-            <BookingOperationsStatCard label="Confirmed services" value={confirmedServicesCount} helper="Supplier confirmed" />
-            <BookingOperationsStatCard
-              label="Pending confirmations"
-              value={pendingConfirmationsCount}
-              helper="Outstanding supplier follow-up"
-              tone={pendingConfirmationsCount > 0 ? 'accent' : 'default'}
-            />
-            <BookingOperationsStatCard
-              label="Supplier payment"
-              value={formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}
-              helper={booking.finance.hasUnpaidSupplierObligation ? 'Obligations still open' : 'Supplier side in shape'}
-              tone={booking.finance.hasUnpaidSupplierObligation ? 'accent' : 'default'}
-            />
-            <BookingOperationsStatCard
-              label="Party"
-              value={`${totalPax} pax`}
-              helper={`${snapshot.roomCount} rooms / ${formatNightCountLabel(snapshot.nightCount)}`}
-            />
-            <BookingOperationsStatCard
-              label="Created"
-              value={formatDateTime(booking.createdAt)}
-              helper={resolvedSearchParams?.created === '1' ? 'Created from accepted quote version' : 'Execution record live'}
-            />
+              )}
+              <AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} />
+              {!bookingReadOnly ? <CancelBookingButton bookingId={booking.id} /> : null}
+            </div>
           </section>
 
           {(warningMessage || resolvedSearchParams?.success) ? (
@@ -1031,46 +1148,38 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             </section>
           ) : null}
 
-          <div className="booking-ops-tab-shell">
-            <AdminPageTabs
-              ariaLabel="Booking detail sections"
-              activeTab={activeTab}
-              tabs={BOOKING_DETAIL_TABS.map((tab) => ({
-                ...tab,
-                href: buildTabHref(tab.id),
-                badge:
-                  tab.id === 'services'
-                    ? booking.operations.badge.count
-                    : tab.id === 'rooming'
-                      ? booking.rooming.badge.count
-                      : tab.id === 'financials'
-                        ? booking.finance.badge.count
-                        : null,
-                badgeTitle:
-                  tab.id === 'services'
-                    ? buildOperationsBadgeTooltip(booking)
-                    : tab.id === 'rooming'
-                      ? buildRoomingBadgeTooltip(booking)
-                      : tab.id === 'financials'
-                        ? buildFinanceBadgeTooltip(booking)
-                        : undefined,
-                badgeTone:
-                  tab.id === 'services'
-                    ? booking.operations.badge.tone === 'none'
-                      ? 'default'
-                      : booking.operations.badge.tone
-                    : tab.id === 'rooming'
-                      ? booking.rooming.badge.tone === 'none'
-                        ? 'default'
-                        : booking.rooming.badge.tone
-                      : tab.id === 'financials'
-                        ? booking.finance.badge.tone === 'none'
-                          ? 'default'
-                          : booking.finance.badge.tone
-                        : 'default',
-              }))}
-            />
-          </div>
+          <nav className="booking-dashboard-workflow" aria-label="Booking lifecycle">
+            {workflowSteps.map((step) => (
+              <span
+                key={step.id}
+                className={`booking-dashboard-workflow-step${workflowActiveStep === step.id ? ' booking-dashboard-workflow-step-active' : ''}`}
+              >
+                {step.label}
+              </span>
+            ))}
+          </nav>
+
+          <nav className="booking-dashboard-tabs" aria-label="Booking detail sections">
+            {BOOKING_DASHBOARD_TABS.map((tab) => {
+              const badge =
+                tab.id === 'services'
+                  ? booking.operations.badge.count
+                  : tab.id === 'passengers'
+                    ? booking.rooming.badge.count
+                    : null;
+
+              return (
+                <Link
+                  key={tab.id}
+                  href={buildTabHref(tab.id)}
+                  className={`booking-dashboard-tab${activeTab === tab.id ? ' booking-dashboard-tab-active' : ''}`}
+                >
+                  {tab.label}
+                  {badge ? <span>{badge}</span> : null}
+                </Link>
+              );
+            })}
+          </nav>
 
           <div className="booking-ops-layout">
             <div className="section-stack booking-ops-main">
@@ -1252,6 +1361,69 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                 </div>
               ) : null}
 
+              {activeTab === 'itinerary' ? (
+                <section className="section-stack">
+                  <TableSectionShell
+                    title="Day-by-day itinerary"
+                    description="Operational view of hotel, transport, activity, and supplement services by travel day."
+                    context={<p>{booking.services.length} service rows</p>}
+                  >
+                    <div className="booking-dashboard-day-list">
+                      {(booking.days || []).length === 0 ? (
+                        <BookingOperationsEmptyState
+                          eyebrow="Itinerary"
+                          title="No booking days yet"
+                          description="Booking days will appear here once the accepted quote itinerary has been converted."
+                        />
+                      ) : (
+                        (booking.days || []).map((day) => {
+                          const dayServices = booking.services.filter((service) => service.bookingDayId === day.id);
+
+                          return (
+                            <article key={day.id} className="booking-dashboard-day-card">
+                              <div className="booking-dashboard-day-head">
+                                <div>
+                                  <p className="eyebrow">Day {day.dayNumber}</p>
+                                  <h3>{day.title}</h3>
+                                  <p>{formatDateOnly(day.date)}</p>
+                                </div>
+                                <BookingOperationsStatusBadge kind="custom" label={day.status} tone={day.status === 'DONE' ? 'success' : 'neutral'} />
+                              </div>
+                              {day.notes ? <p className="detail-copy">{day.notes}</p> : null}
+                              <div className="booking-dashboard-service-grid">
+                                {dayServices.length === 0 ? (
+                                  <p className="empty-state">No services assigned to this day.</p>
+                                ) : (
+                                  dayServices.map((service) => (
+                                    <article
+                                      key={service.id}
+                                      className="booking-dashboard-service-card"
+                                      data-activity-id={service.activityId || service.activity?.id || undefined}
+                                    >
+                                      <div>
+                                        <span>{formatOperationType(service.operationType || service.serviceType)}</span>
+                                        <strong>{service.activity?.name || service.description}</strong>
+                                      </div>
+                                      {service.activity?.description ? <p>{service.activity.description}</p> : null}
+                                      <p>{getBookingServiceTimeLabel(service) || 'Timing pending'}</p>
+                                      <p>{service.supplierName || 'Supplier unassigned'}</p>
+                                      <div className="booking-dashboard-service-footer">
+                                        <BookingOperationsStatusBadge kind="lifecycle" status={service.status} />
+                                        <span>{formatConfirmationStatus(service.confirmationStatus)}</span>
+                                      </div>
+                                    </article>
+                                  ))
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })
+                      )}
+                    </div>
+                  </TableSectionShell>
+                </section>
+              ) : null}
+
               {activeTab === 'documents' ? (
                 <section className="workspace-section booking-ops-panel-card">
                   <div className="workspace-section-head">
@@ -1262,6 +1434,15 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                   </div>
                   <div className="booking-ops-doc-grid">
                     <article className="detail-card">
+                      <p className="eyebrow">Passenger Manifest</p>
+                      <p className="detail-copy">Excel manifest with masked passport display preserved in the admin list.</p>
+                      <div className="workspace-document-actions">
+                        <Link href={`/api/bookings/${booking.id}/passengers/export`} className="secondary-button">
+                          Manifest Excel
+                        </Link>
+                      </div>
+                    </article>
+                    <article className="detail-card">
                       <p className="eyebrow">Guarantee Letter</p>
                       <p className="detail-copy">Includes passenger manifest, travel details, program, transport, and guide assignment details.</p>
                       <div className="workspace-document-actions">
@@ -1271,9 +1452,21 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       </div>
                     </article>
                     <article className="detail-card">
-                      <p className="eyebrow">Voucher</p>
+                      <p className="eyebrow">Hotel Vouchers</p>
                       <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
-                        Open voucher
+                        Open hotel vouchers
+                      </Link>
+                    </article>
+                    <article className="detail-card">
+                      <p className="eyebrow">Transport Vouchers</p>
+                      <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                        Open transport vouchers
+                      </Link>
+                    </article>
+                    <article className="detail-card">
+                      <p className="eyebrow">Activity Vouchers</p>
+                      <Link href={`/bookings/${booking.id}/voucher`} className="secondary-button">
+                        Open activity vouchers
                       </Link>
                     </article>
                     <article className="detail-card">
@@ -1344,6 +1537,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       <p className="detail-copy">
                         Allowed next statuses: {allowedTransitions.length > 0 ? allowedTransitions.map(formatBookingStatus).join(', ') : 'No further transitions'}
                       </p>
+                      {!bookingCancelled ? <CancelBookingButton bookingId={booking.id} /> : null}
                       <form action={`/api/bookings/${booking.id}/status`} method="POST" className="quote-status-form">
                         <label>
                           Booking status
@@ -1421,7 +1615,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                             ? [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || 'Guide pending'
                                             : service.operationType === 'HOTEL'
                                               ? service.confirmationNumber || 'Confirmation pending'
-                                              : service.description}
+                                              : service.activity?.name || service.description}
                                       </td>
                                       <td>{service.supplierName || 'Not assigned'}</td>
                                       <td>{service.operationStatus || service.confirmationStatus.toUpperCase()}</td>
@@ -1665,11 +1859,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                           <thead>
                             <tr>
                               <th>Passenger</th>
-                              <th>Nationality</th>
                               <th>Passport</th>
-                              <th>Expiry</th>
+                              <th>Nationality</th>
+                              <th>DOB</th>
+                              <th>Room assignment</th>
                               <th>Role</th>
-                              <th>Assignments</th>
                               <th>Notes</th>
                               <th>Details</th>
                             </tr>
@@ -1680,11 +1874,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                 <td>
                                   <strong>{passenger.fullName || formatPassengerName(passenger)}</strong>
                                 </td>
-                                <td>{passenger.nationality || 'Missing'}</td>
                                 <td>{passenger.passportNumberMasked || 'Missing'}</td>
-                                <td>{formatDateOnly(passenger.passportExpiryDate)}</td>
+                                <td>{passenger.nationality || 'Missing'}</td>
+                                <td>{formatDateOnly(passenger.dateOfBirth)}</td>
+                                <td>{getPassengerRoomAssignmentLabel(passenger.id, booking.roomingEntries)}</td>
                                 <td>{passenger.isLead ? 'Lead' : 'Passenger'}</td>
-                                <td>{passenger.roomingAssignments.length}</td>
                                 <td>{passenger.notes || 'No passenger notes'}</td>
                                 <td>
                                   <RowDetailsPanel summary="Open details" description="Edit passenger, update lead ownership, or remove" className="operations-row-details" bodyClassName="operations-row-details-body">
@@ -2033,10 +2227,89 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
 
               {activeTab === 'audit-log' ? (
                 <section className="section-stack">
+                  <section className="booking-ops-grid-two">
+                    <article className="workspace-section booking-ops-panel-card">
+                      <div className="workspace-section-head">
+                        <div>
+                          <p className="eyebrow">Sales Notes</p>
+                          <h2>Client context</h2>
+                        </div>
+                      </div>
+                      <p className="detail-copy">{snapshot.description || booking.statusNote || 'No sales notes recorded.'}</p>
+                    </article>
+
+                    <article className="workspace-section booking-ops-panel-card">
+                      <div className="workspace-section-head">
+                        <div>
+                          <p className="eyebrow">Operations Notes</p>
+                          <h2>Execution notes</h2>
+                        </div>
+                      </div>
+                      <div className="audit-log-list">
+                        {booking.services.filter((service) => service.notes || service.statusNote).length === 0 ? (
+                          <p className="empty-state">No operations notes recorded.</p>
+                        ) : (
+                          booking.services
+                            .filter((service) => service.notes || service.statusNote)
+                            .slice(0, 6)
+                            .map((service) => (
+                              <div key={service.id} className="audit-log-item">
+                                <strong>{service.description}</strong>
+                                <p>{service.notes || service.statusNote}</p>
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </article>
+
+                    <article className="workspace-section booking-ops-panel-card">
+                      <div className="workspace-section-head">
+                        <div>
+                          <p className="eyebrow">Supplier Notes</p>
+                          <h2>Supplier coordination</h2>
+                        </div>
+                      </div>
+                      <div className="audit-log-list">
+                        {booking.services.filter((service) => service.confirmationNotes || service.supplierReference).length === 0 ? (
+                          <p className="empty-state">No supplier notes recorded.</p>
+                        ) : (
+                          booking.services
+                            .filter((service) => service.confirmationNotes || service.supplierReference)
+                            .slice(0, 6)
+                            .map((service) => (
+                              <div key={service.id} className="audit-log-item">
+                                <strong>{service.supplierName || service.description}</strong>
+                                <p>{service.confirmationNotes || service.supplierReference}</p>
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </article>
+
+                    <article className="workspace-section booking-ops-panel-card">
+                      <div className="workspace-section-head">
+                        <div>
+                          <p className="eyebrow">Amendment History</p>
+                          <h2>{amendmentLabel}</h2>
+                        </div>
+                      </div>
+                      <div className="quote-preview-total-list">
+                        <div>
+                          <span>Current amendment</span>
+                          <strong>{amendmentLabel}</strong>
+                        </div>
+                        <div>
+                          <span>Source amendment</span>
+                          <strong>{booking.amendedFromId ? booking.amendedFromId.slice(0, 8).toUpperCase() : 'Original booking'}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </section>
+
                   <section className="workspace-section booking-ops-panel-card">
                     <div className="workspace-section-head">
                       <div>
-                        <p className="eyebrow">Audit Log</p>
+                        <p className="eyebrow">Internal Notes</p>
                         <h2>Workflow history</h2>
                       </div>
                     </div>
@@ -2067,6 +2340,61 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             </div>
 
             <aside className="booking-ops-sidebar">
+              <article className="workspace-section booking-ops-sidebar-card booking-dashboard-summary-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Summary</p>
+                    <h3>{bookingRef}</h3>
+                  </div>
+                  <BookingOperationsStatusBadge kind="booking" status={booking.status} />
+                </div>
+                <div className="booking-ops-sidebar-list">
+                  <div>
+                    <span>Pax</span>
+                    <strong>{totalPax}</strong>
+                  </div>
+                  <div>
+                    <span>Duration</span>
+                    <strong>{durationLabel}</strong>
+                  </div>
+                  <div>
+                    <span>Total sell price</span>
+                    <strong>{formatMoney(totalSell)}</strong>
+                  </div>
+                  <div>
+                    <span>Client</span>
+                    <strong>{booking.clientSnapshotJson.name}</strong>
+                  </div>
+                  <div>
+                    <span>Contact</span>
+                    <strong>{contactName || 'Contact pending'}</strong>
+                  </div>
+                  <div>
+                    <span>Last update</span>
+                    <strong>{formatDateTime(booking.updatedAt)}</strong>
+                  </div>
+                </div>
+                {primaryAction ? (
+                  primaryAction.hrefTab ? (
+                    <Link href={buildTabHref(primaryAction.hrefTab)} className="primary-button booking-dashboard-primary-action">
+                      {primaryAction.label}
+                    </Link>
+                  ) : (
+                    <form action={`/api/bookings/${booking.id}/status`} method="POST" className="booking-dashboard-primary-action-form">
+                      <input type="hidden" name="status" value={primaryAction.targetStatus} />
+                      <input type="hidden" name="note" value={`${primaryAction.label} from booking dashboard`} />
+                      <button type="submit" className="primary-button booking-dashboard-primary-action">
+                        {primaryAction.label}
+                      </button>
+                    </form>
+                  )
+                ) : (
+                  <button type="button" className="primary-button booking-dashboard-primary-action" disabled>
+                    No primary action
+                  </button>
+                )}
+              </article>
+
               <article className="workspace-section booking-ops-sidebar-card">
                 <div className="workspace-section-head">
                   <div>
