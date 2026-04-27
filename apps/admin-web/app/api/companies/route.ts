@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
     'Content-Type': 'application/json',
     ...buildActorHeaders(request),
   };
-  console.log(headers);
 
   const response = await fetch(`${API_BASE_URL}/companies`, {
     method: 'POST',

@@ -41,11 +41,8 @@ export class CompaniesService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     return this.prisma.company.findMany({
-      where: {
-        id: companyId,
-      },
       include: {
         branding: true,
         _count: {
@@ -61,11 +58,10 @@ export class CompaniesService {
   }
 
   async findOne(id: string, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    requireActorCompanyId(actor);
     const company = await this.prisma.company.findFirst({
       where: {
         id,
-        AND: [{ id: companyId }],
       },
       include: {
         branding: true,
@@ -85,21 +81,32 @@ export class CompaniesService {
   }
 
   async create(data: CreateCompanyInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    const existingCompany = await this.prisma.company.findFirst({
-      where: {
-        id: companyId,
+    requireActorCompanyId(actor);
+    const name = data.name?.trim();
+
+    if (!name) {
+      throw new BadRequestException('Company name is required');
+    }
+
+    return this.prisma.company.create({
+      data: {
+        name,
+        type: normalizeOptionalString(data.type),
+        website: normalizeOptionalString(data.website),
+        logoUrl: normalizeOptionalString(data.logoUrl),
+        primaryColor: this.normalizeCompanyColor(data.primaryColor),
+        country: normalizeOptionalString(data.country),
+        city: normalizeOptionalString(data.city),
       },
       include: {
         branding: true,
+        _count: {
+          select: {
+            contacts: true,
+          },
+        },
       },
     });
-
-    if (!existingCompany) {
-      throw new BadRequestException('Company not found');
-    }
-
-    return existingCompany;
   }
 
   async update(id: string, data: UpdateCompanyInput, actor?: CompanyScopedActor) {
