@@ -166,12 +166,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  findAll(actor?: CompanyScopedActor) {
+  async findAll(actor?: CompanyScopedActor) {
     const bookingWhere = this.buildBookingCompanyWhere(actor);
-    return (this.prisma.booking as any)
-      .findMany({
+    try {
+      const bookings = await (this.prisma.booking as any).findMany({
         where: bookingWhere,
-        include: {
+        select: {
+          id: true,
+          quoteId: true,
+          bookingRef: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          snapshotJson: true,
+          clientSnapshotJson: true,
+          pricingSnapshotJson: true,
+          roomCount: true,
           passengers: {
             select: {
               id: true,
@@ -222,13 +232,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             take: 8,
           },
           services: {
-            include: {
-              auditLogs: {
-                orderBy: {
-                  createdAt: 'desc',
-                },
-                take: 8,
-              },
+            select: {
+              id: true,
+              bookingId: true,
+              serviceType: true,
+              serviceDate: true,
+              startTime: true,
+              pickupTime: true,
+              pickupLocation: true,
+              meetingPoint: true,
+              reconfirmationRequired: true,
+              reconfirmationDueAt: true,
+              status: true,
+              confirmationStatus: true,
+              totalCost: true,
+              totalSell: true,
             },
             orderBy: [
               { serviceOrder: 'asc' },
@@ -239,8 +257,33 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         orderBy: {
           createdAt: 'desc',
         },
-      })
-      .then((bookings: any[]) => bookings.map((booking) => this.attachFinanceSummary(booking)));
+      });
+
+      return bookings.map((booking: any) => this.attachFinanceSummary(this.normalizeBookingListRelations(booking)));
+    } catch (error) {
+      console.error('[bookings/findAll] failed to load booking list with relations', error);
+
+      const bookings = await (this.prisma.booking as any).findMany({
+        where: bookingWhere,
+        select: {
+          id: true,
+          quoteId: true,
+          bookingRef: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          snapshotJson: true,
+          clientSnapshotJson: true,
+          pricingSnapshotJson: true,
+          roomCount: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      return bookings.map((booking: any) => this.attachFinanceSummary(this.normalizeBookingListRelations(booking)));
+    }
   }
 
   findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
@@ -5256,6 +5299,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       ...passenger,
       passportNumberMasked: this.maskPassportNumber(passenger.passportNumber),
       passportNumber: undefined,
+    };
+  }
+
+  private normalizeBookingListRelations(booking: any) {
+    return {
+      ...booking,
+      sourceQuoteId: booking?.sourceQuoteId ?? booking?.quoteId ?? null,
+      passengers: Array.isArray(booking?.passengers) ? booking.passengers : [],
+      roomingEntries: Array.isArray(booking?.roomingEntries) ? booking.roomingEntries : [],
+      services: Array.isArray(booking?.services) ? booking.services : [],
+      payments: Array.isArray(booking?.payments) ? booking.payments : [],
+      auditLogs: Array.isArray(booking?.auditLogs) ? booking.auditLogs : [],
     };
   }
 

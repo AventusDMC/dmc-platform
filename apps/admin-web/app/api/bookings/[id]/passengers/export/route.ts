@@ -4,6 +4,7 @@ import { buildPassengerManifestExportApiUrl } from '../../../passenger-manifest-
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const EXCEL_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const DEFAULT_EXPORT_FILENAME = 'passenger-manifest.xlsx';
 
 export async function GET(
   request: NextRequest,
@@ -17,11 +18,24 @@ export async function GET(
     cache: 'no-store',
     redirect: 'manual',
   });
-  const headers = new Headers(response.headers);
-  headers.set('Content-Type', headers.get('Content-Type') || EXCEL_CONTENT_TYPE);
-  headers.set('Content-Disposition', headers.get('Content-Disposition') || `attachment; filename="${id}-passenger-manifest.xlsx"`);
 
-  return new Response(response.body, {
+  if (!response.ok) {
+    const errorText = await response.text();
+    return new Response(errorText || `Passenger manifest export failed with status ${response.status}`, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
+  }
+
+  const body = await response.arrayBuffer();
+  const headers = new Headers();
+  headers.set('Content-Type', EXCEL_CONTENT_TYPE);
+  headers.set('Content-Disposition', `attachment; filename="${DEFAULT_EXPORT_FILENAME}"`);
+
+  return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers,

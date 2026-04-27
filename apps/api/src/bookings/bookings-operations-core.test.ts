@@ -230,6 +230,114 @@ test('cross-company booking access is scoped through clientCompanyId', async () 
   assert.equal(whereClause.quote.clientCompanyId, 'company-a');
 });
 
+test('GET /bookings returns list with post-migration-safe booking service select', async () => {
+  let findManyArgs: any;
+  const service = createService({
+    booking: {
+      findMany: async (args: any) => {
+        findManyArgs = args;
+        return [
+          {
+            id: 'booking-1',
+            quoteId: 'quote-1',
+            bookingRef: 'BK-1',
+            status: 'confirmed',
+            createdAt: new Date('2026-04-27T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+            snapshotJson: { title: 'Recovered production booking', totalCost: 100, totalSell: 130 },
+            clientSnapshotJson: { name: 'Client Co' },
+            pricingSnapshotJson: { totalCost: 100, totalSell: 130 },
+            roomCount: 1,
+            passengers: [],
+            roomingEntries: [],
+            payments: [],
+            auditLogs: [],
+            services: [
+              {
+                id: 'service-1',
+                bookingId: 'booking-1',
+                serviceType: 'Transport',
+                serviceDate: null,
+                startTime: null,
+                pickupTime: null,
+                pickupLocation: null,
+                meetingPoint: null,
+                reconfirmationRequired: false,
+                reconfirmationDueAt: null,
+                status: 'ready',
+                confirmationStatus: 'pending',
+                totalCost: 100,
+                totalSell: 130,
+              },
+            ],
+          },
+        ];
+      },
+    },
+  });
+  const controller = new BookingsController(service, {});
+
+  const bookings = await controller.findAll({ companyId: 'company-1' } as any);
+
+  assert.equal(findManyArgs.where.quote.clientCompanyId, 'company-1');
+  assert.equal(findManyArgs.select.services.select.operationType, undefined);
+  assert.equal(findManyArgs.select.services.select.bookingDayId, undefined);
+  assert.equal(bookings.length, 1);
+  assert.equal(bookings[0].id, 'booking-1');
+  assert.equal(bookings[0].sourceQuoteId, 'quote-1');
+  assert.equal(bookings[0].finance.quotedTotalSell, 130);
+  assert.equal(bookings[0].operations.badge.breakdown.pendingConfirmations, 1);
+});
+
+test('GET /bookings falls back to base booking list when optional relations fail', async () => {
+  const originalConsoleError = console.error;
+  const loggedErrors: any[] = [];
+  let callCount = 0;
+  console.error = (...args: any[]) => {
+    loggedErrors.push(args);
+  };
+
+  try {
+    const service = createService({
+      booking: {
+        findMany: async (args: any) => {
+          callCount += 1;
+          if (args.select?.services) {
+            throw new Error('column booking_services.bookingDayId does not exist');
+          }
+          return [
+            {
+              id: 'booking-1',
+              quoteId: 'quote-1',
+              bookingRef: 'BK-1',
+              status: 'confirmed',
+              createdAt: new Date('2026-04-27T00:00:00.000Z'),
+              updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+              snapshotJson: { title: 'Fallback booking', totalCost: 100, totalSell: 120 },
+              clientSnapshotJson: { name: 'Client Co' },
+              pricingSnapshotJson: { totalCost: 100, totalSell: 120 },
+              roomCount: 1,
+            },
+          ];
+        },
+      },
+    });
+    const controller = new BookingsController(service, {});
+
+    const bookings = await controller.findAll({ companyId: 'company-1' } as any);
+
+    assert.equal(callCount, 2);
+    assert.equal(loggedErrors.length, 1);
+    assert.match(String(loggedErrors[0][0]), /\[bookings\/findAll\]/);
+    assert.equal(bookings.length, 1);
+    assert.deepEqual(bookings[0].services, []);
+    assert.deepEqual(bookings[0].passengers, []);
+    assert.equal(bookings[0].finance.quotedTotalSell, 120);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 test('operations dashboard returns scoped counts and missing passenger alerts', async () => {
   const bookingBase = {
     id: 'booking-1',
