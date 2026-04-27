@@ -128,28 +128,46 @@ test('booking detail masks passport number in list response', async () => {
         adults: 1,
         children: 0,
         roomCount: 1,
-        services: [],
-        auditLogs: [],
-        payments: [],
-        roomingEntries: [],
-        passengers: [
-          {
-            id: 'passenger-1',
-            fullName: 'Lina Haddad',
-            firstName: 'Lina',
-            lastName: 'Haddad',
-            title: null,
-            passportNumber: 'P1234567',
-            isLead: true,
-            roomingAssignments: [],
-          },
-        ],
-        quote: {
-          clientCompany: { id: 'company-1', name: 'Client Co' },
-          brandCompany: null,
-          contact: {},
-        },
       }),
+    },
+    quote: {
+      findUnique: async () => ({
+        clientCompany: { id: 'company-1', name: 'Client Co' },
+        brandCompany: null,
+        contact: {},
+      }),
+    },
+    quoteVersion: {
+      findUnique: async () => null,
+    },
+    bookingAuditLog: {
+      findMany: async () => [],
+    },
+    bookingPassenger: {
+      findMany: async () => [
+        {
+          id: 'passenger-1',
+          fullName: 'Lina Haddad',
+          firstName: 'Lina',
+          lastName: 'Haddad',
+          title: null,
+          passportNumber: 'P1234567',
+          isLead: true,
+          roomingAssignments: [],
+        },
+      ],
+    },
+    bookingDay: {
+      findMany: async () => [],
+    },
+    bookingRoomingEntry: {
+      findMany: async () => [],
+    },
+    payment: {
+      findMany: async () => [],
+    },
+    bookingService: {
+      findMany: async () => [],
     },
   });
 
@@ -333,6 +351,99 @@ test('GET /bookings falls back to base booking list when optional relations fail
     assert.deepEqual(bookings[0].services, []);
     assert.deepEqual(bookings[0].passengers, []);
     assert.equal(bookings[0].finance.quotedTotalSell, 120);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('GET /bookings/:id returns base booking when optional relation loads fail after migration recovery', async () => {
+  const originalConsoleError = console.error;
+  const loggedErrors: any[] = [];
+  console.error = (...args: any[]) => {
+    loggedErrors.push(args);
+  };
+
+  try {
+    const service = createService({
+      booking: {
+        findFirst: async ({ where }: any) => {
+          assert.equal(where.quote.clientCompanyId, 'company-1');
+          return {
+            id: 'booking-1',
+            quoteId: 'quote-1',
+            acceptedVersionId: 'version-1',
+            bookingRef: 'BK-1',
+            bookingType: 'FIT',
+            status: 'confirmed',
+            createdAt: new Date('2026-04-27T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+            snapshotJson: { title: 'Recovered booking', totalCost: 100, totalSell: 120 },
+            clientSnapshotJson: { name: 'Client Co' },
+            brandSnapshotJson: null,
+            contactSnapshotJson: { firstName: 'Lina', lastName: 'Haddad' },
+            itinerarySnapshotJson: {},
+            pricingSnapshotJson: { totalCost: 100, totalSell: 120 },
+            adults: 2,
+            children: 0,
+            pax: 2,
+            roomCount: 1,
+            nightCount: 2,
+            accessToken: 'token-1',
+          };
+        },
+      },
+      quote: {
+        findUnique: async () => {
+          throw new Error('relation quote failed');
+        },
+      },
+      quoteVersion: {
+        findUnique: async () => {
+          throw new Error('relation accepted version failed');
+        },
+      },
+      bookingAuditLog: {
+        findMany: async () => {
+          throw new Error('relation audit logs failed');
+        },
+      },
+      bookingPassenger: {
+        findMany: async () => {
+          throw new Error('relation passengers failed');
+        },
+      },
+      bookingDay: {
+        findMany: async () => {
+          throw new Error('relation booking days failed');
+        },
+      },
+      bookingRoomingEntry: {
+        findMany: async () => {
+          throw new Error('relation rooming failed');
+        },
+      },
+      payment: {
+        findMany: async () => {
+          throw new Error('relation payments failed');
+        },
+      },
+      bookingService: {
+        findMany: async () => {
+          throw new Error('relation services failed');
+        },
+      },
+    });
+    const controller = new BookingsController(service, {});
+
+    const booking = await controller.findOne('booking-1', { companyId: 'company-1' } as any);
+
+    assert.equal(booking.id, 'booking-1');
+    assert.deepEqual(booking.passengers, []);
+    assert.deepEqual(booking.days, []);
+    assert.deepEqual(booking.services, []);
+    assert.equal(booking.quote.clientCompany, null);
+    assert.equal(booking.finance.quotedTotalSell, 120);
+    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[booking/findById] services')));
   } finally {
     console.error = originalConsoleError;
   }

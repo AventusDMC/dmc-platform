@@ -286,84 +286,125 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
-    return (this.prisma.booking as any).findFirst({
+  async findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
+    const baseBooking = await (this.prisma.booking as any).findFirst({
       where: {
         id,
         ...this.buildBookingCompanyWhere(actor),
       },
-      include: {
-        quote: {
-          include: {
-            clientCompany: true,
-            brandCompany: true,
-            contact: true,
-          },
-        },
-        acceptedVersion: true,
-        auditLogs: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 12,
-        },
-        passengers: {
-          orderBy: [
-            { isLead: 'desc' },
-            { createdAt: 'asc' },
-          ],
-          include: {
-            roomingAssignments: {
-              select: {
-                bookingRoomingEntryId: true,
-              },
-            },
-          },
-        },
-        days: {
-          orderBy: [{ dayNumber: 'asc' }],
-        },
-        roomingEntries: {
-          orderBy: [
-            { sortOrder: 'asc' },
-            { createdAt: 'asc' },
-          ],
-          include: {
-            assignments: {
-              include: {
-                bookingPassenger: true,
-              },
-              orderBy: {
-                createdAt: 'asc',
-              },
-            },
-          },
-        },
-        payments: {
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        },
-        services: {
-          include: {
-            bookingDay: true,
-            vehicle: true,
-            vouchers: true,
-            auditLogs: {
-              orderBy: {
-                createdAt: 'desc',
-              },
-              take: 6,
-            },
-          },
-          orderBy: [
-            { serviceOrder: 'asc' },
-            { id: 'asc' },
-          ],
-        },
-      },
-    }).then((booking: any) => {
-      if (!booking) {
-        return null;
+    });
+
+    if (!baseBooking) {
+      return null;
+    }
+
+    const safeLoad = async <T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await load();
+      } catch (error) {
+        console.error(`[booking/findById] ${label}`, error);
+        return fallback;
       }
+    };
+
+    const [
+      quote,
+      acceptedVersion,
+      auditLogs,
+      passengers,
+      days,
+      roomingEntries,
+      paymentRows,
+      services,
+    ] = await Promise.all([
+      safeLoad('quote', () => (this.prisma.quote as any).findUnique({
+        where: { id: baseBooking.quoteId },
+        include: {
+          clientCompany: true,
+          brandCompany: true,
+          contact: true,
+        },
+      }), null),
+      safeLoad('acceptedVersion', () => (this.prisma.quoteVersion as any).findUnique({
+        where: { id: baseBooking.acceptedVersionId },
+      }), null),
+      safeLoad('auditLogs', () => (this.prisma.bookingAuditLog as any).findMany({
+        where: { bookingId: id },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: 12,
+      }), []),
+      safeLoad('passengers', () => (this.prisma.bookingPassenger as any).findMany({
+        where: { bookingId: id },
+        orderBy: [
+          { isLead: 'desc' },
+          { createdAt: 'asc' },
+        ],
+        include: {
+          roomingAssignments: {
+            select: {
+              bookingRoomingEntryId: true,
+            },
+          },
+        },
+      }), []),
+      safeLoad('days', () => (this.prisma.bookingDay as any).findMany({
+        where: { bookingId: id },
+        orderBy: [{ dayNumber: 'asc' }],
+      }), []),
+      safeLoad('roomingEntries', () => (this.prisma.bookingRoomingEntry as any).findMany({
+        where: { bookingId: id },
+        orderBy: [
+          { sortOrder: 'asc' },
+          { createdAt: 'asc' },
+        ],
+        include: {
+          assignments: {
+            include: {
+              bookingPassenger: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+      }), []),
+      safeLoad('payments', () => (this.prisma.payment as any).findMany({
+        where: { bookingId: id },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }), []),
+      safeLoad('services', () => (this.prisma.bookingService as any).findMany({
+        where: { bookingId: id },
+        include: {
+          bookingDay: true,
+          vehicle: true,
+          vouchers: true,
+          auditLogs: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 6,
+          },
+        },
+        orderBy: [
+          { serviceOrder: 'asc' },
+          { id: 'asc' },
+        ],
+      }), []),
+    ]);
+
+    const booking = {
+      ...baseBooking,
+      quote,
+      acceptedVersion,
+      auditLogs,
+      passengers,
+      days,
+      roomingEntries,
+      payments: paymentRows,
+      services,
+    };
 
       const payments: DerivedPaymentRecord[] = this.sortPaymentRecords(
         (booking.payments || []).map((payment: any) => this.mapPaymentRecord(payment)),
@@ -389,14 +430,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           roomingEntries: booking.roomingEntries,
         }),
         quote: {
-          ...booking.quote,
-          company: booking.quote.clientCompany,
-          clientCompany: booking.quote.clientCompany,
-          brandCompany: booking.quote.brandCompany ?? booking.quote.clientCompany,
+          ...(booking.quote || {}),
+          company: booking.quote?.clientCompany || null,
+          clientCompany: booking.quote?.clientCompany || null,
+          brandCompany: booking.quote?.brandCompany ?? booking.quote?.clientCompany ?? null,
         },
         sourceQuoteId: booking.quoteId,
       };
-      });
   }
 
   findPortalBooking(id: string, token?: string) {

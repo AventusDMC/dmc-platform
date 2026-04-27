@@ -7,9 +7,148 @@ function createQuotesService(prisma: any = {}) {
   return new QuotesService(
     prisma,
     { log: async () => null } as any,
+    {} as any,
+    {} as any,
     new QuotePricingService(),
   );
 }
+
+function createBaseQuote(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'quote-1',
+    quoteNumber: 'Q-1',
+    clientCompanyId: 'company-1',
+    brandCompanyId: null,
+    contactId: 'contact-1',
+    agentId: null,
+    title: 'Recovered Quote',
+    description: 'Quote detail should still load',
+    status: 'DRAFT',
+    quoteType: 'FIT',
+    bookingType: 'FIT',
+    jordanPassType: 'NONE',
+    adults: 2,
+    children: 0,
+    roomCount: 1,
+    nightCount: 2,
+    singleSupplement: null,
+    travelStartDate: new Date('2026-06-01T00:00:00.000Z'),
+    quoteCurrency: 'USD',
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: null,
+    focType: 'none',
+    focRatio: null,
+    focCount: null,
+    focRoomType: null,
+    totalCost: 100,
+    totalSell: 130,
+    pricePerPax: 65,
+    markupPercent: 0,
+    createdAt: new Date('2026-04-27T00:00:00.000Z'),
+    updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+test('quote detail returns base quote when optional relation loads fail after migration recovery', async () => {
+  const originalConsoleError = console.error;
+  const loggedErrors: any[] = [];
+  console.error = (...args: any[]) => {
+    loggedErrors.push(args);
+  };
+
+  try {
+    const service = createQuotesService({
+      quote: {
+        findFirst: async () => createBaseQuote(),
+      },
+      company: {
+        findUnique: async () => {
+          throw new Error('relation company branding failed');
+        },
+      },
+      contact: {
+        findUnique: async () => {
+          throw new Error('relation contact failed');
+        },
+      },
+      quotePricingSlab: {
+        findMany: async () => {
+          throw new Error('relation pricing slabs failed');
+        },
+      },
+      quoteItem: {
+        findMany: async () => {
+          throw new Error('relation quote items failed');
+        },
+      },
+      itinerary: {
+        findMany: async () => {
+          throw new Error('relation itineraries failed');
+        },
+      },
+      quoteOption: {
+        findMany: async () => {
+          throw new Error('relation quote options failed');
+        },
+      },
+      quoteScenario: {
+        findMany: async () => {
+          throw new Error('relation scenarios failed');
+        },
+      },
+      invoice: {
+        findUnique: async () => {
+          throw new Error('relation invoice failed');
+        },
+      },
+      booking: {
+        findUnique: async () => {
+          throw new Error('relation booking failed');
+        },
+      },
+    });
+
+    const quote = await service.findOne('quote-1', { companyId: 'company-1' });
+
+    assert.equal(quote.id, 'quote-1');
+    assert.deepEqual(quote.quoteItems, []);
+    assert.deepEqual(quote.itineraries, []);
+    assert.deepEqual(quote.quoteOptions, []);
+    assert.deepEqual(quote.scenarios, []);
+    assert.equal(quote.invoice, null);
+    assert.equal(quote.booking, null);
+    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[quote/findById] quoteItems')));
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('quote versions endpoint returns empty list when versions relation fails after migration recovery', async () => {
+  const originalConsoleError = console.error;
+  const loggedErrors: any[] = [];
+  console.error = (...args: any[]) => {
+    loggedErrors.push(args);
+  };
+
+  try {
+    const service = createQuotesService({
+      quoteVersion: {
+        findMany: async () => {
+          throw new Error('relation quote versions failed');
+        },
+      },
+    });
+
+    const versions = await service.findVersions('quote-1');
+
+    assert.deepEqual(versions, []);
+    assert.ok(loggedErrors.some((entry) => String(entry[0]).includes('[quote/findById] versions')));
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
 
 test('accepted quote conversion creates booking with client company pax dates and booking days', async () => {
   let bookingCreateData: any;

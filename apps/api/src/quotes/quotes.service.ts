@@ -386,7 +386,7 @@ export class QuotesService {
   }
 
   findOne(id: string, actor?: CompanyScopedActor) {
-    return this.loadQuoteState(id, this.prisma, actor).then((quote: any) => (quote ? this.attachResolvedQuoteFields(quote) : null));
+    return this.loadQuoteState(id, this.prisma, actor);
   }
 
   private generatePublicQuoteToken() {
@@ -2239,6 +2239,9 @@ export class QuotesService {
       orderBy: {
         versionNumber: 'desc',
       },
+    }).catch((error) => {
+      console.error('[quote/findById] versions', error);
+      return [];
     });
   }
 
@@ -5843,141 +5846,151 @@ export class QuotesService {
     });
   }
 
-  private loadQuoteState(id: string, prismaClient: any = this.prisma, actor?: CompanyScopedActor) {
+  private async loadQuoteState(id: string, prismaClient: any = this.prisma, actor?: CompanyScopedActor) {
     const companyId = actor?.companyId?.trim() || null;
-    return prismaClient.quote.findFirst({
+    const quote = await prismaClient.quote.findFirst({
       where: {
         id,
         ...(companyId ? { clientCompanyId: companyId } : {}),
       },
-      include: {
-        clientCompany: {
-          include: {
-            branding: true,
-          },
-        },
-        brandCompany: {
-          include: {
-            branding: true,
-          },
-        },
-        contact: true,
-        agent: {
+    } as any);
+
+    if (!quote) {
+      return null;
+    }
+
+    const safeLoad = async <T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await load();
+      } catch (error) {
+        console.error(`[quote/findById] ${label}`, error);
+        return fallback;
+      }
+    };
+
+    const [
+      clientCompany,
+      brandCompany,
+      contact,
+      agent,
+      pricingSlabs,
+      quoteItems,
+      itineraries,
+      quoteOptions,
+      scenarios,
+      invoice,
+      booking,
+    ] = await Promise.all([
+      safeLoad('clientCompany', () => prismaClient.company.findUnique({
+        where: { id: quote.clientCompanyId },
+        include: { branding: true },
+      }), null),
+      safeLoad('brandCompany', () => quote.brandCompanyId
+        ? prismaClient.company.findUnique({
+          where: { id: quote.brandCompanyId },
+          include: { branding: true },
+        })
+        : Promise.resolve(null), null),
+      safeLoad('contact', () => prismaClient.contact.findUnique({
+        where: { id: quote.contactId },
+      }), null),
+      safeLoad('agent', () => quote.agentId
+        ? prismaClient.user.findUnique({
+          where: { id: quote.agentId },
           select: {
             id: true,
             firstName: true,
             lastName: true,
             email: true,
           },
+        })
+        : Promise.resolve(null), null),
+      safeLoad('pricingSlabs', () => prismaClient.quotePricingSlab.findMany({
+        where: { quoteId: quote.id },
+        orderBy: [{ minPax: 'asc' }, { maxPax: 'asc' }, { createdAt: 'asc' }],
+      }), [] as any[]),
+      safeLoad('quoteItems', () => prismaClient.quoteItem.findMany({
+        where: {
+          quoteId: quote.id,
+          optionId: null,
         },
-        pricingSlabs: {
-          orderBy: [
-            {
-              minPax: 'asc',
+        include: {
+          service: { include: { serviceType: true } },
+          itinerary: true,
+          hotel: true,
+          contract: true,
+          roomCategory: true,
+          appliedVehicleRate: {
+            include: {
+              vehicle: true,
+              serviceType: true,
             },
-            {
-              maxPax: 'asc',
-            },
-            {
-              createdAt: 'asc',
-            },
-          ],
-        },
-        quoteItems: {
-          where: {
-            optionId: null,
-          },
-          include: {
-            service: {
-              include: {
-                serviceType: true,
-              },
-            },
-            itinerary: true,
-            hotel: true,
-            contract: true,
-            roomCategory: true,
-            appliedVehicleRate: {
-              include: {
-                vehicle: true,
-                serviceType: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
           },
         },
-        itineraries: {
-          include: {
-            images: {
-              include: {
-                galleryImage: true,
-              },
-              orderBy: [
-                {
-                  sortOrder: 'asc',
-                },
-                {
-                  id: 'asc',
-                },
-              ],
-            },
-          },
-          orderBy: {
-            dayNumber: 'asc',
+        orderBy: { createdAt: 'desc' },
+      }), [] as any[]),
+      safeLoad('itineraries', () => prismaClient.itinerary.findMany({
+        where: { quoteId: quote.id },
+        include: {
+          images: {
+            include: { galleryImage: true },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
           },
         },
-        quoteOptions: {
-          include: {
-            hotelCategory: true,
-            quoteItems: {
-              include: {
-                service: {
-                  include: {
-                    serviceType: true,
-                  },
-                },
-                itinerary: true,
-                hotel: true,
-                contract: true,
-                roomCategory: true,
-                appliedVehicleRate: {
-                  include: {
-                    vehicle: true,
-                    serviceType: true,
-                  },
+        orderBy: { dayNumber: 'asc' },
+      }), [] as any[]),
+      safeLoad('quoteOptions', () => prismaClient.quoteOption.findMany({
+        where: { quoteId: quote.id },
+        include: {
+          hotelCategory: true,
+          quoteItems: {
+            include: {
+              service: { include: { serviceType: true } },
+              itinerary: true,
+              hotel: true,
+              contract: true,
+              roomCategory: true,
+              appliedVehicleRate: {
+                include: {
+                  vehicle: true,
+                  serviceType: true,
                 },
               },
-              orderBy: {
-                createdAt: 'desc',
-              },
             },
-          },
-          orderBy: {
-            createdAt: 'asc',
+            orderBy: { createdAt: 'desc' },
           },
         },
-        scenarios: {
-          orderBy: {
-            paxCount: 'asc',
-          },
-        },
-        invoice: true,
-        booking: true,
-      },
-    } as any).then((quote: any) => {
-      if (!quote) {
-        return null;
-      }
+        orderBy: { createdAt: 'asc' },
+      }), [] as any[]),
+      safeLoad('scenarios', () => prismaClient.quoteScenario.findMany({
+        where: { quoteId: quote.id },
+        orderBy: { paxCount: 'asc' },
+      }), [] as any[]),
+      safeLoad('invoice', () => prismaClient.invoice.findUnique({
+        where: { quoteId: quote.id },
+      }), null),
+      safeLoad('booking', () => prismaClient.booking.findUnique({
+        where: { quoteId: quote.id },
+      }), null),
+    ]);
 
-      return this.attachResolvedQuoteFields({
-        ...quote,
-        quoteOptions: quote.quoteOptions.map((option: any) => ({
-          ...option,
-          ...this.calculateOptionTotals(option, quote.adults + quote.children),
-        })),
-      });
+    return this.attachResolvedQuoteFields({
+      ...quote,
+      clientCompany,
+      brandCompany,
+      contact,
+      agent,
+      pricingSlabs,
+      quoteItems,
+      itineraries,
+      quoteOptions: quoteOptions.map((option: any) => ({
+        ...option,
+        quoteItems: option.quoteItems || [],
+        ...this.calculateOptionTotals({ ...option, quoteItems: option.quoteItems || [] }, quote.adults + quote.children),
+      })),
+      scenarios,
+      invoice,
+      booking,
     });
   }
 
