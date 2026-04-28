@@ -1196,7 +1196,7 @@ export function QuoteAutoItineraryBuilder({
     }, 350);
   }
 
-  async function saveDraft(draft: PreviewDraft) {
+  async function applyItinerary(draft: PreviewDraft) {
     const { savedDays, createdDayCount } = await saveItineraryDays(draft.days);
 
     let createdItems = 0;
@@ -1350,7 +1350,7 @@ export function QuoteAutoItineraryBuilder({
     setSendReadiness(null);
 
     try {
-      await saveDraft(preview);
+      await applyItinerary(preview);
       setSendReadiness(
         buildSendReadinessState({
           draft: preview,
@@ -1375,12 +1375,9 @@ export function QuoteAutoItineraryBuilder({
 
     try {
       const draft = buildDaysOnlyPreview();
-      const { savedDays, createdDayCount } = await saveItineraryDays(draft.days);
       setPreview(draft);
       setComparison(null);
-      setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));
-      notifySavedDaysReady(savedDays);
-      router.refresh();
+      await applyItinerary(draft);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not generate the draft itinerary.');
     } finally {
@@ -1407,7 +1404,7 @@ export function QuoteAutoItineraryBuilder({
 
       setComparison(nextComparison);
       setPreview(selectedDraft);
-      await saveDraft(selectedDraft);
+      await applyItinerary(selectedDraft);
       setSendReadiness(
         buildSendReadinessState({
           draft: selectedDraft,
@@ -1493,7 +1490,7 @@ export function QuoteAutoItineraryBuilder({
           {isSaving && isGenerating ? 'Generating & Pricing...' : 'Generate & Price Itinerary'}
         </button>
         <button type="button" className="secondary-button" onClick={() => void handleGenerateDraftItinerary()} disabled={isSaving || isGenerating}>
-          {isSaving && !isGenerating ? 'Generating...' : 'Generate a draft itinerary'}
+          {isSaving && !isGenerating ? 'Generating & Saving...' : 'Generate & Save Draft Itinerary'}
         </button>
         <button type="button" className="secondary-button" onClick={() => void generatePreview()} disabled={isGenerating}>
           {isGenerating ? 'Optimizing...' : 'Preview Draft'}

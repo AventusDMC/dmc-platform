@@ -228,9 +228,14 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteAutoItineraryBuilderSource, [
+      'async function applyItinerary(draft: PreviewDraft)',
+      'await applyItinerary(draft);',
+      "Generate & Save Draft Itinerary",
+      "Generating & Saving...",
       "window.dispatchEvent(new CustomEvent('dmc:quote-itinerary-days-ready', { detail: { quoteId: quote.id, days } }));",
       "document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView",
       'setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));',
+      'router.refresh();',
     ]);
   });
 
