@@ -8,6 +8,12 @@ import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
+import {
+  buildItineraryApplyMessage,
+  getAutoItineraryDayTitle,
+  mergeExistingItineraryDays,
+  type AutoItineraryExistingDay,
+} from './QuoteAutoItineraryBuilder.logic';
 
 type SupplierService = {
   id: string;
@@ -197,6 +203,12 @@ type CreatedDay = {
   dayNumber: number;
   title: string;
   description: string | null;
+  notes?: string | null;
+};
+
+type QuoteItineraryResponse = {
+  quoteId: string;
+  days: CreatedDay[];
 };
 
 type QuoteAutoItineraryBuilderProps = {
@@ -779,9 +791,10 @@ async function buildPreviewDraft(values: {
   const dayCount = Math.max(values.nightCount + 1, cities.length || 1);
   const days: PreviewDay[] = Array.from({ length: dayCount }, (_, index) => {
     const city = cities[Math.min(index, Math.max(cities.length - 1, 0))] || `Day ${index + 1}`;
+    const dayNumber = index + 1;
     return {
-      dayNumber: index + 1,
-      title: index === 0 ? `Arrival in ${city}` : index === dayCount - 1 ? `Departure from ${city}` : `${city} stay`,
+      dayNumber,
+      title: getAutoItineraryDayTitle(dayNumber, dayCount),
       city,
       date: addDays(values.travelStartDate, index),
     };
@@ -980,7 +993,7 @@ export function QuoteAutoItineraryBuilder({
     setPreview(null);
     setComparison(null);
     setSendReadiness(null);
-    setMessage('Itinerary preview cancelled. No changes were applied.');
+    setMessage('Preview closed. No changes were applied.');
   }
 
   function buildComparisonDelta(option: ComparisonOption, baseline: ComparisonOption) {
@@ -1099,6 +1112,7 @@ export function QuoteAutoItineraryBuilder({
       headers: buildAuthHeaders({
         'Content-Type': 'application/json',
       }),
+      credentials: 'include',
       body: JSON.stringify(body),
     });
 
@@ -1109,135 +1123,180 @@ export function QuoteAutoItineraryBuilder({
     return readJsonResponse<T>(response, fallbackMessage);
   }
 
-  async function saveDraft(draft: PreviewDraft, successMessage: string) {
-      const existingDays = new Map(quote.itineraries.map((day) => [day.dayNumber, day]));
-      const savedDays = new Map<number, CreatedDay>();
+  async function getCurrentItineraryDays() {
+    const response = await fetch(logFetchUrl(`${apiBaseUrl}/quotes/${quote.id}/itinerary`), {
+      headers: buildAuthHeaders(),
+      credentials: 'include',
+    });
 
-      for (const day of draft.days) {
-        const existingDay = existingDays.get(day.dayNumber);
+    if (!response.ok) {
+      throw new Error(await getErrorMessage(response, 'Could not load current itinerary days.'));
+    }
 
-        if (existingDay) {
-          savedDays.set(day.dayNumber, existingDay);
+    const itinerary = await readJsonResponse<QuoteItineraryResponse>(response, 'Current quote itinerary');
+    return Array.isArray(itinerary.days) ? itinerary.days : [];
+  }
+
+  async function getExistingDayAfterDuplicate(dayNumber: number) {
+    const currentDays = await getCurrentItineraryDays();
+    return currentDays.find((day) => day.dayNumber === dayNumber) || null;
+  }
+
+  async function saveDraft(draft: PreviewDraft) {
+    const currentItineraryDays = await getCurrentItineraryDays().catch(() => [] as CreatedDay[]);
+    const existingDays = mergeExistingItineraryDays(
+      quote.itineraries as AutoItineraryExistingDay[],
+      currentItineraryDays as AutoItineraryExistingDay[],
+    );
+    const savedDays = new Map<number, AutoItineraryExistingDay>();
+    let createdDayCount = 0;
+
+    for (const day of draft.days) {
+      const existingDay = existingDays.get(day.dayNumber);
+
+      if (existingDay) {
+        savedDays.set(day.dayNumber, existingDay);
+        continue;
+      }
+
+      let wasCreated = false;
+      const created = await postJson<CreatedDay>(
+        `${apiBaseUrl}/quotes/${quote.id}/itinerary/day`,
+        {
+          dayNumber: day.dayNumber,
+          title: day.title,
+          notes: day.city ? `Overnight in ${day.city}` : undefined,
+          sortOrder: day.dayNumber,
+          isActive: true,
+        },
+        `Could not create Day ${day.dayNumber}.`,
+      )
+        .then((createdDay) => {
+          wasCreated = true;
+          return createdDay;
+        })
+        .catch(async (error) => {
+          const message = error instanceof Error ? error.message : '';
+
+          if (!/already exists/i.test(message)) {
+            throw error;
+          }
+
+          const duplicateDay = await getExistingDayAfterDuplicate(day.dayNumber);
+
+          if (!duplicateDay) {
+            throw error;
+          }
+
+          return duplicateDay;
+        });
+      createdDayCount += wasCreated ? 1 : 0;
+      savedDays.set(day.dayNumber, created);
+    }
+
+    let createdItems = 0;
+
+    if (transportService && transportServiceType) {
+      for (const item of draft.transports) {
+        const day = savedDays.get(item.dayNumber);
+
+        if (!day || !item.route) {
           continue;
         }
 
-        const created = await postJson<CreatedDay>(
-          `${apiBaseUrl}/quotes/${quote.id}/itinerary/day`,
+        await postJson(
+          `${apiBaseUrl}/quotes/${quote.id}/items`,
           {
-            dayNumber: day.dayNumber,
-            title: day.title,
-            notes: day.city ? `Overnight in ${day.city}` : undefined,
-            sortOrder: day.dayNumber,
-            isActive: true,
+            serviceId: transportService.id,
+            itineraryId: day.id,
+            quantity: 1,
+            paxCount: numericPax,
+            dayCount: 1,
+            markupPercent: 20,
+            transportServiceTypeId: item.selectedCandidate?.serviceType.id || transportServiceType.id,
+            routeId: item.route.id,
+            normalizedKey: item.route.normalizedKey,
+            routeName: '',
+            overrideCost: item.selectedCandidate ? item.selectedCandidate.price : undefined,
+            useOverride: Boolean(item.selectedCandidate),
           },
-          `Could not create Day ${day.dayNumber}.`,
+          `Could not add transport for ${item.fromCity} to ${item.toCity}.`,
         );
-        savedDays.set(day.dayNumber, created);
+        createdItems += 1;
       }
+    }
 
-      let createdItems = 0;
+    if (hotelService) {
+      for (const item of draft.hotels) {
+        const day = savedDays.get(item.dayNumber);
 
-      if (transportService && transportServiceType) {
-        for (const item of draft.transports) {
-          const day = savedDays.get(item.dayNumber);
-
-          if (!day || !item.route) {
-            continue;
-          }
-
-          await postJson(
-            `${apiBaseUrl}/quotes/${quote.id}/items`,
-            {
-              serviceId: transportService.id,
-              itineraryId: day.id,
-              quantity: 1,
-              paxCount: numericPax,
-              dayCount: 1,
-              markupPercent: 20,
-              transportServiceTypeId: item.selectedCandidate?.serviceType.id || transportServiceType.id,
-              routeId: item.route.id,
-              normalizedKey: item.route.normalizedKey,
-              routeName: '',
-              overrideCost: item.selectedCandidate ? item.selectedCandidate.price : undefined,
-              useOverride: Boolean(item.selectedCandidate),
-            },
-            `Could not add transport for ${item.fromCity} to ${item.toCity}.`,
-          );
-          createdItems += 1;
+        if (!day || !item.hotel || !item.contract || !item.rate) {
+          continue;
         }
+
+        await postJson(
+          `${apiBaseUrl}/quotes/${quote.id}/items`,
+          {
+            serviceId: hotelService.id,
+            itineraryId: day.id,
+            quantity: numericRoomCount,
+            paxCount: numericPax,
+            roomCount: numericRoomCount,
+            nightCount: 1,
+            markupPercent: 20,
+            hotelId: item.hotel.id,
+            contractId: item.contract.id,
+            seasonName: item.rate.seasonName,
+            roomCategoryId: item.rate.roomCategoryId,
+            occupancyType: item.rate.occupancyType,
+            mealPlan: item.rate.mealPlan,
+          },
+          `Could not add hotel placeholder for ${item.city}.`,
+        );
+        createdItems += 1;
       }
+    }
 
-      if (hotelService) {
-        for (const item of draft.hotels) {
-          const day = savedDays.get(item.dayNumber);
+    if (activityService) {
+      for (const item of draft.activities) {
+        const day = savedDays.get(item.dayNumber);
+        const previewDay = draft.days.find((candidate) => candidate.dayNumber === item.dayNumber);
 
-          if (!day || !item.hotel || !item.contract || !item.rate) {
-            continue;
-          }
-
-          await postJson(
-            `${apiBaseUrl}/quotes/${quote.id}/items`,
-            {
-              serviceId: hotelService.id,
-              itineraryId: day.id,
-              quantity: numericRoomCount,
-              paxCount: numericPax,
-              roomCount: numericRoomCount,
-              nightCount: 1,
-              markupPercent: 20,
-              hotelId: item.hotel.id,
-              contractId: item.contract.id,
-              seasonName: item.rate.seasonName,
-              roomCategoryId: item.rate.roomCategoryId,
-              occupancyType: item.rate.occupancyType,
-              mealPlan: item.rate.mealPlan,
-            },
-            `Could not add hotel placeholder for ${item.city}.`,
-          );
-          createdItems += 1;
+        if (!day || !item.service || !previewDay?.date) {
+          continue;
         }
+
+        await postJson(
+          `${apiBaseUrl}/quotes/${quote.id}/items`,
+          {
+            serviceId: item.service.id,
+            itineraryId: day.id,
+            serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
+            startTime: '09:00',
+            meetingPoint: item.city,
+            participantCount: numericPax,
+            adultCount: Math.min(numericPax, Math.max(quote.adults, 0)),
+            childCount: Math.max(numericPax - Math.max(quote.adults, 0), 0),
+            quantity: 1,
+            paxCount: numericPax,
+            markupPercent: 20,
+          },
+          `Could not add activity placeholder for ${item.city}.`,
+        );
+        createdItems += 1;
       }
+    }
 
-      if (activityService) {
-        for (const item of draft.activities) {
-          const day = savedDays.get(item.dayNumber);
-          const previewDay = draft.days.find((candidate) => candidate.dayNumber === item.dayNumber);
-
-          if (!day || !item.service || !previewDay?.date) {
-            continue;
-          }
-
-          await postJson(
-            `${apiBaseUrl}/quotes/${quote.id}/items`,
-            {
-              serviceId: item.service.id,
-              itineraryId: day.id,
-              serviceDate: new Date(`${previewDay.date}T09:00:00`).toISOString(),
-              startTime: '09:00',
-              meetingPoint: item.city,
-              participantCount: numericPax,
-              adultCount: Math.min(numericPax, Math.max(quote.adults, 0)),
-              childCount: Math.max(numericPax - Math.max(quote.adults, 0), 0),
-              quantity: 1,
-              paxCount: numericPax,
-              markupPercent: 20,
-            },
-            `Could not add activity placeholder for ${item.city}.`,
-          );
-          createdItems += 1;
-        }
-      }
-
-      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
-      setMessage(successMessage);
-      window.setTimeout(() => {
-        document.querySelector('#pricing-summary, .quote-live-pricing-panel, .quote-pricing-summary-card')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }, 350);
-      router.refresh();
-      return createdItems;
+    window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
+    setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));
+    window.setTimeout(() => {
+      document.querySelector('#pricing-summary, .quote-live-pricing-panel, .quote-pricing-summary-card')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 350);
+    router.refresh();
+    return createdItems;
   }
 
   async function buildOptimizedDraftForMode(mode: OptimizationMode) {
@@ -1274,10 +1333,7 @@ export function QuoteAutoItineraryBuilder({
     setSendReadiness(null);
 
     try {
-      await saveDraft(
-        preview,
-        `Itinerary applied with ${preview.days.length} day${preview.days.length === 1 ? '' : 's'}.`,
-      );
+      await saveDraft(preview);
       setSendReadiness(
         buildSendReadinessState({
           draft: preview,
@@ -1313,7 +1369,7 @@ export function QuoteAutoItineraryBuilder({
 
       setComparison(nextComparison);
       setPreview(selectedDraft);
-      await saveDraft(selectedDraft, 'Itinerary generated and priced');
+      await saveDraft(selectedDraft);
       setSendReadiness(
         buildSendReadinessState({
           draft: selectedDraft,
