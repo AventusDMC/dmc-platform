@@ -128,8 +128,12 @@ test('AXIS color system is applied to admin controls and active navigation', () 
 
 test('admin styles remove old teal primary accents and normalize platform components', () => {
   assert.doesNotMatch(cssSource, /#0f766e|rgba\(15,\s*118,\s*110|#1268d8|rgba\(18,\s*104,\s*216|#0078C8/);
+  assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdf8|#fff7ed|rgba\(255,\s*247,\s*237|rgba\(255,\s*253,\s*248/);
   assert.match(cssSource, /\/\* AXIS platform-wide SaaS system \*\//);
+  assert.match(cssSource, /\/\* AXIS white card consistency overrides \*\//);
   assert.match(cssSource, /\.detail-card,[\s\S]*\.workspace-section,[\s\S]*\.dashboard-panel,[\s\S]*border-radius:\s*12px/);
   assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(31,\s*163,\s*214,\s*0\.12\)/);
   assert.match(cssSource, /\.data-table,[\s\S]*\.reports-visual-table\s*\{[\s\S]*border:\s*1px solid var\(--axis-border\)/);
+  assert.match(cssSource, /\.admin-subnav-link,[\s\S]*\.dashboard-quick-link\s*\{[\s\S]*padding:\s*16px 20px/);
+  assert.match(cssSource, /\.admin-subnav-link:hover,[\s\S]*background:\s*#F3F4F6/);
 });
