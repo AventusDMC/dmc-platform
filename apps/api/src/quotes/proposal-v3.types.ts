@@ -97,12 +97,16 @@ export type ProposalV3Quote = {
   clientCompany?: {
     name?: string | null;
     branding?: {
+      displayName?: string | null;
+      logoUrl?: string | null;
       primaryColor?: string | null;
     } | null;
   } | null;
   brandCompany?: {
     name?: string | null;
     branding?: {
+      displayName?: string | null;
+      logoUrl?: string | null;
       primaryColor?: string | null;
     } | null;
   } | null;

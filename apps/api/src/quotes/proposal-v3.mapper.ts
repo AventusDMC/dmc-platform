@@ -29,7 +29,7 @@ const PLACEHOLDER_TEXT_PATTERNS = [
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
-const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/cropped-Axis-white-logo-1-transparent-blue-1024x482.png';
+const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png';
 const AXIS_PRIMARY_COLOR = '#1FA3D6';
 
 function formatProposalMoney(amount: number, currency = 'USD') {
@@ -178,16 +178,16 @@ function getTravelerName(quote: ProposalV3Quote) {
 }
 
 function getBrandName(quote: ProposalV3Quote) {
-  const rawName =
-    cleanText(quote.brandCompany?.name) ||
-    cleanText(quote.clientCompany?.name) ||
-    AXIS_BRAND_NAME;
+  const candidates = [
+    quote.brandCompany?.branding?.displayName,
+    quote.brandCompany?.name,
+    quote.clientCompany?.branding?.displayName,
+  ];
+  const cleaned = candidates
+    .map((value) => cleanText(value).replace(/^brand\s*-\s*/i, ''))
+    .find((value) => value && !isWeakText(value) && !/desert compass|demo|test|placeholder/i.test(value));
 
-  if (/brand\s*-\s*desert compass jordan/i.test(rawName)) {
-    return 'Desert Compass Jordan';
-  }
-
-  return rawName.replace(/^brand\s*-\s*/i, '');
+  return cleaned || AXIS_BRAND_NAME;
 }
 
 function getAccentColor(quote: ProposalV3Quote) {

@@ -594,8 +594,25 @@ test('proposal PDF template and footer use AXIS branding without warm palette co
   assert.match(serviceSource, /AXIS Destination Management/);
   assert.match(mapperSource, /AXIS_LOGO_URL/);
   assert.match(cssSource, /--proposal-accent:\s*#1FA3D6/);
-  assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|#c8a96a|#8a6a3a|rgba\(200,\s*169,\s*106|rgba\(138,\s*106,\s*58/i);
-  assert.doesNotMatch(serviceSource + mapperSource, /Aventus DMC|PDF sell total|finalCost override/i);
+  assert.match(cssSource, /\.proposal-brand-logo-stage\s*\{[\s\S]*background:\s*#F3F4F6/);
+  assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|#c8a96a|#8a6a3a|rgba\(200,\s*169,\s*106|rgba\(138,\s*106,\s*58|proposal-brand-logo-stage\s*\{[\s\S]*#061B33/i);
+  assert.doesNotMatch(serviceSource + mapperSource, /Aventus DMC|PDF sell total|finalCost override|Desert Compass Jordan/i);
+});
+
+test('proposal PDF brand name falls back to AXIS instead of demo brand labels', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      brandCompany: {
+        name: 'Brand - Desert Compass Jordan',
+        branding: {
+          displayName: null,
+          primaryColor: '#1FA3D6',
+        },
+      },
+    }),
+  );
+
+  assert.equal(proposal.brandName, 'AXIS Destination Management');
 });
 
 test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {
