@@ -262,6 +262,13 @@ type PlannerScope = {
   optionId?: string;
 };
 
+type ServiceWorkflowStep = {
+  category: 'hotel' | 'transport' | 'activity' | 'meal';
+  step: string;
+  label: string;
+  hasItem: boolean;
+};
+
 type ServiceWorkflowState = {
   hasHotel: boolean;
   hasTransport: boolean;
@@ -269,6 +276,7 @@ type ServiceWorkflowState = {
   recommendedCategory: ServicePlannerCategory;
   title: string;
   description: string;
+  steps: ServiceWorkflowStep[];
 };
 
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
