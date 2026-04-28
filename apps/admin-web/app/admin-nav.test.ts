@@ -106,9 +106,20 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {
-  assert.match(cssSource, /--axis-blue:\s*#1268d8/);
+  assert.match(cssSource, /--axis-blue:\s*#0078C8/);
+  assert.match(cssSource, /--axis-navy:\s*#061B33/);
+  assert.match(cssSource, /--axis-background:\s*#F8FAFC/);
+  assert.match(cssSource, /--axis-border:\s*#E5E7EB/);
   assert.match(cssSource, /\.primary-button,\s*\n\.lead-form button,\s*\n\.entity-form button,\s*\n\.invoice-portal-primary-button\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
-  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(18,\s*104,\s*216/);
+  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(0,\s*120,\s*200/);
   assert.match(cssSource, /\.admin-top-nav-link-active::before\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
   assert.match(cssSource, /\.admin-dashboard-page\s*\.dashboard-card\s*span\s*\{[\s\S]*color:\s*var\(--axis-blue-dark\)/);
+});
+
+test('admin styles remove old teal primary accents and normalize platform components', () => {
+  assert.doesNotMatch(cssSource, /#0f766e|rgba\(15,\s*118,\s*110|#1268d8|rgba\(18,\s*104,\s*216/);
+  assert.match(cssSource, /\/\* AXIS platform-wide SaaS system \*\//);
+  assert.match(cssSource, /\.detail-card,[\s\S]*\.workspace-section,[\s\S]*\.dashboard-panel,[\s\S]*border-radius:\s*12px/);
+  assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(0,\s*120,\s*200,\s*0\.12\)/);
+  assert.match(cssSource, /\.data-table,[\s\S]*\.reports-visual-table\s*\{[\s\S]*border:\s*1px solid var\(--axis-border\)/);
 });
