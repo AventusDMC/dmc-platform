@@ -4,6 +4,7 @@ import { QuoteBlocksManager } from './QuoteBlocksManager';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type ServiceType = {
   id: string;
@@ -72,7 +73,7 @@ export default async function QuoteBlocksPage() {
             <p className="detail-copy">Create reusable itinerary-day and service blocks that prefill quote editing forms.</p>
           </div>
         </div>
-        <QuoteBlocksManager apiBaseUrl={API_BASE_URL} blocks={blocks} services={services} serviceTypes={serviceTypes} />
+        <QuoteBlocksManager apiBaseUrl={ACTION_API_BASE_URL} blocks={blocks} services={services} serviceTypes={serviceTypes} />
       </section>
     </main>
   );

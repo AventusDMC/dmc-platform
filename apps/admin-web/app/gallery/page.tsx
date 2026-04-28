@@ -13,6 +13,7 @@ import { GalleryTable } from './GalleryTable';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type GalleryImage = {
   id: string;
@@ -90,12 +91,12 @@ export default async function GalleryPage() {
               context={<p>{images.length} images in scope</p>}
               createPanel={
                 <CollapsibleCreatePanel title="Add image" description="Save a new image URL while keeping the library visible." triggerLabelOpen="Add image">
-                  <GalleryForm apiBaseUrl={API_BASE_URL} />
+                  <GalleryForm apiBaseUrl={ACTION_API_BASE_URL} />
                 </CollapsibleCreatePanel>
               }
               emptyState={<p className="empty-state">No gallery images yet.</p>}
             >
-              {images.length > 0 ? <GalleryTable apiBaseUrl={API_BASE_URL} images={images} /> : null}
+              {images.length > 0 ? <GalleryTable apiBaseUrl={ACTION_API_BASE_URL} images={images} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

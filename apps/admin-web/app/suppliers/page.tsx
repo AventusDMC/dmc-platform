@@ -9,6 +9,7 @@ import { SuppliersTable } from './SuppliersTable';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Supplier = {
   id: string;
@@ -83,12 +84,12 @@ export default async function SuppliersPage() {
                 description="Add a supplier record and keep the list visible."
                 triggerLabelOpen="Add supplier"
               >
-                <SuppliersForm apiBaseUrl={API_BASE_URL} />
+                <SuppliersForm apiBaseUrl={ACTION_API_BASE_URL} />
               </CollapsibleCreatePanel>
             }
             emptyState={suppliers.length === 0 ? <p className="empty-state">No suppliers yet.</p> : undefined}
           >
-            {suppliers.length > 0 ? <SuppliersTable apiBaseUrl={API_BASE_URL} suppliers={suppliers} /> : null}
+            {suppliers.length > 0 ? <SuppliersTable apiBaseUrl={ACTION_API_BASE_URL} suppliers={suppliers} /> : null}
           </TableSectionShell>
         </WorkspaceShell>
       </section>

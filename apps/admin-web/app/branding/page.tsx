@@ -120,7 +120,7 @@ export default async function BrandingPage() {
               emptyState={<p className="empty-state">No companies available for branding setup yet.</p>}
             >
               {companies.length > 0 ? (
-                <BrandingCompaniesTable apiBaseUrl={API_BASE_URL} requestBasePath={BRANDING_PROXY_BASE_PATH} companies={companies} />
+                <BrandingCompaniesTable apiBaseUrl={BRANDING_PROXY_BASE_PATH} requestBasePath={BRANDING_PROXY_BASE_PATH} companies={companies} />
               ) : null}
             </TableSectionShell>
           </section>

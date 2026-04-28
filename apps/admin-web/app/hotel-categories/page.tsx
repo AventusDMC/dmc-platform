@@ -5,6 +5,7 @@ import { HotelCategoriesForm } from './HotelCategoriesForm';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 async function getHotelCategories(): Promise<HotelCategoryOption[]> {
   return adminPageFetchJson<HotelCategoryOption[]>(`${API_BASE_URL}/hotel-categories`, 'Hotel categories', {
@@ -28,7 +29,7 @@ export default async function HotelCategoriesPage() {
         <div className="detail-grid">
           <div className="detail-card">
             <h2>Create category</h2>
-            <HotelCategoriesForm apiBaseUrl={API_BASE_URL} />
+            <HotelCategoriesForm apiBaseUrl={ACTION_API_BASE_URL} />
           </div>
 
           <div className="detail-card">
@@ -52,13 +53,13 @@ export default async function HotelCategoriesPage() {
                     <span>{category.isActive ? 'Active' : 'Inactive'}</span>
                   </div>
                   <InlineEntityActions
-                    apiBaseUrl={API_BASE_URL}
+                    apiBaseUrl={ACTION_API_BASE_URL}
                     deletePath={`/hotel-categories/${category.id}`}
                     deleteLabel="hotel category"
                     confirmMessage={`Delete ${category.name}?`}
                   >
                     <HotelCategoriesForm
-                      apiBaseUrl={API_BASE_URL}
+                      apiBaseUrl={ACTION_API_BASE_URL}
                       hotelCategoryId={category.id}
                       submitLabel="Save category"
                       initialValues={{

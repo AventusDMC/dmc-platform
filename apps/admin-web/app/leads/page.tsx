@@ -14,6 +14,7 @@ import { LeadsTable } from './LeadsTable';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Lead = {
   id: string;
@@ -111,12 +112,12 @@ export default async function LeadsPage() {
               context={<p>{leads.length} leads in scope</p>}
               createPanel={
                 <CollapsibleCreatePanel title="Create lead" description="Capture new inquiries while keeping the inbox visible." triggerLabelOpen="Add lead">
-                  <LeadsForm apiBaseUrl={API_BASE_URL} />
+                  <LeadsForm apiBaseUrl={ACTION_API_BASE_URL} />
                 </CollapsibleCreatePanel>
               }
               emptyState={leads.length === 0 ? <p className="empty-state">No leads yet.</p> : undefined}
             >
-              {leads.length > 0 ? <LeadsTable apiBaseUrl={API_BASE_URL} leads={leads} /> : null}
+              {leads.length > 0 ? <LeadsTable apiBaseUrl={ACTION_API_BASE_URL} leads={leads} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

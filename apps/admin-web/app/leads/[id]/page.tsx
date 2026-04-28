@@ -6,6 +6,7 @@ import { LeadConvertForm } from './LeadConvertForm';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Lead = {
   id: string;
@@ -75,14 +76,14 @@ export default async function LeadDetailsPage({ params }: LeadDetailsPageProps) 
           <div className="detail-card">
             <h2>Edit</h2>
             <LeadEditForm
-              apiBaseUrl={API_BASE_URL}
+              apiBaseUrl={ACTION_API_BASE_URL}
               leadId={lead.id}
               initialInquiry={lead.inquiry}
               initialSource={lead.source}
               initialStatus={lead.status}
             />
             <LeadConvertForm
-              apiBaseUrl={API_BASE_URL}
+              apiBaseUrl={ACTION_API_BASE_URL}
               leadId={lead.id}
               disabled={lead.status === 'converted'}
             />

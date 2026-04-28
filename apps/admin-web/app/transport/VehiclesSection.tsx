@@ -5,6 +5,7 @@ import { VehiclesForm } from '../vehicles/VehiclesForm';
 import { VehiclesTable } from './VehiclesTable';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Vehicle = {
   id: string;
@@ -30,12 +31,12 @@ export async function VehiclesSection() {
       context={<p>{vehicles.length} vehicles in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create vehicle" description="Add fleet inventory without leaving the Transport workspace." triggerLabelOpen="Add vehicle">
-          <VehiclesForm apiBaseUrl={API_BASE_URL} />
+          <VehiclesForm apiBaseUrl={ACTION_API_BASE_URL} />
         </CollapsibleCreatePanel>
       }
       emptyState={vehicles.length === 0 ? <p className="empty-state">No vehicles yet.</p> : undefined}
     >
-      {vehicles.length > 0 ? <VehiclesTable apiBaseUrl={API_BASE_URL} vehicles={vehicles} /> : null}
+      {vehicles.length > 0 ? <VehiclesTable apiBaseUrl={ACTION_API_BASE_URL} vehicles={vehicles} /> : null}
     </TableSectionShell>
   );
 }

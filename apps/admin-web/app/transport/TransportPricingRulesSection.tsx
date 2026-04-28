@@ -7,6 +7,7 @@ import { TransportPricingRuleForm } from '../transport-pricing/TransportPricingR
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Vehicle = {
   id: string;
@@ -113,7 +114,7 @@ export async function TransportPricingRulesSection() {
       createPanel={
         <CollapsibleCreatePanel title="Create pricing rule" description="Add a rule without leaving the grouped pricing view." triggerLabelOpen="Add pricing rule">
           <TransportPricingRuleForm
-            apiBaseUrl={API_BASE_URL}
+            apiBaseUrl={ACTION_API_BASE_URL}
             routes={routes}
             vehicles={vehicles}
             serviceTypes={serviceTypes}
@@ -196,7 +197,7 @@ export async function TransportPricingRulesSection() {
                           <CollapsibleCreatePanel title="Add rule" triggerLabelOpen="Add rule" triggerLabelClose="Hide form">
                             <div className="rates-editor-panel">
                               <TransportPricingRuleForm
-                                apiBaseUrl={API_BASE_URL}
+                                apiBaseUrl={ACTION_API_BASE_URL}
                                 routes={routes}
                                 vehicles={vehicles}
                                 serviceTypes={serviceTypes}
@@ -248,13 +249,13 @@ export async function TransportPricingRulesSection() {
                                 <td>{rule.currency}</td>
                                 <td>
                                   <InlineEntityActions
-                                    apiBaseUrl={API_BASE_URL}
+                                    apiBaseUrl={ACTION_API_BASE_URL}
                                     deletePath={`/transport-pricing/rules/${rule.id}`}
                                     deleteLabel="transport pricing rule"
                                     confirmMessage={`Delete ${rule.route.name} / ${rule.transportServiceType.name}?`}
                                   >
                                     <TransportPricingRuleForm
-                                      apiBaseUrl={API_BASE_URL}
+                                      apiBaseUrl={ACTION_API_BASE_URL}
                                       routes={routes}
                                       vehicles={vehicles}
                                       serviceTypes={serviceTypes}

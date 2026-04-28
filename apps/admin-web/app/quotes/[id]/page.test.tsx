@@ -8,6 +8,7 @@ const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'u
 const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx', import.meta.url), 'utf8');
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
+const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -187,6 +188,21 @@ describe('quote detail page regression', () => {
       '<Link href={`/quotes/${quote.id}`} className="compact-button">',
       '<Link href={`/quotes/${quote.id}?tab=overview`} className="compact-button">',
     ]);
+  });
+
+  it('adds quote services from day cards without creating duplicate itinerary days', () => {
+    expectSourceContains(quoteServicePlannerSource, [
+      'Add services to each day to build your itinerary.',
+      "{ category: 'hotel', label: 'Add Hotel' }",
+      "{ category: 'transport', label: 'Add Transport' }",
+      "{ category: 'activity', label: 'Add Activity' }",
+      'itineraryDayNumber={day.dayNumber}',
+      'itineraryId={day.id}',
+      '<input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />',
+    ]);
+
+    assert.doesNotMatch(quoteServicePlannerSource, /<AddServiceLauncher|function AddServiceLauncher|AutoCreateDayOne/);
+    assert.doesNotMatch(quoteServicePlannerSource, /Creating Day 1 before opening the service form|Could not create Day 1|Day 1 will be created automatically/);
   });
 
   it('routes quote list and detail mutations through admin-web API proxies', () => {

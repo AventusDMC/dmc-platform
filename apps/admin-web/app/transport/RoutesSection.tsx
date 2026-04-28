@@ -9,6 +9,7 @@ import { RoutesForm } from '../routes/RoutesForm';
 import { RoutesCatalogBrowser } from './RoutesCatalogBrowser';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 async function getPlaces(): Promise<PlaceOption[]> {
   return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places`, 'Transport places', {
@@ -44,7 +45,7 @@ export async function RoutesSection() {
       context={<p>{routes.length} routes in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create route" description="Add reusable transport routes with saved place pairs." triggerLabelOpen="Add route">
-          <RoutesForm apiBaseUrl={API_BASE_URL} places={places} cities={cities} placeTypes={placeTypes} />
+          <RoutesForm apiBaseUrl={ACTION_API_BASE_URL} places={places} cities={cities} placeTypes={placeTypes} />
         </CollapsibleCreatePanel>
       }
       emptyState={routes.length === 0 ? <p className="empty-state">No routes yet.</p> : undefined}

@@ -11,6 +11,7 @@ import { TransportServiceTypesTable } from './TransportServiceTypesTable';
 import { VehicleRatesTable } from './VehicleRatesTable';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Vehicle = {
   id: string;
@@ -110,12 +111,12 @@ export async function VehicleRatesSection() {
         context={<p>{serviceTypes.length} service types in scope</p>}
         createPanel={
           <CollapsibleCreatePanel title="Create service type" description="Add reusable transport service labels." triggerLabelOpen="Add service type">
-            <TransportServiceTypeForm apiBaseUrl={API_BASE_URL} />
+            <TransportServiceTypeForm apiBaseUrl={ACTION_API_BASE_URL} />
           </CollapsibleCreatePanel>
         }
         emptyState={serviceTypes.length === 0 ? <p className="empty-state">No transport service types yet.</p> : undefined}
       >
-        {serviceTypes.length > 0 ? <TransportServiceTypesTable apiBaseUrl={API_BASE_URL} serviceTypes={serviceTypes} /> : null}
+        {serviceTypes.length > 0 ? <TransportServiceTypesTable apiBaseUrl={ACTION_API_BASE_URL} serviceTypes={serviceTypes} /> : null}
       </TableSectionShell>
 
       <TableSectionShell
@@ -125,7 +126,7 @@ export async function VehicleRatesSection() {
         createPanel={
           <CollapsibleCreatePanel title="Create vehicle slab" description="Add published transport rates using the current routes and service types." triggerLabelOpen="Add vehicle rate">
             <VehicleRatesForm
-              apiBaseUrl={API_BASE_URL}
+              apiBaseUrl={ACTION_API_BASE_URL}
               vehicles={vehicles}
               serviceTypes={serviceTypes}
               places={places}
@@ -139,7 +140,7 @@ export async function VehicleRatesSection() {
       >
         {vehicleRates.length > 0 ? (
           <VehicleRatesTable
-            apiBaseUrl={API_BASE_URL}
+            apiBaseUrl={ACTION_API_BASE_URL}
             vehicleRates={vehicleRates}
             vehicles={vehicles}
             serviceTypes={serviceTypes}

@@ -11,6 +11,7 @@ import { SupportTextTemplatesManager } from './SupportTextTemplatesManager';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type SupportTextTemplate = {
   id: string;
@@ -100,7 +101,7 @@ export default async function SupportTextTemplatesPage() {
               </AdvancedFiltersPanel>
             </CompactFilterBar>
 
-            <SupportTextTemplatesManager apiBaseUrl={API_BASE_URL} templates={templates} />
+            <SupportTextTemplatesManager apiBaseUrl={ACTION_API_BASE_URL} templates={templates} />
           </section>
         </WorkspaceShell>
       </section>
