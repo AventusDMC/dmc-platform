@@ -37,7 +37,7 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
         <div className="public-proposal-header">
           <div className="public-proposal-title-group">
             <span className="public-proposal-logo-wrapper">
-              <img src="/axis-logo.png" alt="AXIS Destination Management" className="public-proposal-logo" />
+              <img src="/axis-logo-light.png" alt="AXIS Destination Management" className="public-proposal-logo" />
             </span>
             <div>
               <p className="eyebrow">Travel Proposal</p>

@@ -14,7 +14,7 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
   const pathname = usePathname() || '/';
   const navGroups = getVisibleNavGroups(sessionRole);
   const activeGroup = getActiveNavGroup(pathname, sessionRole);
-  const isDashboardRoute = pathname === '/' || pathname === '/dashboard';
+  const isDashboardRoute = pathname === '/admin/dashboard';
 
   if (mode === 'primary') {
     return (

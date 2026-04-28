@@ -21,10 +21,10 @@ test('dashboard invoice loader returns an unavailable empty result when invoices
 });
 
 test('dashboard page uses fault-tolerant invoices and renders an unavailable state', () => {
-  const source = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./admin/dashboard/page.tsx', import.meta.url), 'utf8');
 
-  assert.match(source, /getDashboardInvoices\(\)/);
-  assert.match(source, /const invoices = invoiceResult\.invoices/);
-  assert.match(source, /Invoice data unavailable/);
-  assert.match(source, /Invoice queue unavailable/);
+  assert.match(source, /safeDashboardFetchJson/);
+  assert.match(source, /\/api\/reports\/finance-summary/);
+  assert.match(source, /Outstanding Receivables/);
+  assert.match(source, /Overdue Receivables/);
 });

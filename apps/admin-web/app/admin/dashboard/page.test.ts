@@ -6,6 +6,10 @@ import { calculatePercentChange, formatPercentChange } from './dashboard-metrics
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
 const adminIndexSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
+const rootPageSource = readFileSync(new URL('../../page.tsx', import.meta.url), 'utf8');
+const dashboardAliasSource = readFileSync(new URL('../../dashboard/page.tsx', import.meta.url), 'utf8');
+const adminNavSource = readFileSync(new URL('../../components/AdminChromeNav.tsx', import.meta.url), 'utf8');
+const adminHeaderActionsSource = readFileSync(new URL('../../components/AdminHeaderActions.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 test('admin dashboard renders KPI cards from existing report endpoints', () => {
@@ -78,6 +82,28 @@ test('dashboard attention counts render from alerts', () => {
 
 test('admin index redirects to dashboard homepage', () => {
   assert.match(adminIndexSource, /redirect\('\/admin\/dashboard'\)/);
+});
+
+test('dashboard entry points redirect to the canonical admin dashboard', () => {
+  assert.match(rootPageSource, /redirect\('\/admin\/dashboard'\)/);
+  assert.match(dashboardAliasSource, /redirect\('\/admin\/dashboard'\)/);
+  assert.doesNotMatch(dashboardAliasSource, /export \{ default \} from '..\/page'/);
+  assert.doesNotMatch(rootPageSource, /DashboardHeader|FinanceDashboardSection|RecentQuotesList|RecentBookingsList|Executive Dashboard/);
+});
+
+test('admin dashboard is the only rendered dashboard implementation', () => {
+  assert.match(pageSource, /export const dynamic = 'force-dynamic'/);
+  assert.match(pageSource, /export const revalidate = 0/);
+  assert.match(pageSource, /className="page admin-dashboard-shell"/);
+  assert.match(pageSource, /Admin Dashboard/);
+  assert.doesNotMatch(pageSource, /DashboardHeader|FinanceDashboardSection|RecentQuotesList|RecentBookingsList|Executive Dashboard/);
+});
+
+test('dashboard navigation points to canonical admin dashboard route', () => {
+  assert.match(readFileSync(new URL('../../admin-nav.ts', import.meta.url), 'utf8'), /href:\s*'\/admin\/dashboard'/);
+  assert.match(adminNavSource, /pathname === '\/admin\/dashboard'/);
+  assert.match(adminHeaderActionsSource, /href="\/admin\/dashboard"/);
+  assert.doesNotMatch(adminNavSource + adminHeaderActionsSource, /href=["']\/dashboard["']|href=["']\/["']/);
 });
 
 test('admin dashboard renders with failed report data using safe defaults', () => {

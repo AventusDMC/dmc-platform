@@ -150,13 +150,14 @@ test('admin styles remove old teal primary accents and normalize platform compon
 });
 
 test('public proposal page uses AXIS branding and avoids beige proposal styling', () => {
-  assert.match(proposalPageSource, /src="\/axis-logo\.png"/);
+  assert.match(proposalPageSource, /src="\/axis-logo-light\.png"/);
   assert.match(proposalPageSource, /AXIS Destination Management/);
   assert.match(proposalPageSource, /public-proposal-page/);
   assert.match(proposalPageSource, /public-proposal-frame-card/);
   assert.match(cssSource, /\.public-proposal-page\s*\{[\s\S]*background:\s*#F9FAFB/);
   assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*background:\s*#FFFFFF/);
   assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*border:\s*1px solid #E5E7EB/);
+  assert.match(cssSource, /\.public-proposal-logo-wrapper\s*\{[\s\S]*background:\s*#F3F4F6/);
   assert.match(cssSource, /\.public-proposal-page \.primary-button\s*\{[\s\S]*background:\s*#1FA3D6/);
-  assert.doesNotMatch(proposalPageSource + cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|beige|cream/i);
+  assert.doesNotMatch(proposalPageSource + cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|beige|cream|public-proposal-logo-wrapper\s*\{[\s\S]*#061B33/i);
 });

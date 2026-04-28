@@ -5,6 +5,7 @@ import { adminPageFetchJson } from '../../lib/admin-server';
 import { calculatePercentChange, formatPercentChange } from './dashboard-metrics';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type BookingSummary = {
   totalBookings: number;

@@ -1,1 +1,8 @@
-export { default } from '../page';
+import { redirect } from 'next/navigation';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default function DashboardRedirectPage() {
+  redirect('/admin/dashboard');
+}
