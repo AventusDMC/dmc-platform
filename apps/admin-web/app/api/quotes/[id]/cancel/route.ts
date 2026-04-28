@@ -4,7 +4,7 @@ import { forwardProxyJsonResponse } from '../../../proxy-response';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-export async function PATCH(
+async function cancelQuote(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
@@ -17,4 +17,18 @@ export async function PATCH(
   });
 
   return forwardProxyJsonResponse(response);
+}
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  return cancelQuote(request, context);
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  return cancelQuote(request, context);
 }

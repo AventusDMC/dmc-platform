@@ -177,7 +177,6 @@ export default async function AdminDashboardPage() {
         <AdminBreadcrumbs
           items={[
             { label: 'Dashboard', href: '/admin/dashboard' },
-            { label: 'Admin Home' },
           ]}
         />
 
@@ -187,8 +186,20 @@ export default async function AdminDashboardPage() {
             <h1>Admin Dashboard</h1>
             <p className="detail-copy">Business performance, finance risk, and operations signals for the DMC team.</p>
           </div>
-          <AdminHeaderActions>
-            <Link href="/admin/reports" className="secondary-button">
+          <AdminHeaderActions className="admin-dashboard-launchpad-actions">
+            <Link href="/quotes/new" className="primary-button">
+              New Quote
+            </Link>
+            <Link href="/quotes" className="primary-button">
+              Quotes
+            </Link>
+            <Link href="/bookings" className="primary-button">
+              Bookings
+            </Link>
+            <Link href="/finance" className="primary-button">
+              Finance
+            </Link>
+            <Link href="/admin/reports" className="primary-button">
               Reports
             </Link>
           </AdminHeaderActions>
@@ -300,11 +311,11 @@ export default async function AdminDashboardPage() {
               </div>
             </div>
             <div className="dashboard-quick-links">
-              <Link href="/quotes/new" className="dashboard-quick-link">New Quote</Link>
-              <Link href="/bookings" className="dashboard-quick-link">New Booking</Link>
-              <Link href="/companies" className="dashboard-quick-link">Companies</Link>
-              <Link href="/admin/reports" className="dashboard-quick-link">Reports</Link>
-              <Link href="/finance" className="dashboard-quick-link">Finance</Link>
+              <Link href="/quotes/new" className="dashboard-quick-link primary-button">New Quote</Link>
+              <Link href="/quotes" className="dashboard-quick-link primary-button">Quotes</Link>
+              <Link href="/bookings" className="dashboard-quick-link primary-button">Bookings</Link>
+              <Link href="/finance" className="dashboard-quick-link primary-button">Finance</Link>
+              <Link href="/admin/reports" className="dashboard-quick-link primary-button">Reports</Link>
             </div>
           </section>
         </section>

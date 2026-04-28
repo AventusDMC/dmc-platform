@@ -11,6 +11,7 @@ type InlineEntityActionsProps = {
   deletePath: string;
   deleteLabel: string;
   confirmMessage: string;
+  deleteSuccessHref?: string;
   children: ReactNode;
 };
 
@@ -19,6 +20,7 @@ export function InlineEntityActions({
   deletePath,
   deleteLabel,
   confirmMessage,
+  deleteSuccessHref,
   children,
 }: InlineEntityActionsProps) {
   const router = useRouter();
@@ -44,7 +46,11 @@ export function InlineEntityActions({
         throw new Error(await getErrorMessage(response, `Could not delete ${deleteLabel}.`));
       }
 
-      router.refresh();
+      if (deleteSuccessHref) {
+        router.push(deleteSuccessHref);
+      } else {
+        router.refresh();
+      }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Could not delete ${deleteLabel}.`);
     } finally {

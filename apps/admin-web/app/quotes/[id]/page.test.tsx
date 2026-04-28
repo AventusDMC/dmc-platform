@@ -9,6 +9,11 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
+const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
+const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
+const quoteDetailApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/route.ts', import.meta.url), 'utf8');
+const quoteCancelApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/cancel/route.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -196,13 +201,37 @@ describe('quote detail page regression', () => {
       "{ category: 'hotel', label: 'Add Hotel' }",
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
+      "{ category: 'meal', label: 'Add Meal' }",
       'itineraryDayNumber={day.dayNumber}',
       'itineraryId={day.id}',
       '<input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />',
+      'Generate itinerary days from nights to start.',
     ]);
 
     assert.doesNotMatch(quoteServicePlannerSource, /<AddServiceLauncher|function AddServiceLauncher|AutoCreateDayOne/);
     assert.doesNotMatch(quoteServicePlannerSource, /Creating Day 1 before opening the service form|Could not create Day 1|Day 1 will be created automatically/);
+  });
+
+  it('opens Base Program by default and refreshes generated days without a manual reload', () => {
+    expectSourceContains(cssSource, [
+      ".workspace-tabs:has(#planner-shared:checked) label[for='planner-shared']",
+      '.workspace-tabs:has(#planner-shared:checked) .workspace-panel-shared',
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
+      "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
+      "document.querySelector<HTMLInputElement>('#planner-shared');",
+      'baseProgramTab.checked = true;',
+      '<div id="quote-base-program-days">',
+      'plannerProps={{ ...props, quote: plannerQuote }}',
+    ]);
+
+    expectSourceContains(quoteAutoItineraryBuilderSource, [
+      "window.dispatchEvent(new CustomEvent('dmc:quote-itinerary-days-ready', { detail: { quoteId: quote.id, days } }));",
+      "document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView",
+      'setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));',
+    ]);
   });
 
   it('routes quote list and detail mutations through admin-web API proxies', () => {
@@ -214,11 +243,45 @@ describe('quote detail page regression', () => {
     expectSourceContains(pageSource, [
       '<InlineEntityActions',
       'apiBaseUrl={ACTION_API_BASE_URL}',
+      'deleteSuccessHref="/quotes"',
       '<QuotesForm',
       '<SupportTextForm',
     ]);
 
+    expectSourceContains(quotesTableSource, [
+      'fetch(`${apiBaseUrl}/quotes/${quote.id}`,',
+      "method: 'DELETE'",
+      "router.push('/quotes');",
+      'setError(caughtError instanceof Error ? caughtError.message :',
+    ]);
+    expectSourceContains(inlineEntityActionsSource, [
+      'fetch(logFetchUrl(`${apiBaseUrl}${deletePath}`),',
+      "method: 'DELETE'",
+      'headers: buildAuthHeaders()',
+      'router.push(deleteSuccessHref);',
+      'setError(caughtError instanceof Error ? caughtError.message',
+    ]);
+    expectSourceContains(cancelQuoteButtonSource, [
+      'fetch(`/api/quotes/${quoteId}/cancel`,',
+      "method: 'POST'",
+      'headers: buildAuthHeaders()',
+      "router.push('/quotes');",
+      'setError(caughtError instanceof Error ? caughtError.message',
+    ]);
+    expectSourceContains(quoteDetailApiRouteSource, [
+      'export async function DELETE',
+      "method: 'DELETE'",
+      'headers: buildActorHeaders(request)',
+      "redirect: 'manual'",
+    ]);
+    expectSourceContains(quoteCancelApiRouteSource, [
+      'export async function POST',
+      'headers: buildActorHeaders(request)',
+      "redirect: 'manual'",
+    ]);
+
     assert.doesNotMatch(quotesTableSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
     assert.doesNotMatch(pageSource, /apiBaseUrl=\{API_BASE_URL\}/);
+    assert.doesNotMatch(`${quotesTableSource}\n${cancelQuoteButtonSource}\n${inlineEntityActionsSource}`, /admin\/dashboard|router\.push\(["']\/admin\/dashboard["']\)/);
   });
 });

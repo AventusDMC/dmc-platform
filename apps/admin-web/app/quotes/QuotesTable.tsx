@@ -151,6 +151,7 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
         throw new Error(await getErrorMessage(response, 'Could not delete quote.'));
       }
 
+      router.push('/quotes');
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not delete quote.');

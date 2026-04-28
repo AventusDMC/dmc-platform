@@ -45,11 +45,16 @@ test('admin dashboard renders monthly trends and operational snapshot', () => {
 
 test('admin dashboard renders quick actions empty and loading states', () => {
   assert.match(pageSource, /Quick actions/);
+  assert.match(pageSource, /href="\/quotes\/new" className="primary-button"/);
+  assert.match(pageSource, /href="\/quotes" className="primary-button"/);
+  assert.match(pageSource, /href="\/bookings" className="primary-button"/);
+  assert.match(pageSource, /href="\/finance" className="primary-button"/);
+  assert.match(pageSource, /href="\/admin\/reports" className="primary-button"/);
   assert.match(pageSource, /New Quote/);
-  assert.match(pageSource, /New Booking/);
-  assert.match(pageSource, /Companies/);
-  assert.match(pageSource, /Reports/);
+  assert.match(pageSource, /Quotes/);
+  assert.match(pageSource, /Bookings/);
   assert.match(pageSource, /Finance/);
+  assert.match(pageSource, /Reports/);
   assert.match(pageSource, /No dashboard activity yet/);
   assert.match(loadingSource, /Loading dashboard metrics/);
   assert.match(loadingSource, /Fetching dashboard data/);
@@ -103,6 +108,8 @@ test('dashboard navigation points to canonical admin dashboard route', () => {
   assert.match(readFileSync(new URL('../../admin-nav.ts', import.meta.url), 'utf8'), /href:\s*'\/admin\/dashboard'/);
   assert.match(adminNavSource, /pathname === '\/admin\/dashboard'/);
   assert.match(adminHeaderActionsSource, /href="\/admin\/dashboard"/);
+  assert.match(pageSource, /\{ label: 'Dashboard', href: '\/admin\/dashboard' \}/);
+  assert.doesNotMatch(pageSource, /Admin Home/);
   assert.doesNotMatch(adminNavSource + adminHeaderActionsSource, /href=["']\/dashboard["']|href=["']\/["']/);
 });
 

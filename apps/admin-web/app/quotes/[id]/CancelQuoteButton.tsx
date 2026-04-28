@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getErrorMessage } from '../../lib/api';
+import { buildAuthHeaders } from '../../lib/auth-client';
 
 type CancelQuoteButtonProps = {
   quoteId: string;
@@ -24,14 +25,15 @@ export function CancelQuoteButton({ quoteId, disabled = false }: CancelQuoteButt
 
     try {
       const response = await fetch(`/api/quotes/${quoteId}/cancel`, {
-        method: 'PATCH',
+        method: 'POST',
+        headers: buildAuthHeaders(),
       });
 
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not cancel quote.'));
       }
 
-      router.refresh();
+      router.push('/quotes');
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not cancel quote.');
     } finally {

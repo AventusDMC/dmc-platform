@@ -1374,7 +1374,8 @@ h1 {
   cursor: pointer;
 }
 
-.workspace-tabs:has(#tab-shared:checked) label[for='tab-shared'] {
+.workspace-tabs:has(#tab-shared:checked) label[for='tab-shared'],
+.workspace-tabs:has(#planner-shared:checked) label[for='planner-shared'] {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
@@ -1390,7 +1391,8 @@ h1 {
   padding: 1rem;
 }
 
-.workspace-tabs:has(#tab-shared:checked) .workspace-panel-shared {
+.workspace-tabs:has(#tab-shared:checked) .workspace-panel-shared,
+.workspace-tabs:has(#planner-shared:checked) .workspace-panel-shared {
   display: block;
 }
 

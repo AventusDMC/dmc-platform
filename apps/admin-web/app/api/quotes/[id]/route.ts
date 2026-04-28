@@ -37,3 +37,18 @@ export async function PATCH(
 
   return forwardProxyJsonResponse(response);
 }
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const response = await fetch(`${API_BASE_URL}/quotes/${id}`, {
+    method: 'DELETE',
+    headers: buildActorHeaders(request),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}

@@ -1177,6 +1177,25 @@ export function QuoteAutoItineraryBuilder({
     return { savedDays, createdDayCount };
   }
 
+  function notifySavedDaysReady(savedDays: Map<number, AutoItineraryExistingDay>) {
+    const days = Array.from(savedDays.values())
+      .sort((left, right) => left.dayNumber - right.dayNumber)
+      .map((day) => ({
+        id: day.id,
+        dayNumber: day.dayNumber,
+        title: day.title || `Day ${day.dayNumber}`,
+        description: day.description || null,
+      }));
+
+    window.dispatchEvent(new CustomEvent('dmc:quote-itinerary-days-ready', { detail: { quoteId: quote.id, days } }));
+    window.setTimeout(() => {
+      document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 350);
+  }
+
   async function saveDraft(draft: PreviewDraft) {
     const { savedDays, createdDayCount } = await saveItineraryDays(draft.days);
 
@@ -1275,12 +1294,7 @@ export function QuoteAutoItineraryBuilder({
 
     window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
     setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));
-    window.setTimeout(() => {
-      document.querySelector('#pricing-summary, .quote-live-pricing-panel, .quote-pricing-summary-card')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }, 350);
+    notifySavedDaysReady(savedDays);
     router.refresh();
     return createdItems;
   }
@@ -1361,10 +1375,11 @@ export function QuoteAutoItineraryBuilder({
 
     try {
       const draft = buildDaysOnlyPreview();
-      const { createdDayCount } = await saveItineraryDays(draft.days);
+      const { savedDays, createdDayCount } = await saveItineraryDays(draft.days);
       setPreview(draft);
       setComparison(null);
       setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));
+      notifySavedDaysReady(savedDays);
       router.refresh();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not generate the draft itinerary.');

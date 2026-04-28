@@ -65,8 +65,7 @@ describe('activities quote and booking UI integration regression', () => {
 
   it('keeps activity add/edit affordances and existing quote service handlers wired', () => {
     expectSourceContains(quotePlannerSource, [
-      "{ category: 'activity', label: 'Add Experience' }",
-      "{ category: 'activity', label: 'Activity' }",
+      "{ category: 'activity', label: 'Add Activity' }",
       'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? plannerProps.preferredCatalogServiceId : undefined}',
       '<QuoteItemsForm',
       '<QuoteItemCard',

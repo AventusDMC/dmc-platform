@@ -1841,6 +1841,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   deletePath={`/quotes/${quote.id}`}
                   deleteLabel="quote"
                   confirmMessage={`Delete ${quote.title}?`}
+                  deleteSuccessHref="/quotes"
                 >
                   <QuotesForm
                     apiBaseUrl={ACTION_API_BASE_URL}

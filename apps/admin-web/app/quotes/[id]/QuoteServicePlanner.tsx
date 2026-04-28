@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { readJsonResponse } from '../../lib/api';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
@@ -263,13 +262,6 @@ type PlannerScope = {
   optionId?: string;
 };
 
-type ServiceWorkflowStep = {
-  category: 'hotel' | 'transport' | 'activity';
-  step: string;
-  label: string;
-  hasItem: boolean;
-};
-
 type ServiceWorkflowState = {
   hasHotel: boolean;
   hasTransport: boolean;
@@ -277,7 +269,6 @@ type ServiceWorkflowState = {
   recommendedCategory: ServicePlannerCategory;
   title: string;
   description: string;
-  steps: ServiceWorkflowStep[];
 };
 
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
@@ -291,22 +282,9 @@ const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
 
 const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }> = [
   { category: 'hotel', label: 'Add Hotel' },
-  { category: 'transport', label: 'Add Transfer' },
-  { category: 'activity', label: 'Add Experience' },
+  { category: 'transport', label: 'Add Transport' },
+  { category: 'activity', label: 'Add Activity' },
   { category: 'meal', label: 'Add Meal' },
-];
-
-const STARTER_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }> = [
-  { category: 'hotel', label: 'Add hotel' },
-  { category: 'transport', label: 'Add transfer' },
-  { category: 'activity', label: 'Add experience' },
-];
-
-const ADD_SERVICE_OPTIONS: Array<{ category: 'hotel' | 'transport' | 'activity' | 'meal'; label: string }> = [
-  { category: 'hotel', label: 'Hotel' },
-  { category: 'transport', label: 'Transport' },
-  { category: 'activity', label: 'Activity' },
-  { category: 'meal', label: 'Meal' },
 ];
 
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
@@ -659,356 +637,6 @@ function DayWorkflowAction({
   );
 }
 
-function StarterAction({
-  category,
-  label,
-  plannerProps,
-  optionId,
-  recommendedCategory,
-}: {
-  category: ServicePlannerCategory;
-  label: string;
-  plannerProps: QuoteServicePlannerProps;
-  optionId?: string;
-  recommendedCategory?: ServicePlannerCategory;
-}) {
-  const router = useRouter();
-  const [createdDay, setCreatedDay] = useState<QuoteReadinessDay | null>(null);
-  const [isCreatingDay, setIsCreatingDay] = useState(false);
-  const [error, setError] = useState('');
-  const targetDay = plannerProps.quote.itineraries[0] || createdDay || null;
-  const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
-    addCategory: category,
-  });
-  const browseHref =
-    category === 'hotel'
-      ? `/hotels?tab=hotels&returnTo=${encodeURIComponent(returnTo)}`
-      : category === 'transport'
-        ? `/transport?tab=routes&returnTo=${encodeURIComponent(returnTo)}`
-        : `/catalog?tab=services&returnTo=${encodeURIComponent(returnTo)}&type=${encodeURIComponent(category)}`;
-
-  return (
-    <RowDetailsPanel
-      summary={label}
-      description={`Create the first ${category === 'activity' ? 'experience' : category} row for this quote.`}
-      defaultOpen={plannerProps.initialAddCategory === category || recommendedCategory === category}
-      className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
-      bodyClassName="operations-row-details-body"
-      groupId={`quote-service-starter-action-${optionId || 'base'}-${category}`}
-    >
-      <div className="quote-service-catalog-link">
-        <span>Need to browse the catalog first?</span>
-        <Link href={browseHref} className="secondary-button">
-          Browse {category === 'hotel' ? 'Hotels' : category === 'transport' ? 'Transport' : 'Experiences'}
-        </Link>
-      </div>
-      {!targetDay ? (
-        <AutoCreateDayOne
-          apiBaseUrl={plannerProps.apiBaseUrl}
-          quoteId={plannerProps.quote.id}
-          onCreatingChange={setIsCreatingDay}
-          onCreated={(day) => {
-            setCreatedDay(day);
-            router.refresh();
-          }}
-          onError={setError}
-        />
-      ) : null}
-      {isCreatingDay ? <p className="form-helper">Creating Day 1 before opening the service form...</p> : null}
-      {error ? <p className="form-error">{error}</p> : null}
-      {targetDay ? (
-        <QuoteItemsForm
-          apiBaseUrl={plannerProps.apiBaseUrl}
-          quoteId={plannerProps.quote.id}
-          optionId={optionId}
-          blocks={plannerProps.quoteBlocks}
-          services={plannerProps.services}
-          transportServiceTypes={plannerProps.transportServiceTypes}
-          routes={plannerProps.routes}
-          hotels={plannerProps.hotels}
-          hotelContracts={plannerProps.hotelContracts}
-          hotelRates={plannerProps.hotelRates}
-          seasons={plannerProps.seasons}
-          quoteType={plannerProps.quote.quoteType}
-          defaultPaxCount={plannerProps.totalPax}
-          defaultAdultCount={plannerProps.quote.adults}
-          defaultChildCount={plannerProps.quote.children}
-          defaultRoomCount={plannerProps.quote.roomCount}
-          defaultNightCount={plannerProps.quote.nightCount}
-          travelStartDate={plannerProps.quote.travelStartDate}
-          itineraryDayNumber={targetDay.dayNumber}
-          itineraryId={targetDay.id}
-          initialServiceTypeKey={category}
-          preferredServiceId={category !== 'hotel' && category !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
-          preferredHotelId={category === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
-          preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
-          preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
-          preferredMealPlan={category === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
-          preferredOccupancyType={category === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
-          preferredRateCost={category === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
-          preferredRateCurrency={category === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
-          preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
-          preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
-          submitLabel={label}
-        />
-      ) : null}
-    </RowDetailsPanel>
-  );
-}
-
-function AutoCreateDayOne({
-  apiBaseUrl,
-  quoteId,
-  onCreatingChange,
-  onCreated,
-  onError,
-}: {
-  apiBaseUrl: string;
-  quoteId: string;
-  onCreatingChange: (value: boolean) => void;
-  onCreated: (day: QuoteReadinessDay) => void;
-  onError: (message: string) => void;
-}) {
-  useEffect(() => {
-    let isMounted = true;
-
-    async function createDay() {
-      onCreatingChange(true);
-      onError('');
-
-      try {
-        const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/itinerary/day`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            dayNumber: 1,
-            title: 'Day 1',
-            notes: '',
-            sortOrder: 0,
-            isActive: true,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(await getErrorMessage(response, 'Could not create Day 1.'));
-        }
-
-        const day = await readJsonResponse<QuoteReadinessDay>(response, 'Could not create Day 1.');
-
-        if (isMounted) {
-          onCreated(day);
-        }
-      } catch (caughtError) {
-        if (isMounted) {
-          onError(caughtError instanceof Error ? caughtError.message : 'Could not create Day 1.');
-        }
-      } finally {
-        if (isMounted) {
-          onCreatingChange(false);
-        }
-      }
-    }
-
-    void createDay();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [apiBaseUrl, onCreated, onCreatingChange, onError, quoteId]);
-
-  return null;
-}
-
-function AddServiceLauncher({
-  scope,
-  plannerProps,
-  days,
-}: {
-  scope: PlannerScope;
-  plannerProps: QuoteServicePlannerProps;
-  days: QuoteReadinessDay[];
-}) {
-  const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-  const initialCategory =
-    plannerProps.initialAddCategory && ['hotel', 'transport', 'activity', 'meal'].includes(plannerProps.initialAddCategory)
-      ? (plannerProps.initialAddCategory as 'hotel' | 'transport' | 'activity' | 'meal')
-      : null;
-  const [selectedCategory, setSelectedCategory] = useState<'hotel' | 'transport' | 'activity' | 'meal' | null>(initialCategory);
-  const [createdDay, setCreatedDay] = useState<QuoteReadinessDay | null>(null);
-  const [isCreatingDay, setIsCreatingDay] = useState(false);
-  const [error, setError] = useState('');
-  const allDays = createdDay ? [...days, createdDay] : days;
-  const focusedDay = plannerProps.focusedDayId ? allDays.find((day) => day.id === plannerProps.focusedDayId) || null : null;
-  const targetDay = focusedDay || createdDay || days[0] || null;
-  const isEmptyQuote = days.length === 0 && scope.items.length === 0;
-
-  async function ensureDayOne() {
-    if (targetDay) {
-      return targetDay;
-    }
-
-    setIsCreatingDay(true);
-    setError('');
-
-    try {
-      const response = await fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/itinerary/day`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dayNumber: 1,
-          title: 'Day 1',
-          notes: '',
-          sortOrder: 0,
-          isActive: true,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not create Day 1.'));
-      }
-
-      const day = await readJsonResponse<QuoteReadinessDay>(response, 'Could not create Day 1.');
-      setCreatedDay(day);
-      router.refresh();
-      return day;
-    } finally {
-      setIsCreatingDay(false);
-    }
-  }
-
-  async function handleSelectCategory(category: 'hotel' | 'transport' | 'activity' | 'meal') {
-    setIsOpen(true);
-    setError('');
-
-    try {
-      await ensureDayOne();
-      setSelectedCategory(category);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not prepare the service form.');
-    }
-  }
-
-  return (
-    <section className="quote-add-service-panel">
-      <div className="quote-add-service-head">
-        <div>
-          <p className="eyebrow">Add Services</p>
-          <h3>{isEmptyQuote ? 'No services added yet' : 'Add service'}</h3>
-          <p className="detail-copy">
-            {isEmptyQuote
-              ? 'Start by adding a service. Day 1 will be created automatically.'
-              : `Choose the next service type to add to ${targetDay ? `Day ${targetDay.dayNumber}` : 'the itinerary'}.`}
-          </p>
-        </div>
-        <button type="button" className="primary-button" onClick={() => setIsOpen((current) => !current)}>
-          Add Service
-        </button>
-      </div>
-
-      {isOpen ? (
-        <div className="quote-add-service-body">
-          <div className="quote-add-service-options" role="group" aria-label="Service type">
-            {ADD_SERVICE_OPTIONS.map((option) => (
-              <button
-                key={option.category}
-                type="button"
-                className={selectedCategory === option.category ? 'secondary-button quote-add-service-option-active' : 'secondary-button'}
-                onClick={() => void handleSelectCategory(option.category)}
-                disabled={isCreatingDay}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {isCreatingDay ? <p className="form-helper">Creating Day 1 before opening the service form...</p> : null}
-          {error ? <p className="form-error">{error}</p> : null}
-
-          {selectedCategory && targetDay ? (
-            <div className="quote-add-service-form">
-              <QuoteItemsForm
-                apiBaseUrl={plannerProps.apiBaseUrl}
-                quoteId={plannerProps.quote.id}
-                optionId={scope.optionId}
-                blocks={plannerProps.quoteBlocks}
-                services={plannerProps.services}
-                transportServiceTypes={plannerProps.transportServiceTypes}
-                routes={plannerProps.routes}
-                hotels={plannerProps.hotels}
-                hotelContracts={plannerProps.hotelContracts}
-                hotelRates={plannerProps.hotelRates}
-                seasons={plannerProps.seasons}
-                quoteType={plannerProps.quote.quoteType}
-                defaultPaxCount={plannerProps.totalPax}
-                defaultAdultCount={plannerProps.quote.adults}
-                defaultChildCount={plannerProps.quote.children}
-                defaultRoomCount={plannerProps.quote.roomCount}
-                defaultNightCount={plannerProps.quote.nightCount}
-                travelStartDate={plannerProps.quote.travelStartDate}
-                itineraryDayNumber={targetDay.dayNumber}
-                itineraryId={targetDay.id}
-                initialServiceTypeKey={selectedCategory}
-                preferredServiceId={selectedCategory !== 'hotel' && selectedCategory !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
-                preferredHotelId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
-                preferredContractId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
-                preferredRoomCategoryId={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
-                preferredMealPlan={selectedCategory === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
-                preferredOccupancyType={selectedCategory === 'hotel' ? plannerProps.preferredCatalogOccupancyType : undefined}
-                preferredRateCost={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
-                preferredRateCurrency={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
-                preferredRateNote={selectedCategory === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
-                preferredRouteId={selectedCategory === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
-                submitLabel={`Add ${ADD_SERVICE_OPTIONS.find((option) => option.category === selectedCategory)?.label || 'Service'}`}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function GuidedQuoteStarter({
-  scope,
-  plannerProps,
-  workflow,
-}: {
-  scope: PlannerScope;
-  plannerProps: QuoteServicePlannerProps;
-  workflow: ServiceWorkflowState;
-}) {
-  return (
-    <section className="workspace-section quote-guided-starter">
-      <div className="workspace-section-head">
-        <div>
-          <p className="eyebrow">{scope.label}</p>
-          <h3>{workflow.title}</h3>
-          <p className="detail-copy">{workflow.description}</p>
-        </div>
-        <span className="quote-ui-badge quote-ui-badge-info">Guided, not required</span>
-      </div>
-      <WorkflowProgress quoteId={plannerProps.routeContext.quoteId} workflow={workflow} />
-      <div className="quote-guided-starter-actions">
-        {STARTER_ACTIONS.map((action) => (
-          <StarterAction
-            key={action.category}
-            category={action.category}
-            label={action.label}
-            plannerProps={plannerProps}
-            optionId={scope.optionId}
-            recommendedCategory={workflow.recommendedCategory}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function formatLiveMoney(value: number, currency: string) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -1221,15 +849,13 @@ function ScopePlanner({
         scopeLabel={scope.label}
       />
 
-      <GuidedQuoteStarter scope={scope} plannerProps={plannerProps} workflow={workflow} />
-
       {daySummaries.length === 0 ? (
         <article className="workspace-day-card quote-service-day-card">
           <div className="workspace-day-header">
             <div>
               <p className="workspace-day-kicker">Day plan</p>
-              <h3>No services added yet</h3>
-              <p className="workspace-day-copy">No services added yet. Start by adding a service.</p>
+              <h3>Generate itinerary days from nights to start.</h3>
+              <p className="workspace-day-copy">Use the Auto Builder above to create the Base Program days, then add services inside each day card.</p>
             </div>
           </div>
         </article>
@@ -1414,19 +1040,44 @@ function ScopePlanner({
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
+  const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
+  const plannerQuote = { ...props.quote, itineraries: localItineraries };
   const scopes: PlannerScope[] = [
     {
       id: 'shared',
       label: 'Base Program',
-      items: props.quote.quoteItems,
+      items: plannerQuote.quoteItems,
     },
-    ...props.quote.quoteOptions.map((option) => ({
+    ...plannerQuote.quoteOptions.map((option) => ({
       id: option.id,
       label: option.name,
       items: option.quoteItems,
       optionId: option.id,
     })),
   ];
+
+  useEffect(() => {
+    setLocalItineraries(props.quote.itineraries);
+  }, [props.quote.id, props.quote.itineraries]);
+
+  useEffect(() => {
+    function handleDaysReady(event: Event) {
+      const detail = (event as CustomEvent<{ quoteId?: string; days?: QuoteReadinessDay[] }>).detail;
+
+      if (detail?.quoteId !== props.quote.id || !Array.isArray(detail.days)) {
+        return;
+      }
+
+      setLocalItineraries(detail.days);
+      const baseProgramTab = document.querySelector<HTMLInputElement>('#planner-shared');
+      if (baseProgramTab) {
+        baseProgramTab.checked = true;
+      }
+    }
+
+    window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
+    return () => window.removeEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
+  }, [props.quote.id]);
 
   const tabStyles = scopes
     .filter((scope) => scope.id !== 'shared')
@@ -1457,7 +1108,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
         ) : null}
         <QuoteAutoItineraryBuilder
           apiBaseUrl={props.apiBaseUrl}
-          quote={props.quote}
+          quote={plannerQuote}
           services={props.services}
           transportServiceTypes={props.transportServiceTypes}
           routes={props.routes}
@@ -1466,7 +1117,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           hotelRates={props.hotelRates}
           totalPax={props.totalPax}
         />
-        <AddServiceLauncher scope={scopes[0]} plannerProps={props} days={props.quote.itineraries} />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />
           <label htmlFor="planner-shared" className="workspace-tab-label">
@@ -1487,13 +1137,15 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
       <div className="workspace-tab-panels">
         <section className="workspace-tab-panel workspace-panel-shared">
-          <ScopePlanner scope={scopes[0]} plannerProps={props} />
+          <div id="quote-base-program-days">
+            <ScopePlanner scope={scopes[0]} plannerProps={{ ...props, quote: plannerQuote }} />
+          </div>
         </section>
         {scopes
           .filter((scope) => scope.id !== 'shared')
           .map((scope) => (
             <section key={scope.id} className={`workspace-tab-panel workspace-panel-${scope.id}`}>
-              <ScopePlanner scope={scope} plannerProps={props} />
+              <ScopePlanner scope={scope} plannerProps={{ ...props, quote: plannerQuote }} />
             </section>
           ))}
       </div>
