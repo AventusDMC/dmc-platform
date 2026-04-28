@@ -224,7 +224,7 @@ export function QuoteItineraryTab({ apiBaseUrl, quoteId, itinerary, assignableSe
                 summary={[
                   { label: 'Sort order', value: day.sortOrder + 1 },
                   { label: 'Assigned services', value: day.dayItems.length },
-                  { label: 'Notes', value: summarizeNotes(day.notes) },
+                  ...(day.notes?.trim() ? [{ label: 'Notes', value: summarizeNotes(day.notes) }] : []),
                 ]}
                 moveActions={
                   <>

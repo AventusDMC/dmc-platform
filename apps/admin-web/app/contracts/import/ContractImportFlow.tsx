@@ -393,7 +393,6 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    console.log('Starting contract analysis');
     setError('');
     setMessage('');
     setContractConflict(null);
@@ -420,12 +419,6 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
         body: formData,
       });
       const rawResponse = await response.text();
-      console.log('Analyze response', {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        rawResponse: rawResponse || '[empty response]',
-      });
 
       if (!response.ok) {
         let message = 'Could not analyze contract.';
@@ -453,9 +446,6 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
         throw new Error('Contract analysis did not return extracted preview data.');
       }
 
-      console.log('RAW CONTRACT IMPORT PREVIEW:', data.extractedJson);
-      console.log("EXTRACTED RAW:", data.extractedJson);
-      console.log("MAPPED PREVIEW:", mapExtractedToUI(data.extractedJson));
       const mappedPreview = mapExtractedToUI(data.extractedJson);
       setContractImport(data);
       setPreview(mappedPreview);

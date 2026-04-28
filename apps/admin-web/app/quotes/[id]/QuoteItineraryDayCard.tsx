@@ -33,7 +33,7 @@ export function QuoteItineraryDayCard({
           <span className="quote-itinerary-day-number">Day {dayNumber}</span>
           <div>
             <h3>{title}</h3>
-            <p>{notes?.trim() ? notes : 'No notes added for this day yet.'}</p>
+            {notes?.trim() ? <p>{notes}</p> : null}
           </div>
         </div>
         <div className="quote-itinerary-day-actions">

@@ -6,7 +6,6 @@ import { forwardProxyJsonResponse } from './proxy-response';
 type ProxyMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 export async function proxyRequest(request: NextRequest, url: string, method: ProxyMethod) {
-  console.log('FETCH URL:', url);
   const headers = new Headers(buildActorHeaders(request));
   const init: RequestInit = {
     method,

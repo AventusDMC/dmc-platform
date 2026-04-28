@@ -25,6 +25,9 @@ function uniqueIssuesByHref(readiness: QuoteReadinessModel) {
 }
 
 export function QuoteHealthPanel({ readiness, groupPricingHref }: QuoteHealthPanelProps) {
+  const readyToSend = readiness.blockers.length === 0;
+  const servicesPriced = readiness.unpricedServices === 0;
+  const datesSet = readiness.totalDays > 0;
   const quickActions = [
     ...uniqueIssuesByHref(readiness),
     {
@@ -44,46 +47,36 @@ export function QuoteHealthPanel({ readiness, groupPricingHref }: QuoteHealthPan
     <aside className="workspace-sidebar-card quote-health-panel">
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Quote Health</p>
-          <h3>Send readiness</h3>
+          <p className="eyebrow">Quote Status</p>
+          <h3>Client proposal status</h3>
         </div>
         <span className={`quote-ui-badge ${statusTone}`}>
           {readiness.statusLabel}
         </span>
       </div>
 
-      <div className="quote-health-progress">
-        <div>
-          <span>Completion</span>
-          <strong>{readiness.completionPercent}%</strong>
-        </div>
-        <div className="quote-health-progress-bar" aria-hidden="true">
-          <span style={{ width: `${readiness.completionPercent}%` }} />
-        </div>
-      </div>
-
       <div className="quote-health-stats">
         <article className="workspace-summary-card">
-          <span>Blockers</span>
-          <strong>{readiness.blockers.length}</strong>
-          <p>Must be cleared before share.</p>
+          <span>Ready to send</span>
+          <strong>{readyToSend ? 'Yes' : 'Review'}</strong>
+          <p>{readyToSend ? 'No required items are blocking client sharing.' : 'Review required items before sending.'}</p>
         </article>
         <article className="workspace-summary-card">
-          <span>Warnings</span>
-          <strong>{readiness.warnings.length}</strong>
-          <p>Advisory checks that still need review.</p>
+          <span>Services priced</span>
+          <strong>{servicesPriced ? 'Yes' : `${readiness.unpricedServices} left`}</strong>
+          <p>{servicesPriced ? 'All services have pricing in place.' : 'Complete remaining service pricing.'}</p>
         </article>
         <article className="workspace-summary-card">
-          <span>Cleanup</span>
-          <strong>{readiness.cleanupItems.length}</strong>
-          <p>Operational cleanup that stays visible but does not block share.</p>
+          <span>Dates set</span>
+          <strong>{datesSet ? 'Yes' : 'Missing'}</strong>
+          <p>{datesSet ? `${readiness.totalDays} itinerary day${readiness.totalDays === 1 ? '' : 's'} planned.` : 'Add travel dates and itinerary days.'}</p>
         </article>
       </div>
 
       <div className="quote-health-actions">
-        <p className="workspace-sidebar-note">Quick actions</p>
+        <p className="workspace-sidebar-note">Next actions</p>
         {quickActions.length === 0 ? (
-          <p className="detail-copy">No immediate issues. Use the guided flow or tabs below as needed.</p>
+          <p className="detail-copy">Send to client, convert to booking, or continue editing from the page actions.</p>
         ) : (
           quickActions.map((action) => (
             <Link key={action.href} href={action.href} className="quote-health-action-link">

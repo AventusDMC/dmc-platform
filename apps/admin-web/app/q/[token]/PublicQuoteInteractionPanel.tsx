@@ -159,7 +159,7 @@ export function PublicQuoteInteractionPanel({
             onClick={() => {
               setLastAction('payment');
               setError('');
-              setConfirmation('Payment handoff is not enabled in this demo yet. Your consultant can share the next payment step.');
+              setConfirmation('Payment handoff is not available for this proposal. Your consultant can share the next payment step.');
             }}
             disabled={!invoice}
           >

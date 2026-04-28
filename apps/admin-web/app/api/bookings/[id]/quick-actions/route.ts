@@ -46,7 +46,6 @@ function isReconfirmationDue(service: QuickActionService) {
 }
 
 async function patchJson(request: NextRequest, url: string, body: unknown) {
-  console.log('FETCH URL:', url);
   return fetch(url, {
     method: 'PATCH',
     headers: {

@@ -25,11 +25,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const message = getLoginMessage(resolvedSearchParams?.reason);
 
   return (
-    <main className="page">
-      <section className="detail-card" style={{ maxWidth: 520 }}>
-        <p className="eyebrow">Authentication</p>
-        <h1>Sign in to DMC Admin</h1>
-        <p className="copy">Use one of the seeded platform users to get a role-backed session for booking, pricing, and rate changes.</p>
+    <main className="page login-page">
+      <section className="detail-card login-card">
+        <p className="eyebrow">DMC Admin</p>
+        <h1>Sign in to your workspace</h1>
+        <p className="copy">Access sales, operations, product, finance, and reporting workflows from one secure admin console.</p>
         <LoginForm nextPath={nextPath} initialMessage={message} />
       </section>
     </main>

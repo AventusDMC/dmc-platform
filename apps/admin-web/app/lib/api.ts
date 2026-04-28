@@ -75,7 +75,6 @@ export async function getErrorMessage(response: Response, fallback: string) {
 
 export function logFetchUrl(url: string | URL) {
   const normalizedUrl = String(url);
-  console.log('FETCH URL:', normalizedUrl);
 
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedUrl.trim())) {
     throw new Error(`Invalid fetch URL: received raw ID "${normalizedUrl}" instead of an /api route.`);

@@ -744,34 +744,6 @@ export function QuoteItemsForm({
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false;
 
-  useEffect(() => {
-    if (!isTransportService || process.env.NODE_ENV === 'production') {
-      return;
-    }
-
-    console.debug('[QuoteItemsForm] transport routes returned', {
-      count: routes.length,
-      routes: routes.map((route) => ({
-        id: route.id,
-        name: route.name,
-        routeType: route.routeType,
-        from: route.fromPlace?.name,
-        to: route.toPlace?.name,
-        isActive: route.isActive,
-      })),
-    });
-    console.debug('[QuoteItemsForm] valid transport routes', {
-      count: validTransportRoutes.length,
-      routes: validTransportRoutes.map((route) => ({
-        id: route.id,
-        name: route.name,
-        routeType: route.routeType,
-        from: route.fromPlace?.name,
-        to: route.toPlace?.name,
-      })),
-    });
-  }, [isTransportService, routes, validTransportRoutes]);
-
   const filteredHotelContracts = hotelContracts.filter((contract) => contract.hotelId === hotelId);
   const selectedHotelContract = filteredHotelContracts.find((contract) => contract.id === contractId) || null;
   const filteredSeasonRates = hotelRates.filter((rate) => rate.contractId === contractId);

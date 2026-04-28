@@ -28,7 +28,6 @@ import { QuoteGroupPricing } from './QuoteGroupPricing';
 import { QuotesForm } from '../QuotesForm';
 import { ConvertToBookingButton } from './ConvertToBookingButton';
 import { QuoteItineraryTab, type QuoteItineraryAssignableService, type QuoteItineraryResponse } from './QuoteItineraryTab';
-import { QuoteHealthPanel } from './QuoteHealthPanel';
 import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
 import { CancelQuoteButton } from './CancelQuoteButton';
@@ -914,6 +913,56 @@ function isActivityQuoteItem(item: Pick<QuoteItem, 'service'>) {
   );
 }
 
+function getQuoteItemDisplayName(item: QuoteItem) {
+  if (item.hotel?.name) {
+    return item.hotel.name;
+  }
+
+  if (item.appliedVehicleRate?.routeName) {
+    return item.appliedVehicleRate.routeName;
+  }
+
+  return item.activity?.name || item.service.name;
+}
+
+function getQuoteItemCategory(item: QuoteItem) {
+  return item.service.serviceType?.name || item.service.category || 'Service';
+}
+
+function buildTripHighlights(quote: Quote, itinerary: QuoteItineraryResponse) {
+  const highlights = new Set<string>();
+
+  for (const day of [...quote.itineraries].sort((left, right) => left.dayNumber - right.dayNumber).slice(0, 3)) {
+    if (day.title?.trim()) {
+      highlights.add(day.title.trim());
+    }
+  }
+
+  for (const day of itinerary.days.filter((item) => item.isActive).sort((left, right) => left.dayNumber - right.dayNumber).slice(0, 3)) {
+    if (day.title?.trim()) {
+      highlights.add(day.title.trim());
+    }
+  }
+
+  for (const item of quote.quoteItems) {
+    if (item.activity?.name) {
+      highlights.add(item.activity.name);
+    } else if (item.hotel?.name) {
+      highlights.add(`Stay at ${item.hotel.name}`);
+    } else if (item.appliedVehicleRate?.routeName) {
+      highlights.add(item.appliedVehicleRate.routeName);
+    }
+  }
+
+  return [...highlights].slice(0, 5);
+}
+
+function getFeaturedQuoteServices(quote: Quote) {
+  return [...quote.quoteItems]
+    .sort((left, right) => right.totalSell - left.totalSell || getQuoteItemDisplayName(left).localeCompare(getQuoteItemDisplayName(right)))
+    .slice(0, 5);
+}
+
 function resolveQuoteItemServiceDate(quote: Pick<Quote, 'travelStartDate' | 'itineraries'>, item: Pick<QuoteItem, 'serviceDate' | 'itineraryId'>) {
   if (item.serviceDate) {
     return item.serviceDate;
@@ -1306,6 +1355,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quotePricingBlockerCount = readiness.blockers.filter((issue) => issue.action?.step === 'pricing').length;
   const pricedServicesCount = Math.max(allQuotePricingItems.length - readiness.unpricedServices, 0);
   const quoteReviewBadgeCount = readiness.blockers.length + readiness.warnings.length;
+  const tripHighlights = buildTripHighlights(quote, quoteItinerary);
+  const featuredServices = getFeaturedQuoteServices(quote);
+  const quoteProgressLabel =
+    readiness.blockers.length === 0
+      ? 'Ready'
+      : readiness.unpricedServices > 0
+        ? 'Pricing needed'
+        : quoteUnassignedServicesCount > 0
+          ? 'Dates needed'
+          : 'Review needed';
   const pricingWarningCount = quotePricingBadgeCount;
   const reviewBlockingIssues: ReviewIssue[] = readiness.blockers;
   const reviewWarnings: ReviewIssue[] = readiness.warnings;
@@ -1585,6 +1644,53 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
           {activeTab === 'overview' ? (
             <div className="section-stack">
+            <section className="quote-client-overview-grid">
+              <article className="workspace-section tab-panel-card quote-trip-highlights-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Trip Highlights</p>
+                    <h2>Key experiences</h2>
+                  </div>
+                </div>
+                {tripHighlights.length === 0 ? (
+                  <p className="detail-copy">Add itinerary days and services to surface client-facing trip highlights.</p>
+                ) : (
+                  <ul className="quote-trip-highlights-list">
+                    {tripHighlights.map((highlight) => (
+                      <li key={highlight}>{highlight}</li>
+                    ))}
+                  </ul>
+                )}
+              </article>
+
+              <article className="workspace-section tab-panel-card quote-featured-services-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Services</p>
+                    <h2>Featured services</h2>
+                  </div>
+                  <Link href={buildStepHref('services')} className="secondary-button">
+                    Manage all
+                  </Link>
+                </div>
+                {featuredServices.length === 0 ? (
+                  <p className="detail-copy">No services have been added yet.</p>
+                ) : (
+                  <div className="quote-featured-service-list">
+                    {featuredServices.map((item) => (
+                      <div key={item.id} className="quote-featured-service-row">
+                        <div>
+                          <strong>{getQuoteItemDisplayName(item)}</strong>
+                          <span>{getQuoteItemCategory(item)}</span>
+                        </div>
+                        <span>{item.serviceDate ? formatDate(item.serviceDate) : 'Date pending'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </section>
+
             <section className="split-layout">
               <article className="workspace-section tab-panel-card">
                 <div className="workspace-section-head">
@@ -1726,10 +1832,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             <div className="section-stack">
               <SummaryStrip
                 items={[
-                  { id: 'planner-completion', label: 'Completion', value: `${readiness.completionPercent}%`, helper: 'Derived quote health score' },
-                  { id: 'planner-unresolved', label: 'Unresolved', value: String(readiness.unresolvedItems), helper: 'Imported placeholders still unresolved' },
-                  { id: 'planner-unpriced', label: 'Unpriced', value: String(readiness.unpricedServices), helper: 'Cost, sell, or pax still missing' },
-                  { id: 'planner-unassigned', label: 'Unassigned days', value: String(quoteUnassignedServicesCount), helper: 'Rows not yet linked to itinerary days' },
+                  { id: 'planner-completion', label: 'Completion', value: `${readiness.completionPercent}%`, helper: 'Quote details completed' },
+                  { id: 'planner-unresolved', label: 'Needs details', value: String(readiness.unresolvedItems), helper: 'Services still need client-ready details' },
+                  { id: 'planner-unpriced', label: 'Needs pricing', value: String(readiness.unpricedServices), helper: 'Services still missing pricing' },
+                  { id: 'planner-unassigned', label: 'Needs dates', value: String(quoteUnassignedServicesCount), helper: 'Services still need itinerary placement' },
                 ]}
               />
               <QuoteTransportBulkAssign
@@ -2268,57 +2374,66 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
             <aside className="quote-builder-sidebar">
               <QuotePricingSummaryCard
-                eyebrow="Summary"
-                title="Quote snapshot"
+                eyebrow="Status"
+                title="Quote status"
                 items={[
-                  { label: 'Total price', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
-                  { label: 'Pax', value: `${totalPax} pax`, helper: `${quote.adults} adults / ${quote.children} children` },
                   { label: 'Status', value: formatQuoteStatus(quote.status), helper: quoteExpired ? 'Validity has passed' : 'Current workflow state' },
-                  { label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' },
+                  { label: 'Progress', value: `${readiness.completionPercent}%`, helper: quoteProgressLabel },
+                  { label: 'Pax', value: `${totalPax} pax`, helper: `${quote.adults} adults / ${quote.children} children` },
+                  { label: 'Dates', value: quote.travelStartDate ? formatDate(quote.travelStartDate) : 'Pending', helper: formatNightCountLabel(quote.nightCount) },
+                ]}
+              />
+
+              <QuotePricingSummaryCard
+                className="quote-pricing-summary-card-actions quote-primary-action-card"
+                eyebrow="Primary Actions"
+                title="Move this quote forward"
+                items={[
+                  { label: 'Client sharing', value: quoteReadOnly ? 'Locked' : 'Available', helper: quoteReadOnly ? 'Open the latest active quote to send.' : 'Send the current proposal to the client.' },
+                  { label: 'Booking conversion', value: quote.booking ? 'Created' : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? 'Available' : 'After acceptance', helper: quote.booking ? `Booking ${quote.booking.id}` : 'Convert when accepted and clear of blockers.' },
                 ]}
                 footer={
-                  quote.booking ? (
-                    <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
-                  ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                    convertBlocked || quoteReadOnly ? (
-                      <button type="button" className="primary-button" disabled>Convert blocked</button>
+                  <div className="quote-builder-sidebar-actions">
+                    {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                    {quote.booking ? (
+                      <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
+                    ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
+                      convertBlocked || quoteReadOnly ? (
+                        <button type="button" className="primary-button" disabled>Convert blocked</button>
+                      ) : (
+                        <ConvertToBookingButton quoteId={quote.id} />
+                      )
                     ) : (
-                      <ConvertToBookingButton quoteId={quote.id} />
-                    )
-                  ) : (
-                    <QuotePreviewLink quoteId={quote.id} />
-                  )
+                      <button type="button" className="primary-button" disabled>
+                        Convert to booking
+                      </button>
+                    )}
+                  </div>
                 }
               />
 
               <QuotePricingSummaryCard
-                eyebrow="Travel setup"
-                title="Pax and stay"
+                eyebrow="Internal"
+                title="Financial summary"
                 items={[
-                  { label: 'Passengers', value: `${totalPax} pax`, helper: `${quote.adults} adults / ${quote.children} children` },
-                  { label: 'Rooms', value: quote.roomCount, helper: getFocImpactLabel(quote) },
-                  { label: 'Nights', value: formatNightCountLabel(quote.nightCount), helper: getSupplementImpactLabel(quote) },
-                  {
-                    label: 'Hotel options',
-                    value: quote.quoteOptions.length,
-                    helper: quote.quoteOptions.length > 0 ? 'Alternative pricing options available' : 'Base program only',
-                  },
+                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
+                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
+                  { label: 'Gross profit', value: formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency), helper: 'Internal only' },
+                  { label: 'Margin', value: quote.totalSell > 0 ? `${(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100).toFixed(2)}%` : '0.00%', helper: 'Internal only' },
                 ]}
               />
 
               <QuotePricingSummaryCard
                 className="quote-pricing-summary-card-actions"
-                eyebrow="Actions"
-                title="Quote actions"
+                eyebrow="Secondary Actions"
+                title="Tools and documents"
                 items={[
                   { label: 'Saved versions', value: versions.length, helper: versions.length > 0 ? 'Snapshots available for acceptance' : 'Save a version before acceptance' },
                   { label: 'Invoice', value: formatInvoiceStatus(quote.invoice?.status), helper: quote.invoice ? formatMoney(quote.invoice.totalAmount, quote.invoice.currency) : 'Invoice created after acceptance' },
-                  { label: 'Booking', value: quote.booking ? 'Created' : 'Not created', helper: quote.booking ? `Booking ${quote.booking.id}` : 'Conversion available after acceptance' },
                 ]}
                 footer={
                   <div className="quote-builder-sidebar-actions">
                     {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
-                    {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                     <QuotePreviewLink quoteId={quote.id} />
                     <ShareQuoteButton
                       apiBaseUrl={ACTION_API_BASE_URL}
@@ -2327,35 +2442,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       initialPublicEnabled={quote.publicEnabled}
                     />
                     <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
-                    {quote.booking ? (
-                      <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
-                        View booking
-                      </Link>
-                    ) : quoteReadOnly ? (
-                      <QuoteBuilderEmptyState
-                        eyebrow="Conversion"
-                        title={quoteCancelled ? 'Quote cancelled' : 'Older revision'}
-                        description={quoteCancelled ? 'Cancelled quotes remain visible but cannot be converted into bookings.' : 'Only the latest quote revision can be converted into a booking.'}
-                      />
-                    ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                      convertBlocked ? (
-                        <QuoteBuilderEmptyState
-                          eyebrow="Conversion"
-                          title="Booking conversion blocked"
-                          description="Resolve blocking review items before converting this quote into a booking."
-                        />
-                      ) : (
-                        <ConvertToBookingButton quoteId={quote.id} />
-                      )
-                    ) : null}
                     {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
+                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                   </div>
                 }
               />
-
-              <section className="workspace-section quote-builder-health-card">
-                <QuoteHealthPanel readiness={readiness} groupPricingHref={buildStepHref('group-pricing')} />
-              </section>
             </aside>
           </div>
         </div>

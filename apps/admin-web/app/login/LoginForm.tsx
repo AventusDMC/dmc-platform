@@ -11,8 +11,8 @@ type LoginFormProps = {
 
 export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@dmc.local');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,7 +73,6 @@ export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProp
       </button>
 
       {initialMessage ? <p className="form-helper">{initialMessage}</p> : null}
-      <p className="form-helper">Seed users: `admin@dmc.local`, `viewer@dmc.local`, `operations@dmc.local`, `finance@dmc.local`, `agent@dmc.local`.</p>
       <p className="form-helper">
         New company? <Link href="/signup">Create an account</Link>
       </p>
