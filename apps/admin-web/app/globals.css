@@ -10589,9 +10589,9 @@ a {
 .admin-sidebar {
   display: flex;
   flex-direction: column;
-  background: #F9FAFB;
-  color: var(--axis-text-soft);
-  border-right: 1px solid var(--axis-border);
+  background: #061B33;
+  color: rgba(255, 255, 255, 0.82);
+  border-right: 1px solid rgba(6, 27, 51, 0.18);
   box-shadow: none;
 }
 
@@ -10603,20 +10603,27 @@ a {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.85rem;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-brand-logo-wrapper {
+  display: block;
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .admin-brand-logo {
   display: block;
-  width: auto;
+  width: 200px;
   height: auto;
-  max-width: 190px;
-  max-height: 78px;
-  padding: 10px 12px;
+  max-width: none;
   object-fit: contain;
-  border-radius: 12px;
-  border: 1px solid var(--axis-border);
-  background: #ffffff;
 }
 
 .admin-sidebar .admin-brand-title {
@@ -10650,18 +10657,23 @@ a {
   padding: 2rem;
 }
 
+.login-brand-logo-wrapper {
+  display: block;
+  width: fit-content;
+  margin-bottom: 1.15rem;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #061B33;
+  overflow: visible;
+}
+
 .login-brand-logo {
   display: block;
-  width: auto;
+  width: 220px;
   height: auto;
-  max-width: 220px;
-  max-height: 92px;
-  margin-bottom: 1.15rem;
-  padding: 12px 14px;
+  max-width: none;
   object-fit: contain;
-  border: 1px solid #E5E7EB;
-  border-radius: 12px;
-  background: #ffffff;
 }
 
 .primary-button,
@@ -10807,12 +10819,13 @@ a {
   }
 
   .admin-brand-logo {
-    height: 40px;
-    max-width: 132px;
+    width: min(200px, 100%);
+    height: auto;
   }
 
   .login-brand-logo {
-    height: 48px;
+    width: min(220px, 100%);
+    height: auto;
   }
 }
 
@@ -10823,7 +10836,7 @@ a {
   --axis-blue-soft: rgba(31, 163, 214, 0.1);
   --axis-blue-border: rgba(31, 163, 214, 0.24);
   --axis-text-soft: #6B6B6B;
-  --axis-navy: #F9FAFB;
+  --axis-navy: #061B33;
   --axis-text: #1F2937;
   --axis-background: #FFFFFF;
   --axis-section-background: #F9FAFB;
@@ -10855,8 +10868,8 @@ a {
 
 .admin-sidebar {
   background: var(--axis-navy);
-  color: var(--axis-text-soft);
-  border-right: 1px solid var(--axis-border);
+  color: rgba(255, 255, 255, 0.82);
+  border-right: 1px solid rgba(6, 27, 51, 0.18);
   box-shadow: none;
 }
 
@@ -10866,31 +10879,46 @@ a {
 
 .admin-sidebar .admin-brand-row {
   align-items: center;
-  gap: 0.9rem;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.admin-brand-logo-wrapper {
+  display: inline-block;
+  flex: 0 0 auto;
+  max-width: 220px;
+  margin-bottom: 4px;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 .admin-brand-logo {
-  width: auto;
   height: auto;
-  max-width: 204px;
-  max-height: 86px;
-  padding: 10px 12px;
+  width: 200px;
+  max-width: none;
   object-fit: contain;
-  border: 1px solid var(--axis-border);
-  border-radius: 12px;
-  background: #ffffff;
+}
+
+.login-brand-logo-wrapper {
+  display: inline-block;
+  width: fit-content;
+  max-width: 260px;
+  margin-bottom: 1.15rem;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #061B33;
+  overflow: visible;
 }
 
 .login-brand-logo {
-  width: auto;
   height: auto;
-  max-width: 236px;
-  max-height: 98px;
-  padding: 12px 14px;
+  width: 220px;
+  max-width: none;
   object-fit: contain;
-  border: 1px solid var(--axis-border);
-  border-radius: 12px;
-  background: #ffffff;
 }
 
 .admin-sidebar-copy,
@@ -10898,19 +10926,19 @@ a {
 .admin-top-nav-link span,
 .admin-sidebar-footer .admin-account-copy span,
 .admin-sidebar-powered {
-  color: var(--axis-text-soft);
+  color: rgba(255, 255, 255, 0.66);
 }
 
 .admin-sidebar .admin-brand-title,
 .admin-sidebar-footer .admin-account-copy strong {
-  color: var(--axis-text);
+  color: #ffffff;
 }
 
 .admin-top-nav-link {
   border-color: transparent;
   border-radius: 12px;
   background: transparent;
-  color: var(--axis-text);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .admin-top-nav-link-active {

@@ -95,14 +95,23 @@ test('mobile admin navigation hooks and collapse classes exist', () => {
 test('AXIS branding renders on sidebar and login with powered footer', () => {
   assert.match(layoutSource, /src="\/axis-logo\.png"/);
   assert.match(layoutSource, /alt="AXIS"/);
+  assert.match(layoutSource, /className="admin-brand-logo-wrapper"/);
   assert.match(layoutSource, /className="admin-brand-logo"/);
+  assert.doesNotMatch(layoutSource, /<h1 className="admin-brand-title">AXIS<\/h1>/);
   assert.match(layoutSource, /Powered by Aventus IT/);
   assert.match(layoutSource, /className="admin-sidebar-powered"/);
   assert.match(loginPageSource, /src="\/axis-logo\.png"/);
+  assert.match(loginPageSource, /className="login-brand-logo-wrapper"/);
   assert.match(loginPageSource, /className="login-brand-logo"/);
+  assert.match(cssSource, /\.admin-brand-logo-wrapper/);
   assert.match(cssSource, /\.admin-brand-logo/);
+  assert.match(cssSource, /\.login-brand-logo-wrapper/);
   assert.match(cssSource, /\.login-brand-logo/);
   assert.match(cssSource, /\.admin-sidebar-powered/);
+  assert.match(cssSource, /\.admin-brand-logo\s*\{[\s\S]*width:\s*200px;[\s\S]*height:\s*auto;[\s\S]*object-fit:\s*contain/);
+  assert.match(cssSource, /\.admin-brand-logo-wrapper\s*\{[\s\S]*background:\s*transparent;[\s\S]*padding:\s*8px 0;[\s\S]*overflow:\s*visible/);
+  assert.match(cssSource, /\.login-brand-logo\s*\{[\s\S]*width:\s*220px;[\s\S]*height:\s*auto;[\s\S]*object-fit:\s*contain/);
+  assert.doesNotMatch(cssSource, /\.admin-brand-logo\s*\{[\s\S]*(?:overflow:\s*hidden|max-width:\s*80px|max-height:\s*(?:40|78|86)px)/);
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {

@@ -54,10 +54,8 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
                 <div className="admin-brand-row">
-                  <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
-                  <div>
-                    <p className="eyebrow">Agent Portal</p>
-                    <h1 className="admin-brand-title">AXIS</h1>
+                  <div className="admin-brand-logo-wrapper">
+                    <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
                   </div>
                 </div>
                 <p className="admin-sidebar-copy">Quotes, bookings, invoices, and shared proposals for your assigned business.</p>
@@ -128,10 +126,8 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
                 <div className="admin-brand-row">
-                  <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
-                  <div>
-                    <p className="eyebrow">DMC Platform</p>
-                    <h1 className="admin-brand-title">AXIS</h1>
+                  <div className="admin-brand-logo-wrapper">
+                    <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
                   </div>
                 </div>
                 <p className="admin-sidebar-copy">Operational control, products, suppliers, and finance in one compact shell.</p>
