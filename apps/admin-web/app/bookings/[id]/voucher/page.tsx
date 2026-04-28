@@ -154,7 +154,7 @@ function formatPassengerName(passenger: { title?: string | null; firstName: stri
 
 function formatRoomOccupancy(value: 'single' | 'double' | 'triple' | 'quad' | 'unknown') {
   if (value === 'unknown') {
-    return 'Unknown';
+    return 'Pending';
   }
 
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -334,7 +334,7 @@ function VoucherServiceCard({ service }: { service: Booking['services'][number] 
           <span className="quote-client-service-badge">{formatConfirmationStatus(service.confirmationStatus)}</span>
         </div>
         <div className="quote-client-service-meta">
-          <span>Supplier: {service.supplierName || 'To be advised'}</span>
+          <span>Supplier: {service.supplierName || 'Pending confirmation'}</span>
           <span>Reference: {service.confirmationNumber || 'Pending'}</span>
         </div>
         <p className="detail-copy quote-client-service-summary">
@@ -374,7 +374,7 @@ export default async function BookingVoucherPage({ params }: BookingVoucherPageP
     totalPax,
     nightCount: snapshot.nightCount,
   });
-  const destinationSummary = sortedDays.length > 0 ? sortedDays.map((day) => getItineraryDayDisplay(day).city).filter(Boolean).join(' • ') : snapshot.title;
+  const destinationSummary = sortedDays.length > 0 ? sortedDays.map((day) => getItineraryDayDisplay(day).city).filter(Boolean).join(' | ') : snapshot.title;
   const tripWindowLabel = getTripWindowLabel(sortedDays, snapshot.nightCount);
   const primaryReference = booking.services.find((service) => service.confirmationNumber)?.confirmationNumber || '';
 

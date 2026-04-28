@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
 
 const layoutSource = readFileSync(new URL('./layout.tsx', import.meta.url), 'utf8');
+const loginPageSource = readFileSync(new URL('./login/page.tsx', import.meta.url), 'utf8');
 const chromeNavSource = readFileSync(new URL('./components/AdminChromeNav.tsx', import.meta.url), 'utf8');
 const breadcrumbsSource = readFileSync(new URL('./components/AdminBreadcrumbs.tsx', import.meta.url), 'utf8');
 const backButtonSource = readFileSync(new URL('./components/AdminBackButton.tsx', import.meta.url), 'utf8');
@@ -89,4 +90,25 @@ test('mobile admin navigation hooks and collapse classes exist', () => {
   assert.match(cssSource, /\.admin-mobile-nav/);
   assert.match(cssSource, /@media \(max-width: 859px\)/);
   assert.match(cssSource, /\.admin-sidebar\s*\{\s*display: none;/);
+});
+
+test('AXIS branding renders on sidebar and login with powered footer', () => {
+  assert.match(layoutSource, /src="\/axis-logo\.svg"/);
+  assert.match(layoutSource, /alt="AXIS"/);
+  assert.match(layoutSource, /className="admin-brand-logo"/);
+  assert.match(layoutSource, /Powered by Aventus IT/);
+  assert.match(layoutSource, /className="admin-sidebar-powered"/);
+  assert.match(loginPageSource, /src="\/axis-logo\.svg"/);
+  assert.match(loginPageSource, /className="login-brand-logo"/);
+  assert.match(cssSource, /\.admin-brand-logo/);
+  assert.match(cssSource, /\.login-brand-logo/);
+  assert.match(cssSource, /\.admin-sidebar-powered/);
+});
+
+test('AXIS color system is applied to admin controls and active navigation', () => {
+  assert.match(cssSource, /--axis-blue:\s*#1268d8/);
+  assert.match(cssSource, /\.primary-button,\s*\n\.lead-form button,\s*\n\.entity-form button,\s*\n\.invoice-portal-primary-button\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
+  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(18,\s*104,\s*216/);
+  assert.match(cssSource, /\.admin-top-nav-link-active::before\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
+  assert.match(cssSource, /\.admin-dashboard-page\s*\.dashboard-card\s*span\s*\{[\s\S]*color:\s*var\(--axis-blue-dark\)/);
 });

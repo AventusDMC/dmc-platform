@@ -134,9 +134,48 @@ test('reports page renders top warning sections and empty states', () => {
   assert.match(pageSource, /Low Margin Bookings/);
   assert.match(pageSource, /Top Suppliers by Cost/);
   assert.match(pageSource, /Lowest Margin Suppliers/);
+  assert.match(pageSource, /No data yet/);
   assert.match(pageSource, /No monthly booking trends in this range/);
   assert.match(pageSource, /No supplier-assigned services in this range/);
   assert.match(pageSource, /No supplier cost data in this range/);
+});
+
+test('reports page renders with failed APIs using safe defaults', () => {
+  assert.match(pageSource, /safeFetch/);
+  assert.match(pageSource, /catch \(error\)/);
+  assert.match(pageSource, /\[reports\].*unavailable/);
+  assert.doesNotMatch(pageSource, /Promise\.all/);
+  assert.match(pageSource, /EMPTY_BOOKING_SUMMARY/);
+  assert.match(pageSource, /EMPTY_MONTHLY_TRENDS/);
+  assert.match(pageSource, /EMPTY_SUPPLIER_PERFORMANCE/);
+  assert.match(pageSource, /EMPTY_FINANCE_SUMMARY/);
+  assert.match(pageSource, /EMPTY_ALERTS/);
+});
+
+test('reports page renders with empty data defaults', () => {
+  assert.match(pageSource, /totalBookings: 0/);
+  assert.match(pageSource, /totalSell: 0/);
+  assert.match(pageSource, /totalCost: 0/);
+  assert.match(pageSource, /totalProfit: 0/);
+  assert.match(pageSource, /avgMargin: 0/);
+  assert.match(pageSource, /topBookings: \[\]/);
+  assert.match(pageSource, /lowMarginBookings: \[\]/);
+  assert.match(pageSource, /months: \[\]/);
+  assert.match(pageSource, /suppliers: \[\]/);
+  assert.match(pageSource, /overdueInvoices: \[\]/);
+  assert.match(pageSource, /unpaidSupplierPayables: \[\]/);
+});
+
+test('reports page renders with partial data by normalizing missing arrays and fields', () => {
+  assert.match(pageSource, /function normalizeBookingSummary/);
+  assert.match(pageSource, /function normalizeMonthlyTrends/);
+  assert.match(pageSource, /function normalizeSupplierPerformance/);
+  assert.match(pageSource, /function normalizeFinanceSummary/);
+  assert.match(pageSource, /function normalizeAlerts/);
+  assert.match(pageSource, /topBookings: asArray\(row\.topBookings\)/);
+  assert.match(pageSource, /months: asArray\(row\.months\)/);
+  assert.match(pageSource, /suppliers: asArray\(row\.suppliers\)/);
+  assert.match(pageSource, /overdueReceivables: asArray\(row\.overdueReceivables\)/);
 });
 
 test('reports page has loading and internal admin safety labeling', () => {

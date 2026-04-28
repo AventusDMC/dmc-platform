@@ -11,6 +11,7 @@ export async function GET(
   const { id } = await context.params;
   const response = await fetch(`${API_BASE_URL}/bookings/${id}/voucher/pdf${request.nextUrl.search}`, {
     headers: buildActorHeaders(request),
+    credentials: 'include',
     cache: 'no-store',
     redirect: 'manual',
   });

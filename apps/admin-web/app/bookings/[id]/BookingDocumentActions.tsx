@@ -25,12 +25,14 @@ export function BookingDocumentActions({
     try {
       setIsDownloading(true);
       setError('');
-      const response = await fetch(`${apiBaseUrl}/bookings/${bookingId}/${documentType}/pdf`);
+      const response = await fetch(`${apiBaseUrl}/bookings/${bookingId}/${documentType}/pdf`, {
+        credentials: 'include',
+      });
 
       const contentType = response.headers.get('content-type') || '';
 
       if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
-        throw new Error(await getErrorMessage(response, 'Failed to download PDF'));
+        throw new Error(await getErrorMessage(response, `Failed to download ${documentLabel.toLowerCase()}`));
       }
 
       const blob = await response.blob();
@@ -45,7 +47,7 @@ export function BookingDocumentActions({
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not download the PDF right now.');
+      setError(caughtError instanceof Error ? caughtError.message : `Could not download the ${documentLabel.toLowerCase()} right now.`);
     } finally {
       window.setTimeout(() => {
         setIsDownloading(false);
@@ -63,12 +65,12 @@ export function BookingDocumentActions({
   return (
     <div className="workspace-document-actions document-page-actions">
       <button type="button" className="secondary-button" onClick={handleDownloadPdf} disabled={isDownloading}>
-        {isDownloading ? 'Downloading...' : 'Download PDF'}
+        {isDownloading ? 'Downloading...' : `Download ${documentLabel} PDF`}
       </button>
       <button type="button" className="secondary-button" onClick={handleSendByEmail}>
-        Open email draft
+        Prepare Email
       </button>
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? <p className="form-helper">{error}</p> : null}
     </div>
   );
 }

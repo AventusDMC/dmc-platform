@@ -34,6 +34,7 @@ export function AcceptInviteForm({ token }: { token: string }) {
       try {
         const response = await fetch('/api/auth/invite-details', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
           },
@@ -74,6 +75,7 @@ export function AcceptInviteForm({ token }: { token: string }) {
     try {
       const response = await fetch('/api/auth/accept-invite', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

@@ -27,6 +27,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="page login-page">
       <section className="detail-card login-card">
+        <img src="/axis-logo.svg" alt="AXIS" className="login-brand-logo" />
         <p className="eyebrow">DMC Admin</p>
         <h1>Sign in to your workspace</h1>
         <p className="copy">Access sales, operations, product, finance, and reporting workflows from one secure admin console.</p>

@@ -53,8 +53,13 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           <div className="admin-shell">
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
-                <p className="eyebrow">Desert Compass</p>
-                <h1 className="admin-brand-title">Agent Portal</h1>
+                <div className="admin-brand-row">
+                  <img src="/axis-logo.svg" alt="AXIS" className="admin-brand-logo" />
+                  <div>
+                    <p className="eyebrow">Agent Portal</p>
+                    <h1 className="admin-brand-title">AXIS</h1>
+                  </div>
+                </div>
                 <p className="admin-sidebar-copy">Quotes, bookings, invoices, and shared proposals for your assigned business.</p>
               </div>
 
@@ -84,6 +89,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                     <span>{session.role}</span>
                   </div>
                 ) : null}
+                <p className="admin-sidebar-powered">Powered by Aventus IT</p>
               </div>
             </aside>
 
@@ -121,8 +127,13 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           <div className="admin-shell">
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
-                <p className="eyebrow">DMC Platform</p>
-                <h1 className="admin-brand-title">Admin Workspace</h1>
+                <div className="admin-brand-row">
+                  <img src="/axis-logo.svg" alt="AXIS" className="admin-brand-logo" />
+                  <div>
+                    <p className="eyebrow">DMC Platform</p>
+                    <h1 className="admin-brand-title">AXIS</h1>
+                  </div>
+                </div>
                 <p className="admin-sidebar-copy">Operational control, products, suppliers, and finance in one compact shell.</p>
               </div>
 
@@ -139,6 +150,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                     <span>{session.role}</span>
                   </div>
                 ) : null}
+                <p className="admin-sidebar-powered">Powered by Aventus IT</p>
               </div>
             </aside>
 

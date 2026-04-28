@@ -6,6 +6,7 @@ import { calculatePercentChange, formatPercentChange } from './dashboard-metrics
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
 const adminIndexSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
+const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 test('admin dashboard renders KPI cards from existing report endpoints', () => {
   assert.match(pageSource, /\/api\/reports\/finance-summary/);
@@ -99,4 +100,16 @@ test('admin dashboard does not assume alert response fields exist', () => {
   assert.match(pageSource, /function normalizeAlerts/);
   assert.match(pageSource, /asRecord\(value\)/);
   assert.match(pageSource, /unpaidSupplierPayables: asArray\(row\.unpaidSupplierPayables\)/);
+});
+
+test('admin dashboard uses full-width responsive dashboard layout', () => {
+  assert.match(pageSource, /className="page admin-dashboard-shell"/);
+  assert.match(cssSource, /\.page\.admin-dashboard-shell/);
+  assert.match(cssSource, /max-width:\s*none/);
+  assert.match(cssSource, /padding:\s*24px/);
+  assert.match(cssSource, /\.admin-dashboard-page\s*\{[\s\S]*max-width:\s*1400px/);
+  assert.match(cssSource, /\.admin-dashboard-page\s*\.dashboard-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(cssSource, /\.admin-dashboard-page\s*\.reports-list-grid\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*2fr\)\s*minmax\(320px,\s*1fr\)/);
+  assert.match(cssSource, /@media \(max-width:\s*1180px\)/);
+  assert.match(cssSource, /@media \(max-width:\s*720px\)/);
 });

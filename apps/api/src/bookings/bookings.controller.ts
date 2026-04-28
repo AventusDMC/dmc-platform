@@ -302,14 +302,19 @@ export class BookingsController {
   }
 
   @Get(':id/voucher/pdf')
-  async downloadVoucherPdf(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
-    const booking = await this.bookingsService.findOne(id);
+  @Roles('admin', 'operations')
+  async downloadVoucherPdf(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const booking = await this.bookingsService.findOne(id, actor);
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
 
-    const pdfBuffer = await this.bookingsService.generateVoucherPdf(id);
+    const pdfBuffer = await this.bookingsService.generateVoucherPdf(id, actor, booking);
     const fileName =
       `${booking.bookingRef || 'booking'}-voucher`
         .trim()
@@ -336,7 +341,7 @@ export class BookingsController {
       throw new NotFoundException('Booking not found');
     }
 
-    const pdfBuffer = await this.bookingsService.generateVoucherPdf(id);
+    const pdfBuffer = await this.bookingsService.generateVoucherPdf(id, undefined, booking);
     const fileName =
       `${booking.bookingRef || 'booking'}-voucher`
         .trim()
@@ -351,14 +356,19 @@ export class BookingsController {
   }
 
   @Get(':id/supplier-confirmation/pdf')
-  async downloadSupplierConfirmationPdf(@Param('id') id: string, @Res({ passthrough: true }) response: any) {
-    const booking = await this.bookingsService.findOne(id);
+  @Roles('admin', 'operations')
+  async downloadSupplierConfirmationPdf(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const booking = await this.bookingsService.findOne(id, actor);
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
 
-    const pdfBuffer = await this.bookingsService.generateSupplierConfirmationPdf(id);
+    const pdfBuffer = await this.bookingsService.generateSupplierConfirmationPdf(id, actor, booking);
     const fileName =
       `${booking.bookingRef || 'booking'}-supplier-confirmation`
         .trim()
@@ -436,11 +446,12 @@ export class BookingsController {
 
   @Post('send-document-email')
   @Roles('admin', 'operations')
-  sendDocumentEmail(@Body() body: SendBookingDocumentEmailBody) {
+  sendDocumentEmail(@Body() body: SendBookingDocumentEmailBody, @Actor() actor: AuthenticatedActor) {
     return this.bookingsService.sendDocumentEmail({
       email: body.email,
       bookingId: body.bookingId,
       documentType: body.documentType,
+      companyActor: actor,
     });
   }
 

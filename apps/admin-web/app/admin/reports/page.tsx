@@ -134,6 +134,62 @@ type AlertsSummary = {
   }>;
 };
 
+const EMPTY_BOOKING_SUMMARY: BookingSummary = {
+  startDate: null,
+  endDate: null,
+  totalBookings: 0,
+  totalSell: 0,
+  totalCost: 0,
+  totalProfit: 0,
+  avgMargin: 0,
+  cancelledBookings: 0,
+  topBookings: [],
+  lowMarginBookings: [],
+};
+
+const EMPTY_MONTHLY_TRENDS: MonthlyTrends = {
+  startDate: null,
+  endDate: null,
+  dateField: 'startDate',
+  months: [],
+};
+
+const EMPTY_SUPPLIER_PERFORMANCE: SupplierPerformance = {
+  startDate: null,
+  endDate: null,
+  dateField: 'startDate',
+  suppliers: [],
+};
+
+const EMPTY_FINANCE_SUMMARY: FinanceSummary = {
+  totalInvoiced: 0,
+  totalPaid: 0,
+  outstandingReceivables: 0,
+  overdueReceivables: 0,
+  supplierPayables: 0,
+  supplierPaid: 0,
+  outstandingSupplierPayables: 0,
+  netCashPosition: 0,
+  overdueInvoices: [],
+  unpaidSupplierPayables: [],
+};
+
+const EMPTY_ALERTS: AlertsSummary = {
+  overdueReceivables: [],
+  lowMarginBookings: [],
+  highCostServices: [],
+  unpaidSupplierPayables: [],
+};
+
+async function safeFetch<T>(fetcher: () => Promise<unknown>, fallback: T, normalize: (value: unknown) => T, label: string) {
+  try {
+    return normalize(await fetcher());
+  } catch (error) {
+    console.error(`[reports] ${label} unavailable`, error);
+    return fallback;
+  }
+}
+
 async function getBookingSummary(startDate?: string, endDate?: string) {
   const params = new URLSearchParams();
   if (startDate) params.set('startDate', startDate);
@@ -191,13 +247,31 @@ async function getAlerts() {
 
 export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const [summary, monthlyTrends, supplierPerformance, financeSummary, alerts] = await Promise.all([
-    getBookingSummary(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
-    getMonthlyTrends(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
-    getSupplierPerformance(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
-    getFinanceSummary(),
-    getAlerts(),
-  ]);
+  const summary = await safeFetch(
+    async () => getBookingSummary(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
+    EMPTY_BOOKING_SUMMARY,
+    normalizeBookingSummary,
+    'Booking summary report',
+  );
+  const monthlyTrends = await safeFetch(
+    async () => getMonthlyTrends(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
+    EMPTY_MONTHLY_TRENDS,
+    normalizeMonthlyTrends,
+    'Monthly trends report',
+  );
+  const supplierPerformance = await safeFetch(
+    async () => getSupplierPerformance(resolvedSearchParams.startDate, resolvedSearchParams.endDate),
+    EMPTY_SUPPLIER_PERFORMANCE,
+    normalizeSupplierPerformance,
+    'Supplier performance report',
+  );
+  const financeSummary = await safeFetch(
+    async () => getFinanceSummary(),
+    EMPTY_FINANCE_SUMMARY,
+    normalizeFinanceSummary,
+    'Finance summary report',
+  );
+  const alerts = await safeFetch(async () => getAlerts(), EMPTY_ALERTS, normalizeAlerts, 'Alerts report');
   const supplierSort = normalizeSupplierSort(resolvedSearchParams.supplierSort);
   const sortedSuppliers = sortSuppliers(supplierPerformance.suppliers, supplierSort);
   const topSuppliersByCost = [...supplierPerformance.suppliers]
@@ -208,6 +282,14 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     .sort((left, right) => left.avgMargin - right.avgMargin || right.totalCost - left.totalCost)
     .slice(0, 5);
   const maxMonthlyRevenue = Math.max(...monthlyTrends.months.map((month) => month.totalSell), 0);
+  const hasNoData =
+    summary.totalBookings === 0 &&
+    summary.totalSell === 0 &&
+    monthlyTrends.months.length === 0 &&
+    supplierPerformance.suppliers.length === 0 &&
+    getAlertCount(alerts) === 0 &&
+    financeSummary.totalInvoiced === 0 &&
+    financeSummary.supplierPayables === 0;
 
   return (
     <main className="page">
@@ -251,6 +333,14 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             </Link>
           ) : null}
         </form>
+
+        {hasNoData ? (
+          <section className="workspace-section">
+            <p className="eyebrow">Reports</p>
+            <h2>No data yet</h2>
+            <p className="detail-copy">Report sections will populate once bookings, invoices, payments, and supplier services are available.</p>
+          </section>
+        ) : null}
 
         <section className="workspace-section">
           <div className="workspace-section-head">
@@ -467,6 +557,195 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       </section>
     </main>
   );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function asArray<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function asNumber(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function asString(value: unknown, fallback = '') {
+  return typeof value === 'string' && value ? value : fallback;
+}
+
+function asNullableString(value: unknown) {
+  return typeof value === 'string' && value ? value : null;
+}
+
+function normalizeBookingSummary(value: unknown): BookingSummary {
+  const row = asRecord(value);
+
+  return {
+    startDate: asNullableString(row.startDate),
+    endDate: asNullableString(row.endDate),
+    totalBookings: asNumber(row.totalBookings),
+    totalSell: asNumber(row.totalSell),
+    totalCost: asNumber(row.totalCost),
+    totalProfit: asNumber(row.totalProfit),
+    avgMargin: asNumber(row.avgMargin),
+    cancelledBookings: asNumber(row.cancelledBookings),
+    topBookings: asArray(row.topBookings).map(normalizeBookingSummaryRow),
+    lowMarginBookings: asArray(row.lowMarginBookings).map(normalizeBookingSummaryRow),
+  };
+}
+
+function normalizeBookingSummaryRow(value: unknown): BookingSummaryRow {
+  const row = asRecord(value);
+
+  return {
+    id: asString(row.id, 'unknown-booking'),
+    bookingRef: asString(row.bookingRef, 'Booking'),
+    clientName: asString(row.clientName, 'Client pending'),
+    startDate: asNullableString(row.startDate),
+    totalSell: asNumber(row.totalSell),
+    totalCost: asNumber(row.totalCost),
+    totalProfit: asNumber(row.totalProfit),
+    marginPercent: asNumber(row.marginPercent),
+  };
+}
+
+function normalizeMonthlyTrends(value: unknown): MonthlyTrends {
+  const row = asRecord(value);
+
+  return {
+    startDate: asNullableString(row.startDate),
+    endDate: asNullableString(row.endDate),
+    dateField: 'startDate',
+    months: asArray(row.months).map((month) => {
+      const monthRow = asRecord(month);
+      return {
+        month: asString(monthRow.month),
+        totalBookings: asNumber(monthRow.totalBookings),
+        totalSell: asNumber(monthRow.totalSell),
+        totalCost: asNumber(monthRow.totalCost),
+        totalProfit: asNumber(monthRow.totalProfit),
+        avgMargin: asNumber(monthRow.avgMargin),
+      };
+    }).filter((month) => month.month),
+  };
+}
+
+function normalizeSupplierPerformance(value: unknown): SupplierPerformance {
+  const row = asRecord(value);
+
+  return {
+    startDate: asNullableString(row.startDate),
+    endDate: asNullableString(row.endDate),
+    dateField: 'startDate',
+    suppliers: asArray(row.suppliers).map(normalizeSupplierPerformanceRow),
+  };
+}
+
+function normalizeSupplierPerformanceRow(value: unknown): SupplierPerformanceRow {
+  const row = asRecord(value);
+
+  return {
+    supplierId: asNullableString(row.supplierId),
+    supplierName: asString(row.supplierName, 'Unassigned supplier'),
+    serviceCount: asNumber(row.serviceCount),
+    totalCost: asNumber(row.totalCost),
+    totalSell: asNumber(row.totalSell),
+    totalProfit: asNumber(row.totalProfit),
+    avgMargin: asNumber(row.avgMargin),
+  };
+}
+
+function normalizeFinanceSummary(value: unknown): FinanceSummary {
+  const row = asRecord(value);
+
+  return {
+    totalInvoiced: asNumber(row.totalInvoiced),
+    totalPaid: asNumber(row.totalPaid),
+    outstandingReceivables: asNumber(row.outstandingReceivables),
+    overdueReceivables: asNumber(row.overdueReceivables),
+    supplierPayables: asNumber(row.supplierPayables),
+    supplierPaid: asNumber(row.supplierPaid),
+    outstandingSupplierPayables: asNumber(row.outstandingSupplierPayables),
+    netCashPosition: asNumber(row.netCashPosition),
+    overdueInvoices: asArray(row.overdueInvoices).map((invoice) => {
+      const invoiceRow = asRecord(invoice);
+      return {
+        invoiceId: asString(invoiceRow.invoiceId, 'unknown-invoice'),
+        invoiceNumber: asString(invoiceRow.invoiceNumber, 'Invoice'),
+        clientCompanyName: asString(invoiceRow.clientCompanyName, 'Client pending'),
+        dueDate: asNullableString(invoiceRow.dueDate),
+        totalAmount: asNumber(invoiceRow.totalAmount),
+        paidAmount: asNumber(invoiceRow.paidAmount),
+        balanceDue: asNumber(invoiceRow.balanceDue),
+      };
+    }),
+    unpaidSupplierPayables: asArray(row.unpaidSupplierPayables).map((payable) => {
+      const payableRow = asRecord(payable);
+      return {
+        supplierName: asString(payableRow.supplierName, 'Supplier pending'),
+        bookingRef: asString(payableRow.bookingRef, 'Booking'),
+        serviceName: asString(payableRow.serviceName, 'Service'),
+        amount: asNumber(payableRow.amount),
+        paidAmount: asNumber(payableRow.paidAmount),
+        balanceDue: asNumber(payableRow.balanceDue),
+      };
+    }),
+  };
+}
+
+function normalizeAlerts(value: unknown): AlertsSummary {
+  const row = asRecord(value);
+
+  return {
+    overdueReceivables: asArray(row.overdueReceivables).map((alert) => {
+      const alertRow = asRecord(alert);
+      return {
+        invoiceId: asString(alertRow.invoiceId, 'unknown-invoice'),
+        invoiceNumber: asString(alertRow.invoiceNumber, 'Invoice'),
+        clientCompanyName: asString(alertRow.clientCompanyName, 'Client pending'),
+        dueDate: asNullableString(alertRow.dueDate),
+        balanceDue: asNumber(alertRow.balanceDue),
+        daysOverdue: asNumber(alertRow.daysOverdue),
+      };
+    }),
+    lowMarginBookings: asArray(row.lowMarginBookings).map((alert) => {
+      const alertRow = asRecord(alert);
+      return {
+        bookingId: asString(alertRow.bookingId, 'unknown-booking'),
+        bookingRef: asString(alertRow.bookingRef, 'Booking'),
+        clientCompanyName: asString(alertRow.clientCompanyName, 'Client pending'),
+        totalSell: asNumber(alertRow.totalSell),
+        totalCost: asNumber(alertRow.totalCost),
+        totalProfit: asNumber(alertRow.totalProfit),
+        marginPercent: asNumber(alertRow.marginPercent),
+      };
+    }),
+    highCostServices: asArray(row.highCostServices).map((alert) => {
+      const alertRow = asRecord(alert);
+      return {
+        bookingId: asString(alertRow.bookingId, 'unknown-booking'),
+        bookingRef: asString(alertRow.bookingRef, 'Booking'),
+        serviceId: asNullableString(alertRow.serviceId),
+        serviceName: asString(alertRow.serviceName, 'Service'),
+        supplierName: asString(alertRow.supplierName, 'Supplier pending'),
+        supplierCost: asNumber(alertRow.supplierCost),
+        sellPrice: asNumber(alertRow.sellPrice),
+        marginPercent: asNumber(alertRow.marginPercent),
+      };
+    }),
+    unpaidSupplierPayables: asArray(row.unpaidSupplierPayables).map((alert) => {
+      const alertRow = asRecord(alert);
+      return {
+        supplierName: asString(alertRow.supplierName, 'Supplier pending'),
+        bookingRef: asString(alertRow.bookingRef, 'Booking'),
+        serviceName: asString(alertRow.serviceName, 'Service'),
+        balanceDue: asNumber(alertRow.balanceDue),
+      };
+    }),
+  };
 }
 
 function AlertsCard({

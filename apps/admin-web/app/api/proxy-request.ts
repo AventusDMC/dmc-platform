@@ -10,6 +10,7 @@ export async function proxyRequest(request: NextRequest, url: string, method: Pr
   const init: RequestInit = {
     method,
     headers,
+    credentials: 'include',
     cache: 'no-store',
     redirect: 'manual',
   };

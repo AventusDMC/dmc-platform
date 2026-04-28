@@ -171,7 +171,7 @@ export default async function AdminDashboardPage() {
   const hasNoActivity = bookingSummary.totalBookings === 0 && recentMonths.length === 0 && operationalSnapshot.upcoming.length === 0;
 
   return (
-    <main className="page">
+    <main className="page admin-dashboard-shell">
       <section className="panel reports-dashboard admin-dashboard-page">
         <AdminBreadcrumbs
           items={[

@@ -13,7 +13,7 @@ function getCorsOrigins() {
     .map((origin) => origin.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
-  return Array.from(new Set(['http://localhost:3000', ...configured]));
+  return Array.from(new Set(['http://localhost:3000', 'https://dmc-platform-admin-web.vercel.app', ...configured]));
 }
 
 async function bootstrap() {

@@ -77,6 +77,83 @@ test('passenger manifest export route uses extensionless URL and Excel response 
   assert.equal(headers['Content-Disposition'], 'attachment; filename="BK-1-passenger-manifest.xlsx"');
 });
 
+test('admin booking voucher PDF route returns attachment PDF without false permission block', async () => {
+  const calls: any[] = [];
+  const controller = new BookingsController(
+    {
+      findOne: async (id: string, actor: any) => {
+        calls.push({ method: 'findOne', id, actor });
+        return { id, bookingRef: 'BK-1' };
+      },
+      generateVoucherPdf: async (id: string, actor: any, booking: any) => {
+        calls.push({ method: 'generateVoucherPdf', id, actor, booking });
+        return Buffer.from('%PDF voucher');
+      },
+    },
+    {},
+    {},
+  );
+  const actor = { id: 'user-1', role: 'admin', companyId: 'dmc-company-1' };
+  const headers: Record<string, string> = {};
+  const response = {
+    setHeader: (name: string, value: string) => {
+      headers[name] = value;
+    },
+  };
+
+  const stream = await controller.downloadVoucherPdf('booking-1', actor, response);
+
+  assert.equal(headers['Content-Type'], 'application/pdf');
+  assert.equal(headers['Content-Disposition'], 'attachment; filename="bk-1-voucher.pdf"');
+  assert.equal(calls[0].method, 'findOne');
+  assert.equal(calls[0].actor, actor);
+  assert.equal(calls[1].method, 'generateVoucherPdf');
+  assert.equal(calls[1].actor, actor);
+  assert.ok(stream);
+});
+
+test('booking voucher PDF uses professional placeholders and no internal pricing leakage', async () => {
+  const service = createService({});
+  capturePdfText(service as any);
+
+  const buffer = await service.generateVoucherPdf('booking-1', { companyId: 'dmc-company-1' }, {
+    id: 'booking-1',
+    bookingRef: 'BK-1',
+    bookingType: 'FIT',
+    adults: 2,
+    children: 0,
+    roomCount: 1,
+    nightCount: 2,
+    snapshotJson: {
+      title: 'Jordan Highlights',
+      roomCount: 1,
+      nightCount: 2,
+      itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Arrival', description: 'Airport arrival' }],
+      quoteItems: [],
+    },
+    contactSnapshotJson: { firstName: 'Lina', lastName: 'Haddad' },
+    clientSnapshotJson: { name: 'Client Co' },
+    passengers: [],
+    roomingEntries: [],
+    services: [
+      {
+        id: 'service-1',
+        description: 'Airport transfer',
+        supplierName: null,
+        confirmationStatus: 'pending',
+        confirmationNumber: null,
+        totalCost: 900,
+        totalSell: 1200,
+      },
+    ],
+  });
+  const text = buffer.toString('utf8');
+
+  assert.match(text, /Booking Voucher/i);
+  assert.match(text, /Pending confirmation/);
+  assert.doesNotMatch(text, /To be advised|totalCost|totalSell|gross profit|margin/i);
+});
+
 test('bookings controller exposes explicit cancel route', () => {
   const routePath = (Reflect as any).getMetadata(PATH_METADATA, BookingsController.prototype.cancelBooking);
   assert.equal(routePath, ':id/cancel');

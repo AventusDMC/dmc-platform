@@ -10562,3 +10562,242 @@ h1,
     width: 100%;
   }
 }
+
+/* AXIS dashboard and branding polish */
+:root {
+  --axis-blue: #1268d8;
+  --axis-blue-dark: #0c4fad;
+  --axis-blue-soft: rgba(18, 104, 216, 0.1);
+  --axis-blue-border: rgba(18, 104, 216, 0.24);
+  --axis-gray: #273244;
+  --background: #f5f7fb;
+  --accent: var(--axis-blue);
+}
+
+a {
+  color: var(--axis-blue);
+}
+
+.admin-shell {
+  background:
+    radial-gradient(circle at top left, rgba(18, 104, 216, 0.08), transparent 30rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
+}
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #1f2937 0%, #111827 58%, #0b1220 100%);
+}
+
+.admin-sidebar-brand {
+  gap: 0.75rem;
+}
+
+.admin-sidebar .admin-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.85rem;
+}
+
+.admin-brand-logo {
+  display: block;
+  width: auto;
+  height: 46px;
+  max-width: 152px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.admin-sidebar .admin-brand-title {
+  color: #ffffff;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+}
+
+.admin-sidebar .eyebrow {
+  color: rgba(226, 232, 240, 0.74);
+}
+
+.admin-sidebar-footer {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: auto;
+}
+
+.admin-sidebar-powered {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.58);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.login-page {
+  background:
+    radial-gradient(circle at top left, rgba(18, 104, 216, 0.12), transparent 30rem),
+    linear-gradient(135deg, #f8fafc 0%, #eef3f8 100%);
+}
+
+.login-card {
+  padding: 2rem;
+}
+
+.login-brand-logo {
+  display: block;
+  width: auto;
+  height: 54px;
+  margin-bottom: 1.15rem;
+  object-fit: contain;
+}
+
+.primary-button,
+.lead-form button,
+.entity-form button,
+.invoice-portal-primary-button {
+  border-color: var(--axis-blue);
+  background: var(--axis-blue);
+  box-shadow: 0 10px 24px rgba(18, 104, 216, 0.18);
+}
+
+.primary-button:hover,
+.lead-form button:hover,
+.entity-form button:hover,
+.invoice-portal-primary-button:hover {
+  border-color: var(--axis-blue-dark);
+  background: var(--axis-blue-dark);
+}
+
+.admin-top-nav-link-active {
+  border-color: rgba(18, 104, 216, 0.42);
+  background: linear-gradient(135deg, rgba(18, 104, 216, 0.28), rgba(18, 104, 216, 0.11));
+}
+
+.admin-top-nav-link-active::before {
+  background: var(--axis-blue);
+}
+
+.admin-subnav-link-active,
+.reports-sort-links .active {
+  border-color: var(--axis-blue-border);
+  background: var(--axis-blue-soft);
+  color: var(--axis-blue);
+}
+
+.status-badge,
+.booking-payment-status-badge,
+.invoice-portal-status-badge {
+  border-color: var(--axis-blue-border);
+  background: var(--axis-blue-soft);
+  color: var(--axis-blue-dark);
+}
+
+.page.admin-dashboard-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 24px;
+}
+
+.admin-dashboard-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.admin-dashboard-page .page-header,
+.admin-dashboard-page .workspace-section-head {
+  align-items: flex-start;
+}
+
+.admin-dashboard-page .dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.admin-dashboard-page .reports-list-grid {
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  align-items: stretch;
+  width: 100%;
+}
+
+.admin-dashboard-page .workspace-section,
+.admin-dashboard-page .dashboard-card {
+  min-width: 0;
+}
+
+.admin-dashboard-page .dashboard-card {
+  gap: 0.75rem;
+  padding: 1.15rem;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--axis-blue-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-dashboard-page .dashboard-card span {
+  color: var(--axis-blue-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.admin-dashboard-page .dashboard-card strong {
+  color: var(--axis-gray);
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  line-height: 1;
+}
+
+.admin-dashboard-page .dashboard-card p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.admin-dashboard-selling-section {
+  border-color: var(--axis-blue-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.72));
+}
+
+.reports-mini-bar {
+  background: var(--axis-blue-soft);
+}
+
+.reports-mini-bar span {
+  background: var(--axis-blue);
+}
+
+@media (max-width: 1180px) {
+  .admin-dashboard-page .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-dashboard-page .reports-list-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page.admin-dashboard-shell {
+    padding: 16px;
+  }
+
+  .admin-dashboard-page .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-brand-logo {
+    height: 40px;
+    max-width: 132px;
+  }
+
+  .login-brand-logo {
+    height: 48px;
+  }
+}

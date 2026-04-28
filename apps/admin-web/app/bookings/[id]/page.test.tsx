@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', import.meta.url), 'utf8');
+const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
+const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -194,5 +196,27 @@ describe('booking detail page regression', () => {
       '.booking-payment-proof-card-grid',
       'grid-template-columns: repeat(2, minmax(0, 1fr));',
     ]);
+  });
+
+  it('downloads booking voucher PDFs with credentials and production labels', () => {
+    expectSourceContains(documentActionsSource, [
+      "credentials: 'include'",
+      '`Download ${documentLabel} PDF`',
+      'Prepare Email',
+      'form-helper',
+    ]);
+
+    assert.doesNotMatch(documentActionsSource, /Open email draft/);
+  });
+
+  it('keeps voucher page copy production-ready with professional placeholders', () => {
+    expectSourceContains(voucherPageSource, [
+      'Booking Voucher',
+      "return 'Pending';",
+      "service.supplierName || 'Pending confirmation'",
+      "primaryReference || 'Pending confirmation'",
+    ]);
+
+    assert.doesNotMatch(voucherPageSource, /Demo Company|To be advised|return 'Unknown'/);
   });
 });

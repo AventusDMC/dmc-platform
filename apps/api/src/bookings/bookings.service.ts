@@ -6480,8 +6480,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return `client ${clientInvoiceStatus}; supplier ${supplierPaymentStatus}`;
   }
 
-  async generateVoucherPdf(id: string) {
-    const booking = await this.findOne(id);
+  async generateVoucherPdf(id: string, actor?: CompanyScopedActor, bookingOverride?: any) {
+    const booking = bookingOverride || (await this.findOne(id, actor));
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
@@ -6536,7 +6536,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       } else {
         for (const service of booking.services || []) {
           this.writeListItem(doc, service.description || 'Service', [
-            `Supplier: ${service.supplierName || 'To be advised'}`,
+            `Supplier: ${service.supplierName || 'Pending confirmation'}`,
             `Confirmation: ${this.formatConfirmationStatus(service.confirmationStatus)}${service.confirmationNumber ? ` (${service.confirmationNumber})` : ''}`,
           ]);
         }
@@ -6653,8 +6653,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async generateSupplierConfirmationPdf(id: string) {
-    const booking = await this.findOne(id);
+  async generateSupplierConfirmationPdf(id: string, actor?: CompanyScopedActor, bookingOverride?: any) {
+    const booking = bookingOverride || (await this.findOne(id, actor));
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
@@ -7606,6 +7606,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     email: string;
     bookingId: string;
     documentType: BookingDocumentType;
+    companyActor?: CompanyScopedActor;
   }) {
     const email = input.email.trim();
 
@@ -7613,7 +7614,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Email address is required');
     }
 
-    const booking = await this.findOne(input.bookingId);
+    const booking = await this.findOne(input.bookingId, input.companyActor);
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
@@ -7631,8 +7632,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .replace(/^-+|-+$/g, '') || 'booking-document'}.pdf`;
     const pdfBuffer =
       input.documentType === 'supplier-confirmation'
-        ? await this.generateSupplierConfirmationPdf(input.bookingId)
-        : await this.generateVoucherPdf(input.bookingId);
+        ? await this.generateSupplierConfirmationPdf(input.bookingId, input.companyActor, booking)
+        : await this.generateVoucherPdf(input.bookingId, input.companyActor, booking);
 
     const transporter = this.createMailTransport();
     const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';
