@@ -483,6 +483,13 @@ type QuoteVersionsFetchResult = {
   message?: string;
 };
 
+type OptionalQuoteDetailFetchResult<T> = {
+  status: 'ok' | 'error';
+  label: string;
+  data: T;
+  message?: string;
+};
+
 type ServiceCostBreakdown = {
   key: string;
   label: string;
@@ -493,6 +500,55 @@ type ServiceCostBreakdown = {
   marginPercent: number;
   currency: string;
 };
+
+const QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS = 8000;
+
+function withQuoteDetailTimeout<T>(label: string, promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} did not respond within ${QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS / 1000}s`));
+    }, QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+
+async function safeQuoteDetailFetch<T>(label: string, fallback: T, load: () => Promise<T | null | undefined>): Promise<OptionalQuoteDetailFetchResult<T>> {
+  try {
+    const data = await withQuoteDetailTimeout(label, load());
+
+    return {
+      status: 'ok',
+      label,
+      data: data ?? fallback,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `Unknown ${label} fetch failure`;
+    console.warn(`[QuoteDetailsPage] Optional ${label} fetch failed: ${message}`);
+
+    return {
+      status: 'error',
+      label,
+      message,
+      data: fallback,
+    };
+  }
+}
+
+function unwrapSettledQuoteDetail<T>(result: PromiseSettledResult<T>, fallback: T, label: string): T {
+  if (result.status === 'fulfilled') {
+    return result.value;
+  }
+
+  const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
+  console.error(`[QuoteDetailsPage] ${label} fetch failed before page render: ${message}`);
+  return fallback;
+}
 
 async function getQuote(id: string): Promise<QuoteFetchResult> {
   try {
@@ -1200,24 +1256,70 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const session = readSessionActor((await cookies()).get('dmc_session')?.value || '');
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
-  const [quoteResult, services, transportServiceTypes, routes, hotels, hotelContracts, hotelRates, seasons, companies, contacts, users, versionsResult, hotelCategories, supportTextTemplates, quoteBlocks, quoteItineraryResult] = await Promise.all([
+  const [
+    quoteSettled,
+    servicesSettled,
+    transportServiceTypesSettled,
+    routesSettled,
+    hotelsSettled,
+    hotelContractsSettled,
+    hotelRatesSettled,
+    seasonsSettled,
+    companiesSettled,
+    contactsSettled,
+    usersSettled,
+    versionsSettled,
+    hotelCategoriesSettled,
+    supportTextTemplatesSettled,
+    quoteBlocksSettled,
+    quoteItinerarySettled,
+  ] = await Promise.allSettled([
     getQuote(id),
-    getServices(),
-    getTransportServiceTypes(),
-    getRoutes(),
-    getHotels(),
-    getHotelContracts(),
-    getHotelRates(),
-    getSeasons(),
-    getCompanies(),
-    getContacts(),
-    getUsers(),
+    safeQuoteDetailFetch('services', [] as SupplierService[], getServices),
+    safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
+    safeQuoteDetailFetch('routes', [] as RouteOption[], getRoutes),
+    safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels),
+    safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts),
+    safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates),
+    safeQuoteDetailFetch('seasons', [] as Season[], getSeasons),
+    safeQuoteDetailFetch('companies', [] as Company[], getCompanies),
+    safeQuoteDetailFetch('contacts', [] as Contact[], getContacts),
+    safeQuoteDetailFetch('users', [] as User[], getUsers),
     getVersions(id),
-    getHotelCategories(),
-    getSupportTextTemplates(),
-    getQuoteBlocks(),
+    safeQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[], getHotelCategories),
+    safeQuoteDetailFetch('support text templates', [] as SupportTextTemplate[], getSupportTextTemplates),
+    safeQuoteDetailFetch('quote blocks', [] as QuoteBlock[], getQuoteBlocks),
     getQuoteItinerary(id),
   ]);
+  const quoteResult = unwrapSettledQuoteDetail<QuoteFetchResult>(quoteSettled, { status: 'error', message: 'Quote could not be loaded' }, 'quote');
+  const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
+  const transportServiceTypesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportServiceType[]>>(transportServiceTypesSettled, { status: 'error', label: 'transport service types', data: [], message: 'Transport service types unavailable' }, 'transport service types');
+  const routesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteOption[]>>(routesSettled, { status: 'error', label: 'routes', data: [], message: 'Routes unavailable' }, 'routes');
+  const hotelsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Hotel[]>>(hotelsSettled, { status: 'error', label: 'hotels', data: [], message: 'Hotels unavailable' }, 'hotels');
+  const hotelContractsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelContract[]>>(hotelContractsSettled, { status: 'error', label: 'hotel contracts', data: [], message: 'Hotel contracts unavailable' }, 'hotel contracts');
+  const hotelRatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelRate[]>>(hotelRatesSettled, { status: 'error', label: 'hotel rates', data: [], message: 'Hotel rates unavailable' }, 'hotel rates');
+  const seasonsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Season[]>>(seasonsSettled, { status: 'error', label: 'seasons', data: [], message: 'Seasons unavailable' }, 'seasons');
+  const companiesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Company[]>>(companiesSettled, { status: 'error', label: 'companies', data: [], message: 'Companies unavailable' }, 'companies');
+  const contactsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Contact[]>>(contactsSettled, { status: 'error', label: 'contacts', data: [], message: 'Contacts unavailable' }, 'contacts');
+  const usersResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<User[]>>(usersSettled, { status: 'error', label: 'users', data: [], message: 'Users unavailable' }, 'users');
+  const versionsResult = unwrapSettledQuoteDetail<QuoteVersionsFetchResult>(versionsSettled, { status: 'error', versions: [], message: 'Versions unavailable' }, 'versions');
+  const hotelCategoriesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelCategoryOption[]>>(hotelCategoriesSettled, { status: 'error', label: 'hotel categories', data: [], message: 'Hotel categories unavailable' }, 'hotel categories');
+  const supportTextTemplatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupportTextTemplate[]>>(supportTextTemplatesSettled, { status: 'error', label: 'support text templates', data: [], message: 'Support text templates unavailable' }, 'support text templates');
+  const quoteBlocksResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<QuoteBlock[]>>(quoteBlocksSettled, { status: 'error', label: 'quote blocks', data: [], message: 'Quote blocks unavailable' }, 'quote blocks');
+  const quoteItineraryResult = unwrapSettledQuoteDetail<QuoteItineraryFetchResult>(quoteItinerarySettled, { status: 'error', itinerary: { quoteId: id, days: [] }, message: 'Itinerary unavailable' }, 'itinerary');
+  const services = servicesResult.data;
+  const transportServiceTypes = transportServiceTypesResult.data;
+  const routes = routesResult.data;
+  const hotels = hotelsResult.data;
+  const hotelContracts = hotelContractsResult.data;
+  const hotelRates = hotelRatesResult.data;
+  const seasons = seasonsResult.data;
+  const companies = companiesResult.data;
+  const contacts = contactsResult.data;
+  const users = usersResult.data;
+  const hotelCategories = hotelCategoriesResult.data;
+  const supportTextTemplates = supportTextTemplatesResult.data;
+  const quoteBlocks = quoteBlocksResult.data;
 
   if (quoteResult.status === 'error') {
     return (
@@ -1225,12 +1327,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         <section className="panel">
           <QuoteBuilderEmptyState
             eyebrow="Quote Detail"
-            title="Quote detail is temporarily unavailable"
+            title="Quote could not be loaded"
             description="The quote record could not be loaded right now. Please refresh or try again shortly."
             action={
-              <Link href="/quotes" className="secondary-button">
-                Back to quotes
-              </Link>
+              <div className="table-action-row">
+                <Link href={`/quotes/${id}`} className="primary-button">
+                  Retry
+                </Link>
+                <Link href="/quotes" className="secondary-button">
+                  Back to quotes
+                </Link>
+              </div>
             }
           />
         </section>
@@ -1242,7 +1349,27 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const versions = versionsResult.versions;
 
   if (!rawQuote) {
-    notFound();
+    return (
+      <main className="page">
+        <section className="panel">
+          <QuoteBuilderEmptyState
+            eyebrow="Quote Detail"
+            title="Quote could not be loaded"
+            description="This quote was not found or is no longer available."
+            action={
+              <div className="table-action-row">
+                <Link href={`/quotes/${id}`} className="primary-button">
+                  Retry
+                </Link>
+                <Link href="/quotes" className="secondary-button">
+                  Back to quotes
+                </Link>
+              </div>
+            }
+          />
+        </section>
+      </main>
+    );
   }
 
   const quote = normalizeQuoteDetail(rawQuote);
@@ -1280,6 +1407,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     : baseQuoteNumberLabel;
   const overviewWarnings = [
     quoteItineraryResult.status === 'error' ? 'Itinerary details could not be loaded. Showing quote detail without itinerary data.' : null,
+    servicesResult.status === 'error' ? 'Service catalog could not be loaded. Existing quote services are still visible.' : null,
+    routesResult.status === 'error' || transportServiceTypesResult.status === 'error' ? 'Transport setup data could not be loaded. Transport editing may be limited.' : null,
+    hotelsResult.status === 'error' || hotelContractsResult.status === 'error' || hotelRatesResult.status === 'error' || hotelCategoriesResult.status === 'error'
+      ? 'Hotel setup data could not be loaded. Hotel editing may be limited.'
+      : null,
+    companiesResult.status === 'error' || contactsResult.status === 'error' || usersResult.status === 'error'
+      ? 'Some client, contact, or user lists could not be loaded. Quote editing may be limited.'
+      : null,
+    supportTextTemplatesResult.status === 'error' || quoteBlocksResult.status === 'error' ? 'Reusable content could not be loaded. Proposal editing may be limited.' : null,
+    versionsResult.status === 'error' ? 'Saved quote versions could not be loaded.' : null,
     quoteExpired ? 'Quote validity has passed.' : null,
     authoringSummary.incompleteItems > 0 ? `${authoringSummary.incompleteItems} items still need pricing or workflow details.` : null,
     authoringSummary.pricingIssues > 0 ? `${authoringSummary.pricingIssues} items are missing sell, cost, or pax details.` : null,

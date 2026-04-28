@@ -275,7 +275,7 @@ test('proposal PDF export shows external package totals in quote currency withou
 
   assert.equal(proposal.pricingHighlightCurrency, 'EUR');
   assert.ok(proposal.pricingHighlightTotal.includes('407.41'));
-  assert.ok(proposal.investment.noteLines.some((line) => line.includes('PDF sell total:') && line.includes('407.41')));
+  assert.ok(proposal.investment.noteLines.some((line) => line.includes('Total Package Price:') && line.includes('407.41')));
   assert.match(renderedText, /Client-safe Egypt extension priced in the proposal currency/);
   assert.match(renderedText, /Private touring and transfers/);
   assert.doesNotMatch(renderedText, /Cairo USD Supplier/);
@@ -396,7 +396,7 @@ test('proposal renders own-operation and external package days as one continuous
   assert.doesNotMatch(renderedText, /Do not expose net partner details/);
   assert.doesNotMatch(renderedText, /externalNetCost/);
   assert.equal(proposal.pricingHighlightTotal, '$3,300.00');
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $3,300.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $3,300.00'));
 });
 
 test('proposal renders Egypt-only external package without assuming hotel nights exist', async () => {
@@ -454,9 +454,9 @@ test('proposal PDF export totals show sell price without exposing internal cost 
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $180.00'));
-  assert.ok(proposal.investment.noteLines.includes('Manual finalCost override reflected in PDF totals.'));
-  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit/i);
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $180.00'));
+  assert.doesNotMatch(proposal.investment.noteLines.join('\n'), /PDF sell total|finalCost override/i);
+  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit|\bprofit\b|\bmargin\b/i);
 });
 
 test('proposal PDF export rounds sell total consistently without exposing internal profit fields', () => {
@@ -473,8 +473,8 @@ test('proposal PDF export rounds sell total consistently without exposing intern
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $140.39'));
-  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit/i);
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $140.39'));
+  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit|\bprofit\b|\bmargin\b/i);
 });
 
 test('proposal PDF export keeps tax and service charge notes aligned with calculated totals', () => {
@@ -495,12 +495,12 @@ test('proposal PDF export keeps tax and service charge notes aligned with calcul
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $159.50'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $159.50'));
   assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are not included and may apply at 16%.'));
   assert.ok(proposal.notes.some((line) => line === 'Service charge is not included and may apply at 10% where applicable.'));
 });
 
-test('proposal PDF export marks included tax without changing manual finalCost override totals', () => {
+test('proposal PDF export marks included tax without exposing manual override wording', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({
       totalCost: 120,
@@ -520,8 +520,8 @@ test('proposal PDF export marks included tax without changing manual finalCost o
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $150.00'));
-  assert.ok(proposal.investment.noteLines.includes('Manual finalCost override reflected in PDF totals.'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $150.00'));
+  assert.doesNotMatch(proposal.investment.noteLines.join('\n'), /PDF sell total|finalCost override/i);
   assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are included at 16%.'));
   assert.ok(proposal.notes.some((line) => line === 'Service charge is included at 10% where applicable.'));
 });
@@ -544,7 +544,7 @@ test('proposal PDF export uses quote currency for totals and supplement currency
   );
   const supplementsLine = proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '';
 
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: €180.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: €180.00'));
   assert.match(supplementsLine, /Gala Dinner €30\.00 per person/);
   assert.doesNotMatch(proposal.investment.noteLines.join('\n'), /\$/);
 });
@@ -567,18 +567,35 @@ test('proposal PDF export labels JOD supplement currency even when quote currenc
   const supplementsLine = proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '';
 
   assert.match(supplementsLine, /Extra Dinner 20\.000 JD per room/);
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: €180.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: €180.00'));
 });
 
-test('proposal PDF export HTML contains the same consistency lines rendered to PDF', async () => {
+test('proposal PDF export HTML contains client-safe consistency lines rendered to PDF', async () => {
   const proposal = mapQuoteToProposalV3(createPdfQuote());
   const service = new ProposalV3Service({} as any);
   const html = await (service as any).renderHtml(proposal);
 
   assert.match(html, /Grand Petra Hotel rate basis: per person\/night/);
   assert.match(html, /Child policy: Children 0-5 free/);
-  assert.match(html, /PDF sell total: \$540\.00/);
-  assert.doesNotMatch(html, /PDF total cost|PDF margin|supplierCost|totalCost|gross profit/i);
+  assert.match(html, /Total Package Price: \$540\.00/);
+  assert.match(html, /AXIS Destination Management/);
+  assert.match(html, /proposal-brand-logo/);
+  assert.doesNotMatch(html, /Aventus DMC|PDF sell total|finalCost override|PDF total cost|PDF margin|supplierCost|totalCost|gross profit/i);
+});
+
+test('proposal PDF template and footer use AXIS branding without warm palette colors', () => {
+  const cssSource = readFileSync(resolve(__dirname, 'proposal-v3.css'), 'utf8');
+  const templateSource = readFileSync(resolve(__dirname, 'proposal-v3.hbs'), 'utf8');
+  const serviceSource = readFileSync(resolve(__dirname, 'proposal-v3.service.ts'), 'utf8');
+  const mapperSource = readFileSync(resolve(__dirname, 'proposal-v3.mapper.ts'), 'utf8');
+
+  assert.match(templateSource, /proposal-brand-logo/);
+  assert.match(templateSource, /AXIS Destination Management/);
+  assert.match(serviceSource, /AXIS Destination Management/);
+  assert.match(mapperSource, /AXIS_LOGO_URL/);
+  assert.match(cssSource, /--proposal-accent:\s*#1FA3D6/);
+  assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|#c8a96a|#8a6a3a|rgba\(200,\s*169,\s*106|rgba\(138,\s*106,\s*58/i);
+  assert.doesNotMatch(serviceSource + mapperSource, /Aventus DMC|PDF sell total|finalCost override/i);
 });
 
 test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {

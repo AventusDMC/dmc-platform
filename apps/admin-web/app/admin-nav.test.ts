@@ -12,6 +12,7 @@ const headerActionsSource = readFileSync(new URL('./components/AdminHeaderAction
 const quotePageSource = readFileSync(new URL('./quotes/[id]/page.tsx', import.meta.url), 'utf8');
 const bookingPageSource = readFileSync(new URL('./bookings/[id]/page.tsx', import.meta.url), 'utf8');
 const activityPageSource = readFileSync(new URL('./activities/[id]/page.tsx', import.meta.url), 'utf8');
+const proposalPageSource = readFileSync(new URL('./proposal/[token]/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
 
 test('admin navigation exposes Sales companies without role restriction', () => {
@@ -93,6 +94,10 @@ test('mobile admin navigation hooks and collapse classes exist', () => {
 });
 
 test('AXIS branding renders on sidebar and login with powered footer', () => {
+  const adminLogoBlock = cssSource.match(/\.admin-brand-logo\s*\{[\s\S]*?\n\}/)?.[0] || '';
+  const adminLogoWrapperBlock = cssSource.match(/\.admin-brand-logo-wrapper\s*\{[\s\S]*?\n\}/)?.[0] || '';
+  const loginLogoBlock = cssSource.match(/\.login-brand-logo\s*\{[\s\S]*?\n\}/)?.[0] || '';
+
   assert.match(layoutSource, /src="\/axis-logo\.png"/);
   assert.match(layoutSource, /alt="AXIS"/);
   assert.match(layoutSource, /className="admin-brand-logo-wrapper"/);
@@ -108,10 +113,16 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
   assert.match(cssSource, /\.login-brand-logo-wrapper/);
   assert.match(cssSource, /\.login-brand-logo/);
   assert.match(cssSource, /\.admin-sidebar-powered/);
-  assert.match(cssSource, /\.admin-brand-logo\s*\{[\s\S]*width:\s*200px;[\s\S]*height:\s*auto;[\s\S]*object-fit:\s*contain/);
-  assert.match(cssSource, /\.admin-brand-logo-wrapper\s*\{[\s\S]*background:\s*transparent;[\s\S]*padding:\s*8px 0;[\s\S]*overflow:\s*visible/);
-  assert.match(cssSource, /\.login-brand-logo\s*\{[\s\S]*width:\s*220px;[\s\S]*height:\s*auto;[\s\S]*object-fit:\s*contain/);
-  assert.doesNotMatch(cssSource, /\.admin-brand-logo\s*\{[\s\S]*(?:overflow:\s*hidden|max-width:\s*80px|max-height:\s*(?:40|78|86)px)/);
+  assert.match(adminLogoBlock, /width:\s*200px;/);
+  assert.match(adminLogoBlock, /height:\s*auto;/);
+  assert.match(adminLogoBlock, /object-fit:\s*contain/);
+  assert.match(adminLogoWrapperBlock, /background:\s*transparent;/);
+  assert.match(adminLogoWrapperBlock, /padding:\s*8px 0;/);
+  assert.match(adminLogoWrapperBlock, /overflow:\s*visible/);
+  assert.match(loginLogoBlock, /width:\s*220px;/);
+  assert.match(loginLogoBlock, /height:\s*auto;/);
+  assert.match(loginLogoBlock, /object-fit:\s*contain/);
+  assert.doesNotMatch(adminLogoBlock, /overflow:\s*hidden|max-width:\s*80px|max-height:\s*(?:40|78|86)px/);
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {
@@ -136,4 +147,16 @@ test('admin styles remove old teal primary accents and normalize platform compon
   assert.match(cssSource, /\.data-table,[\s\S]*\.reports-visual-table\s*\{[\s\S]*border:\s*1px solid var\(--axis-border\)/);
   assert.match(cssSource, /\.admin-subnav-link,[\s\S]*\.dashboard-quick-link\s*\{[\s\S]*padding:\s*16px 20px/);
   assert.match(cssSource, /\.admin-subnav-link:hover,[\s\S]*background:\s*#F3F4F6/);
+});
+
+test('public proposal page uses AXIS branding and avoids beige proposal styling', () => {
+  assert.match(proposalPageSource, /src="\/axis-logo\.png"/);
+  assert.match(proposalPageSource, /AXIS Destination Management/);
+  assert.match(proposalPageSource, /public-proposal-page/);
+  assert.match(proposalPageSource, /public-proposal-frame-card/);
+  assert.match(cssSource, /\.public-proposal-page\s*\{[\s\S]*background:\s*#F9FAFB/);
+  assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*background:\s*#FFFFFF/);
+  assert.match(cssSource, /\.public-proposal-header\s*\{[\s\S]*border:\s*1px solid #E5E7EB/);
+  assert.match(cssSource, /\.public-proposal-page \.primary-button\s*\{[\s\S]*background:\s*#1FA3D6/);
+  assert.doesNotMatch(proposalPageSource + cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|beige|cream/i);
 });

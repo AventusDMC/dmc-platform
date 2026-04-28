@@ -11305,5 +11305,92 @@ textarea:focus,
   background: var(--axis-blue-soft);
 }
 
+.public-proposal-page {
+  background: #F9FAFB;
+  color: #1F2937;
+}
+
+.public-proposal-shell {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+}
+
+.public-proposal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.public-proposal-title-group {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+}
+
+.public-proposal-logo-wrapper {
+  display: inline-block;
+  max-width: 220px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #061B33;
+  overflow: visible;
+}
+
+.public-proposal-logo {
+  display: block;
+  width: 180px;
+  height: auto;
+  object-fit: contain;
+}
+
+.public-proposal-frame-card {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.public-proposal-frame {
+  width: 100%;
+  min-height: 1100px;
+  border: 0;
+  background: #FFFFFF;
+}
+
+.public-proposal-page .eyebrow,
+.public-proposal-page a {
+  color: #1FA3D6;
+}
+
+.public-proposal-page .primary-button {
+  background: #1FA3D6;
+  border-color: #1FA3D6;
+}
+
+@media (max-width: 720px) {
+  .public-proposal-header,
+  .public-proposal-title-group {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .public-proposal-logo {
+    width: 200px;
+  }
+}
+
 
 

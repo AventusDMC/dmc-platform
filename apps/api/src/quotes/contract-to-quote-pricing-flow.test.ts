@@ -440,7 +440,7 @@ test('regression: imported contract approval drives quote pricing and proposal e
   assert.ok(proposal.investment.noteLines.includes('Grand Petra Hotel rate basis: per person/night'));
   assert.ok(proposal.investment.noteLines.includes('Child policy: Children 6-11 pay 50%'));
   assert.match(proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '', /Gala Dinner \$30\.00 per person/);
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $372.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $372.00'));
 });
 
 test('mandatory supplements are included automatically in quote cost and proposal source context', async () => {
@@ -469,7 +469,7 @@ test('mandatory supplements are included automatically in quote cost and proposa
 
   assert.equal(hotelCost.supplementsCost, 60);
   assert.match(supplementsLine, /Gala Dinner \$30\.00 per person/);
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $310.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $310.00'));
 });
 
 test('optional supplements are excluded by default and included only when selected', async () => {
@@ -530,7 +530,7 @@ test('optional supplements are excluded by default and included only when select
   assert.equal(selectedCost.supplementsCost, 25);
   assert.equal(defaultProposal.investment.noteLines.some((line) => /Extra Bed/.test(line)), false);
   assert.match(selectedProposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '', /Extra Bed \$25\.00 one-time/);
-  assert.ok(selectedProposal.investment.noteLines.includes('PDF sell total: $275.00'));
+  assert.ok(selectedProposal.investment.noteLines.includes('Total Package Price: $275.00'));
 });
 
 test('mixed mandatory gala dinner and selected optional extra bed calculate and export distinctly', async () => {
@@ -575,7 +575,7 @@ test('mixed mandatory gala dinner and selected optional extra bed calculate and 
   assert.match(supplementsLine, /Gala Dinner \$30\.00 per person/);
   assert.match(supplementsLine, /Extra Bed \$25\.00 one-time/);
   assert.doesNotMatch(supplementsLine, /Extra Dinner/);
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $335.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $335.00'));
 });
 
 test('quote supplement pricing is scoped to the selected contract version', async () => {
@@ -751,7 +751,7 @@ test('explicit quote recalculation refreshes pricing basis supplements and child
   assert.doesNotMatch(supplementsLine, /Extra Bed/);
   assert.ok(proposal.investment.noteLines.includes('Grand Petra Hotel rate basis: per room/night'));
   assert.ok(proposal.investment.noteLines.includes('Child policy: Children 0-11 free'));
-  assert.ok(proposal.investment.noteLines.includes('PDF sell total: $336.00'));
+  assert.ok(proposal.investment.noteLines.includes('Total Package Price: $336.00'));
 });
 
 test('recalculated quote contains no mixed old and new contract data in API summary or PDF', async () => {
@@ -788,7 +788,7 @@ test('recalculated quote contains no mixed old and new contract data in API summ
   assert.equal(recalculated.supplements.map((supplement: any) => supplement.id).join(','), 'new-dinner');
   assert.match(pdfLines, /per room\/night/);
   assert.match(pdfLines, /Extra Dinner \$20\.00 per room/);
-  assert.match(pdfLines, /PDF sell total: \$240\.00/);
+  assert.match(pdfLines, /Total Package Price: \$240\.00/);
   assert.doesNotMatch(pdfLines, /PDF total cost|PDF margin/);
   assert.doesNotMatch(pdfLines, /per person\/night/);
   assert.doesNotMatch(pdfLines, /Gala Dinner \$30\.00/);

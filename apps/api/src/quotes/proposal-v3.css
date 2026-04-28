@@ -56,18 +56,18 @@
 
 :root {
   color-scheme: light;
-  --proposal-ink: #2b2b2b;
-  --proposal-subtle: #59524c;
-  --proposal-muted: #7f756a;
-  --proposal-border: #e6dccd;
-  --proposal-border-strong: #d8c39b;
-  --proposal-paper: #fffdfa;
-  --proposal-paper-soft: #f5efe6;
-  --proposal-paper-soft-2: #fcf8f2;
-  --proposal-accent: #c8a96a;
-  --proposal-accent-soft: rgba(200, 169, 106, 0.12);
-  --proposal-shadow: 0 18px 40px rgba(43, 43, 43, 0.08);
-  --proposal-separator: rgba(200, 169, 106, 0.28);
+  --proposal-ink: #1F2937;
+  --proposal-subtle: #6B6B6B;
+  --proposal-muted: #6B6B6B;
+  --proposal-border: #E5E7EB;
+  --proposal-border-strong: rgba(31, 163, 214, 0.28);
+  --proposal-paper: #FFFFFF;
+  --proposal-paper-soft: #F9FAFB;
+  --proposal-paper-soft-2: #FFFFFF;
+  --proposal-accent: #1FA3D6;
+  --proposal-accent-soft: rgba(31, 163, 214, 0.1);
+  --proposal-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+  --proposal-separator: #E5E7EB;
 }
 
 * {
@@ -145,9 +145,7 @@ body {
 
 .proposal-cover {
   overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(255, 253, 250, 0.98), rgba(245, 239, 230, 0.98)),
-    radial-gradient(circle at top center, rgba(200, 169, 106, 0.18), transparent 38%);
+  background: var(--proposal-paper);
 }
 
 .proposal-cover-band {
@@ -199,6 +197,23 @@ body {
   align-items: start;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--proposal-separator);
+}
+
+.proposal-brand-logo-stage {
+  display: inline-block;
+  max-width: 220px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #061B33;
+  overflow: visible;
+}
+
+.proposal-brand-logo {
+  display: block;
+  width: 200px;
+  height: auto;
+  object-fit: contain;
 }
 
 .proposal-reference {
@@ -279,7 +294,7 @@ body {
   margin: 20px 0 0;
   font-size: 21px;
   line-height: 1.2;
-  color: #403a34;
+  color: var(--proposal-ink);
 }
 
 .proposal-subtitle {
@@ -308,10 +323,8 @@ body {
   padding: 22px;
   border: 1px solid var(--proposal-border-strong);
   border-radius: 22px;
-  background:
-    linear-gradient(180deg, rgba(200, 169, 106, 0.14), rgba(200, 169, 106, 0.04)),
-    var(--proposal-paper-soft);
-  box-shadow: 0 14px 30px rgba(43, 43, 43, 0.06);
+  background: var(--proposal-paper-soft);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
 .proposal-pricing-highlight {
@@ -322,7 +335,7 @@ body {
 
 .proposal-pricing-highlight-card {
   padding: 16px 18px;
-  background: rgba(255, 255, 255, 0.55);
+  background: #FFFFFF;
 }
 
 .proposal-pricing-highlight-card strong {
@@ -403,9 +416,7 @@ body {
 }
 
 .proposal-card-accent {
-  background:
-    linear-gradient(180deg, rgba(200, 169, 106, 0.12), rgba(200, 169, 106, 0.04)),
-    var(--proposal-paper-soft);
+  background: var(--proposal-paper-soft);
   border-color: var(--proposal-border-strong);
 }
 
@@ -453,7 +464,7 @@ body {
 
 .proposal-table th {
   background: var(--proposal-paper-soft);
-  color: #766b60;
+  color: var(--proposal-subtle);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -465,7 +476,7 @@ body {
 }
 
 .proposal-table tbody tr:nth-child(even) td {
-  background: rgba(138, 106, 58, 0.028);
+  background: #F9FAFB;
 }
 
 .proposal-section-intro {
@@ -479,7 +490,7 @@ body {
 
 .proposal-day-card {
   padding: 18px 20px;
-  background: linear-gradient(180deg, #fffdfa 0%, #f9f3ea 100%);
+  background: #FFFFFF;
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -524,12 +535,12 @@ body {
 .proposal-day-group h4 {
   margin: 0 0 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(138, 106, 58, 0.1);
+  border-bottom: 1px solid var(--proposal-border);
 }
 
 .proposal-service-card {
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.72);
+  background: #FFFFFF;
 }
 
 .proposal-service-card + .proposal-service-card {
@@ -567,16 +578,12 @@ body {
 
 .investment-card {
   padding: 22px;
-  background:
-    linear-gradient(180deg, rgba(200, 169, 106, 0.14), rgba(200, 169, 106, 0.05)),
-    var(--proposal-paper-soft);
+  background: var(--proposal-paper-soft);
   border-color: var(--proposal-border-strong);
 }
 
 .investment-card-pending {
-  background:
-    linear-gradient(180deg, rgba(138, 106, 58, 0.08), rgba(138, 106, 58, 0.02)),
-    var(--proposal-paper-soft-2);
+  background: var(--proposal-paper-soft-2);
 }
 
 .investment-card h3 {

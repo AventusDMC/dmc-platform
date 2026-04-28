@@ -2479,6 +2479,7 @@ export class QuotesService {
       orderBy: {
         versionNumber: 'desc',
       },
+      take: 50,
     }).catch((error) => {
       console.error('[quote/findById]', 'versions', error);
       return [];

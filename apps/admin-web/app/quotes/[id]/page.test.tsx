@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal-paths';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
 const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx', import.meta.url), 'utf8');
+const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -143,6 +145,43 @@ describe('quote detail page regression', () => {
       '@media (max-width: 640px)',
       '.quote-dashboard-actions > *',
       'width: 100%;',
+    ]);
+  });
+
+  it('loads quote detail defensively when optional related data fails', () => {
+    expectSourceContains(pageSource, [
+      'Promise.allSettled',
+      'safeQuoteDetailFetch',
+      'withQuoteDetailTimeout',
+      'QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS',
+      "safeQuoteDetailFetch('services', [] as SupplierService[], getServices)",
+      "safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates)",
+      "safeQuoteDetailFetch('quote blocks', [] as QuoteBlock[], getQuoteBlocks)",
+      "Quote could not be loaded",
+      'Service catalog could not be loaded. Existing quote services are still visible.',
+      'Itinerary details could not be loaded. Showing quote detail without itinerary data.',
+      'Saved quote versions could not be loaded.',
+    ]);
+  });
+
+  it('renders a route-level loading state and friendly retryable error state', () => {
+    expectSourceContains(loadingSource, [
+      '<h1>Loading quote</h1>',
+      'Quote details are loading.',
+      'Back to quotes',
+    ]);
+
+    expectSourceContains(pageSource, [
+      '<Link href={`/quotes/${id}`} className="primary-button">',
+      'Retry',
+      'This quote was not found or is no longer available.',
+    ]);
+  });
+
+  it('quote list links open valid quote detail URLs', () => {
+    expectSourceContains(quotesTableSource, [
+      '<Link href={`/quotes/${quote.id}`} className="compact-button">',
+      '<Link href={`/quotes/${quote.id}?tab=overview`} className="compact-button">',
     ]);
   });
 });

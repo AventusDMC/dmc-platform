@@ -32,13 +32,18 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
   }
 
   return (
-    <main className="page">
-      <section className="panel" style={{ width: '100%', maxWidth: '1200px', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div>
-            <p className="eyebrow">Travel Proposal</p>
-            <h1>{quoteView.quote.title || 'Jordan Travel Proposal'}</h1>
-            <p className="detail-copy">A clean public proposal view designed for clients and partner agents.</p>
+    <main className="page public-proposal-page">
+      <section className="public-proposal-shell">
+        <div className="public-proposal-header">
+          <div className="public-proposal-title-group">
+            <span className="public-proposal-logo-wrapper">
+              <img src="/axis-logo.png" alt="AXIS Destination Management" className="public-proposal-logo" />
+            </span>
+            <div>
+              <p className="eyebrow">Travel Proposal</p>
+              <h1>{quoteView.quote.title || 'Jordan Travel Proposal'}</h1>
+              <p className="detail-copy">A client-ready proposal prepared by AXIS Destination Management.</p>
+            </div>
           </div>
           <div className="table-action-row">
             <a href={`/api/public/proposals/${token}/pdf`} className="primary-button" target="_blank" rel="noreferrer">
@@ -50,11 +55,11 @@ export default async function ProposalPage({ params }: ProposalPageProps) {
           </div>
         </div>
 
-        <div className="detail-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="public-proposal-frame-card">
           <iframe
             src={`/api/public/proposals/${token}`}
             title={quoteView.quote.title || 'Travel proposal'}
-            style={{ width: '100%', minHeight: '1100px', border: 0, background: '#fff' }}
+            className="public-proposal-frame"
           />
         </div>
       </section>

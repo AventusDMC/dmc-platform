@@ -178,8 +178,8 @@ export class ProposalV3Service {
             </div>
           `,
           footerTemplate: `
-            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#9a8f84; display:flex; justify-content:space-between; align-items:center;">
-              <span>Aventus DMC</span>
+            <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#6B6B6B; display:flex; justify-content:space-between; align-items:center;">
+              <span>AXIS Destination Management</span>
               <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
             </div>
           `,
@@ -222,6 +222,7 @@ export class ProposalV3Service {
       styles: css,
       documentTitle: this.escapeHtml(viewModel.documentTitle),
       brandName: this.escapeHtml(viewModel.brandName),
+      logoUrl: this.escapeHtml(viewModel.logoUrl),
       accentColor: this.escapeHtml(viewModel.accentColor),
       quoteReference: this.escapeHtml(viewModel.quoteReference),
       travelerName: this.escapeHtml(viewModel.travelerName),

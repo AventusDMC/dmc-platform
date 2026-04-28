@@ -191,6 +191,7 @@ export type ProposalV3ViewModel = {
   documentTitle: string;
   metaTitle: string;
   brandName: string;
+  logoUrl: string;
   accentColor: string;
   quoteReference: string;
   travelerName: string;

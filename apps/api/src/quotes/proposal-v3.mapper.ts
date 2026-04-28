@@ -28,6 +28,9 @@ const PLACEHOLDER_TEXT_PATTERNS = [
 ];
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
+const AXIS_BRAND_NAME = 'AXIS Destination Management';
+const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/cropped-Axis-white-logo-1-transparent-blue-1024x482.png';
+const AXIS_PRIMARY_COLOR = '#1FA3D6';
 
 function formatProposalMoney(amount: number, currency = 'USD') {
   if (!Number.isFinite(amount)) {
@@ -178,7 +181,7 @@ function getBrandName(quote: ProposalV3Quote) {
   const rawName =
     cleanText(quote.brandCompany?.name) ||
     cleanText(quote.clientCompany?.name) ||
-    'Travel Proposal';
+    AXIS_BRAND_NAME;
 
   if (/brand\s*-\s*desert compass jordan/i.test(rawName)) {
     return 'Desert Compass Jordan';
@@ -188,7 +191,7 @@ function getBrandName(quote: ProposalV3Quote) {
 }
 
 function getAccentColor(quote: ProposalV3Quote) {
-  return quote.brandCompany?.branding?.primaryColor || quote.clientCompany?.branding?.primaryColor || '#8a6a3a';
+  return quote.brandCompany?.branding?.primaryColor || quote.clientCompany?.branding?.primaryColor || AXIS_PRIMARY_COLOR;
 }
 
 function isHotelItem(item: ProposalV3QuoteItem) {
@@ -662,11 +665,7 @@ function buildPdfExportConsistencyLines(quote: ProposalV3Quote, currency: string
   const totalSell = Number((Number.isFinite(Number(quote.totalSell)) ? Number(quote.totalSell) : itemSellTotal).toFixed(2));
 
   if (totalSell > 0) {
-    lines.push(`PDF sell total: ${formatProposalMoney(totalSell, currency)}`);
-  }
-
-  if (quoteItems.some((item) => item.useOverride || item.finalCost !== null && item.finalCost !== undefined)) {
-    lines.push('Manual finalCost override reflected in PDF totals.');
+    lines.push(`Total Package Price: ${formatProposalMoney(totalSell, currency)}`);
   }
 
   return lines;
@@ -803,6 +802,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     documentTitle,
     metaTitle: `${documentTitle || 'Travel Proposal'} | ${getBrandName(quote)}`,
     brandName: getBrandName(quote),
+    logoUrl: AXIS_LOGO_URL,
     accentColor: getAccentColor(quote),
     quoteReference: cleanText(quote.quoteNumber) || 'Quote reference to be confirmed',
     travelerName: getTravelerName(quote),
