@@ -9,9 +9,9 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { QuotesTable } from './QuotesTable';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson } from '../lib/admin-server';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type QuoteStatus = 'DRAFT' | 'READY' | 'SENT' | 'ACCEPTED' | 'CONFIRMED' | 'REVISION_REQUESTED' | 'EXPIRED' | 'CANCELLED';
 
@@ -218,7 +218,7 @@ export default async function QuotesPage() {
               context={<p>{quotes.length} quotes in scope</p>}
               emptyState={quotes.length === 0 ? <p className="empty-state">No quotes yet.</p> : undefined}
             >
-              {quotes.length > 0 ? <QuotesTable apiBaseUrl={API_BASE_URL} quotes={quotes} companies={companies} /> : null}
+              {quotes.length > 0 ? <QuotesTable apiBaseUrl={ACTION_API_BASE_URL} quotes={quotes} companies={companies} /> : null}
             </TableSectionShell>
           </section>
         </WorkspaceShell>

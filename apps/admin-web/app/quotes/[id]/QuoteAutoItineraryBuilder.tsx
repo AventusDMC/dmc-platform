@@ -10,7 +10,7 @@ import { formatRouteLabel, type RouteOption } from '../../lib/routes';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 import {
   buildItineraryApplyMessage,
-  getAutoItineraryDayTitle,
+  generateItineraryDays,
   mergeExistingItineraryDays,
   type AutoItineraryExistingDay,
 } from './QuoteAutoItineraryBuilder.logic';
@@ -251,25 +251,6 @@ const ITINERARY_PRESETS = [
     route: 'Amman -> Jerash -> Dana -> Petra -> Wadi Rum',
   },
 ] as const;
-
-function formatDateOnly(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
-function addDays(dateText: string, offset: number) {
-  if (!dateText) {
-    return null;
-  }
-
-  const date = new Date(`${dateText}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  date.setDate(date.getDate() + offset);
-  return formatDateOnly(date);
-}
 
 function normalizeText(value: string | null | undefined) {
   return (value || '')
@@ -788,21 +769,20 @@ async function buildPreviewDraft(values: {
 }) {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
-  const dayCount = Math.max(values.nightCount + 1, cities.length || 1);
-  const days: PreviewDay[] = Array.from({ length: dayCount }, (_, index) => {
+  const generatedDays = generateItineraryDays(values.travelStartDate, values.nightCount);
+  const dayCount = generatedDays.length;
+  const days: PreviewDay[] = generatedDays.map((generatedDay, index) => {
     const city = cities[Math.min(index, Math.max(cities.length - 1, 0))] || `Day ${index + 1}`;
-    const dayNumber = index + 1;
     return {
-      dayNumber,
-      title: getAutoItineraryDayTitle(dayNumber, dayCount),
+      ...generatedDay,
       city,
-      date: addDays(values.travelStartDate, index),
     };
   });
 
+  const itineraryCities = days.map((day) => day.city);
   const transports = await Promise.all(
-    cities.slice(0, -1).map(async (city, index) => {
-      const toCity = cities[index + 1];
+    itineraryCities.slice(0, -1).map(async (city, index) => {
+      const toCity = itineraryCities[index + 1];
       const route = findRoute(values.routes, city, toCity);
       const distanceEstimate = getRouteDistanceEstimate(route, city, toCity);
       const selectedCandidate = route
@@ -1142,7 +1122,7 @@ export function QuoteAutoItineraryBuilder({
     return currentDays.find((day) => day.dayNumber === dayNumber) || null;
   }
 
-  async function saveDraft(draft: PreviewDraft) {
+  async function saveItineraryDays(days: PreviewDay[]) {
     const currentItineraryDays = await getCurrentItineraryDays().catch(() => [] as CreatedDay[]);
     const existingDays = mergeExistingItineraryDays(
       quote.itineraries as AutoItineraryExistingDay[],
@@ -1151,7 +1131,7 @@ export function QuoteAutoItineraryBuilder({
     const savedDays = new Map<number, AutoItineraryExistingDay>();
     let createdDayCount = 0;
 
-    for (const day of draft.days) {
+    for (const day of days) {
       const existingDay = existingDays.get(day.dayNumber);
 
       if (existingDay) {
@@ -1193,6 +1173,12 @@ export function QuoteAutoItineraryBuilder({
       createdDayCount += wasCreated ? 1 : 0;
       savedDays.set(day.dayNumber, created);
     }
+
+    return { savedDays, createdDayCount };
+  }
+
+  async function saveDraft(draft: PreviewDraft) {
+    const { savedDays, createdDayCount } = await saveItineraryDays(draft.days);
 
     let createdItems = 0;
 
@@ -1299,6 +1285,23 @@ export function QuoteAutoItineraryBuilder({
     return createdItems;
   }
 
+  function buildDaysOnlyPreview(): PreviewDraft {
+    const cities = parseRouteText(routeText);
+    const days = generateItineraryDays(travelStartDate, numericNightCount).map((day, index) => ({
+      ...day,
+      city: cities[Math.min(index, Math.max(cities.length - 1, 0))] || `Day ${index + 1}`,
+    }));
+
+    return {
+      days,
+      transports: [],
+      hotels: [],
+      activities: [],
+      optimizationNotes: [],
+      warnings: [],
+    };
+  }
+
   async function buildOptimizedDraftForMode(mode: OptimizationMode) {
     return applyManualDayOverrides(
       await buildPreviewDraft({
@@ -1345,6 +1348,26 @@ export function QuoteAutoItineraryBuilder({
       );
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not save the draft itinerary.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleGenerateDraftItinerary() {
+    setIsSaving(true);
+    setError(null);
+    setMessage(null);
+    setSendReadiness(null);
+
+    try {
+      const draft = buildDaysOnlyPreview();
+      const { createdDayCount } = await saveItineraryDays(draft.days);
+      setPreview(draft);
+      setComparison(null);
+      setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));
+      router.refresh();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not generate the draft itinerary.');
     } finally {
       setIsSaving(false);
     }
@@ -1453,6 +1476,9 @@ export function QuoteAutoItineraryBuilder({
       <div className="quote-auto-itinerary-actions">
         <button type="button" className="primary-button" onClick={() => void handleGenerateAndPrice()} disabled={isSaving || isGenerating}>
           {isSaving && isGenerating ? 'Generating & Pricing...' : 'Generate & Price Itinerary'}
+        </button>
+        <button type="button" className="secondary-button" onClick={() => void handleGenerateDraftItinerary()} disabled={isSaving || isGenerating}>
+          {isSaving && !isGenerating ? 'Generating...' : 'Generate a draft itinerary'}
         </button>
         <button type="button" className="secondary-button" onClick={() => void generatePreview()} disabled={isGenerating}>
           {isGenerating ? 'Optimizing...' : 'Preview Draft'}

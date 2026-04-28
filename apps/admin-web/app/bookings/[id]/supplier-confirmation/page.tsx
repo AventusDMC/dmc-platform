@@ -4,6 +4,7 @@ import { BookingDocumentActions } from '../BookingDocumentActions';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
+const ACTION_API_BASE_URL = '/api';
 
 type Booking = {
   id: string;
@@ -204,7 +205,7 @@ export default async function SupplierConfirmationPage({ params }: SupplierConfi
         </header>
 
         <BookingDocumentActions
-          apiBaseUrl={API_BASE_URL}
+          apiBaseUrl={ACTION_API_BASE_URL}
           bookingId={booking.id}
           bookingRef={booking.bookingRef}
           documentLabel="Supplier Confirmation Sheet"

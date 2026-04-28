@@ -7,6 +7,7 @@ const deliveryActionsSource = readFileSync(new URL('./InvoiceDeliveryActions.tsx
 const pdfRouteSource = readFileSync(new URL('../api/invoices/[id]/pdf/route.ts', import.meta.url), 'utf8');
 const sendRouteSource = readFileSync(new URL('../api/invoices/[id]/send/route.ts', import.meta.url), 'utf8');
 const reminderRouteSource = readFileSync(new URL('../api/invoices/[id]/send-reminder/route.ts', import.meta.url), 'utf8');
+const invoicePortalActionsSource = readFileSync(new URL('../invoice/[token]/InvoicePortalActions.tsx', import.meta.url), 'utf8');
 
 test('invoice detail exposes PDF download and send controls', () => {
   assert.match(invoiceDetailSource, /Download PDF/);
@@ -18,6 +19,7 @@ test('invoice detail exposes PDF download and send controls', () => {
   assert.match(deliveryActionsSource, /\/api\/invoices\/\$\{invoiceId\}\/send/);
   assert.match(deliveryActionsSource, /\/api\/invoices\/\$\{invoiceId\}\/send-reminder/);
   assert.match(deliveryActionsSource, /\/api\/invoices\/\$\{invoiceId\}\/pdf/);
+  assert.doesNotMatch(deliveryActionsSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
 });
 
 test('invoice PDF and send admin proxy routes are wired', () => {
@@ -27,4 +29,10 @@ test('invoice PDF and send admin proxy routes are wired', () => {
   assert.match(sendRouteSource, /forwardProxyJsonResponse/);
   assert.match(reminderRouteSource, /\/invoices\/\$\{id\}\/send-reminder/);
   assert.match(reminderRouteSource, /forwardProxyJsonResponse/);
+});
+
+test('public invoice actions use same-origin proxy routes for PDF and proof links', () => {
+  assert.match(invoicePortalActionsSource, /fetch\(`\/api\/public\/invoice\/\$\{token\}\/pdf`\)/);
+  assert.match(invoicePortalActionsSource, /return `\/api\$\{value\.startsWith\('\/'\) \? value : `\/\$\{value\}`\}`;/);
+  assert.doesNotMatch(invoicePortalActionsSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
 });

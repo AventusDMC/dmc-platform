@@ -6,6 +6,7 @@ import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
 const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx', import.meta.url), 'utf8');
+const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
@@ -34,6 +35,9 @@ describe('quote detail page regression', () => {
     expectSourceContains(pageSource, [
       '<SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />',
       '<DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />',
+      '<InlineEntityActions',
+      'apiBaseUrl={ACTION_API_BASE_URL}',
+      '<QuotesForm',
       'summary="Accept"',
       '<QuoteStatusForm',
       '<ConvertToBookingButton quoteId={quote.id} label="Convert" />',
@@ -183,5 +187,22 @@ describe('quote detail page regression', () => {
       '<Link href={`/quotes/${quote.id}`} className="compact-button">',
       '<Link href={`/quotes/${quote.id}?tab=overview`} className="compact-button">',
     ]);
+  });
+
+  it('routes quote list and detail mutations through admin-web API proxies', () => {
+    expectSourceContains(quotesListPageSource, [
+      "const ACTION_API_BASE_URL = '/api';",
+      '<QuotesTable apiBaseUrl={ACTION_API_BASE_URL}',
+    ]);
+
+    expectSourceContains(pageSource, [
+      '<InlineEntityActions',
+      'apiBaseUrl={ACTION_API_BASE_URL}',
+      '<QuotesForm',
+      '<SupportTextForm',
+    ]);
+
+    assert.doesNotMatch(quotesTableSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
+    assert.doesNotMatch(pageSource, /apiBaseUrl=\{API_BASE_URL\}/);
   });
 });

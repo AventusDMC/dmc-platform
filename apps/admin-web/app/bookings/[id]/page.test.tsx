@@ -6,6 +6,7 @@ const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', import.meta.url), 'utf8');
 const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
+const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -186,11 +187,15 @@ describe('booking detail page regression', () => {
       'Balance due',
       'Generate invoice',
       "fetch(`/api/bookings/${bookingId}/invoice`",
+      "fetch(`/api/bookings/${bookingId}/payments`",
+      "fetch(`/api/bookings/${bookingId}/payments/${paymentId}/mark-paid`",
       'Client Payments',
       'Supplier Payments',
       'onAddPayment={handleAddPayment}',
       'onMarkPaid={handleMarkPaid}',
     ]);
+
+    assert.doesNotMatch(financialsTabSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
 
     expectSourceContains(cssSource, [
       '.booking-payment-proof-card-grid',
@@ -218,5 +223,15 @@ describe('booking detail page regression', () => {
     ]);
 
     assert.doesNotMatch(voucherPageSource, /Demo Company|To be advised|return 'Unknown'/);
+  });
+
+  it('keeps booking document and supplier confirmation actions on proxy routes', () => {
+    expectSourceContains(supplierConfirmationPageSource, [
+      "const ACTION_API_BASE_URL = '/api';",
+      'apiBaseUrl={ACTION_API_BASE_URL}',
+    ]);
+
+    assert.doesNotMatch(supplierConfirmationPageSource, /apiBaseUrl=\{API_BASE_URL\}/);
+    assert.doesNotMatch(documentActionsSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
   });
 });

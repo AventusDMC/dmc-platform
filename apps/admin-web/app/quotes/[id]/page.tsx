@@ -1837,13 +1837,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   </div>
                 </div>
                 <InlineEntityActions
-                  apiBaseUrl={API_BASE_URL}
+                  apiBaseUrl={ACTION_API_BASE_URL}
                   deletePath={`/quotes/${quote.id}`}
                   deleteLabel="quote"
                   confirmMessage={`Delete ${quote.title}?`}
                 >
                   <QuotesForm
-                    apiBaseUrl={API_BASE_URL}
+                    apiBaseUrl={ACTION_API_BASE_URL}
                     companies={companies}
                     contacts={contacts}
                     agents={agents}
@@ -2232,7 +2232,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   >
                     <div className="section-stack">
                       <SupportTextForm
-                        apiBaseUrl={API_BASE_URL}
+                        apiBaseUrl={ACTION_API_BASE_URL}
                         quoteId={quote.id}
                         templates={supportTextTemplates}
                         initialValues={{

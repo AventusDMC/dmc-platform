@@ -83,8 +83,7 @@ function resolveReceiptUrl(value: string | null | undefined) {
     return value;
   }
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-  return `${apiBaseUrl}${value.startsWith('/') ? value : `/${value}`}`;
+  return `/api${value.startsWith('/') ? value : `/${value}`}`;
 }
 
 export function BookingFinancialsTab({

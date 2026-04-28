@@ -2,25 +2,37 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   buildItineraryApplyMessage,
+  generateItineraryDays,
   getAutoItineraryDayTitle,
   mergeExistingItineraryDays,
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
-  it('labels 4 nights as 5 itinerary days with arrival middle days and departure', () => {
-    const totalDays = 4 + 1;
+  it('4 nights creates 5 days via the draft generator', () => {
+    const days = generateItineraryDays('2026-05-10', 4);
 
     assert.deepEqual(
-      Array.from({ length: totalDays }, (_, index) => getAutoItineraryDayTitle(index + 1, totalDays)),
+      days.map((day) => day.title),
       ['Arrival', 'Day 2', 'Day 3', 'Day 4', 'Departure'],
     );
+    assert.deepEqual(
+      days.map((day) => day.date),
+      ['2026-05-10', '2026-05-11', '2026-05-12', '2026-05-13', '2026-05-14'],
+    );
+    assert.equal(buildItineraryApplyMessage(days.length, days.length), '5 itinerary days ready.');
   });
 
-  it('keeps existing Day 1 and only reports missing days as added', () => {
+  it('existing Day 1 does not block generation of missing days', () => {
     const existingDays = mergeExistingItineraryDays([{ id: 'day-1', dayNumber: 1, title: 'Custom arrival' }]);
+    const generatedDays = generateItineraryDays('2026-05-10', 4);
+    const missingDays = generatedDays.filter((day) => !existingDays.has(day.dayNumber));
 
     assert.equal(existingDays.get(1)?.title, 'Custom arrival');
-    assert.equal(buildItineraryApplyMessage(5, 4), 'Added 4 missing itinerary days.');
+    assert.deepEqual(
+      missingDays.map((day) => day.dayNumber),
+      [2, 3, 4, 5],
+    );
+    assert.equal(buildItineraryApplyMessage(generatedDays.length, missingDays.length), '5 itinerary days ready.');
   });
 
   it('preserves customized day labels when merging existing itinerary days', () => {
@@ -45,5 +57,19 @@ describe('quote auto itinerary builder logic', () => {
     assert.equal(existingDays.size, 2);
     assert.equal(existingDays.get(1)?.id, 'legacy-day-1');
     assert.equal(buildItineraryApplyMessage(5, 0), '5 itinerary days ready.');
+  });
+
+  it('works without pricing, services, or cost data', () => {
+    const days = generateItineraryDays(null, 4);
+
+    assert.equal(days.length, 5);
+    assert.deepEqual(Object.keys(days[0]).sort(), ['date', 'dayNumber', 'title']);
+    assert.equal(days[0].date, null);
+    assert.equal(days[4].title, 'Departure');
+  });
+
+  it('still exposes the individual title helper used by generated days', () => {
+    assert.equal(getAutoItineraryDayTitle(1, 5), 'Arrival');
+    assert.equal(getAutoItineraryDayTitle(5, 5), 'Departure');
   });
 });
