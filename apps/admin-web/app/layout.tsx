@@ -144,6 +144,11 @@ export default async function RootLayout({ children }: RootLayoutProps) {
 
             <div className="admin-main-shell">
               <header className="site-header admin-header">
+                <details className="admin-mobile-nav">
+                  <summary className="secondary-button">Menu</summary>
+                  <AdminChromeNav mode="primary" sessionRole={session?.role} />
+                </details>
+
                 <div className="admin-topbar">
                   {!isDashboardRoute ? <AdminChromeNav mode="topbar" sessionRole={session?.role} /> : null}
 

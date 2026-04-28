@@ -88,7 +88,11 @@ describe('quote detail page regression', () => {
 
   it('shows sell-price summary while keeping supplier cost out of client-facing exports', () => {
     expectSourceContains(pageSource, [
-      "{ label: 'Total price', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' }",
+      '<p className="eyebrow">Internal / Admin Profit</p>',
+      '<span>Total sell</span>',
+      '<span>Total cost</span>',
+      '<span>Gross profit</span>',
+      '<span>Margin %</span>',
       "{ label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: quote.pricingMode === 'SLAB' ? 'Derived from current slab setup' : 'Derived from package pricing' }",
       '<QuoteSummaryPanel',
       'totalSell={quote.totalSell}',
@@ -96,7 +100,7 @@ describe('quote detail page regression', () => {
     ]);
 
     assert.match(versionPageSource, /formatMoney\(item\.totalSell, item\.currency\)/);
-    assert.doesNotMatch(versionPageSource, /supplier cost|Supplier cost|margin|Margin/);
+    assert.doesNotMatch(versionPageSource, /supplier cost|Supplier cost|gross profit|Gross profit|margin|Margin/);
   });
 
   it('keeps PDF, share, and version actions pointed at existing handlers', () => {
@@ -126,7 +130,7 @@ describe('quote detail page regression', () => {
 
   it('keeps key actions available in the responsive layout', () => {
     expectSourceContains(pageSource, [
-      '<div className="quote-dashboard-actions">',
+      '<AdminHeaderActions className="quote-dashboard-actions">',
       '<aside className="quote-builder-sidebar">',
       '<div className="quote-builder-sidebar-actions">',
     ]);

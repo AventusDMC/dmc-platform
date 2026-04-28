@@ -173,7 +173,11 @@ export class ProposalV2Renderer {
 
   private renderJourneySummaryPage() {
     this.startContentPage();
-    this.drawSectionKicker('Journey Summary');
+    this.drawSectionKicker('Client Info');
+    this.drawClientInfoBlock();
+    this.addVerticalSpace(16);
+
+    this.drawSectionKicker('Trip Overview');
 
     const contentWidth = this.getContentWidth();
     this.doc.font('Helvetica').fontSize(11).fillColor('#544d45').text(this.proposal.journeySummary, this.getLeft(), this.doc.y, {
@@ -237,7 +241,7 @@ export class ProposalV2Renderer {
 
   private renderItineraryPages() {
     this.startContentPage();
-    this.drawSectionKicker('Daily Itinerary');
+    this.drawSectionKicker('Services / Itinerary');
 
     if (this.proposal.days.length === 0) {
       this.doc.font('Helvetica').fontSize(10.5).fillColor('#655d55').text('The itinerary structure is being finalized and will be shared in the next revision.', this.getLeft(), this.doc.y, {
@@ -320,7 +324,7 @@ export class ProposalV2Renderer {
 
   private renderInvestmentPage() {
     this.startContentPage();
-    this.drawSectionKicker(this.proposal.pricing.title);
+    this.drawSectionKicker('Pricing Summary');
 
     const cardTop = this.doc.y;
     this.ensureSpace(172);
@@ -426,6 +430,16 @@ export class ProposalV2Renderer {
     this.renderBulletSection('Excluded', this.proposal.exclusions);
     this.addVerticalSpace(10);
     this.renderBulletSection('Important Notes', this.proposal.notes);
+  }
+
+  private drawClientInfoBlock() {
+    const rows = [
+      { label: 'Client', value: this.proposal.travelerName },
+      { label: 'Quote', value: this.proposal.quoteReference },
+      { label: 'Prepared by', value: this.proposal.branding.displayName },
+      { label: 'Contact', value: [this.proposal.branding.email, this.proposal.branding.phone].filter(Boolean).join(' | ') || 'Contact details to be confirmed' },
+    ];
+    this.drawMetricGrid(rows);
   }
 
   private renderBulletSection(title: string, items: string[]) {

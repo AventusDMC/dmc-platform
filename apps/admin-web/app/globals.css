@@ -48,6 +48,10 @@ a {
   min-width: 0;
 }
 
+.admin-mobile-nav {
+  display: none;
+}
+
 .admin-sidebar {
   display: grid;
   align-content: start;
@@ -240,6 +244,54 @@ a {
 
 .admin-sidebar-footer .admin-account-copy span {
   color: rgba(255, 247, 237, 0.64);
+}
+
+.admin-breadcrumbs {
+  min-width: 0;
+}
+
+.admin-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: rgba(30, 27, 24, 0.58);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.admin-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-breadcrumbs li + li::before {
+  content: "/";
+  margin-right: 0.45rem;
+  color: rgba(30, 27, 24, 0.34);
+}
+
+.admin-breadcrumbs a {
+  color: var(--accent);
+}
+
+.admin-breadcrumbs span {
+  overflow: hidden;
+  color: rgba(30, 27, 24, 0.82);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: flex-end;
 }
 
 .site-nav {
@@ -657,7 +709,17 @@ h1 {
 .back-link {
   display: inline-block;
   margin-bottom: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-back-button {
+  margin-bottom: 0;
 }
 
 .convert-panel {
@@ -885,6 +947,149 @@ h1 {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.reports-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.reports-filter-bar label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+
+.reports-filter-bar input {
+  min-width: 160px;
+}
+
+.reports-list-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.reports-alert-card {
+  border-color: rgba(234, 88, 12, 0.18);
+}
+
+.reports-alert-card-danger {
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.reports-alert-card-warning {
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.reports-alert-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reports-alert-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.reports-alert-row strong {
+  color: var(--foreground);
+}
+
+.reports-alert-row span {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+.reports-dashboard {
+  display: grid;
+  gap: 20px;
+}
+
+.reports-sort-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.reports-sort-links .active {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent);
+}
+
+.reports-visual-table td {
+  vertical-align: top;
+}
+
+.reports-bar-cell {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.reports-mini-bar {
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.reports-mini-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.admin-dashboard-selling-section {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(240, 253, 250, 0.52));
+}
+
+.admin-dashboard-trend-card {
+  padding: 1.1rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.admin-dashboard-trend-card strong,
+.admin-dashboard-agent-revenue {
+  font-size: 1.45rem;
+  color: var(--text);
+}
+
+.admin-dashboard-trend-positive {
+  color: #047857;
+  font-weight: 700;
+}
+
+.admin-dashboard-trend-negative {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.admin-dashboard-attention {
+  border-color: rgba(185, 28, 28, 0.14);
+}
+
+.reports-loading-card {
+  min-height: 110px;
+}
+
+@media (min-width: 980px) {
+  .reports-list-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .data-table {
@@ -6529,6 +6734,44 @@ h1 {
   }
 }
 
+@media (max-width: 859px) {
+  .admin-sidebar {
+    display: none;
+  }
+
+  .admin-header {
+    padding: 0.75rem;
+  }
+
+  .admin-mobile-nav {
+    display: block;
+  }
+
+  .admin-mobile-nav summary {
+    margin-bottom: 0.75rem;
+    list-style: none;
+  }
+
+  .admin-mobile-nav summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .admin-mobile-nav .admin-sidebar-nav {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(30, 27, 24, 0.08);
+    border-radius: 8px;
+    background: #102824;
+  }
+
+  .admin-header-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions {
+    justify-content: flex-start;
+  }
+}
+
 @media print {
   body {
     background: #fff;
@@ -8639,6 +8882,26 @@ h1 {
   background: rgba(255, 255, 255, 0.9);
   display: grid;
   gap: 0.35rem;
+}
+
+.booking-payment-proof-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.booking-payment-proof-card-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.booking-payment-proof-card-grid strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.92rem;
 }
 
 .finance-reconciliation-row-overdue {

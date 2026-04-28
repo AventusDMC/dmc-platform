@@ -35,6 +35,18 @@ type BookingFinancialsTabProps = {
   invoiceRecipientEmail: string | null;
 };
 
+type BookingInvoiceSummary = {
+  id: string;
+  invoiceNumber: string;
+  status: 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
+  effectiveStatus: string;
+  totalAmount: number;
+  paidAmount: number;
+  balanceDue: number;
+  currency: string;
+  dueDate: string;
+};
+
 function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -45,6 +57,14 @@ function formatMoney(amount: number, currency: string) {
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function formatStatus(value: string) {
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 function formatDateTime(value: string) {
@@ -89,6 +109,9 @@ export function BookingFinancialsTab({
 }: BookingFinancialsTabProps) {
   const router = useRouter();
   const [payments, setPayments] = useState<BookingPaymentRecord[]>(initialPayments);
+  const [invoice, setInvoice] = useState<BookingInvoiceSummary | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
   useEffect(() => {
     setPayments(initialPayments);
@@ -195,6 +218,33 @@ export function BookingFinancialsTab({
     router.refresh();
   }
 
+  async function handleGenerateInvoice() {
+    setIsGeneratingInvoice(true);
+    setInvoiceError(null);
+
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not generate invoice.'));
+      }
+
+      const generatedInvoice = await readJsonResponse<BookingInvoiceSummary>(response, 'Generate booking invoice');
+      setInvoice(generatedInvoice);
+      router.refresh();
+    } catch (caughtError) {
+      setInvoiceError(caughtError instanceof Error ? caughtError.message : 'Could not generate invoice.');
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  }
+
   return (
     <section className="section-stack">
       <div id="financial-actions" className="booking-financial-actions-bar">
@@ -215,6 +265,38 @@ export function BookingFinancialsTab({
           clientOutstanding={clientOutstanding}
           overdueClientAmount={overdueClientPayments.reduce((total, payment) => total + payment.amount, 0)}
         />
+        <div className="booking-payment-proof-card">
+          <p className="eyebrow">Finance / Invoices</p>
+          <div className="booking-payment-proof-card-grid">
+            <div>
+              <span>Invoice status</span>
+              <strong>{invoice ? formatStatus(invoice.effectiveStatus || invoice.status) : clientOutstanding > 0 ? 'Unbilled' : 'Paid'}</strong>
+            </div>
+            <div>
+              <span>Total</span>
+              <strong>{formatMoney(invoice?.totalAmount ?? totalSell, invoice?.currency ?? currency)}</strong>
+            </div>
+            <div>
+              <span>Paid</span>
+              <strong>{formatMoney(invoice?.paidAmount ?? clientPaid, invoice?.currency ?? currency)}</strong>
+            </div>
+            <div>
+              <span>Balance due</span>
+              <strong>{formatMoney(invoice?.balanceDue ?? clientOutstanding, invoice?.currency ?? currency)}</strong>
+            </div>
+          </div>
+          {invoice ? (
+            <p className="detail-copy">
+              Invoice <a href={`/invoices/${invoice.id}`}>{invoice.invoiceNumber}</a> is due {formatDateTime(invoice.dueDate)}.
+            </p>
+          ) : (
+            <p className="detail-copy">Generate a persisted client invoice from the latest booking amendment.</p>
+          )}
+          {invoiceError ? <p className="form-error">{invoiceError}</p> : null}
+          <button type="button" className="secondary-button" onClick={handleGenerateInvoice} disabled={isGeneratingInvoice}>
+            {isGeneratingInvoice ? 'Generating...' : invoice ? 'Regenerate invoice' : 'Generate invoice'}
+          </button>
+        </div>
         {paymentProofSubmission ? (
           <div className="booking-payment-proof-card">
             <p className="eyebrow">Client Payment Proof</p>
@@ -245,9 +327,9 @@ export function BookingFinancialsTab({
         <div className="booking-financial-summary-primary">
           <BookingOperationsStatCard
             className="booking-financial-card-primary booking-financial-card-profit"
-            label="Profit"
-            value={formatMoney(margin.margin, currency)}
-            helper={`Net margin | ${formatPercent(margin.marginPercent)}`}
+            label="Gross Profit"
+            value={formatMoney(margin.grossProfit, currency)}
+            helper={`Internal / Admin only | Margin ${formatPercent(margin.marginPercent)}`}
             tone={margin.margin <= 0 ? 'accent' : 'default'}
           />
           <BookingOperationsStatCard

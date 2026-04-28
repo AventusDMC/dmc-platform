@@ -138,10 +138,56 @@ test('cancel booking sets status to cancelled without deleting related data', as
   assert.equal(auditLogData.newValue, 'cancelled');
 });
 
+test('old booking amendments cannot be updated', async () => {
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async ({ where }: any) => {
+            if (where?.amendedFromId === 'booking-1') {
+              return { id: 'booking-2', amendedFromId: 'booking-1' };
+            }
+
+            return {
+              id: 'booking-1',
+              status: 'confirmed',
+              services: [
+                {
+                  id: 'service-1',
+                  description: 'Hotel',
+                  serviceType: 'HOTEL',
+                  serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+                  status: 'confirmed',
+                  confirmationStatus: 'confirmed',
+                  supplierId: 'supplier-1',
+                  supplierName: 'Hotel Supplier',
+                  totalCost: 100,
+                  totalSell: 130,
+                },
+              ],
+            };
+          },
+        },
+      }),
+  });
+
+  await assert.rejects(
+    () =>
+      service.updateBookingStatus('booking-1', {
+        status: 'completed',
+        note: 'Complete booking',
+        companyActor: { companyId: 'company-1' },
+      }),
+    /Only the latest booking amendment/,
+  );
+});
+
 test('amend booking clones days passengers and services without changing original', async () => {
   let createdBookingData: any;
   const createdDays: any[] = [];
   const createdPassengers: any[] = [];
+  const createdRoomingEntries: any[] = [];
+  const createdRoomingAssignments: any[] = [];
   const createdServices: any[] = [];
   const original = {
     id: 'booking-1',
@@ -170,6 +216,7 @@ test('amend booking clones days passengers and services without changing origina
     endDate: new Date('2026-06-03T00:00:00.000Z'),
     days: [{ id: 'day-1', dayNumber: 1, date: new Date('2026-06-01T00:00:00.000Z'), title: 'Arrival', notes: null, status: 'PENDING' }],
     passengers: [{
+      id: 'passenger-1',
       fullName: 'Lina Haddad',
       firstName: 'Lina',
       lastName: 'Haddad',
@@ -187,6 +234,18 @@ test('amend booking clones days passengers and services without changing origina
       roomingNotes: null,
       isLead: true,
       notes: null,
+    }],
+    roomingEntries: [{
+      id: 'rooming-entry-1',
+      roomType: 'DBL',
+      occupancy: 'double',
+      notes: 'Keep rooming',
+      sortOrder: 1,
+      assignments: [{
+        id: 'assignment-1',
+        bookingRoomingEntryId: 'rooming-entry-1',
+        bookingPassengerId: 'passenger-1',
+      }],
     }],
     services: [{
       bookingDayId: 'day-1',
@@ -250,6 +309,18 @@ test('amend booking clones days passengers and services without changing origina
             return { id: 'passenger-2', ...data };
           },
         },
+        bookingRoomingEntry: {
+          create: async ({ data }: any) => {
+            createdRoomingEntries.push(data);
+            return { id: 'rooming-entry-2', ...data };
+          },
+        },
+        bookingRoomingAssignment: {
+          create: async ({ data }: any) => {
+            createdRoomingAssignments.push(data);
+            return { id: 'assignment-2', ...data };
+          },
+        },
         bookingService: {
           create: async ({ data }: any) => {
             createdServices.push(data);
@@ -274,6 +345,12 @@ test('amend booking clones days passengers and services without changing origina
   assert.equal(createdBookingData.amendedFromId, 'booking-1');
   assert.equal(createdDays.length, 1);
   assert.equal(createdPassengers.length, 1);
+  assert.equal(createdRoomingEntries.length, 1);
+  assert.equal(createdRoomingAssignments.length, 1);
+  assert.equal(createdRoomingEntries[0].bookingId, 'booking-2');
+  assert.equal(createdRoomingEntries[0].roomType, 'DBL');
+  assert.equal(createdRoomingAssignments[0].bookingRoomingEntryId, 'rooming-entry-2');
+  assert.equal(createdRoomingAssignments[0].bookingPassengerId, 'passenger-2');
   assert.equal(createdServices.length, 1);
   assert.equal(createdServices[0].bookingDayId, 'day-2');
   assert.equal(original.bookingRef, 'BK-2026-0001');
@@ -456,7 +533,9 @@ test('booking detail loads selected client booking when actor company differs', 
   const service = createService({
     booking: {
       findFirst: async ({ where }: any) => {
-        baseWhere = where;
+        if (where?.id === 'booking-1') {
+          baseWhere = where;
+        }
         return {
           id: 'booking-1',
           quoteId: 'quote-1',

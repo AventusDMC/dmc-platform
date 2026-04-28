@@ -10,6 +10,20 @@ type CompanyRouteContext = {
   }>;
 };
 
+export async function GET(request: NextRequest, context: CompanyRouteContext) {
+  const { companyId } = await context.params;
+  const response = await fetch(`${API_BASE_URL}/companies/${companyId}`, {
+    method: 'GET',
+    headers: {
+      ...buildActorHeaders(request),
+    },
+    cache: 'no-store',
+    redirect: 'manual',
+  });
+
+  return forwardProxyJsonResponse(response);
+}
+
 export async function PATCH(request: NextRequest, context: CompanyRouteContext) {
   const { companyId } = await context.params;
   const body = await request.json().catch(() => ({}));

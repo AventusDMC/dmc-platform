@@ -9,6 +9,7 @@ export function getMarginMetrics(totalSell: number, totalCost: number) {
     totalCost,
     totalSell,
     margin,
+    grossProfit: margin,
     marginPercent,
     tone,
     isNegative: margin < 0,

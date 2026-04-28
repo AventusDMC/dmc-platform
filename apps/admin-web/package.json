@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "test": "tsx --test app/admin-nav.test.ts app/dashboard-invoices.test.ts app/activities/activities.test.tsx app/hotels/hotel-contract-display.test.ts app/quotes/external-package-ui.test.ts app/quotes/activities-integration.test.tsx app/quotes/[id]/page.test.tsx app/bookings/[id]/page.test.tsx app/operations/mobile-view.test.ts app/api/bookings/passenger-manifest-export-route.test.ts app/api/bookings/guarantee-letter-route.test.ts",
+    "test": "tsx --test app/admin-nav.test.ts app/dashboard-invoices.test.ts app/admin/dashboard/page.test.ts app/admin/reports/page.test.ts app/activities/activities.test.tsx app/hotels/hotel-contract-display.test.ts app/invoices/invoices.test.ts app/quotes/external-package-ui.test.ts app/quotes/activities-integration.test.tsx app/quotes/[id]/page.test.tsx app/bookings/[id]/page.test.tsx app/operations/mobile-view.test.ts app/api/bookings/passenger-manifest-export-route.test.ts app/api/bookings/guarantee-letter-route.test.ts",
     "build": "next build",
     "start": "next start --port 3000"
   },

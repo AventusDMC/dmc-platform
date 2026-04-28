@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -38,6 +39,18 @@ describe('booking detail page regression', () => {
       '<strong>{totalPax} pax</strong>',
       '<span>Amendment</span>',
       '<strong>{amendmentLabel}</strong>',
+    ]);
+  });
+
+  it('shows internal admin profit summary on booking detail', () => {
+    expectSourceContains(pageSource, [
+      'const totalCost = booking.finance.realizedTotalCost || booking.finance.quotedTotalCost || booking.pricingSnapshotJson.totalCost || snapshot.totalCost || 0;',
+      'const grossProfit = Number((totalSell - totalCost).toFixed(2));',
+      '<span>Total sell price</span>',
+      '<span>Total cost</span>',
+      '<span>Gross profit</span>',
+      '<span>Margin %</span>',
+      'Internal / Admin profit summary. Supplier costs are not included in client documents.',
     ]);
   });
 
@@ -147,7 +160,7 @@ describe('booking detail page regression', () => {
 
   it('keeps responsive dashboard layout and mobile action access', () => {
     expectSourceContains(pageSource, [
-      '<div className="booking-dashboard-actions" aria-label="Booking actions">',
+      '<AdminHeaderActions className="booking-dashboard-actions">',
       '<nav className="booking-dashboard-tabs" aria-label="Booking detail sections">',
       '<aside className="booking-ops-sidebar">',
       'booking-dashboard-primary-action',
@@ -161,6 +174,25 @@ describe('booking detail page regression', () => {
       '@media (max-width: 720px)',
       '.booking-dashboard-actions > *',
       'width: 100%;',
+    ]);
+  });
+
+  it('exposes finance invoice MVP controls without removing existing payment sections', () => {
+    expectSourceContains(financialsTabSource, [
+      'Finance / Invoices',
+      'Invoice status',
+      'Balance due',
+      'Generate invoice',
+      "fetch(`/api/bookings/${bookingId}/invoice`",
+      'Client Payments',
+      'Supplier Payments',
+      'onAddPayment={handleAddPayment}',
+      'onMarkPaid={handleMarkPaid}',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.booking-payment-proof-card-grid',
+      'grid-template-columns: repeat(2, minmax(0, 1fr));',
     ]);
   });
 });

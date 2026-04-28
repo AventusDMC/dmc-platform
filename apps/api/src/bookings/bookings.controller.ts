@@ -3,6 +3,7 @@ import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { BookingsService } from './bookings.service';
+import { InvoicesService } from '../invoices/invoices.service';
 
 type AssignBookingServiceSupplierBody = {
   supplierId?: string | null;
@@ -194,6 +195,7 @@ export class BookingsController {
   constructor(
     private readonly bookingsService: BookingsService,
     private readonly authService: AuthService,
+    private readonly invoicesService: InvoicesService,
   ) {}
 
   private toAuditActor(actor: AuthenticatedActor | null | undefined) {
@@ -452,6 +454,18 @@ export class BookingsController {
     return this.bookingsService.sendInvoice(id, {
       email: body.email === undefined ? undefined : body.email || null,
       mode: body.mode,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/invoice')
+  @Roles('admin', 'finance')
+  generateInvoice(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.invoicesService.generateForBooking(id, {
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

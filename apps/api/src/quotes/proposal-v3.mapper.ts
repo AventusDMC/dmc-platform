@@ -658,17 +658,11 @@ function buildPdfExportConsistencyLines(quote: ProposalV3Quote, currency: string
     }
   }
 
-  const itemCostTotal = quoteItems.reduce((sum, item) => sum + Number(item.finalCost ?? item.totalCost ?? 0), 0);
   const itemSellTotal = quoteItems.reduce((sum, item) => sum + Number(item.totalSell ?? 0), 0);
-  const totalCost = Number((Number.isFinite(Number(quote.totalCost)) ? Number(quote.totalCost) : itemCostTotal).toFixed(2));
   const totalSell = Number((Number.isFinite(Number(quote.totalSell)) ? Number(quote.totalSell) : itemSellTotal).toFixed(2));
-  const margin = Number((totalSell - totalCost).toFixed(2));
-  const marginPercent = totalSell > 0 ? Number(((margin / totalSell) * 100).toFixed(2)) : 0;
 
-  if (totalCost > 0 || totalSell > 0) {
-    lines.push(`PDF total cost: ${formatProposalMoney(totalCost, currency)}`);
+  if (totalSell > 0) {
     lines.push(`PDF sell total: ${formatProposalMoney(totalSell, currency)}`);
-    lines.push(`PDF margin: ${formatProposalMoney(margin, currency)} (${marginPercent.toFixed(2)}%)`);
   }
 
   if (quoteItems.some((item) => item.useOverride || item.finalCost !== null && item.finalCost !== undefined)) {

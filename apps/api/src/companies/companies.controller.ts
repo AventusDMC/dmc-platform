@@ -63,6 +63,11 @@ export class CompaniesController {
     return this.companiesService.findAll(actor);
   }
 
+  @Get(':id/performance')
+  getPerformance(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    return this.companiesService.getPerformance(id, actor);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
     return this.companiesService.findOne(id, actor);

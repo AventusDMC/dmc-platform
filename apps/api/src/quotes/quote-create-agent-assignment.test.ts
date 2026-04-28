@@ -247,6 +247,51 @@ quoteCreateTest('quote create and update still require authenticated company con
   );
 });
 
+quoteCreateTest('old quote revisions cannot be updated', async () => {
+  const prisma = {
+    quote: {
+      findFirst: async ({ where }: any) => {
+        if (where?.revisedFromId === 'quote-1') {
+          return { id: 'quote-2', revisedFromId: 'quote-1' };
+        }
+
+        if (where?.id === 'quote-1') {
+          return {
+            id: 'quote-1',
+            clientCompanyId: 'company-1',
+            brandCompanyId: null,
+            contactId: 'contact-1',
+            quoteCurrency: 'USD',
+            pricingType: 'simple',
+            pricingMode: 'ITEMIZED',
+            fixedPricePerPerson: null,
+            focType: 'none',
+            focRatio: null,
+            focCount: null,
+            focRoomType: null,
+            status: 'DRAFT',
+            acceptedVersionId: null,
+          };
+        }
+
+        return null;
+      },
+    },
+  };
+  const service = new QuoteCreateQuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    new QuoteCreateQuotePricingService(),
+  );
+
+  await quoteCreateAssert.rejects(
+    () => service.update('quote-1', { title: 'Changed title' } as any, { companyId: 'dmc-company-1' } as any),
+    /Only the latest quote revision/,
+  );
+});
+
 quoteCreateTest('DMC admin can add activity item to quote for external client without actor-company filtering', async () => {
   const quoteFindWheres: any[] = [];
   let createdItemData: any;

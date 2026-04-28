@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
 
@@ -435,7 +437,7 @@ test('proposal renders Egypt-only external package without assuming hotel nights
   assert.doesNotMatch(html, /externalNetCost/);
 });
 
-test('proposal PDF export totals match quote totals, overrides, sell logic, and margin', () => {
+test('proposal PDF export totals show sell price without exposing internal cost or margin', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({
       totalCost: 150,
@@ -452,13 +454,12 @@ test('proposal PDF export totals match quote totals, overrides, sell logic, and 
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: $150.00'));
   assert.ok(proposal.investment.noteLines.includes('PDF sell total: $180.00'));
-  assert.ok(proposal.investment.noteLines.includes('PDF margin: $30.00 (16.67%)'));
   assert.ok(proposal.investment.noteLines.includes('Manual finalCost override reflected in PDF totals.'));
+  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit/i);
 });
 
-test('proposal PDF export rounds cost, sell, margin, and margin percent consistently with quote summary', () => {
+test('proposal PDF export rounds sell total consistently without exposing internal profit fields', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({
       totalCost: 124.956,
@@ -472,9 +473,8 @@ test('proposal PDF export rounds cost, sell, margin, and margin percent consiste
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: $124.96'));
   assert.ok(proposal.investment.noteLines.includes('PDF sell total: $140.39'));
-  assert.ok(proposal.investment.noteLines.includes('PDF margin: $15.43 (10.99%)'));
+  assert.doesNotMatch(JSON.stringify(proposal), /PDF total cost|PDF margin|totalCost|supplierCost|gross profit/i);
 });
 
 test('proposal PDF export keeps tax and service charge notes aligned with calculated totals', () => {
@@ -495,7 +495,6 @@ test('proposal PDF export keeps tax and service charge notes aligned with calcul
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: $127.60'));
   assert.ok(proposal.investment.noteLines.includes('PDF sell total: $159.50'));
   assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are not included and may apply at 16%.'));
   assert.ok(proposal.notes.some((line) => line === 'Service charge is not included and may apply at 10% where applicable.'));
@@ -521,7 +520,6 @@ test('proposal PDF export marks included tax without changing manual finalCost o
     }),
   );
 
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: $120.00'));
   assert.ok(proposal.investment.noteLines.includes('PDF sell total: $150.00'));
   assert.ok(proposal.investment.noteLines.includes('Manual finalCost override reflected in PDF totals.'));
   assert.ok(proposal.notes.some((line) => line === 'Applicable taxes are included at 16%.'));
@@ -546,9 +544,7 @@ test('proposal PDF export uses quote currency for totals and supplement currency
   );
   const supplementsLine = proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '';
 
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: €150.00'));
   assert.ok(proposal.investment.noteLines.includes('PDF sell total: €180.00'));
-  assert.ok(proposal.investment.noteLines.includes('PDF margin: €30.00 (16.67%)'));
   assert.match(supplementsLine, /Gala Dinner €30\.00 per person/);
   assert.doesNotMatch(proposal.investment.noteLines.join('\n'), /\$/);
 });
@@ -571,7 +567,7 @@ test('proposal PDF export labels JOD supplement currency even when quote currenc
   const supplementsLine = proposal.investment.noteLines.find((line) => line.startsWith('Supplements:')) || '';
 
   assert.match(supplementsLine, /Extra Dinner 20\.000 JD per room/);
-  assert.ok(proposal.investment.noteLines.includes('PDF total cost: €150.00'));
+  assert.ok(proposal.investment.noteLines.includes('PDF sell total: €180.00'));
 });
 
 test('proposal PDF export HTML contains the same consistency lines rendered to PDF', async () => {
@@ -581,7 +577,16 @@ test('proposal PDF export HTML contains the same consistency lines rendered to P
 
   assert.match(html, /Grand Petra Hotel rate basis: per person\/night/);
   assert.match(html, /Child policy: Children 0-5 free/);
-  assert.match(html, /PDF total cost: \$450\.00/);
   assert.match(html, /PDF sell total: \$540\.00/);
-  assert.match(html, /PDF margin: \$90\.00 \(16\.67%\)/);
+  assert.doesNotMatch(html, /PDF total cost|PDF margin|supplierCost|totalCost|gross profit/i);
+});
+
+test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {
+  const rendererSource = readFileSync(resolve(__dirname, 'proposal-v2.renderer.ts'), 'utf8');
+
+  assert.match(rendererSource, /Client Info/);
+  assert.match(rendererSource, /Trip Overview/);
+  assert.match(rendererSource, /Services \/ Itinerary/);
+  assert.match(rendererSource, /Pricing Summary/);
+  assert.doesNotMatch(rendererSource, /supplierCost|gross profit|PDF total cost|PDF margin/i);
 });

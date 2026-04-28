@@ -1,5 +1,7 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AdminBackButton } from '../../components/AdminBackButton';
+import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AdminHeaderActions } from '../../components/AdminHeaderActions';
 import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
@@ -34,6 +36,13 @@ export default async function NewActivityPage() {
   return (
     <main className="page">
       <section className="panel workspace-panel">
+        <AdminBreadcrumbs
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Activities', href: '/activities' },
+            { label: 'New Activity' },
+          ]}
+        />
         <WorkspaceShell
           eyebrow="Catalog"
           title="New activity"
@@ -55,9 +64,9 @@ export default async function NewActivityPage() {
               title="Create activity"
               description="Supplier company selection is intentionally independent from the signed-in actor company for DMC workflows."
               actions={
-                <Link href="/activities" className="dashboard-toolbar-link">
-                  Back to activities
-                </Link>
+                <AdminHeaderActions>
+                  <AdminBackButton fallbackHref="/activities" label="Back to Activities" className="dashboard-toolbar-link admin-back-button" />
+                </AdminHeaderActions>
               }
             />
 

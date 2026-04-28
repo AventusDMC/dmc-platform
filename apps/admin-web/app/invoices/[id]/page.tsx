@@ -4,6 +4,7 @@ import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
 import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { InvoiceDeliveryActions } from '../InvoiceDeliveryActions';
 import { InvoiceStatusForm } from '../InvoiceStatusForm';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -11,9 +12,18 @@ const ACTION_API_BASE_URL = '/api';
 
 type InvoiceDetail = {
   id: string;
+  invoiceNumber: string;
+  bookingId: string | null;
+  bookingRef: string | null;
+  issueDate: string;
   totalAmount: number;
+  subtotal: number;
+  taxAmount: number;
+  paidAmount: number;
+  balanceDue: number;
   currency: string;
   status: 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
+  effectiveStatus: string;
   dueDate: string;
   quote: {
     id: string;
@@ -26,6 +36,7 @@ type InvoiceDetail = {
     contact: {
       firstName: string;
       lastName: string;
+      email?: string | null;
     };
     booking: {
       id: string;
@@ -41,6 +52,16 @@ type InvoiceDetail = {
     actorUserId: string | null;
     actor: string | null;
     createdAt: string;
+  }>;
+  payments: Array<{
+    id: string;
+    amount: number;
+    currency: string;
+    method: string;
+    reference: string | null;
+    notes: string | null;
+    paymentDate: string;
+    status: string;
   }>;
 };
 
@@ -104,10 +125,13 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
             <div className="workspace-summary-head">
               <div>
                 <p className="eyebrow">Invoice</p>
-                <h1 className="section-title quote-title">{invoice.quote.quoteNumber || 'Invoice detail'}</h1>
-                <p className="detail-copy">{invoice.quote.title}</p>
+                <h1 className="section-title quote-title">{invoice.invoiceNumber || invoice.quote.quoteNumber || 'Invoice detail'}</h1>
+                <p className="detail-copy">
+                  {invoice.quote.title}
+                  {invoice.bookingRef ? ` | Booking ${invoice.bookingRef}` : ''}
+                </p>
               </div>
-              <span className="workspace-status">{formatStatus(invoice.status)}</span>
+              <span className="workspace-status">{formatStatus(invoice.effectiveStatus || invoice.status)}</span>
             </div>
 
             <div className="workspace-summary-grid">
@@ -127,6 +151,21 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                 <span>Total amount</span>
                 <strong>{formatMoney(invoice.totalAmount, invoice.currency)}</strong>
                 <p>{invoice.currency}</p>
+              </article>
+              <article className="workspace-summary-card">
+                <span>Paid</span>
+                <strong>{formatMoney(invoice.paidAmount, invoice.currency)}</strong>
+                <p>Received against invoice</p>
+              </article>
+              <article className="workspace-summary-card">
+                <span>Balance due</span>
+                <strong>{formatMoney(invoice.balanceDue, invoice.currency)}</strong>
+                <p>Outstanding receivable</p>
+              </article>
+              <article className="workspace-summary-card">
+                <span>Issue date</span>
+                <strong>{formatDate(invoice.issueDate)}</strong>
+                <p>MVP issue date</p>
               </article>
               <article className="workspace-summary-card">
                 <span>Due date</span>
@@ -156,6 +195,9 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                   <Link href={`/quotes/${invoice.quote.id}`} className="dashboard-toolbar-link">
                     Open quote
                   </Link>
+                  <a href={`/api/invoices/${invoice.id}/pdf`} className="dashboard-toolbar-link">
+                    Download PDF
+                  </a>
                   {invoice.quote.booking ? (
                     <Link href={`/bookings/${invoice.quote.booking.id}`} className="dashboard-toolbar-link">
                       Open booking
@@ -169,6 +211,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
               items={[
                 { id: 'status', label: 'Status', value: formatStatus(invoice.status), helper: 'Current lifecycle state' },
                 { id: 'due', label: 'Due date', value: formatDate(invoice.dueDate), helper: 'Collection target' },
+                { id: 'balance', label: 'Balance', value: formatMoney(invoice.balanceDue, invoice.currency), helper: 'Amount still due' },
                 { id: 'quote-status', label: 'Quote', value: formatStatus(invoice.quote.status), helper: 'Linked quote status' },
                 { id: 'audit', label: 'Audit entries', value: String(invoice.auditLogs.length), helper: 'Lifecycle history' },
               ]}
@@ -179,6 +222,15 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                 <article className="detail-card">
                   <p className="eyebrow">Status Update</p>
                   <InvoiceStatusForm apiBaseUrl={ACTION_API_BASE_URL} invoiceId={invoice.id} currentStatus={invoice.status} />
+                </article>
+                <article className="detail-card">
+                  <p className="eyebrow">PDF & Email</p>
+                  <InvoiceDeliveryActions
+                    invoiceId={invoice.id}
+                    invoiceNumber={invoice.invoiceNumber}
+                    defaultEmail={invoice.quote.contact.email || null}
+                    disabled={invoice.status === 'CANCELLED'}
+                  />
                 </article>
                 <article className="detail-card">
                   <p className="eyebrow">Linked records</p>
@@ -199,6 +251,37 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                   </div>
                 </article>
               </div>
+            </TableSectionShell>
+
+            <TableSectionShell
+              title="Payments"
+              description="Client payments recorded against this invoice."
+              emptyState={<p className="empty-state">No payments have been recorded against this invoice yet.</p>}
+            >
+              {invoice.payments.length > 0 ? (
+                <div className="table-wrap">
+                  <table className="data-table allotment-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Method</th>
+                        <th>Reference</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoice.payments.map((payment) => (
+                        <tr key={payment.id}>
+                          <td>{formatDate(payment.paymentDate)}</td>
+                          <td>{formatMoney(payment.amount, payment.currency)}</td>
+                          <td>{formatStatus(payment.method)}</td>
+                          <td>{payment.reference || payment.notes || 'No reference'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </TableSectionShell>
 
             <TableSectionShell

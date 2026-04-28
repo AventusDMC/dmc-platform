@@ -1,5 +1,7 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AdminBackButton } from '../../components/AdminBackButton';
+import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AdminHeaderActions } from '../../components/AdminHeaderActions';
 import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
@@ -49,6 +51,13 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
   return (
     <main className="page">
       <section className="panel workspace-panel">
+        <AdminBreadcrumbs
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Activities', href: '/activities' },
+            { label: activity.name },
+          ]}
+        />
         <WorkspaceShell
           eyebrow="Catalog"
           title={activity.name}
@@ -80,9 +89,9 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
               title={activity.active ? 'Edit activity' : 'Edit inactive activity'}
               description="Inactive activities stay visible for existing quote and booking references, but are clearly marked in catalog management."
               actions={
-                <Link href="/activities" className="dashboard-toolbar-link">
-                  Back to activities
-                </Link>
+                <AdminHeaderActions>
+                  <AdminBackButton fallbackHref="/activities" label="Back to Activities" className="dashboard-toolbar-link admin-back-button" />
+                </AdminHeaderActions>
               }
             />
 

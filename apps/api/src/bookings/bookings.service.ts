@@ -317,6 +317,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       roomingEntries,
       paymentRows,
       services,
+      latestAmendment,
     ] = await Promise.all([
       safeLoad('quote', () => (this.prisma.quote as any).findUnique({
         where: { id: baseBooking.quoteId },
@@ -393,6 +394,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           { id: 'asc' },
         ],
       }), []),
+      safeLoad('latestAmendment', () => (this.prisma.booking as any).findFirst({
+        where: { amendedFromId: baseBooking.id },
+        select: { id: true },
+      }), null),
     ]);
 
     const booking = {
@@ -438,6 +443,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           clientCompany: booking.quote?.clientCompany || null,
           brandCompany: booking.quote?.brandCompany ?? booking.quote?.clientCompany ?? null,
         },
+        services: (booking.services || []).map((service: any) => this.attachBookingServiceProfitAliases(service, booking)),
+        isLatestAmendment: !latestAmendment,
         sourceQuoteId: booking.quoteId,
       };
     } catch (error) {
@@ -458,7 +465,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         bookingDays: days || [],
         roomingEntries: [],
         payments: [],
-        services: services || [],
+        services: (services || []).map((service: any) => this.attachBookingServiceProfitAliases(service, baseBooking)),
         finance: this.buildBookingFinanceSummary({ ...baseBooking, payments: [], services: [] }),
         operations: this.buildBookingOperationsSummary(services || []),
         rooming: this.buildBookingRoomingSummary({
@@ -466,9 +473,32 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           passengers: [],
           roomingEntries: [],
         }),
+        isLatestAmendment: !latestAmendment,
         sourceQuoteId: baseBooking.quoteId,
       };
     }
+  }
+
+  private attachBookingServiceProfitAliases(service: any, booking: any) {
+    const currency =
+      service.currency ||
+      booking?.pricingSnapshotJson?.currency ||
+      booking?.snapshotJson?.quoteCurrency ||
+      booking?.snapshotJson?.currency ||
+      'USD';
+    const supplierCost = Number(service.totalCost || 0);
+    const sellPrice = Number(service.totalSell || 0);
+    const grossProfit = this.roundMoney(sellPrice - supplierCost);
+    const marginPercent = sellPrice > 0 ? Number(((grossProfit / sellPrice) * 100).toFixed(2)) : 0;
+
+    return {
+      ...service,
+      supplierCost,
+      sellPrice,
+      currency,
+      grossProfit,
+      marginPercent,
+    };
   }
 
   findPortalBooking(id: string, token?: string) {
@@ -940,6 +970,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking not found');
       }
 
+      await this.assertLatestBookingAmendment(id, tx);
       this.assertAllowedBookingStatusTransition(booking.status, data.status);
       this.assertBookingStatusReadiness(booking, data.status);
 
@@ -1019,6 +1050,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             orderBy: [{ dayNumber: 'asc' }, { id: 'asc' }],
           },
           passengers: true,
+          roomingEntries: {
+            include: {
+              assignments: true,
+            },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          },
           services: {
             orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
           },
@@ -1029,6 +1066,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking not found');
       }
 
+      await this.assertLatestBookingAmendment(id, tx);
       const bookingRef = await this.generateNextBookingRef(tx);
       const amendmentRootId = original.amendedFromId || original.id;
       const latestAmendment = (await tx.booking.findFirst({
@@ -1071,6 +1109,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
 
       const dayIdByOriginalId = new Map<string, string>();
+      const passengerIdByOriginalId = new Map<string, string>();
+      const roomingEntryIdByOriginalId = new Map<string, string>();
       for (const day of original.days || []) {
         const clonedDay = await tx.bookingDay.create({
           data: {
@@ -1086,7 +1126,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }
 
       for (const passenger of original.passengers || []) {
-        await tx.bookingPassenger.create({
+        const clonedPassenger = await tx.bookingPassenger.create({
           data: {
             bookingId: amendedBooking.id,
             fullName: passenger.fullName,
@@ -1108,6 +1148,41 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             notes: passenger.notes,
           } as any,
         });
+        passengerIdByOriginalId.set(passenger.id, clonedPassenger.id);
+      }
+
+      for (const roomingEntry of original.roomingEntries || []) {
+        const clonedRoomingEntry = await tx.bookingRoomingEntry.create({
+          data: {
+            bookingId: amendedBooking.id,
+            roomType: roomingEntry.roomType,
+            occupancy: roomingEntry.occupancy,
+            notes: roomingEntry.notes,
+            sortOrder: roomingEntry.sortOrder,
+          } as any,
+        });
+        roomingEntryIdByOriginalId.set(roomingEntry.id, clonedRoomingEntry.id);
+      }
+
+      for (const roomingEntry of original.roomingEntries || []) {
+        const clonedRoomingEntryId = roomingEntryIdByOriginalId.get(roomingEntry.id);
+        if (!clonedRoomingEntryId) {
+          continue;
+        }
+
+        for (const assignment of roomingEntry.assignments || []) {
+          const clonedPassengerId = passengerIdByOriginalId.get(assignment.bookingPassengerId);
+          if (!clonedPassengerId) {
+            continue;
+          }
+
+          await tx.bookingRoomingAssignment.create({
+            data: {
+              bookingRoomingEntryId: clonedRoomingEntryId,
+              bookingPassengerId: clonedPassengerId,
+            } as any,
+          });
+        }
       }
 
       for (const service of original.services || []) {
@@ -1206,6 +1281,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking not found');
     }
 
+    await this.assertLatestBookingAmendment(id);
     const finance = this.buildBookingFinanceSummary(booking);
     const nextClientInvoiceStatus =
       data.clientInvoiceStatus === undefined
@@ -2731,6 +2807,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking not found');
       }
 
+      await this.assertLatestBookingAmendment(bookingId, tx);
       if (shouldSetLead) {
         await tx.bookingPassenger.updateMany({
           where: { bookingId },
@@ -2823,6 +2900,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking passenger not found');
       }
 
+      await this.assertLatestBookingAmendment(bookingId, tx);
       const nextFullName =
         data.fullName === undefined
           ? passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' ')
@@ -2920,6 +2998,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking passenger not found');
       }
 
+      await this.assertLatestBookingAmendment(bookingId, tx);
       if (passenger.roomingAssignments.length > 0) {
         throw new BadRequestException('Unassign the passenger from rooming before deleting the passenger record.');
       }
@@ -3022,6 +3101,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking not found');
       }
 
+      await this.assertLatestBookingAmendment(bookingId, tx);
       const roomType = this.normalizeOptionalText(data.roomType);
       const occupancy = this.normalizeRoomOccupancy(data.occupancy);
       const notes = this.normalizeOptionalText(data.notes);
@@ -3086,6 +3166,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking rooming entry not found');
       }
 
+      await this.assertLatestBookingAmendment(bookingId, tx);
       const nextRoomType = data.roomType === undefined ? roomingEntry.roomType : this.normalizeOptionalText(data.roomType);
       const nextOccupancy = data.occupancy === undefined ? roomingEntry.occupancy : this.normalizeRoomOccupancy(data.occupancy);
       const nextNotes = data.notes === undefined ? roomingEntry.notes : this.normalizeOptionalText(data.notes);
@@ -3424,6 +3505,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking day not found');
     }
 
+    await this.assertLatestBookingAmendment(bookingId);
     const normalized = await this.normalizeBookingOperationServiceInput(data, null);
     const nextServiceOrder = await this.prisma.bookingService.count({ where: { bookingId } });
     const description = this.buildOperationServiceDescription(normalized.type, normalized);
@@ -3522,6 +3604,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking service not found');
     }
 
+    await this.assertLatestBookingAmendment(bookingId);
     if (currentService.operationType === BookingOperationServiceType.EXTERNAL_PACKAGE) {
       const hasAssignmentChange = ['supplierId', 'referenceId', 'assignedTo', 'guidePhone', 'vehicleId', 'pickupTime', 'confirmationNumber'].some(
         (key) => (data as any)[key] !== undefined,
@@ -3603,6 +3686,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking service not found');
     }
 
+    await this.assertLatestBookingAmendment(bookingId);
     return this.prisma.$transaction(async (tx) => {
       await tx.bookingService.delete({ where: { id: bookingServiceId } });
 
@@ -3649,6 +3733,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           throw new NotFoundException('Booking service not found');
         }
 
+        await this.assertLatestBookingAmendment(bookingService.bookingId);
         if (!data.supplierId) {
           const nextSupplierName = data.supplierName ?? null;
           const nextStatus = this.resolveBookingServiceLifecycleStatus({
@@ -3809,6 +3894,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           throw new NotFoundException('Booking service not found');
         }
 
+        await this.assertLatestBookingAmendment(bookingService.bookingId);
         const supplierReference =
           data.supplierReference === undefined
             ? data.confirmationNumber === undefined
@@ -3987,6 +4073,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Booking service not found');
       }
 
+      await this.assertLatestBookingAmendment(currentService.bookingId, tx);
       const supplierReference =
         data.supplierReference === undefined
           ? data.confirmationNumber === undefined
@@ -4107,6 +4194,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking service not found');
     }
 
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
     const counts = this.normalizeActivityOperationalCounts({
       participantCount: data.participantCount,
       adultCount: data.adultCount,
@@ -4243,6 +4331,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking service not found');
     }
 
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
     return this.applyManualServiceAction(this.prisma, bookingService, data.action, note, actor);
   }
 
@@ -4309,6 +4398,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     for (const bookingService of orderedServices) {
       try {
         await this.prisma.$transaction(async (tx) => {
+          await this.assertLatestBookingAmendment(bookingService.bookingId, tx);
           if (data.action === 'request_confirmation') {
             await this.applyBulkRequestConfirmation(tx, bookingService, note, actor);
 
@@ -8714,6 +8804,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
+    }
+  }
+
+  private async assertLatestBookingAmendment(bookingId: string, prismaClient: any = this.prisma) {
+    if (!prismaClient?.booking?.findFirst) {
+      return;
+    }
+
+    const newerAmendment = await prismaClient.booking.findFirst({
+      where: {
+        amendedFromId: bookingId,
+      },
+      select: {
+        id: true,
+        amendedFromId: true,
+      },
+    } as any);
+
+    if (newerAmendment?.amendedFromId === bookingId && newerAmendment.id !== bookingId) {
+      throw new BadRequestException('Only the latest booking amendment can be changed or used in operations');
     }
   }
 

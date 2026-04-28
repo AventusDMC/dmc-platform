@@ -82,5 +82,6 @@ describe('mobile operations view helpers', () => {
 
     assert.equal(getServiceVoucherHref(service), '/api/vouchers/voucher-1/pdf');
     assert.equal(assertMobileViewSafe(data), true);
+    assert.doesNotMatch(JSON.stringify(data), /supplierCost|grossProfit|marginPercent|totalCost|totalSell/i);
   });
 });

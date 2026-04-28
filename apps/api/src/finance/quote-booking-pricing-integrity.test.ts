@@ -2,6 +2,7 @@ import test = require('node:test');
 import assert = require('node:assert/strict');
 const { ActivitiesService } = require('../activities/activities.service');
 const { BookingsService } = require('../bookings/bookings.service');
+const { calculateProfitSummary } = require('./profit');
 const { QuotePricingService } = require('../quotes/quote-pricing.service');
 const { ProposalV3Service } = require('../quotes/proposal-v3.service');
 const { QuotesService } = require('../quotes/quotes.service');
@@ -645,10 +646,17 @@ test('Quote to booking pricing and profit integrity stays stable with first-clas
   await (quotesService as any).recalculateQuoteTotals(quote.id);
 
   const storedQuote = db.quotes.find((entry) => entry.id === quote.id);
+  const quoteProfit = calculateProfitSummary({ totalCost: storedQuote.totalCost, totalSell: storedQuote.totalSell });
   assert.equal(storedQuote.totalCost, 525);
   assert.equal(storedQuote.totalSell, 660);
   assert.equal(storedQuote.marginAmount, 135);
   assert.equal(roundMoney(storedQuote.totalSell - storedQuote.totalCost), storedQuote.marginAmount);
+  assert.deepEqual(quoteProfit, {
+    totalCost: 525,
+    totalSell: 660,
+    grossProfit: 135,
+    marginPercent: 20.45,
+  });
 
   const snapshot = createSnapshot(db, quote.id);
   db.quoteVersions.push({ id: 'quote-version-1', quoteId: quote.id, snapshotJson: snapshot, booking: null });
@@ -663,15 +671,26 @@ test('Quote to booking pricing and profit integrity stays stable with first-clas
 
   const booking = await quotesService.convertToBooking(quote.id, actor);
   const bookingServices = db.bookingServices.filter((service) => service.bookingId === booking.id);
+  const bookingProfit = calculateProfitSummary({
+    totalCost: bookingServices.reduce((total, service) => total + Number(service.totalCost || 0), 0),
+    totalSell: bookingServices.reduce((total, service) => total + Number(service.totalSell || 0), 0),
+  });
   assert.equal(bookingServices.length, 5);
   assert.equal(roundMoney(bookingServices.reduce((total, service) => total + Number(service.totalCost || 0), 0)), 525);
   assert.equal(roundMoney(bookingServices.reduce((total, service) => total + Number(service.totalSell || 0), 0)), 660);
   assert.equal(roundMoney(bookingServices.reduce((total, service) => total + Number(service.totalSell || 0) - Number(service.totalCost || 0), 0)), 135);
+  assert.deepEqual(bookingProfit, {
+    totalCost: 525,
+    totalSell: 660,
+    grossProfit: 135,
+    marginPercent: 20.45,
+  });
 
   const convertedActivity = bookingServices.find((service) => service.activityId === perPersonActivity.id);
   assert.equal(convertedActivity.totalCost, activityItem.totalCost);
   assert.equal(convertedActivity.totalSell, activityItem.totalSell);
 
+  const originalBookingStatusBeforeAmendment = booking.status;
   const amendedBooking = await bookingsService.amendBooking(booking.id, {
     actor: { userId: actor.userId, label: 'DMC Admin' },
     companyActor: actor,
@@ -683,12 +702,23 @@ test('Quote to booking pricing and profit integrity stays stable with first-clas
   assert.equal(roundMoney(amendedServices.reduce((total, service) => total + Number(service.totalCost || 0), 0)), 525);
   assert.equal(roundMoney(amendedServices.reduce((total, service) => total + Number(service.totalSell || 0), 0)), 660);
 
-  await bookingsService.cancelBooking(booking.id, {
+  await assert.rejects(
+    () =>
+      bookingsService.cancelBooking(booking.id, {
+        actor: { userId: actor.userId, label: 'DMC Admin' },
+        companyActor: actor,
+      }),
+    /Only the latest booking amendment/,
+  );
+
+  await bookingsService.cancelBooking(amendedBooking.id, {
     actor: { userId: actor.userId, label: 'DMC Admin' },
     companyActor: actor,
   });
-  const cancelledBooking = db.bookings.find((entry) => entry.id === booking.id);
-  const cancelledServices = db.bookingServices.filter((service) => service.bookingId === booking.id);
+  const originalBookingAfterCancelAttempt = db.bookings.find((entry) => entry.id === booking.id);
+  const cancelledBooking = db.bookings.find((entry) => entry.id === amendedBooking.id);
+  const cancelledServices = db.bookingServices.filter((service) => service.bookingId === amendedBooking.id);
+  assert.equal(originalBookingAfterCancelAttempt.status, originalBookingStatusBeforeAmendment);
   assert.equal(cancelledBooking.status, 'cancelled');
   assert.equal(roundMoney(cancelledServices.reduce((total, service) => total + Number(service.totalCost || 0), 0)), 525);
   assert.equal(roundMoney(cancelledServices.reduce((total, service) => total + Number(service.totalSell || 0), 0)), 660);
@@ -701,7 +731,7 @@ test('Quote to booking pricing and profit integrity stays stable with first-clas
   const proposalHtml = await proposalService.getProposalHtml(quote.id, actor);
   assert.match(proposalHtml, /USD/);
   assert.match(proposalHtml, /660/);
-  assert.doesNotMatch(proposalHtml, /Supplier cost|supplierCost|costBaseAmount|totalCost/i);
+  assert.doesNotMatch(proposalHtml, /Supplier cost|supplierCost|costBaseAmount|totalCost|total cost|gross profit/i);
   assert.doesNotMatch(proposalHtml, /USD 525/);
 
   const voucherText = (await bookingsService.generateServiceVoucherPdf(voucher.id, actor)).toString('utf8');

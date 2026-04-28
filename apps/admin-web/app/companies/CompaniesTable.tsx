@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
@@ -91,6 +92,9 @@ export function CompaniesTable({ apiBaseUrl, companies }: CompaniesTableProps) {
                   <td>
                     <RowDetailsPanel summary="Open details" className="operations-row-details" bodyClassName="operations-row-details-body">
                       <div className="table-action-row">
+                        <Link href={`/companies/${company.id}`} className="compact-button">
+                          Performance
+                        </Link>
                         <button
                           type="button"
                           className="compact-button compact-button-danger"

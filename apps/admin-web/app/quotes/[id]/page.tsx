@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cookies } from 'next/headers';
+import { AdminBackButton } from '../../components/AdminBackButton';
+import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AdminHeaderActions } from '../../components/AdminHeaderActions';
 import { AdvancedFiltersPanel } from '../../components/AdvancedFiltersPanel';
 import { CompactFilterBar } from '../../components/CompactFilterBar';
 import { InlineEntityActions } from '../../components/InlineEntityActions';
@@ -324,6 +327,7 @@ type Quote = {
   acceptedVersionId: string | null;
   revisionNumber: number;
   revisedFromId: string | null;
+  isLatestRevision?: boolean;
   invoice: {
     id: string;
     totalAmount: number;
@@ -1053,7 +1057,7 @@ function renderInternalCostingPanel({
     <article className="workspace-section internal-costing-panel">
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Internal Costing</p>
+          <p className="eyebrow">Internal / Admin Profit</p>
           <h2>{title}</h2>
         </div>
       </div>
@@ -1068,7 +1072,7 @@ function renderInternalCostingPanel({
           <strong>{formatMoney(totals.totalSell)}</strong>
         </div>
         <div className="workspace-summary-card">
-          <span>Margin amount</span>
+          <span>Gross profit</span>
           <strong>{formatMoney(metrics.marginAmount)}</strong>
         </div>
         <div className="workspace-summary-card">
@@ -1194,6 +1198,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
   const quote = normalizeQuoteDetail(rawQuote);
   const quoteCancelled = quote.status === 'CANCELLED';
+  const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
   const agents = users
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
     .map((user) => ({
@@ -1220,7 +1225,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const travelDates = quote.travelStartDate
     ? `${formatDate(quote.travelStartDate)}${quote.nightCount > 0 ? ` - ${formatNightCountLabel(quote.nightCount)}` : ''}`
     : 'Dates pending';
-  const quoteNumberLabel = quote.quoteNumber || quote.id.slice(0, 8).toUpperCase();
+  const baseQuoteNumberLabel = quote.quoteNumber || quote.id.slice(0, 8).toUpperCase();
+  const quoteNumberLabel = quote.revisionNumber && quote.revisionNumber > 1
+    ? `${baseQuoteNumberLabel} / R${quote.revisionNumber}`
+    : baseQuoteNumberLabel;
   const overviewWarnings = [
     quoteItineraryResult.status === 'error' ? 'Itinerary details could not be loaded. Showing quote detail without itinerary data.' : null,
     quoteExpired ? 'Quote validity has passed.' : null,
@@ -1406,7 +1414,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             Back
           </button>
         )}
-        <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+        {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
         {nextStep ? (
           nextStepBlockedReason ? (
             <button type="button" className="secondary-button" disabled title={nextStepBlockedReason}>
@@ -1431,9 +1439,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     <main className="page quote-builder-page">
       <section className="panel quote-workspace-page">
         <div className="quote-builder-shell">
+          <AdminBreadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Quotes', href: '/quotes' },
+              { label: `Quote ${quoteNumberLabel}` },
+            ]}
+          />
           <section className="quote-dashboard-header">
             <div className="quote-dashboard-header-main">
-              <Link href="/quotes" className="back-link">Back to quotes</Link>
+              <AdminBackButton fallbackHref="/quotes" label="Back to Quotes" />
               <div className="quote-dashboard-title-row">
                 <div>
                   <p className="eyebrow">Quote {quoteNumberLabel}</p>
@@ -1450,10 +1465,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 <div><span>Revision</span><strong>Rev {quote.revisionNumber ?? 1}</strong></div>
               </div>
             </div>
-            <div className="quote-dashboard-actions">
-              <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+            <AdminHeaderActions className="quote-dashboard-actions">
+              {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
               <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-              {!quoteCancelled ? (
+              {!quoteReadOnly ? (
                 <RowDetailsPanel
                   summary="Accept"
                   description="Update status"
@@ -1473,7 +1488,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               {quote.booking ? (
                 <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
               ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                convertBlocked || quoteCancelled ? (
+                convertBlocked || quoteReadOnly ? (
                   <button type="button" className="secondary-button" disabled>Convert</button>
                 ) : (
                   <ConvertToBookingButton quoteId={quote.id} label="Convert" />
@@ -1481,10 +1496,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : (
                 <button type="button" className="secondary-button" disabled>Convert</button>
               )}
-              <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
-              {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
-            </div>
+              <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
+              {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
+            </AdminHeaderActions>
           </section>
+
+          {quote.isLatestRevision === false ? (
+            <div className="inline-alert warning" role="status">
+              This is an older quote revision. Open the latest revision to edit, accept, or convert it to a booking.
+            </div>
+          ) : null}
 
           <section className="quote-dashboard-workflow" aria-label="Quote workflow">
             {QUOTE_DASHBOARD_WORKFLOW.map((label) => {
@@ -1622,7 +1643,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
               <div className="section-stack">
                 <article className="detail-card">
-                  <p className="eyebrow">Key Metrics</p>
+                  <p className="eyebrow">Internal / Admin Profit</p>
                   <div className="quote-preview-total-list">
                     <div>
                       <span>Total sell</span>
@@ -1631,6 +1652,14 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <div>
                       <span>Total cost</span>
                       <strong>{formatMoney(quote.totalCost, quote.quoteCurrency)}</strong>
+                    </div>
+                    <div>
+                      <span>Gross profit</span>
+                      <strong>{formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency)}</strong>
+                    </div>
+                    <div>
+                      <span>Margin %</span>
+                      <strong>{quote.totalSell > 0 ? (((quote.totalSell - quote.totalCost) / quote.totalSell) * 100).toFixed(2) : '0.00'}%</strong>
                     </div>
                     <div>
                       <span>Quote currency</span>
@@ -1824,7 +1853,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 <div className="workspace-document-actions">
                   <QuotePreviewLink quoteId={quote.id} />
                   <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-                  <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                  {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                 </div>
 
                 {reviewBlockingIssues.length > 0 ? (
@@ -1910,7 +1939,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       <strong>{quote.acceptedVersionId ? 'Linked to saved snapshot' : 'No accepted version yet'}</strong>
                     </div>
                   </div>
-                  <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                  {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                   <p className="detail-copy">
                     Accepted version: {quote.acceptedVersionId ? 'Saved snapshot linked to current accepted state.' : 'No accepted version yet. Save a version, then set the quote back to Accepted to restore the booking link.'}
                   </p>
@@ -1969,8 +1998,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                           termsNotesText: quote.termsNotesText || '',
                         }}
                       />
-                      {quoteCancelled ? (
-                        <p className="detail-copy">This quote is cancelled. Status changes and booking conversion are disabled.</p>
+                      {quoteReadOnly ? (
+                        <p className="detail-copy">
+                          {quoteCancelled
+                            ? 'This quote is cancelled. Status changes and booking conversion are disabled.'
+                            : 'This is an older quote revision. Open the latest revision to make changes.'}
+                        </p>
                       ) : (
                         <QuoteStatusForm
                           apiBaseUrl={ACTION_API_BASE_URL}
@@ -1982,17 +2015,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       )}
                     </div>
                   </RowDetailsPanel>
-                  {!quoteCancelled ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                  {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                   {quote.booking ? (
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
-                  ) : quoteCancelled ? (
+                  ) : quoteReadOnly ? (
                     <div className="section-stack">
                       <button type="button" className="secondary-button" disabled>
                         Convert to booking
                       </button>
-                      <p className="detail-copy">Cancelled quotes cannot be converted to bookings.</p>
+                      <p className="detail-copy">
+                        {quoteCancelled ? 'Cancelled quotes cannot be converted to bookings.' : 'Only the latest quote revision can be converted to booking.'}
+                      </p>
                     </div>
                   ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
                     convertBlocked ? (
@@ -2025,8 +2060,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     initialPublicToken={quote.publicToken}
                     initialPublicEnabled={quote.publicEnabled}
                   />
-                  <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
-                  {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
+                  <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
+                  {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
                   <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                 </div>
               </CompactFilterBar>
@@ -2245,7 +2280,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   quote.booking ? (
                     <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
                   ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                    convertBlocked || quoteCancelled ? (
+                    convertBlocked || quoteReadOnly ? (
                       <button type="button" className="primary-button" disabled>Convert blocked</button>
                     ) : (
                       <ConvertToBookingButton quoteId={quote.id} />
@@ -2282,8 +2317,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 ]}
                 footer={
                   <div className="quote-builder-sidebar-actions">
-                    <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
-                    {!quoteCancelled ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                    {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
                     <QuotePreviewLink quoteId={quote.id} />
                     <ShareQuoteButton
                       apiBaseUrl={ACTION_API_BASE_URL}
@@ -2291,16 +2326,16 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       initialPublicToken={quote.publicToken}
                       initialPublicEnabled={quote.publicEnabled}
                     />
-                    <ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />
+                    <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                         View booking
                       </Link>
-                    ) : quoteCancelled ? (
+                    ) : quoteReadOnly ? (
                       <QuoteBuilderEmptyState
                         eyebrow="Conversion"
-                        title="Quote cancelled"
-                        description="Cancelled quotes remain visible but cannot be converted into bookings."
+                        title={quoteCancelled ? 'Quote cancelled' : 'Older revision'}
+                        description={quoteCancelled ? 'Cancelled quotes remain visible but cannot be converted into bookings.' : 'Only the latest quote revision can be converted into a booking.'}
                       />
                     ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
                       convertBlocked ? (
@@ -2313,7 +2348,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                         <ConvertToBookingButton quoteId={quote.id} />
                       )
                     ) : null}
-                    {!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}
+                    {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
                   </div>
                 }
               />

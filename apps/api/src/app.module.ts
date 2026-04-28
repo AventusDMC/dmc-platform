@@ -48,6 +48,8 @@ import { ImportItineraryService } from './import-itinerary/import-itinerary.serv
 import { InvoicesController } from './invoices/invoices.controller';
 import { InvoicePortalController } from './invoices/invoice-portal.controller';
 import { InvoicesService } from './invoices/invoices.service';
+import { ExportsController } from './exports/exports.controller';
+import { ExportsService } from './exports/exports.service';
 import { ItinerariesController } from './itineraries/itineraries.controller';
 import { ItinerariesService } from './itineraries/itineraries.service';
 import { LeadsController } from './leads/leads.controller';
@@ -67,6 +69,8 @@ import { QuotePricingService } from './quotes/quote-pricing.service';
 import { ProposalV3Service } from './quotes/proposal-v3.service';
 import { QuotesService } from './quotes/quotes.service';
 import { PublicProposalsController } from './public-proposals/public-proposals.controller';
+import { ReportsController } from './reports/reports.controller';
+import { ReportsService } from './reports/reports.service';
 import { RoutesController } from './routes/routes.controller';
 import { RoutesService } from './routes/routes.service';
 import { ServicesController } from './services/services.controller';
@@ -123,9 +127,11 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ImportItineraryController,
     InvoicesController,
     InvoicePortalController,
+    ExportsController,
     QuoteBlocksController,
     QuotesController,
     PublicProposalsController,
+    ReportsController,
     RoutesController,
     SeasonsController,
     ItinerariesController,
@@ -175,10 +181,12 @@ import { UserInvitationsService } from './users/user-invitations.service';
     HotelRatesService,
     ImportItineraryService,
     InvoicesService,
+    ExportsService,
     QuoteBlocksService,
     ProposalV3Service,
     QuotePricingService,
     QuotesService,
+    ReportsService,
     RoutesService,
     SeasonsService,
     ItinerariesService,

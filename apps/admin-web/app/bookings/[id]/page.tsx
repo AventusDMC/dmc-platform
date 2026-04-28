@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AdminBackButton } from '../../components/AdminBackButton';
+import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
+import { AdminHeaderActions } from '../../components/AdminHeaderActions';
 import { AdvancedFiltersPanel } from '../../components/AdvancedFiltersPanel';
 import { CollapsibleCreatePanel } from '../../components/CollapsibleCreatePanel';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
@@ -184,6 +187,7 @@ type QuoteSnapshot = {
   roomCount: number;
   nightCount: number;
   travelStartDate: string | null;
+  totalCost?: number | null;
   totalSell: number;
   pricePerPax: number;
   company: Company;
@@ -213,6 +217,7 @@ type ServiceVoucher = {
 type Booking = {
   sourceQuoteId: string;
   id: string;
+  bookingRef?: string | null;
   accessToken: string;
   bookingType: BookingType;
   amendmentNumber: number;
@@ -960,7 +965,10 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const allowedTransitions = getAllowedBookingStatusTransitions(booking.status);
   const timeline = buildBookingTimeline(booking);
   const bookingPayments = booking.payments;
-  const bookingRef = snapshot.quoteNumber || booking.quote.quoteNumber || booking.id;
+  const baseBookingRef = booking.bookingRef || snapshot.quoteNumber || booking.quote.quoteNumber || booking.id;
+  const bookingRef = booking.amendmentNumber && booking.amendmentNumber > 1
+    ? `${baseBookingRef} / A${booking.amendmentNumber}`
+    : baseBookingRef;
   const assignedPassengerIds = new Set(
     booking.roomingEntries.flatMap((entry) => entry.assignments.map((assignment) => assignment.bookingPassenger.id)),
   );
@@ -1023,6 +1031,9 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const amendmentLabel = `A${booking.amendmentNumber ?? 1}`;
   const durationLabel = formatNightCountLabel(snapshot.nightCount);
   const totalSell = booking.finance.realizedTotalSell || booking.finance.quotedTotalSell || booking.pricingSnapshotJson.totalSell || snapshot.totalSell || 0;
+  const totalCost = booking.finance.realizedTotalCost || booking.finance.quotedTotalCost || booking.pricingSnapshotJson.totalCost || snapshot.totalCost || 0;
+  const grossProfit = Number((totalSell - totalCost).toFixed(2));
+  const marginPercent = totalSell > 0 ? Number(((grossProfit / totalSell) * 100).toFixed(2)) : 0;
   const workflowActiveStep = getBookingWorkflowStep(booking.status);
   const workflowSteps = [
     { id: 'pending', label: 'Pending' },
@@ -1038,11 +1049,16 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
     <main className="page booking-ops-page">
       <section className="panel booking-ops-workspace-page">
         <div className="booking-ops-shell">
+          <AdminBreadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Bookings', href: '/bookings' },
+              { label: `Booking ${bookingRef}` },
+            ]}
+          />
           <section className="booking-dashboard-header">
             <div className="booking-dashboard-header-main">
-              <Link href="/bookings" className="back-link">
-                Back to bookings
-              </Link>
+              <AdminBackButton fallbackHref="/bookings" label="Back to Bookings" />
               <div className="booking-dashboard-title-row">
                 <div>
                   <p className="eyebrow">Booking {bookingRef}</p>
@@ -1080,7 +1096,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                 </div>
               </div>
             </div>
-            <div className="booking-dashboard-actions" aria-label="Booking actions">
+            <AdminHeaderActions className="booking-dashboard-actions">
               {allowedTransitions.length > 0 && !bookingReadOnly ? (
                 <RowDetailsPanel
                   summary="Save"
@@ -1138,8 +1154,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               )}
               <AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} />
               {!bookingReadOnly ? <CancelBookingButton bookingId={booking.id} /> : null}
-            </div>
+            </AdminHeaderActions>
           </section>
+
+          {booking.isLatestAmendment === false ? (
+            <div className="inline-alert warning" role="status">
+              This is an older booking amendment. Open the latest amendment to edit passengers, operations, services, or status.
+            </div>
+          ) : null}
 
           {(warningMessage || resolvedSearchParams?.success) ? (
             <section className="warning-banner">
@@ -2362,6 +2384,18 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                     <strong>{formatMoney(totalSell)}</strong>
                   </div>
                   <div>
+                    <span>Total cost</span>
+                    <strong>{formatMoney(totalCost)}</strong>
+                  </div>
+                  <div>
+                    <span>Gross profit</span>
+                    <strong>{formatMoney(grossProfit)}</strong>
+                  </div>
+                  <div>
+                    <span>Margin %</span>
+                    <strong>{marginPercent.toFixed(2)}%</strong>
+                  </div>
+                  <div>
                     <span>Client</span>
                     <strong>{booking.clientSnapshotJson.name}</strong>
                   </div>
@@ -2374,6 +2408,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                     <strong>{formatDateTime(booking.updatedAt)}</strong>
                   </div>
                 </div>
+                <p className="workspace-sidebar-note">Internal / Admin profit summary. Supplier costs are not included in client documents.</p>
                 {primaryAction ? (
                   primaryAction.hrefTab ? (
                     <Link href={buildTabHref(primaryAction.hrefTab)} className="primary-button booking-dashboard-primary-action">

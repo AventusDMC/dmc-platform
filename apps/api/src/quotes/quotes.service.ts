@@ -6187,6 +6187,7 @@ export class QuotesService {
       scenarios,
       invoice,
       booking,
+      latestRevision,
     ] = await Promise.all([
       safeLoad('clientCompany', () => prismaClient.company.findUnique({
         where: { id: quote.clientCompanyId },
@@ -6282,6 +6283,10 @@ export class QuotesService {
         where: { quoteId: quote.id },
         orderBy: [{ amendmentNumber: 'desc' }, { createdAt: 'desc' }],
       }), null),
+      safeLoad('latestRevision', () => prismaClient.quote.findFirst({
+        where: { revisedFromId: quote.id },
+        select: { id: true },
+      } as any), null),
     ]);
 
     const hydratedQuote = {
@@ -6301,6 +6306,7 @@ export class QuotesService {
       scenarios,
       invoice,
       booking,
+      isLatestRevision: !latestRevision,
     };
 
     try {

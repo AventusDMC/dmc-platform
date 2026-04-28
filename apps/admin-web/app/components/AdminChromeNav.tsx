@@ -3,9 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { SessionRole } from '../lib/auth-session';
-import { getProductsPricingWorkspaceLabel } from '../products-pricing-workspaces';
 import { getActiveNavGroup, getVisibleNavGroups, isPathMatch } from '../admin-nav';
-import { ProductsPricingWorkspaceNav } from './ProductsPricingWorkspaceNav';
 
 type AdminChromeNavProps = {
   mode: 'primary' | 'subnav' | 'topbar';
@@ -17,8 +15,6 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
   const navGroups = getVisibleNavGroups(sessionRole);
   const activeGroup = getActiveNavGroup(pathname, sessionRole);
   const isDashboardRoute = pathname === '/' || pathname === '/dashboard';
-  const activeCatalogWorkspaceLabel =
-    activeGroup.label === 'Product Catalog' ? getProductsPricingWorkspaceLabel(pathname) : null;
 
   if (mode === 'primary') {
     return (
@@ -49,17 +45,11 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
 
     return (
       <div className="admin-topbar-copy">
-        <p className="eyebrow">{activeGroup.label === 'Product Catalog' ? 'Workspace' : 'Current Area'}</p>
-        <h2 className="admin-subnav-title">
-          {activeCatalogWorkspaceLabel ? `${activeGroup.label}: ${activeCatalogWorkspaceLabel}` : activeGroup.label}
-        </h2>
-        {activeCatalogWorkspaceLabel ? (
-          <p className="admin-subnav-copy">Switch between Hotels, Transport, and Experiences while keeping quote context nearby.</p>
-        ) : (
-          <p className="admin-subnav-copy">
-            Use the left navigation to move across the ERP domains and keep current-area shortcuts close at hand.
-          </p>
-        )}
+        <p className="eyebrow">Current Area</p>
+        <h2 className="admin-subnav-title">{activeGroup.label}</h2>
+        <p className="admin-subnav-copy">
+          Use the left navigation to move across the ERP domains and keep current-area shortcuts close at hand.
+        </p>
       </div>
     );
   }
@@ -70,10 +60,6 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
 
   if (activeGroup.children.length === 0) {
     return null;
-  }
-
-  if (activeGroup.label === 'Product Catalog') {
-    return <ProductsPricingWorkspaceNav ariaLabel="Product Catalog workspaces" />;
   }
 
   return (
