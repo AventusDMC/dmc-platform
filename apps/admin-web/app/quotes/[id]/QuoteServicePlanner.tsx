@@ -1074,7 +1074,9 @@ function ScopePlanner({
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
+  const hasSavedItineraryDays = props.quote.itineraries.length > 0;
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
+  const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);
   const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const plannerQuote = { ...props.quote, itineraries: localItineraries };
@@ -1095,6 +1097,12 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
   useEffect(() => {
     setLocalItineraries(props.quote.itineraries);
+
+    if (hasSavedItineraryDays) {
+      setSelectedScopeId('shared');
+      setBaseProgramOpen(true);
+    }
+
     setOpenDayIds((currentOpenDayIds) => {
       const savedDayIds = props.quote.itineraries.map((day) => day.id);
 
@@ -1107,7 +1115,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       savedDayIds.forEach((dayId) => nextOpenDayIds.add(dayId));
       return nextOpenDayIds;
     });
-  }, [props.quote.id, props.quote.itineraries]);
+  }, [hasSavedItineraryDays, props.quote.id, props.quote.itineraries]);
 
   useEffect(() => {
     function handleDaysReady(event: Event) {
@@ -1120,6 +1128,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       setLocalItineraries(detail.days);
       setOpenDayIds(new Set(detail.days.map((day) => day.id)));
       setSelectedScopeId('shared');
+      setBaseProgramOpen(true);
     }
 
     window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
@@ -1188,8 +1197,11 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             type="radio"
             id="planner-shared"
             name="quote-service-planner"
-            checked={selectedScopeId === 'shared'}
-            onChange={() => setSelectedScopeId('shared')}
+            checked={selectedScopeId === 'shared' && baseProgramOpen}
+            onChange={() => {
+              setSelectedScopeId('shared');
+              setBaseProgramOpen(true);
+            }}
             className="workspace-tab-input"
           />
           <label htmlFor="planner-shared" className="workspace-tab-label">

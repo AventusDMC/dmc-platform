@@ -223,12 +223,16 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteServicePlannerSource, [
       'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
+      'const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);',
       'const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));',
       "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
       "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
+      'setBaseProgramOpen(true);',
       'setOpenDayIds(new Set(detail.days.map((day) => day.id)));',
       "setSelectedScopeId('shared');",
-      "checked={selectedScopeId === 'shared'}",
+      "checked={selectedScopeId === 'shared' && baseProgramOpen}",
+      "onChange={() => {",
+      "setBaseProgramOpen(true);",
       "checked={selectedScopeId === scope.id}",
       '<div id="quote-base-program-days">',
       'plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState}',

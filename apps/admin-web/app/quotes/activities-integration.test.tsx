@@ -79,6 +79,23 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
   });
 
+  it('keeps Base Program expanded after itinerary generation and refresh', () => {
+    expectSourceContains(quotePlannerSource, [
+      'const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);',
+      'const hasSavedItineraryDays = props.quote.itineraries.length > 0;',
+      'setBaseProgramOpen(true);',
+      "setSelectedScopeId('shared');",
+      "checked={selectedScopeId === 'shared' && baseProgramOpen}",
+      "onChange={() => {",
+      "setBaseProgramOpen(true);",
+      '<div id="quote-base-program-days">',
+      "{ category: 'hotel', label: 'Add Hotel' }",
+      "{ category: 'transport', label: 'Add Transport' }",
+      "{ category: 'activity', label: 'Add Activity' }",
+      "{ category: 'meal', label: 'Add Meal' }",
+    ]);
+  });
+
   it('shows converted activity services on booking itinerary with activityId preserved', () => {
     expectSourceContains(bookingPageSource, [
       'activityId?: string | null;',
