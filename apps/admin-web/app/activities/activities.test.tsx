@@ -100,11 +100,11 @@ describe('activities catalog admin UI regression', () => {
 
   it('uses activities API list/detail without actor-company filters in admin UI', () => {
     expectSourceContains(listPageSource, [
-      "adminPageFetchJson<Activity[]>(`${API_BASE_URL}/activities`, 'Activities list'",
+      "adminPageFetchJson<Activity[]>('/api/activities', 'Activities list'",
       "cache: 'no-store'",
     ]);
     expectSourceContains(detailPageSource, [
-      "adminPageFetchJson<Activity | null>(`${API_BASE_URL}/activities/${id}`, 'Activity detail'",
+      "adminPageFetchJson<Activity | null>(`/api/activities/${id}`, 'Activity detail'",
       'allow404: true',
     ]);
     expectSourceContains(activitiesProxySource, [

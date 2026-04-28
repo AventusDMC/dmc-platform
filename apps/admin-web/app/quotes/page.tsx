@@ -9,9 +9,11 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { QuotesTable } from './QuotesTable';
 
-import { adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 
 const ACTION_API_BASE_URL = '/api';
+
+export const dynamic = 'force-dynamic';
 
 type QuoteStatus = 'DRAFT' | 'READY' | 'SENT' | 'ACCEPTED' | 'CONFIRMED' | 'REVISION_REQUESTED' | 'EXPIRED' | 'CANCELLED';
 
@@ -114,10 +116,24 @@ async function getCompanies(): Promise<Company[]> {
 }
 
 export default async function QuotesPage() {
-  const [quotes, companies] = await Promise.all([
-    getQuotes(),
-    getCompanies(),
-  ]);
+  let quotes: Quote[] = [];
+  let companies: Company[] = [];
+  let loadError = false;
+
+  try {
+    [quotes, companies] = await Promise.all([
+      getQuotes(),
+      getCompanies(),
+    ]);
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('[quotes] list unavailable', error);
+    loadError = true;
+  }
+
   const activeQuotes = quotes.filter((quote) => !isQuoteExpired(quote)).length;
   const readyOrSent = quotes.filter((quote) => quote.status === 'READY' || quote.status === 'SENT').length;
   const accepted = quotes.filter((quote) => quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED').length;
@@ -216,7 +232,11 @@ export default async function QuotesPage() {
               title="Quotes"
               description="Review quotes from a clean list-first surface, then open a quote to work on details."
               context={<p>{quotes.length} quotes in scope</p>}
-              emptyState={quotes.length === 0 ? <p className="empty-state">No quotes yet.</p> : undefined}
+              emptyState={
+                quotes.length === 0 ? (
+                  <p className="empty-state">{loadError ? 'Quotes are temporarily unavailable.' : 'No quotes yet.'}</p>
+                ) : undefined
+              }
             >
               {quotes.length > 0 ? <QuotesTable apiBaseUrl={ACTION_API_BASE_URL} quotes={quotes} companies={companies} /> : null}
             </TableSectionShell>

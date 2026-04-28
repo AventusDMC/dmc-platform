@@ -12,6 +12,7 @@ const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.ts
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
+const rowDetailsPanelSource = readFileSync(new URL('../../components/RowDetailsPanel.tsx', import.meta.url), 'utf8');
 const quoteDetailApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/route.ts', import.meta.url), 'utf8');
 const quoteCancelApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/cancel/route.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
@@ -162,6 +163,7 @@ describe('quote detail page regression', () => {
     expectSourceContains(pageSource, [
       'Promise.allSettled',
       'safeQuoteDetailFetch',
+      'isNextRedirectError(error)',
       'withQuoteDetailTimeout',
       'QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS',
       "safeQuoteDetailFetch('services', [] as SupplierService[], getServices)",
@@ -239,6 +241,44 @@ describe('quote detail page regression', () => {
       "document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView",
       'setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));',
       'router.refresh();',
+    ]);
+  });
+
+  it('keeps day service editors interactive after itinerary generation refreshes planner state', () => {
+    expectSourceContains(rowDetailsPanelSource, [
+      'open?: boolean;',
+      'onOpenChange?: (open: boolean) => void;',
+      'const isControlled = open !== undefined;',
+      'onOpenChange?.(current.open);',
+      '{...(isControlled ? { open } : defaultOpen ? { open: true } : {})}',
+      'onToggle={handleToggle}',
+    ]);
+    assert.doesNotMatch(rowDetailsPanelSource, /open=\{defaultOpen\}/);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      "checked={selectedScopeId === 'shared'}",
+      "setSelectedScopeId('shared');",
+      'const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);',
+      'items: scope.items.filter((item) => item.itineraryId === summary.day.id),',
+      'className={`operations-row-details quote-service-day-action',
+      'itineraryId={day.id}',
+      'open={openServiceEditorKey === `${scope.optionId || \'base\'}:${summary.day.id}:${action.category}`}',
+      'onOpenChange={(isOpen) =>',
+      'submitLabel={label}',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8'), [
+      'const endpoint = optionId',
+      'fetch(logFetchUrl(endpoint),',
+      'itineraryId,',
+      "notifyQuotePricingChanged(quoteId);",
+      'router.refresh();',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('../../api/quotes/[id]/items/route.ts', import.meta.url), 'utf8'), [
+      "method: 'POST'",
+      '...buildActorHeaders(request)',
+      'return forwardProxyJsonResponse(response);',
     ]);
   });
 

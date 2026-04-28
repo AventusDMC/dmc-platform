@@ -1,14 +1,16 @@
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { RoutesSection } from './RoutesSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
 import { VehiclesSection } from './VehiclesSection';
 
+export const dynamic = 'force-dynamic';
+
 type TransportTab = 'vehicles' | 'routes' | 'pricing-rules' | 'rates';
-const API_BASE_URL = ADMIN_API_BASE_URL;
+const API_BASE_URL = '/api';
 
 type TransportPageProps = {
   searchParams?: Promise<{
@@ -61,7 +63,20 @@ function resolveActiveTab(tab?: string): TransportTab {
 export default async function TransportPage({ searchParams }: TransportPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const summary = await getTransportSummary();
+  const summary = await getTransportSummary().catch((error) => {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('[transport] summary unavailable', error);
+    return {
+      vehicles: 0,
+      routes: { total: 0, active: 0 },
+      serviceTypes: 0,
+      pricingRules: 0,
+      vehicleRates: 0,
+    };
+  });
 
   return (
     <main className="page">

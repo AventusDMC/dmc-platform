@@ -32,6 +32,12 @@ test('reports page renders finance dashboard KPIs and tables', () => {
   assert.match(pageSource, /No unpaid supplier payables/);
 });
 
+test('reports page links back to canonical dashboard route', () => {
+  assert.match(pageSource, /href: '\/admin\/dashboard'/);
+  assert.match(pageSource, /href="\/admin\/dashboard"/);
+  assert.doesNotMatch(pageSource, /href: '\/dashboard'|href="\/dashboard"/);
+});
+
 test('reports page renders accounting export CSV buttons', () => {
   const invoicesRoute = readFileSync(new URL('../../api/exports/invoices.csv/route.ts', import.meta.url), 'utf8');
   const paymentsRoute = readFileSync(new URL('../../api/exports/payments.csv/route.ts', import.meta.url), 'utf8');
@@ -143,6 +149,8 @@ test('reports page renders top warning sections and empty states', () => {
 test('reports page renders with failed APIs using safe defaults', () => {
   assert.match(pageSource, /safeFetch/);
   assert.match(pageSource, /catch \(error\)/);
+  assert.match(pageSource, /isNextRedirectError\(error\)/);
+  assert.match(pageSource, /throw error;/);
   assert.match(pageSource, /\[reports\].*unavailable/);
   assert.doesNotMatch(pageSource, /Promise\.all/);
   assert.match(pageSource, /EMPTY_BOOKING_SUMMARY/);

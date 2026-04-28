@@ -21,6 +21,14 @@ export function isAdminForbiddenError(error: unknown): error is AdminForbiddenEr
   return error instanceof AdminForbiddenError || (error instanceof Error && error.name === 'AdminForbiddenError');
 }
 
+export function isNextRedirectError(error: unknown) {
+  if (!error || typeof error !== 'object' || !('digest' in error)) {
+    return false;
+  }
+
+  return String((error as { digest?: unknown }).digest || '').startsWith('NEXT_REDIRECT');
+}
+
 function buildLoginRedirectPath(pathname: string) {
   return `/login?reason=session-expired&next=${encodeURIComponent(pathname || '/')}`;
 }

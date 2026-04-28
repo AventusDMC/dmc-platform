@@ -38,7 +38,7 @@ import { formatNightCountLabel } from '../../lib/formatters';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { readSessionActor } from '../../lib/auth-session';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -528,6 +528,10 @@ async function safeQuoteDetailFetch<T>(label: string, fallback: T, load: () => P
       data: data ?? fallback,
     };
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     const message = error instanceof Error ? error.message : `Unknown ${label} fetch failure`;
     console.warn(`[QuoteDetailsPage] Optional ${label} fetch failed: ${message}`);
 
@@ -1637,7 +1641,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         <div className="quote-builder-shell">
           <AdminBreadcrumbs
             items={[
-              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Dashboard', href: '/admin/dashboard' },
               { label: 'Quotes', href: '/quotes' },
               { label: `Quote ${quoteNumberLabel}` },
             ]}

@@ -10,10 +10,10 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { FinanceBookingsTable } from './FinanceBookingsTable';
-import { ADMIN_API_BASE_URL, adminPageFetchJson, isAdminForbiddenError } from '../lib/admin-server';
+import { adminPageFetchJson, isAdminForbiddenError, isNextRedirectError } from '../lib/admin-server';
 import { canAccessFinance, readSessionActor } from '../lib/auth-session';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+export const dynamic = 'force-dynamic';
 
 type FinanceReport = 'all' | 'low-margin' | 'unpaid-clients' | 'unpaid-suppliers' | 'overdue-clients' | 'overdue-suppliers';
 
@@ -61,7 +61,7 @@ type FinancePageProps = {
 };
 
 async function getBookings(): Promise<Booking[]> {
-  return adminPageFetchJson<Booking[]>(`${API_BASE_URL}/bookings`, 'Finance bookings', {
+  return adminPageFetchJson<Booking[]>('/api/bookings', 'Finance bookings', {
     cache: 'no-store',
   });
 }
@@ -133,7 +133,24 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
   try {
     const resolvedSearchParams = searchParams ? await searchParams : undefined;
     const report = resolveReport(resolvedSearchParams?.report);
-    const bookings = await getBookings();
+    let bookings: Booking[] = [];
+    let loadError = false;
+
+    try {
+      bookings = await getBookings();
+    } catch (error) {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      if (isAdminForbiddenError(error)) {
+        throw error;
+      }
+
+      console.error('[finance] bookings unavailable', error);
+      loadError = true;
+    }
+
     const filteredBookings = filterBookings(bookings, report);
 
     const lowMarginCount = bookings.filter((booking) => booking.finance.hasLowMargin || booking.finance.badge.breakdown.negativeMargin > 0).length;
@@ -189,7 +206,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                   <Link href="/operations?report=low_margin&groupBy=booking" className="dashboard-toolbar-link">
                     Open ops finance slice
                   </Link>
-                  <Link href="/" className="dashboard-toolbar-link">
+                  <Link href="/admin/dashboard" className="dashboard-toolbar-link">
                     Dashboard
                   </Link>
                 </>
@@ -250,7 +267,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                   <Link href="/operations?report=low_margin&groupBy=booking" className="secondary-button">
                     Operations finance slice
                   </Link>
-                  <Link href="/" className="secondary-button">
+                  <Link href="/admin/dashboard" className="secondary-button">
                     Dashboard
                   </Link>
                 </div>
@@ -261,7 +278,11 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               title="Finance booking list"
               description="Review profitability and payment status from a compact list-first finance surface."
               context={<p>{filteredBookings.length} bookings in scope</p>}
-              emptyState={<p className="empty-state">No bookings match this finance slice.</p>}
+              emptyState={
+                <p className="empty-state">
+                  {loadError ? 'Finance bookings are temporarily unavailable.' : 'No bookings match this finance slice.'}
+                </p>
+              }
             >
               {filteredBookings.length > 0 ? <FinanceBookingsTable bookings={filteredBookings} /> : null}
             </TableSectionShell>

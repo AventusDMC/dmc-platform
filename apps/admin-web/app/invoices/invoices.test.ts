@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const invoiceDetailSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
+const invoicesPageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const deliveryActionsSource = readFileSync(new URL('./InvoiceDeliveryActions.tsx', import.meta.url), 'utf8');
 const pdfRouteSource = readFileSync(new URL('../api/invoices/[id]/pdf/route.ts', import.meta.url), 'utf8');
 const sendRouteSource = readFileSync(new URL('../api/invoices/[id]/send/route.ts', import.meta.url), 'utf8');
@@ -29,6 +30,14 @@ test('invoice PDF and send admin proxy routes are wired', () => {
   assert.match(sendRouteSource, /forwardProxyJsonResponse/);
   assert.match(reminderRouteSource, /\/invoices\/\$\{id\}\/send-reminder/);
   assert.match(reminderRouteSource, /forwardProxyJsonResponse/);
+});
+
+test('invoices list uses same-origin proxy and renders a failed-fetch empty state', () => {
+  assert.match(invoicesPageSource, /adminPageFetchJson<Invoice\[\]>\('\/api\/invoices'/);
+  assert.match(invoicesPageSource, /catch \(error\)/);
+  assert.match(invoicesPageSource, /isNextRedirectError\(error\)/);
+  assert.match(invoicesPageSource, /Invoices are temporarily unavailable\./);
+  assert.doesNotMatch(invoicesPageSource, /ADMIN_API_BASE_URL|NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
 });
 
 test('public invoice actions use same-origin proxy routes for PDF and proof links', () => {

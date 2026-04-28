@@ -68,7 +68,7 @@ export default async function CompanyDetailPage({ params }: CompanyDetailPagePro
             <div>
               <AdminBreadcrumbs
                 items={[
-                  { label: 'Dashboard', href: '/dashboard' },
+                  { label: 'Dashboard', href: '/admin/dashboard' },
                   { label: 'Companies', href: '/companies' },
                   { label: company.name },
                 ]}
@@ -81,7 +81,7 @@ export default async function CompanyDetailPage({ params }: CompanyDetailPagePro
               </p>
             </div>
             <div className="admin-header-actions">
-              <Link href="/dashboard" className="dashboard-toolbar-link">
+              <Link href="/admin/dashboard" className="dashboard-toolbar-link">
                 Dashboard
               </Link>
               <Link href="/companies" className="secondary-button">

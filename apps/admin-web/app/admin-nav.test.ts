@@ -1,10 +1,14 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
-import { readFileSync } from 'node:fs';
-import { getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import path = require('node:path');
+import { fileURLToPath } from 'node:url';
+import { NAV_GROUPS, getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
 
 const layoutSource = readFileSync(new URL('./layout.tsx', import.meta.url), 'utf8');
 const loginPageSource = readFileSync(new URL('./login/page.tsx', import.meta.url), 'utf8');
+const middlewareSource = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
+const adminServerSource = readFileSync(new URL('./lib/admin-server.ts', import.meta.url), 'utf8');
 const chromeNavSource = readFileSync(new URL('./components/AdminChromeNav.tsx', import.meta.url), 'utf8');
 const breadcrumbsSource = readFileSync(new URL('./components/AdminBreadcrumbs.tsx', import.meta.url), 'utf8');
 const backButtonSource = readFileSync(new URL('./components/AdminBackButton.tsx', import.meta.url), 'utf8');
@@ -14,6 +18,28 @@ const bookingPageSource = readFileSync(new URL('./bookings/[id]/page.tsx', impor
 const activityPageSource = readFileSync(new URL('./activities/[id]/page.tsx', import.meta.url), 'utf8');
 const proposalPageSource = readFileSync(new URL('./proposal/[token]/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
+const appDir = new URL('./', import.meta.url);
+
+function collectSourceFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((entry) => {
+    const filePath = path.join(directory, entry);
+    const stats = statSync(filePath);
+
+    if (stats.isDirectory()) {
+      if (entry === 'api' || entry === '.next' || entry === 'node_modules') {
+        return [];
+      }
+
+      return collectSourceFiles(filePath);
+    }
+
+    if (!/\.(ts|tsx)$/.test(entry) || /\.(test|spec)\.(ts|tsx)$/.test(entry)) {
+      return [];
+    }
+
+    return [filePath];
+  });
+}
 
 test('admin navigation exposes Sales companies without role restriction', () => {
   const groups = getVisibleNavGroups('admin');
@@ -37,6 +63,45 @@ test('admin navigation exposes first-class Activities catalog', () => {
   assert.ok(catalogGroup);
   assert.ok(catalogGroup.children.some((child) => child.label === 'Activities' && child.href === '/activities'));
   assert.equal(getActiveNavGroup('/activities', 'admin').label, 'Product Catalog');
+});
+
+test('product catalog navigation uses canonical catalog destinations', () => {
+  const catalogGroup = getVisibleNavGroups('admin').find((group) => group.label === 'Product Catalog');
+
+  assert.ok(catalogGroup);
+  assert.deepEqual(
+    catalogGroup.children.map((child) => [child.label, child.href]),
+    [
+      ['Hotels', '/hotels'],
+      ['Activities', '/activities'],
+      ['Transport', '/transport'],
+      ['Routes', '/routes'],
+      ['Services', '/catalog?tab=services'],
+      ['Suppliers', '/suppliers'],
+      ['Transport Pricing', '/transport-pricing'],
+    ],
+  );
+  assert.equal(getActiveNavGroup('/activities', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/transport', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/routes', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/suppliers', 'admin').label, 'Product Catalog');
+});
+
+test('every admin navigation link resolves to an existing app page', () => {
+  for (const group of NAV_GROUPS) {
+    for (const link of [group, ...group.children]) {
+      const pathname = link.href.split('?')[0];
+
+      if (!pathname.startsWith('/')) {
+        continue;
+      }
+
+      const segments = pathname.split('/').filter(Boolean);
+      const pageFile = new URL(`${segments.join('/')}${segments.length ? '/' : ''}page.tsx`, appDir);
+
+      assert.equal(existsSync(pageFile), true, `${link.label} should resolve ${link.href} to ${pageFile.pathname}`);
+    }
+  }
 });
 
 test('admin sidebar renders the requested groups and section items', () => {
@@ -83,6 +148,61 @@ test('dashboard shortcut routes consistently from page headers', () => {
   assert.match(quotePageSource, /<AdminHeaderActions className="quote-dashboard-actions">/);
   assert.match(bookingPageSource, /<AdminHeaderActions className="booking-dashboard-actions">/);
   assert.match(activityPageSource, /<AdminHeaderActions>/);
+});
+
+test('auth middleware and server fetch preserve protected-route redirects', () => {
+  assert.match(middlewareSource, /try \{/);
+  assert.match(middlewareSource, /catch \(error\)/);
+  assert.match(middlewareSource, /requestHeaders\.set\('x-dmc-pathname', pathname\)/);
+  assert.match(middlewareSource, /PUBLIC_PATH_PREFIXES = \['\/invoice'\]/);
+  assert.match(middlewareSource, /pathname\.startsWith\(prefix\)/);
+  assert.doesNotMatch(middlewareSource, /NextResponse\.redirect/);
+  assert.match(adminServerSource, /\/login\?reason=session-expired&next=\$\{encodeURIComponent\(pathname \|\| '\/'\)\}/);
+  assert.match(adminServerSource, /if \(!sessionToken && !init\.allowAnonymous\)/);
+  assert.match(adminServerSource, /if \(response\.status === 401\)/);
+  assert.match(adminServerSource, /redirect\(buildLoginRedirectPath\(pathname\)\)/);
+  assert.match(adminServerSource, /nextHeaders\.set\('Authorization', `Bearer \$\{sessionToken\}`\)/);
+  assert.match(adminServerSource, /nextHeaders\.set\('Cookie', `dmc_session=\$\{sessionToken\}`\)/);
+  assert.match(adminServerSource, /function normalizeAdminApiInput/);
+});
+
+test('safe fetch fallbacks do not swallow session redirects', () => {
+  const guardedPages = [
+    readFileSync(new URL('./admin/dashboard/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./admin/reports/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./quotes/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./bookings/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./activities/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./hotels/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./transport/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./suppliers/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./finance/page.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('./invoices/page.tsx', import.meta.url), 'utf8'),
+  ];
+
+  for (const source of guardedPages) {
+    assert.match(source, /catch\s*\(error\)|\.catch\(\(error\)\s*=>/);
+    assert.match(source, /isNextRedirectError\(error\)/);
+    assert.match(source, /throw error;/);
+  }
+});
+
+test('admin pages avoid direct production API URLs outside proxy routes', () => {
+  const disallowed = /dmcapi-production|railway\.app|https?:\/\/[^'")`]+\/(?:quotes|bookings|invoices|activities|hotels|transport|suppliers)/i;
+
+  for (const filePath of collectSourceFiles(fileURLToPath(new URL('./', import.meta.url)))) {
+    const source = readFileSync(filePath, 'utf8');
+    assert.doesNotMatch(source, disallowed, `${filePath} should use same-origin /api proxy routes`);
+  }
+});
+
+test('admin UI does not link to legacy dashboard aliases', () => {
+  const legacyDashboardHref = /href=["']\/dashboard["']|href:\s*['"]\/dashboard['"]/;
+
+  for (const filePath of collectSourceFiles(fileURLToPath(new URL('./', import.meta.url)))) {
+    const source = readFileSync(filePath, 'utf8');
+    assert.doesNotMatch(source, legacyDashboardHref, `${filePath} should link to /admin/dashboard`);
+  }
 });
 
 test('mobile admin navigation hooks and collapse classes exist', () => {

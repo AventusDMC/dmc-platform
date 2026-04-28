@@ -5,10 +5,11 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { AdminForbiddenState } from '../components/AdminForbiddenState';
+import { adminPageFetchJson, isAdminForbiddenError, isNextRedirectError } from '../lib/admin-server';
 import { InvoicesTable } from './InvoicesTable';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
+export const dynamic = 'force-dynamic';
 
 type Invoice = {
   id: string;
@@ -32,13 +33,35 @@ type Invoice = {
 };
 
 async function getInvoices(): Promise<Invoice[]> {
-  return adminPageFetchJson<Invoice[]>(`${API_BASE_URL}/invoices`, 'Invoices list', {
+  return adminPageFetchJson<Invoice[]>('/api/invoices', 'Invoices list', {
     cache: 'no-store',
   });
 }
 
 export default async function InvoicesPage() {
-  const invoices = await getInvoices();
+  let invoices: Invoice[] = [];
+  let loadError = false;
+
+  try {
+    invoices = await getInvoices();
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    if (isAdminForbiddenError(error)) {
+      return (
+        <AdminForbiddenState
+          title="Finance access restricted"
+          description="Your account does not have permission to view invoices for this company."
+        />
+      );
+    }
+
+    console.error('[invoices] list unavailable', error);
+    loadError = true;
+  }
+
   const issuedCount = invoices.filter((invoice) => invoice.status === 'ISSUED').length;
   const paidCount = invoices.filter((invoice) => invoice.status === 'PAID').length;
   const cancelledCount = invoices.filter((invoice) => invoice.status === 'CANCELLED').length;
@@ -101,7 +124,9 @@ export default async function InvoicesPage() {
               title="Invoices"
               description="Track issued, paid, and cancelled invoices from a compact admin list."
               context={<p>{invoices.length} invoices in scope</p>}
-              emptyState={<p className="empty-state">No invoices available yet.</p>}
+              emptyState={
+                <p className="empty-state">{loadError ? 'Invoices are temporarily unavailable.' : 'No invoices available yet.'}</p>
+              }
             >
               {invoices.length > 0 ? <InvoicesTable invoices={invoices} /> : null}
             </TableSectionShell>

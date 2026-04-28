@@ -4,7 +4,9 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
-import { adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+
+export const dynamic = 'force-dynamic';
 
 type BookingStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -45,7 +47,20 @@ function formatBookingStatus(status: BookingStatus) {
 }
 
 export default async function BookingsPage() {
-  const bookings = await getBookings();
+  let bookings: Booking[] = [];
+  let loadError = false;
+
+  try {
+    bookings = await getBookings();
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('[bookings] list unavailable', error);
+    loadError = true;
+  }
+
   const activeCount = bookings.filter((booking) => booking.status !== 'cancelled' && booking.status !== 'completed').length;
   const confirmedCount = bookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'in_progress').length;
 
@@ -95,7 +110,7 @@ export default async function BookingsPage() {
               emptyState={
                 <div className="section-stack">
                   <p className="empty-state">No bookings yet.</p>
-                  <p className="detail-copy">Create from accepted quote.</p>
+                  <p className="detail-copy">{loadError ? 'Bookings are temporarily unavailable.' : 'Create from accepted quote.'}</p>
                   <div>
                     <Link href="/quotes" className="secondary-button">
                       Open quotes

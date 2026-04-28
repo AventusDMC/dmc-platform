@@ -116,6 +116,8 @@ test('dashboard navigation points to canonical admin dashboard route', () => {
 test('admin dashboard renders with failed report data using safe defaults', () => {
   assert.match(pageSource, /safeDashboardFetchJson/);
   assert.match(pageSource, /catch \(error\)/);
+  assert.match(pageSource, /isNextRedirectError\(error\)/);
+  assert.match(pageSource, /throw error;/);
   assert.match(pageSource, /\[dashboard\].*unavailable/);
   assert.match(pageSource, /EMPTY_BOOKING_SUMMARY/);
   assert.match(pageSource, /EMPTY_FINANCE_SUMMARY/);

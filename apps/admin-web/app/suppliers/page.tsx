@@ -6,10 +6,11 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { SuppliersForm } from './SuppliersForm';
 import { SuppliersTable } from './SuppliersTable';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
+
+export const dynamic = 'force-dynamic';
 
 type Supplier = {
   id: string;
@@ -21,13 +22,26 @@ type Supplier = {
 };
 
 async function getSuppliers(): Promise<Supplier[]> {
-  return adminPageFetchJson<Supplier[]>(`${API_BASE_URL}/suppliers`, 'Suppliers list', {
+  return adminPageFetchJson<Supplier[]>('/api/suppliers', 'Suppliers list', {
     cache: 'no-store',
   });
 }
 
 export default async function SuppliersPage() {
-  const suppliers = await getSuppliers();
+  let suppliers: Supplier[] = [];
+  let loadError = false;
+
+  try {
+    suppliers = await getSuppliers();
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('[suppliers] list unavailable', error);
+    loadError = true;
+  }
+
   const supplierTypeCounts = suppliers.reduce<Record<Supplier['type'], number>>(
     (counts, supplier) => {
       counts[supplier.type] += 1;
@@ -87,7 +101,11 @@ export default async function SuppliersPage() {
                 <SuppliersForm apiBaseUrl={ACTION_API_BASE_URL} />
               </CollapsibleCreatePanel>
             }
-            emptyState={suppliers.length === 0 ? <p className="empty-state">No suppliers yet.</p> : undefined}
+            emptyState={
+              suppliers.length === 0 ? (
+                <p className="empty-state">{loadError ? 'Suppliers are temporarily unavailable.' : 'No suppliers yet.'}</p>
+              ) : undefined
+            }
           >
             {suppliers.length > 0 ? <SuppliersTable apiBaseUrl={ACTION_API_BASE_URL} suppliers={suppliers} /> : null}
           </TableSectionShell>

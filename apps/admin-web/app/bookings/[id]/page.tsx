@@ -1051,7 +1051,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
         <div className="booking-ops-shell">
           <AdminBreadcrumbs
             items={[
-              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Dashboard', href: '/admin/dashboard' },
               { label: 'Bookings', href: '/bookings' },
               { label: `Booking ${bookingRef}` },
             ]}

@@ -573,6 +573,8 @@ function DayWorkflowAction({
   optionId,
   day,
   recommendedCategory,
+  open,
+  onOpenChange,
 }: {
   category: ServicePlannerCategory;
   label: string;
@@ -580,6 +582,8 @@ function DayWorkflowAction({
   optionId?: string;
   day: QuoteReadinessDay;
   recommendedCategory?: ServicePlannerCategory;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -597,6 +601,8 @@ function DayWorkflowAction({
       summary={label}
       description={`Add a ${label.toLowerCase().replace('add ', '')} service to Day ${day.dayNumber}.`}
       defaultOpen={plannerProps.focusedDayId === day.id && plannerProps.initialAddCategory === category}
+      open={open}
+      onOpenChange={onOpenChange}
       className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
       bodyClassName="operations-row-details-body"
       groupId={`quote-service-day-action-${optionId || 'base'}-${day.id}-${category}`}
@@ -779,6 +785,11 @@ function ScopePlanner({
   scope: PlannerScope;
   plannerProps: QuoteServicePlannerProps;
 }) {
+  const initialOpenActionKey =
+    plannerProps.focusedDayId && plannerProps.initialAddCategory
+      ? `${scope.optionId || 'base'}:${plannerProps.focusedDayId}:${plannerProps.initialAddCategory}`
+      : null;
+  const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);
   const buildStepHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) =>
     buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, step, params);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
@@ -949,6 +960,10 @@ function ScopePlanner({
                         optionId={scope.optionId}
                         day={summary.day}
                         recommendedCategory={workflow.recommendedCategory}
+                        open={openServiceEditorKey === `${scope.optionId || 'base'}:${summary.day.id}:${action.category}`}
+                        onOpenChange={(isOpen) =>
+                          setOpenServiceEditorKey(isOpen ? `${scope.optionId || 'base'}:${summary.day.id}:${action.category}` : null)
+                        }
                       />
                     ))}
                   </div>

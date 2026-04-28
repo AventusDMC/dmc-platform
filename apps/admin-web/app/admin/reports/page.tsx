@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
 import { AdminHeaderActions } from '../../components/AdminHeaderActions';
-import { adminPageFetchJson } from '../../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { OverdueReminderButton } from './OverdueReminderButton';
 
 type ReportsPageProps = {
@@ -185,6 +185,10 @@ async function safeFetch<T>(fetcher: () => Promise<unknown>, fallback: T, normal
   try {
     return normalize(await fetcher());
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     console.error(`[reports] ${label} unavailable`, error);
     return fallback;
   }
@@ -296,7 +300,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       <section className="panel reports-dashboard">
         <AdminBreadcrumbs
           items={[
-            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Dashboard', href: '/admin/dashboard' },
             { label: 'Reports' },
           ]}
         />
@@ -308,7 +312,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             <p className="detail-copy">Internal/admin only. Cost, profit, and supplier margin data must not be reused in customer-facing documents.</p>
           </div>
           <AdminHeaderActions>
-            <Link href="/dashboard" className="secondary-button">
+            <Link href="/admin/dashboard" className="secondary-button">
               Dashboard
             </Link>
             <OverdueReminderButton />

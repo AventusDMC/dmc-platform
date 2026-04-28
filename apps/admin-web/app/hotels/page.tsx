@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
-import { adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { HotelAllotmentsSection } from './HotelAllotmentsSection';
 import { HotelContractsSection } from './HotelContractsSection';
 import { HotelMealPlansSupplementsSection } from './HotelMealPlansSupplementsSection';
@@ -12,6 +12,8 @@ import { HotelPromotionsSection } from './HotelPromotionsSection';
 import { HotelRatesSection } from './HotelRatesSection';
 import { HotelsSection } from './HotelsSection';
 import { RoomCategoriesSection } from './RoomCategoriesSection';
+
+export const dynamic = 'force-dynamic';
 
 type HotelsTab =
   | 'hotels'
@@ -115,7 +117,32 @@ async function getPromotions(): Promise<HotelsPagePromotion[]> {
 export default async function HotelsPage({ searchParams }: HotelsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const [hotels, contracts, promotions] = await Promise.all([getHotels(), getHotelContracts(), getPromotions()]);
+  const [hotels, contracts, promotions] = await Promise.all([
+    getHotels().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] hotels summary unavailable', error);
+      return [] as HotelsPageHotel[];
+    }),
+    getHotelContracts().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] contracts summary unavailable', error);
+      return [] as HotelsPageContract[];
+    }),
+    getPromotions().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] promotions summary unavailable', error);
+      return [] as HotelsPagePromotion[];
+    }),
+  ]);
   const roomCategoryCount = hotels.reduce((sum, hotel) => sum + hotel.roomCategories.length, 0);
   const activeRoomCategoryCount = hotels.reduce(
     (sum, hotel) => sum + hotel.roomCategories.filter((roomCategory) => roomCategory.isActive).length,

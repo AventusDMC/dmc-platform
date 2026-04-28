@@ -4,27 +4,39 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { Activity, ActivityActor, canManageActivities, formatActivityMoney, formatActivityPricingBasis } from './types';
 
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
-
 async function getActivities() {
-  return adminPageFetchJson<Activity[]>(`${API_BASE_URL}/activities`, 'Activities list', {
+  return adminPageFetchJson<Activity[]>('/api/activities', 'Activities list', {
     cache: 'no-store',
   });
 }
 
 async function getActor() {
-  return adminPageFetchJson<ActivityActor>(`${API_BASE_URL}/auth/me`, 'Current user', {
+  return adminPageFetchJson<ActivityActor>('/api/auth/me', 'Current user', {
     cache: 'no-store',
   });
 }
 
 export default async function ActivitiesPage() {
-  const [activities, actor] = await Promise.all([getActivities(), getActor()]);
+  let activities: Activity[] = [];
+  let actor: ActivityActor | null = null;
+  let loadError = false;
+
+  try {
+    [activities, actor] = await Promise.all([getActivities(), getActor()]);
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error('[activities] catalog unavailable', error);
+    loadError = true;
+  }
+
   const activeCount = activities.filter((activity) => activity.active).length;
   const inactiveCount = activities.length - activeCount;
   const canCreateOrEdit = canManageActivities(actor);
@@ -75,7 +87,11 @@ export default async function ActivitiesPage() {
               title="Activity catalog"
               description="List-first activity management with supplier, pricing, location, and active status visible."
               context={<p>{activities.length} activities in scope</p>}
-              emptyState={activities.length === 0 ? <p className="empty-state">No activities yet.</p> : undefined}
+              emptyState={
+                activities.length === 0 ? (
+                  <p className="empty-state">{loadError ? 'Activities are temporarily unavailable.' : 'No activities yet.'}</p>
+                ) : undefined
+              }
             >
               {activities.length > 0 ? (
                 <div className="table-scroll">

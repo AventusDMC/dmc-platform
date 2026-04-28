@@ -6,6 +6,8 @@ type RowDetailsPanelProps = {
   summary: string;
   description?: string;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
   bodyClassName?: string;
   groupId?: string;
@@ -16,17 +18,26 @@ export function RowDetailsPanel({
   summary,
   description,
   defaultOpen = false,
+  open,
+  onOpenChange,
   className = '',
   bodyClassName = '',
   groupId,
   children,
 }: RowDetailsPanelProps) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const isControlled = open !== undefined;
 
   function handleToggle() {
     const current = detailsRef.current;
 
-    if (!current || !groupId || !current.open) {
+    if (!current) {
+      return;
+    }
+
+    onOpenChange?.(current.open);
+
+    if (!groupId || !current.open) {
       return;
     }
 
@@ -42,7 +53,7 @@ export function RowDetailsPanel({
     <details
       ref={detailsRef}
       className={`row-details-panel operations-collapsible-panel ${className}`.trim()}
-      open={defaultOpen}
+      {...(isControlled ? { open } : defaultOpen ? { open: true } : {})}
       data-row-details-group={groupId}
       onToggle={handleToggle}
     >

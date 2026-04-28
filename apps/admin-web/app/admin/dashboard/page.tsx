@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
 import { AdminHeaderActions } from '../../components/AdminHeaderActions';
-import { adminPageFetchJson } from '../../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { calculatePercentChange, formatPercentChange } from './dashboard-metrics';
 
 export const dynamic = 'force-dynamic';
@@ -94,6 +94,10 @@ async function safeDashboardFetchJson<T>(
     const value = await adminPageFetchJson<T>(input, label, { cache: 'no-store' });
     return normalize(value);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     console.error(`[dashboard] ${label} unavailable`, error);
     return fallback;
   }

@@ -6,13 +6,12 @@ import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { adminPageFetchJson } from '../../lib/admin-server';
 import { Activity, ActivityActor, ActivityCompany, canManageActivities, formatActivityMoney, formatActivityPricingBasis } from '../types';
 import { ActivityForm } from '../ActivityForm';
 
 export const dynamic = 'force-dynamic';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
 
 type ActivityDetailPageProps = {
@@ -20,20 +19,20 @@ type ActivityDetailPageProps = {
 };
 
 async function getActivity(id: string) {
-  return adminPageFetchJson<Activity | null>(`${API_BASE_URL}/activities/${id}`, 'Activity detail', {
+  return adminPageFetchJson<Activity | null>(`/api/activities/${id}`, 'Activity detail', {
     cache: 'no-store',
     allow404: true,
   });
 }
 
 async function getCompanies() {
-  return adminPageFetchJson<ActivityCompany[]>(`${API_BASE_URL}/companies`, 'Supplier company selector', {
+  return adminPageFetchJson<ActivityCompany[]>('/api/companies', 'Supplier company selector', {
     cache: 'no-store',
   });
 }
 
 async function getActor() {
-  return adminPageFetchJson<ActivityActor>(`${API_BASE_URL}/auth/me`, 'Current user', {
+  return adminPageFetchJson<ActivityActor>('/api/auth/me', 'Current user', {
     cache: 'no-store',
   });
 }
@@ -53,7 +52,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
       <section className="panel workspace-panel">
         <AdminBreadcrumbs
           items={[
-            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Dashboard', href: '/admin/dashboard' },
             { label: 'Activities', href: '/activities' },
             { label: activity.name },
           ]}

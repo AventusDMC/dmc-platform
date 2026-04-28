@@ -3,11 +3,10 @@ import { notFound } from 'next/navigation';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
 import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { adminPageFetchJson } from '../../lib/admin-server';
 import { InvoiceDeliveryActions } from '../InvoiceDeliveryActions';
 import { InvoiceStatusForm } from '../InvoiceStatusForm';
 
-const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
 
 type InvoiceDetail = {
@@ -72,7 +71,7 @@ type InvoiceDetailPageProps = {
 };
 
 async function getInvoice(id: string): Promise<InvoiceDetail | null> {
-  return adminPageFetchJson<InvoiceDetail | null>(`${API_BASE_URL}/invoices/${id}`, 'Invoice detail', {
+  return adminPageFetchJson<InvoiceDetail | null>(`/api/invoices/${id}`, 'Invoice detail', {
     cache: 'no-store',
     allow404: true,
   });
