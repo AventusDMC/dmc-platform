@@ -204,7 +204,8 @@ describe('quote detail page regression', () => {
       "{ category: 'meal', label: 'Add Meal' }",
       'itineraryDayNumber={day.dayNumber}',
       'itineraryId={day.id}',
-      '<input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />',
+      "checked={selectedScopeId === 'shared'}",
+      "onChange={() => setSelectedScopeId('shared')}",
       'Generate itinerary days from nights to start.',
     ]);
 
@@ -220,9 +221,11 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteServicePlannerSource, [
       'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
+      "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
       "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
-      "document.querySelector<HTMLInputElement>('#planner-shared');",
-      'baseProgramTab.checked = true;',
+      "setSelectedScopeId('shared');",
+      "checked={selectedScopeId === 'shared'}",
+      "checked={selectedScopeId === scope.id}",
       '<div id="quote-base-program-days">',
       'plannerProps={{ ...props, quote: plannerQuote }}',
     ]);

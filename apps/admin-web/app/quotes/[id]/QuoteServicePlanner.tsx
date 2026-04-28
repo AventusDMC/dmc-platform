@@ -1049,6 +1049,7 @@ function ScopePlanner({
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
+  const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const plannerQuote = { ...props.quote, itineraries: localItineraries };
   const scopes: PlannerScope[] = [
     {
@@ -1077,10 +1078,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       }
 
       setLocalItineraries(detail.days);
-      const baseProgramTab = document.querySelector<HTMLInputElement>('#planner-shared');
-      if (baseProgramTab) {
-        baseProgramTab.checked = true;
-      }
+      setSelectedScopeId('shared');
     }
 
     window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
@@ -1126,7 +1124,14 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           totalPax={props.totalPax}
         />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
-          <input type="radio" id="planner-shared" name="quote-service-planner" defaultChecked className="workspace-tab-input" />
+          <input
+            type="radio"
+            id="planner-shared"
+            name="quote-service-planner"
+            checked={selectedScopeId === 'shared'}
+            onChange={() => setSelectedScopeId('shared')}
+            className="workspace-tab-input"
+          />
           <label htmlFor="planner-shared" className="workspace-tab-label">
             Base Program
           </label>
@@ -1134,7 +1139,14 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             .filter((scope) => scope.id !== 'shared')
             .map((scope) => (
               <span key={scope.id}>
-                <input type="radio" id={`planner-${scope.id}`} name="quote-service-planner" className="workspace-tab-input" />
+                <input
+                  type="radio"
+                  id={`planner-${scope.id}`}
+                  name="quote-service-planner"
+                  checked={selectedScopeId === scope.id}
+                  onChange={() => setSelectedScopeId(scope.id)}
+                  className="workspace-tab-input"
+                />
                 <label htmlFor={`planner-${scope.id}`} className="workspace-tab-label">
                   {scope.label}
                 </label>
