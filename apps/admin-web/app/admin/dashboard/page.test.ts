@@ -69,11 +69,34 @@ test('dashboard percentage calculations display correctly', () => {
 });
 
 test('dashboard attention counts render from alerts', () => {
-  assert.match(pageSource, /alerts\.overdueReceivables\.length/);
-  assert.match(pageSource, /alerts\.lowMarginBookings\.length/);
-  assert.match(pageSource, /alerts\.highCostServices\.length/);
+  assert.match(pageSource, /normalizeAlerts/);
+  assert.match(pageSource, /overdueReceivables: asArray\(row\.overdueReceivables\)/);
+  assert.match(pageSource, /lowMarginBookings: asArray\(row\.lowMarginBookings\)/);
+  assert.match(pageSource, /highCostServices: asArray\(row\.highCostServices\)/);
 });
 
 test('admin index redirects to dashboard homepage', () => {
   assert.match(adminIndexSource, /redirect\('\/admin\/dashboard'\)/);
+});
+
+test('admin dashboard renders with failed report data using safe defaults', () => {
+  assert.match(pageSource, /safeDashboardFetchJson/);
+  assert.match(pageSource, /catch \(error\)/);
+  assert.match(pageSource, /\[dashboard\].*unavailable/);
+  assert.match(pageSource, /EMPTY_BOOKING_SUMMARY/);
+  assert.match(pageSource, /EMPTY_FINANCE_SUMMARY/);
+  assert.match(pageSource, /EMPTY_ALERTS/);
+});
+
+test('admin dashboard renders when monthly trends are empty', () => {
+  assert.match(pageSource, /EMPTY_MONTHLY_TRENDS/);
+  assert.match(pageSource, /months: \[\]/);
+  assert.match(pageSource, /No monthly trend data yet/);
+  assert.match(pageSource, /const recentMonths = monthlyTrends\.months\.slice\(-6\)/);
+});
+
+test('admin dashboard does not assume alert response fields exist', () => {
+  assert.match(pageSource, /function normalizeAlerts/);
+  assert.match(pageSource, /asRecord\(value\)/);
+  assert.match(pageSource, /unpaidSupplierPayables: asArray\(row\.unpaidSupplierPayables\)/);
 });

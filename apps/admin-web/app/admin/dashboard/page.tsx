@@ -58,16 +58,66 @@ type BookingListItem = {
   }>;
 };
 
+const EMPTY_BOOKING_SUMMARY: BookingSummary = {
+  totalBookings: 0,
+  totalSell: 0,
+  totalCost: 0,
+  totalProfit: 0,
+  avgMargin: 0,
+  cancelledBookings: 0,
+};
+
+const EMPTY_FINANCE_SUMMARY: FinanceSummary = {
+  outstandingReceivables: 0,
+  overdueReceivables: 0,
+};
+
+const EMPTY_ALERTS: AlertsSummary = {
+  overdueReceivables: [],
+  lowMarginBookings: [],
+  highCostServices: [],
+  unpaidSupplierPayables: [],
+};
+
+const EMPTY_MONTHLY_TRENDS: MonthlyTrends = {
+  months: [],
+};
+
+async function safeDashboardFetchJson<T>(
+  input: string,
+  label: string,
+  fallback: T,
+  normalize: (value: T) => T,
+) {
+  try {
+    const value = await adminPageFetchJson<T>(input, label, { cache: 'no-store' });
+    return normalize(value);
+  } catch (error) {
+    console.error(`[dashboard] ${label} unavailable`, error);
+    return fallback;
+  }
+}
+
 async function getBookingSummary() {
-  return adminPageFetchJson<BookingSummary>('/api/reports/booking-summary', 'Dashboard booking summary', { cache: 'no-store' });
+  return safeDashboardFetchJson(
+    '/api/reports/booking-summary',
+    'Dashboard booking summary',
+    EMPTY_BOOKING_SUMMARY,
+    normalizeBookingSummary,
+  );
 }
 
 async function getFinanceSummary() {
-  return adminPageFetchJson<FinanceSummary>('/api/reports/finance-summary', 'Dashboard finance summary', { cache: 'no-store' });
+  return safeDashboardFetchJson(
+    '/api/reports/finance-summary',
+    'Dashboard finance summary',
+    EMPTY_FINANCE_SUMMARY,
+    normalizeFinanceSummary,
+  );
 }
 
 async function getAlerts() {
-  return adminPageFetchJson<AlertsSummary>('/api/reports/alerts', 'Dashboard alerts', { cache: 'no-store' });
+  return safeDashboardFetchJson('/api/reports/alerts', 'Dashboard alerts', EMPTY_ALERTS, normalizeAlerts);
 }
 
 async function getMonthlyTrends() {
@@ -78,16 +128,16 @@ async function getMonthlyTrends() {
     endDate: endDate.toISOString().slice(0, 10),
   });
 
-  return adminPageFetchJson<MonthlyTrends>(`/api/reports/monthly-trends?${params.toString()}`, 'Dashboard monthly trends', {
-    cache: 'no-store',
-  });
+  return safeDashboardFetchJson(
+    `/api/reports/monthly-trends?${params.toString()}`,
+    'Dashboard monthly trends',
+    EMPTY_MONTHLY_TRENDS,
+    normalizeMonthlyTrends,
+  );
 }
 
 async function getBookings() {
-  return adminPageFetchJson<BookingListItem[]>('/api/bookings', 'Dashboard operational snapshot', { cache: 'no-store' }).catch((error) => {
-    console.error('Dashboard operational snapshot unavailable', error);
-    return [];
-  });
+  return safeDashboardFetchJson('/api/bookings', 'Dashboard operational snapshot', [], normalizeBookings);
 }
 
 export default async function AdminDashboardPage() {
@@ -342,6 +392,70 @@ export default async function AdminDashboardPage() {
       </section>
     </main>
   );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function asNumber(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function asArray<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeBookingSummary(value: BookingSummary) {
+  const row = asRecord(value);
+
+  return {
+    totalBookings: asNumber(row.totalBookings),
+    totalSell: asNumber(row.totalSell),
+    totalCost: asNumber(row.totalCost),
+    totalProfit: asNumber(row.totalProfit),
+    avgMargin: asNumber(row.avgMargin),
+    cancelledBookings: asNumber(row.cancelledBookings),
+  };
+}
+
+function normalizeFinanceSummary(value: FinanceSummary) {
+  const row = asRecord(value);
+
+  return {
+    outstandingReceivables: asNumber(row.outstandingReceivables),
+    overdueReceivables: asNumber(row.overdueReceivables),
+  };
+}
+
+function normalizeAlerts(value: AlertsSummary) {
+  const row = asRecord(value);
+
+  return {
+    overdueReceivables: asArray(row.overdueReceivables),
+    lowMarginBookings: asArray(row.lowMarginBookings),
+    highCostServices: asArray(row.highCostServices),
+    unpaidSupplierPayables: asArray(row.unpaidSupplierPayables),
+  };
+}
+
+function normalizeMonthlyTrends(value: MonthlyTrends) {
+  const row = asRecord(value);
+
+  return {
+    months: asArray<Record<string, unknown>>(row.months).map((month) => ({
+      month: String(month.month || ''),
+      totalBookings: asNumber(month.totalBookings),
+      totalSell: asNumber(month.totalSell),
+      totalProfit: asNumber(month.totalProfit),
+      avgMargin: asNumber(month.avgMargin),
+    })).filter((month) => month.month),
+  };
+}
+
+function normalizeBookings(value: BookingListItem[]) {
+  return asArray<BookingListItem>(value);
 }
 
 function DashboardMetric({ label, value, helper }: { label: string; value: string; helper: string }) {
