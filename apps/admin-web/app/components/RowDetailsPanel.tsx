@@ -3,6 +3,7 @@
 import { ReactNode, useRef } from 'react';
 
 type RowDetailsPanelProps = {
+  id?: string;
   summary: string;
   description?: string;
   defaultOpen?: boolean;
@@ -15,6 +16,7 @@ type RowDetailsPanelProps = {
 };
 
 export function RowDetailsPanel({
+  id,
   summary,
   description,
   defaultOpen = false,
@@ -51,6 +53,7 @@ export function RowDetailsPanel({
 
   return (
     <details
+      id={id}
       ref={detailsRef}
       className={`row-details-panel operations-collapsible-panel ${className}`.trim()}
       {...(isControlled ? { open } : defaultOpen ? { open: true } : {})}

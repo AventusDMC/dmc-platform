@@ -223,13 +223,15 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteServicePlannerSource, [
       'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
+      'const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));',
       "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
       "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
+      'setOpenDayIds(new Set(detail.days.map((day) => day.id)));',
       "setSelectedScopeId('shared');",
       "checked={selectedScopeId === 'shared'}",
       "checked={selectedScopeId === scope.id}",
       '<div id="quote-base-program-days">',
-      'plannerProps={{ ...props, quote: plannerQuote }}',
+      'plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState}',
     ]);
 
     expectSourceContains(quoteAutoItineraryBuilderSource, [
@@ -259,6 +261,9 @@ describe('quote detail page regression', () => {
       "checked={selectedScopeId === 'shared'}",
       "setSelectedScopeId('shared');",
       'const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);',
+      'open={plannerState.openDayIds.has(summary.day.id)}',
+      'onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}',
+      'id={`planner-day-${summary.day.id}`}',
       'items: scope.items.filter((item) => item.itineraryId === summary.day.id),',
       'className={`operations-row-details quote-service-day-action',
       'itineraryId={day.id}',
@@ -266,6 +271,7 @@ describe('quote detail page regression', () => {
       'onOpenChange={(isOpen) =>',
       'submitLabel={label}',
     ]);
+    assert.doesNotMatch(quoteServicePlannerSource, /defaultOpen=\{plannerProps\.focusedDayId === day\.id/);
 
     expectSourceContains(readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8'), [
       'const endpoint = optionId',
@@ -280,6 +286,25 @@ describe('quote detail page regression', () => {
       '...buildActorHeaders(request)',
       'return forwardProxyJsonResponse(response);',
     ]);
+  });
+
+  it('debounces hotel contract cost calculation and avoids cancelled duplicate requests', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+    const calculationStart = quoteItemsFormSource.indexOf('fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`)');
+    const calculationBlock = quoteItemsFormSource.slice(Math.max(0, calculationStart - 1600), calculationStart + 1800);
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);',
+      'const hotelCostInFlightKeyRef = useRef<string | null>(null);',
+      'const hotelCostLastRequestedKeyRef = useRef<string | null>(null);',
+      'const requestKey = params.toString();',
+      'if (hotelCostInFlightKeyRef.current === requestKey || hotelCostLastRequestedKeyRef.current === requestKey) {',
+      'hotelCostDebounceRef.current = setTimeout(() => {',
+      '}, 400);',
+      'fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`)',
+      'if (hotelCostLastRequestedKeyRef.current !== requestKey) {',
+    ]);
+    assert.doesNotMatch(calculationBlock, /AbortController|signal:|controller\.abort|AbortError/);
   });
 
   it('routes quote list and detail mutations through admin-web API proxies', () => {

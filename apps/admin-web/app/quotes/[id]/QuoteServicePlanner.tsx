@@ -262,6 +262,11 @@ type PlannerScope = {
   optionId?: string;
 };
 
+type ScopePlannerState = {
+  openDayIds: Set<string>;
+  onDayOpenChange: (dayId: string, open: boolean) => void;
+};
+
 type ServiceWorkflowStep = {
   category: 'hotel' | 'transport' | 'activity' | 'meal';
   step: string;
@@ -600,7 +605,6 @@ function DayWorkflowAction({
     <RowDetailsPanel
       summary={label}
       description={`Add a ${label.toLowerCase().replace('add ', '')} service to Day ${day.dayNumber}.`}
-      defaultOpen={plannerProps.focusedDayId === day.id && plannerProps.initialAddCategory === category}
       open={open}
       onOpenChange={onOpenChange}
       className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
@@ -781,9 +785,11 @@ function LivePricingPanel({
 function ScopePlanner({
   scope,
   plannerProps,
+  plannerState,
 }: {
   scope: PlannerScope;
   plannerProps: QuoteServicePlannerProps;
+  plannerState: ScopePlannerState;
 }) {
   const initialOpenActionKey =
     plannerProps.focusedDayId && plannerProps.initialAddCategory
@@ -902,10 +908,15 @@ function ScopePlanner({
             : 'Build the day by adding the core services on the right.');
 
         return (
-          <article
+          <RowDetailsPanel
             key={summary.day.id}
             id={`planner-day-${summary.day.id}`}
+            summary={dayHeading}
+            description={daySubtitle}
+            open={plannerState.openDayIds.has(summary.day.id)}
+            onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}
             className={`workspace-day-card quote-service-day-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
+            bodyClassName="quote-service-day-panel-body"
           >
             <div className="workspace-day-header">
               <div>
@@ -1019,7 +1030,7 @@ function ScopePlanner({
                 ) : null}
               </aside>
             </div>
-          </article>
+          </RowDetailsPanel>
         );
       })}
 
@@ -1064,8 +1075,10 @@ function ScopePlanner({
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
+  const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const plannerQuote = { ...props.quote, itineraries: localItineraries };
+  const quoteIdRef = useRef(props.quote.id);
   const scopes: PlannerScope[] = [
     {
       id: 'shared',
@@ -1082,6 +1095,18 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
   useEffect(() => {
     setLocalItineraries(props.quote.itineraries);
+    setOpenDayIds((currentOpenDayIds) => {
+      const savedDayIds = props.quote.itineraries.map((day) => day.id);
+
+      if (quoteIdRef.current !== props.quote.id) {
+        quoteIdRef.current = props.quote.id;
+        return new Set(savedDayIds);
+      }
+
+      const nextOpenDayIds = new Set(currentOpenDayIds);
+      savedDayIds.forEach((dayId) => nextOpenDayIds.add(dayId));
+      return nextOpenDayIds;
+    });
   }, [props.quote.id, props.quote.itineraries]);
 
   useEffect(() => {
@@ -1093,12 +1118,32 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       }
 
       setLocalItineraries(detail.days);
+      setOpenDayIds(new Set(detail.days.map((day) => day.id)));
       setSelectedScopeId('shared');
     }
 
     window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
     return () => window.removeEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
   }, [props.quote.id]);
+
+  function handleDayOpenChange(dayId: string, open: boolean) {
+    setOpenDayIds((currentOpenDayIds) => {
+      const nextOpenDayIds = new Set(currentOpenDayIds);
+
+      if (open) {
+        nextOpenDayIds.add(dayId);
+      } else {
+        nextOpenDayIds.delete(dayId);
+      }
+
+      return nextOpenDayIds;
+    });
+  }
+
+  const plannerState: ScopePlannerState = {
+    openDayIds,
+    onDayOpenChange: handleDayOpenChange,
+  };
 
   const tabStyles = scopes
     .filter((scope) => scope.id !== 'shared')
@@ -1173,14 +1218,14 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       <div className="workspace-tab-panels">
         <section className="workspace-tab-panel workspace-panel-shared">
           <div id="quote-base-program-days">
-            <ScopePlanner scope={scopes[0]} plannerProps={{ ...props, quote: plannerQuote }} />
+            <ScopePlanner scope={scopes[0]} plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState} />
           </div>
         </section>
         {scopes
           .filter((scope) => scope.id !== 'shared')
           .map((scope) => (
             <section key={scope.id} className={`workspace-tab-panel workspace-panel-${scope.id}`}>
-              <ScopePlanner scope={scope} plannerProps={{ ...props, quote: plannerQuote }} />
+              <ScopePlanner scope={scope} plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState} />
             </section>
           ))}
       </div>
