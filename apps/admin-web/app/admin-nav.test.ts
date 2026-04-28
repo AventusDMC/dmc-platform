@@ -93,12 +93,12 @@ test('mobile admin navigation hooks and collapse classes exist', () => {
 });
 
 test('AXIS branding renders on sidebar and login with powered footer', () => {
-  assert.match(layoutSource, /src="\/axis-logo\.svg"/);
+  assert.match(layoutSource, /src="\/axis-logo\.png"/);
   assert.match(layoutSource, /alt="AXIS"/);
   assert.match(layoutSource, /className="admin-brand-logo"/);
   assert.match(layoutSource, /Powered by Aventus IT/);
   assert.match(layoutSource, /className="admin-sidebar-powered"/);
-  assert.match(loginPageSource, /src="\/axis-logo\.svg"/);
+  assert.match(loginPageSource, /src="\/axis-logo\.png"/);
   assert.match(loginPageSource, /className="login-brand-logo"/);
   assert.match(cssSource, /\.admin-brand-logo/);
   assert.match(cssSource, /\.login-brand-logo/);
@@ -106,20 +106,21 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {
-  assert.match(cssSource, /--axis-blue:\s*#0078C8/);
-  assert.match(cssSource, /--axis-navy:\s*#061B33/);
-  assert.match(cssSource, /--axis-background:\s*#F8FAFC/);
+  assert.match(cssSource, /--axis-blue:\s*#1FA3D6/);
+  assert.match(cssSource, /--axis-text-soft:\s*#6B6B6B/);
+  assert.match(cssSource, /--axis-background:\s*#FFFFFF/);
+  assert.match(cssSource, /--axis-section-background:\s*#F9FAFB/);
   assert.match(cssSource, /--axis-border:\s*#E5E7EB/);
   assert.match(cssSource, /\.primary-button,\s*\n\.lead-form button,\s*\n\.entity-form button,\s*\n\.invoice-portal-primary-button\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
-  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(0,\s*120,\s*200/);
+  assert.match(cssSource, /\.admin-top-nav-link-active\s*\{[\s\S]*rgba\(31,\s*163,\s*214/);
   assert.match(cssSource, /\.admin-top-nav-link-active::before\s*\{[\s\S]*background:\s*var\(--axis-blue\)/);
   assert.match(cssSource, /\.admin-dashboard-page\s*\.dashboard-card\s*span\s*\{[\s\S]*color:\s*var\(--axis-blue-dark\)/);
 });
 
 test('admin styles remove old teal primary accents and normalize platform components', () => {
-  assert.doesNotMatch(cssSource, /#0f766e|rgba\(15,\s*118,\s*110|#1268d8|rgba\(18,\s*104,\s*216/);
+  assert.doesNotMatch(cssSource, /#0f766e|rgba\(15,\s*118,\s*110|#1268d8|rgba\(18,\s*104,\s*216|#0078C8/);
   assert.match(cssSource, /\/\* AXIS platform-wide SaaS system \*\//);
   assert.match(cssSource, /\.detail-card,[\s\S]*\.workspace-section,[\s\S]*\.dashboard-panel,[\s\S]*border-radius:\s*12px/);
-  assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(0,\s*120,\s*200,\s*0\.12\)/);
+  assert.match(cssSource, /input:focus,[\s\S]*box-shadow:\s*0 0 0 3px rgba\(31,\s*163,\s*214,\s*0\.12\)/);
   assert.match(cssSource, /\.data-table,[\s\S]*\.reports-visual-table\s*\{[\s\S]*border:\s*1px solid var\(--axis-border\)/);
 });

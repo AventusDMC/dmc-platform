@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
                 <div className="admin-brand-row">
-                  <img src="/axis-logo.svg" alt="AXIS" className="admin-brand-logo" />
+                  <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
                   <div>
                     <p className="eyebrow">Agent Portal</p>
                     <h1 className="admin-brand-title">AXIS</h1>
@@ -128,7 +128,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <aside className="admin-sidebar">
               <div className="admin-sidebar-brand">
                 <div className="admin-brand-row">
-                  <img src="/axis-logo.svg" alt="AXIS" className="admin-brand-logo" />
+                  <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
                   <div>
                     <p className="eyebrow">DMC Platform</p>
                     <h1 className="admin-brand-title">AXIS</h1>
