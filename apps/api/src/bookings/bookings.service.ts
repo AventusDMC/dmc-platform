@@ -493,6 +493,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...service,
+      supplierStatus: this.getBookingServiceSupplierStatus(service),
       supplierCost,
       sellPrice,
       currency,
@@ -5453,8 +5454,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       assignedTo: service.assignedTo,
       supplierId: service.supplierId,
       supplierName: service.supplierName,
+      supplierStatus: this.getBookingServiceSupplierStatus(service),
       vehicleId: service.vehicleId,
     };
+  }
+
+  private getBookingServiceSupplierStatus(service: { supplierId?: string | null; supplierName?: string | null }) {
+    return !service.supplierId && this.normalizeOptionalText(service.supplierName) ? 'unresolved' : undefined;
   }
 
   private getOperationsDashboardBookingTitle(booking: any) {
@@ -6914,6 +6920,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (!supplierId) {
       throw new BadRequestException('Supplier must be assigned before voucher generation');
     }
+    if (!bookingService.supplier) {
+      throw new BadRequestException('Assigned supplier could not be found');
+    }
 
     await this.assertVoucherRequiredFields(bookingService, voucherType);
     const notes = this.normalizeOptionalText(data.notes) || bookingService.notes || null;
@@ -7309,6 +7318,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
               supplierId: service.supplierId,
               referenceId: service.referenceId,
               vehicleId: service.vehicleId,
+              supplierStatus: this.getBookingServiceSupplierStatus(service),
               operationStatus: service.operationStatus,
               description: service.description,
               serviceDate: service.serviceDate,
@@ -8770,28 +8780,58 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
-    return {};
+    const companyId = requireActorCompanyId(actor);
+    return {
+      quote: {
+        clientCompanyId: companyId,
+      },
+    };
   }
 
   private buildPaymentCompanyWhere(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
-    return {};
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
   }
 
   private buildBookingServiceCompanyWhere(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
-    return {};
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
   }
 
   private buildVoucherCompanyWhere(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
-    return {};
+    const companyId = requireActorCompanyId(actor);
+    return {
+      bookingService: {
+        booking: {
+          quote: {
+            clientCompanyId: companyId,
+          },
+        },
+      },
+    };
   }
 
   private buildBookingAuditLogCompanyWhere(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
-    return {};
+    const companyId = requireActorCompanyId(actor);
+    return {
+      booking: {
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+    };
   }
 
   private async assertBookingExists(bookingId: string, actor?: CompanyScopedActor) {

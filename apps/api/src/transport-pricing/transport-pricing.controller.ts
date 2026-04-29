@@ -17,6 +17,7 @@ type UpsertTransportPricingRuleBody = {
   routeId: string;
   transportServiceTypeId: string;
   vehicleId: string;
+  supplierId?: string | null;
   pricingMode: 'per_vehicle' | 'capacity_unit';
   minPax: number;
   maxPax: number;
@@ -43,6 +44,7 @@ export class TransportPricingController {
       routeId: body.routeId,
       transportServiceTypeId: body.transportServiceTypeId,
       vehicleId: body.vehicleId,
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
       pricingMode: body.pricingMode,
       minPax: Number(body.minPax),
       maxPax: Number(body.maxPax),
@@ -64,6 +66,7 @@ export class TransportPricingController {
       routeId: body.routeId,
       transportServiceTypeId: body.transportServiceTypeId,
       vehicleId: body.vehicleId,
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
       pricingMode: body.pricingMode,
       minPax: Number(body.minPax),
       maxPax: Number(body.maxPax),

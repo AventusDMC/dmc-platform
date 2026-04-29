@@ -65,7 +65,7 @@ model BookingDay {
   date      DateTime?
   title     String
   notes     String?
-  status    BookingDayStatus @default(PENDING)
+  status    String           @default("PENDING")
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   booking   Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -1364,16 +1364,18 @@ model SupportTextTemplate {
 }
 
 model Supplier {
-  id              String           @id @default(uuid()) @db.Uuid
-  name            String
-  type            String
-  email           String?
-  phone           String?
-  notes           String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  bookingServices BookingService[]
-  vouchers        Voucher[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String
+  type                  String
+  email                 String?
+  phone                 String?
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  bookingServices       BookingService[]
+  transportPricingRules TransportPricingRule[]
+  vehicleRates          VehicleRate[]
+  vouchers              Voucher[]
 
   @@map("suppliers")
 }
@@ -1393,6 +1395,7 @@ model TransportPricingRule {
   routeId                String               @db.Uuid
   transportServiceTypeId String               @db.Uuid
   vehicleId              String               @db.Uuid
+  supplierId             String?              @db.Uuid
   pricingMode            TransportPricingMode
   minPax                 Int
   maxPax                 Int
@@ -1404,10 +1407,12 @@ model TransportPricingRule {
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   route                  Route                @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  supplier               Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   transportServiceType   TransportServiceType @relation(fields: [transportServiceTypeId], references: [id], onDelete: Cascade)
   vehicle                Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([routeId])
+  @@index([supplierId])
   @@index([transportServiceTypeId])
   @@index([vehicleId])
   @@index([isActive, routeId, transportServiceTypeId, minPax, maxPax])
@@ -1448,6 +1453,7 @@ model VehicleRate {
   id            String               @id @default(uuid()) @db.Uuid
   vehicleId     String               @db.Uuid
   serviceTypeId String               @db.Uuid
+  supplierId    String?              @db.Uuid
   routeName     String
   minPax        Int
   maxPax        Int
@@ -1464,6 +1470,7 @@ model VehicleRate {
   fromPlace     Place?               @relation("VehicleRateFromPlace", fields: [fromPlaceId], references: [id])
   route         Route?               @relation(fields: [routeId], references: [id])
   serviceType   TransportServiceType @relation(fields: [serviceTypeId], references: [id])
+  supplier      Supplier?            @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   toPlace       Place?               @relation("VehicleRateToPlace", fields: [toPlaceId], references: [id])
   vehicle       Vehicle              @relation(fields: [vehicleId], references: [id])
 
@@ -1472,6 +1479,7 @@ model VehicleRate {
   @@index([serviceTypeId, fromPlaceId, toPlaceId, minPax, maxPax], map: "vehicle_rates_serviceTypeId_fromPlaceId_toPlaceId_minPax_maxPax")
   @@index([serviceTypeId, routeId, minPax, maxPax])
   @@index([serviceTypeId, routeName, minPax, maxPax])
+  @@index([supplierId])
   @@index([toPlaceId])
   @@index([vehicleId])
   @@map("vehicle_rates")
@@ -1500,8 +1508,8 @@ model BookingService {
   activityId              String?                       @db.Uuid
   serviceOrder            Int                           @default(0)
   serviceType             String
-  operationType           BookingOperationServiceType?
-  operationStatus         BookingOperationServiceStatus @default(PENDING)
+  operationType           String?
+  operationStatus         String                        @default("PENDING")
   referenceId             String?                       @db.Uuid
   assignedTo              String?
   guidePhone              String?

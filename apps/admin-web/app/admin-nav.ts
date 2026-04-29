@@ -76,7 +76,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       { label: 'Routes', href: '/routes' },
       { label: 'Services', href: '/catalog?tab=services' },
       { label: 'Suppliers', href: '/suppliers' },
-      { label: 'Transport Pricing', href: '/transport-pricing' },
+      { label: 'Transport Pricing', href: '/transport?tab=pricing-rules' },
     ],
   },
   {

@@ -6,7 +6,6 @@ import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { TransportServiceTypeForm } from '../vehicle-rates/TransportServiceTypeForm';
-import { VehicleRatesForm } from '../vehicle-rates/VehicleRatesForm';
 import { TransportServiceTypesTable } from './TransportServiceTypesTable';
 import { VehicleRatesTable } from './VehicleRatesTable';
 
@@ -127,42 +126,17 @@ export async function VehicleRatesSection() {
         title="Supplier Rate Cards"
         description="Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods."
         context={<p>{vehicleRates.length} rate lines in scope</p>}
-        actions={
-          <button type="button" className="primary-button transport-contract-new-button">
-            + New Supplier Rate Card
-          </button>
-        }
-        createPanel={
-          <CollapsibleCreatePanel
-            title="Create rate line"
-            description="Add a supplier rate-card line using the current routes, vehicles, and service types."
-            triggerLabelOpen="Create rate line"
-          >
-            <VehicleRatesForm
-              apiBaseUrl={ACTION_API_BASE_URL}
-              vehicles={vehicles}
-              serviceTypes={serviceTypes}
-              places={places}
-              cities={cities}
-              placeTypes={placeTypes}
-              routes={routes}
-            />
-          </CollapsibleCreatePanel>
-        }
-        emptyState={vehicleRates.length === 0 ? <p className="empty-state">No supplier rate-card lines yet.</p> : undefined}
       >
-        {vehicleRates.length > 0 ? (
-          <VehicleRatesTable
-            apiBaseUrl={ACTION_API_BASE_URL}
-            vehicleRates={vehicleRates}
-            vehicles={vehicles}
-            serviceTypes={serviceTypes}
-            places={places}
-            cities={cities}
-            placeTypes={placeTypes}
-            routes={routes}
-          />
-        ) : null}
+        <VehicleRatesTable
+          apiBaseUrl={ACTION_API_BASE_URL}
+          vehicleRates={vehicleRates}
+          vehicles={vehicles}
+          serviceTypes={serviceTypes}
+          places={places}
+          cities={cities}
+          placeTypes={placeTypes}
+          routes={routes}
+        />
       </TableSectionShell>
     </div>
   );

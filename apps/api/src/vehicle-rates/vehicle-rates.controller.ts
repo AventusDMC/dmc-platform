@@ -5,6 +5,7 @@ import { VehicleRatesService } from './vehicle-rates.service';
 type CreateVehicleRateBody = {
   vehicleId: string;
   serviceTypeId: string;
+  supplierId?: string | null;
   routeId?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
@@ -39,6 +40,7 @@ export class VehicleRatesController {
     return this.vehicleRatesService.create({
       vehicleId: body.vehicleId,
       serviceTypeId: body.serviceTypeId,
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
       routeId: body.routeId,
       fromPlaceId: body.fromPlaceId,
       toPlaceId: body.toPlaceId,
@@ -67,6 +69,7 @@ export class VehicleRatesController {
     return this.vehicleRatesService.update(id, {
       vehicleId: body.vehicleId,
       serviceTypeId: body.serviceTypeId,
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
       routeId: body.routeId,
       fromPlaceId: body.fromPlaceId,
       toPlaceId: body.toPlaceId,

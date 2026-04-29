@@ -2,7 +2,12 @@ import { NextRequest } from 'next/server';
 import { buildActorHeaders } from '../../../actorHeaders';
 import { buildPassengerManifestExportApiUrl } from '../../../passenger-manifest-export-url';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_BASE_URL) {
+  throw new Error('NEXT_PUBLIC_API_URL is required for frontend API routes.');
+}
+const REQUIRED_API_BASE_URL = API_BASE_URL;
 const EXCEL_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const DEFAULT_EXPORT_FILENAME = 'passenger-manifest.xlsx';
 
@@ -11,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const response = await fetch(buildPassengerManifestExportApiUrl(API_BASE_URL, id), {
+  const response = await fetch(buildPassengerManifestExportApiUrl(REQUIRED_API_BASE_URL, id), {
     headers: {
       ...buildActorHeaders(request),
     },

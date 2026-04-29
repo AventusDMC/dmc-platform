@@ -31,6 +31,7 @@ type BookingService = {
   totalSell: number;
   supplierId: string | null;
   supplierName: string | null;
+  supplierStatus?: 'unresolved' | null;
   serviceType: string;
   serviceDate: string | null;
   startTime?: string | null;
@@ -238,6 +239,7 @@ export function BookingServiceTimeline({
                       <div>
                         <span>Supplier</span>
                         <strong>{service.supplierName || 'Unassigned supplier'}</strong>
+                        {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
                       </div>
                       <div>
                         <span>Reference</span>

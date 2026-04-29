@@ -13,6 +13,7 @@ type BookingService = {
   totalSell: number;
   supplierId: string | null;
   supplierName: string | null;
+  supplierStatus?: 'unresolved' | null;
   serviceType: string;
   serviceDate?: string | null;
   startTime?: string | null;
@@ -206,6 +207,7 @@ export function BookingServicesList({
             </td>
             <td>
               <strong>{service.supplierName || 'Unassigned'}</strong>
+              {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
               <div className="table-subcopy">
                 {mappedSupplierType ? `Suggested ${mappedSupplierType} suppliers` : 'General supplier pool'}
               </div>
@@ -237,6 +239,7 @@ export function BookingServicesList({
                     <div>
                       <span>Supplier</span>
                       <strong>{service.supplierName || 'Unassigned'}</strong>
+                      {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
                     </div>
                     <div>
                       <span>Confirmation</span>

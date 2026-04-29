@@ -3248,6 +3248,12 @@ h1 {
   text-transform: uppercase;
 }
 
+.transport-rate-card-supplier {
+  margin: 0.35rem 0 0;
+  color: rgba(30, 27, 24, 0.68);
+  font-size: 0.9rem;
+}
+
 .transport-contract-count {
   display: inline-flex;
   align-items: center;
@@ -3332,9 +3338,92 @@ h1 {
   min-height: 40px;
 }
 
+.transport-rate-card-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.transport-rate-card-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.transport-rate-card-workspace-with-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  align-items: flex-start;
+}
+
+.transport-rate-card-list {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.transport-rate-card-form-panel {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid rgba(30, 27, 24, 0.1);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(30, 27, 24, 0.1);
+}
+
+.transport-rate-card-form-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(30, 27, 24, 0.08);
+}
+
+.transport-rate-card-form-head h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.transport-rate-card-metadata-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.transport-rate-card-metadata-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: rgba(30, 27, 24, 0.72);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.transport-rate-card-metadata-form input,
+.transport-rate-card-metadata-form textarea {
+  width: 100%;
+  border: 1px solid rgba(30, 27, 24, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.72rem 0.8rem;
+  background: rgba(249, 250, 251, 0.72);
+  color: rgba(30, 27, 24, 0.92);
+  font: inherit;
+  font-weight: 500;
+}
+
 .transport-contracts-page .workspace-panel-wide {
   width: 100%;
   max-width: none;
+}
+
+@media (max-width: 1180px) {
+  .transport-rate-card-workspace-with-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .transport-rate-card-form-panel {
+    position: static;
+  }
 }
 
 @media (max-width: 860px) {
@@ -4129,6 +4218,12 @@ h1 {
   color: rgba(30, 27, 24, 0.62);
   font-size: 0.84rem;
   line-height: 1.38;
+}
+
+.supplier-warning-badge {
+  display: inline-flex;
+  margin-left: 0.45rem;
+  vertical-align: middle;
 }
 
 .table-action-row {
@@ -11900,5 +11995,3 @@ textarea:focus,
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-
-

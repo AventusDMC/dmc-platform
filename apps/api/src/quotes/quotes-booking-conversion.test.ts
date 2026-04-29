@@ -780,6 +780,7 @@ test('accepted DMC quote conversion preserves activity booking service for exter
 
 test('buildBookingServicesFromAcceptedVersion carries resolved supplier and ready status into booking services', async () => {
   const service = createQuotesService();
+  const supplierId = '11111111-1111-4111-8111-111111111111';
 
   const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(
     {
@@ -802,7 +803,7 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
           service: {
             name: 'Private Transfer',
             category: 'Transport',
-            supplierId: 'supplier-1',
+            supplierId,
           },
         },
         {
@@ -835,7 +836,7 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
           service: {
             name: 'Sunrise Jeep Tour',
             category: 'Activity',
-            supplierId: 'supplier-1',
+            supplierId,
           },
         },
       ],
@@ -846,7 +847,7 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
       supplier: {
         findMany: async () => [
           {
-            id: 'supplier-1',
+            id: supplierId,
             name: 'Desert Compass Transport',
           },
         ],
@@ -855,7 +856,7 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
   );
 
   assert.equal(bookingServices.length, 3);
-  assert.equal(bookingServices[0].supplierId, 'supplier-1');
+  assert.equal(bookingServices[0].supplierId, supplierId);
   assert.equal(bookingServices[0].supplierName, 'Desert Compass Transport');
   assert.equal(bookingServices[0].status, 'ready');
   assert.equal(bookingServices[0].serviceOrder, 0);
@@ -880,6 +881,57 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
   assert.equal(activity.childCount, 1);
   assert.equal(activity.reconfirmationRequired, true);
   assert.equal(activity.reconfirmationDueAt, '2026-05-09T18:00:00.000Z');
+});
+
+test('buildBookingServicesFromAcceptedVersion logs unresolved supplier names without blocking conversion', async () => {
+  const service = createQuotesService();
+  const originalConsoleWarn = console.warn;
+  const warnings: any[] = [];
+  console.warn = (...args: any[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(
+      {
+        travelStartDate: '2026-05-10T00:00:00.000Z',
+        quoteItems: [
+          {
+            id: 'item-unresolved-supplier',
+            quantity: 1,
+            pricingDescription: 'Legacy transport',
+            totalCost: 100,
+            totalSell: 140,
+            service: {
+              name: 'Legacy Transfer',
+              category: 'Transport',
+              supplierName: 'Legacy Supplier',
+            },
+          },
+        ],
+      },
+      {
+        supplier: {
+          findMany: async () => [],
+        },
+      },
+    );
+
+    assert.equal(bookingServices.length, 1);
+    assert.equal(bookingServices[0].supplierId, null);
+    assert.equal(bookingServices[0].supplierName, 'Legacy Supplier');
+    assert.equal(bookingServices[0].status, 'ready');
+    assert.deepEqual(warnings[0], [
+      '[quote/convert-to-booking] unresolved supplier',
+      {
+        quoteItemId: 'item-unresolved-supplier',
+        supplierName: 'Legacy Supplier',
+        supplierId: null,
+      },
+    ]);
+  } finally {
+    console.warn = originalConsoleWarn;
+  }
 });
 
 test('buildBookingServicesFromAcceptedVersion resolves activity dates from itinerary day and quote travel start date', async () => {

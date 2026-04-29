@@ -23,23 +23,23 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(sectionSource, [
       'title="Supplier Rate Cards"',
       'Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods.',
-      '+ New Supplier Rate Card',
-      'Create rate line',
-      'No supplier rate-card lines yet.',
     ]);
+
+    assert.equal(sectionSource.includes('Create rate line'), false);
   });
 
-  it('groups supplier rate cards by supplier with an unassigned fallback', () => {
+  it('groups flat rows into supplier rate cards with an unassigned fallback', () => {
     expectSourceContains(tableSource, [
+      'type SupplierRateCard =',
       'function getSupplierName(rate: VehicleRate)',
       "rate.vehicle.supplier?.name || rate.vehicle.supplierId || 'Unassigned supplier'",
-      'function groupRatesBySupplier(vehicleRates: VehicleRate[])',
-      'const supplierGroups = groupRatesBySupplier(vehicleRates);',
+      'function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[]',
+      'const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);',
       'transport-contract-supplier-group',
-      '{group.rates.length} rate lines',
+      '{rateCard.rates.length} rate lines',
       'transport-contract-divider',
-      'aria-label={`Rate lines for ${group.supplierName}`}',
-      'Rate Card',
+      'aria-label={`Rate lines for ${rateCard.name}`}',
+      'Supplier Rate Card',
       'Effective from',
       'Category',
       'Rate lines',
@@ -58,20 +58,49 @@ describe('transport catalog supplier rate-card UX', () => {
       '<th>Validity</th>',
       '<th>Price</th>',
       '<th>Actions</th>',
-      'colSpan={7}',
     ]);
 
     assert.equal(tableSource.includes('<th>Service type</th>'), false);
   });
 
+  it('keeps creation and edit forms in a single side panel instead of inline rows', () => {
+    expectSourceContains(tableSource, [
+      'const [activeForm, setActiveForm] = useState<ActiveRateForm>(null);',
+      'transport-rate-card-toolbar',
+      '+ Create Rate Card',
+      "onClick={() => setActiveForm({ mode: 'create-rate-card' })}",
+      'transport-rate-card-form-panel',
+      "activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : 'Edit rate line'",
+    ]);
+
+    assert.equal(sectionSource.includes("import { VehicleRatesForm }"), false);
+    assert.equal(tableSource.includes('InlineRowEditorShell'), false);
+    assert.equal(tableSource.includes('colSpan={7}'), false);
+  });
+
   it('keeps existing edit duplicate and delete actions rendered', () => {
     expectSourceContains(tableSource, [
-      "setEditingId((current) => (current === rate.id ? null : rate.id))",
+      "onClick={() => setActiveForm({ mode: 'edit-line', rate })}",
       "<DuplicateVehicleRateButton apiBaseUrl={apiBaseUrl} rateId={rate.id} />",
       'onClick={() => handleDelete(rate)}',
       '<VehicleRatesForm',
-      'rateId={rate.id}',
+      'rateId={activeForm.rate.id}',
       'submitLabel="Save rate line"',
+    ]);
+  });
+
+  it('renders a phase-one Create Rate Card metadata form', () => {
+    expectSourceContains(tableSource, [
+      '<form className="transport-rate-card-metadata-form"',
+      'Supplier',
+      'Rate Card Name',
+      'Category',
+      'Effective From',
+      'Currency',
+      'Notes',
+      'Alpha Bus and Limo Co',
+      'Buses 2026 Rates in USD',
+      'Rate card metadata is captured in the UI model for now.',
     ]);
   });
 });

@@ -63,6 +63,15 @@ type FinanceInvoiceRecord = {
         status: string | null;
       }>;
     } | null;
+    bookings?: Array<{
+      id: string;
+      bookingRef?: string | null;
+      payments?: Array<{
+        type: string | null;
+        amount: number | null;
+        status: string | null;
+      }>;
+    }>;
   } | null;
 };
 
@@ -250,19 +259,25 @@ export class ReportsService {
   }
 
   async getFinanceSummary(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
+    const companyId = requireActorCompanyId(actor);
 
     const [invoices, supplierPayments] = await Promise.all([
       (this.prisma.invoice as any).findMany({
-        where: {},
+        where: {
+          quote: {
+            clientCompanyId: companyId,
+          },
+        },
         include: {
           quote: {
             include: {
               clientCompany: true,
-              booking: {
+              bookings: {
                 include: {
                   payments: true,
                 },
+                orderBy: [{ createdAt: 'desc' }],
+                take: 1,
               },
             },
           },
@@ -319,19 +334,25 @@ export class ReportsService {
   }
 
   async getAlerts(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
+    const companyId = requireActorCompanyId(actor);
 
     const [invoices, supplierPayments, bookings] = await Promise.all([
       (this.prisma.invoice as any).findMany({
-        where: {},
+        where: {
+          quote: {
+            clientCompanyId: companyId,
+          },
+        },
         include: {
           quote: {
             include: {
               clientCompany: true,
-              booking: {
+              bookings: {
                 include: {
                   payments: true,
                 },
+                orderBy: [{ createdAt: 'desc' }],
+                take: 1,
               },
             },
           },
@@ -543,7 +564,7 @@ export class ReportsService {
   }
 
   private mapFinanceInvoice(invoice: FinanceInvoiceRecord) {
-    const booking = invoice.quote?.booking || null;
+    const booking = invoice.quote?.booking || invoice.quote?.bookings?.[0] || null;
     const clientPayments = (booking?.payments || []).filter((payment) => String(payment.type || '').toUpperCase() === 'CLIENT');
     const paidAmount = this.roundMoney(
       clientPayments
@@ -552,10 +573,11 @@ export class ReportsService {
     );
     const totalAmount = this.roundMoney(Number(invoice.totalAmount || 0));
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    const reference = booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id;
 
     return {
       invoiceId: invoice.id,
-      invoiceNumber: this.buildInvoiceNumber(invoice),
+      invoiceNumber: `INV-${String(reference).replace(/^INV-/i, '')}`,
       clientCompanyName: invoice.quote?.clientCompany?.name || 'Client unavailable',
       dueDate: dueDate ? dueDate.toISOString() : null,
       dueDateObject: dueDate,
@@ -581,11 +603,6 @@ export class ReportsService {
       balanceDue: this.roundMoney(Math.max(amount - paidAmount, 0)),
       status: payment.status || 'PENDING',
     };
-  }
-
-  private buildInvoiceNumber(invoice: FinanceInvoiceRecord) {
-    const reference = invoice.quote?.booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id;
-    return `INV-${String(reference).replace(/^INV-/i, '')}`;
   }
 
   private parseServiceReference(reference: string | null | undefined) {

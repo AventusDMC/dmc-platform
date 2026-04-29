@@ -45,6 +45,7 @@ type UpsertTransportPricingRuleInput = {
   routeId: string;
   transportServiceTypeId: string;
   vehicleId: string;
+  supplierId?: string | null;
   pricingMode: 'per_vehicle' | 'capacity_unit';
   minPax: number;
   maxPax: number;
@@ -67,6 +68,7 @@ export class TransportPricingService {
     return this.prisma.transportPricingRule.findMany({
       include: {
         route: true,
+        supplier: true,
         transportServiceType: true,
         vehicle: true,
       },
@@ -80,6 +82,7 @@ export class TransportPricingService {
         routeId: data.routeId,
         transportServiceTypeId: data.transportServiceTypeId,
         vehicleId: data.vehicleId,
+        supplierId: data.supplierId ?? null,
         pricingMode: data.pricingMode,
         minPax: data.minPax,
         maxPax: data.maxPax,
@@ -91,6 +94,7 @@ export class TransportPricingService {
       },
       include: {
         route: true,
+        supplier: true,
         transportServiceType: true,
         vehicle: true,
       },
@@ -104,6 +108,7 @@ export class TransportPricingService {
         routeId: data.routeId,
         transportServiceTypeId: data.transportServiceTypeId,
         vehicleId: data.vehicleId,
+        supplierId: data.supplierId ?? null,
         pricingMode: data.pricingMode,
         minPax: data.minPax,
         maxPax: data.maxPax,
@@ -115,6 +120,7 @@ export class TransportPricingService {
       },
       include: {
         route: true,
+        supplier: true,
         transportServiceType: true,
         vehicle: true,
       },

@@ -28,19 +28,21 @@ export class InvoicesService {
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(actor);
     return (this.prisma as any).invoice.findMany({
-      where: {},
+      where: scopeWhere,
       include: {
         quote: {
           include: {
             clientCompany: true,
             contact: true,
-            booking: {
+            bookings: {
               select: {
                 id: true,
                 status: true,
               },
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
             },
           },
         },
@@ -50,10 +52,10 @@ export class InvoicesService {
   }
 
   async findOne(id: string, actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(actor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        id,
+        AND: [scopeWhere, { id }],
       },
       include: {
         quote: {
@@ -85,11 +87,11 @@ export class InvoicesService {
       companyActor?: CompanyScopedActor;
     },
   ) {
-    requireActorCompanyId(data.companyActor);
+    const bookingScopeWhere = this.buildBookingCompanyWhere(data.companyActor);
     const invoiceId = await this.prisma.$transaction(async (tx) => {
       const booking = await (tx as any).booking.findFirst({
         where: {
-          id: bookingId,
+          AND: [bookingScopeWhere, { id: bookingId }],
         },
         include: {
           quote: {
@@ -194,12 +196,12 @@ export class InvoicesService {
       companyActor?: CompanyScopedActor;
     },
   ) {
-    requireActorCompanyId(data.companyActor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(data.companyActor);
     const amount = this.normalizeAmount(data.amount);
 
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        id,
+        AND: [scopeWhere, { id }],
       },
       include: {
         quote: {
@@ -290,10 +292,10 @@ export class InvoicesService {
       companyActor?: CompanyScopedActor;
     },
   ) {
-    requireActorCompanyId(data.companyActor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(data.companyActor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        id,
+        AND: [scopeWhere, { id }],
       },
       select: {
         id: true,
@@ -569,9 +571,9 @@ export class InvoicesService {
   }
 
   async sendOverdueReminders(data: { actor?: AuditActor; companyActor?: CompanyScopedActor }) {
-    requireActorCompanyId(data.companyActor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(data.companyActor);
     const invoices = await (this.prisma as any).invoice.findMany({
-      where: {},
+      where: scopeWhere,
       include: {
         quote: {
           include: {
@@ -827,11 +829,29 @@ export class InvoicesService {
     return Number((Number(value || 0)).toFixed(2));
   }
 
+  private buildInvoiceCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      quote: {
+        clientCompanyId: companyId,
+      },
+    };
+  }
+
+  private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
+    const companyId = requireActorCompanyId(actor);
+    return {
+      quote: {
+        clientCompanyId: companyId,
+      },
+    };
+  }
+
   private async getInvoiceDocument(id: string, actor?: CompanyScopedActor) {
-    requireActorCompanyId(actor);
+    const scopeWhere = this.buildInvoiceCompanyWhere(actor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        id,
+        AND: [scopeWhere, { id }],
       },
       include: {
         quote: {

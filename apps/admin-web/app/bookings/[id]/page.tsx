@@ -333,6 +333,7 @@ type Booking = {
     totalSell: number;
     supplierId: string | null;
     supplierName: string | null;
+    supplierStatus?: 'unresolved' | null;
     activityId?: string | null;
     activity?: {
       id: string;
@@ -1429,6 +1430,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                       {service.activity?.description ? <p>{service.activity.description}</p> : null}
                                       <p>{getBookingServiceTimeLabel(service) || 'Timing pending'}</p>
                                       <p>{service.supplierName || 'Supplier unassigned'}</p>
+                                      {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
                                       <div className="booking-dashboard-service-footer">
                                         <BookingOperationsStatusBadge kind="lifecycle" status={service.status} />
                                         <span>{formatConfirmationStatus(service.confirmationStatus)}</span>
@@ -1639,7 +1641,10 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                               ? service.confirmationNumber || 'Confirmation pending'
                                               : service.activity?.name || service.description}
                                       </td>
-                                      <td>{service.supplierName || 'Not assigned'}</td>
+                                      <td>
+                                        {service.supplierName || 'Not assigned'}
+                                        {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
+                                      </td>
                                       <td>{service.operationStatus || service.confirmationStatus.toUpperCase()}</td>
                                       <td>{service.notes || service.confirmationNotes || 'No notes'}</td>
                                       <td>

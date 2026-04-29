@@ -1,13 +1,12 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RouteOption } from '../lib/routes';
 import { DuplicateVehicleRateButton } from '../vehicle-rates/DuplicateVehicleRateButton';
 import { VehicleRatesForm } from '../vehicle-rates/VehicleRatesForm';
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
 import { CityOption } from '../lib/cities';
-import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
@@ -49,6 +48,18 @@ type VehicleRate = {
   route: RouteOption | null;
 };
 
+type SupplierRateCard = {
+  id: string;
+  supplierName: string;
+  name: string;
+  category: string;
+  effectiveFrom: string;
+  currency: string;
+  validFrom: string;
+  validTo: string;
+  rates: VehicleRate[];
+};
+
 type VehicleRatesTableProps = {
   apiBaseUrl: string;
   vehicleRates: VehicleRate[];
@@ -59,6 +70,8 @@ type VehicleRatesTableProps = {
   placeTypes: PlaceTypeOption[];
   routes: RouteOption[];
 };
+
+type ActiveRateForm = { mode: 'create-rate-card' } | { mode: 'edit-line'; rate: VehicleRate } | null;
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString();
@@ -97,18 +110,39 @@ function getRateCardTitle(rates: VehicleRate[]) {
   return `${getRateCardCategory(rates)} ${year} Rates in ${getPrimaryCurrency(rates)}`;
 }
 
-function groupRatesBySupplier(vehicleRates: VehicleRate[]) {
-  const groups = new Map<string, { supplierName: string; rates: VehicleRate[] }>();
+function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[] {
+  const groups = new Map<string, SupplierRateCard>();
 
   for (const rate of vehicleRates) {
     const supplierName = getSupplierName(rate);
-    const key = supplierName.trim().toLowerCase() || 'unassigned supplier';
-    const group = groups.get(key) || { supplierName, rates: [] };
+    const category = getRateCardCategory([rate]);
+    const validFrom = rate.validFrom.slice(0, 10);
+    const validTo = rate.validTo.slice(0, 10);
+    const key = [supplierName.trim().toLowerCase() || 'unassigned supplier', category.toLowerCase(), rate.currency, validFrom, validTo].join('|');
+    const group =
+      groups.get(key) ||
+      ({
+        id: key,
+        supplierName,
+        name: getRateCardTitle([rate]),
+        category,
+        effectiveFrom: validFrom,
+        currency: rate.currency,
+        validFrom,
+        validTo,
+        rates: [],
+      } satisfies SupplierRateCard);
+
     group.rates.push(rate);
+    group.name = getRateCardTitle(group.rates);
+    group.category = getRateCardCategory(group.rates);
     groups.set(key, group);
   }
 
-  return Array.from(groups.values()).sort((left, right) => left.supplierName.localeCompare(right.supplierName));
+  return Array.from(groups.values()).sort((left, right) => {
+    const supplierSort = left.supplierName.localeCompare(right.supplierName);
+    return supplierSort || left.name.localeCompare(right.name);
+  });
 }
 
 export function VehicleRatesTable({
@@ -122,10 +156,11 @@ export function VehicleRatesTable({
   routes,
 }: VehicleRatesTableProps) {
   const router = useRouter();
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeForm, setActiveForm] = useState<ActiveRateForm>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const supplierGroups = groupRatesBySupplier(vehicleRates);
+  const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);
+  const supplierOptions = useMemo(() => Array.from(new Set(vehicleRates.map(getSupplierName))).sort(), [vehicleRates]);
 
   async function handleDelete(rate: VehicleRate) {
     if (!window.confirm(`Delete ${rate.routeName}?`)) {
@@ -145,8 +180,8 @@ export function VehicleRatesTable({
         throw new Error(await getErrorMessage(response, 'Could not delete vehicle rate.'));
       }
 
-      if (editingId === rate.id) {
-        setEditingId(null);
+      if (activeForm?.mode === 'edit-line' && activeForm.rate.id === rate.id) {
+        setActiveForm(null);
       }
 
       router.refresh();
@@ -161,131 +196,174 @@ export function VehicleRatesTable({
     <div className="entity-list allotment-table-stack">
       {error ? <p className="form-error">{error}</p> : null}
 
-      {supplierGroups.map((group) => (
-        <section key={group.supplierName} className="transport-contract-supplier-group">
-          <div className="transport-contract-supplier-head">
-            <div>
-              <p className="transport-rate-card-label">Supplier</p>
-              <h3>{group.supplierName}</h3>
-            </div>
-            <span className="transport-contract-count">{group.rates.length} rate lines</span>
-          </div>
-          <div className="transport-contract-divider" />
-          <div className="transport-rate-card-summary">
-            <div>
-              <span>Rate Card</span>
-              <strong>{getRateCardTitle(group.rates)}</strong>
-            </div>
-            <div>
-              <span>Effective from</span>
-              <strong>{formatMonthYear(getEffectiveFrom(group.rates))}</strong>
-            </div>
-            <div>
-              <span>Category</span>
-              <strong>{getRateCardCategory(group.rates)}</strong>
-            </div>
-          </div>
-          <h4 className="transport-rate-lines-title">Rate lines</h4>
-          <div className="table-wrap transport-contract-table-wrap">
-            <table className="data-table allotment-table transport-contract-table" aria-label={`Rate lines for ${group.supplierName}`}>
-              <thead>
-                <tr>
-                  <th>Service / Route</th>
-                  <th>Vehicle Size</th>
-                  <th>Duration / Basis</th>
-                  <th>Pax / Capacity</th>
-                  <th>Validity</th>
-                  <th>Price</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.rates.map((rate) => {
-                  const isEditing = editingId === rate.id;
+      <div className="transport-rate-card-toolbar">
+        <button type="button" className="primary-button transport-contract-new-button" onClick={() => setActiveForm({ mode: 'create-rate-card' })}>
+          + Create Rate Card
+        </button>
+      </div>
 
-                  return (
-                    <Fragment key={rate.id}>
-                      <tr>
-                        <td>
-                          <strong>{rate.routeName}</strong>
-                          <div className="table-subcopy" hidden>
-                            {[rate.route?.name, `${rate.serviceType.name} (${rate.serviceType.code})`].filter(Boolean).join(' · ')}
-                          </div>
-                          <div className="table-subcopy">{[rate.route?.name, rate.serviceType.code].filter(Boolean).join(' - ')}</div>
-                        </td>
-                        <td>{rate.vehicle.name}</td>
-                        <td>{rate.serviceType.name}</td>
-                        <td>
-                          {rate.minPax} - {rate.maxPax}
-                        </td>
-                        <td>
-                          {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
-                        </td>
-                        <td>
-                          {rate.currency} {rate.price.toFixed(2)}
-                        </td>
-                        <td>
-                          <div className="table-action-row">
-                            <button
-                              type="button"
-                              className="compact-button"
-                              onClick={() => setEditingId((current) => (current === rate.id ? null : rate.id))}
-                            >
-                              {isEditing ? 'Close edit' : 'Edit'}
-                            </button>
-                            <DuplicateVehicleRateButton apiBaseUrl={apiBaseUrl} rateId={rate.id} />
-                            <button
-                              type="button"
-                              className="compact-button compact-button-danger"
-                              onClick={() => handleDelete(rate)}
-                              disabled={deletingId === rate.id}
-                            >
-                              {deletingId === rate.id ? 'Deleting...' : 'Delete'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {isEditing ? (
+      <div className={`transport-rate-card-workspace ${activeForm ? 'transport-rate-card-workspace-with-panel' : ''}`}>
+        <div className="transport-rate-card-list">
+          {rateCards.length === 0 ? <p className="empty-state">No supplier rate cards yet.</p> : null}
+
+          {rateCards.map((rateCard) => (
+            <section key={rateCard.id} className="transport-contract-supplier-group">
+              <div className="transport-contract-supplier-head">
+                <div>
+                  <p className="transport-rate-card-label">Supplier Rate Card</p>
+                  <h3>{rateCard.name}</h3>
+                  <p className="transport-rate-card-supplier">Supplier: {rateCard.supplierName}</p>
+                </div>
+                <span className="transport-contract-count">{rateCard.rates.length} rate lines</span>
+              </div>
+              <div className="transport-contract-divider" />
+              <div className="transport-rate-card-summary">
+                <div>
+                  <span>Category</span>
+                  <strong>{rateCard.category}</strong>
+                </div>
+                <div>
+                  <span>Effective from</span>
+                  <strong>{formatMonthYear(rateCard.effectiveFrom)}</strong>
+                </div>
+                <div>
+                  <span>Currency</span>
+                  <strong>{rateCard.currency}</strong>
+                </div>
+              </div>
+              <h4 className="transport-rate-lines-title">Rate lines</h4>
+              <div className="table-wrap transport-contract-table-wrap">
+                <table className="data-table allotment-table transport-contract-table" aria-label={`Rate lines for ${rateCard.name}`}>
+                  <thead>
+                    <tr>
+                      <th>Service / Route</th>
+                      <th>Vehicle Size</th>
+                      <th>Duration / Basis</th>
+                      <th>Pax / Capacity</th>
+                      <th>Validity</th>
+                      <th>Price</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rateCard.rates.map((rate) => (
+                      <Fragment key={rate.id}>
                         <tr>
-                          <td colSpan={7}>
-                            <InlineRowEditorShell>
-                              <VehicleRatesForm
-                                apiBaseUrl={apiBaseUrl}
-                                vehicles={vehicles}
-                                serviceTypes={serviceTypes}
-                                places={places}
-                                cities={cities}
-                                placeTypes={placeTypes}
-                                routes={routes}
-                                rateId={rate.id}
-                                submitLabel="Save rate line"
-                                initialValues={{
-                                  vehicleId: rate.vehicleId,
-                                  serviceTypeId: rate.serviceTypeId,
-                                  routeId: rate.routeId || '',
-                                  fromPlaceId: rate.fromPlaceId || '',
-                                  toPlaceId: rate.toPlaceId || '',
-                                  routeName: rate.routeName,
-                                  minPax: String(rate.minPax),
-                                  maxPax: String(rate.maxPax),
-                                  price: String(rate.price),
-                                  currency: normalizeSupportedCurrency(rate.currency),
-                                  validFrom: rate.validFrom.slice(0, 10),
-                                  validTo: rate.validTo.slice(0, 10),
-                                }}
-                              />
-                            </InlineRowEditorShell>
+                          <td>
+                            <strong>{rate.routeName}</strong>
+                            <div className="table-subcopy">{[rate.route?.name, rate.serviceType.code].filter(Boolean).join(' - ')}</div>
+                          </td>
+                          <td>{rate.vehicle.name}</td>
+                          <td>{rate.serviceType.name}</td>
+                          <td>
+                            {rate.minPax} - {rate.maxPax}
+                          </td>
+                          <td>
+                            {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
+                          </td>
+                          <td>
+                            {rate.currency} {rate.price.toFixed(2)}
+                          </td>
+                          <td>
+                            <div className="table-action-row">
+                              <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
+                                Edit
+                              </button>
+                              <DuplicateVehicleRateButton apiBaseUrl={apiBaseUrl} rateId={rate.id} />
+                              <button
+                                type="button"
+                                className="compact-button compact-button-danger"
+                                onClick={() => handleDelete(rate)}
+                                disabled={deletingId === rate.id}
+                              >
+                                {deletingId === rate.id ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {activeForm ? (
+          <aside className="transport-rate-card-form-panel" aria-label={activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : 'Edit rate line'}>
+            <div className="transport-rate-card-form-head">
+              <div>
+                <p className="transport-rate-card-label">{activeForm.mode === 'create-rate-card' ? 'Create' : 'Edit rate line'}</p>
+                <h3>{activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : activeForm.rate.routeName}</h3>
+              </div>
+              <button type="button" className="compact-button" onClick={() => setActiveForm(null)}>
+                Close
+              </button>
+            </div>
+            {activeForm.mode === 'create-rate-card' ? (
+              <form className="transport-rate-card-metadata-form" onSubmit={(event) => event.preventDefault()}>
+                <label>
+                  Supplier
+                  <input name="supplier" list="transport-rate-card-suppliers" placeholder="Alpha Bus and Limo Co" />
+                  <datalist id="transport-rate-card-suppliers">
+                    {supplierOptions.map((supplier) => (
+                      <option key={supplier} value={supplier} />
+                    ))}
+                  </datalist>
+                </label>
+                <label>
+                  Rate Card Name
+                  <input name="rateCardName" placeholder="Buses 2026 Rates in USD" />
+                </label>
+                <label>
+                  Category
+                  <input name="category" placeholder="Buses" />
+                </label>
+                <label>
+                  Effective From
+                  <input name="effectiveFrom" type="month" />
+                </label>
+                <label>
+                  Currency
+                  <input name="currency" placeholder="USD" />
+                </label>
+                <label>
+                  Notes
+                  <textarea name="notes" rows={4} placeholder="Supplier contract terms, inclusions, exclusions, or operational notes." />
+                </label>
+                <p className="detail-copy">Rate card metadata is captured in the UI model for now. Existing backend rate lines remain unchanged.</p>
+              </form>
+            ) : (
+              <VehicleRatesForm
+                apiBaseUrl={apiBaseUrl}
+                vehicles={vehicles}
+                serviceTypes={serviceTypes}
+                places={places}
+                cities={cities}
+                placeTypes={placeTypes}
+                routes={routes}
+                rateId={activeForm.rate.id}
+                submitLabel="Save rate line"
+                initialValues={{
+                  vehicleId: activeForm.rate.vehicleId,
+                  serviceTypeId: activeForm.rate.serviceTypeId,
+                  routeId: activeForm.rate.routeId || '',
+                  fromPlaceId: activeForm.rate.fromPlaceId || '',
+                  toPlaceId: activeForm.rate.toPlaceId || '',
+                  routeName: activeForm.rate.routeName,
+                  minPax: String(activeForm.rate.minPax),
+                  maxPax: String(activeForm.rate.maxPax),
+                  price: String(activeForm.rate.price),
+                  currency: normalizeSupportedCurrency(activeForm.rate.currency),
+                  validFrom: activeForm.rate.validFrom.slice(0, 10),
+                  validTo: activeForm.rate.validTo.slice(0, 10),
+                }}
+              />
+            )}
+          </aside>
+        ) : null}
+      </div>
     </div>
   );
 }

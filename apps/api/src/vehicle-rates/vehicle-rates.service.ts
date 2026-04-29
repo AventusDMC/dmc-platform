@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 type CreateVehicleRateInput = {
   vehicleId: string;
   serviceTypeId: string;
+  supplierId?: string | null;
   routeId?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
@@ -20,6 +21,7 @@ type CreateVehicleRateInput = {
 type UpdateVehicleRateInput = {
   vehicleId?: string;
   serviceTypeId?: string;
+  supplierId?: string | null;
   routeId?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
@@ -52,6 +54,7 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
+        supplier: true,
         toPlace: true,
       },
       orderBy: [
@@ -78,6 +81,7 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
+        supplier: true,
         toPlace: true,
         _count: {
           select: {
@@ -155,6 +159,7 @@ export class VehicleRatesService {
       data: {
         vehicleId: data.vehicleId,
         serviceTypeId: data.serviceTypeId,
+        supplierId: data.supplierId ?? null,
         routeId: routeData.routeId,
         fromPlaceId: routeData.fromPlaceId,
         toPlaceId: routeData.toPlaceId,
@@ -176,6 +181,7 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
+        supplier: true,
         toPlace: true,
       },
     });
@@ -187,6 +193,7 @@ export class VehicleRatesService {
     return this.create({
       vehicleId: existing.vehicleId,
       serviceTypeId: existing.serviceTypeId,
+      supplierId: existing.supplierId,
       routeId: existing.routeId,
       fromPlaceId: existing.fromPlaceId,
       toPlaceId: existing.toPlaceId,
@@ -204,6 +211,7 @@ export class VehicleRatesService {
     const existing = await this.findOne(id);
     const vehicleId = data.vehicleId ?? existing.vehicleId;
     const serviceTypeId = data.serviceTypeId ?? existing.serviceTypeId;
+    const supplierId = data.supplierId === undefined ? existing.supplierId : data.supplierId;
     const routeId = data.routeId === undefined ? existing.routeId : data.routeId;
     const minPax = data.minPax ?? existing.minPax;
     const maxPax = data.maxPax ?? existing.maxPax;
@@ -277,6 +285,7 @@ export class VehicleRatesService {
       data: {
         vehicleId,
         serviceTypeId,
+        supplierId,
         routeId: routeData.routeId,
         fromPlaceId: routeData.fromPlaceId,
         toPlaceId: routeData.toPlaceId,
@@ -298,6 +307,7 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
+        supplier: true,
         toPlace: true,
       },
     });

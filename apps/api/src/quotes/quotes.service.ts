@@ -5582,13 +5582,16 @@ export class QuotesService {
           name?: string | null;
           category?: string | null;
           supplierId?: string | null;
+          supplierName?: string | null;
         } | null;
         hotel?: {
           supplierId?: string | null;
+          supplierName?: string | null;
         } | null;
         appliedVehicleRate?: {
           vehicle?: {
             supplierId?: string | null;
+            supplierName?: string | null;
           } | null;
         } | null;
       }>;
@@ -5668,8 +5671,17 @@ export class QuotesService {
         const pricingDescription = item.pricingDescription?.trim() || '';
         const description = operationalDescription || pricingDescription || 'Quote service';
         const rawSupplierId = this.getBookingServiceSupplierIdFromSnapshotItem(item);
-        const supplierName = rawSupplierId ? supplierNamesById.get(rawSupplierId) ?? null : null;
-        const supplierId = supplierName ? rawSupplierId : null;
+        const supplierId = rawSupplierId;
+        const supplierName = rawSupplierId
+          ? supplierNamesById.get(rawSupplierId) ?? this.getBookingServiceSupplierNameFromSnapshotItem(item)
+          : this.getBookingServiceSupplierNameFromSnapshotItem(item);
+        if (!supplierId && supplierName) {
+          console.warn('[quote/convert-to-booking] unresolved supplier', {
+            quoteItemId: item.id ?? null,
+            supplierName,
+            supplierId: rawSupplierId,
+          });
+        }
         const resolvedServiceDate = this.resolveQuoteItemServiceDateValue({
           explicitServiceDate:
             item.serviceDate || (item.itineraryId ? itineraryContextById.get(item.itineraryId)?.serviceDate ?? null : null),
@@ -5806,6 +5818,27 @@ export class QuotesService {
       item.service?.supplierId?.trim() ||
       item.hotel?.supplierId?.trim() ||
       item.appliedVehicleRate?.vehicle?.supplierId?.trim() ||
+      null
+    );
+  }
+
+  private getBookingServiceSupplierNameFromSnapshotItem(item: {
+    service?: {
+      supplierName?: string | null;
+    } | null;
+    hotel?: {
+      supplierName?: string | null;
+    } | null;
+    appliedVehicleRate?: {
+      vehicle?: {
+        supplierName?: string | null;
+      } | null;
+    } | null;
+  }) {
+    return (
+      item.service?.supplierName?.trim() ||
+      item.hotel?.supplierName?.trim() ||
+      item.appliedVehicleRate?.vehicle?.supplierName?.trim() ||
       null
     );
   }
