@@ -121,6 +121,21 @@ describe('activities quote and booking UI integration regression', () => {
     assert.doesNotMatch(bookingCssSource, /workspace-tabs:has\(#tab-shared:checked\) \.workspace-panel-shared/);
   });
 
+  it('keeps QuoteServicePlanner day service layout compact and full width', () => {
+    expectSourceContains(bookingCssSource, [
+      '.quote-service-planner .workspace-day-card',
+      '.quote-service-day-actions',
+      'grid-template-columns: repeat(4, minmax(0, 1fr));',
+      '.quote-service-day-action[open]',
+      'grid-column: 1 / -1;',
+      '.quote-service-day-action .service-type-buttons',
+      'display: none;',
+      '.quote-service-planner .quote-service-day-layout',
+      'grid-template-columns: 1fr;',
+      '.quote-service-planner .quote-item-row-main > p:nth-of-type(n + 3)',
+    ]);
+  });
+
   it('shows converted activity services on booking itinerary with activityId preserved', () => {
     expectSourceContains(bookingPageSource, [
       'activityId?: string | null;',
