@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ServiceTypeOption } from '../lib/serviceTypes';
+import { getErrorMessage } from '../lib/api';
+import { type SupportedCurrency } from '../lib/currencyOptions';
+import { ServicesForm } from '../services/ServicesForm';
 import { ServiceRatesManager } from './ServiceRatesManager';
 
 type ServiceRate = {
@@ -38,6 +41,13 @@ type SupplierService = {
 type ServicesCatalogBrowserProps = {
   apiBaseUrl: string;
   services: SupplierService[];
+  serviceTypes: ServiceTypeOption[];
+  suppliers: SupplierOption[];
+};
+
+type SupplierOption = {
+  id: string;
+  name: string;
 };
 
 function normalizeCategory(value: string) {
@@ -101,12 +111,17 @@ function buildSelectHref(returnTo: string, serviceId: string) {
   return `${url.pathname}${url.search}`;
 }
 
-export function ServicesCatalogBrowser({ apiBaseUrl, services }: ServicesCatalogBrowserProps) {
+export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, suppliers }: ServicesCatalogBrowserProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get('returnTo');
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [ratesServiceId, setRatesServiceId] = useState<string | null>(null);
+  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   const typeOptions = useMemo(
     () =>
@@ -154,6 +169,31 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services }: ServicesCatalog
       return true;
     });
   }, [categoryFilter, query, services, typeFilter]);
+
+  async function handleDelete(service: SupplierService) {
+    if (!window.confirm(`Delete ${service.name}?`)) {
+      return;
+    }
+
+    setDeletingServiceId(service.id);
+    setActionError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/services/${service.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not delete service.'));
+      }
+
+      router.refresh();
+    } catch (caughtError) {
+      setActionError(caughtError instanceof Error ? caughtError.message : 'Could not delete service.');
+    } finally {
+      setDeletingServiceId(null);
+    }
+  }
 
   return (
     <div className="catalog-browser-shell">
@@ -208,6 +248,7 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services }: ServicesCatalog
       ) : null}
 
       <section className="catalog-results-grid">
+        {actionError ? <p className="form-error">{actionError}</p> : null}
         {filteredServices.length === 0 ? (
           <article className="catalog-empty-state">
             <h3>No services match the current search</h3>
@@ -241,14 +282,60 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services }: ServicesCatalog
                     Select
                   </Link>
                 ) : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setEditingServiceId((current) => (current === service.id ? null : service.id))}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setRatesServiceId((current) => (current === service.id ? null : service.id))}
+                >
+                  Rates
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={deletingServiceId === service.id}
+                  onClick={() => handleDelete(service)}
+                >
+                  {deletingServiceId === service.id ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
 
-              <ServiceRatesManager
-                apiBaseUrl={apiBaseUrl}
-                serviceId={service.id}
-                initialRates={service.serviceRates || []}
-                showTourismFee={getServiceCategoryKey(service) === 'hotel'}
-              />
+              {editingServiceId === service.id ? (
+                <div className="stacked-card">
+                  <ServicesForm
+                    apiBaseUrl={apiBaseUrl}
+                    serviceTypes={serviceTypes}
+                    suppliers={suppliers}
+                    serviceId={service.id}
+                    submitLabel="Save service"
+                    initialValues={{
+                      supplierId: service.supplierId,
+                      name: service.name,
+                      category: service.category,
+                      serviceTypeId: service.serviceTypeId,
+                      unitType: service.unitType as 'per_person',
+                      baseCost: String(service.baseCost),
+                      currency: service.currency as SupportedCurrency,
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              {ratesServiceId === service.id ? (
+                <ServiceRatesManager
+                  apiBaseUrl={apiBaseUrl}
+                  serviceId={service.id}
+                  initialRates={service.serviceRates || []}
+                  showTourismFee={getServiceCategoryKey(service) === 'hotel'}
+                  defaultOpen
+                />
+              ) : null}
             </article>
           ))
         )}

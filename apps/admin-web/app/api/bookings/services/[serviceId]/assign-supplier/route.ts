@@ -47,3 +47,29 @@ export async function POST(
 
   return NextResponse.redirect(redirectUrl, { status: 303 });
 }
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ serviceId: string }> },
+) {
+  const { serviceId } = await params;
+  const body = await request.json();
+
+  const response = await fetch(`${API_BASE_URL}/bookings/services/${serviceId}/assign-supplier`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildActorHeaders(request),
+    },
+    body: JSON.stringify({
+      supplierId: body.supplierId || null,
+      supplierName: body.supplierName || null,
+    }),
+  });
+
+  if (!response.ok) {
+    return NextResponse.json({ error: 'Failed to assign supplier.' }, { status: response.status });
+  }
+
+  return NextResponse.json(await response.json());
+}

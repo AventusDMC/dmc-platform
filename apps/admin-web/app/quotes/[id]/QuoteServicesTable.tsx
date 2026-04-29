@@ -26,6 +26,10 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  serviceRates?: Array<{
+    pricingMode?: string | null;
+    maxPaxPerUnit?: number | null;
+  }>;
 };
 
 type Hotel = {
@@ -249,6 +253,23 @@ function formatMoney(value: number, currency = 'USD') {
   }).format(value);
 }
 
+function getCapacityPricingHelper(item: QuoteItem, services: SupplierService[]) {
+  const catalogService = services.find((service) => service.id === item.service.id);
+  const serviceRates = item.service.serviceRates?.length ? item.service.serviceRates : catalogService?.serviceRates;
+  const rate = serviceRates?.find(
+    (serviceRate) => serviceRate.pricingMode === 'PER_VEHICLE' || serviceRate.pricingMode === 'per_vehicle',
+  );
+  const pax = Number(item.paxCount || 0);
+  const maxPaxPerUnit = Number(rate?.maxPaxPerUnit || 0);
+
+  if (!rate || pax <= 0 || maxPaxPerUnit <= 0) {
+    return null;
+  }
+
+  const units = Math.ceil(pax / maxPaxPerUnit);
+  return `${units} vehicle${units === 1 ? '' : 's'} required (${pax} pax / ${maxPaxPerUnit} per vehicle)`;
+}
+
 function parseGuideInitialValues(pricingDescription: string | null) {
   const normalized = pricingDescription?.toLowerCase() || '';
 
@@ -465,6 +486,7 @@ function QuoteServiceRow({
   const warnings = buildWarnings(currentItem);
   const itineraryDay = currentItem.itineraryId ? quote.itineraries.find((day) => day.id === currentItem.itineraryId) ?? null : null;
   const marginMetrics = getMarginMetrics(currentItem.totalSell, currentItem.totalCost);
+  const capacityPricingHelper = getCapacityPricingHelper(currentItem, services);
   const status = getServiceStatus(currentItem);
   const supplierStatus = hasMissingSupplier(currentItem) ? 'Missing supplier' : 'Supplier assigned';
 
@@ -585,8 +607,9 @@ function QuoteServiceRow({
       </td>
       <td className="quote-table-number-cell">
         <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
+        {capacityPricingHelper ? <div className="table-subcopy">{capacityPricingHelper}</div> : null}
         <div className="table-subcopy" style={{ color: getMarginColor(marginMetrics.tone) }}>
-          Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Margin {marginMetrics.marginPercent.toFixed(2)}%
+          Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Margin {formatMoney(marginMetrics.margin, currentItem.currency)} ({marginMetrics.marginPercent.toFixed(2)}%)
         </div>
       </td>
       <td>

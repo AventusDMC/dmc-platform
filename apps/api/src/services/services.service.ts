@@ -11,7 +11,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
-type ServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+type ServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_VEHICLE' | 'PER_DAY' | 'per_vehicle';
 
 type CreateSupplierServiceInput = {
   supplierId: string;
@@ -364,7 +364,11 @@ export class ServicesService {
   }
 
   private normalizeServiceRatePricingMode(value: string) {
-    if (value === 'PER_PERSON' || value === 'PER_GROUP' || value === 'PER_DAY') {
+    if (value === 'per_vehicle') {
+      return 'PER_VEHICLE';
+    }
+
+    if (value === 'PER_PERSON' || value === 'PER_GROUP' || value === 'PER_VEHICLE' || value === 'PER_DAY') {
       return value;
     }
 

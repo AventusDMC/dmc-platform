@@ -100,6 +100,10 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  serviceRates?: Array<{
+    pricingMode?: string | null;
+    maxPaxPerUnit?: number | null;
+  }>;
 };
 
 type Hotel = {

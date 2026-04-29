@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
@@ -10,21 +10,83 @@ import { VehiclesForm } from '../vehicles/VehiclesForm';
 type Vehicle = {
   id: string;
   supplierId: string;
+  supplierName?: string | null;
+  supplierStatus?: 'resolved' | 'unresolved' | null;
   name: string;
   maxPax: number;
   luggageCapacity: number;
 };
 
+type Supplier = {
+  id: string;
+  name: string;
+};
+
 type VehiclesTableProps = {
   apiBaseUrl: string;
   vehicles: Vehicle[];
+  suppliers: Supplier[];
 };
 
-export function VehiclesTable({ apiBaseUrl, vehicles }: VehiclesTableProps) {
+export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTableProps) {
   const router = useRouter();
+  const [localVehicles, setLocalVehicles] = useState(vehicles);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assignmentFeedback, setAssignmentFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLocalVehicles(vehicles);
+  }, [vehicles]);
+
+  async function handleAssignSupplier(vehicle: Vehicle, supplierId: string) {
+    if (!supplierId) {
+      return;
+    }
+
+    setAssigningId(vehicle.id);
+    setAssignmentFeedback((current) => {
+      const next = { ...current };
+      delete next[vehicle.id];
+      return next;
+    });
+    try {
+      const response = await fetch(`${apiBaseUrl}/vehicles/${vehicle.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildAuthHeaders(),
+        },
+        body: JSON.stringify({ supplierId }),
+      });
+
+      if (!response.ok) {
+        setAssignmentFeedback((current) => ({ ...current, [vehicle.id]: { type: 'error', message: 'Failed to assign supplier' } }));
+        return;
+      }
+
+      const supplier = suppliers.find((entry) => entry.id === supplierId);
+      setLocalVehicles((current) =>
+        current.map((entry) =>
+          entry.id === vehicle.id
+            ? {
+                ...entry,
+                supplierId,
+                supplierName: supplier?.name || entry.supplierName,
+                supplierStatus: null,
+              }
+            : entry,
+        ),
+      );
+      setAssignmentFeedback((current) => ({ ...current, [vehicle.id]: { type: 'success', message: 'Supplier assigned' } }));
+    } catch {
+      setAssignmentFeedback((current) => ({ ...current, [vehicle.id]: { type: 'error', message: 'Failed to assign supplier' } }));
+    } finally {
+      setAssigningId(null);
+    }
+  }
 
   async function handleDelete(vehicle: Vehicle) {
     if (!window.confirm(`Delete ${vehicle.name}?`)) {
@@ -72,7 +134,7 @@ export function VehiclesTable({ apiBaseUrl, vehicles }: VehiclesTableProps) {
             </tr>
           </thead>
           <tbody>
-            {vehicles.map((vehicle) => {
+            {localVehicles.map((vehicle) => {
               const isEditing = editingId === vehicle.id;
 
               return (
@@ -81,7 +143,29 @@ export function VehiclesTable({ apiBaseUrl, vehicles }: VehiclesTableProps) {
                     <td>
                       <strong>{vehicle.name}</strong>
                     </td>
-                    <td>{vehicle.supplierId}</td>
+                    <td>
+                      {vehicle.supplierName || vehicle.supplierId}
+                      {vehicle.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
+                      {vehicle.supplierStatus === 'unresolved' ? (
+                        <select
+                          defaultValue=""
+                          disabled={assigningId === vehicle.id}
+                          onChange={(event) => handleAssignSupplier(vehicle, event.target.value)}
+                        >
+                          <option value="">Assign supplier</option>
+                          {suppliers.map((supplier) => (
+                            <option key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      {assignmentFeedback[vehicle.id]?.message ? (
+                        <p className={assignmentFeedback[vehicle.id].type === 'error' ? 'form-error' : 'form-helper'}>
+                          {assignmentFeedback[vehicle.id].message}
+                        </p>
+                      ) : null}
+                    </td>
                     <td>{vehicle.maxPax}</td>
                     <td>{vehicle.luggageCapacity}</td>
                     <td>
@@ -91,7 +175,7 @@ export function VehiclesTable({ apiBaseUrl, vehicles }: VehiclesTableProps) {
                           className="compact-button"
                           onClick={() => setEditingId((current) => (current === vehicle.id ? null : vehicle.id))}
                         >
-                          {isEditing ? 'Close edit' : 'Edit'}
+                          {isEditing ? 'Close edit' : vehicle.supplierStatus === 'unresolved' ? 'Assign supplier' : 'Edit'}
                         </button>
                         <button
                           type="button"

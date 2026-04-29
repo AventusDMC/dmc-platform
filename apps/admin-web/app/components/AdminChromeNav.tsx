@@ -69,7 +69,7 @@ export function AdminChromeNav({ mode, sessionRole }: AdminChromeNavProps) {
 
         return (
           <Link
-            key={child.href}
+            key={`${child.href}-${child.label}`}
             href={child.href}
             aria-current={isActiveChild ? 'page' : undefined}
             className={`admin-subnav-link${isActiveChild ? ' admin-subnav-link-active' : ''}`}

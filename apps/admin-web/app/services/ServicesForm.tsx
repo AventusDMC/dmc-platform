@@ -11,6 +11,7 @@ import { ServiceTypeOption } from '../lib/serviceTypes';
 type ServicesFormProps = {
   apiBaseUrl: string;
   serviceTypes: ServiceTypeOption[];
+  suppliers: SupplierOption[];
   serviceId?: string;
   submitLabel?: string;
   initialValues?: {
@@ -24,6 +25,11 @@ type ServicesFormProps = {
   };
 };
 
+type SupplierOption = {
+  id: string;
+  name: string;
+};
+
 const UNIT_TYPES = [
   'per_person',
   'per_room',
@@ -33,7 +39,7 @@ const UNIT_TYPES = [
   'per_day',
 ] as const;
 
-export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel, initialValues }: ServicesFormProps) {
+export function ServicesForm({ apiBaseUrl, serviceTypes, suppliers, serviceId, submitLabel, initialValues }: ServicesFormProps) {
   const router = useRouter();
   const [supplierId, setSupplierId] = useState(initialValues?.supplierId || '');
   const [name, setName] = useState(initialValues?.name || '');
@@ -60,8 +66,14 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel,
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitting(true);
     setError('');
+
+    if (!supplierId) {
+      setError('Supplier is required');
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       const response = await fetch(`${apiBaseUrl}/services${serviceId ? `/${serviceId}` : ''}`, {
@@ -105,8 +117,15 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel,
     <form className="entity-form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
-          Supplier ID
-          <input value={supplierId} onChange={(event) => setSupplierId(event.target.value)} required />
+          Supplier
+          <select value={supplierId} onChange={(event) => setSupplierId(event.target.value)} required>
+            <option value="">Select supplier</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label>
@@ -160,6 +179,7 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, serviceId, submitLabel,
             step="0.01"
             required
           />
+          <p className="form-helper">Detailed pricing is managed in Rates below</p>
         </label>
 
         <label>

@@ -910,6 +910,64 @@ test('quote selling layer applies markup percent, markup amount, and sell overri
   );
 });
 
+test('capacity pricing uses ceil pax over max pax per unit for non per-person service rates', () => {
+  const service = createQuotesService();
+
+  const pricing = (service as any).calculateCentralizedQuoteItemPricing({
+    service: {
+      category: 'Activity',
+      unitType: 'per_group',
+      serviceType: { name: 'Jeep Safari', code: 'ACTIVITY' },
+    },
+    quantity: 1,
+    paxCount: 7,
+    roomCount: 1,
+    nightCount: 1,
+    dayCount: 1,
+    unitCost: 50,
+    markupPercent: 20,
+    quoteCurrency: 'USD',
+    supplierPricing: {
+      costBaseAmount: 50,
+      costCurrency: 'USD',
+    },
+    activityPricingBasis: 'PER_GROUP',
+    capacityMaxPaxPerUnit: 3,
+  });
+
+  assert.equal(pricing.totalCost, 150);
+  assert.equal(pricing.totalSell, 180);
+});
+
+test('capacity max does not change per-person pricing', () => {
+  const service = createQuotesService();
+
+  const pricing = (service as any).calculateCentralizedQuoteItemPricing({
+    service: {
+      category: 'Activity',
+      unitType: 'per_person',
+      serviceType: { name: 'Museum', code: 'ACTIVITY' },
+    },
+    quantity: 1,
+    paxCount: 7,
+    roomCount: 1,
+    nightCount: 1,
+    dayCount: 1,
+    unitCost: 10,
+    markupPercent: 0,
+    quoteCurrency: 'USD',
+    supplierPricing: {
+      costBaseAmount: 10,
+      costCurrency: 'USD',
+    },
+    activityPricingBasis: 'PER_PERSON',
+    capacityMaxPaxPerUnit: 3,
+  });
+
+  assert.equal(pricing.totalCost, 70);
+  assert.equal(pricing.totalSell, 70);
+});
+
 test('quote selling layer rounds decimal markup percent, markup amount, and sell override consistently', () => {
   const service = createQuotesService();
   const pricing = calculateMultiCurrencyQuoteItemPricing({

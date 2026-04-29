@@ -11995,3 +11995,9 @@ textarea:focus,
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+.supplier-warning-badge {
+  display: inline-flex;
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}

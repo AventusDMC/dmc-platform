@@ -19,6 +19,7 @@ import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { blockDelete, requireSupportedCurrency } from '../common/crud.helpers';
+import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -2505,6 +2506,10 @@ export class QuotesService {
         include: {
           serviceType: true,
           entranceFee: true,
+          serviceRates: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       }),
       data.activityId
@@ -2609,6 +2614,42 @@ export class QuotesService {
     let adultCount: number | null = null;
     let childCount: number | null = null;
     let externalPackageData: Record<string, unknown> = {};
+    let capacityMaxPaxPerUnit: number | null = null;
+
+    const serviceRate = (service as any).serviceRates?.[0] as
+      | {
+          costBaseAmount?: number | null;
+          costCurrency?: string | null;
+          salesTaxPercent?: number | null;
+          salesTaxIncluded?: boolean | null;
+          serviceChargePercent?: number | null;
+          serviceChargeIncluded?: boolean | null;
+          tourismFeeAmount?: number | null;
+          tourismFeeCurrency?: string | null;
+          tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+          pricingMode?: 'PER_PERSON' | 'PER_GROUP' | 'PER_VEHICLE' | 'PER_DAY' | string | null;
+          maxPaxPerUnit?: number | null;
+        }
+      | undefined;
+    const serviceRatePricingMode = serviceRate?.pricingMode === 'PER_VEHICLE' ? 'PER_GROUP' : serviceRate?.pricingMode;
+
+    if (serviceRate && serviceRatePricingMode === 'PER_GROUP') {
+      if (Number.isFinite(Number(serviceRate.maxPaxPerUnit)) && Number(serviceRate.maxPaxPerUnit) > 0) {
+        capacityMaxPaxPerUnit = Math.floor(Number(serviceRate.maxPaxPerUnit));
+      }
+
+      baseCost = Number(serviceRate.costBaseAmount ?? baseCost);
+      supplierCostBaseAmount = Number(serviceRate.costBaseAmount ?? supplierCostBaseAmount);
+      supplierCostCurrency = serviceRate.costCurrency ?? supplierCostCurrency;
+      currency = serviceRate.costCurrency ?? currency;
+      salesTaxPercent = Number(serviceRate.salesTaxPercent ?? salesTaxPercent);
+      salesTaxIncluded = Boolean(serviceRate.salesTaxIncluded ?? salesTaxIncluded);
+      serviceChargePercent = Number(serviceRate.serviceChargePercent ?? serviceChargePercent);
+      serviceChargeIncluded = Boolean(serviceRate.serviceChargeIncluded ?? serviceChargeIncluded);
+      tourismFeeAmount = serviceRate.tourismFeeAmount ?? tourismFeeAmount;
+      tourismFeeCurrency = serviceRate.tourismFeeCurrency ?? tourismFeeCurrency;
+      tourismFeeMode = serviceRate.tourismFeeMode ?? tourismFeeMode;
+    }
 
     if (this.isHotelService(service)) {
       const season = data.seasonId
@@ -2951,6 +2992,7 @@ export class QuotesService {
       externalPackagePricingBasis: typeof externalPackageData.externalPricingBasis === 'string' ? externalPackageData.externalPricingBasis : null,
       activityPricingBasis: activity?.pricingBasis ?? null,
       unitCount,
+      capacityMaxPaxPerUnit,
     });
     const manualOverrideApplied = useOverride && overrideCost !== null;
     const finalCost = manualOverrideApplied ? Number(overrideCost.toFixed(2)) : basePricing.totalCost;
@@ -4260,6 +4302,7 @@ export class QuotesService {
     externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
+    capacityMaxPaxPerUnit?: number | null;
   }) {
     if (this.isHotelService(values.service)) {
       return this.calculateHotelItemPricing({
@@ -4337,11 +4380,25 @@ export class QuotesService {
     activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     unitCount?: number | null;
     legacyCurrency?: string | null;
+    capacityMaxPaxPerUnit?: number | null;
   }) {
+    const isPerPersonPricing =
+      values.service.unitType === ServiceUnitType.per_person ||
+      (this.isHotelService(values.service) && values.hotelRatePricingBasis === 'PER_PERSON') ||
+      (this.isExternalPackageService(values.service) && values.externalPackagePricingBasis === 'PER_PERSON') ||
+      (this.isActivityService(values.service) && values.activityPricingBasis === 'PER_PERSON');
+    const capacityUnits =
+      !isPerPersonPricing &&
+      Number.isFinite(Number(values.capacityMaxPaxPerUnit)) &&
+      Number(values.capacityMaxPaxPerUnit) > 0
+        ? Math.ceil(Math.max(1, values.paxCount) / Math.floor(Number(values.capacityMaxPaxPerUnit)))
+        : null;
     const pricingUnits = this.isHotelService(values.service)
       ? values.hotelRatePricingBasis === 'PER_PERSON'
         ? Math.max(1, values.paxCount) * Math.max(1, values.nightCount)
         : Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
+      : capacityUnits !== null
+        ? capacityUnits
       : this.isExternalPackageService(values.service)
         ? values.externalPackagePricingBasis === 'PER_PERSON'
           ? Math.max(1, values.paxCount)
@@ -5620,32 +5677,9 @@ export class QuotesService {
     const orderedItems = (snapshot.quoteItems ?? []).map((item, index) => ({ item, index }));
     const adultCount = Math.max(0, Number(snapshot.adults ?? 0));
     const childCount = Math.max(0, Number(snapshot.children ?? 0));
-    const supplierIds = Array.from(
-      new Set(
-        orderedItems
-          .map(({ item }) => this.getBookingServiceSupplierIdFromSnapshotItem(item))
-          .filter((supplierId): supplierId is string => Boolean(supplierId)),
-      ),
-    );
-    const supplierNamesById = supplierIds.length
-      ? new Map(
-          (
-            await prismaClient.supplier.findMany({
-              where: {
-                id: {
-                  in: supplierIds,
-                },
-              },
-              select: {
-                id: true,
-                name: true,
-              },
-            })
-          ).map((supplier) => [supplier.id, supplier.name]),
-        )
-      : new Map<string, string>();
 
-    return orderedItems
+    return Promise.all(
+      orderedItems
       .filter(({ item }) => !item.optionId)
       .slice()
       .sort((left, right) => {
@@ -5662,7 +5696,7 @@ export class QuotesService {
 
         return left.index - right.index;
       })
-      .map(({ item }, index) => {
+      .map(async ({ item }, index) => {
         const parsedQty = Number(item.quantity);
         const qty = Number.isFinite(parsedQty) && parsedQty > 0 ? Math.floor(parsedQty) : 1;
         const totalCost = Number((item.totalCost ?? 0).toFixed(2));
@@ -5671,11 +5705,14 @@ export class QuotesService {
         const pricingDescription = item.pricingDescription?.trim() || '';
         const description = operationalDescription || pricingDescription || 'Quote service';
         const rawSupplierId = this.getBookingServiceSupplierIdFromSnapshotItem(item);
-        const supplierId = rawSupplierId;
-        const supplierName = rawSupplierId
-          ? supplierNamesById.get(rawSupplierId) ?? this.getBookingServiceSupplierNameFromSnapshotItem(item)
-          : this.getBookingServiceSupplierNameFromSnapshotItem(item);
-        if (!supplierId && supplierName) {
+        const resolvedSupplier = await resolveOperationalSupplier({
+          supplierId: rawSupplierId,
+          supplierName: this.getBookingServiceSupplierNameFromSnapshotItem(item),
+          prisma: prismaClient,
+        });
+        const supplierId = resolvedSupplier.supplierId;
+        const supplierName = resolvedSupplier.supplierName;
+        if (resolvedSupplier.supplierStatus === 'unresolved') {
           console.warn('[quote/convert-to-booking] unresolved supplier', {
             quoteItemId: item.id ?? null,
             supplierName,
@@ -5751,7 +5788,8 @@ export class QuotesService {
           confirmationRequestedAt: null,
           confirmationConfirmedAt: null,
         };
-      });
+      }),
+    );
   }
 
   private buildBookingDaysFromAcceptedVersion(snapshotJson: unknown) {

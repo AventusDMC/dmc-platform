@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
-type ServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+type ServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_VEHICLE' | 'PER_DAY' | 'per_vehicle';
 import { Roles } from '../auth/auth.decorators';
 import { ServicesService } from './services.service';
 

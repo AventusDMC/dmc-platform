@@ -261,6 +261,7 @@ model Activity {
   name              String
   description       String?
   supplierCompanyId String               @db.Uuid
+  supplierId        String?              @db.Uuid
   pricingBasis      ActivityPricingBasis
   costPrice         Float
   sellPrice         Float
@@ -769,6 +770,8 @@ model Hotel {
   city            String
   category        String
   supplierId      String
+  resolvedSupplierId String?             @db.Uuid
+  supplierName    String?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   cityId          String?             @db.Uuid
@@ -1267,6 +1270,7 @@ model ServiceType {
 model SupplierService {
   id                    String          @id @default(uuid()) @db.Uuid
   supplierId            String
+  resolvedSupplierId    String?         @db.Uuid
   name                  String
   category              String
   unitType              ServiceUnitType
@@ -1332,6 +1336,7 @@ model ServiceRate {
   id                    String                 @id @default(uuid()) @db.Uuid
   serviceId             String                 @db.Uuid
   supplierId            String?
+  resolvedSupplierId    String?                @db.Uuid
   costBaseAmount        Float                  @default(0)
   costCurrency          String                 @default("USD")
   pricingMode           ServiceRatePricingMode
@@ -1342,6 +1347,7 @@ model ServiceRate {
   tourismFeeAmount      Float?
   tourismFeeCurrency    String?
   tourismFeeMode        TourismFeeMode?
+  maxPaxPerUnit         Int?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   service               SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -1488,6 +1494,8 @@ model VehicleRate {
 model Vehicle {
   id              String                 @id @default(uuid()) @db.Uuid
   supplierId      String
+  resolvedSupplierId String?             @db.Uuid
+  supplierName    String?
   name            String
   maxPax          Int
   luggageCapacity Int
@@ -1749,6 +1757,7 @@ enum ContractImportStatus {
 enum ServiceRatePricingMode {
   PER_PERSON
   PER_GROUP
+  PER_VEHICLE
   PER_DAY
 }
 

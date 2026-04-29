@@ -12,7 +12,7 @@ type ServiceRate = {
   supplierId: string | null;
   costBaseAmount: number;
   costCurrency: SupportedCurrency;
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY' | 'per_vehicle';
   salesTaxPercent: number;
   salesTaxIncluded: boolean;
   serviceChargePercent: number;
@@ -20,6 +20,7 @@ type ServiceRate = {
   tourismFeeAmount: number | null;
   tourismFeeCurrency: SupportedCurrency | null;
   tourismFeeMode: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+  maxPaxPerUnit: number | null;
 };
 
 type ServiceRatesManagerProps = {
@@ -27,13 +28,14 @@ type ServiceRatesManagerProps = {
   serviceId: string;
   initialRates: ServiceRate[];
   showTourismFee?: boolean;
+  defaultOpen?: boolean;
 };
 
 type FormState = {
   supplierId: string;
   costBaseAmount: string;
   costCurrency: SupportedCurrency;
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY' | 'per_vehicle';
   salesTaxPercent: string;
   salesTaxIncluded: boolean;
   serviceChargePercent: string;
@@ -41,6 +43,7 @@ type FormState = {
   tourismFeeAmount: string;
   tourismFeeCurrency: SupportedCurrency | '';
   tourismFeeMode: '' | 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
+  maxPaxPerUnit: string;
 };
 
 const DEFAULT_FORM_STATE: FormState = {
@@ -55,6 +58,7 @@ const DEFAULT_FORM_STATE: FormState = {
   tourismFeeAmount: '',
   tourismFeeCurrency: '',
   tourismFeeMode: '',
+  maxPaxPerUnit: '',
 };
 
 function formatMoney(value: number, currency: string) {
@@ -78,16 +82,17 @@ function createFormState(rate?: ServiceRate): FormState {
     tourismFeeAmount: rate.tourismFeeAmount === null ? '' : String(rate.tourismFeeAmount),
     tourismFeeCurrency: rate.tourismFeeCurrency || '',
     tourismFeeMode: rate.tourismFeeMode || '',
+    maxPaxPerUnit: rate.maxPaxPerUnit === null ? '' : String(rate.maxPaxPerUnit),
   };
 }
 
-export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showTourismFee = false }: ServiceRatesManagerProps) {
+export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showTourismFee = false, defaultOpen = false }: ServiceRatesManagerProps) {
   const router = useRouter();
   const [editingRateId, setEditingRateId] = useState<string | null>(null);
   const [formState, setFormState] = useState<FormState>(DEFAULT_FORM_STATE);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const rates = initialRates;
 
   function startCreate() {
@@ -130,6 +135,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
           tourismFeeAmount: formState.tourismFeeAmount.trim() ? Number(formState.tourismFeeAmount) : null,
           tourismFeeCurrency: formState.tourismFeeCurrency || null,
           tourismFeeMode: formState.tourismFeeMode || null,
+          maxPaxPerUnit: formState.maxPaxPerUnit.trim() ? Number(formState.maxPaxPerUnit) : null,
         }),
       });
 
@@ -266,8 +272,19 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
                 >
                   <option value="PER_PERSON">Per person</option>
                   <option value="PER_GROUP">Per group</option>
+                  <option value="per_vehicle">Per vehicle</option>
                   <option value="PER_DAY">Per day</option>
                 </select>
+              </label>
+              <label>
+                Max pax per unit
+                <input
+                  value={formState.maxPaxPerUnit}
+                  onChange={(event) => setFormState((current) => ({ ...current, maxPaxPerUnit: event.target.value }))}
+                  type="number"
+                  min="0"
+                  step="1"
+                />
               </label>
             </div>
 

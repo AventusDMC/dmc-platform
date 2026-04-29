@@ -258,6 +258,48 @@ export class ReportsService {
     };
   }
 
+  async getSupplierPayables(actor?: CompanyScopedActor) {
+    requireActorCompanyId(actor);
+
+    const services = (await (this.prisma.bookingService as any).findMany({
+      select: {
+        supplierId: true,
+        supplierName: true,
+        totalCost: true,
+        supplier: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    })) as Array<{
+      supplierId: string | null;
+      supplierName: string | null;
+      totalCost: number | null;
+      supplier: { name: string | null } | null;
+    }>;
+
+    const rowsBySupplier = new Map<string, { supplierId: string | null; supplierName: string; totalCost: number }>();
+
+    for (const service of services) {
+      const supplierId = service.supplierId || null;
+      const supplierName = service.supplier?.name || service.supplierName || supplierId || 'Unassigned supplier';
+      const key = supplierId || 'unassigned';
+      const row = rowsBySupplier.get(key) || { supplierId, supplierName, totalCost: 0 };
+
+      row.totalCost += Number(service.totalCost || 0);
+      rowsBySupplier.set(key, row);
+    }
+
+    return [...rowsBySupplier.values()]
+      .map((row) => ({
+        supplierId: row.supplierId,
+        supplierName: row.supplierName,
+        totalCost: this.roundMoney(row.totalCost),
+      }))
+      .sort((left, right) => right.totalCost - left.totalCost || left.supplierName.localeCompare(right.supplierName));
+  }
+
   async getFinanceSummary(actor?: CompanyScopedActor) {
     const companyId = requireActorCompanyId(actor);
 

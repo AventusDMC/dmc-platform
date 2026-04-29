@@ -10,9 +10,16 @@ const ACTION_API_BASE_URL = '/api';
 type Vehicle = {
   id: string;
   supplierId: string;
+  supplierName?: string | null;
+  supplierStatus?: 'resolved' | 'unresolved' | null;
   name: string;
   maxPax: number;
   luggageCapacity: number;
+};
+
+type Supplier = {
+  id: string;
+  name: string;
 };
 
 async function getVehicles(): Promise<Vehicle[]> {
@@ -21,8 +28,14 @@ async function getVehicles(): Promise<Vehicle[]> {
   });
 }
 
+async function getSuppliers(): Promise<Supplier[]> {
+  return adminPageFetchJson<Supplier[]>(`${API_BASE_URL}/suppliers`, 'Transport suppliers', {
+    cache: 'no-store',
+  });
+}
+
 export async function VehiclesSection() {
-  const vehicles = await getVehicles();
+  const [vehicles, suppliers] = await Promise.all([getVehicles(), getSuppliers()]);
 
   return (
     <TableSectionShell
@@ -36,7 +49,7 @@ export async function VehiclesSection() {
       }
       emptyState={vehicles.length === 0 ? <p className="empty-state">No vehicles yet.</p> : undefined}
     >
-      {vehicles.length > 0 ? <VehiclesTable apiBaseUrl={ACTION_API_BASE_URL} vehicles={vehicles} /> : null}
+      {vehicles.length > 0 ? <VehiclesTable apiBaseUrl={ACTION_API_BASE_URL} vehicles={vehicles} suppliers={suppliers} /> : null}
     </TableSectionShell>
   );
 }

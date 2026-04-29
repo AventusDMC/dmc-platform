@@ -41,6 +41,12 @@ export class ReportsController {
     return this.reportsService.getSupplierPerformance({ startDate, endDate }, actor);
   }
 
+  @Get('supplier-payables')
+  @Roles('admin', 'finance', 'operations')
+  getSupplierPayables(@Actor() actor: AuthenticatedActor) {
+    return this.reportsService.getSupplierPayables(actor);
+  }
+
   @Get('finance-summary')
   @Roles('admin', 'finance')
   getFinanceSummary(@Actor() actor: AuthenticatedActor) {

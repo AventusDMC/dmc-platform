@@ -143,7 +143,59 @@ export function BookingServicesList({
   formatDateTime,
   highlightServiceId,
 }: BookingServicesListProps) {
+  const [localServices, setLocalServices] = useState(services);
   const [highlightedServiceId, setHighlightedServiceId] = useState<string | null>(null);
+  const [assigningServiceId, setAssigningServiceId] = useState<string | null>(null);
+  const [assignmentFeedback, setAssignmentFeedback] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
+
+  async function assignResolvedSupplier(serviceId: string, supplierId: string) {
+    if (!supplierId) {
+      return;
+    }
+
+    setAssigningServiceId(serviceId);
+    setAssignmentFeedback((current) => {
+      const next = { ...current };
+      delete next[serviceId];
+      return next;
+    });
+    try {
+      const response = await fetch(`/api/bookings/services/${serviceId}/assign-supplier`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ supplierId }),
+      });
+
+      if (response.ok) {
+        const assignedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
+        setLocalServices((current) =>
+          current.map((service) =>
+            service.id === serviceId
+              ? {
+                  ...service,
+                  supplierId,
+                  supplierName: assignedSupplier?.name || service.supplierName,
+                  supplierStatus: null,
+                }
+              : service,
+          ),
+        );
+        setAssignmentFeedback((current) => ({ ...current, [serviceId]: { type: 'success', message: 'Supplier assigned' } }));
+      } else {
+        setAssignmentFeedback((current) => ({ ...current, [serviceId]: { type: 'error', message: 'Failed to assign supplier' } }));
+      }
+    } catch {
+      setAssignmentFeedback((current) => ({ ...current, [serviceId]: { type: 'error', message: 'Failed to assign supplier' } }));
+    } finally {
+      setAssigningServiceId(null);
+    }
+  }
+
+  useEffect(() => {
+    setLocalServices(services);
+  }, [services]);
 
   useEffect(() => {
     if (!highlightServiceId) {
@@ -184,7 +236,7 @@ export function BookingServicesList({
           </tr>
         </thead>
         <tbody>
-      {services.map((service) => {
+      {localServices.map((service) => {
         const mappedSupplierType = mapBookingServiceTypeToSupplierType(service.serviceType);
         const matchingSuppliers = mappedSupplierType ? suppliers.filter((supplier) => supplier.type === mappedSupplierType) : [];
         const supplierOptions = matchingSuppliers.length > 0 ? matchingSuppliers : suppliers;
@@ -229,7 +281,7 @@ export function BookingServicesList({
             </td>
             <td>
               <RowDetailsPanel
-                summary="Open details"
+                summary={service.supplierStatus === 'unresolved' ? 'Assign supplier' : 'Open details'}
                 description="Assignment, confirmation, operational detail, and audit"
                 className="operations-row-details"
                 bodyClassName="operations-row-details-body"
@@ -256,11 +308,15 @@ export function BookingServicesList({
                   </div>
 
                   <InlineRowEditorShell>
-                    <form action={`/api/bookings/services/${service.id}/assign-supplier`} method="POST">
-                      <input type="hidden" name="serviceId" value={service.id} />
+                    {service.supplierStatus === 'unresolved' ? (
                       <label>
                         Supplier
-                        <select name="supplierId" defaultValue={service.supplierId || ''}>
+                        <select
+                          name="supplierId"
+                          defaultValue=""
+                          disabled={assigningServiceId === service.id}
+                          onChange={(event) => assignResolvedSupplier(service.id, event.target.value)}
+                        >
                           <option value="">Select supplier</option>
                           {supplierOptions.map((supplier) => (
                             <option key={supplier.id} value={supplier.id}>
@@ -269,13 +325,33 @@ export function BookingServicesList({
                           ))}
                         </select>
                       </label>
-                      <div className="quote-status-actions">
-                        <button type="submit" className="secondary-button">
-                          Assign supplier
-                        </button>
-                      </div>
-                    </form>
+                    ) : (
+                      <form action={`/api/bookings/services/${service.id}/assign-supplier`} method="POST">
+                        <input type="hidden" name="serviceId" value={service.id} />
+                        <label>
+                          Supplier
+                          <select name="supplierId" defaultValue={service.supplierId || ''}>
+                            <option value="">Select supplier</option>
+                            {supplierOptions.map((supplier) => (
+                              <option key={supplier.id} value={supplier.id}>
+                                {supplier.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="quote-status-actions">
+                          <button type="submit" className="secondary-button">
+                            Assign supplier
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </InlineRowEditorShell>
+                  {assignmentFeedback[service.id]?.message ? (
+                    <p className={assignmentFeedback[service.id].type === 'error' ? 'form-error' : 'form-helper'}>
+                      {assignmentFeedback[service.id].message}
+                    </p>
+                  ) : null}
 
                   <InlineRowEditorShell>
                     <form action={`/api/bookings/services/${service.id}/confirmation`} method="POST">

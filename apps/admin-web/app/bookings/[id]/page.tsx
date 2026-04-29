@@ -937,11 +937,11 @@ function resolveActiveBookingTab(tab?: string): BookingDetailTab {
 }
 
 export default async function BookingPage({ params, searchParams }: BookingPageProps) {
-  const { id } = await params;
+  const bookingId = (await params).id;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveBookingTab(resolvedSearchParams?.tab);
   const highlightServiceId = resolvedSearchParams?.service?.trim() || undefined;
-  const [booking, suppliers, vehicles, transportRoutes] = await Promise.all([getBooking(id), getSuppliers(), getVehicles(), getRoutes()]);
+  const [booking, suppliers, vehicles, transportRoutes] = await Promise.all([getBooking(bookingId), getSuppliers(), getVehicles(), getRoutes()]);
   const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
 
   if (!booking) {

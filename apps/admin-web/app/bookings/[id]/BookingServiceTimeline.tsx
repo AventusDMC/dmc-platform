@@ -286,7 +286,7 @@ export function BookingServiceTimeline({
                       <BookingOperationsStatusBadge kind="confirmation" status={service.confirmationStatus} />
                     </div>
                     <RowDetailsPanel
-                      summary="Manage"
+                      summary={service.supplierStatus === 'unresolved' ? 'Assign supplier' : 'Manage'}
                       className="operations-row-details"
                       bodyClassName="operations-row-details-body"
                     >

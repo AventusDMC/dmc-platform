@@ -36,6 +36,11 @@ type SupplierService = {
   serviceRates: ServiceRate[];
 };
 
+type SupplierOption = {
+  id: string;
+  name: string;
+};
+
 async function getServices(): Promise<SupplierService[]> {
   return adminPageFetchJson<SupplierService[]>(`${API_BASE_URL}/services`, 'Catalog services', {
     cache: 'no-store',
@@ -48,8 +53,14 @@ async function getServiceTypes(): Promise<ServiceTypeOption[]> {
   });
 }
 
+async function getSuppliers(): Promise<SupplierOption[]> {
+  return adminPageFetchJson<SupplierOption[]>(`${API_BASE_URL}/suppliers`, 'Catalog service suppliers', {
+    cache: 'no-store',
+  });
+}
+
 export async function ServicesCatalogSection() {
-  const [services, serviceTypes] = await Promise.all([getServices(), getServiceTypes()]);
+  const [services, serviceTypes, suppliers] = await Promise.all([getServices(), getServiceTypes(), getSuppliers()]);
 
   return (
     <TableSectionShell
@@ -58,12 +69,12 @@ export async function ServicesCatalogSection() {
       context={<p>{services.length} services in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create service" description="Add supplier-managed catalog services without leaving the list." triggerLabelOpen="Add service">
-          <ServicesForm apiBaseUrl="/api" serviceTypes={serviceTypes} />
+          <ServicesForm apiBaseUrl="/api" serviceTypes={serviceTypes} suppliers={suppliers} />
         </CollapsibleCreatePanel>
       }
       emptyState={services.length === 0 ? <p className="empty-state">No services yet.</p> : undefined}
     >
-      {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl="/api" services={services} /> : null}
+      {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl="/api" services={services} serviceTypes={serviceTypes} suppliers={suppliers} /> : null}
     </TableSectionShell>
   );
 }

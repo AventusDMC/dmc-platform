@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { blockDelete, normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
+import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateHotelInput = {
@@ -54,7 +55,7 @@ export class HotelsService {
       },
     });
 
-    return hotels.map((hotel) => this.serializeHotel(hotel));
+    return Promise.all(hotels.map((hotel) => this.serializeHotel(hotel)));
   }
 
   async findOne(id: string) {
@@ -100,6 +101,7 @@ export class HotelsService {
       category: data.category,
       hotelCategoryId: data.hotelCategoryId,
     });
+    await this.warnUnresolvedSupplierId(data.supplierId, 'create');
 
     const hotel = await this.prisma.hotel.create({
       data: {
@@ -136,6 +138,9 @@ export class HotelsService {
             fallbackCategoryName: existing.category,
           })
         : { hotelCategoryId: existing.hotelCategoryId, categoryName: existing.category };
+    if (data.supplierId !== undefined) {
+      await this.warnUnresolvedSupplierId(data.supplierId, 'update');
+    }
 
     const hotel = await this.prisma.hotel.update({
       where: { id },
@@ -306,20 +311,45 @@ export class HotelsService {
     throw new BadRequestException('category is required');
   }
 
-  private serializeHotel<
+  private async serializeHotel<
     T extends {
       category: string;
       city: string;
+      supplierId: string;
+      supplierName?: string | null;
+      resolvedSupplierId?: string | null;
       cityRecord: { id: string; name: string; country: string | null; isActive: boolean } | null;
       hotelCategory: { id: string; name: string; isActive: boolean } | null;
     },
   >(
     hotel: T,
   ) {
+    const supplier = await resolveOperationalSupplier({
+      supplierId: hotel.resolvedSupplierId ?? hotel.supplierId,
+      supplierName: hotel.supplierName ?? hotel.supplierId,
+      prisma: this.prisma,
+    });
+
     return {
       ...hotel,
       city: hotel.cityRecord?.name || hotel.city,
       category: hotel.hotelCategory?.name || hotel.category,
+      supplierName: supplier.supplierName,
+      supplierStatus: supplier.supplierStatus,
     };
+  }
+
+  private async warnUnresolvedSupplierId(supplierId: string | null | undefined, action: 'create' | 'update') {
+    const supplier = await resolveOperationalSupplier({
+      supplierId,
+      prisma: this.prisma,
+    });
+
+    if (supplier.supplierStatus === 'unresolved') {
+      console.warn('[hotels] unresolved supplierId on catalog write', {
+        action,
+        supplierId,
+      });
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, throwIfNotFound } from '../common/crud.helpers';
+import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateVehicleInput = {
@@ -15,12 +16,14 @@ type UpdateVehicleInput = Partial<CreateVehicleInput>;
 export class VehiclesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.vehicle.findMany({
+  async findAll() {
+    const vehicles = await this.prisma.vehicle.findMany({
       orderBy: {
         createdAt: 'desc',
       },
     });
+
+    return Promise.all(vehicles.map((vehicle) => this.serializeVehicle(vehicle)));
   }
 
   async findOne(id: string) {
@@ -35,10 +38,12 @@ export class VehiclesService {
       },
     });
 
-    return throwIfNotFound(vehicle, 'Vehicle');
+    return this.serializeVehicle(throwIfNotFound(vehicle, 'Vehicle'));
   }
 
-  create(data: CreateVehicleInput) {
+  async create(data: CreateVehicleInput) {
+    await this.warnUnresolvedSupplierId(data.supplierId, 'create');
+
     return this.prisma.vehicle.create({
       data: {
         supplierId: data.supplierId.trim(),
@@ -51,6 +56,9 @@ export class VehiclesService {
 
   async update(id: string, data: UpdateVehicleInput) {
     await this.findOne(id);
+    if (data.supplierId !== undefined) {
+      await this.warnUnresolvedSupplierId(data.supplierId, 'update');
+    }
 
     return this.prisma.vehicle.update({
       where: { id },
@@ -74,5 +82,33 @@ export class VehiclesService {
     return this.prisma.vehicle.delete({
       where: { id },
     });
+  }
+
+  private async serializeVehicle<T extends { supplierId: string; supplierName?: string | null; resolvedSupplierId?: string | null }>(vehicle: T) {
+    const supplier = await resolveOperationalSupplier({
+      supplierId: vehicle.resolvedSupplierId ?? vehicle.supplierId,
+      supplierName: vehicle.supplierName ?? vehicle.supplierId,
+      prisma: this.prisma,
+    });
+
+    return {
+      ...vehicle,
+      supplierName: supplier.supplierName,
+      supplierStatus: supplier.supplierStatus,
+    };
+  }
+
+  private async warnUnresolvedSupplierId(supplierId: string | null | undefined, action: 'create' | 'update') {
+    const supplier = await resolveOperationalSupplier({
+      supplierId,
+      prisma: this.prisma,
+    });
+
+    if (supplier.supplierStatus === 'unresolved') {
+      console.warn('[vehicles] unresolved supplierId on catalog write', {
+        action,
+        supplierId,
+      });
+    }
   }
 }

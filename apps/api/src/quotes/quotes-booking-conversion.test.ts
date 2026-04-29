@@ -500,11 +500,7 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
       }),
     },
     supplier: {
-      findMany: async ({ where }: any) =>
-        [
-          { id: 'supplier-hotel', name: 'Jordan Hotel Supplier' },
-          { id: 'supplier-egypt', name: 'Egypt Partner DMC' },
-        ].filter((supplier) => where.id.in.includes(supplier.id)),
+      findUnique: async () => null,
     },
     booking: {
       findFirst: async () => null,
@@ -544,16 +540,16 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
 
   const hotelService = bookingCreateData.services.create.find((entry: any) => entry.sourceQuoteItemId === 'item-jordan-hotel');
   assert.equal(hotelService.operationType, 'HOTEL');
-  assert.equal(hotelService.supplierId, 'supplier-hotel');
-  assert.equal(hotelService.supplierName, 'Jordan Hotel Supplier');
+  assert.equal(hotelService.supplierId, null);
+  assert.equal(hotelService.supplierName, 'supplier-hotel');
   assert.equal(hotelService.totalCost, 240);
   assert.equal(hotelService.totalSell, 300);
 
   const externalPackageService = bookingCreateData.services.create.find((entry: any) => entry.sourceQuoteItemId === 'item-egypt-package');
   assert.equal(externalPackageService.operationType, 'EXTERNAL_PACKAGE');
   assert.equal(externalPackageService.serviceType, 'External Package');
-  assert.equal(externalPackageService.supplierId, 'supplier-egypt');
-  assert.equal(externalPackageService.supplierName, 'Egypt Partner DMC');
+  assert.equal(externalPackageService.supplierId, null);
+  assert.equal(externalPackageService.supplierName, 'supplier-egypt');
   assert.equal(externalPackageService.description, 'Egypt Cairo Extension');
   assert.equal(externalPackageService.notes, 'Egypt external package | per group');
   assert.equal(externalPackageService.totalCost, 900);
@@ -563,7 +559,6 @@ test('accepted multi-country quote conversion creates booking with hotel and ext
 test('accepted DMC quote conversion preserves transport service for client and supplier companies different from actor', async () => {
   let bookingCreateData: any;
   const quoteLookupWheres: any[] = [];
-  let supplierLookupWhere: any;
   const tx = {
     quote: {
       findFirst: async ({ where }: any) => {
@@ -622,10 +617,7 @@ test('accepted DMC quote conversion preserves transport service for client and s
       }),
     },
     supplier: {
-      findMany: async ({ where }: any) => {
-        supplierLookupWhere = where;
-        return [{ id: 'supplier-company-1', name: 'Independent Transport Supplier' }];
-      },
+      findUnique: async () => null,
     },
     booking: {
       findFirst: async () => null,
@@ -660,19 +652,15 @@ test('accepted DMC quote conversion preserves transport service for client and s
 
   const transportService = bookingCreateData.services.create[0];
   assert.equal(transportService.operationType, 'TRANSPORT');
-  assert.equal(transportService.supplierId, 'supplier-company-1');
-  assert.equal(transportService.supplierName, 'Independent Transport Supplier');
+  assert.equal(transportService.supplierId, null);
+  assert.equal(transportService.supplierName, 'supplier-company-1');
   assert.equal(transportService.totalCost, 120);
   assert.equal(transportService.totalSell, 165);
   assert.equal(transportService.status, 'ready');
-  assert.deepEqual(supplierLookupWhere, { id: { in: ['supplier-company-1'] } });
-  assert.equal((supplierLookupWhere as any).companyId, undefined);
-  assert.equal((supplierLookupWhere as any).clientCompanyId, undefined);
 });
 
 test('accepted DMC quote conversion preserves activity booking service for external client and supplier', async () => {
   let bookingCreateData: any;
-  let supplierLookupWhere: any;
   const tx = {
     quote: {
       findFirst: async ({ where }: any) => {
@@ -732,10 +720,7 @@ test('accepted DMC quote conversion preserves activity booking service for exter
       }),
     },
     supplier: {
-      findMany: async ({ where }: any) => {
-        supplierLookupWhere = where;
-        return [{ id: 'supplier-activity-1', name: 'Petra Experiences Supplier' }];
-      },
+      findUnique: async () => null,
     },
     booking: {
       findFirst: async () => null,
@@ -769,13 +754,12 @@ test('accepted DMC quote conversion preserves activity booking service for exter
   assert.equal(activityService.operationType, 'ACTIVITY');
   assert.equal(activityService.activityId, 'catalog-activity-1');
   assert.equal(activityService.serviceType, 'Activity');
-  assert.equal(activityService.supplierId, 'supplier-activity-1');
-  assert.equal(activityService.supplierName, 'Petra Experiences Supplier');
+  assert.equal(activityService.supplierId, null);
+  assert.equal(activityService.supplierName, 'supplier-activity-1');
   assert.equal(activityService.totalCost, 140);
   assert.equal(activityService.totalSell, 210);
   assert.equal(activityService.participantCount, 4);
   assert.equal(activityService.pickupLocation, 'Hotel lobby');
-  assert.deepEqual(supplierLookupWhere, { id: { in: ['supplier-activity-1'] } });
 });
 
 test('buildBookingServicesFromAcceptedVersion carries resolved supplier and ready status into booking services', async () => {
@@ -845,12 +829,13 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
     },
     {
       supplier: {
-        findMany: async () => [
-          {
-            id: supplierId,
-            name: 'Desert Compass Transport',
-          },
-        ],
+        findUnique: async ({ where }: any) =>
+          where.id === supplierId
+            ? {
+                id: supplierId,
+                name: 'Desert Compass Transport',
+              }
+            : null,
       },
     },
   );
@@ -912,7 +897,7 @@ test('buildBookingServicesFromAcceptedVersion logs unresolved supplier names wit
       },
       {
         supplier: {
-          findMany: async () => [],
+          findUnique: async () => null,
         },
       },
     );

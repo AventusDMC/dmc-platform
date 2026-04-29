@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { buildFinanceBadge } from './booking-finance-badge';
 import { buildOperationsBadge } from './booking-operations-badge';
 import { buildRoomingBadge } from './booking-rooming-badge';
@@ -287,6 +288,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async findOne(id: string, actor?: CompanyScopedActor): Promise<any> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      throw new BadRequestException('Invalid booking id');
+    }
+
     const bookingWhere = this.buildBookingCompanyWhere(actor);
     const baseBooking = await (this.prisma.booking as any).findFirst({
       where: {
@@ -3575,6 +3580,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     data: {
       type?: string | null;
       supplierId?: string | null;
+      supplierName?: string | null;
       referenceId?: string | null;
       assignedTo?: string | null;
       guidePhone?: string | null;
@@ -3735,110 +3741,54 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         }
 
         await this.assertLatestBookingAmendment(bookingService.bookingId);
-        if (!data.supplierId) {
-          const nextSupplierName = data.supplierName ?? null;
-          const nextStatus = this.resolveBookingServiceLifecycleStatus({
-            currentStatus: bookingService.status,
-            serviceType: bookingService.serviceType,
-            serviceDate: bookingService.serviceDate,
-            supplierId: null,
-            supplierName: nextSupplierName,
-            totalCost: bookingService.totalCost,
-            totalSell: bookingService.totalSell,
-            confirmationStatus: bookingService.confirmationStatus,
-          });
+        const resolvedSupplier = await resolveOperationalSupplier({
+          supplierId: data.supplierId,
+          supplierName: data.supplierName,
+          prisma: this.prisma,
+        });
+        const nextStatus = this.resolveBookingServiceLifecycleStatus({
+          currentStatus: bookingService.status,
+          serviceType: bookingService.serviceType,
+          serviceDate: bookingService.serviceDate,
+          supplierId: resolvedSupplier.supplierId,
+          supplierName: resolvedSupplier.supplierName,
+          totalCost: bookingService.totalCost,
+          totalSell: bookingService.totalSell,
+          confirmationStatus: bookingService.confirmationStatus,
+        });
 
-          return this.prisma.$transaction(async (tx) => {
-            const updatedBookingService = await tx.bookingService.update({
-              where: { id: bookingServiceId },
-              data: {
-                supplierId: null,
-                supplierName: nextSupplierName,
-                status: nextStatus,
-              },
-            });
-
-            await this.createAuditLog(tx, {
-              bookingId: bookingService.bookingId,
-              bookingServiceId: bookingService.id,
-              entityType: BookingAuditEntityType.booking_service,
-              entityId: bookingService.id,
-              action: 'service_supplier_assigned',
-              oldValue: this.formatSupplierAuditValue(bookingService.supplierId, bookingService.supplierName),
-              newValue: this.formatSupplierAuditValue(null, nextSupplierName),
-              actor,
-            });
-
-            await this.createServiceLifecycleAuditIfChanged(tx, {
-              bookingId: bookingService.bookingId,
-              bookingServiceId: bookingService.id,
-              oldStatus: bookingService.status,
-              newStatus: nextStatus,
-              action: 'service_status_recalculated',
-              actor,
-            });
-
-            return updatedBookingService;
-          });
-        }
-
-        return this.prisma.supplier
-          .findUnique({
-            where: { id: data.supplierId },
-            select: {
-              id: true,
-              name: true,
+        return this.prisma.$transaction(async (tx) => {
+          const updatedBookingService = await tx.bookingService.update({
+            where: { id: bookingServiceId },
+            data: {
+              supplierId: resolvedSupplier.supplierId,
+              supplierName: resolvedSupplier.supplierName,
+              status: nextStatus,
             },
-          })
-          .then((supplier) => {
-            if (!supplier) {
-              throw new NotFoundException('Supplier not found');
-            }
-
-            const nextStatus = this.resolveBookingServiceLifecycleStatus({
-              currentStatus: bookingService.status,
-              serviceType: bookingService.serviceType,
-              serviceDate: bookingService.serviceDate,
-              supplierId: supplier.id,
-              supplierName: supplier.name,
-              totalCost: bookingService.totalCost,
-              totalSell: bookingService.totalSell,
-              confirmationStatus: bookingService.confirmationStatus,
-            });
-
-            return this.prisma.$transaction(async (tx) => {
-              const updatedBookingService = await tx.bookingService.update({
-                where: { id: bookingServiceId },
-                data: {
-                  supplierId: supplier.id,
-                  supplierName: supplier.name,
-                  status: nextStatus,
-                },
-              });
-
-              await this.createAuditLog(tx, {
-                bookingId: bookingService.bookingId,
-                bookingServiceId: bookingService.id,
-                entityType: BookingAuditEntityType.booking_service,
-                entityId: bookingService.id,
-                action: 'service_supplier_assigned',
-                oldValue: this.formatSupplierAuditValue(bookingService.supplierId, bookingService.supplierName),
-                newValue: this.formatSupplierAuditValue(supplier.id, supplier.name),
-                actor,
-              });
-
-              await this.createServiceLifecycleAuditIfChanged(tx, {
-                bookingId: bookingService.bookingId,
-                bookingServiceId: bookingService.id,
-                oldStatus: bookingService.status,
-                newStatus: nextStatus,
-                action: 'service_status_recalculated',
-                actor,
-              });
-
-              return updatedBookingService;
-            });
           });
+
+          await this.createAuditLog(tx, {
+            bookingId: bookingService.bookingId,
+            bookingServiceId: bookingService.id,
+            entityType: BookingAuditEntityType.booking_service,
+            entityId: bookingService.id,
+            action: 'service_supplier_assigned',
+            oldValue: this.formatSupplierAuditValue(bookingService.supplierId, bookingService.supplierName),
+            newValue: this.formatSupplierAuditValue(resolvedSupplier.supplierId, resolvedSupplier.supplierName),
+            actor,
+          });
+
+          await this.createServiceLifecycleAuditIfChanged(tx, {
+            bookingId: bookingService.bookingId,
+            bookingServiceId: bookingService.id,
+            oldStatus: bookingService.status,
+            newStatus: nextStatus,
+            action: 'service_status_recalculated',
+            actor,
+          });
+
+          return updatedBookingService;
+        });
       });
   }
 
@@ -5082,6 +5032,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     data: {
       type?: string | null;
       supplierId?: string | null;
+      supplierName?: string | null;
       referenceId?: string | null;
       assignedTo?: string | null;
       guidePhone?: string | null;
@@ -5110,7 +5061,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     let supplierId =
       data.supplierId === undefined ? currentService?.supplierId ?? null : this.normalizeOptionalText(data.supplierId);
-    let supplierName = currentService?.supplierName ?? null;
+    let supplierName =
+      data.supplierName !== undefined ? this.normalizeOptionalText(data.supplierName) : currentService?.supplierName ?? null;
     let vehicleName = currentService?.vehicle?.name ?? null;
     let routeName: string | null = null;
 
@@ -5147,20 +5099,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       routeName = route.name;
     }
 
-    if (supplierId) {
-      const supplier = await this.prisma.supplier.findUnique({
-        where: { id: supplierId },
-        select: { id: true, name: true },
-      });
-
-      if (!supplier) {
-        throw new NotFoundException('Supplier not found');
-      }
-
-      supplierName = supplier.name;
-    } else {
-      supplierName = null;
-    }
+    const resolvedSupplier = await resolveOperationalSupplier({
+      supplierId,
+      supplierName,
+      prisma: this.prisma,
+    });
+    supplierId = resolvedSupplier.supplierId;
+    supplierName = resolvedSupplier.supplierName;
 
     if (type === BookingOperationServiceType.GUIDE && !assignedTo) {
       throw new BadRequestException('Guide booking service requires assignedTo');
@@ -6917,11 +6862,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     const voucherType = this.resolveVoucherType(bookingService);
     const supplierId = this.normalizeOptionalText(bookingService.supplierId);
-    if (!supplierId) {
-      throw new BadRequestException('Supplier must be assigned before voucher generation');
-    }
-    if (!bookingService.supplier) {
-      throw new BadRequestException('Assigned supplier could not be found');
+    if (!supplierId || !bookingService.supplier) {
+      throw new BadRequestException('Supplier must be resolved before voucher generation');
     }
 
     await this.assertVoucherRequiredFields(bookingService, voucherType);
