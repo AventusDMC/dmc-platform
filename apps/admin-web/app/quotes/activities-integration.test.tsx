@@ -5,6 +5,8 @@ import { describe, it } from 'node:test';
 const quotePageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./[id]/QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quotePlannerSource = readFileSync(new URL('./[id]/QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteAutoItineraryBuilderSource = readFileSync(new URL('./[id]/QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
+const quoteItineraryTabSource = readFileSync(new URL('./[id]/QuoteItineraryTab.tsx', import.meta.url), 'utf8');
 const quoteVersionPageSource = readFileSync(new URL('./[id]/versions/[versionId]/page.tsx', import.meta.url), 'utf8');
 const bookingPageSource = readFileSync(new URL('../bookings/[id]/page.tsx', import.meta.url), 'utf8');
 const bookingCssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
@@ -81,17 +83,42 @@ describe('activities quote and booking UI integration regression', () => {
 
   it('keeps Base Program expanded after itinerary generation and refresh', () => {
     expectSourceContains(quotePlannerSource, [
-      'const hasSavedItineraryDays = props.quote.itineraries.length > 0;',
+      'const itineraryDays = localItineraries;',
+      'return currentItineraries;',
       "setSelectedScopeId('shared');",
       'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
-      '<section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">',
+      '<section className="workspace-panel-shared quote-base-program-panel-open" data-locked={itineraryDays.length === 0 ? \'true\' : \'false\'}>',
       '<div id="quote-base-program-days">',
       "{ category: 'hotel', label: 'Add Hotel' }",
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",
     ]);
-    assert.doesNotMatch(quotePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'/);
+    assert.doesNotMatch(quotePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'|workspace-tab-panel workspace-panel-shared/);
+  });
+
+  it('keeps assign-service controls unlocked after Apply Itinerary refreshes', () => {
+    expectSourceContains(quoteAutoItineraryBuilderSource, [
+      'Apply Itinerary',
+      'notifySavedDaysReady(savedDays);',
+      'router.refresh();',
+    ]);
+
+    expectSourceContains(quotePlannerSource, [
+      'setLocalItineraries(detail.days);',
+      "setSelectedScopeId('shared');",
+      'return currentItineraries;',
+      'data-locked={itineraryDays.length === 0 ? \'true\' : \'false\'}',
+      '<section className="workspace-panel-shared quote-base-program-panel-open"',
+    ]);
+
+    expectSourceContains(quoteItineraryTabSource, [
+      '<p className="eyebrow">Assign services</p>',
+      '<h3>Add existing quote service</h3>',
+      '<QuoteItineraryDayItemForm apiBaseUrl={apiBaseUrl} dayId={day.id} services={assignableServices} />',
+    ]);
+
+    assert.doesNotMatch(bookingCssSource, /workspace-tabs:has\(#tab-shared:checked\) \.workspace-panel-shared/);
   });
 
   it('shows converted activity services on booking itinerary with activityId preserved', () => {

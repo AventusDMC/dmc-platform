@@ -1396,12 +1396,9 @@ h1 {
   padding: 1rem;
 }
 
-.workspace-tabs:has(#tab-shared:checked) .workspace-panel-shared {
-  display: block;
-}
-
 .quote-service-planner .quote-base-program-panel-open {
   display: block;
+  padding: 1rem;
 }
 
 .service-entry {

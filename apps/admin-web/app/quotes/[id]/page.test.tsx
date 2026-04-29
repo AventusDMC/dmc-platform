@@ -225,16 +225,18 @@ describe('quote detail page regression', () => {
       'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
       'const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));',
       "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
+      'const itineraryDays = localItineraries;',
+      'return currentItineraries;',
       "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
       'setOpenDayIds(new Set(detail.days.map((day) => day.id)));',
       "setSelectedScopeId('shared');",
       'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
-      '<section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">',
+      '<section className="workspace-panel-shared quote-base-program-panel-open" data-locked={itineraryDays.length === 0 ? \'true\' : \'false\'}>',
       "checked={selectedScopeId === scope.id}",
       '<div id="quote-base-program-days">',
       'plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState}',
     ]);
-    assert.doesNotMatch(quoteServicePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'/);
+    assert.doesNotMatch(quoteServicePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'|workspace-tab-panel workspace-panel-shared/);
 
     expectSourceContains(quoteAutoItineraryBuilderSource, [
       'async function applyItinerary(draft: PreviewDraft)',

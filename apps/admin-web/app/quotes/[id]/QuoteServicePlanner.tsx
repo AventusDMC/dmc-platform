@@ -1074,10 +1074,10 @@ function ScopePlanner({
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
-  const hasSavedItineraryDays = props.quote.itineraries.length > 0;
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
   const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
+  const itineraryDays = localItineraries;
   const plannerQuote = { ...props.quote, itineraries: localItineraries };
   const quoteIdRef = useRef(props.quote.id);
   const scopes: PlannerScope[] = [
@@ -1095,17 +1095,27 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   ];
 
   useEffect(() => {
-    setLocalItineraries(props.quote.itineraries);
+    const quoteChanged = quoteIdRef.current !== props.quote.id;
+    const savedDayIds = props.quote.itineraries.map((day) => day.id);
 
-    if (hasSavedItineraryDays) {
+    if (quoteChanged) {
+      quoteIdRef.current = props.quote.id;
+    }
+
+    setLocalItineraries((currentItineraries) => {
+      if (quoteChanged || props.quote.itineraries.length > 0) {
+        return props.quote.itineraries;
+      }
+
+      return currentItineraries;
+    });
+
+    if (props.quote.itineraries.length > 0) {
       setSelectedScopeId('shared');
     }
 
     setOpenDayIds((currentOpenDayIds) => {
-      const savedDayIds = props.quote.itineraries.map((day) => day.id);
-
-      if (quoteIdRef.current !== props.quote.id) {
-        quoteIdRef.current = props.quote.id;
+      if (quoteChanged) {
         return new Set(savedDayIds);
       }
 
@@ -1113,7 +1123,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       savedDayIds.forEach((dayId) => nextOpenDayIds.add(dayId));
       return nextOpenDayIds;
     });
-  }, [hasSavedItineraryDays, props.quote.id, props.quote.itineraries]);
+  }, [props.quote.id, props.quote.itineraries]);
 
   useEffect(() => {
     function handleDaysReady(event: Event) {
@@ -1220,7 +1230,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       </div>
 
       <div className="workspace-tab-panels">
-        <section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">
+        <section className="workspace-panel-shared quote-base-program-panel-open" data-locked={itineraryDays.length === 0 ? 'true' : 'false'}>
           <div id="quote-base-program-days">
             <ScopePlanner scope={scopes[0]} plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState} />
           </div>
