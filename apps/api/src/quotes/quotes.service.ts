@@ -2631,7 +2631,10 @@ export class QuotesService {
           maxPaxPerUnit?: number | null;
         }
       | undefined;
-    const serviceRatePricingMode = serviceRate?.pricingMode === 'PER_VEHICLE' ? 'PER_GROUP' : serviceRate?.pricingMode;
+    const serviceRatePricingMode =
+      serviceRate?.pricingMode === 'PER_VEHICLE' || serviceRate?.pricingMode === 'per_vehicle'
+        ? 'PER_GROUP'
+        : serviceRate?.pricingMode;
 
     if (serviceRate && serviceRatePricingMode === 'PER_GROUP') {
       if (Number.isFinite(Number(serviceRate.maxPaxPerUnit)) && Number(serviceRate.maxPaxPerUnit) > 0) {

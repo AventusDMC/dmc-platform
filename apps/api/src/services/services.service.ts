@@ -364,11 +364,11 @@ export class ServicesService {
   }
 
   private normalizeServiceRatePricingMode(value: string) {
-    if (value === 'per_vehicle') {
-      return 'PER_VEHICLE';
+    if (value === 'PER_VEHICLE' || value === 'per_vehicle') {
+      return 'PER_GROUP';
     }
 
-    if (value === 'PER_PERSON' || value === 'PER_GROUP' || value === 'PER_VEHICLE' || value === 'PER_DAY') {
+    if (value === 'PER_PERSON' || value === 'PER_GROUP' || value === 'PER_DAY') {
       return value;
     }
 

@@ -53,12 +53,13 @@ function createFormState(rate?: ServiceRate): FormState {
   if (!rate) {
     return DEFAULT_FORM_STATE;
   }
+  const isCapacityGroupRate = rate.pricingMode === 'PER_GROUP' && rate.maxPaxPerUnit != null;
 
   return {
     supplierId: rate.supplierId || '',
     costBaseAmount: String(rate.costBaseAmount),
     costCurrency: rate.costCurrency,
-    pricingMode: rate.pricingMode,
+    pricingMode: isCapacityGroupRate || rate.pricingMode === 'PER_VEHICLE' ? 'per_vehicle' : rate.pricingMode,
     salesTaxPercent: rate.salesTaxPercent ? String(rate.salesTaxPercent) : '',
     salesTaxIncluded: Boolean(rate.salesTaxIncluded),
     serviceChargePercent: rate.serviceChargePercent ? String(rate.serviceChargePercent) : '',
@@ -68,6 +69,18 @@ function createFormState(rate?: ServiceRate): FormState {
     tourismFeeMode: rate.tourismFeeMode || '',
     maxPaxPerUnit: rate.maxPaxPerUnit == null ? '' : String(rate.maxPaxPerUnit),
   };
+}
+
+function getSubmittedPricingMode(pricingMode: ServiceRate['pricingMode']) {
+  return pricingMode === 'per_vehicle' || pricingMode === 'PER_VEHICLE' ? 'PER_GROUP' : pricingMode;
+}
+
+function formatPricingMode(rate: ServiceRate) {
+  if ((rate.pricingMode === 'PER_GROUP' || rate.pricingMode === 'PER_VEHICLE' || rate.pricingMode === 'per_vehicle') && rate.maxPaxPerUnit) {
+    return 'Per vehicle';
+  }
+
+  return rate.pricingMode.replaceAll('_', ' ');
 }
 
 export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showTourismFee = false, defaultOpen = false }: ServiceRatesManagerProps) {
@@ -111,7 +124,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
           supplierId: formState.supplierId.trim() || null,
           costBaseAmount: Number(formState.costBaseAmount),
           costCurrency: formState.costCurrency,
-          pricingMode: formState.pricingMode,
+          pricingMode: getSubmittedPricingMode(formState.pricingMode),
           salesTaxPercent: formState.salesTaxPercent.trim() ? Number(formState.salesTaxPercent) : 0,
           salesTaxIncluded: formState.salesTaxIncluded,
           serviceChargePercent: formState.serviceChargePercent.trim() ? Number(formState.serviceChargePercent) : 0,
@@ -181,7 +194,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
               <tbody>
                 {rates.map((rate) => (
                   <tr key={rate.id}>
-                    <td>{rate.pricingMode.replaceAll('_', ' ')}</td>
+                    <td>{formatPricingMode(rate)}</td>
                     <td>{formatMoney(rate.costBaseAmount, rate.costCurrency)}</td>
                     <td>
                       {`${rate.salesTaxPercent || 0}% tax${rate.salesTaxIncluded ? ' incl.' : ''} | ${rate.serviceChargePercent || 0}% svc${rate.serviceChargeIncluded ? ' incl.' : ''}`}

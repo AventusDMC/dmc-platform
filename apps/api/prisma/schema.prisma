@@ -1757,7 +1757,6 @@ enum ContractImportStatus {
 enum ServiceRatePricingMode {
   PER_PERSON
   PER_GROUP
-  PER_VEHICLE
   PER_DAY
 }
 
