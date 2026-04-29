@@ -316,6 +316,17 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'meal', label: 'Add Meal' },
 ];
 
+const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal'];
+const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
+  hotel: 'Hotel',
+  transport: 'Transport',
+  activity: 'Activity',
+  meal: 'Meal',
+  // These are unused for the planner tabs, but keep the record exhaustive.
+  guide: 'Guide',
+  other: 'Other',
+};
+
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
   { key: 'hotel', label: 'Stay' },
   { key: 'transport', label: 'Transfer' },
@@ -946,7 +957,7 @@ function ScopePlanner({
                           })
                         }
                       >
-                        {action.label}
+                        {action.label.startsWith('Add ') ? `+ ${action.label.slice(4)}` : action.label}
                       </button>
                     );
                   })}
@@ -1052,14 +1063,65 @@ function ScopePlanner({
               </button>
             ) : null}
           </div>
+
+          {activeServicePanel ? (
+            <div className="quote-service-editor-tabs" role="tablist" aria-label="Service categories">
+              {SERVICE_PLANNER_TABS.map((tabCategory) => {
+                const tabAction = DAY_WORKFLOW_ACTIONS.find((a) => a.category === tabCategory);
+                if (!tabAction) {
+                  return null;
+                }
+
+                const activeCategory =
+                  activeServicePanel.kind === 'add'
+                    ? activeServicePanel.category
+                    : getQuoteServiceCategoryKey(activeServicePanel.item.service);
+                const active = activeCategory === tabCategory;
+                const tabDay =
+                  activeServicePanel.kind === 'add'
+                    ? activeServicePanel.day
+                    : plannerProps.quote.itineraries.find((day) => day.id === activeServicePanel.item.itineraryId) ||
+                      plannerProps.quote.itineraries[0];
+
+                return (
+                  <button
+                    key={tabCategory}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={active ? 'quote-service-editor-tab quote-service-editor-tab-active' : 'quote-service-editor-tab'}
+                    onClick={() => {
+                      if (!tabDay) {
+                        return;
+                      }
+
+                      setActiveServicePanel({
+                        kind: 'add',
+                        key: `${scope.optionId || 'base'}:${tabDay.id}:${tabCategory}`,
+                        optionId: scope.optionId,
+                        day: tabDay,
+                        category: tabCategory,
+                        label: tabAction.label,
+                      });
+                    }}
+                  >
+                    {SERVICE_PLANNER_TAB_LABELS[tabCategory]}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
           {activeServicePanel?.kind === 'add' ? (
-            <AddServiceEditorPanel
-              category={activeServicePanel.category}
-              label={activeServicePanel.label}
-              plannerProps={plannerProps}
-              optionId={activeServicePanel.optionId}
-              day={activeServicePanel.day}
-            />
+            <div key={activeServicePanel.key}>
+              <AddServiceEditorPanel
+                category={activeServicePanel.category}
+                label={activeServicePanel.label}
+                plannerProps={plannerProps}
+                optionId={activeServicePanel.optionId}
+                day={activeServicePanel.day}
+              />
+            </div>
           ) : activeServicePanel?.kind === 'edit' ? (
             <EditServiceEditorPanel
               item={activeServicePanel.item}

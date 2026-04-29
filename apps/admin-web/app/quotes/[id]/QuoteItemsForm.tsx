@@ -1895,49 +1895,55 @@ export function QuoteItemsForm({
           </div>
 
           {!isHotelService && !isMealService ? (
-            <div className="form-row form-row-3">
-              <label className={useOverride ? 'quote-item-override quote-item-override-active' : 'quote-item-override'}>
-                <span>Override cost</span>
-                <input
-                  value={overrideCost}
-                  onChange={(event) => setOverrideCost(event.target.value)}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  disabled={!useOverride}
-                  placeholder="Leave blank to use base cost"
-                />
-              </label>
+            <details className="quote-advanced-settings" open={useOverride}>
+              <summary>Advanced cost settings</summary>
 
-              <label className="quote-item-override-toggle">
-                <span>Use override</span>
-                <input checked={useOverride} onChange={(event) => setUseOverride(event.target.checked)} type="checkbox" />
-              </label>
+              <div className="form-row form-row-3">
+                <label className={useOverride ? 'quote-item-override quote-item-override-active' : 'quote-item-override'}>
+                  <span>Override cost</span>
+                  <input
+                    value={overrideCost}
+                    onChange={(event) => setOverrideCost(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    disabled={!useOverride}
+                    placeholder="Leave blank to use base cost"
+                  />
+                </label>
 
-              <div className={useOverride ? 'quote-item-override-status quote-item-override-status-active' : 'quote-item-override-status'}>
-                <strong>{useOverride ? 'Manual override applied' : 'Using contract/base cost'}</strong>
-                <span>
-                  {finalCost !== null && Number.isFinite(finalCost)
-                    ? `Final cost ${displayCurrency} ${finalCost.toFixed(2)}`
+                <label className="quote-item-override-toggle">
+                  <span>Use override</span>
+                  <input checked={useOverride} onChange={(event) => setUseOverride(event.target.checked)} type="checkbox" />
+                </label>
+
+                <div
+                  className={useOverride ? 'quote-item-override-status quote-item-override-status-active' : 'quote-item-override-status'}
+                >
+                  <strong>{useOverride ? 'Manual override applied' : 'Using contract/base cost'}</strong>
+                  <span>
+                    {finalCost !== null && Number.isFinite(finalCost)
+                      ? `Final cost ${displayCurrency} ${finalCost.toFixed(2)}`
                       : isLoadingTransportCost
                         ? 'Loading transport rate...'
                         : 'Select pricing inputs'}
-                </span>
+                  </span>
+                </div>
               </div>
-            </div>
-          ) : null}
 
-          {!isHotelService && !isMealService && useOverride ? (
-            <div className="form-row">
-              <label>
-                Override reason
-                <input
-                  value={overrideReason}
-                  onChange={(event) => setOverrideReason(event.target.value)}
-                  placeholder="Reason for this quote-only rate"
-                />
-              </label>
-            </div>
+              {useOverride ? (
+                <div className="form-row">
+                  <label>
+                    Override reason
+                    <input
+                      value={overrideReason}
+                      onChange={(event) => setOverrideReason(event.target.value)}
+                      placeholder="Reason for this quote-only rate"
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </details>
           ) : null}
 
           <div className="form-row form-row-3">
@@ -2726,7 +2732,10 @@ export function QuoteItemsForm({
           ) : null}
 
           {isTransportService && transportCandidates.length > 0 ? (
-            <div className="stacked-card">
+            <details className="quote-advanced-settings" open={transportSuggestionOverridden}>
+              <summary>Advanced transport suggestions</summary>
+
+              <div className="stacked-card">
               <div className="panel-header" style={{ marginBottom: 12 }}>
                 <div>
                   <p className="eyebrow">Smart Transport Suggestions</p>
@@ -2770,7 +2779,8 @@ export function QuoteItemsForm({
                   Recommended vehicle not available for this route. Showing best available options.
                 </p>
               ) : null}
-            </div>
+              </div>
+            </details>
           ) : null}
 
           <button

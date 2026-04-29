@@ -40,6 +40,10 @@ type VehicleRate = {
   validTo: string;
   vehicle: {
     name: string;
+    supplierId?: string | null;
+    supplier?: {
+      name: string;
+    } | null;
   };
   serviceType: {
     name: string;
@@ -120,11 +124,20 @@ export async function VehicleRatesSection() {
       </TableSectionShell>
 
       <TableSectionShell
-        title="Vehicle Rates"
-        description="Keep published vehicle slabs in one list-first view with pricing, validity, and routing context."
-        context={<p>{vehicleRates.length} vehicle rates in scope</p>}
+        title="Supplier Rate Cards"
+        description="Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods."
+        context={<p>{vehicleRates.length} rate lines in scope</p>}
+        actions={
+          <button type="button" className="primary-button transport-contract-new-button">
+            + New Supplier Rate Card
+          </button>
+        }
         createPanel={
-          <CollapsibleCreatePanel title="Create vehicle slab" description="Add published transport rates using the current routes and service types." triggerLabelOpen="Add vehicle rate">
+          <CollapsibleCreatePanel
+            title="Create rate line"
+            description="Add a supplier rate-card line using the current routes, vehicles, and service types."
+            triggerLabelOpen="Create rate line"
+          >
             <VehicleRatesForm
               apiBaseUrl={ACTION_API_BASE_URL}
               vehicles={vehicles}
@@ -136,7 +149,7 @@ export async function VehicleRatesSection() {
             />
           </CollapsibleCreatePanel>
         }
-        emptyState={vehicleRates.length === 0 ? <p className="empty-state">No vehicle rates yet.</p> : undefined}
+        emptyState={vehicleRates.length === 0 ? <p className="empty-state">No supplier rate-card lines yet.</p> : undefined}
       >
         {vehicleRates.length > 0 ? (
           <VehicleRatesTable

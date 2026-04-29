@@ -22,7 +22,7 @@ const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
   { id: 'vehicles', label: 'Vehicles' },
   { id: 'routes', label: 'Routes' },
   { id: 'pricing-rules', label: 'Pricing Rules' },
-  { id: 'rates', label: 'Rates' },
+  { id: 'rates', label: 'Supplier Rate Cards' },
 ];
 
 async function getVehiclesCount() {
@@ -79,7 +79,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
   });
 
   return (
-    <main className="page">
+    <main className={`page ${activeTab === 'rates' ? 'transport-contracts-page' : ''}`}>
       <section className="panel workspace-panel workspace-panel-wide">
         <WorkspaceShell
           eyebrow="Products & Pricing"
@@ -100,7 +100,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
                       ? 'Transfer library'
                       : tab.id === 'pricing-rules'
                         ? 'Commercial logic'
-                        : 'Published slabs',
+                        : 'Supplier rate cards',
               }))}
             />
           }
@@ -110,7 +110,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
                 { id: 'vehicles', label: 'Vehicles', value: String(summary.vehicles), helper: 'Fleet records' },
                 { id: 'routes', label: 'Routes', value: String(summary.routes.total), helper: `${summary.routes.active} active` },
                 { id: 'service-types', label: 'Service types', value: String(summary.serviceTypes), helper: 'Reusable labels' },
-                { id: 'pricing-rules', label: 'Pricing rules', value: String(summary.pricingRules), helper: `${summary.vehicleRates} published rates` },
+                { id: 'pricing-rules', label: 'Pricing rules', value: String(summary.pricingRules), helper: `${summary.vehicleRates} rate lines` },
               ]}
             />
           }
