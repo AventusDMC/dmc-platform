@@ -81,19 +81,17 @@ describe('activities quote and booking UI integration regression', () => {
 
   it('keeps Base Program expanded after itinerary generation and refresh', () => {
     expectSourceContains(quotePlannerSource, [
-      'const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);',
       'const hasSavedItineraryDays = props.quote.itineraries.length > 0;',
-      'setBaseProgramOpen(true);',
       "setSelectedScopeId('shared');",
-      "checked={selectedScopeId === 'shared' && baseProgramOpen}",
-      "onChange={() => {",
-      "setBaseProgramOpen(true);",
+      'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
+      '<section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">',
       '<div id="quote-base-program-days">',
       "{ category: 'hotel', label: 'Add Hotel' }",
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",
     ]);
+    assert.doesNotMatch(quotePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'/);
   });
 
   it('shows converted activity services on booking itinerary with activityId preserved', () => {

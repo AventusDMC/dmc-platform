@@ -1076,7 +1076,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const showAdminMetrics = props.sessionRole === 'admin';
   const hasSavedItineraryDays = props.quote.itineraries.length > 0;
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
-  const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);
   const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const plannerQuote = { ...props.quote, itineraries: localItineraries };
@@ -1100,7 +1099,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
     if (hasSavedItineraryDays) {
       setSelectedScopeId('shared');
-      setBaseProgramOpen(true);
     }
 
     setOpenDayIds((currentOpenDayIds) => {
@@ -1128,7 +1126,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       setLocalItineraries(detail.days);
       setOpenDayIds(new Set(detail.days.map((day) => day.id)));
       setSelectedScopeId('shared');
-      setBaseProgramOpen(true);
     }
 
     window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);
@@ -1193,20 +1190,15 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           totalPax={props.totalPax}
         />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
-          <input
-            type="radio"
-            id="planner-shared"
-            name="quote-service-planner"
-            checked={selectedScopeId === 'shared' && baseProgramOpen}
-            onChange={() => {
+          <button
+            type="button"
+            className={`workspace-tab-label${selectedScopeId === 'shared' ? ' workspace-tab-label-active' : ''}`}
+            onClick={() => {
               setSelectedScopeId('shared');
-              setBaseProgramOpen(true);
             }}
-            className="workspace-tab-input"
-          />
-          <label htmlFor="planner-shared" className="workspace-tab-label">
+          >
             Base Program
-          </label>
+          </button>
           {scopes
             .filter((scope) => scope.id !== 'shared')
             .map((scope) => (
@@ -1228,7 +1220,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       </div>
 
       <div className="workspace-tab-panels">
-        <section className="workspace-tab-panel workspace-panel-shared">
+        <section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">
           <div id="quote-base-program-days">
             <ScopePlanner scope={scopes[0]} plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState} />
           </div>

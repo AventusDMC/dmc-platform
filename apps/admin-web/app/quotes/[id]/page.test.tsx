@@ -206,8 +206,8 @@ describe('quote detail page regression', () => {
       "{ category: 'meal', label: 'Add Meal' }",
       'itineraryDayNumber={day.dayNumber}',
       'itineraryId={day.id}',
-      "checked={selectedScopeId === 'shared'}",
-      "onChange={() => setSelectedScopeId('shared')}",
+      'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
+      "setSelectedScopeId('shared');",
       'Generate itinerary days from nights to start.',
     ]);
 
@@ -217,26 +217,24 @@ describe('quote detail page regression', () => {
 
   it('opens Base Program by default and refreshes generated days without a manual reload', () => {
     expectSourceContains(cssSource, [
-      ".workspace-tabs:has(#planner-shared:checked) label[for='planner-shared']",
-      '.workspace-tabs:has(#planner-shared:checked) .workspace-panel-shared',
+      '.workspace-tab-label-active',
+      '.quote-service-planner .quote-base-program-panel-open',
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
       'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
-      'const [baseProgramOpen, setBaseProgramOpen] = useState(() => props.quote.itineraries.length > 0);',
       'const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));',
       "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
       "window.addEventListener('dmc:quote-itinerary-days-ready', handleDaysReady);",
-      'setBaseProgramOpen(true);',
       'setOpenDayIds(new Set(detail.days.map((day) => day.id)));',
       "setSelectedScopeId('shared');",
-      "checked={selectedScopeId === 'shared' && baseProgramOpen}",
-      "onChange={() => {",
-      "setBaseProgramOpen(true);",
+      'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
+      '<section className="workspace-tab-panel workspace-panel-shared quote-base-program-panel-open">',
       "checked={selectedScopeId === scope.id}",
       '<div id="quote-base-program-days">',
       'plannerProps={{ ...props, quote: plannerQuote }} plannerState={plannerState}',
     ]);
+    assert.doesNotMatch(quoteServicePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'/);
 
     expectSourceContains(quoteAutoItineraryBuilderSource, [
       'async function applyItinerary(draft: PreviewDraft)',
@@ -262,7 +260,7 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(rowDetailsPanelSource, /open=\{defaultOpen\}/);
 
     expectSourceContains(quoteServicePlannerSource, [
-      "checked={selectedScopeId === 'shared'}",
+      'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
       "setSelectedScopeId('shared');",
       'const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);',
       'open={plannerState.openDayIds.has(summary.day.id)}',
