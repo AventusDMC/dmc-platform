@@ -8,22 +8,7 @@ import { getErrorMessage } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 import { ServicesForm } from '../services/ServicesForm';
 import { ServiceRatesManager } from './ServiceRatesManager';
-
-type ServiceRate = {
-  id: string;
-  serviceId: string;
-  supplierId: string | null;
-  costBaseAmount: number;
-  costCurrency: 'USD' | 'EUR' | 'JOD';
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
-  salesTaxPercent: number;
-  salesTaxIncluded: boolean;
-  serviceChargePercent: number;
-  serviceChargeIncluded: boolean;
-  tourismFeeAmount: number | null;
-  tourismFeeCurrency: 'USD' | 'EUR' | 'JOD' | null;
-  tourismFeeMode: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
-};
+import { type ServiceRate } from './types';
 
 type SupplierService = {
   id: string;

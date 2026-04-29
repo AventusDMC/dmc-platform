@@ -19,9 +19,13 @@ function getLoginMessage(reason?: string) {
   return '';
 }
 
+function getSafeNextPath(next?: string) {
+  return next?.startsWith('/') && !next.startsWith('//') ? next : '/admin/dashboard';
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const nextPath = resolvedSearchParams?.next || '/';
+  const nextPath = getSafeNextPath(resolvedSearchParams?.next);
   const message = getLoginMessage(resolvedSearchParams?.reason);
 
   return (

@@ -9,7 +9,11 @@ type LoginFormProps = {
   initialMessage?: string;
 };
 
-export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProps) {
+function getSafeNextPath(nextPath?: string) {
+  return nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/admin/dashboard';
+}
+
+export function LoginForm({ nextPath = '/admin/dashboard', initialMessage = '' }: LoginFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,18 +35,19 @@ export function LoginForm({ nextPath = '/', initialMessage = '' }: LoginFormProp
         body: JSON.stringify({
           email,
           password,
+          next: nextPath,
         }),
       });
 
-      const payload = await readJsonResponseIfPresent<{ message?: string; actor?: { role?: string } }>(response);
+      const payload = await readJsonResponseIfPresent<{ message?: string; actor?: { role?: string }; next?: string }>(response);
 
       if (!response.ok) {
         throw new Error(String(payload?.message || 'Could not sign in.'));
       }
 
       const actorRole = String(payload?.actor?.role || '').trim().toLowerCase();
-      const defaultPath = actorRole === 'agent' ? '/agent/dashboard' : '/';
-      router.push(nextPath || defaultPath);
+      const defaultPath = actorRole === 'agent' ? '/agent/dashboard' : '/admin/dashboard';
+      router.push(payload?.next ? getSafeNextPath(payload.next) : nextPath ? getSafeNextPath(nextPath) : defaultPath);
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not sign in.');

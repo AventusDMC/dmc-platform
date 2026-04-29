@@ -5,23 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CurrencySelect } from '../components/CurrencySelect';
 import { getErrorMessage, logFetchUrl } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
-
-type ServiceRate = {
-  id: string;
-  serviceId: string;
-  supplierId: string | null;
-  costBaseAmount: number;
-  costCurrency: SupportedCurrency;
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY' | 'per_vehicle';
-  salesTaxPercent: number;
-  salesTaxIncluded: boolean;
-  serviceChargePercent: number;
-  serviceChargeIncluded: boolean;
-  tourismFeeAmount: number | null;
-  tourismFeeCurrency: SupportedCurrency | null;
-  tourismFeeMode: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
-  maxPaxPerUnit: number | null;
-};
+import { type ServiceRate } from './types';
 
 type ServiceRatesManagerProps = {
   apiBaseUrl: string;
@@ -35,7 +19,7 @@ type FormState = {
   supplierId: string;
   costBaseAmount: string;
   costCurrency: SupportedCurrency;
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY' | 'per_vehicle';
+  pricingMode: ServiceRate['pricingMode'];
   salesTaxPercent: string;
   salesTaxIncluded: boolean;
   serviceChargePercent: string;
@@ -82,7 +66,7 @@ function createFormState(rate?: ServiceRate): FormState {
     tourismFeeAmount: rate.tourismFeeAmount === null ? '' : String(rate.tourismFeeAmount),
     tourismFeeCurrency: rate.tourismFeeCurrency || '',
     tourismFeeMode: rate.tourismFeeMode || '',
-    maxPaxPerUnit: rate.maxPaxPerUnit === null ? '' : String(rate.maxPaxPerUnit),
+    maxPaxPerUnit: rate.maxPaxPerUnit == null ? '' : String(rate.maxPaxPerUnit),
   };
 }
 
