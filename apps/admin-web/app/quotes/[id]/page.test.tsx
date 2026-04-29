@@ -264,18 +264,19 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteServicePlannerSource, [
       'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
       "setSelectedScopeId('shared');",
-      'const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);',
+      'const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);',
       'open={plannerState.openDayIds.has(summary.day.id)}',
       'onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}',
       'id={`planner-day-${summary.day.id}`}',
       'items: scope.items.filter((item) => item.itineraryId === summary.day.id),',
-      'className={`operations-row-details quote-service-day-action',
+      '<aside className="quote-service-editor-panel">',
+      '<table className="quote-service-assigned-table">',
+      'setActiveServicePanel({',
+      '<strong>Select a service type to begin</strong>',
       'itineraryId={day.id}',
-      'open={openServiceEditorKey === `${scope.optionId || \'base\'}:${summary.day.id}:${action.category}`}',
-      'onOpenChange={(isOpen) =>',
       'submitLabel={label}',
     ]);
-    assert.doesNotMatch(quoteServicePlannerSource, /defaultOpen=\{plannerProps\.focusedDayId === day\.id/);
+    assert.doesNotMatch(quoteServicePlannerSource, /defaultOpen=\{plannerProps\.focusedDayId === day\.id|openServiceEditorKey|quote-service-day-action`\}/);
 
     expectSourceContains(readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8'), [
       'const endpoint = optionId',

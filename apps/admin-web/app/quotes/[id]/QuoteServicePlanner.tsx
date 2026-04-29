@@ -17,7 +17,6 @@ import {
   type QuoteReadinessItem,
   type QuoteReadinessQuote,
   type QuoteReadinessStep,
-  type QuoteReadinessSuggestion,
   type ServicePlannerCategory,
 } from './quote-readiness';
 
@@ -284,6 +283,23 @@ type ServiceWorkflowState = {
   steps: ServiceWorkflowStep[];
 };
 
+type ActiveServicePanel =
+  | {
+      kind: 'add';
+      key: string;
+      optionId?: string;
+      day: QuoteReadinessDay;
+      category: ServicePlannerCategory;
+      label: string;
+    }
+  | {
+      kind: 'edit';
+      key: string;
+      optionId?: string;
+      item: QuoteItem;
+      dayNumber: number | null;
+    };
+
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Stay',
   transport: 'Transfer',
@@ -460,135 +476,33 @@ function WorkflowProgress({ quoteId, workflow }: { quoteId: string; workflow: Se
   );
 }
 
-function PlannerSuggestionAction({
-  suggestion,
-  apiBaseUrl,
-  quote,
-  quoteBlocks,
-  services,
-  transportServiceTypes,
-  routes,
-  hotels,
-  hotelContracts,
-  hotelRates,
-  seasons,
-  totalPax,
-  optionId,
-  itineraryDay,
-}: {
-  suggestion: QuoteReadinessSuggestion;
-  apiBaseUrl: string;
-  quote: Quote;
-  quoteBlocks: QuoteBlock[];
-  services: SupplierService[];
-  transportServiceTypes: TransportServiceType[];
-  routes: QuoteServicePlannerProps['routes'];
-  hotels: Hotel[];
-  hotelContracts: HotelContract[];
-  hotelRates: HotelRate[];
-  seasons: QuoteServicePlannerProps['seasons'];
-  totalPax: number;
-  optionId?: string;
-  itineraryDay: QuoteReadinessDay;
-}) {
+function getServiceNotes(item: QuoteItem) {
   return (
-    <RowDetailsPanel
-      summary={suggestion.title}
-      description={suggestion.description}
-      className="operations-row-details quote-service-suggestion-panel"
-      bodyClassName="operations-row-details-body"
-      groupId={`quote-service-suggestions-${optionId || 'base'}-${itineraryDay.id}`}
-    >
-      <QuoteItemsForm
-        apiBaseUrl={apiBaseUrl}
-        quoteId={quote.id}
-        optionId={optionId}
-        blocks={quoteBlocks}
-        services={services}
-        transportServiceTypes={transportServiceTypes}
-        routes={routes}
-        hotels={hotels}
-        hotelContracts={hotelContracts}
-        hotelRates={hotelRates}
-        seasons={seasons}
-        quoteType={quote.quoteType}
-        defaultPaxCount={totalPax}
-        defaultAdultCount={quote.adults}
-        defaultChildCount={quote.children}
-        defaultRoomCount={quote.roomCount}
-        defaultNightCount={quote.nightCount}
-        travelStartDate={quote.travelStartDate}
-        itineraryDayNumber={itineraryDay.dayNumber}
-        itineraryId={itineraryDay.id}
-        initialServiceTypeKey={suggestion.category}
-        submitLabel={`Add ${suggestion.category}`}
-      />
-    </RowDetailsPanel>
+    item.appliedVehicleRate?.routeName ||
+    item.pickupLocation ||
+    item.meetingPoint ||
+    item.pricingDescription ||
+    item.hotel?.name ||
+    'No notes'
   );
 }
 
-function renderItemGroup(
-  category: ServicePlannerCategory,
-  items: QuoteItem[],
-  props: Omit<QuoteServicePlannerProps, 'buildStepHref'>,
-  optionId?: string,
-) {
-  if (items.length === 0) {
-    return null;
-  }
-
-  return (
-    <section key={category} className="quote-service-category-group">
-      <div className="workspace-section-head quote-service-group-head">
-        <div>
-          <h4>{CATEGORY_LABELS[category]}</h4>
-        </div>
-        <span className="page-tab-badge">{items.length}</span>
-      </div>
-
-      <div className="section-stack">
-        {items.map((item) => (
-          <QuoteItemCard
-            key={item.id}
-            apiBaseUrl={props.apiBaseUrl}
-            quote={props.quote}
-            item={item}
-            quoteBlocks={props.quoteBlocks}
-            services={props.services}
-            transportServiceTypes={props.transportServiceTypes}
-            routes={props.routes}
-            hotels={props.hotels}
-            hotelContracts={props.hotelContracts}
-            hotelRates={props.hotelRates}
-            seasons={props.seasons}
-            totalPax={props.totalPax}
-            optionId={optionId}
-            initialValues={buildQuoteItemInitialValues(item, props.totalPax, props.quote.roomCount, props.quote.nightCount)}
-          />
-        ))}
-      </div>
-    </section>
-  );
+function getServiceSupplierLabel(item: QuoteItem) {
+  return item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
 }
 
-function DayWorkflowAction({
+function AddServiceEditorPanel({
   category,
   label,
   plannerProps,
   optionId,
   day,
-  recommendedCategory,
-  open,
-  onOpenChange,
 }: {
   category: ServicePlannerCategory;
   label: string;
   plannerProps: QuoteServicePlannerProps;
   optionId?: string;
   day: QuoteReadinessDay;
-  recommendedCategory?: ServicePlannerCategory;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -602,15 +516,7 @@ function DayWorkflowAction({
         : `/catalog?tab=services&returnTo=${encodeURIComponent(returnTo)}&type=${encodeURIComponent(category)}`;
 
   return (
-    <RowDetailsPanel
-      summary={label}
-      description={`Add a ${label.toLowerCase().replace('add ', '')} service to Day ${day.dayNumber}.`}
-      open={open}
-      onOpenChange={onOpenChange}
-      className={`operations-row-details quote-service-day-action${recommendedCategory === category ? ' quote-service-day-action-recommended' : ''}`}
-      bodyClassName="operations-row-details-body"
-      groupId={`quote-service-day-action-${optionId || 'base'}-${day.id}-${category}`}
-    >
+    <>
       <div className="quote-service-catalog-link">
         <span>Need to browse the catalog first?</span>
         <Link href={browseHref} className="secondary-button">
@@ -651,7 +557,102 @@ function DayWorkflowAction({
         preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
         submitLabel={label}
       />
-    </RowDetailsPanel>
+    </>
+  );
+}
+
+function EditServiceEditorPanel({
+  item,
+  plannerProps,
+  optionId,
+  dayNumber,
+}: {
+  item: QuoteItem;
+  plannerProps: QuoteServicePlannerProps;
+  optionId?: string;
+  dayNumber: number | null;
+}) {
+  return (
+    <QuoteItemsForm
+      apiBaseUrl={plannerProps.apiBaseUrl}
+      quoteId={plannerProps.quote.id}
+      itemId={item.id}
+      optionId={optionId}
+      blocks={plannerProps.quoteBlocks}
+      services={plannerProps.services}
+      transportServiceTypes={plannerProps.transportServiceTypes}
+      routes={plannerProps.routes}
+      hotels={plannerProps.hotels}
+      hotelContracts={plannerProps.hotelContracts}
+      hotelRates={plannerProps.hotelRates}
+      seasons={plannerProps.seasons}
+      quoteType={plannerProps.quote.quoteType}
+      defaultPaxCount={plannerProps.totalPax}
+      defaultAdultCount={plannerProps.quote.adults}
+      defaultChildCount={plannerProps.quote.children}
+      defaultRoomCount={plannerProps.quote.roomCount}
+      defaultNightCount={plannerProps.quote.nightCount}
+      travelStartDate={plannerProps.quote.travelStartDate}
+      itineraryDayNumber={dayNumber}
+      itineraryId={item.itineraryId || undefined}
+      submitLabel="Save item"
+      initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
+    />
+  );
+}
+
+function AssignedServicesTable({
+  items,
+  currency,
+  onEdit,
+}: {
+  items: QuoteItem[];
+  currency: Quote['quoteCurrency'];
+  onEdit: (item: QuoteItem) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="quote-service-empty-state">
+        <strong>No services yet.</strong>
+        <p>No services yet. Add Hotel, Transport, Activity, or Meal.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="quote-service-assigned-table-wrap">
+      <table className="quote-service-assigned-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Supplier</th>
+            <th>Route</th>
+            <th>Pax</th>
+            <th>Price</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id}>
+              <td>
+                <strong>{item.hotel?.name || item.service.name}</strong>
+                <span>{CATEGORY_LABELS[getQuoteServiceCategoryKey(item.service)] || item.service.category}</span>
+              </td>
+              <td>{getServiceSupplierLabel(item)}</td>
+              <td>{getServiceNotes(item)}</td>
+              <td>{item.paxCount ?? item.participantCount ?? '-'}</td>
+              <td>{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</td>
+              <td>
+                <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
+                  Edit
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -791,11 +792,6 @@ function ScopePlanner({
   plannerProps: QuoteServicePlannerProps;
   plannerState: ScopePlannerState;
 }) {
-  const initialOpenActionKey =
-    plannerProps.focusedDayId && plannerProps.initialAddCategory
-      ? `${scope.optionId || 'base'}:${plannerProps.focusedDayId}:${plannerProps.initialAddCategory}`
-      : null;
-  const [openServiceEditorKey, setOpenServiceEditorKey] = useState<string | null>(initialOpenActionKey);
   const buildStepHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) =>
     buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, step, params);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
@@ -807,6 +803,7 @@ function ScopePlanner({
   const unresolvedItems = scope.items.filter((item) => item.service.supplierId === 'import-itinerary-system');
   const workflow = buildServiceWorkflowState(scope.items, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
+  const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
       summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
@@ -886,15 +883,9 @@ function ScopePlanner({
         </article>
       ) : null}
 
+      <div className="quote-service-planner-shell">
+        <div className="quote-service-day-column">
       {daySummaries.map((summary) => {
-        const itemsByCategory = {
-          hotel: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'hotel'),
-          transport: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'transport'),
-          guide: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'guide'),
-          activity: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'activity'),
-          meal: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'meal'),
-          other: summary.items.filter((item) => getQuoteServiceCategoryKey(item.service) === 'other'),
-        };
         const completeness = dayCompletenessRules.map((rule) => ({
           ...rule,
           complete: summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
@@ -933,6 +924,35 @@ function ScopePlanner({
             </div>
 
             <div className="quote-service-day-layout">
+              <section className="quote-service-day-workflow quote-service-side-section">
+                <div className="quote-service-day-actions">
+                  {DAY_WORKFLOW_ACTIONS.map((action) => {
+                    const key = `${scope.optionId || 'base'}:${summary.day.id}:${action.category}`;
+                    const active = activeServicePanel?.kind === 'add' && activeServicePanel.key === key;
+
+                    return (
+                      <button
+                        key={action.category}
+                        type="button"
+                        className={`quote-service-day-action-button${workflow.recommendedCategory === action.category ? ' quote-service-day-action-button-recommended' : ''}${active ? ' quote-service-day-action-button-active' : ''}`}
+                        onClick={() =>
+                          setActiveServicePanel({
+                            kind: 'add',
+                            key,
+                            optionId: scope.optionId,
+                            day: summary.day,
+                            category: action.category,
+                            label: action.label,
+                          })
+                        }
+                      >
+                        {action.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               <section className="quote-service-current-services quote-service-day-main">
                 <div className="workspace-section-head">
                   <div>
@@ -940,45 +960,20 @@ function ScopePlanner({
                     <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'No services added yet'}</h4>
                   </div>
                 </div>
-                {currentServicesCount === 0 ? (
-                  <div className="quote-service-empty-state">
-                    <strong>No services added yet.</strong>
-                    <p>No services added yet. Start by adding a service.</p>
-                  </div>
-                ) : null}
-                <div className="quote-service-category-grid">
-                  {(['hotel', 'transport', 'guide', 'activity', 'meal', 'other'] as ServicePlannerCategory[]).map((category) =>
-                    renderItemGroup(category, itemsByCategory[category], plannerProps, scope.optionId),
-                  )}
-                </div>
+                <AssignedServicesTable
+                  items={summary.items}
+                  currency={plannerProps.quote.quoteCurrency}
+                  onEdit={(item) =>
+                    setActiveServicePanel({
+                      kind: 'edit',
+                      key: `${scope.optionId || 'base'}:${item.id}:edit`,
+                      optionId: scope.optionId,
+                      item,
+                      dayNumber: summary.day.dayNumber,
+                    })
+                  }
+                />
               </section>
-
-              <aside className="quote-service-day-side">
-                <section className="quote-service-day-workflow quote-service-side-section">
-                  <div className="workspace-section-head">
-                    <div>
-                      <p className="eyebrow">Add Services</p>
-                      <h4>Build this day</h4>
-                    </div>
-                  </div>
-                  <div className="quote-service-day-actions">
-                    {DAY_WORKFLOW_ACTIONS.map((action) => (
-                      <DayWorkflowAction
-                        key={action.category}
-                        category={action.category}
-                        label={action.label}
-                        plannerProps={plannerProps}
-                        optionId={scope.optionId}
-                        day={summary.day}
-                        recommendedCategory={workflow.recommendedCategory}
-                        open={openServiceEditorKey === `${scope.optionId || 'base'}:${summary.day.id}:${action.category}`}
-                        onOpenChange={(isOpen) =>
-                          setOpenServiceEditorKey(isOpen ? `${scope.optionId || 'base'}:${summary.day.id}:${action.category}` : null)
-                        }
-                      />
-                    ))}
-                  </div>
-                </section>
 
                 <section className="quote-service-side-section">
                   <div className="workspace-section-head">
@@ -998,7 +993,7 @@ function ScopePlanner({
                 </section>
 
                 {summary.suggestions.length > 0 ? (
-                  <section className="quote-service-side-section">
+                  <section className="quote-service-side-section quote-service-suggestions-section" hidden>
                     <div className="workspace-section-head">
                       <div>
                         <p className="eyebrow">Suggested Next Steps</p>
@@ -1006,33 +1001,80 @@ function ScopePlanner({
                       </div>
                     </div>
                     <div className="quote-service-suggestions">
-                      {summary.suggestions.map((suggestion) => (
-                        <PlannerSuggestionAction
-                          key={suggestion.id}
-                          suggestion={suggestion}
-                          apiBaseUrl={plannerProps.apiBaseUrl}
-                          quote={plannerProps.quote}
-                          quoteBlocks={plannerProps.quoteBlocks}
-                          services={plannerProps.services}
-                          transportServiceTypes={plannerProps.transportServiceTypes}
-                          routes={plannerProps.routes}
-                          hotels={plannerProps.hotels}
-                          hotelContracts={plannerProps.hotelContracts}
-                          hotelRates={plannerProps.hotelRates}
-                          seasons={plannerProps.seasons}
-                          totalPax={plannerProps.totalPax}
-                          optionId={scope.optionId}
-                          itineraryDay={summary.day}
-                        />
-                      ))}
+                      {summary.suggestions.map((suggestion) => {
+                        const label = DAY_WORKFLOW_ACTIONS.find((action) => action.category === suggestion.category)?.label || `Add ${suggestion.category}`;
+
+                        return (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            className="quote-service-suggestion-button"
+                            onClick={() =>
+                              setActiveServicePanel({
+                                kind: 'add',
+                                key: `${scope.optionId || 'base'}:${summary.day.id}:${suggestion.category}`,
+                                optionId: scope.optionId,
+                                day: summary.day,
+                                category: suggestion.category,
+                                label,
+                              })
+                            }
+                          >
+                            <strong>{suggestion.title}</strong>
+                            <span>{suggestion.description}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </section>
                 ) : null}
-              </aside>
             </div>
           </RowDetailsPanel>
         );
       })}
+        </div>
+
+        <aside className="quote-service-editor-panel">
+          <div className="quote-service-editor-panel-head">
+            <div>
+              <p className="eyebrow">Add/Edit Service</p>
+              <h3>
+                {activeServicePanel?.kind === 'add'
+                  ? `${activeServicePanel.label} to Day ${activeServicePanel.day.dayNumber}`
+                  : activeServicePanel?.kind === 'edit'
+                    ? `Edit ${activeServicePanel.item.service.name}`
+                    : 'Select a day action'}
+              </h3>
+            </div>
+            {activeServicePanel ? (
+              <button type="button" className="secondary-button" onClick={() => setActiveServicePanel(null)}>
+                Close
+              </button>
+            ) : null}
+          </div>
+          {activeServicePanel?.kind === 'add' ? (
+            <AddServiceEditorPanel
+              category={activeServicePanel.category}
+              label={activeServicePanel.label}
+              plannerProps={plannerProps}
+              optionId={activeServicePanel.optionId}
+              day={activeServicePanel.day}
+            />
+          ) : activeServicePanel?.kind === 'edit' ? (
+            <EditServiceEditorPanel
+              item={activeServicePanel.item}
+              plannerProps={plannerProps}
+              optionId={activeServicePanel.optionId}
+              dayNumber={activeServicePanel.dayNumber}
+            />
+          ) : (
+            <div className="quote-service-empty-state">
+              <strong>Select a service type to begin</strong>
+              <p>Choose Add Hotel, Transport, Activity, or Meal from a day card.</p>
+            </div>
+          )}
+        </aside>
+      </div>
 
       {unassignedItems.length > 0 ? (
         <article className="workspace-day-card quote-service-day-card">

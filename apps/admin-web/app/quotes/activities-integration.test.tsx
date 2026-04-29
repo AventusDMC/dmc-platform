@@ -126,14 +126,36 @@ describe('activities quote and booking UI integration regression', () => {
       '.quote-service-planner .workspace-day-card',
       '.quote-service-day-actions',
       'grid-template-columns: repeat(4, minmax(0, 1fr));',
-      '.quote-service-day-action[open]',
-      'grid-column: 1 / -1;',
-      '.quote-service-day-action .service-type-buttons',
+      '.quote-service-planner-shell',
+      'grid-template-columns: 1fr 480px;',
+      '.quote-service-editor-panel',
+      'position: sticky;',
+      'top: 16px;',
+      'border-left: 4px solid var(--accent);',
+      '.quote-service-day-column',
+      'width: min(100%, 1120px);',
+      '.quote-service-assigned-table',
+      'padding: 0.82rem 0.9rem;',
+      '.quote-service-editor-panel .service-type-buttons',
       'display: none;',
       '.quote-service-planner .quote-service-day-layout',
       'grid-template-columns: 1fr;',
       '.quote-service-planner .quote-item-row-main > p:nth-of-type(n + 3)',
     ]);
+
+    expectSourceContains(quotePlannerSource, [
+      '<aside className="quote-service-editor-panel">',
+      '<AssignedServicesTable',
+      '<AddServiceEditorPanel',
+      '<EditServiceEditorPanel',
+      '<table className="quote-service-assigned-table">',
+      '<th>Route</th>',
+      'const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);',
+      '<strong>Select a service type to begin</strong>',
+      'No services yet. Add Hotel, Transport, Activity, or Meal.',
+    ]);
+    assert.doesNotMatch(quotePlannerSource, /function DayWorkflowAction|openServiceEditorKey|initialActivePanel|<DayWorkflowAction|Route\/Notes|quote-service-day-action`\}/);
+    assert.doesNotMatch(bookingCssSource, /quote-service-day-action\[open\]|grid-template-columns: minmax\(0, 1\.45fr\) minmax\(360px, 0\.72fr\)/);
   });
 
   it('shows converted activity services on booking itinerary with activityId preserved', () => {

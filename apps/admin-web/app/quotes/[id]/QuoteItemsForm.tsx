@@ -1740,6 +1740,13 @@ export function QuoteItemsForm({
         </div>
       ) : null}
 
+      {!activeServiceType ? (
+        <div className="quote-service-empty-state">
+          <strong>Select a service type to begin</strong>
+          <p>Choose Hotel, Transport, Activity, or Meal to open the matching service form.</p>
+        </div>
+      ) : null}
+
       {activeServiceType ? (
         <form ref={formRef} className="entity-form compact-form service-entry-form" onSubmit={handleSubmit}>
           <div className="service-entry-form-head">
