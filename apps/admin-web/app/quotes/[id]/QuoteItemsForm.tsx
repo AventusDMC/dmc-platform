@@ -871,8 +871,8 @@ export function QuoteItemsForm({
       ? [
           itineraryId && itineraryDayNumber && !travelStartDate ? 'Itinerary day is selected, but the quote travel start date is missing.' : null,
           !(serviceDate || resolvedActivityServiceDate) ? 'Activity date is missing.' : null,
-          !(startTime || pickupTime) ? 'Start time or pickup time is required.' : null,
-          !(pickupLocation.trim() || meetingPoint.trim()) ? 'Pickup location or meeting point is required.' : null,
+          !(startTime || pickupTime) ? 'Operational details missing: start time or pickup time.' : null,
+          !(pickupLocation.trim() || meetingPoint.trim()) ? 'Operational details missing: pickup location or meeting point.' : null,
           !(Number(participantCount || 0) > 0 || Number(adultCount || 0) + Number(childCount || 0) > 0)
             ? 'Participant counts are required.'
             : null,
@@ -1580,8 +1580,6 @@ export function QuoteItemsForm({
 
       if (isActivityService) {
         const hasDateOrItinerary = Boolean(serviceDate || resolvedActivityServiceDate);
-        const hasTime = Boolean(startTime || pickupTime);
-        const hasLocation = Boolean(pickupLocation.trim() || meetingPoint.trim());
         const numericParticipantCount = Number(participantCount || 0);
         const numericAdultCount = Number(adultCount || 0);
         const numericChildCount = Number(childCount || 0);
@@ -1589,14 +1587,6 @@ export function QuoteItemsForm({
 
         if (!hasDateOrItinerary) {
           throw new Error('Activity items require a service date or itinerary day.');
-        }
-
-        if (!hasTime) {
-          throw new Error('Activity items require a start time or pickup time.');
-        }
-
-        if (!hasLocation) {
-          throw new Error('Activity items require a pickup location or meeting point.');
         }
 
         if (!hasCounts) {

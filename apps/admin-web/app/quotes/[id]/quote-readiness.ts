@@ -88,6 +88,7 @@ export type QuoteReadinessIssue = {
     | 'service-negative-margin'
     | 'service-missing-currency'
     | 'service-date-outside-trip'
+    | 'service-operational-details-missing'
     | 'pricing-configuration';
   title: string;
   description: string;
@@ -650,6 +651,34 @@ export function buildQuoteReadinessModel(
             : { type: 'navigate', step: 'services', href },
         });
       }
+    }
+
+    const category = getQuoteServiceCategoryKey(item.service);
+    const tracksOperationalDetails = category === 'activity' || category === 'transport';
+    const missingTime = !item.startTime && !item.pickupTime;
+    const missingLocation = !item.pickupLocation && !item.meetingPoint;
+
+    if (tracksOperationalDetails && (missingTime || missingLocation)) {
+      const href = buildIssueHref(buildStepHref, 'services', { day: item.itineraryId || undefined, addCategory: category });
+      const missing = [
+        missingTime ? 'start or pickup time' : null,
+        missingLocation ? 'pickup location or meeting point' : null,
+      ].filter(Boolean).join(' and ');
+
+      warnings.push({
+        id: `item-operational-${item.id}`,
+        severity: 'warning',
+        code: 'service-operational-details-missing',
+        title: `${item.service.name} has operational details missing`,
+        description: `Add ${missing} before booking handoff or final operations.`,
+        href,
+        source: 'Operations Readiness',
+        itemId: item.id,
+        dayId: item.itineraryId || undefined,
+        action: item.itineraryId
+          ? { type: 'focus-day', step: 'services', href, dayId: item.itineraryId }
+          : { type: 'navigate', step: 'services', href },
+      });
     }
 
     if (isNegativeMargin(item)) {
