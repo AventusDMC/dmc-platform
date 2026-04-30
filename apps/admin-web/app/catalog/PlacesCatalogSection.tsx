@@ -40,7 +40,14 @@ export async function PlacesCatalogSection() {
           <PlacesForm cities={cities} placeTypes={placeTypes} />
         </CollapsibleCreatePanel>
       }
-      emptyState={places.length === 0 ? <p className="empty-state">No places yet.</p> : undefined}
+      emptyState={
+        places.length === 0 ? (
+          <div className="empty-state ui-empty-state">
+            <strong>No places yet.</strong>
+            <p>Add reusable locations so routes and operational workflows can search consistent place records.</p>
+          </div>
+        ) : undefined
+      }
     >
       {places.length > 0 ? (
         <div className="table-wrap">

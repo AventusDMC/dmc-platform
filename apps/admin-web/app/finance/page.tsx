@@ -165,7 +165,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       <section className="panel workspace-panel">
         <WorkspaceShell
           eyebrow="Finance"
-          title="Finance"
+          title="Finance Dashboard"
           description="Review profitability, receivables, and payables from a dedicated finance surface backed by the existing booking finance signals."
           switcher={
             <ModuleSwitcher
@@ -293,9 +293,19 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               description="Review profitability and payment status from a compact list-first finance surface."
               context={<p>{filteredBookings.length} bookings in scope</p>}
               emptyState={
-                <p className="empty-state">
-                  {loadError ? 'Finance bookings are temporarily unavailable.' : 'No bookings match this finance slice.'}
-                </p>
+                <div className="empty-state ui-empty-state">
+                  <strong>{loadError ? 'Finance bookings are temporarily unavailable.' : 'No bookings match this finance slice.'}</strong>
+                  <p>
+                    {loadError
+                      ? 'The finance page is available, but booking finance data could not be loaded right now.'
+                      : 'Try another finance slice or return to the overview to see all booking finance signals.'}
+                  </p>
+                  {!loadError && report !== 'all' ? (
+                    <Link href="/finance" className="secondary-button">
+                      View overview
+                    </Link>
+                  ) : null}
+                </div>
               }
             >
               {filteredBookings.length > 0 ? <FinanceBookingsTable bookings={filteredBookings} /> : null}

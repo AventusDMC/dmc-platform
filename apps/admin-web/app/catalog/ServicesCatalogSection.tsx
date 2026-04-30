@@ -72,7 +72,14 @@ export async function ServicesCatalogSection() {
           <ServicesForm apiBaseUrl="/api" serviceTypes={serviceTypes} suppliers={suppliers} />
         </CollapsibleCreatePanel>
       }
-      emptyState={services.length === 0 ? <p className="empty-state">No services yet.</p> : undefined}
+      emptyState={
+        services.length === 0 ? (
+          <div className="empty-state ui-empty-state">
+            <strong>No services yet.</strong>
+            <p>Add supplier-managed services so quote builders can select reusable products with consistent pricing metadata.</p>
+          </div>
+        ) : undefined
+      }
     >
       {services.length > 0 ? <ServicesCatalogBrowser apiBaseUrl="/api" services={services} serviceTypes={serviceTypes} suppliers={suppliers} /> : null}
     </TableSectionShell>

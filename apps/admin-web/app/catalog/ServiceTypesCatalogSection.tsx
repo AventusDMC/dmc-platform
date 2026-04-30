@@ -26,7 +26,14 @@ export async function ServiceTypesCatalogSection() {
           <ServiceTypesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
-      emptyState={serviceTypes.length === 0 ? <p className="empty-state">No service types yet.</p> : undefined}
+      emptyState={
+        serviceTypes.length === 0 ? (
+          <div className="empty-state ui-empty-state">
+            <strong>No service types yet.</strong>
+            <p>Create shared classifications to keep service records and quote flows aligned.</p>
+          </div>
+        ) : undefined
+      }
     >
       {serviceTypes.length > 0 ? (
         <div className="table-wrap">

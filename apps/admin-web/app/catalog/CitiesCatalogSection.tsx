@@ -26,7 +26,14 @@ export async function CitiesCatalogSection() {
           <CitiesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
-      emptyState={cities.length === 0 ? <p className="empty-state">No cities yet.</p> : undefined}
+      emptyState={
+        cities.length === 0 ? (
+          <div className="empty-state ui-empty-state">
+            <strong>No cities yet.</strong>
+            <p>Create destination records so hotels, places, and catalog filters can use consistent city data.</p>
+          </div>
+        ) : undefined
+      }
     >
       {cities.length > 0 ? (
         <div className="table-wrap">

@@ -131,7 +131,9 @@ export default async function MarginReportPage({ searchParams }: MarginReportPag
               items={[
                 { id: 'suppliers', label: 'Suppliers', value: String(rows.length), helper: 'Rows in report' },
                 { id: 'revenue', label: 'Total Revenue', value: formatMoney(totalRevenue), helper: dateRangeLabel },
-                { id: 'profit', label: 'Profit', value: formatMoney(totalProfit), helper: `Margin ${formatPercent(marginPercent)}` },
+                { id: 'cost', label: 'Total Cost', value: formatMoney(totalCost), helper: 'Supplier cost base' },
+                { id: 'profit', label: 'Total Profit', value: formatMoney(totalProfit), helper: 'Revenue less cost' },
+                { id: 'margin', label: 'Margin %', value: formatPercent(marginPercent), helper: dateRangeLabel },
               ]}
             />
           }
@@ -186,7 +188,19 @@ export default async function MarginReportPage({ searchParams }: MarginReportPag
               context={<p>{rows.length} suppliers in scope</p>}
               emptyState={
                 rows.length === 0 ? (
-                  <p className="empty-state">{loadError ? 'Margin report is temporarily unavailable.' : 'No margin data yet.'}</p>
+                  <div className="empty-state ui-empty-state">
+                    <strong>{loadError ? 'Margin report is temporarily unavailable.' : 'No margin data yet.'}</strong>
+                    <p>
+                      {loadError
+                        ? 'The report page is available, but supplier margin rows could not be loaded right now.'
+                        : 'Supplier margin rows will appear here after bookings have sell and cost values in the selected date range.'}
+                    </p>
+                    {from || to ? (
+                      <Link href="/finance/margin-report" className="secondary-button">
+                        Clear date filter
+                      </Link>
+                    ) : null}
+                  </div>
                 ) : undefined
               }
             >
@@ -196,20 +210,20 @@ export default async function MarginReportPage({ searchParams }: MarginReportPag
                     <thead>
                       <tr>
                         <th>Supplier</th>
-                        <th>Total Cost</th>
-                        <th>Total Revenue</th>
-                        <th>Profit</th>
-                        <th>Margin %</th>
+                        <th className="money-cell">Total Cost</th>
+                        <th className="money-cell">Total Revenue</th>
+                        <th className="money-cell">Profit</th>
+                        <th className="money-cell">Margin %</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map((row) => (
                         <tr key={row.supplierId || row.supplierName}>
                           <td>{row.supplierName}</td>
-                          <td>{formatMoney(row.totalCost)}</td>
-                          <td>{formatMoney(row.totalSell)}</td>
-                          <td>{formatMoney(row.totalProfit)}</td>
-                          <td>{formatPercent(row.avgMargin)}</td>
+                          <td className="money-cell">{formatMoney(row.totalCost)}</td>
+                          <td className="money-cell">{formatMoney(row.totalSell)}</td>
+                          <td className="money-cell">{formatMoney(row.totalProfit)}</td>
+                          <td className="money-cell">{formatPercent(row.avgMargin)}</td>
                         </tr>
                       ))}
                     </tbody>

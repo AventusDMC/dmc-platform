@@ -89,7 +89,19 @@ export default async function ActivitiesPage() {
               context={<p>{activities.length} activities in scope</p>}
               emptyState={
                 activities.length === 0 ? (
-                  <p className="empty-state">{loadError ? 'Activities are temporarily unavailable.' : 'No activities yet.'}</p>
+                  <div className="empty-state ui-empty-state">
+                    <strong>{loadError ? 'Activities are temporarily unavailable.' : 'No activities yet.'}</strong>
+                    <p>
+                      {loadError
+                        ? 'The activity catalog route is available, but the activity list could not be loaded right now.'
+                        : 'Create your first reusable activity so quote builders and operations teams can select it consistently.'}
+                    </p>
+                    {!loadError && canCreateOrEdit ? (
+                      <Link href="/activities/new" className="primary-button">
+                        Add activity
+                      </Link>
+                    ) : null}
+                  </div>
                 ) : undefined
               }
             >

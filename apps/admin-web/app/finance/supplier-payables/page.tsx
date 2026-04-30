@@ -116,7 +116,7 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
             <SummaryStrip
               items={[
                 { id: 'suppliers', label: 'Suppliers', value: String(payables.length), helper: 'Rows in report' },
-                { id: 'total-cost', label: 'Total Cost', value: formatMoney(totalCost), helper: dateRangeLabel },
+                { id: 'total-payables', label: 'Total Payables', value: formatMoney(totalCost), helper: dateRangeLabel },
               ]}
             />
           }
@@ -174,9 +174,19 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
               context={<p>{payables.length} suppliers in scope</p>}
               emptyState={
                 payables.length === 0 ? (
-                  <p className="empty-state">
-                    {loadError ? 'Supplier payables are temporarily unavailable.' : 'No supplier payables yet.'}
-                  </p>
+                  <div className="empty-state ui-empty-state">
+                    <strong>{loadError ? 'Supplier payables are temporarily unavailable.' : 'No supplier payables yet.'}</strong>
+                    <p>
+                      {loadError
+                        ? 'The report page is available, but supplier payable totals could not be loaded right now.'
+                        : 'Supplier totals will appear here after booking service costs exist for the selected date range.'}
+                    </p>
+                    {from || to ? (
+                      <Link href="/finance/supplier-payables" className="secondary-button">
+                        Clear date filter
+                      </Link>
+                    ) : null}
+                  </div>
                 ) : undefined
               }
             >
@@ -186,14 +196,14 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
                     <thead>
                       <tr>
                         <th>Supplier</th>
-                        <th>Total Cost</th>
+                        <th className="money-cell">Total Cost</th>
                       </tr>
                     </thead>
                     <tbody>
                       {payables.map((payable) => (
                         <tr key={payable.supplierId || payable.supplierName}>
                           <td>{payable.supplierName}</td>
-                          <td>{formatMoney(payable.totalCost)}</td>
+                          <td className="money-cell">{formatMoney(payable.totalCost)}</td>
                         </tr>
                       ))}
                     </tbody>

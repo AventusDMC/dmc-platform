@@ -26,7 +26,14 @@ export async function PlaceTypesCatalogSection() {
           <PlaceTypesForm apiBaseUrl="/api" />
         </CollapsibleCreatePanel>
       }
-      emptyState={placeTypes.length === 0 ? <p className="empty-state">No place types yet.</p> : undefined}
+      emptyState={
+        placeTypes.length === 0 ? (
+          <div className="empty-state ui-empty-state">
+            <strong>No place types yet.</strong>
+            <p>Add reusable place labels so routes, places, and future modules share the same vocabulary.</p>
+          </div>
+        ) : undefined
+      }
     >
       {placeTypes.length > 0 ? (
         <div className="table-wrap">
