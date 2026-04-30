@@ -14,8 +14,10 @@ type FindTransportRateInput = {
 };
 
 type TransportPricingCandidate = {
+  vehicleRateId?: string | null;
   routeId: string | null;
   routeName: string;
+  classification?: TransportServiceClassification;
   pricingMode: 'per_vehicle' | 'capacity_unit';
   unitCapacity: number | null;
   unitCount: number | null;
@@ -31,7 +33,30 @@ type TransportPricingCandidate = {
     id: string;
     name: string;
     code: string;
+    classification?: TransportServiceClassification;
   };
+  supplier?: {
+    id: string | null;
+    name: string;
+  };
+};
+
+type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
+
+type TransportPricingAddOn = {
+  rateId: string;
+  serviceTypeId: string;
+  name: string;
+  classification: 'ADD_ON';
+  addOnType: 'DRIVER_OVERNIGHT' | 'STATIONARY_WAITING' | 'OTHER';
+  supplierId: string | null;
+  supplierName: string;
+  vehicleId: string;
+  vehicleName: string;
+  unitCapacity: number;
+  unitCost: number;
+  currency: string;
+  defaultQuantity: number;
 };
 
 type ResolveTransportPricingRuleInput = {
@@ -157,6 +182,7 @@ export class TransportPricingService {
       },
       include: {
         route: true,
+        supplier: true,
         transportServiceType: true,
         vehicle: true,
       },
@@ -226,6 +252,7 @@ export class TransportPricingService {
       },
       include: {
         route: true,
+        supplier: true,
         transportServiceType: true,
         vehicle: true,
       },
@@ -252,8 +279,10 @@ export class TransportPricingService {
           : Number(discountedBaseCost.toFixed(2));
 
       return {
+        vehicleRateId: null,
         routeId: rule.routeId,
         routeName: rule.route.name,
+        classification: (rule.transportServiceType as any).classification || 'ROUTE_TRANSFER',
         pricingMode: rule.pricingMode,
         unitCapacity: rule.unitCapacity,
         unitCount,
@@ -269,6 +298,11 @@ export class TransportPricingService {
           id: rule.transportServiceType.id,
           name: rule.transportServiceType.name,
           code: rule.transportServiceType.code,
+          classification: (rule.transportServiceType as any).classification || 'ROUTE_TRANSFER',
+        },
+        supplier: {
+          id: rule.supplierId ?? null,
+          name: (rule as any).supplier?.name || 'Supplier pending',
         },
       };
     });
@@ -306,6 +340,7 @@ export class TransportPricingService {
       include: {
         vehicle: true,
         serviceType: true,
+        supplier: true,
       },
       orderBy: [
         {
@@ -321,12 +356,14 @@ export class TransportPricingService {
     });
 
     return rates.map((rate) => ({
+      vehicleRateId: rate.id,
       routeId: rate.routeId,
       routeName: rate.routeName,
-      pricingMode: 'per_vehicle' as const,
-      unitCapacity: null,
-      unitCount: null,
-      price: rate.price,
+      classification: (rate.serviceType as any).classification || 'ROUTE_TRANSFER',
+      pricingMode: 'capacity_unit' as const,
+      unitCapacity: rate.maxPax,
+      unitCount: Math.ceil(data.paxCount / rate.maxPax),
+      price: Number((Math.ceil(data.paxCount / rate.maxPax) * rate.price).toFixed(2)),
       currency: rate.currency,
       vehicle: {
         id: rate.vehicle.id,
@@ -338,6 +375,11 @@ export class TransportPricingService {
         id: rate.serviceType.id,
         name: rate.serviceType.name,
         code: rate.serviceType.code,
+        classification: (rate.serviceType as any).classification || 'ROUTE_TRANSFER',
+      },
+      supplier: {
+        id: rate.supplierId ?? null,
+        name: (rate as any).supplier?.name || 'Supplier pending',
       },
     }));
   }
@@ -375,6 +417,7 @@ export class TransportPricingService {
       include: {
         vehicle: true,
         serviceType: true,
+        supplier: true,
         route: {
           include: {
             fromPlace: true,
@@ -425,6 +468,7 @@ export class TransportPricingService {
           route: resolvedPricing.rule.route,
           routeName: resolvedPricing.rule.route.name,
           paxCount: data.paxCount,
+          classification: (resolvedPricing.rule.transportServiceType as any).classification || 'ROUTE_TRANSFER',
           pricingMode: resolvedPricing.rule.pricingMode,
           unitCapacity: resolvedPricing.rule.unitCapacity,
           discountedBaseCost: resolvedPricing.discountedBaseCost,
@@ -442,8 +486,19 @@ export class TransportPricingService {
             id: resolvedPricing.rule.transportServiceType.id,
             name: resolvedPricing.rule.transportServiceType.name,
             code: resolvedPricing.rule.transportServiceType.code,
+            classification: (resolvedPricing.rule.transportServiceType as any).classification || 'ROUTE_TRANSFER',
+          },
+          supplier: {
+            id: resolvedPricing.rule.supplierId ?? null,
+            name: (resolvedPricing.rule as any).supplier?.name || 'Supplier pending',
           },
           candidates,
+          optionalAddOns: await this.findTransportAddOns({
+            supplierId: resolvedPricing.rule.supplierId,
+            paxCount: data.paxCount,
+            routeName: resolvedPricing.rule.route.name,
+            travelDate: data.travelDate,
+          }),
         };
       } catch (error) {
         if (!(error instanceof NotFoundException)) {
@@ -454,6 +509,7 @@ export class TransportPricingService {
 
     const rate = await this.findMatchingRate(data);
     const candidates = await this.findMatchingRateCandidates(data);
+    const unitCount = Math.ceil(data.paxCount / rate.maxPax);
 
     return {
       vehicleRateId: rate.id,
@@ -463,14 +519,14 @@ export class TransportPricingService {
       toPlace: rate.toPlace,
       routeName: rate.routeName,
       paxCount: data.paxCount,
-      pricingMode: 'per_vehicle' as const,
-      unitCapacity: null,
+      pricingMode: 'capacity_unit' as const,
+      unitCapacity: rate.maxPax,
       slabRate: rate.price,
-      totalPrice: rate.price,
-      price: rate.price,
+      totalPrice: Number((unitCount * rate.price).toFixed(2)),
+      price: Number((unitCount * rate.price).toFixed(2)),
       discountedBaseCost: rate.price,
       currency: rate.currency,
-      unitCount: null,
+      unitCount,
       vehicle: {
         id: rate.vehicle.id,
         name: rate.vehicle.name,
@@ -481,11 +537,78 @@ export class TransportPricingService {
         id: rate.serviceType.id,
         name: rate.serviceType.name,
         code: rate.serviceType.code,
+        classification: (rate.serviceType as any).classification || 'ROUTE_TRANSFER',
+      },
+      supplier: {
+        id: rate.supplierId ?? null,
+        name: (rate as any).supplier?.name || 'Supplier pending',
       },
       validFrom: rate.validFrom,
       validTo: rate.validTo,
       candidates,
+      optionalAddOns: await this.findTransportAddOns({
+        supplierId: rate.supplierId,
+        vehicleId: rate.vehicleId,
+        paxCount: data.paxCount,
+        routeName: rate.routeName,
+        travelDate: data.travelDate,
+      }),
     };
+  }
+
+  async findTransportAddOns(data: {
+    supplierId?: string | null;
+    vehicleId?: string | null;
+    paxCount: number;
+    routeName?: string | null;
+    travelDate?: Date;
+  }): Promise<TransportPricingAddOn[]> {
+    const pricingDate = data.travelDate ?? new Date();
+    const destinationText = String(data.routeName || '').toLowerCase();
+    const destinationSuggestsAddOn = /(petra|wadi\s*rum|aqaba|outside\s+amman)/i.test(destinationText);
+    const rates = await this.prisma.vehicleRate.findMany({
+      where: {
+        active: true,
+        ...(data.supplierId ? { supplierId: data.supplierId } : {}),
+        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
+        validFrom: { lte: pricingDate },
+        validTo: { gte: pricingDate },
+        serviceType: {
+          classification: 'ADD_ON' as any,
+        },
+      },
+      include: {
+        vehicle: true,
+        supplier: true,
+        serviceType: true,
+      },
+      orderBy: [{ price: 'asc' }],
+    } as any);
+
+    return rates.map((rate: any) => {
+      const text = `${rate.serviceType?.name || ''} ${rate.routeName || ''}`.toLowerCase();
+      const addOnType = /overnight/.test(text)
+        ? 'DRIVER_OVERNIGHT'
+        : /stationary|waiting/.test(text)
+          ? 'STATIONARY_WAITING'
+          : 'OTHER';
+
+      return {
+        rateId: rate.id,
+        serviceTypeId: rate.serviceTypeId,
+        name: rate.serviceType?.name || rate.routeName || 'Transport add-on',
+        classification: 'ADD_ON',
+        addOnType,
+        supplierId: rate.supplierId ?? null,
+        supplierName: rate.supplier?.name || 'Supplier pending',
+        vehicleId: rate.vehicleId,
+        vehicleName: rate.vehicle?.name || 'Vehicle',
+        unitCapacity: rate.maxPax,
+        unitCost: rate.price,
+        currency: rate.currency,
+        defaultQuantity: destinationSuggestsAddOn ? 1 : 0,
+      };
+    });
   }
 
   private async buildRouteFilter(data: FindTransportRateInput) {

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 type CreateTransportServiceTypeInput = {
   name: string;
   code: string;
+  classification?: 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
 };
 
 type UpdateTransportServiceTypeInput = Partial<CreateTransportServiceTypeInput>;
@@ -41,7 +42,8 @@ export class TransportServiceTypesService {
       data: {
         name: data.name.trim(),
         code: data.code.trim().toUpperCase(),
-      },
+        classification: data.classification || 'ROUTE_TRANSFER',
+      } as any,
     });
   }
 
@@ -53,7 +55,8 @@ export class TransportServiceTypesService {
       data: {
         name: data.name === undefined ? undefined : data.name.trim(),
         code: data.code === undefined ? undefined : data.code.trim().toUpperCase(),
-      },
+        classification: data.classification,
+      } as any,
     });
   }
 

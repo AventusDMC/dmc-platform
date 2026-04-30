@@ -50,6 +50,7 @@ type VehicleRatePricingSyncData = {
 };
 
 type TransportContractImportMode = 'preview' | 'import';
+type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
 
 type TransportContractImportRow = {
   supplierName: string;
@@ -146,6 +147,18 @@ function isEmptyImportRow(row: Record<string, unknown>) {
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
   return `${fromPlaceName.trim()} → ${toPlaceName.trim()}`;
+}
+
+function classifyTransportServiceName(serviceName: string): TransportServiceClassification {
+  const normalized = serviceName.trim().toLowerCase();
+
+  if (/\b(daily\s*fd|daily\s+full\s+day|daily\s+package)\b/.test(normalized)) return 'DAILY_PACKAGE';
+  if (/\b(full\s+day|fd)\b/.test(normalized)) return 'FULL_DAY';
+  if (/\b(half\s+day|hd)\b/.test(normalized)) return 'HALF_DAY';
+  if (/\b(driver\s+overnight|stationary|waiting|daily\s+charge)\b/.test(normalized)) return 'ADD_ON';
+  if (/\b(airport\s+transfer|transfer|pick[-\s]?up|drop[-\s]?off)\b/.test(normalized)) return 'ROUTE_TRANSFER';
+
+  return 'ROUTE_TRANSFER';
 }
 
 @Injectable()
@@ -542,6 +555,7 @@ export class VehicleRatesService {
         row: parsed.rowNumber,
         supplierName: normalized.supplierName,
         serviceName: normalized.serviceName,
+        classification: classifyTransportServiceName(normalized.serviceName),
         routeName: normalized.routeName,
         vehicleType: normalized.vehicleType,
         maxPaxPerUnit: normalized.maxPaxPerUnit,
@@ -788,6 +802,7 @@ export class VehicleRatesService {
 
   private async findOrCreateTransportImportServiceType(serviceName: string) {
     const code = normalizeCode(serviceName);
+    const classification = classifyTransportServiceName(serviceName);
     const existing = await this.prisma.transportServiceType.findFirst({
       where: {
         OR: [
@@ -797,7 +812,14 @@ export class VehicleRatesService {
       },
     });
 
-    return existing || this.prisma.transportServiceType.create({ data: { name: serviceName, code } });
+    if (existing) {
+      return this.prisma.transportServiceType.update({
+        where: { id: existing.id },
+        data: { classification } as any,
+      });
+    }
+
+    return this.prisma.transportServiceType.create({ data: { name: serviceName, code, classification } as any });
   }
 
   private async findOrCreateTransportImportVehicle(

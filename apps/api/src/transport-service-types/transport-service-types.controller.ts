@@ -4,6 +4,7 @@ import { TransportServiceTypesService } from './transport-service-types.service'
 type CreateTransportServiceTypeBody = {
   name: string;
   code: string;
+  classification?: 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
 };
 
 type UpdateTransportServiceTypeBody = Partial<CreateTransportServiceTypeBody>;
@@ -27,6 +28,7 @@ export class TransportServiceTypesController {
     return this.transportServiceTypesService.create({
       name: body.name,
       code: body.code,
+      classification: body.classification,
     });
   }
 

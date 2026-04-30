@@ -55,6 +55,7 @@ function createPrismaMock() {
   const hydrateRule = (rule: any) => ({
     ...rule,
     route: stores.routes.find((route) => route.id === rule.routeId),
+    supplier: stores.suppliers.find((supplier) => supplier.id === rule.supplierId),
     transportServiceType: stores.transportServiceTypes.find((serviceType) => serviceType.id === rule.transportServiceTypeId),
     vehicle: stores.vehicles.find((vehicle) => vehicle.id === rule.vehicleId),
   });
@@ -95,6 +96,11 @@ function createPrismaMock() {
         const serviceType = { id: nextId('transport-service-type'), ...data };
         stores.transportServiceTypes.push(serviceType);
         return serviceType;
+      },
+      update: async ({ where, data }: any) => {
+        const index = stores.transportServiceTypes.findIndex((serviceType) => serviceType.id === where.id);
+        stores.transportServiceTypes[index] = { ...stores.transportServiceTypes[index], ...data };
+        return stores.transportServiceTypes[index];
       },
     },
     vehicle: {
@@ -158,6 +164,24 @@ function createPrismaMock() {
             rate.vehicleId === where.vehicleId &&
             rate.maxPax === where.maxPax,
         ) || null,
+      findMany: async ({ where }: any) =>
+        stores.vehicleRates
+          .filter(
+            (rate) =>
+              (where.active === undefined || rate.active === where.active) &&
+              (where.supplierId === undefined || rate.supplierId === where.supplierId) &&
+              (where.vehicleId === undefined || rate.vehicleId === where.vehicleId) &&
+              (where.minPax?.lte === undefined || rate.minPax <= where.minPax.lte) &&
+              (where.maxPax?.gte === undefined || rate.maxPax >= where.maxPax.gte) &&
+              (!where.serviceType?.classification ||
+                stores.transportServiceTypes.find((serviceType) => serviceType.id === rate.serviceTypeId)?.classification === where.serviceType.classification),
+          )
+          .map((rate) => ({
+            ...rate,
+            vehicle: stores.vehicles.find((vehicle) => vehicle.id === rate.vehicleId),
+            supplier: stores.suppliers.find((supplier) => supplier.id === rate.supplierId),
+            serviceType: stores.transportServiceTypes.find((serviceType) => serviceType.id === rate.serviceTypeId),
+          })),
       findUnique: async ({ where }: any) => {
         const rate = stores.vehicleRates.find((entry) => entry.id === where.id);
         return rate ? { ...rate, _count: { quoteItems: 0 } } : null;
@@ -363,4 +387,82 @@ test('vehicle rate CRUD keeps matching capacity pricing rule in sync', async () 
 
   assert.equal(stores.vehicleRates.length, 0);
   assert.equal(stores.pricingRules.find((rule) => rule.unitCapacity === 4)?.isActive, false);
+});
+
+test('Almushtari-style transport rows classify services and expose smart picker add-ons', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const pricingService = new TransportPricingService(prisma as any);
+  const rows = [
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari',
+      serviceName: 'Airport Transfer',
+      routeName: 'Amman Airport to Petra',
+      origin: 'Amman Airport',
+      destination: 'Petra',
+      cost: 45,
+      currency: 'JOD',
+    },
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari',
+      serviceName: 'Daily FD rate minimum 3 full days',
+      routeName: 'Petra full day transport',
+      origin: 'Petra',
+      destination: 'Petra',
+      cost: 100,
+      currency: 'JOD',
+    },
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari',
+      serviceName: 'Driver Overnight outside Amman',
+      routeName: 'Petra driver overnight',
+      origin: 'Petra',
+      destination: 'Petra',
+      cost: 10,
+      currency: 'JOD',
+    },
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari',
+      serviceName: 'Stationary charge Petra Wadi Rum Aqaba',
+      routeName: 'Petra stationary charge',
+      origin: 'Petra',
+      destination: 'Petra',
+      cost: 30,
+      currency: 'JOD',
+    },
+  ];
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'almushtari.xlsx' });
+  assert.equal(imported.createdRates, 4);
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer')?.classification, 'ROUTE_TRANSFER');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Daily FD rate minimum 3 full days')?.classification, 'DAILY_PACKAGE');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Driver Overnight outside Amman')?.classification, 'ADD_ON');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary charge Petra Wadi Rum Aqaba')?.classification, 'ADD_ON');
+
+  const route = stores.routes.find((entry) => entry.name === 'Amman Airport to Petra');
+  const transferType = stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer');
+  const priced = await pricingService.calculate({
+    serviceTypeId: transferType.id,
+    routeId: route.id,
+    paxCount: 4,
+  });
+
+  assert.equal(priced.pricingMode, 'capacity_unit');
+  assert.equal(priced.unitCapacity, 3);
+  assert.equal(priced.unitCount, 2);
+  assert.equal(priced.price, 90);
+  assert.equal(priced.candidates[0].supplier?.name, 'Almushtari');
+  assert.equal(priced.candidates[0].serviceType.classification, 'ROUTE_TRANSFER');
+  assert.equal(priced.optionalAddOns.length, 2);
+
+  const overnight = priced.optionalAddOns.find((entry) => entry.addOnType === 'DRIVER_OVERNIGHT');
+  const stationary = priced.optionalAddOns.find((entry) => entry.addOnType === 'STATIONARY_WAITING');
+  assert.ok(overnight);
+  assert.ok(stationary);
+  assert.equal(2 * overnight.unitCost * 2, 40);
+  assert.equal(2 * stationary.unitCost * 1, 60);
 });

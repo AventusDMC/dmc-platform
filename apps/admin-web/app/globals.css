@@ -14405,6 +14405,35 @@ textarea:focus,
   font-weight: 750;
 }
 
+.quote-transport-addon-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.quote-transport-addon-option span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quote-transport-addon-option em {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  text-transform: capitalize;
+}
+
+.quote-transport-addon-option input[type='number'] {
+  width: 76px;
+}
+
 .quote-service-card-details {
   margin-top: 2px;
 }

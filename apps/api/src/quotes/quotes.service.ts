@@ -178,6 +178,10 @@ type CreateQuoteItemInput = {
   routeId?: string;
   normalizedKey?: string;
   routeName?: string;
+  transportAddOns?: Array<{
+    rateId?: string;
+    quantity?: number;
+  }>;
 };
 
 type UpdateQuoteItemInput = Partial<CreateQuoteItemInput>;
@@ -2853,6 +2857,9 @@ export class QuotesService {
     let vehicleId: string | null = null;
     let transportPricingMode: TransportPricingMode | null = null;
     let unitCount: number | null = null;
+    let transportUnitCostMultiplier = 1;
+    let transportAddOnUnitCost = 0;
+    const transportPricingDescriptionParts: string[] = [];
     let entranceFeeId: string | null = null;
     let jordanPassCovered = false;
     let jordanPassSavingsJod = 0;
@@ -3014,10 +3021,28 @@ export class QuotesService {
         vehicleId = resolvedPricing.rule.vehicleId;
         transportPricingMode = resolvedPricing.rule.pricingMode;
         unitCount = resolvedPricing.unitCount;
+        if (resolvedPricing.rule.pricingMode === 'capacity_unit') {
+          if (!resolvedPricing.rule.unitCapacity || resolvedPricing.rule.unitCapacity < 1) {
+            throw new BadRequestException('capacity_unit pricing requires unitCapacity');
+          }
+          if (!Number.isFinite(resolvedPricing.discountedBaseCost) || resolvedPricing.discountedBaseCost <= 0) {
+            throw new BadRequestException('Transport cost must be positive');
+          }
+        }
+        const classification = (resolvedPricing.rule.transportServiceType as any).classification || 'ROUTE_TRANSFER';
+        if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
+          const selectedDays = Math.max(1, dayCount);
+          const billableDays = Math.max(selectedDays, 3);
+          transportUnitCostMultiplier = billableDays;
+          if (selectedDays < 3) {
+            transportPricingDescriptionParts.push(`Daily FD minimum applied: ${selectedDays} selected, 3 charged`);
+          }
+        }
         pricingDescription = [
           resolvedPricing.rule.transportServiceType.name,
           resolvedPricing.rule.route.name,
           resolvedPricing.rule.vehicle.name,
+          classification,
           resolvedPricing.rule.pricingMode === 'capacity_unit'
             ? `Capacity unit x ${resolvedPricing.unitCount}`
             : 'Per vehicle',
@@ -3036,8 +3061,42 @@ export class QuotesService {
 
         baseCost = vehicleRate.price;
         currency = vehicleRate.currency;
+        if (!Number.isFinite(vehicleRate.maxPax) || vehicleRate.maxPax < 1) {
+          throw new BadRequestException('Transport maxPaxPerUnit must be positive');
+        }
+        if (!Number.isFinite(vehicleRate.price) || vehicleRate.price <= 0) {
+          throw new BadRequestException('Transport cost must be positive');
+        }
+        const classification = (vehicleRate.serviceType as any).classification || 'ROUTE_TRANSFER';
+        transportPricingMode = 'capacity_unit';
+        unitCount = Math.ceil(paxCount / vehicleRate.maxPax);
+        if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
+          const selectedDays = Math.max(1, dayCount);
+          const billableDays = Math.max(selectedDays, 3);
+          transportUnitCostMultiplier = billableDays;
+          if (selectedDays < 3) {
+            transportPricingDescriptionParts.push(`Daily FD minimum applied: ${selectedDays} selected, 3 charged`);
+          }
+        }
         pricingDescription = `${vehicleRate.serviceType.name} | ${vehicleRate.routeName} | ${vehicleRate.vehicle.name}`;
         appliedVehicleRateId = vehicleRate.id;
+      }
+
+      if (transportPricingMode === 'capacity_unit' && unitCount) {
+        const addOnResult = await this.calculateTransportAddOnsForQuoteItem({
+          addOns: data.transportAddOns || [],
+          paxCount,
+          currency,
+          supplierId: null,
+          vehicleId,
+        });
+        transportAddOnUnitCost = addOnResult.unitCost;
+        transportPricingDescriptionParts.push(...addOnResult.descriptions);
+        baseCost = Number((baseCost * transportUnitCostMultiplier + transportAddOnUnitCost).toFixed(2));
+      }
+
+      if (transportPricingDescriptionParts.length > 0) {
+        pricingDescription = [pricingDescription, ...transportPricingDescriptionParts].filter(Boolean).join(' | ');
       }
     }
 
@@ -4962,6 +5021,75 @@ export class QuotesService {
     if (startDay < quoteDayRange.minDay || endDay > quoteDayRange.maxDay) {
       throw new BadRequestException(`External package days must be within Day ${quoteDayRange.minDay}-${quoteDayRange.maxDay}`);
     }
+  }
+
+  private async calculateTransportAddOnsForQuoteItem(values: {
+    addOns: Array<{ rateId?: string; quantity?: number }>;
+    paxCount: number;
+    currency: string;
+    supplierId?: string | null;
+    vehicleId?: string | null;
+  }) {
+    if (values.addOns.length === 0) {
+      return { unitCost: 0, descriptions: [] as string[] };
+    }
+
+    let unitCost = 0;
+    const descriptions: string[] = [];
+
+    for (const addOn of values.addOns) {
+      const rateId = addOn.rateId?.trim();
+      const quantity = Math.floor(Number(addOn.quantity ?? 0));
+
+      if (!rateId) {
+        throw new BadRequestException('Transport add-on rateId is required');
+      }
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new BadRequestException('Transport add-on quantity must be at least 1');
+      }
+
+      const rate = await (this.prisma.vehicleRate as any).findFirst({
+        where: {
+          id: rateId,
+          active: true,
+        },
+        include: {
+          serviceType: true,
+          vehicle: true,
+          supplier: true,
+        },
+      } as any);
+
+      if (!rate) {
+        throw new BadRequestException('Selected transport add-on rate is inactive or unavailable');
+      }
+
+      if ((rate.serviceType as any).classification !== 'ADD_ON') {
+        throw new BadRequestException('Selected transport add-on must use an ADD_ON transport service type');
+      }
+
+      if (values.vehicleId && rate.vehicleId !== values.vehicleId) {
+        throw new BadRequestException('Selected transport add-on does not match the selected vehicle');
+      }
+
+      if (!Number.isFinite(rate.maxPax) || rate.maxPax < 1) {
+        throw new BadRequestException('Transport add-on maxPaxPerUnit must be positive');
+      }
+
+      if (!Number.isFinite(rate.price) || rate.price <= 0) {
+        throw new BadRequestException('Transport add-on cost must be positive');
+      }
+
+      if (rate.currency !== values.currency) {
+        throw new BadRequestException('Transport add-on currency must match the selected transport rate');
+      }
+
+      unitCost = Number((unitCost + rate.price * quantity).toFixed(2));
+      descriptions.push(`${rate.serviceType.name} x ${quantity} @ ${rate.currency} ${rate.price.toFixed(2)}`);
+    }
+
+    return { unitCost, descriptions };
   }
 
   private isHotelService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {

@@ -129,6 +129,7 @@ type CreateQuoteItemBody = {
   routeId?: string;
   normalizedKey?: string;
   routeName?: string;
+  transportAddOns?: Array<{ rateId?: string; quantity?: number }>;
 };
 
 type UpdateQuoteItemBody = Partial<CreateQuoteItemBody>;
@@ -800,6 +801,9 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportAddOns: Array.isArray(body.transportAddOns)
+        ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
+        : undefined,
     }, actor);
   }
 
@@ -882,6 +886,9 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportAddOns: Array.isArray(body.transportAddOns)
+        ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
+        : undefined,
     }, actor);
   }
 
@@ -1097,6 +1104,9 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportAddOns: Array.isArray(body.transportAddOns)
+        ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
+        : undefined,
     }, actor);
   }
 
@@ -1179,6 +1189,9 @@ export class QuotesController {
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
+      transportAddOns: Array.isArray(body.transportAddOns)
+        ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
+        : undefined,
     }, actor);
   }
 

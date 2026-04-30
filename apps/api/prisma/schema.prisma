@@ -1429,13 +1429,14 @@ model TransportPricingRule {
 }
 
 model TransportServiceType {
-  id           String                 @id @default(uuid()) @db.Uuid
-  name         String
-  code         String                 @unique
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  vehicleRates VehicleRate[]
-  pricingRules TransportPricingRule[]
+  id             String                         @id @default(uuid()) @db.Uuid
+  name           String
+  code           String                         @unique
+  classification TransportServiceClassification @default(ROUTE_TRANSFER)
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+  vehicleRates   VehicleRate[]
+  pricingRules   TransportPricingRule[]
 
   @@map("transport_service_types")
 }
@@ -1863,6 +1864,14 @@ enum InvoiceStatus {
 enum TransportPricingMode {
   per_vehicle
   capacity_unit
+}
+
+enum TransportServiceClassification {
+  ROUTE_TRANSFER
+  FULL_DAY
+  HALF_DAY
+  DAILY_PACKAGE
+  ADD_ON
 }
 
 enum ServiceUnitType {

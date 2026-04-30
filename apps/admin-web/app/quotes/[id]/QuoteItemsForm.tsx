@@ -97,14 +97,18 @@ type TransportServiceType = {
   id: string;
   name: string;
   code: string;
+  classification?: TransportServiceClassification;
 };
+type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
 
 type QuoteType = 'FIT' | 'GROUP';
 type VehicleCategory = 'CAR' | 'VAN' | 'MINIBUS' | 'BUS' | 'COACH' | 'LIMO';
 
 type TransportPricingCandidate = {
+  vehicleRateId?: string | null;
   routeId: string | null;
   routeName: string;
+  classification?: TransportServiceClassification;
   currency: string;
   price: number;
   unitCount: number | null;
@@ -119,7 +123,27 @@ type TransportPricingCandidate = {
     id: string;
     name: string;
     code: string;
+    classification?: TransportServiceClassification;
   };
+  supplier?: {
+    id: string | null;
+    name: string;
+  };
+};
+
+type TransportPricingAddOn = {
+  rateId: string;
+  serviceTypeId: string;
+  name: string;
+  addOnType: 'DRIVER_OVERNIGHT' | 'STATIONARY_WAITING' | 'OTHER';
+  supplierId: string | null;
+  supplierName: string;
+  vehicleId: string;
+  vehicleName: string;
+  unitCapacity: number;
+  unitCost: number;
+  currency: string;
+  defaultQuantity: number;
 };
 
 type ResolvedTransportPricing = {
@@ -139,8 +163,14 @@ type ResolvedTransportPricing = {
     id: string;
     name: string;
     code: string;
+    classification?: TransportServiceClassification;
+  };
+  supplier?: {
+    id: string | null;
+    name: string;
   };
   candidates?: TransportPricingCandidate[];
+  optionalAddOns?: TransportPricingAddOn[];
 };
 
 type HotelCostCalculation = {
@@ -700,6 +730,7 @@ export function QuoteItemsForm({
   const [pendingHotelRateSubmit, setPendingHotelRateSubmit] = useState(false);
   const [transportSuggestionOverridden, setTransportSuggestionOverridden] = useState(false);
   const [routeSelectionManuallyChanged, setRouteSelectionManuallyChanged] = useState(Boolean(initialRouteId || initialRouteName));
+  const [selectedTransportAddOns, setSelectedTransportAddOns] = useState<Record<string, { selected: boolean; quantity: string }>>({});
   const formRef = useRef<HTMLFormElement>(null);
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
@@ -756,14 +787,21 @@ export function QuoteItemsForm({
       return bestCandidate;
     }, null);
 
-    return normalizedCandidates.map((candidate) => ({
-      ...candidate,
-      isBestValue:
-        Boolean(bestValueCandidate) &&
-        candidate.vehicle.id === bestValueCandidate?.vehicle.id &&
-        candidate.serviceType.id === bestValueCandidate.serviceType.id &&
-        (candidate.routeId || candidate.routeName) === (bestValueCandidate.routeId || bestValueCandidate.routeName),
-    }));
+    return normalizedCandidates
+      .map((candidate) => ({
+        ...candidate,
+        isBestValue:
+          Boolean(bestValueCandidate) &&
+          candidate.vehicle.id === bestValueCandidate?.vehicle.id &&
+          candidate.serviceType.id === bestValueCandidate.serviceType.id &&
+          (candidate.routeId || candidate.routeName) === (bestValueCandidate.routeId || bestValueCandidate.routeName),
+      }))
+      .sort((left, right) => {
+        const leftCapacityGap = left.vehicle.maxPax >= currentPax ? left.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
+        const rightCapacityGap = right.vehicle.maxPax >= currentPax ? right.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
+
+        return leftCapacityGap - rightCapacityGap || left.price - right.price;
+      });
   }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
   const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
   const autoTransportCandidate =
@@ -789,6 +827,31 @@ export function QuoteItemsForm({
       ].filter((reason): reason is string => Boolean(reason))
     : [];
   const selectedTransportServiceType = transportServiceTypes.find((serviceType) => serviceType.id === transportServiceTypeId) || null;
+  const selectedTransportClassification =
+    resolvedTransportPricing?.serviceType.classification || selectedTransportServiceType?.classification || 'ROUTE_TRANSFER';
+  const transportSelectedDays = Math.max(1, Number(dayCount) || 1);
+  const transportBillableDays =
+    selectedTransportClassification === 'FULL_DAY' || selectedTransportClassification === 'DAILY_PACKAGE'
+      ? Math.max(transportSelectedDays, 3)
+      : 1;
+  const transportAddOnRows = resolvedTransportPricing?.optionalAddOns || [];
+  const selectedTransportAddOnPayload = transportAddOnRows
+    .map((addOn) => {
+      const state = selectedTransportAddOns[addOn.rateId];
+      const selected = state?.selected ?? addOn.defaultQuantity > 0;
+      const quantity = Math.max(1, Number(state?.quantity || addOn.defaultQuantity || 1));
+
+      return selected ? { rateId: addOn.rateId, quantity } : null;
+    })
+    .filter((entry): entry is { rateId: string; quantity: number } => Boolean(entry));
+  const selectedTransportAddOnTotal = transportAddOnRows.reduce((total, addOn) => {
+    const state = selectedTransportAddOns[addOn.rateId];
+    const selected = state?.selected ?? addOn.defaultQuantity > 0;
+    const quantity = Math.max(1, Number(state?.quantity || addOn.defaultQuantity || 1));
+    const units = resolvedTransportPricing?.unitCount || Math.ceil((Number(paxCount) || defaultPaxCount || 1) / Math.max(1, addOn.unitCapacity));
+
+    return selected ? total + units * addOn.unitCost * quantity : total;
+  }, 0);
   const activeTransportRoutes = useMemo(() => routes.filter((route) => route.isActive !== false), [routes]);
   const serviceTypeMatchedRoutes = useMemo(() => {
     if (!selectedTransportServiceType) {
@@ -1381,8 +1444,30 @@ export function QuoteItemsForm({
       setRouteName('');
       setResolvedTransportPricing(null);
       setIsLoadingTransportCost(false);
+      setSelectedTransportAddOns({});
     }
   }, [isTransportService]);
+
+  useEffect(() => {
+    if (!isTransportService || !resolvedTransportPricing?.optionalAddOns) {
+      return;
+    }
+
+    setSelectedTransportAddOns((current) => {
+      const next = { ...current };
+
+      for (const addOn of resolvedTransportPricing.optionalAddOns || []) {
+        if (!next[addOn.rateId]) {
+          next[addOn.rateId] = {
+            selected: addOn.defaultQuantity > 0,
+            quantity: String(Math.max(1, addOn.defaultQuantity || 1)),
+          };
+        }
+      }
+
+      return next;
+    });
+  }, [isTransportService, resolvedTransportPricing?.optionalAddOns]);
 
   useEffect(() => {
     if (!isTransportService || routeSelectionManuallyChanged || routeId || routeName.trim() || !smartDefaultTransportRoute) {
@@ -1418,6 +1503,8 @@ export function QuoteItemsForm({
       unitCapacity: candidate.unitCapacity,
       vehicle: candidate.vehicle,
       serviceType: candidate.serviceType,
+      supplier: candidate.supplier,
+      optionalAddOns: resolvedTransportPricing?.optionalAddOns || [],
       candidates: resolvedTransportPricing?.candidates,
     });
 
@@ -1763,7 +1850,7 @@ export function QuoteItemsForm({
           paxCount: Number(paxCount),
           roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
           nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
-          dayCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
+          dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
           overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
           overrideReason: useOverride ? overrideReason.trim() || null : null,
           useOverride,
@@ -1773,6 +1860,7 @@ export function QuoteItemsForm({
           transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
           routeId: isTransportService ? routeId || undefined : undefined,
           routeName: isTransportService ? routeName.trim() : undefined,
+          transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,
           guideType: isGuideService ? guideType : undefined,
           guideDuration: isGuideService ? guideDuration : undefined,
           overnight: isGuideService ? overnight === 'yes' : undefined,
@@ -1815,6 +1903,7 @@ export function QuoteItemsForm({
         setRouteId('');
         setRouteName('');
         setResolvedTransportPricing(null);
+        setSelectedTransportAddOns({});
         setContractId('');
         setSeasonId('');
         setSeasonName('');
@@ -3058,7 +3147,7 @@ export function QuoteItemsForm({
                   <input
                     value={
                       resolvedTransportPricing
-                        ? `${resolvedTransportPricing.serviceType.name} | ${resolvedTransportPricing.routeName}`
+                        ? `${resolvedTransportPricing.serviceType.name} | ${selectedTransportClassification} | ${resolvedTransportPricing.routeName}`
                         : ''
                     }
                     readOnly
@@ -3083,7 +3172,18 @@ export function QuoteItemsForm({
 
               {resolvedTransportPricing ? (
                 <div className="quote-selected-transport-explanation">
-                  <strong>{transportSuggestionOverridden ? 'Selected transport option' : 'Auto-selected for you. You can change this.'}</strong>
+                  <strong>{transportSuggestionOverridden ? 'Selected transport option' : 'Smart Transport Picker selected this option.'}</strong>
+                  <p>
+                    Supplier: {resolvedTransportPricing.supplier?.name || 'Supplier pending'} | Pax {Number(paxCount) || defaultPaxCount || 1}
+                    {resolvedTransportPricing.unitCount && resolvedTransportPricing.unitCapacity
+                      ? ` -> ${resolvedTransportPricing.unitCount} unit${resolvedTransportPricing.unitCount === 1 ? '' : 's'} (${resolvedTransportPricing.unitCapacity} pax each)`
+                      : ''}
+                  </p>
+                  {transportBillableDays > 1 ? (
+                    <p>
+                      Daily full-day package: {transportSelectedDays} selected day{transportSelectedDays === 1 ? '' : 's'}, {transportBillableDays} charged.
+                    </p>
+                  ) : null}
                   {transportRecommendationReasons.length > 0 ? (
                     <ul>
                       {transportRecommendationReasons.map((reason) => (
@@ -3109,6 +3209,70 @@ export function QuoteItemsForm({
             <p className="form-helper">
               {`${resolvedTransportPricing.currency} ${resolvedTransportPricing.discountedBaseCost.toFixed(2)} per unit -> ${resolvedTransportPricing.unitCount} units -> ${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)} total`}
             </p>
+          ) : null}
+
+          {hasPrimarySelection && isTransportService && transportAddOnRows.length > 0 ? (
+            <div className="quote-selected-transport-card">
+              <div className="panel-header" style={{ marginBottom: 12 }}>
+                <div>
+                  <p className="eyebrow">Transport add-ons</p>
+                  <h3 className="section-title" style={{ fontSize: '1rem' }}>Optional package rules</h3>
+                </div>
+                <strong>
+                  {transportAddOnRows[0]?.currency || resolvedTransportPricing?.currency || 'JOD'} {selectedTransportAddOnTotal.toFixed(2)}
+                </strong>
+              </div>
+
+              <div className="quote-preview-total-list">
+                {transportAddOnRows.map((addOn) => {
+                  const state = selectedTransportAddOns[addOn.rateId];
+                  const selected = state?.selected ?? addOn.defaultQuantity > 0;
+                  const quantity = Math.max(1, Number(state?.quantity || addOn.defaultQuantity || 1));
+                  const units = resolvedTransportPricing?.unitCount || Math.ceil((Number(paxCount) || defaultPaxCount || 1) / Math.max(1, addOn.unitCapacity));
+                  const addOnTotal = units * addOn.unitCost * quantity;
+
+                  return (
+                    <label key={addOn.rateId} className="quote-transport-addon-option">
+                      <span>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) =>
+                            setSelectedTransportAddOns((current) => ({
+                              ...current,
+                              [addOn.rateId]: {
+                                selected: event.target.checked,
+                                quantity: current[addOn.rateId]?.quantity || String(quantity),
+                              },
+                            }))
+                          }
+                        />
+                        <strong>{addOn.name}</strong>
+                        <em>{addOn.addOnType.replaceAll('_', ' ').toLowerCase()}</em>
+                      </span>
+                      <span>
+                        <input
+                          type="number"
+                          min="1"
+                          value={state?.quantity || String(quantity)}
+                          onChange={(event) =>
+                            setSelectedTransportAddOns((current) => ({
+                              ...current,
+                              [addOn.rateId]: {
+                                selected,
+                                quantity: event.target.value,
+                              },
+                            }))
+                          }
+                          disabled={!selected}
+                        />
+                        {addOn.currency} {addOn.unitCost.toFixed(2)} x {units} x {quantity} = {addOn.currency} {addOnTotal.toFixed(2)}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           ) : null}
 
           {hasPrimarySelection && isTransportService && transportCandidates.length > 0 ? (
@@ -3147,7 +3311,7 @@ export function QuoteItemsForm({
                       {candidate.currency} {candidate.price.toFixed(2)}
                     </strong>
                     <span>
-                      {candidate.category} / {candidate.vehicle.maxPax} pax capacity
+                      Supplier: {candidate.supplier?.name || 'Supplier pending'} / {candidate.category} / {candidate.vehicle.maxPax} pax capacity / {candidate.serviceType.classification || candidate.classification || 'ROUTE_TRANSFER'}
                       {candidate.unitCount ? ` / ${candidate.unitCount} unit${candidate.unitCount === 1 ? '' : 's'}` : ''}
                     </span>
                   </button>
