@@ -256,6 +256,8 @@ type QuoteItemsFormProps = {
   defaultNightCount: number;
   travelStartDate?: string | null;
   itineraryDayNumber?: number | null;
+  itineraryDayTitle?: string | null;
+  itineraryDayDescription?: string | null;
   itineraryId?: string;
   initialServiceTypeKey?: ServiceTypeKey | null;
   preferredServiceId?: string;
@@ -497,6 +499,60 @@ function resolveDerivedServiceDate(travelStartDate: string | null | undefined, i
   return resolvedDate.toISOString().slice(0, 10);
 }
 
+function normalizeRouteMatchText(value: string | null | undefined) {
+  return ` ${String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()} `;
+}
+
+function getPlaceMatchTerms(place: RouteOption['fromPlace']) {
+  return [place.name, place.city]
+    .map((value) => normalizeRouteMatchText(value).trim())
+    .filter((value, index, collection) => Boolean(value) && collection.indexOf(value) === index);
+}
+
+function includesRouteTerm(context: string, terms: string[]) {
+  return terms.some((term) => context.includes(` ${term} `));
+}
+
+function getRouteContextScore(route: RouteOption, context: string) {
+  if (!context.trim()) {
+    return 0;
+  }
+
+  const fromTerms = getPlaceMatchTerms(route.fromPlace);
+  const toTerms = getPlaceMatchTerms(route.toPlace);
+
+  if (!includesRouteTerm(context, fromTerms) || !includesRouteTerm(context, toTerms)) {
+    return 0;
+  }
+
+  const fromIndex = Math.min(...fromTerms.map((term) => context.indexOf(` ${term} `)).filter((index) => index >= 0));
+  const toIndex = Math.min(...toTerms.map((term) => context.indexOf(` ${term} `)).filter((index) => index >= 0));
+
+  return fromIndex <= toIndex ? 2 : 1;
+}
+
+function findSmartDefaultTransportRoute(routes: RouteOption[], itineraryDayTitle?: string | null, itineraryDayDescription?: string | null) {
+  if (routes.length === 1) {
+    return routes[0];
+  }
+
+  const context = normalizeRouteMatchText([itineraryDayTitle, itineraryDayDescription].filter(Boolean).join(' '));
+  const matches = routes
+    .map((route) => ({ route, score: getRouteContextScore(route, context) }))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return matches.length === 1 || matches[0].score > matches[1].score ? matches[0].route : null;
+}
+
 function addDaysToDateString(value: string, days: number) {
   if (!value) return '';
   const date = new Date(`${value}T00:00:00`);
@@ -550,6 +606,8 @@ export function QuoteItemsForm({
   defaultNightCount,
   travelStartDate,
   itineraryDayNumber,
+  itineraryDayTitle,
+  itineraryDayDescription,
   itineraryId,
   initialServiceTypeKey,
   preferredServiceId,
@@ -638,6 +696,7 @@ export function QuoteItemsForm({
   const [hotelRateReference, setHotelRateReference] = useState<HotelRateReference | null>(null);
   const [pendingHotelRateSubmit, setPendingHotelRateSubmit] = useState(false);
   const [transportSuggestionOverridden, setTransportSuggestionOverridden] = useState(false);
+  const [routeSelectionManuallyChanged, setRouteSelectionManuallyChanged] = useState(Boolean(initialRouteId || initialRouteName));
   const formRef = useRef<HTMLFormElement>(null);
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
@@ -747,6 +806,10 @@ export function QuoteItemsForm({
   }, [activeTransportRoutes, selectedTransportServiceType]);
   const validTransportRoutes = serviceTypeMatchedRoutes.length > 0 ? serviceTypeMatchedRoutes : activeTransportRoutes;
   const hasTransportRoutes = validTransportRoutes.length > 0;
+  const smartDefaultTransportRoute = useMemo(
+    () => findSmartDefaultTransportRoute(validTransportRoutes, itineraryDayTitle, itineraryDayDescription),
+    [itineraryDayDescription, itineraryDayTitle, validTransportRoutes],
+  );
 
   const filteredServices = activeServiceType
     ? services.filter((service) => {
@@ -1291,6 +1354,17 @@ export function QuoteItemsForm({
       setIsLoadingTransportCost(false);
     }
   }, [isTransportService]);
+
+  useEffect(() => {
+    if (!isTransportService || routeSelectionManuallyChanged || routeId || routeName.trim() || !smartDefaultTransportRoute) {
+      return;
+    }
+
+    setRouteId(smartDefaultTransportRoute.id);
+    setRouteName('');
+    setBaseCost('');
+    setResolvedTransportPricing(null);
+  }, [isTransportService, routeId, routeName, routeSelectionManuallyChanged, smartDefaultTransportRoute]);
 
   function applyTransportCandidate(candidate: (typeof transportCandidates)[number], options?: { userInitiated?: boolean }) {
     const matchingService =
@@ -2795,6 +2869,7 @@ export function QuoteItemsForm({
                   value={transportServiceTypeId}
                   onChange={(event) => {
                     setTransportServiceTypeId(event.target.value);
+                    setRouteSelectionManuallyChanged(false);
                     setTransportSuggestionOverridden(true);
                   }}
                   required
@@ -2814,6 +2889,7 @@ export function QuoteItemsForm({
                   routes={validTransportRoutes}
                   value={routeId}
                   onChange={(value) => {
+                    setRouteSelectionManuallyChanged(true);
                     setRouteId(value);
                     setRouteName('');
                     setBaseCost('');
@@ -2840,6 +2916,7 @@ export function QuoteItemsForm({
                 <input
                   value={routeName}
                   onChange={(event) => {
+                    setRouteSelectionManuallyChanged(true);
                     setRouteName(event.target.value);
                     setTransportSuggestionOverridden(true);
                   }}

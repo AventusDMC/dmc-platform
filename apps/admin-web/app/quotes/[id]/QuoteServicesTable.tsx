@@ -176,6 +176,7 @@ type Quote = {
     id: string;
     dayNumber: number;
     title: string;
+    description?: string | null;
   }>;
 };
 
@@ -776,6 +777,8 @@ function QuoteServiceRow({
                 defaultNightCount={quote.nightCount}
                 travelStartDate={quote.travelStartDate}
                 itineraryDayNumber={itineraryDay?.dayNumber ?? null}
+                itineraryDayTitle={itineraryDay?.title ?? null}
+                itineraryDayDescription={itineraryDay?.description ?? null}
                 itineraryId={currentItem.itineraryId || undefined}
                 submitLabel="Save item"
                 initialValues={currentInitialValues}

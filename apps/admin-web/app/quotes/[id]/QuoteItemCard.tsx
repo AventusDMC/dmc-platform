@@ -222,6 +222,8 @@ type Quote = {
   itineraries: Array<{
     id: string;
     dayNumber: number;
+    title?: string | null;
+    description?: string | null;
   }>;
 };
 
@@ -420,6 +422,7 @@ export function QuoteItemCard({
   const itineraryDayNumber = currentItem.itineraryId
     ? quote.itineraries.find((day) => day.id === currentItem.itineraryId)?.dayNumber ?? null
     : null;
+  const itineraryDay = currentItem.itineraryId ? quote.itineraries.find((day) => day.id === currentItem.itineraryId) ?? null : null;
 
   useEffect(() => {
     let isCancelled = false;
@@ -709,6 +712,8 @@ export function QuoteItemCard({
           defaultNightCount={quote.nightCount}
           travelStartDate={quote.travelStartDate}
           itineraryDayNumber={itineraryDayNumber}
+          itineraryDayTitle={itineraryDay?.title ?? null}
+          itineraryDayDescription={itineraryDay?.description ?? null}
           itineraryId={item.itineraryId || undefined}
           submitLabel="Save item"
           initialValues={currentInitialValues}

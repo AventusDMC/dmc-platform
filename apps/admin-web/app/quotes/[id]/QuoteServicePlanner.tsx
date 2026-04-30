@@ -926,6 +926,8 @@ function AddServiceEditorPanel({
         defaultNightCount={plannerProps.quote.nightCount}
         travelStartDate={plannerProps.quote.travelStartDate}
         itineraryDayNumber={day.dayNumber}
+        itineraryDayTitle={day.title}
+        itineraryDayDescription={day.description}
         itineraryId={day.id}
         initialServiceTypeKey={category}
         preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}
@@ -1106,6 +1108,8 @@ function EditServiceEditorPanel({
   optionId?: string;
   dayNumber: number | null;
 }) {
+  const itineraryDay = item.itineraryId ? plannerProps.quote.itineraries.find((day) => day.id === item.itineraryId) ?? null : null;
+
   return (
     <QuoteItemsForm
       apiBaseUrl={plannerProps.apiBaseUrl}
@@ -1128,6 +1132,8 @@ function EditServiceEditorPanel({
       defaultNightCount={plannerProps.quote.nightCount}
       travelStartDate={plannerProps.quote.travelStartDate}
       itineraryDayNumber={dayNumber}
+      itineraryDayTitle={itineraryDay?.title ?? null}
+      itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
       submitLabel="Save item"
       initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
