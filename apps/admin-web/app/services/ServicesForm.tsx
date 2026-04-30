@@ -114,7 +114,7 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, suppliers, serviceId, s
   }
 
   return (
-    <form className="entity-form" onSubmit={handleSubmit}>
+    <form className="entity-form service-catalog-form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
           Supplier
@@ -145,7 +145,7 @@ export function ServicesForm({ apiBaseUrl, serviceTypes, suppliers, serviceId, s
         />
       </div>
 
-      <label>
+      <label className="service-catalog-field-wide">
         Legacy category
         <input
           value={category}

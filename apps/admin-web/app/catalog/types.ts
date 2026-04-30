@@ -6,7 +6,7 @@ export type ServiceRate = {
   supplierId: string | null;
   costBaseAmount: number;
   costCurrency: SupportedCurrency;
-  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_VEHICLE' | 'PER_DAY' | 'per_vehicle';
+  pricingMode: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
   salesTaxPercent: number;
   salesTaxIncluded: boolean;
   serviceChargePercent: number;

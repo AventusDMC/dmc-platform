@@ -178,6 +178,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 { id: 'unpaid-suppliers', label: 'Unpaid Suppliers', href: buildFinanceHref('unpaid-suppliers'), helper: 'Payables' },
                 { id: 'overdue-clients', label: 'Overdue Clients', href: buildFinanceHref('overdue-clients'), helper: 'Late receivables' },
                 { id: 'overdue-suppliers', label: 'Overdue Suppliers', href: buildFinanceHref('overdue-suppliers'), helper: 'Late payables' },
+                { id: 'supplier-payables', label: 'Supplier Payables', href: '/finance/supplier-payables', helper: 'Supplier totals' },
                 { id: 'reconciliation', label: 'Reconciliation', href: '/finance/reconciliation', helper: 'Proof review queue' },
               ]}
             />
@@ -223,6 +224,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
               <Link href={buildFinanceHref('unpaid-suppliers')} className="dashboard-toolbar-link">
                 Unpaid suppliers
               </Link>
+              <Link href="/finance/supplier-payables" className="dashboard-toolbar-link">
+                Supplier payables
+              </Link>
               <Link href={buildFinanceHref('overdue-clients')} className="dashboard-toolbar-link">
                 Overdue clients
               </Link>
@@ -251,6 +255,9 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 </Link>
                 <Link href={buildFinanceHref('unpaid-suppliers')} className="secondary-button">
                   Unpaid suppliers
+                </Link>
+                <Link href="/finance/supplier-payables" className="secondary-button">
+                  Supplier payables
                 </Link>
                 <Link href={buildFinanceHref('overdue-clients')} className="secondary-button">
                   Overdue clients

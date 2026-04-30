@@ -15,11 +15,13 @@ type ServiceRatesManagerProps = {
   defaultOpen?: boolean;
 };
 
+type FormPricingMode = ServiceRate['pricingMode'] | 'per_vehicle';
+
 type FormState = {
   supplierId: string;
   costBaseAmount: string;
   costCurrency: SupportedCurrency;
-  pricingMode: ServiceRate['pricingMode'];
+  pricingMode: FormPricingMode;
   salesTaxPercent: string;
   salesTaxIncluded: boolean;
   serviceChargePercent: string;
@@ -59,7 +61,7 @@ function createFormState(rate?: ServiceRate): FormState {
     supplierId: rate.supplierId || '',
     costBaseAmount: String(rate.costBaseAmount),
     costCurrency: rate.costCurrency,
-    pricingMode: isCapacityGroupRate || rate.pricingMode === 'PER_VEHICLE' ? 'per_vehicle' : rate.pricingMode,
+    pricingMode: isCapacityGroupRate ? 'per_vehicle' : rate.pricingMode,
     salesTaxPercent: rate.salesTaxPercent ? String(rate.salesTaxPercent) : '',
     salesTaxIncluded: Boolean(rate.salesTaxIncluded),
     serviceChargePercent: rate.serviceChargePercent ? String(rate.serviceChargePercent) : '',
@@ -71,16 +73,24 @@ function createFormState(rate?: ServiceRate): FormState {
   };
 }
 
-function getSubmittedPricingMode(pricingMode: ServiceRate['pricingMode']) {
-  return pricingMode === 'per_vehicle' || pricingMode === 'PER_VEHICLE' ? 'PER_GROUP' : pricingMode;
+function getSubmittedPricingMode(pricingMode: FormPricingMode): ServiceRate['pricingMode'] {
+  return pricingMode === 'per_vehicle' ? 'PER_GROUP' : pricingMode;
 }
 
 function formatPricingMode(rate: ServiceRate) {
-  if ((rate.pricingMode === 'PER_GROUP' || rate.pricingMode === 'PER_VEHICLE' || rate.pricingMode === 'per_vehicle') && rate.maxPaxPerUnit) {
+  if (rate.pricingMode === 'PER_GROUP' && rate.maxPaxPerUnit) {
     return 'Per vehicle';
   }
 
-  return rate.pricingMode.replaceAll('_', ' ');
+  return rate.pricingMode.replaceAll('_', ' ').toLowerCase();
+}
+
+function formatCapacity(rate: ServiceRate) {
+  if (!rate.maxPaxPerUnit) {
+    return 'Not set';
+  }
+
+  return `${rate.maxPaxPerUnit} pax per unit`;
 }
 
 export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showTourismFee = false, defaultOpen = false }: ServiceRatesManagerProps) {
@@ -91,6 +101,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
   const [error, setError] = useState('');
   const [open, setOpen] = useState(defaultOpen);
   const rates = initialRates;
+  const showMaxPaxPerUnit = formState.pricingMode === 'PER_GROUP' || formState.pricingMode === 'per_vehicle';
 
   function startCreate() {
     setEditingRateId(null);
@@ -132,7 +143,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
           tourismFeeAmount: formState.tourismFeeAmount.trim() ? Number(formState.tourismFeeAmount) : null,
           tourismFeeCurrency: formState.tourismFeeCurrency || null,
           tourismFeeMode: formState.tourismFeeMode || null,
-          maxPaxPerUnit: formState.maxPaxPerUnit.trim() ? Number(formState.maxPaxPerUnit) : null,
+          maxPaxPerUnit: showMaxPaxPerUnit && formState.maxPaxPerUnit.trim() ? Number(formState.maxPaxPerUnit) : null,
         }),
       });
 
@@ -186,6 +197,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
                 <tr>
                   <th>Mode</th>
                   <th>Cost</th>
+                  <th>Capacity</th>
                   <th>Tax / service</th>
                   {showTourismFee ? <th>Tourism fee</th> : null}
                   <th>Actions</th>
@@ -196,6 +208,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
                   <tr key={rate.id}>
                     <td>{formatPricingMode(rate)}</td>
                     <td>{formatMoney(rate.costBaseAmount, rate.costCurrency)}</td>
+                    <td>{formatCapacity(rate)}</td>
                     <td>
                       {`${rate.salesTaxPercent || 0}% tax${rate.salesTaxIncluded ? ' incl.' : ''} | ${rate.serviceChargePercent || 0}% svc${rate.serviceChargeIncluded ? ' incl.' : ''}`}
                     </td>
@@ -230,9 +243,9 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
         </button>
 
         {open ? (
-          <form className="entity-form" onSubmit={handleSubmit}>
-            <div className="form-row form-row-4">
-              <label>
+          <form className="entity-form service-rate-form" onSubmit={handleSubmit}>
+            <div className="service-rate-form-section">
+              <label className="service-rate-field-wide">
                 Supplier ID
                 <input
                   value={formState.supplierId}
@@ -240,6 +253,9 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
                   placeholder="Optional override"
                 />
               </label>
+            </div>
+
+            <div className="service-rate-form-section service-rate-pricing-grid">
               <label>
                 Cost
                 <input
@@ -273,19 +289,23 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
                   <option value="PER_DAY">Per day</option>
                 </select>
               </label>
-              <label>
-                Max pax per unit
-                <input
-                  value={formState.maxPaxPerUnit}
-                  onChange={(event) => setFormState((current) => ({ ...current, maxPaxPerUnit: event.target.value }))}
-                  type="number"
-                  min="0"
-                  step="1"
-                />
-              </label>
+              {showMaxPaxPerUnit ? (
+                <label>
+                  Vehicle capacity
+                  <input
+                    name="maxPaxPerUnit"
+                    value={formState.maxPaxPerUnit}
+                    onChange={(event) => setFormState((current) => ({ ...current, maxPaxPerUnit: event.target.value }))}
+                    type="number"
+                    min="0"
+                    step="1"
+                  />
+                  <span className="form-helper">Saved on this rate as capacity per unit.</span>
+                </label>
+              ) : null}
             </div>
 
-            <div className="form-row form-row-4">
+            <div className="service-rate-form-section service-rate-tax-grid">
               <label>
                 Sales tax %
                 <input
@@ -325,7 +345,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
             </div>
 
             {showTourismFee ? (
-              <div className="form-row form-row-3">
+              <div className="service-rate-form-section service-rate-tourism-grid">
                 <label>
                   Tourism fee paid to hotel
                   <input
@@ -366,7 +386,7 @@ export function ServiceRatesManager({ apiBaseUrl, serviceId, initialRates, showT
               </div>
             ) : null}
 
-            <div className="form-row">
+            <div className="service-rate-form-actions">
               <button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? 'Saving...' : editingRateId ? 'Save rate' : 'Create rate'}
               </button>

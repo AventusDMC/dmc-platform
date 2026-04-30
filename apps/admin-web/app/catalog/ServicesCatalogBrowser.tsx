@@ -241,7 +241,7 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
           </article>
         ) : (
           filteredServices.map((service) => (
-            <article key={service.id} className="catalog-result-card">
+            <article key={service.id} className="catalog-result-card catalog-service-card">
               <div className="catalog-result-head">
                 <div>
                   <p className="eyebrow">{service.serviceType?.name || service.category}</p>
@@ -292,7 +292,7 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
               </div>
 
               {editingServiceId === service.id ? (
-                <div className="stacked-card">
+                <div className="stacked-card catalog-service-edit-panel">
                   <ServicesForm
                     apiBaseUrl={apiBaseUrl}
                     serviceTypes={serviceTypes}

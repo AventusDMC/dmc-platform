@@ -41,20 +41,6 @@ function isJsonResponse(contentType: string) {
   return contentType.toLowerCase().includes('application/json');
 }
 
-function buildSessionExpiredRedirectTarget(response: Response, pathname: string) {
-  if (pathname && !pathname.startsWith('/api/')) {
-    return buildLoginRedirectPath(pathname);
-  }
-
-  const responseUrl = response.url ? new URL(response.url) : null;
-
-  if (responseUrl && responseUrl.pathname.startsWith('/login')) {
-    return `${responseUrl.pathname}${responseUrl.search}`;
-  }
-
-  return buildLoginRedirectPath(pathname);
-}
-
 export function getRequestOrigin(requestHeaders: Headers) {
   const protocol = requestHeaders.get('x-forwarded-proto') || 'http';
   const host = requestHeaders.get('x-forwarded-host') || requestHeaders.get('host') || 'localhost:3000';
@@ -119,8 +105,6 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
 export async function adminPageFetchJson<T>(input: string | URL, label: string, init: AdminPageFetchInit = {}): Promise<T> {
   const response = await adminPageFetch(input, init);
   const contentType = response.headers.get('content-type') || '';
-  const requestHeaders = await headers();
-  const pathname = requestHeaders.get('x-dmc-pathname') || '/';
 
   if (response.redirected || isHtmlResponse(contentType)) {
     console.error(
@@ -128,10 +112,6 @@ export async function adminPageFetchJson<T>(input: string | URL, label: string, 
         contentType || 'unknown'
       }`,
     );
-
-    if (!init.allowAnonymous) {
-      redirect(buildSessionExpiredRedirectTarget(response, pathname));
-    }
 
     const htmlPreview = await response.text();
     throw new Error(
@@ -167,6 +147,10 @@ export async function adminPageFetchJson<T>(input: string | URL, label: string, 
       }`,
     );
     throw new Error(`${label} API failed: ${response.status} ${bodyText || response.statusText}`);
+  }
+
+  if (!bodyText.trim()) {
+    throw new Error(`${label} API returned an empty response body.`);
   }
 
   try {

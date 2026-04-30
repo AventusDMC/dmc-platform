@@ -3565,18 +3565,26 @@ h1 {
 
 .catalog-results-grid {
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
 
 .catalog-result-card,
 .catalog-empty-state {
   display: grid;
-  gap: 0.9rem;
-  padding: 1.1rem;
-  border-radius: 1rem;
+  gap: 1.1rem;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
   border: 1px solid rgba(30, 27, 24, 0.08);
   background: #fff;
+}
+
+.catalog-service-card {
+  align-content: flex-start;
+}
+
+.catalog-service-edit-panel {
+  padding: 1rem;
 }
 
 .catalog-result-head {
@@ -3610,6 +3618,60 @@ h1 {
   margin: 0;
   color: rgba(30, 27, 24, 0.74);
   line-height: 1.5;
+}
+
+.service-catalog-form {
+  gap: 1.15rem;
+}
+
+.service-catalog-field-wide {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.service-rate-form {
+  gap: 1.15rem;
+}
+
+.service-rate-form-section {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.service-rate-form-section label,
+.service-rate-field-wide {
+  min-width: 0;
+}
+
+.service-rate-pricing-grid,
+.service-rate-tax-grid,
+.service-rate-tourism-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.service-rate-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+@media (min-width: 760px) {
+  .service-rate-pricing-grid,
+  .service-rate-tax-grid,
+  .service-rate-tourism-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1180px) {
+  .service-rate-pricing-grid {
+    grid-template-columns: minmax(170px, 0.85fr) minmax(150px, 0.7fr) minmax(190px, 1fr) minmax(190px, 1fr);
+  }
+
+  .service-rate-tax-grid,
+  .service-rate-tourism-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .quote-pricing-bulk-tools {
@@ -3773,7 +3835,7 @@ h1 {
 }
 
 .workspace-panel.workspace-panel-wide {
-  max-width: 1460px;
+  max-width: 1560px;
 }
 
 .workspace-shell-card {
