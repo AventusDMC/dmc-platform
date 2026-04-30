@@ -882,15 +882,18 @@ h1 {
 
 .search-combobox {
   position: relative;
+  min-width: min(100%, 320px);
 }
 
 .search-combobox-shell {
   display: flex;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .search-combobox-shell input {
   flex: 1;
+  min-width: 0;
 }
 
 .search-combobox-clear {
@@ -904,9 +907,11 @@ h1 {
   top: calc(100% + 0.45rem);
   left: 0;
   right: 0;
+  min-width: min(520px, calc(100vw - 2rem));
   display: grid;
   gap: 0.35rem;
   max-height: 260px;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 0.5rem;
   border: 1px solid rgba(30, 27, 24, 0.1);
@@ -922,25 +927,74 @@ h1 {
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(30, 27, 24, 0.08);
   border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.9);
+  background: #ffffff;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
+.search-combobox-option:hover,
+.search-combobox-option:focus-visible {
+  border-color: rgba(31, 163, 214, 0.26);
+  background: rgba(248, 250, 252, 0.96);
+  outline: none;
+}
+
 .search-combobox-option strong {
   font-size: 0.95rem;
+  overflow-wrap: anywhere;
 }
 
 .search-combobox-option span {
   color: rgba(30, 27, 24, 0.65);
   font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .search-combobox-option-active {
-  border-color: rgba(31, 163, 214, 0.32);
-  background: rgba(31, 163, 214, 0.08);
+  border-color: rgba(31, 163, 214, 0.38);
+  background: rgba(239, 246, 255, 0.92);
+  box-shadow: inset 3px 0 0 rgba(31, 163, 214, 0.72);
+}
+
+.search-combobox-selected {
+  margin: 0.35rem 0 0;
+  color: var(--muted-text);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.search-combobox-selected strong {
+  color: var(--saas-text);
+}
+
+.quote-transport-route-empty {
+  display: grid;
+  gap: 0.25rem;
+  align-self: stretch;
+  padding: 0.85rem 0.95rem;
+  border: 1px dashed rgba(148, 163, 184, 0.32);
+  border-radius: 0.85rem;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.quote-transport-route-empty span {
+  color: var(--muted-text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.quote-transport-route-empty strong {
+  color: var(--saas-text);
+}
+
+.quote-transport-route-empty p {
+  margin: 0;
+  color: var(--muted-text);
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .convert-form {

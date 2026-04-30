@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RouteOption, formatRouteLabel } from '../lib/routes';
+import { RouteOption } from '../lib/routes';
 
 type RouteComboboxProps = {
   label: string;
@@ -9,16 +9,25 @@ type RouteComboboxProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  emptyText?: string;
 };
 
-export function RouteCombobox({ label, routes, value, onChange, placeholder }: RouteComboboxProps) {
+function formatRouteOptionTitle(route: RouteOption) {
+  return `${route.fromPlace.name} -> ${route.toPlace.name}`;
+}
+
+function formatRouteOptionDetail(route: RouteOption) {
+  return [route.name && route.name !== formatRouteOptionTitle(route) ? route.name : null, route.routeType, route.notes].filter(Boolean).join(' | ');
+}
+
+export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.' }: RouteComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 
   const selectedRoute = useMemo(() => routes.find((route) => route.id === value) || null, [routes, value]);
 
   useEffect(() => {
-    setQuery(selectedRoute ? formatRouteLabel(selectedRoute) : '');
+    setQuery(selectedRoute ? formatRouteOptionTitle(selectedRoute) : '');
   }, [selectedRoute]);
 
   const filteredRoutes = useMemo(() => {
@@ -60,7 +69,7 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder }: R
           onBlur={() => {
             window.setTimeout(() => {
               setIsOpen(false);
-              setQuery(selectedRoute ? formatRouteLabel(selectedRoute) : '');
+              setQuery(selectedRoute ? formatRouteOptionTitle(selectedRoute) : '');
             }, 150);
           }}
           placeholder={placeholder}
@@ -80,10 +89,15 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder }: R
           </button>
         ) : null}
       </div>
+      {selectedRoute ? (
+        <p className="search-combobox-selected">
+          Selected: <strong>{formatRouteOptionTitle(selectedRoute)}</strong>
+        </p>
+      ) : null}
       {isOpen ? (
         <div className="search-combobox-menu">
           {filteredRoutes.length === 0 ? (
-            <p className="empty-state">No matching routes.</p>
+            <p className="empty-state">{emptyText}</p>
           ) : (
             filteredRoutes.map((route) => (
               <button
@@ -92,15 +106,12 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder }: R
                 className={`search-combobox-option${value === route.id ? ' search-combobox-option-active' : ''}`}
                 onClick={() => {
                   onChange(route.id);
-                  setQuery(formatRouteLabel(route));
+                  setQuery(formatRouteOptionTitle(route));
                   setIsOpen(false);
                 }}
               >
-                <strong>{route.name}</strong>
-                <span>
-                  {route.fromPlace.name} - {route.toPlace.name}
-                  {route.routeType ? ` | ${route.routeType}` : ''}
-                </span>
+                <strong>{formatRouteOptionTitle(route)}</strong>
+                <span>{formatRouteOptionDetail(route) || 'Route'}</span>
               </button>
             ))
           )}

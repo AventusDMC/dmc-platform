@@ -573,9 +573,8 @@ export function QuoteItemsForm({
     (initialActiveServiceType === 'activity' || initialActiveServiceType === 'hotel' || initialActiveServiceType === 'meal') && !itineraryId && travelStartDate
       ? travelStartDate.slice(0, 10)
       : '';
-  const validTransportRoutes = routes;
   const initialRouteId = [initialValues?.routeId, preferredRouteId].find((candidateRouteId) =>
-    Boolean(candidateRouteId && validTransportRoutes.some((route) => route.id === candidateRouteId)),
+    Boolean(candidateRouteId && routes.some((route) => route.id === candidateRouteId)),
   ) || '';
   const initialRouteName = initialValues?.routeName || '';
   const [activeServiceType, setActiveServiceType] = useState<ServiceTypeKey | null>(
@@ -726,6 +725,28 @@ export function QuoteItemsForm({
         selectedTransportCandidate.isBestValue ? 'Best value based on price per pax' : null,
       ].filter((reason): reason is string => Boolean(reason))
     : [];
+  const selectedTransportServiceType = transportServiceTypes.find((serviceType) => serviceType.id === transportServiceTypeId) || null;
+  const activeTransportRoutes = useMemo(() => routes.filter((route) => route.isActive !== false), [routes]);
+  const serviceTypeMatchedRoutes = useMemo(() => {
+    if (!selectedTransportServiceType) {
+      return activeTransportRoutes;
+    }
+
+    const serviceTypeTerms = [
+      selectedTransportServiceType.code,
+      selectedTransportServiceType.name,
+      selectedTransportServiceType.name.replace(/\s+/g, '_'),
+    ]
+      .filter(Boolean)
+      .map((value) => value.toLowerCase());
+
+    return activeTransportRoutes.filter((route) => {
+      const routeType = (route.routeType || '').toLowerCase();
+      return routeType && serviceTypeTerms.some((term) => routeType.includes(term) || term.includes(routeType));
+    });
+  }, [activeTransportRoutes, selectedTransportServiceType]);
+  const validTransportRoutes = serviceTypeMatchedRoutes.length > 0 ? serviceTypeMatchedRoutes : activeTransportRoutes;
+  const hasTransportRoutes = validTransportRoutes.length > 0;
 
   const filteredServices = activeServiceType
     ? services.filter((service) => {
@@ -1315,13 +1336,13 @@ export function QuoteItemsForm({
       return;
     }
 
-    if (!validTransportRoutes.some((route) => route.id === routeId)) {
+    if (!activeTransportRoutes.some((route) => route.id === routeId)) {
       setRouteId('');
       setRouteName('');
       setBaseCost('');
       setResolvedTransportPricing(null);
     }
-  }, [isTransportService, routeId, validTransportRoutes]);
+  }, [activeTransportRoutes, isTransportService, routeId]);
 
   useEffect(() => {
     if (!isTransportService) {
@@ -2787,19 +2808,28 @@ export function QuoteItemsForm({
                 </select>
               </label>
 
-              <RouteCombobox
-                label="Route"
-                routes={validTransportRoutes}
-                value={routeId}
-                onChange={(value) => {
-                  setRouteId(value);
-                  setRouteName('');
-                  setBaseCost('');
-                  setResolvedTransportPricing(null);
-                  setTransportSuggestionOverridden(false);
-                }}
-                placeholder="Select origin -> destination route"
-              />
+              {hasTransportRoutes ? (
+                <RouteCombobox
+                  label="Route"
+                  routes={validTransportRoutes}
+                  value={routeId}
+                  onChange={(value) => {
+                    setRouteId(value);
+                    setRouteName('');
+                    setBaseCost('');
+                    setResolvedTransportPricing(null);
+                    setTransportSuggestionOverridden(false);
+                  }}
+                  placeholder="Select origin -> destination route"
+                  emptyText="No routes available for this service"
+                />
+              ) : (
+                <div className="quote-transport-route-empty">
+                  <span>Route</span>
+                  <strong>No routes available for this service</strong>
+                  <p>Add a route in Transport before saving this quote service.</p>
+                </div>
+              )}
             </div>
           ) : null}
 
