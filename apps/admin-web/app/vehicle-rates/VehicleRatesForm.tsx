@@ -45,6 +45,7 @@ type VehicleRatesFormProps = {
     maxPax: string;
     price: string;
     currency: SupportedCurrency;
+    active?: boolean;
     validFrom: string;
     validTo: string;
   };
@@ -74,6 +75,7 @@ export function VehicleRatesForm({
   const [maxPax, setMaxPax] = useState(initialValues?.maxPax || '1');
   const [price, setPrice] = useState(initialValues?.price || '');
   const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
+  const [active, setActive] = useState(initialValues?.active ?? true);
   const [validFrom, setValidFrom] = useState(initialValues?.validFrom || '');
   const [validTo, setValidTo] = useState(initialValues?.validTo || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,6 +164,7 @@ export function VehicleRatesForm({
           maxPax: Number(maxPax),
           price: Number(price),
           currency,
+          active,
           validFrom,
           validTo,
         }),
@@ -180,6 +183,7 @@ export function VehicleRatesForm({
         setMaxPax('1');
         setPrice('');
         setCurrency('USD');
+        setActive(true);
         setValidFrom('');
         setValidTo('');
       }
@@ -316,6 +320,11 @@ export function VehicleRatesForm({
           <input value={validTo} onChange={(event) => setValidTo(event.target.value)} type="date" required />
         </label>
       </div>
+
+      <label className="checkbox-label">
+        <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
+        Active
+      </label>
 
       <button type="submit" disabled={isSubmitting || !canSubmit}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Add vehicle rate')}

@@ -288,6 +288,7 @@ export class TransportPricingService {
     const rates = await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
+        active: true,
         ...routeFilter,
         minPax: {
           lte: data.paxCount,
@@ -356,6 +357,7 @@ export class TransportPricingService {
     const rate = await this.prisma.vehicleRate.findFirst({
       where: {
         serviceTypeId: data.serviceTypeId,
+        active: true,
         ...routeFilter,
         minPax: {
           lte: data.paxCount,

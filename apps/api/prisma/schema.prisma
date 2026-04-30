@@ -893,7 +893,7 @@ model QuoteBlock {
 model QuoteItem {
   id                        String                  @id @default(uuid()) @db.Uuid
   quoteId                   String                  @db.Uuid
-  serviceId                 String                  @db.Uuid
+  serviceId                 String?                 @db.Uuid
   activityId                String?                 @db.Uuid
   quantity                  Int                     @default(1)
   paxCount                  Int?
@@ -952,6 +952,7 @@ model QuoteItem {
   overrideReason            String?
   useOverride               Boolean                 @default(false)
   externalPackageCountry    String?
+  externalPackageName       String?
   externalSupplierName      String?
   externalStartDay          Int?
   externalEndDay            Int?
@@ -973,7 +974,7 @@ model QuoteItem {
   quote                     Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   quoteItineraryDayItems    QuoteItineraryDayItem[]
   roomCategory              HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
-  service                   SupplierService         @relation(fields: [serviceId], references: [id])
+  service                   SupplierService?        @relation(fields: [serviceId], references: [id])
 
   @@index([contractId])
   @@index([activityId])
@@ -1467,6 +1468,7 @@ model VehicleRate {
   maxPax        Int
   price         Float
   currency      String
+  active        Boolean              @default(true)
   validFrom     DateTime
   validTo       DateTime
   createdAt     DateTime             @default(now())

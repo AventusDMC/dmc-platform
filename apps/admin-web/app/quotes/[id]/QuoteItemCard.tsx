@@ -169,6 +169,7 @@ type QuoteItem = {
   currency: string;
   pricingDescription: string | null;
   externalPackageCountry?: string | null;
+  externalPackageName?: string | null;
   externalSupplierName?: string | null;
   externalStartDay?: number | null;
   externalEndDay?: number | null;
@@ -477,6 +478,7 @@ export function QuoteItemCard({
       ...initialValues,
       serviceId: currentItem.service.id,
       externalPackage: {
+        packageName: currentItem.externalPackageName || currentItem.service.name || '',
         country: currentItem.externalPackageCountry || '',
         supplierName: currentItem.externalSupplierName || '',
         startDay: currentItem.externalStartDay !== null && currentItem.externalStartDay !== undefined ? String(currentItem.externalStartDay) : '',
@@ -489,7 +491,7 @@ export function QuoteItemCard({
         includes: currentItem.externalIncludes || '',
         excludes: currentItem.externalExcludes || '',
         internalNotes: currentItem.externalInternalNotes || '',
-        clientDescription: currentItem.externalClientDescription || '',
+        clientItineraryText: currentItem.externalClientDescription || '',
       },
     }),
     [currentItem, initialValues, quote.quoteCurrency],

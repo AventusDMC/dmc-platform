@@ -182,6 +182,7 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   occupancyType: 'SGL' | 'DBL' | 'TPL' | null;
   mealPlan: 'BB' | 'HB' | 'FB' | null;
   externalPackageCountry?: string | null;
+  externalPackageName?: string | null;
   externalSupplierName?: string | null;
   externalStartDay?: number | null;
   externalEndDay?: number | null;
@@ -483,6 +484,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     guideDuration: guideValues.guideDuration,
     overnight: guideValues.overnight,
     externalPackage: {
+      packageName: item.externalPackageName || item.service.name || '',
       country: item.externalPackageCountry || '',
       supplierName: item.externalSupplierName || '',
       startDay: item.externalStartDay !== null && item.externalStartDay !== undefined ? String(item.externalStartDay) : '',
@@ -495,7 +497,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
       includes: item.externalIncludes || '',
       excludes: item.externalExcludes || '',
       internalNotes: item.externalInternalNotes || '',
-      clientDescription: item.externalClientDescription || '',
+      clientItineraryText: item.externalClientDescription || '',
     },
   };
 }
@@ -907,6 +909,7 @@ function buildQuickAddPayload(
     const pricingBasis = getExternalPackagePricingBasisForService(service);
     payload.country = country;
     payload.supplierName = service.supplierId || null;
+    payload.packageName = service.name;
     payload.pricingBasis = pricingBasis;
     payload.netCost = Number(service.baseCost || 0);
     payload.currency = service.currency;
@@ -1188,6 +1191,7 @@ function EditServiceEditorPanel({
       itineraryDayTitle={itineraryDay?.title ?? null}
       itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
+      initialServiceTypeKey={getQuoteServiceCategoryKey(item.service)}
       submitLabel="Save item"
       initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}

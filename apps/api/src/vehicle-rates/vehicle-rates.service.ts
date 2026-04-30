@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildRouteNormalizedKey, formatRouteName } from '../routes/route-normalization';
+import * as XLSX from 'xlsx';
 
 type CreateVehicleRateInput = {
   vehicleId: string;
@@ -14,6 +16,7 @@ type CreateVehicleRateInput = {
   maxPax: number;
   price: number;
   currency: string;
+  active?: boolean;
   validFrom: Date;
   validTo: Date;
 };
@@ -30,9 +33,116 @@ type UpdateVehicleRateInput = {
   maxPax?: number;
   price?: number;
   currency?: string;
+  active?: boolean;
   validFrom?: Date;
   validTo?: Date;
 };
+
+type VehicleRatePricingSyncData = {
+  supplierId: string | null;
+  serviceTypeId: string;
+  routeId: string | null;
+  vehicleId: string;
+  maxPax: number;
+  price: number;
+  currency: string;
+  active: boolean;
+};
+
+type TransportContractImportMode = 'preview' | 'import';
+
+type TransportContractImportRow = {
+  supplierName: string;
+  supplierContactName: string;
+  supplierEmail: string;
+  supplierPhone: string;
+  supplierWebsite: string;
+  contractName: string;
+  contractValidFrom: string;
+  contractValidTo: string;
+  country: string;
+  serviceName: string;
+  routeName: string;
+  origin: string;
+  destination: string;
+  vehicleType: string;
+  maxPaxPerUnit: string;
+  pricingMode: string;
+  cost: string;
+  currency: string;
+  active: string;
+  notes: string;
+};
+
+const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
+  'supplierName',
+  'supplierContactName',
+  'supplierEmail',
+  'supplierPhone',
+  'supplierWebsite',
+  'contractName',
+  'contractValidFrom',
+  'contractValidTo',
+  'country',
+  'serviceName',
+  'routeName',
+  'origin',
+  'destination',
+  'vehicleType',
+  'maxPaxPerUnit',
+  'pricingMode',
+  'cost',
+  'currency',
+  'active',
+  'notes',
+] as const;
+
+const REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
+  'supplierName',
+  'contractName',
+  'contractValidFrom',
+  'contractValidTo',
+  'country',
+  'serviceName',
+  'origin',
+  'destination',
+  'vehicleType',
+  'maxPaxPerUnit',
+  'pricingMode',
+  'cost',
+  'currency',
+  'active',
+] as const;
+
+function normalizeImportKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeImportText(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function normalizeImportName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeCode(value: string) {
+  return normalizeImportName(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32) || 'TRANSPORT';
+}
+
+function parseImportBoolean(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return !['false', 'no', 'n', '0', 'inactive'].includes(normalized);
+}
+
+function isEmptyImportRow(row: Record<string, unknown>) {
+  return TRANSPORT_CONTRACT_IMPORT_COLUMNS.every((column) => !normalizeImportText(row[column]));
+}
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
   return `${fromPlaceName.trim()} → ${toPlaceName.trim()}`;
@@ -155,7 +265,7 @@ export class VehicleRatesService {
       toPlace,
     );
 
-    return this.prisma.vehicleRate.create({
+    const vehicleRate = await this.prisma.vehicleRate.create({
       data: {
         vehicleId: data.vehicleId,
         serviceTypeId: data.serviceTypeId,
@@ -168,6 +278,7 @@ export class VehicleRatesService {
         maxPax: data.maxPax,
         price: ensureValidNumber(data.price, 'price', { min: 0 }),
         currency: data.currency.trim().toUpperCase(),
+        active: data.active ?? true,
         validFrom: data.validFrom,
         validTo: data.validTo,
       },
@@ -185,6 +296,10 @@ export class VehicleRatesService {
         toPlace: true,
       },
     });
+
+    await this.syncCapacityPricingRuleForVehicleRate(this.toVehicleRatePricingSyncData(vehicleRate));
+
+    return vehicleRate;
   }
 
   async duplicate(id: string) {
@@ -202,6 +317,7 @@ export class VehicleRatesService {
       maxPax: existing.maxPax,
       price: existing.price,
       currency: existing.currency,
+      active: existing.active,
       validFrom: existing.validFrom,
       validTo: existing.validTo,
     });
@@ -209,6 +325,7 @@ export class VehicleRatesService {
 
   async update(id: string, data: UpdateVehicleRateInput) {
     const existing = await this.findOne(id);
+    const previousSyncData = this.toVehicleRatePricingSyncData(existing);
     const vehicleId = data.vehicleId ?? existing.vehicleId;
     const serviceTypeId = data.serviceTypeId ?? existing.serviceTypeId;
     const supplierId = data.supplierId === undefined ? existing.supplierId : data.supplierId;
@@ -219,6 +336,7 @@ export class VehicleRatesService {
     const validTo = data.validTo ?? existing.validTo;
     const fromPlaceId = data.fromPlaceId === undefined ? existing.fromPlaceId : data.fromPlaceId;
     const toPlaceId = data.toPlaceId === undefined ? existing.toPlaceId : data.toPlaceId;
+    const active = data.active ?? existing.active;
 
     if (minPax > maxPax) {
       throw new BadRequestException('minPax cannot be greater than maxPax');
@@ -280,7 +398,7 @@ export class VehicleRatesService {
       toPlace,
     );
 
-    return this.prisma.vehicleRate.update({
+    const vehicleRate = await this.prisma.vehicleRate.update({
       where: { id },
       data: {
         vehicleId,
@@ -294,6 +412,7 @@ export class VehicleRatesService {
         maxPax,
         price: data.price === undefined ? undefined : ensureValidNumber(data.price, 'price', { min: 0 }),
         currency: data.currency === undefined ? undefined : data.currency.trim().toUpperCase(),
+        active,
         validFrom,
         validTo,
       },
@@ -311,6 +430,10 @@ export class VehicleRatesService {
         toPlace: true,
       },
     });
+
+    await this.syncCapacityPricingRuleForVehicleRate(this.toVehicleRatePricingSyncData(vehicleRate), previousSyncData);
+
+    return vehicleRate;
   }
 
   async remove(id: string) {
@@ -318,9 +441,668 @@ export class VehicleRatesService {
 
     blockDelete('vehicle rate', 'quote items', vehicleRate._count.quoteItems);
 
+    await this.deactivateCapacityPricingRulesForVehicleRate(this.toVehicleRatePricingSyncData(vehicleRate));
+
     return this.prisma.vehicleRate.delete({
       where: { id },
     });
+  }
+
+  getTransportContractImportTemplate() {
+    const rows = [
+      {
+        supplierName: 'AlphaBus',
+        supplierContactName: 'Operations Team',
+        supplierEmail: 'ops@alphabus.example',
+        supplierPhone: '+962000000000',
+        supplierWebsite: 'https://alphabus.example',
+        contractName: 'AlphaBus 2026 Transport Contract',
+        contractValidFrom: '2026-01-01',
+        contractValidTo: '2026-12-31',
+        country: 'Jordan',
+        serviceName: 'Intercity Transfer',
+        routeName: 'Amman City Center -> Petra Visitor Center',
+        origin: 'Amman City Center',
+        destination: 'Petra Visitor Center',
+        vehicleType: 'Coach',
+        maxPaxPerUnit: 45,
+        pricingMode: 'PER_GROUP',
+        cost: 350,
+        currency: 'USD',
+        active: 'TRUE',
+        notes: 'One row per route and vehicle capacity.',
+      },
+    ];
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] });
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Transport Rates');
+
+    return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+  }
+
+  async previewTransportContractImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    return this.processTransportContractImport(file, 'preview');
+  }
+
+  async importTransportContract(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    return this.processTransportContractImport(file, 'import');
+  }
+
+  private async processTransportContractImport(
+    file: { buffer?: Buffer; path?: string; originalname?: string },
+    mode: TransportContractImportMode,
+  ) {
+    const parsedRows = this.parseTransportContractWorkbook(file);
+    const summary = {
+      mode,
+      rows: parsedRows.length,
+      createdSuppliers: 0,
+      createdRoutes: 0,
+      createdServices: 0,
+      createdRates: 0,
+      updatedRates: 0,
+      skippedRows: 0,
+      errors: [] as Array<{ row: number; message: string }>,
+      previewRows: [] as Array<Record<string, unknown>>,
+    };
+    const seenRateKeys = new Set<string>();
+
+    for (const parsed of parsedRows) {
+      if (parsed.empty) {
+        summary.skippedRows += 1;
+        continue;
+      }
+
+      const errors = this.validateTransportContractImportRow(parsed.row, parsed.rowNumber);
+      if (errors.length > 0) {
+        summary.errors.push(...errors.map((message) => ({ row: parsed.rowNumber, message })));
+        summary.skippedRows += 1;
+        continue;
+      }
+
+      const normalized = this.normalizeTransportContractImportRow(parsed.row);
+      const rateKey = [
+        normalizeImportKey(normalized.supplierName),
+        normalizeImportKey(normalized.serviceName),
+        normalizeImportKey(normalized.country),
+        normalizeImportKey(normalized.origin),
+        normalizeImportKey(normalized.destination),
+        normalizeImportKey(normalized.vehicleType),
+        normalized.maxPaxPerUnit,
+      ].join('|');
+
+      if (seenRateKeys.has(rateKey)) {
+        summary.errors.push({ row: parsed.rowNumber, message: 'Duplicate rate row in upload.' });
+        summary.skippedRows += 1;
+        continue;
+      }
+      seenRateKeys.add(rateKey);
+
+      summary.previewRows.push({
+        row: parsed.rowNumber,
+        supplierName: normalized.supplierName,
+        serviceName: normalized.serviceName,
+        routeName: normalized.routeName,
+        vehicleType: normalized.vehicleType,
+        maxPaxPerUnit: normalized.maxPaxPerUnit,
+        pricingMode: 'PER_GROUP',
+        cost: normalized.cost,
+        currency: normalized.currency,
+        active: normalized.active,
+      });
+
+      if (!normalized.active) {
+        summary.skippedRows += 1;
+        continue;
+      }
+
+      if (mode === 'preview') {
+        continue;
+      }
+
+      const supplierResult = await this.findOrCreateTransportImportSupplier(normalized);
+      if (supplierResult.created) summary.createdSuppliers += 1;
+
+      const serviceResult = await this.findOrCreateTransportImportService(supplierResult.supplier, normalized);
+      if (serviceResult.created) summary.createdServices += 1;
+
+      const routeResult = await this.findOrCreateTransportImportRoute(normalized);
+      if (routeResult.created) summary.createdRoutes += 1;
+
+      const serviceType = await this.findOrCreateTransportImportServiceType(normalized.serviceName);
+      const vehicle = await this.findOrCreateTransportImportVehicle(supplierResult.supplier, normalized);
+      const rateResult = await this.upsertTransportImportVehicleRate({
+        supplierId: supplierResult.supplier.id,
+        serviceTypeId: serviceType.id,
+        vehicleId: vehicle.id,
+        routeId: routeResult.route.id,
+        fromPlaceId: routeResult.route.fromPlaceId,
+        toPlaceId: routeResult.route.toPlaceId,
+        routeName: normalized.routeName,
+        maxPaxPerUnit: normalized.maxPaxPerUnit,
+        cost: normalized.cost,
+        currency: normalized.currency,
+        validFrom: normalized.contractValidFrom,
+        validTo: normalized.contractValidTo,
+      });
+      await this.upsertTransportImportCapacityRule({
+        supplierId: supplierResult.supplier.id,
+        serviceTypeId: serviceType.id,
+        vehicleId: vehicle.id,
+        routeId: routeResult.route.id,
+        maxPaxPerUnit: normalized.maxPaxPerUnit,
+        cost: normalized.cost,
+        currency: normalized.currency,
+      });
+
+      if (rateResult.created) {
+        summary.createdRates += 1;
+      } else {
+        summary.updatedRates += 1;
+      }
+    }
+
+    return summary;
+  }
+
+  private parseTransportContractWorkbook(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    if (!file?.buffer && !file?.path) {
+      throw new BadRequestException('Transport contract Excel file is required');
+    }
+
+    const workbook = file.buffer ? XLSX.read(file.buffer, { type: 'buffer', cellDates: true }) : XLSX.readFile(file.path!, { cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException('Workbook does not contain any sheets');
+    }
+
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '', raw: false, blankrows: false });
+    const headerMap = new Map<string, string>();
+    for (const sourceHeader of Object.keys(rawRows[0] || {})) {
+      headerMap.set(normalizeImportKey(sourceHeader), sourceHeader);
+    }
+
+    const missingColumns = TRANSPORT_CONTRACT_IMPORT_COLUMNS.filter((column) => !headerMap.has(normalizeImportKey(column)));
+    if (missingColumns.length > 0) {
+      throw new BadRequestException(`Missing import columns: ${missingColumns.join(', ')}`);
+    }
+
+    return rawRows.map((rawRow, index) => {
+      const row = TRANSPORT_CONTRACT_IMPORT_COLUMNS.reduce((accumulator, column) => {
+        const sourceHeader = headerMap.get(normalizeImportKey(column));
+        accumulator[column] = normalizeImportText(sourceHeader ? rawRow[sourceHeader] : '');
+        return accumulator;
+      }, {} as TransportContractImportRow);
+
+      return {
+        rowNumber: index + 2,
+        row,
+        empty: isEmptyImportRow(row),
+      };
+    });
+  }
+
+  private validateTransportContractImportRow(row: TransportContractImportRow, rowNumber: number) {
+    const errors: string[] = [];
+
+    for (const column of REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS) {
+      if (!row[column]) {
+        errors.push(`${column} is required.`);
+      }
+    }
+
+    const maxPaxPerUnit = Number(row.maxPaxPerUnit);
+    const cost = Number(row.cost);
+    const validFrom = new Date(row.contractValidFrom);
+    const validTo = new Date(row.contractValidTo);
+
+    if (row.maxPaxPerUnit && (!Number.isInteger(maxPaxPerUnit) || maxPaxPerUnit < 1)) {
+      errors.push('maxPaxPerUnit must be a positive whole number.');
+    }
+    if (row.cost && (!Number.isFinite(cost) || cost < 0)) {
+      errors.push('cost must be zero or greater.');
+    }
+    if (row.contractValidFrom && Number.isNaN(validFrom.getTime())) {
+      errors.push('contractValidFrom must be a valid date.');
+    }
+    if (row.contractValidTo && Number.isNaN(validTo.getTime())) {
+      errors.push('contractValidTo must be a valid date.');
+    }
+    if (!Number.isNaN(validFrom.getTime()) && !Number.isNaN(validTo.getTime()) && validFrom > validTo) {
+      errors.push('contractValidFrom cannot be after contractValidTo.');
+    }
+    if (row.currency && !['USD', 'EUR', 'JOD'].includes(row.currency.trim().toUpperCase())) {
+      errors.push('currency must be one of USD, EUR, or JOD.');
+    }
+
+    return errors.map((error) => `Row ${rowNumber}: ${error}`);
+  }
+
+  private normalizeTransportContractImportRow(row: TransportContractImportRow) {
+    const origin = normalizeImportName(row.origin);
+    const destination = normalizeImportName(row.destination);
+
+    return {
+      supplierName: normalizeImportName(row.supplierName),
+      supplierContactName: normalizeImportName(row.supplierContactName),
+      supplierEmail: normalizeImportName(row.supplierEmail),
+      supplierPhone: normalizeImportName(row.supplierPhone),
+      supplierWebsite: normalizeImportName(row.supplierWebsite),
+      contractName: normalizeImportName(row.contractName),
+      contractValidFrom: new Date(row.contractValidFrom),
+      contractValidTo: new Date(row.contractValidTo),
+      country: normalizeImportName(row.country),
+      serviceName: normalizeImportName(row.serviceName),
+      routeName: normalizeImportName(row.routeName) || formatRouteName(origin, destination),
+      origin,
+      destination,
+      vehicleType: normalizeImportName(row.vehicleType),
+      maxPaxPerUnit: Number(row.maxPaxPerUnit),
+      pricingMode: 'PER_GROUP' as const,
+      cost: Number(row.cost),
+      currency: row.currency.trim().toUpperCase(),
+      active: parseImportBoolean(row.active),
+      notes: normalizeImportName(row.notes),
+    };
+  }
+
+  private async findOrCreateTransportImportSupplier(row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>) {
+    const supplier = await this.prisma.supplier.findFirst({
+      where: {
+        name: { equals: row.supplierName, mode: 'insensitive' },
+      },
+    });
+
+    if (supplier) {
+      return { supplier, created: false };
+    }
+
+    const notes = [
+      row.contractName ? `Contract: ${row.contractName}` : null,
+      row.supplierContactName ? `Contact: ${row.supplierContactName}` : null,
+      row.supplierWebsite ? `Website: ${row.supplierWebsite}` : null,
+      row.notes || null,
+    ].filter(Boolean).join('\n');
+
+    return {
+      supplier: await this.prisma.supplier.create({
+        data: {
+          name: row.supplierName,
+          type: 'transport',
+          email: row.supplierEmail || null,
+          phone: row.supplierPhone || null,
+          notes: notes || null,
+        },
+      }),
+      created: true,
+    };
+  }
+
+  private async findOrCreateTransportImportService(
+    supplier: { id: string; name: string },
+    row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>,
+  ) {
+    const existing = await this.prisma.supplierService.findFirst({
+      where: {
+        supplierId: supplier.id,
+        name: { equals: row.serviceName, mode: 'insensitive' },
+      },
+    });
+
+    if (existing) {
+      return { service: existing, created: false };
+    }
+
+    const serviceType = await this.findOrCreateCatalogTransportServiceType();
+    return {
+      service: await this.prisma.supplierService.create({
+        data: {
+          supplierId: supplier.id,
+          resolvedSupplierId: supplier.id,
+          name: row.serviceName,
+          category: 'Transport',
+          serviceTypeId: serviceType.id,
+          unitType: 'per_group',
+          baseCost: row.cost,
+          currency: row.currency,
+          costBaseAmount: row.cost,
+          costCurrency: row.currency,
+        },
+      }),
+      created: true,
+    };
+  }
+
+  private async findOrCreateCatalogTransportServiceType() {
+    const existing = await this.prisma.serviceType.findFirst({
+      where: {
+        OR: [
+          { code: { equals: 'TRANSPORT', mode: 'insensitive' } },
+          { name: { equals: 'Transport', mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    return existing || this.prisma.serviceType.create({ data: { name: 'Transport', code: 'TRANSPORT', isActive: true } });
+  }
+
+  private async findOrCreateTransportImportServiceType(serviceName: string) {
+    const code = normalizeCode(serviceName);
+    const existing = await this.prisma.transportServiceType.findFirst({
+      where: {
+        OR: [
+          { name: { equals: serviceName, mode: 'insensitive' } },
+          { code: { equals: code, mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    return existing || this.prisma.transportServiceType.create({ data: { name: serviceName, code } });
+  }
+
+  private async findOrCreateTransportImportVehicle(
+    supplier: { id: string; name: string },
+    row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>,
+  ) {
+    const existing = await this.prisma.vehicle.findFirst({
+      where: {
+        name: { equals: row.vehicleType, mode: 'insensitive' },
+        maxPax: row.maxPaxPerUnit,
+        OR: [{ supplierId: supplier.id }, { resolvedSupplierId: supplier.id }, { supplierName: { equals: supplier.name, mode: 'insensitive' } }],
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.vehicle.create({
+      data: {
+        supplierId: supplier.id,
+        resolvedSupplierId: supplier.id,
+        supplierName: supplier.name,
+        name: row.vehicleType,
+        maxPax: row.maxPaxPerUnit,
+        luggageCapacity: 0,
+      },
+    });
+  }
+
+  private async findOrCreateTransportImportRoute(row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>) {
+    const [fromPlace, toPlace] = await Promise.all([
+      this.findOrCreateTransportImportPlace(row.origin, row.country),
+      this.findOrCreateTransportImportPlace(row.destination, row.country),
+    ]);
+    const existing = await this.prisma.route.findFirst({
+      where: {
+        fromPlaceId: fromPlace.id,
+        toPlaceId: toPlace.id,
+      },
+      include: {
+        fromPlace: true,
+        toPlace: true,
+      },
+    });
+
+    if (existing) {
+      return { route: existing, created: false };
+    }
+
+    const route = await this.prisma.route.create({
+      data: {
+        fromPlaceId: fromPlace.id,
+        toPlaceId: toPlace.id,
+        name: row.routeName,
+        normalizedKey: buildRouteNormalizedKey(`${row.country} ${row.origin}`, `${row.country} ${row.destination}`),
+        routeType: 'transfer',
+        notes: row.notes || null,
+        isActive: true,
+      },
+      include: {
+        fromPlace: true,
+        toPlace: true,
+      },
+    });
+
+    return { route, created: true };
+  }
+
+  private async findOrCreateTransportImportPlace(name: string, country: string) {
+    const existing = await this.prisma.place.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        country: { equals: country, mode: 'insensitive' },
+      },
+    });
+
+    return existing || this.prisma.place.create({
+      data: {
+        name,
+        type: 'Transport hub',
+        country,
+        isActive: true,
+      },
+    });
+  }
+
+  private async upsertTransportImportVehicleRate(data: {
+    supplierId: string;
+    serviceTypeId: string;
+    vehicleId: string;
+    routeId: string;
+    fromPlaceId: string;
+    toPlaceId: string;
+    routeName: string;
+    maxPaxPerUnit: number;
+    cost: number;
+    currency: string;
+    validFrom: Date;
+    validTo: Date;
+  }) {
+    const existing = await this.prisma.vehicleRate.findFirst({
+      where: {
+        supplierId: data.supplierId,
+        serviceTypeId: data.serviceTypeId,
+        routeId: data.routeId,
+        vehicleId: data.vehicleId,
+        maxPax: data.maxPaxPerUnit,
+      },
+    });
+
+    if (existing) {
+      return {
+        rate: await this.prisma.vehicleRate.update({
+          where: { id: existing.id },
+          data: {
+            fromPlaceId: data.fromPlaceId,
+            toPlaceId: data.toPlaceId,
+            routeName: data.routeName,
+            minPax: 1,
+            maxPax: data.maxPaxPerUnit,
+            price: data.cost,
+            currency: data.currency,
+            active: true,
+            validFrom: data.validFrom,
+            validTo: data.validTo,
+          },
+        }),
+        created: false,
+      };
+    }
+
+    return {
+      rate: await this.prisma.vehicleRate.create({
+        data: {
+          supplierId: data.supplierId,
+          serviceTypeId: data.serviceTypeId,
+          vehicleId: data.vehicleId,
+          routeId: data.routeId,
+          fromPlaceId: data.fromPlaceId,
+          toPlaceId: data.toPlaceId,
+          routeName: data.routeName,
+          minPax: 1,
+          maxPax: data.maxPaxPerUnit,
+          price: data.cost,
+          currency: data.currency,
+          active: true,
+          validFrom: data.validFrom,
+          validTo: data.validTo,
+        },
+      }),
+      created: true,
+    };
+  }
+
+  private async upsertTransportImportCapacityRule(data: {
+    supplierId: string;
+    serviceTypeId: string;
+    vehicleId: string;
+    routeId: string;
+    maxPaxPerUnit: number;
+    cost: number;
+    currency: string;
+  }) {
+    return this.upsertCapacityPricingRuleForVehicleRate({
+      supplierId: data.supplierId,
+      serviceTypeId: data.serviceTypeId,
+      routeId: data.routeId,
+      vehicleId: data.vehicleId,
+      maxPax: data.maxPaxPerUnit,
+      price: data.cost,
+      currency: data.currency,
+      active: true,
+    });
+  }
+
+  private toVehicleRatePricingSyncData(rate: {
+    supplierId: string | null;
+    serviceTypeId: string;
+    routeId: string | null;
+    vehicleId: string;
+    maxPax: number;
+    price: number;
+    currency: string;
+    active?: boolean | null;
+  }): VehicleRatePricingSyncData {
+    return {
+      supplierId: rate.supplierId ?? null,
+      serviceTypeId: rate.serviceTypeId,
+      routeId: rate.routeId ?? null,
+      vehicleId: rate.vehicleId,
+      maxPax: rate.maxPax,
+      price: rate.price,
+      currency: rate.currency,
+      active: rate.active ?? true,
+    };
+  }
+
+  private vehicleRatePricingKeysMatch(left: VehicleRatePricingSyncData, right: VehicleRatePricingSyncData) {
+    return (
+      left.supplierId === right.supplierId &&
+      left.serviceTypeId === right.serviceTypeId &&
+      left.routeId === right.routeId &&
+      left.vehicleId === right.vehicleId &&
+      left.maxPax === right.maxPax
+    );
+  }
+
+  private capacityPricingRuleWhere(data: VehicleRatePricingSyncData) {
+    if (!data.routeId) {
+      return null;
+    }
+
+    return {
+      supplierId: data.supplierId,
+      transportServiceTypeId: data.serviceTypeId,
+      routeId: data.routeId,
+      vehicleId: data.vehicleId,
+      pricingMode: 'capacity_unit' as const,
+      unitCapacity: data.maxPax,
+    };
+  }
+
+  private async findCapacityPricingRulesForVehicleRate(data: VehicleRatePricingSyncData) {
+    const where = this.capacityPricingRuleWhere(data);
+
+    if (!where) {
+      return [];
+    }
+
+    return this.prisma.transportPricingRule.findMany({
+      where,
+      orderBy: [{ createdAt: 'asc' }],
+    });
+  }
+
+  private async upsertCapacityPricingRuleForVehicleRate(data: VehicleRatePricingSyncData) {
+    const where = this.capacityPricingRuleWhere(data);
+
+    if (!where) {
+      return null;
+    }
+
+    const routeId = data.routeId;
+    if (!routeId) {
+      return null;
+    }
+
+    const [primaryRule, ...duplicateRules] = await this.findCapacityPricingRulesForVehicleRate(data);
+    const ruleData = {
+      supplierId: data.supplierId,
+      transportServiceTypeId: data.serviceTypeId,
+      routeId,
+      vehicleId: data.vehicleId,
+      pricingMode: 'capacity_unit' as const,
+      minPax: 1,
+      maxPax: 999,
+      unitCapacity: data.maxPax,
+      baseCost: data.price,
+      discountPercent: 0,
+      currency: data.currency.trim().toUpperCase(),
+      isActive: data.active,
+    };
+
+    await Promise.all(
+      duplicateRules.map((rule) =>
+        this.prisma.transportPricingRule.update({
+          where: { id: rule.id },
+          data: { isActive: false },
+        }),
+      ),
+    );
+
+    if (primaryRule) {
+      return this.prisma.transportPricingRule.update({
+        where: { id: primaryRule.id },
+        data: ruleData,
+      });
+    }
+
+    return this.prisma.transportPricingRule.create({ data: ruleData });
+  }
+
+  private async deactivateCapacityPricingRulesForVehicleRate(data: VehicleRatePricingSyncData) {
+    const rules = await this.findCapacityPricingRulesForVehicleRate(data);
+
+    await Promise.all(
+      rules.map((rule) =>
+        this.prisma.transportPricingRule.update({
+          where: { id: rule.id },
+          data: { isActive: false },
+        }),
+      ),
+    );
+  }
+
+  private async syncCapacityPricingRuleForVehicleRate(
+    vehicleRate: VehicleRatePricingSyncData,
+    previous?: VehicleRatePricingSyncData,
+  ) {
+    if (previous && !this.vehicleRatePricingKeysMatch(previous, vehicleRate)) {
+      await this.deactivateCapacityPricingRulesForVehicleRate(previous);
+    }
+
+    return this.upsertCapacityPricingRuleForVehicleRate(vehicleRate);
   }
 
   private resolveRouteFields(

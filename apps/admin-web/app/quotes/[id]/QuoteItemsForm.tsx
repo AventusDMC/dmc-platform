@@ -829,15 +829,15 @@ export function QuoteItemsForm({
       })
     : [];
 
-  const selectedService = services.find((service) => service.id === serviceId) || filteredServices[0];
+  const selectedService = services.find((service) => service.id === serviceId) || (activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
   const isHotelService = selectedService ? getServiceTypeKey(selectedService) === 'hotel' : false;
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
-  const isExternalPackageService = selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false;
-  const hasPrimarySelection = isEditing || (isHotelService ? Boolean(hotelId) : Boolean(serviceId));
-  const needsServiceSelection = !isEditing && Boolean(activeServiceType) && activeServiceType !== 'hotel' && !serviceId;
+  const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+  const hasPrimarySelection = isEditing || isExternalPackageService || (isHotelService ? Boolean(hotelId) : Boolean(serviceId));
+  const needsServiceSelection = !isEditing && Boolean(activeServiceType) && activeServiceType !== 'hotel' && activeServiceType !== 'externalPackage' && !serviceId;
   const selectionStepTitle =
     activeServiceType === 'transport'
       ? 'Choose transport service'
@@ -1031,6 +1031,10 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (activeServiceType === 'externalPackage') {
+      return;
+    }
+
     if (!filteredServices.some((service) => service.id === serviceId)) {
       // Preserve API order so the first real hotel template remains the default when multiple templates exist.
       setServiceId(filteredServices[0]?.id || '');
@@ -1066,7 +1070,8 @@ export function QuoteItemsForm({
         pricingBasis: isNewExternalPackageService && !isEditing ? inferredPricingBasis : current.pricingBasis,
         netCost: current.netCost.trim() ? current.netCost : String(selectedService.baseCost || 0),
         supplierName: current.supplierName.trim() ? current.supplierName : selectedService.supplierId || '',
-        clientDescription: current.clientDescription.trim() ? current.clientDescription : selectedService.name,
+        packageName: current.packageName.trim() ? current.packageName : selectedService.name,
+        clientItineraryText: current.clientItineraryText.trim() ? current.clientItineraryText : selectedService.name,
       }));
       externalPackageDefaultsServiceIdRef.current = selectedService.id;
       const resolvedNetCost = externalPackage.netCost.trim() || String(selectedService.baseCost || 0);
@@ -1879,8 +1884,13 @@ export function QuoteItemsForm({
                 key={button.key}
                 type="button"
                 className={isActive ? 'service-type-button service-type-button-active' : 'service-type-button'}
-                onClick={() => setActiveServiceType(button.key)}
-                disabled={count === 0}
+                onClick={() => {
+                  setActiveServiceType(button.key);
+                  if (button.key === 'externalPackage') {
+                    setServiceId('');
+                  }
+                }}
+                disabled={button.key !== 'externalPackage' && count === 0}
               >
                 {button.label}
               </button>
@@ -1951,12 +1961,65 @@ export function QuoteItemsForm({
                 <div>
                   <p className="eyebrow">Step 1</p>
                   <h3>{selectionStepTitle}</h3>
-                  <p className="detail-copy">Select the service first. Route, date, pax, pricing, and markup fields appear next.</p>
+                  <p className="detail-copy">
+                    {activeServiceType === 'externalPackage'
+                      ? 'Create a quote-only package or choose a saved package template.'
+                      : 'Select the service first. Route, date, pax, pricing, and markup fields appear next.'}
+                  </p>
                 </div>
-                {serviceId ? <span className="page-tab-badge">Selected</span> : null}
+                {activeServiceType === 'externalPackage' || serviceId ? <span className="page-tab-badge">Selected</span> : null}
               </div>
 
-              {filteredServices.length === 0 ? (
+              {activeServiceType === 'externalPackage' ? (
+                <div className="quote-service-selection-stack">
+                  <div className="quote-service-picker-grid" role="listbox" aria-label="External package source">
+                    <button
+                      type="button"
+                      className={!serviceId ? 'quote-hotel-choice-card quote-hotel-choice-card-active' : 'quote-hotel-choice-card'}
+                      onClick={() => {
+                        setServiceId('');
+                        setExternalPackage(createEmptyExternalPackageFormState(externalPackage.currency || 'USD'));
+                      }}
+                      role="option"
+                      aria-selected={!serviceId}
+                    >
+                      <strong>Create one-off package</strong>
+                      <span>Quote-only partner package</span>
+                      <em>No catalog service required</em>
+                    </button>
+                    {filteredServices.slice(0, 3).map((service) => {
+                      const isSelected = service.id === serviceId;
+
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          className={isSelected ? 'quote-hotel-choice-card quote-hotel-choice-card-active' : 'quote-hotel-choice-card'}
+                          onClick={() => setServiceId(service.id)}
+                          role="option"
+                          aria-selected={isSelected}
+                        >
+                          <strong>{service.name}</strong>
+                          <span>{service.serviceType?.name || service.category || service.unitType}</span>
+                          <em>{service.currency} {Number(service.baseCost || 0).toFixed(2)}</em>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <label>
+                    Saved package template
+                    <select value={serviceId} onChange={(event) => setServiceId(event.target.value)}>
+                      <option value="">Create one-off package</option>
+                      {filteredServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} ({service.unitType})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ) : filteredServices.length === 0 ? (
                 <div className="quote-service-empty-state">
                   <strong>No services available</strong>
                   <p>Create a catalog service for this type before adding it to the quote.</p>
@@ -2429,6 +2492,16 @@ export function QuoteItemsForm({
 
               <div className="form-row form-row-3">
                 <label>
+                  Package name
+                  <input
+                    value={externalPackage.packageName}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, packageName: event.target.value }))}
+                    placeholder="Cairo extension"
+                    required
+                  />
+                </label>
+
+                <label>
                   Net cost
                   <input
                     value={externalPackage.netCost}
@@ -2452,10 +2525,10 @@ export function QuoteItemsForm({
 
               <div className="form-row form-row-3">
                 <label>
-                  Client description
+                  Client itinerary text
                   <textarea
-                    value={externalPackage.clientDescription}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, clientDescription: event.target.value }))}
+                    value={externalPackage.clientItineraryText}
+                    onChange={(event) => setExternalPackage((current) => ({ ...current, clientItineraryText: event.target.value }))}
                     placeholder="Client-facing program description"
                     required
                   />

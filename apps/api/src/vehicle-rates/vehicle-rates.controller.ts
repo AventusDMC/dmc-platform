@@ -1,6 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../auth/auth.decorators';
 import { VehicleRatesService } from './vehicle-rates.service';
+
+const { memoryStorage } = require('multer');
 
 type CreateVehicleRateBody = {
   vehicleId: string;
@@ -14,6 +17,7 @@ type CreateVehicleRateBody = {
   maxPax: number;
   price: number;
   currency: string;
+  active?: boolean;
   validFrom: string;
   validTo: string;
 };
@@ -27,6 +31,40 @@ export class VehicleRatesController {
   @Get()
   findAll() {
     return this.vehicleRatesService.findAll();
+  }
+
+  @Get('import-template')
+  @Roles('admin', 'finance')
+  getImportTemplate(@Res({ passthrough: true }) response: any) {
+    const buffer = this.vehicleRatesService.getTransportContractImportTemplate();
+    response.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="transport-contract-import-template.xlsx"',
+    });
+
+    return new StreamableFile(buffer);
+  }
+
+  @Post('import-preview')
+  @Roles('admin', 'finance')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  previewImport(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Transport contract Excel file is required');
+    }
+
+    return this.vehicleRatesService.previewTransportContractImport(file);
+  }
+
+  @Post('import')
+  @Roles('admin', 'finance')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  importContract(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Transport contract Excel file is required');
+    }
+
+    return this.vehicleRatesService.importTransportContract(file);
   }
 
   @Get(':id')
@@ -49,6 +87,7 @@ export class VehicleRatesController {
       maxPax: Number(body.maxPax),
       price: Number(body.price),
       currency: body.currency,
+      active: body.active,
       validFrom: new Date(body.validFrom),
       validTo: new Date(body.validTo),
     });
@@ -78,6 +117,7 @@ export class VehicleRatesController {
       maxPax: body.maxPax === undefined ? undefined : Number(body.maxPax),
       price: body.price === undefined ? undefined : Number(body.price),
       currency: body.currency,
+      active: body.active,
       validFrom: body.validFrom === undefined ? undefined : new Date(body.validFrom),
       validTo: body.validTo === undefined ? undefined : new Date(body.validTo),
     });

@@ -1,6 +1,7 @@
 export type ExternalPackagePricingBasis = 'PER_PERSON' | 'PER_GROUP';
 
 export type ExternalPackageFormState = {
+  packageName: string;
   country: string;
   supplierName: string;
   startDay: string;
@@ -13,7 +14,7 @@ export type ExternalPackageFormState = {
   includes: string;
   excludes: string;
   internalNotes: string;
-  clientDescription: string;
+  clientItineraryText: string;
 };
 
 export const EXTERNAL_PACKAGE_SERVICE_TYPE_KEY = 'externalPackage';
@@ -58,6 +59,7 @@ export function getExternalPackagePricingBasisLabel(value: string | null | undef
 
 export function createEmptyExternalPackageFormState(currency = 'USD'): ExternalPackageFormState {
   return {
+    packageName: '',
     country: '',
     supplierName: '',
     startDay: '',
@@ -70,12 +72,13 @@ export function createEmptyExternalPackageFormState(currency = 'USD'): ExternalP
     includes: '',
     excludes: '',
     internalNotes: '',
-    clientDescription: '',
+    clientItineraryText: '',
   };
 }
 
 export function buildExternalPackagePayload(state: ExternalPackageFormState) {
   return {
+    packageName: state.packageName.trim(),
     country: state.country.trim(),
     supplierName: state.supplierName.trim() || null,
     startDay: state.startDay.trim() ? Number(state.startDay) : null,
@@ -88,7 +91,7 @@ export function buildExternalPackagePayload(state: ExternalPackageFormState) {
     includes: state.includes.trim() || null,
     excludes: state.excludes.trim() || null,
     internalNotes: state.internalNotes.trim() || null,
-    clientDescription: state.clientDescription.trim(),
+    clientDescription: state.clientItineraryText.trim(),
   };
 }
 
@@ -112,8 +115,11 @@ export function validateExternalPackageFormState(state: ExternalPackageFormState
   if (!state.currency.trim()) {
     errors.push('External package currency is required.');
   }
-  if (!state.clientDescription.trim()) {
-    errors.push('External package client description is required.');
+  if (!state.packageName.trim()) {
+    errors.push('External package name is required.');
+  }
+  if (!state.clientItineraryText.trim()) {
+    errors.push('External package client itinerary text is required.');
   }
   if (startDay !== null && (!Number.isInteger(startDay) || startDay < 1)) {
     errors.push('External package start day must be a positive whole number.');
@@ -147,6 +153,7 @@ export function getExternalPackageCalculatedCost(state: Pick<ExternalPackageForm
 }
 
 export function getExternalPackageInternalLines(item: {
+  externalPackageName?: string | null;
   externalPackageCountry?: string | null;
   externalSupplierName?: string | null;
   externalPricingBasis?: string | null;
@@ -155,6 +162,7 @@ export function getExternalPackageInternalLines(item: {
   currency?: string | null;
 }) {
   return [
+    item.externalPackageName ? `Package: ${item.externalPackageName}` : null,
     item.externalPackageCountry ? `Country: ${item.externalPackageCountry}` : null,
     item.externalSupplierName ? `Supplier: ${item.externalSupplierName}` : null,
     item.externalPricingBasis ? `Basis: ${getExternalPackagePricingBasisLabel(item.externalPricingBasis)}` : null,
@@ -166,11 +174,13 @@ export function getExternalPackageInternalLines(item: {
 }
 
 export function getExternalPackageClientLines(item: {
+  externalPackageName?: string | null;
   externalClientDescription?: string | null;
   externalIncludes?: string | null;
   externalExcludes?: string | null;
 }) {
   return [
+    item.externalPackageName || null,
     item.externalClientDescription || null,
     item.externalIncludes ? `Includes: ${item.externalIncludes}` : null,
     item.externalExcludes ? `Excludes: ${item.externalExcludes}` : null,

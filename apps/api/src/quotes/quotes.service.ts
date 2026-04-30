@@ -124,7 +124,7 @@ type QuoteInvoiceSummary = {
 type CreateQuoteItemInput = {
   quoteId: string;
   optionId?: string;
-  serviceId: string;
+  serviceId?: string | null;
   activityId?: string | null;
   itineraryId?: string;
   serviceDate?: Date | null;
@@ -150,6 +150,7 @@ type CreateQuoteItemInput = {
   customServiceName?: string | null;
   unitCost?: number | null;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | 'PER_GROUP' | null;
+  packageName?: string | null;
   country?: string | null;
   supplierName?: string | null;
   startDay?: number | null;
@@ -2099,8 +2100,8 @@ export class QuotesService {
     });
   }
 
-  findItems(quoteId: string) {
-    return this.prisma.quoteItem.findMany({
+  async findItems(quoteId: string) {
+    const items = await this.prisma.quoteItem.findMany({
       where: {
         quoteId,
         optionId: null,
@@ -2129,6 +2130,8 @@ export class QuotesService {
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
     } as any);
+
+    return items.map((item: any) => this.hydrateOneOffExternalPackageItem(item));
   }
 
   async reorderItems(quoteId: string, data: ReorderQuoteItemsInput, actor?: CompanyScopedActor) {
@@ -2155,7 +2158,7 @@ export class QuotesService {
       throw new BadRequestException('orderedItemIds must not contain duplicates');
     }
 
-    const items = await this.prisma.quoteItem.findMany({
+    const items = (await this.prisma.quoteItem.findMany({
       where: {
         id: {
           in: orderedItemIds,
@@ -2169,7 +2172,7 @@ export class QuotesService {
           },
         },
       },
-    });
+    } as any)).map((item: any) => this.hydrateOneOffExternalPackageItem(item));
 
     if (items.length !== orderedItemIds.length) {
       throw new BadRequestException('All ordered items must exist');
@@ -2255,7 +2258,9 @@ export class QuotesService {
       throw new BadRequestException('Target itinerary day not found');
     }
 
-    if (this.getPlannerServiceType(item.service) !== serviceType) {
+    const hydratedItem = this.hydrateOneOffExternalPackageItem(item);
+
+    if (!hydratedItem.service || this.getPlannerServiceType(hydratedItem.service) !== serviceType) {
       throw new BadRequestException('Item must stay in its current service type lane');
     }
 
@@ -2314,7 +2319,7 @@ export class QuotesService {
       throw new BadRequestException('Quote item not found');
     }
 
-    const importedItem = this.getImportedDraftItemFromQuoteItem(item);
+    const importedItem = item.service ? this.getImportedDraftItemFromQuoteItem(item as any) : null;
 
     if (!importedItem) {
       return [];
@@ -2364,7 +2369,7 @@ export class QuotesService {
     await this.recalculateQuoteTotals(quote.id);
 
     return {
-      ...item,
+      ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
     };
   }
@@ -2392,7 +2397,7 @@ export class QuotesService {
     const values = await this.resolveQuoteItemValues({
       quoteId: quote.id,
       optionId,
-      serviceId: data.serviceId ?? existingItem.serviceId,
+      serviceId: data.serviceId === undefined ? existingItem.serviceId : data.serviceId,
       activityId:
         data.activityId === undefined ? (existingItem as { activityId?: string | null }).activityId ?? undefined : data.activityId,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
@@ -2673,17 +2678,19 @@ export class QuotesService {
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
-      this.prisma.supplierService.findUnique({
-        where: { id: data.serviceId },
-        include: {
-          serviceType: true,
-          entranceFee: true,
-          serviceRates: {
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-          },
-        },
-      }),
+      data.serviceId
+        ? this.prisma.supplierService.findUnique({
+            where: { id: data.serviceId },
+            include: {
+              serviceType: true,
+              entranceFee: true,
+              serviceRates: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          })
+        : Promise.resolve(null),
       data.activityId
         ? (this.prisma as any).activity.findUnique({
             where: { id: data.activityId },
@@ -2713,7 +2720,10 @@ export class QuotesService {
       throw new BadRequestException('Quote not found');
     }
 
-    if (!service) {
+    const isOneOffExternalPackage = !data.serviceId && Boolean(data.packageName || data.country || data.netCost !== undefined);
+    const effectiveService = service || (isOneOffExternalPackage ? this.buildOneOffExternalPackageService(data) : null);
+
+    if (!effectiveService) {
       throw new BadRequestException('Service not found');
     }
 
@@ -2753,17 +2763,17 @@ export class QuotesService {
     const meetingPoint = this.normalizeQuoteItemOperationalText(data.meetingPoint);
     const reconfirmationDueAt = this.normalizeQuoteItemOperationalDate(data.reconfirmationDueAt);
     const reconfirmationRequired = Boolean(data.reconfirmationRequired);
-    let baseCost = service.baseCost;
-    let currency = service.currency || '';
-    let supplierCostBaseAmount = (service as any).costBaseAmount ?? service.baseCost;
-    let supplierCostCurrency = (service as any).costCurrency ?? (service.currency || 'USD');
-    let salesTaxPercent = Number((service as any).salesTaxPercent ?? 0);
-    let salesTaxIncluded = Boolean((service as any).salesTaxIncluded);
-    let serviceChargePercent = Number((service as any).serviceChargePercent ?? 0);
-    let serviceChargeIncluded = Boolean((service as any).serviceChargeIncluded);
-    let tourismFeeAmount = (service as any).tourismFeeAmount ?? null;
-    let tourismFeeCurrency = (service as any).tourismFeeCurrency ?? null;
-    let tourismFeeMode = (service as any).tourismFeeMode ?? null;
+    let baseCost = effectiveService.baseCost;
+    let currency = effectiveService.currency || '';
+    let supplierCostBaseAmount = (effectiveService as any).costBaseAmount ?? effectiveService.baseCost;
+    let supplierCostCurrency = (effectiveService as any).costCurrency ?? (effectiveService.currency || 'USD');
+    let salesTaxPercent = Number((effectiveService as any).salesTaxPercent ?? 0);
+    let salesTaxIncluded = Boolean((effectiveService as any).salesTaxIncluded);
+    let serviceChargePercent = Number((effectiveService as any).serviceChargePercent ?? 0);
+    let serviceChargeIncluded = Boolean((effectiveService as any).serviceChargeIncluded);
+    let tourismFeeAmount = (effectiveService as any).tourismFeeAmount ?? null;
+    let tourismFeeCurrency = (effectiveService as any).tourismFeeCurrency ?? null;
+    let tourismFeeMode = (effectiveService as any).tourismFeeMode ?? null;
     let pricingDescription: string | null = null;
     let appliedVehicleRateId: string | null = null;
     let routeId: string | null = null;
@@ -2788,7 +2798,7 @@ export class QuotesService {
     let externalPackageData: Record<string, unknown> = {};
     let capacityMaxPaxPerUnit: number | null = null;
 
-    const serviceRate = (service as any).serviceRates?.[0] as
+    const serviceRate = (effectiveService as any).serviceRates?.[0] as
       | {
           costBaseAmount?: number | null;
           costCurrency?: string | null;
@@ -2826,7 +2836,7 @@ export class QuotesService {
       tourismFeeMode = serviceRate.tourismFeeMode ?? tourismFeeMode;
     }
 
-    if (this.isHotelService(service)) {
+    if (this.isHotelService(effectiveService)) {
       const season = data.seasonId
         ? await this.prisma.season.findUnique({
             where: { id: data.seasonId },
@@ -2906,7 +2916,7 @@ export class QuotesService {
       mealPlan = hotelRate.mealPlan;
     }
 
-    if (this.isTransportService(service)) {
+    if (this.isTransportService(effectiveService)) {
       if (!data.transportServiceTypeId) {
         throw new BadRequestException('Transport service type is required');
       }
@@ -2959,7 +2969,7 @@ export class QuotesService {
       }
     }
 
-    if (this.isGuideService(service)) {
+    if (this.isGuideService(effectiveService)) {
       const guideType = data.guideType?.trim().toLowerCase();
       const guideDuration = data.guideDuration?.trim().toLowerCase();
       const overnight = Boolean(data.overnight);
@@ -2973,11 +2983,11 @@ export class QuotesService {
       }
 
       baseCost = GUIDE_RATES[guideType][guideDuration] + (overnight ? GUIDE_OVERNIGHT_SUPPLEMENT : 0);
-      currency = service.currency;
+      currency = effectiveService.currency;
       pricingDescription = `Guide | ${this.formatGuideType(guideType)} | ${this.formatGuideDuration(guideDuration)} | Overnight: ${overnight ? 'Yes' : 'No'}`;
     }
 
-    if (this.isActivityService(service)) {
+    if (this.isActivityService(effectiveService)) {
       adultCount =
         data.adultCount === undefined
           ? quote.adults
@@ -3001,7 +3011,7 @@ export class QuotesService {
 
       if (activity) {
         baseCost = Number(activity.costPrice);
-        currency = data.currency?.trim().toUpperCase() || service.currency || 'USD';
+        currency = data.currency?.trim().toUpperCase() || effectiveService.currency || 'USD';
         supplierCostBaseAmount = Number(activity.costPrice);
         supplierCostCurrency = currency;
         pricingDescription = [
@@ -3013,7 +3023,7 @@ export class QuotesService {
           .join(' | ');
       }
 
-      const entranceFee = (service as any).entranceFee as
+      const entranceFee = (effectiveService as any).entranceFee as
         | { id: string; siteName: string; foreignerFeeJod: number; includedInJordanPass: boolean }
         | null
         | undefined;
@@ -3039,9 +3049,9 @@ export class QuotesService {
       }
     }
 
-    if (this.isMealService(service)) {
+    if (this.isMealService(effectiveService)) {
       const mealName = this.normalizeQuoteItemOperationalText(data.customServiceName);
-      const mealUnitCost = data.unitCost === undefined || data.unitCost === null ? service.baseCost : Number(data.unitCost);
+      const mealUnitCost = data.unitCost === undefined || data.unitCost === null ? effectiveService.baseCost : Number(data.unitCost);
 
       if (!mealName) {
         throw new BadRequestException('Meal items require a name');
@@ -3052,16 +3062,20 @@ export class QuotesService {
       }
 
       baseCost = mealUnitCost;
-      currency = data.currency?.trim().toUpperCase() || service.currency;
+      currency = data.currency?.trim().toUpperCase() || effectiveService.currency;
       supplierCostBaseAmount = mealUnitCost;
       supplierCostCurrency = currency;
       pricingDescription = `${mealName} | Meal | PER_PERSON | ${paxCount} pax`;
     }
 
-    if (this.isExternalPackageService(service)) {
+    if (this.isExternalPackageService(effectiveService)) {
       const country = this.normalizeQuoteItemOperationalText(data.country);
       const supplierName = this.normalizeQuoteItemOperationalText(data.supplierName);
       const clientDescription = this.normalizeQuoteItemOperationalText(data.clientDescription);
+      const packageName =
+        this.normalizeQuoteItemOperationalText(data.packageName) ||
+        clientDescription ||
+        (country ? `${country} external package` : '');
       const includes = this.normalizeQuoteItemOperationalText(data.includes);
       const excludes = this.normalizeQuoteItemOperationalText(data.excludes);
       const internalNotes = this.normalizeQuoteItemOperationalText(data.internalNotes);
@@ -3095,9 +3109,10 @@ export class QuotesService {
       currency = data.currency.trim().toUpperCase();
       supplierCostBaseAmount = netCost;
       supplierCostCurrency = currency;
-      pricingDescription = `${country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`;
+      pricingDescription = `${packageName} | ${country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`;
       externalPackageData = {
         externalPackageCountry: country,
+        externalPackageName: packageName,
         externalSupplierName: supplierName,
         externalStartDay: startDay,
         externalEndDay: endDay,
@@ -3142,7 +3157,7 @@ export class QuotesService {
 
     const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
     const basePricing = this.calculateCentralizedQuoteItemPricing({
-      service,
+      service: effectiveService,
       quantity: transportQuantity,
       paxCount,
       roomCount,
@@ -3180,7 +3195,7 @@ export class QuotesService {
     });
     const promotionTravelDate = serviceDate ?? quote.travelStartDate;
     const promotionResult =
-      this.isHotelService(service) && contractId && roomCategoryId && promotionTravelDate
+      this.isHotelService(effectiveService) && contractId && roomCategoryId && promotionTravelDate
         ? await this.promotionsService.evaluate({
             hotelContractId: contractId,
             roomCategoryId,
@@ -3198,7 +3213,7 @@ export class QuotesService {
       data: {
         quoteId: data.quoteId,
         optionId: data.optionId || null,
-        serviceId: data.serviceId,
+        serviceId: data.serviceId || null,
         activityId: activity?.id ?? null,
         itineraryId: legacyItinerary?.id || null,
         serviceDate,
@@ -3531,10 +3546,11 @@ export class QuotesService {
       fxToCurrency: pricing.fxToCurrency,
       fxRateDate: pricing.fxRateDate,
       currency: normalizedQuoteCurrency,
-      pricingDescription: `${item.country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`,
+      pricingDescription: `${item.title} | ${item.country} external package | ${pricingBasis === 'PER_PERSON' ? 'per person' : 'per group'}`,
       totalCost: pricing.totalCost,
       totalSell: pricing.totalSell,
       externalPackageCountry: item.country,
+      externalPackageName: item.title,
       externalSupplierName: item.supplierName || null,
       externalStartDay: item.startDay ?? item.dayNumber,
       externalEndDay: item.endDay ?? item.startDay ?? item.dayNumber,
@@ -4164,7 +4180,7 @@ export class QuotesService {
   async findOptionItems(quoteId: string, optionId: string) {
     await this.ensureOptionBelongsToQuote(quoteId, optionId);
 
-    return this.prisma.quoteItem.findMany({
+    const items = (await this.prisma.quoteItem.findMany({
       where: {
         quoteId,
         optionId,
@@ -4191,7 +4207,9 @@ export class QuotesService {
         },
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
-    } as any);
+    } as any));
+
+    return items.map((item: any) => this.hydrateOneOffExternalPackageItem(item));
   }
 
   async createOptionItem(optionId: string, data: Omit<CreateQuoteItemInput, 'optionId'>, actor?: CompanyScopedActor) {
@@ -4290,7 +4308,11 @@ export class QuotesService {
     }> = [];
 
     for (const paxCount of paxCounts) {
-      const roundedTotalCost = await this.calculateQuoteItemsTotalCostForPax(quote.quoteItems, quote, paxCount);
+      const roundedTotalCost = await this.calculateQuoteItemsTotalCostForPax(
+        quote.quoteItems.map((item: any) => this.hydrateOneOffExternalPackageItem(item)),
+        quote,
+        paxCount,
+      );
       const matchedSlab =
         quote.pricingSlabs.find((slab) => paxCount >= slab.minPax && (slab.maxPax === null || paxCount <= slab.maxPax)) || null;
       const derivedFocPax = matchedSlab
@@ -4734,6 +4756,59 @@ export class QuotesService {
     return Number(Number(value).toFixed(2));
   }
 
+  private buildOneOffExternalPackageService(data: CreateQuoteItemInput) {
+    const currency = data.currency?.trim().toUpperCase() || 'USD';
+
+    return {
+      id: '',
+      supplierId: data.supplierName || '',
+      name: this.normalizeQuoteItemOperationalText(data.packageName) || 'External package',
+      category: 'external_package',
+      serviceTypeId: null,
+      serviceType: {
+        id: null,
+        name: 'External Package',
+        code: 'EXTERNAL_PACKAGE',
+        isActive: true,
+      },
+      unitType: data.pricingBasis === 'PER_GROUP' ? ServiceUnitType.per_group : ServiceUnitType.per_person,
+      baseCost: Number(data.netCost ?? 0),
+      currency,
+      costBaseAmount: Number(data.netCost ?? 0),
+      costCurrency: currency,
+      serviceRates: [],
+      entranceFee: null,
+    };
+  }
+
+  private hydrateOneOffExternalPackageItem<T extends { service?: unknown; serviceId?: string | null; externalPackageName?: string | null; externalSupplierName?: string | null; externalNetCost?: number | null; externalPricingBasis?: string | null; currency?: string | null }>(item: T): T {
+    if (item.service || item.serviceId || !item.externalPackageName) {
+      return item;
+    }
+
+    return {
+      ...item,
+      service: this.buildOneOffExternalPackageService({
+        quoteId: '',
+        serviceId: null,
+        packageName: item.externalPackageName,
+        supplierName: item.externalSupplierName ?? null,
+        netCost: item.externalNetCost ?? 0,
+        pricingBasis: item.externalPricingBasis === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+        currency: item.currency || 'USD',
+        quantity: 1,
+        markupPercent: 0,
+      }),
+    };
+  }
+
+  private hydrateOneOffExternalPackageItems<T extends { quoteItems?: any[] }>(holder: T): T {
+    return {
+      ...holder,
+      quoteItems: (holder.quoteItems || []).map((item) => this.hydrateOneOffExternalPackageItem(item)),
+    };
+  }
+
   private isHotelService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
     const normalizedCategory = this.getNormalizedServiceCategory(service);
 
@@ -5105,7 +5180,7 @@ export class QuotesService {
 
     await this.syncJordanPassEntranceFees(quote);
 
-    const items = await this.prisma.quoteItem.findMany({
+    const items = (await this.prisma.quoteItem.findMany({
       where: {
         quoteId,
         optionId: null,
@@ -5124,7 +5199,7 @@ export class QuotesService {
           },
         },
       },
-    });
+    })).map((item: any) => this.hydrateOneOffExternalPackageItem(item));
 
     const itemTotals = this.calculateTotalsFromItems(
       items,
@@ -5146,7 +5221,7 @@ export class QuotesService {
     });
 
     if (this.normalizeQuotePricingMode(quote.pricingMode, this.normalizeQuotePricingType(quote.pricingType)) === 'SLAB') {
-      await this.syncQuotePricingSlabDerivedValues(quote, items);
+      await this.syncQuotePricingSlabDerivedValues(quote, items as any);
     }
 
     return updatedQuote;
@@ -5356,7 +5431,7 @@ export class QuotesService {
           });
 
     for (const item of items) {
-      if (!item.entranceFee) {
+      if (!item.entranceFee || !item.service) {
         continue;
       }
 
@@ -6593,11 +6668,14 @@ export class QuotesService {
       pricingSlabs,
       quoteItems,
       itineraries,
-      quoteOptions: quoteOptions.map((option: any) => ({
-        ...option,
-        quoteItems: option.quoteItems || [],
-        ...this.calculateOptionTotals({ ...option, quoteItems: option.quoteItems || [] }, quote.adults + quote.children),
-      })),
+      quoteOptions: quoteOptions.map((option: any) => {
+        const optionQuoteItems = (option.quoteItems || []).map((item: any) => this.hydrateOneOffExternalPackageItem(item));
+        return {
+          ...option,
+          quoteItems: optionQuoteItems,
+          ...this.calculateOptionTotals({ ...option, quoteItems: optionQuoteItems }, quote.adults + quote.children),
+        };
+      }),
       scenarios,
       invoice,
       booking,

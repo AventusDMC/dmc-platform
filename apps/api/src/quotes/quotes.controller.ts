@@ -75,7 +75,7 @@ type UpdateQuoteStatusBody = {
 };
 
 type CreateQuoteItemBody = {
-  serviceId: string;
+  serviceId?: string | null;
   activityId?: string | null;
   itineraryId?: string;
   serviceDate?: string | null;
@@ -101,6 +101,7 @@ type CreateQuoteItemBody = {
   customServiceName?: string | null;
   unitCost?: number | null;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | 'PER_GROUP' | null;
+  packageName?: string | null;
   country?: string | null;
   supplierName?: string | null;
   startDay?: number | null;
@@ -737,7 +738,7 @@ export class QuotesController {
 
     return this.quotesService.createItem({
       quoteId: id,
-      serviceId: body.serviceId,
+      serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -770,6 +771,7 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      packageName: body.packageName === undefined ? undefined : body.packageName || null,
       country: body.country === undefined ? undefined : body.country || null,
       supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
       startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
@@ -818,7 +820,7 @@ export class QuotesController {
 
     return this.quotesService.updateItem(itemId, {
       quoteId: id,
-      serviceId: body.serviceId,
+      serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -851,6 +853,7 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      packageName: body.packageName === undefined ? undefined : body.packageName || null,
       country: body.country === undefined ? undefined : body.country || null,
       supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
       startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
@@ -1032,7 +1035,7 @@ export class QuotesController {
 
     return this.quotesService.createOptionItem(optionId, {
       quoteId: id,
-      serviceId: body.serviceId,
+      serviceId: body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -1065,6 +1068,7 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      packageName: body.packageName === undefined ? undefined : body.packageName || null,
       country: body.country === undefined ? undefined : body.country || null,
       supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
       startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),
@@ -1113,7 +1117,7 @@ export class QuotesController {
     }
 
     return this.quotesService.updateOptionItem(optionId, itemId, {
-      serviceId: body.serviceId,
+      serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -1146,6 +1150,7 @@ export class QuotesController {
       customServiceName: body.customServiceName === undefined ? undefined : body.customServiceName || null,
       unitCost: body.unitCost === undefined || body.unitCost === null ? body.unitCost : Number(body.unitCost),
       pricingBasis: body.pricingBasis ?? undefined,
+      packageName: body.packageName === undefined ? undefined : body.packageName || null,
       country: body.country === undefined ? undefined : body.country || null,
       supplierName: body.supplierName === undefined ? undefined : body.supplierName || null,
       startDay: body.startDay === undefined || body.startDay === null ? body.startDay : Number(body.startDay),

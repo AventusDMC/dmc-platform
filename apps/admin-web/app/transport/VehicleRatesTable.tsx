@@ -35,6 +35,7 @@ type VehicleRate = {
   maxPax: number;
   price: number;
   currency: string;
+  active: boolean;
   validFrom: string;
   validTo: string;
   vehicle: {
@@ -242,6 +243,7 @@ export function VehicleRatesTable({
                       <th>Pax / Capacity</th>
                       <th>Validity</th>
                       <th>Price</th>
+                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -264,6 +266,7 @@ export function VehicleRatesTable({
                           <td>
                             {rate.currency} {rate.price.toFixed(2)}
                           </td>
+                          <td>{rate.active ? 'Active' : 'Inactive'}</td>
                           <td>
                             <div className="table-action-row">
                               <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
@@ -356,6 +359,7 @@ export function VehicleRatesTable({
                   maxPax: String(activeForm.rate.maxPax),
                   price: String(activeForm.rate.price),
                   currency: normalizeSupportedCurrency(activeForm.rate.currency),
+                  active: activeForm.rate.active,
                   validFrom: activeForm.rate.validFrom.slice(0, 10),
                   validTo: activeForm.rate.validTo.slice(0, 10),
                 }}

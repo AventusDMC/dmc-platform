@@ -7,6 +7,7 @@ import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { TransportServiceTypeForm } from '../vehicle-rates/TransportServiceTypeForm';
 import { TransportServiceTypesTable } from './TransportServiceTypesTable';
+import { TransportContractImportPanel } from './TransportContractImportPanel';
 import { VehicleRatesTable } from './VehicleRatesTable';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -35,6 +36,7 @@ type VehicleRate = {
   maxPax: number;
   price: number;
   currency: string;
+  active: boolean;
   validFrom: string;
   validTo: string;
   vehicle: {
@@ -126,6 +128,11 @@ export async function VehicleRatesSection() {
         title="Supplier Rate Cards"
         description="Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods."
         context={<p>{vehicleRates.length} rate lines in scope</p>}
+        createPanel={
+          <CollapsibleCreatePanel title="Import transport contract" description="Upload the official supplier transport contract Excel format." triggerLabelOpen="Import contract">
+            <TransportContractImportPanel apiBaseUrl={ACTION_API_BASE_URL} />
+          </CollapsibleCreatePanel>
+        }
       >
         <VehicleRatesTable
           apiBaseUrl={ACTION_API_BASE_URL}

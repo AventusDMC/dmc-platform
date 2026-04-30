@@ -22,6 +22,7 @@ describe('external package quote builder UI', () => {
     assert.equal(isExternalPackageCategory('External Package'), true);
     assert.equal(getQuoteServiceCategoryKey({ category: 'External Package', serviceType: { id: 'st-1', name: 'External Package', code: 'EXTERNAL_PACKAGE' } }), 'externalPackage');
     assert.deepEqual(Object.keys(state), [
+      'packageName',
       'country',
       'supplierName',
       'startDay',
@@ -34,7 +35,7 @@ describe('external package quote builder UI', () => {
       'includes',
       'excludes',
       'internalNotes',
-      'clientDescription',
+      'clientItineraryText',
     ]);
     assert.equal(state.currency, 'JOD');
   });
@@ -63,6 +64,7 @@ describe('external package quote builder UI', () => {
 
   it('builds a save payload that preserves all external package fields', () => {
     const payload = buildExternalPackagePayload({
+      packageName: ' Cairo Extension ',
       country: ' Egypt ',
       supplierName: ' Cairo Partner DMC ',
       startDay: '3',
@@ -75,9 +77,10 @@ describe('external package quote builder UI', () => {
       includes: ' Private touring ',
       excludes: ' International flights ',
       internalNotes: ' Net confirmed ',
-      clientDescription: ' Cairo and Giza extension ',
+      clientItineraryText: ' Cairo and Giza extension ',
     });
 
+    assert.equal(payload.packageName, 'Cairo Extension');
     assert.equal(payload.country, 'Egypt');
     assert.equal(payload.supplierName, 'Cairo Partner DMC');
     assert.equal(payload.startDay, 3);
@@ -99,9 +102,10 @@ describe('external package quote builder UI', () => {
     const payload = buildExternalPackagePayload({
       ...createEmptyExternalPackageFormState('EUR'),
       country: 'Israel',
+      packageName: 'Israel extension',
       pricingBasis: 'PER_GROUP',
       netCost: '900',
-      clientDescription: 'Updated partner program.',
+      clientItineraryText: 'Updated partner program.',
     });
 
     assert.equal(payload.country, 'Israel');
@@ -131,14 +135,16 @@ describe('external package quote builder UI', () => {
       includes: '',
       excludes: '',
       internalNotes: '',
-      clientDescription: '',
+      packageName: '',
+      clientItineraryText: '',
     });
 
     assert.ok(invalid.includes('External package country is required.'));
     assert.ok(invalid.includes('External package pricing basis must be Per person or Per group.'));
     assert.ok(invalid.includes('External package net cost must be zero or greater.'));
     assert.ok(invalid.includes('External package currency is required.'));
-    assert.ok(invalid.includes('External package client description is required.'));
+    assert.ok(invalid.includes('External package name is required.'));
+    assert.ok(invalid.includes('External package client itinerary text is required.'));
     assert.ok(invalid.includes('External package end day cannot be before start day.'));
     assert.ok(invalid.includes('External package end date cannot be before start date.'));
   });
@@ -150,7 +156,8 @@ describe('external package quote builder UI', () => {
       pricingBasis: 'PER_PERSON',
       netCost: '-1',
       startDate: 'bad-date',
-      clientDescription: 'Cairo program.',
+      packageName: 'Cairo',
+      clientItineraryText: 'Cairo program.',
     });
 
     assert.ok(invalid.includes('External package net cost must be zero or greater.'));
