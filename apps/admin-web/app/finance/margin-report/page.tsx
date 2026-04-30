@@ -8,26 +8,29 @@ import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server'
 
 export const dynamic = 'force-dynamic';
 
-type SupplierPayable = {
+type MarginReportRow = {
   supplierId: string | null;
   supplierName: string;
   totalCost: number;
+  totalSell: number;
+  totalProfit: number;
+  avgMargin: number;
 };
 
-type SupplierPayablesPageProps = {
+type MarginReportPageProps = {
   searchParams?: Promise<{
     from?: string;
     to?: string;
   }>;
 };
 
-async function getSupplierPayables(from?: string, to?: string) {
+async function getMarginReport(from?: string, to?: string) {
   const params = new URLSearchParams();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
   const query = params.toString();
 
-  return adminPageFetchJson<unknown>(`/api/reports/supplier-payables${query ? `?${query}` : ''}`, 'Supplier payables report', {
+  return adminPageFetchJson<unknown>(`/api/reports/supplier-performance${query ? `?${query}` : ''}`, 'Finance margin report', {
     cache: 'no-store',
   });
 }
@@ -49,7 +52,7 @@ function asNullableString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
-function normalizeSupplierPayables(value: unknown): SupplierPayable[] {
+function normalizeMarginRows(value: unknown): MarginReportRow[] {
   const record = asRecord(value);
   const rows: unknown[] = Array.isArray(value) ? value : Array.isArray(record.suppliers) ? record.suppliers : [];
 
@@ -59,6 +62,9 @@ function normalizeSupplierPayables(value: unknown): SupplierPayable[] {
       supplierId: asNullableString(row.supplierId),
       supplierName: asString(row.supplierName || row.supplier, 'Unassigned supplier'),
       totalCost: asNumber(row.totalCost),
+      totalSell: asNumber(row.totalSell),
+      totalProfit: asNumber(row.totalProfit),
+      avgMargin: asNumber(row.avgMargin),
     };
   });
 }
@@ -71,25 +77,34 @@ function formatMoney(value: number) {
   }).format(value || 0);
 }
 
-export default async function SupplierPayablesPage({ searchParams }: SupplierPayablesPageProps) {
+function formatPercent(value: number) {
+  return `${new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 2,
+  }).format(value || 0)}%`;
+}
+
+export default async function MarginReportPage({ searchParams }: MarginReportPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const from = resolvedSearchParams.from || '';
   const to = resolvedSearchParams.to || '';
-  let payables: SupplierPayable[] = [];
+  let rows: MarginReportRow[] = [];
   let loadError = false;
 
   try {
-    payables = normalizeSupplierPayables(await getSupplierPayables(from, to));
+    rows = normalizeMarginRows(await getMarginReport(from, to));
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
     }
 
-    console.error('[finance/supplier-payables] report unavailable', error);
+    console.error('[finance/margin-report] report unavailable', error);
     loadError = true;
   }
 
-  const totalCost = payables.reduce((total, payable) => total + payable.totalCost, 0);
+  const totalCost = rows.reduce((total, row) => total + row.totalCost, 0);
+  const totalRevenue = rows.reduce((total, row) => total + row.totalSell, 0);
+  const totalProfit = rows.reduce((total, row) => total + row.totalProfit, 0);
+  const marginPercent = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
   const dateRangeLabel = from || to ? `${from || 'Any date'} to ${to || 'Any date'}` : 'All dates';
 
   return (
@@ -97,15 +112,14 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
       <section className="panel workspace-panel">
         <WorkspaceShell
           eyebrow="Finance"
-          title="Supplier Payables"
-          description="Review supplier payable totals from booking service cost data."
+          title="Margin Report"
+          description="Review supplier-level cost, revenue, profit, and margin."
           switcher={
             <ModuleSwitcher
               ariaLabel="Finance slices"
-              activeId="supplier-payables"
+              activeId="margin-report"
               items={[
                 { id: 'all', label: 'Overview', href: '/finance', helper: 'All finance signals' },
-                { id: 'unpaid-suppliers', label: 'Unpaid Suppliers', href: '/finance?report=unpaid-suppliers', helper: 'Open payables' },
                 { id: 'margin-report', label: 'Margin Report', href: '/finance/margin-report', helper: 'Supplier margin' },
                 { id: 'supplier-payables', label: 'Supplier Payables', href: '/finance/supplier-payables', helper: 'Supplier totals' },
                 { id: 'reconciliation', label: 'Reconciliation', href: '/finance/reconciliation', helper: 'Proof review queue' },
@@ -115,33 +129,31 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
           summary={
             <SummaryStrip
               items={[
-                { id: 'suppliers', label: 'Suppliers', value: String(payables.length), helper: 'Rows in report' },
-                { id: 'total-cost', label: 'Total Cost', value: formatMoney(totalCost), helper: dateRangeLabel },
+                { id: 'suppliers', label: 'Suppliers', value: String(rows.length), helper: 'Rows in report' },
+                { id: 'revenue', label: 'Total Revenue', value: formatMoney(totalRevenue), helper: dateRangeLabel },
+                { id: 'profit', label: 'Profit', value: formatMoney(totalProfit), helper: `Margin ${formatPercent(marginPercent)}` },
               ]}
             />
           }
         >
           <section className="section-stack">
             <WorkspaceSubheader
-              eyebrow="Supplier Payables"
-              title="Supplier payable summary"
-              description="A simple supplier-level view of total cost obligations, optionally filtered by booking date."
+              eyebrow="Margin Report"
+              title="Supplier margin summary"
+              description="Supplier-level financial margin, optionally filtered by booking date."
               actions={
                 <>
                   <Link href="/finance" className="dashboard-toolbar-link">
                     Finance
                   </Link>
-                  <Link href="/finance/margin-report" className="dashboard-toolbar-link">
-                    Margin report
-                  </Link>
-                  <Link href="/admin/reports" className="dashboard-toolbar-link">
-                    Reports
+                  <Link href="/finance/supplier-payables" className="dashboard-toolbar-link">
+                    Supplier payables
                   </Link>
                 </>
               }
             />
 
-            <form className="reports-filter-bar" action="/finance/supplier-payables">
+            <form className="reports-filter-bar" action="/finance/margin-report">
               <label>
                 From date
                 <input type="date" name="from" defaultValue={from} />
@@ -154,7 +166,7 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
                 Apply
               </button>
               {from || to ? (
-                <Link href="/finance/supplier-payables" className="secondary-button">
+                <Link href="/finance/margin-report" className="secondary-button">
                   Clear
                 </Link>
               ) : null}
@@ -163,37 +175,41 @@ export default async function SupplierPayablesPage({ searchParams }: SupplierPay
             {loadError ? (
               <section className="workspace-section">
                 <p className="eyebrow">Report unavailable</p>
-                <h2>Supplier payables could not be loaded.</h2>
-                <p className="detail-copy">The page is still available. Try again once the supplier payables endpoint is healthy.</p>
+                <h2>Margin report could not be loaded.</h2>
+                <p className="detail-copy">The page is still available. Try again once the supplier performance endpoint is healthy.</p>
               </section>
             ) : null}
 
             <TableSectionShell
-              title="Supplier payables"
-              description={`Supplier names and total costs from the supplier payables report. ${dateRangeLabel}.`}
-              context={<p>{payables.length} suppliers in scope</p>}
+              title="Finance margin report"
+              description={`Supplier margin totals from the supplier performance report. ${dateRangeLabel}.`}
+              context={<p>{rows.length} suppliers in scope</p>}
               emptyState={
-                payables.length === 0 ? (
-                  <p className="empty-state">
-                    {loadError ? 'Supplier payables are temporarily unavailable.' : 'No supplier payables yet.'}
-                  </p>
+                rows.length === 0 ? (
+                  <p className="empty-state">{loadError ? 'Margin report is temporarily unavailable.' : 'No margin data yet.'}</p>
                 ) : undefined
               }
             >
-              {payables.length > 0 ? (
+              {rows.length > 0 ? (
                 <div className="table-wrap">
                   <table>
                     <thead>
                       <tr>
                         <th>Supplier</th>
                         <th>Total Cost</th>
+                        <th>Total Revenue</th>
+                        <th>Profit</th>
+                        <th>Margin %</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {payables.map((payable) => (
-                        <tr key={payable.supplierId || payable.supplierName}>
-                          <td>{payable.supplierName}</td>
-                          <td>{formatMoney(payable.totalCost)}</td>
+                      {rows.map((row) => (
+                        <tr key={row.supplierId || row.supplierName}>
+                          <td>{row.supplierName}</td>
+                          <td>{formatMoney(row.totalCost)}</td>
+                          <td>{formatMoney(row.totalSell)}</td>
+                          <td>{formatMoney(row.totalProfit)}</td>
+                          <td>{formatPercent(row.avgMargin)}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -8,5 +8,19 @@ if (!API_BASE_URL) {
 }
 
 export async function GET(request: NextRequest) {
-  return proxyRequest(request, `${API_BASE_URL}/reports/supplier-performance${request.nextUrl.search}`, 'GET');
+  const params = new URLSearchParams(request.nextUrl.searchParams);
+  const from = params.get('from');
+  const to = params.get('to');
+
+  if (from && !params.has('startDate')) {
+    params.set('startDate', from);
+  }
+  if (to && !params.has('endDate')) {
+    params.set('endDate', to);
+  }
+  params.delete('from');
+  params.delete('to');
+
+  const query = params.toString();
+  return proxyRequest(request, `${API_BASE_URL}/reports/supplier-performance${query ? `?${query}` : ''}`, 'GET');
 }
