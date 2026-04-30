@@ -13196,3 +13196,176 @@ textarea:focus,
   margin-left: 0.45rem;
   vertical-align: middle;
 }
+
+/* Full-width admin workspace overrides */
+:root {
+  --admin-page-max: 1800px;
+  --admin-page-padding: clamp(24px, 2.4vw, 44px);
+}
+
+.admin-main-shell,
+.admin-content-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-content-shell {
+  display: block;
+}
+
+.site-header {
+  padding-inline: var(--admin-page-padding);
+}
+
+.page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-inline: var(--admin-page-padding);
+}
+
+.panel,
+.workspace-panel,
+.workspace-panel.workspace-panel-wide,
+.workspace-shell-card,
+.executive-dashboard-page,
+.booking-ops-workspace-page,
+.panel.quote-workspace-page {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.workspace-shell-card {
+  align-self: stretch;
+}
+
+.workspace-shell-header,
+.workspace-shell-summary,
+.workspace-shell-content,
+.section-stack,
+.table-section-shell,
+.table-section-body,
+.catalog-browser-shell {
+  width: 100%;
+}
+
+.workspace-shell-copy,
+.workspace-shell-copy .section-copy {
+  max-width: 860px;
+}
+
+.workspace-shell-header {
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, 0.95fr);
+}
+
+.module-switcher {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.summary-strip {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.catalog-browser-toolbar {
+  grid-template-columns: minmax(320px, 1.2fr) minmax(420px, 1fr);
+  align-items: end;
+}
+
+.catalog-browser-search {
+  min-width: 0;
+}
+
+.catalog-browser-filters {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+}
+
+.catalog-results-grid {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.catalog-result-card {
+  min-width: 0;
+}
+
+.catalog-service-card {
+  min-height: 100%;
+}
+
+.catalog-service-edit-panel,
+.catalog-service-card .service-rate-form,
+.catalog-service-card .entity-form {
+  width: 100%;
+}
+
+.form-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.service-rate-pricing-grid,
+.service-rate-tax-grid,
+.service-rate-tourism-grid,
+.service-catalog-form .form-row,
+.service-catalog-form .form-row-3,
+.service-catalog-form .form-row-4 {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.table-wrap,
+.table-scroll,
+.data-table-wrapper,
+.dashboard-table-wrapper {
+  width: 100%;
+}
+
+@media (min-width: 1500px) {
+  .catalog-results-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  }
+
+  .summary-strip {
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .workspace-shell-header,
+  .catalog-browser-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catalog-browser-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 859px) {
+  .form-row,
+  .form-row-3,
+  .form-row-4,
+  .service-rate-pricing-grid,
+  .service-rate-tax-grid,
+  .service-rate-tourism-grid,
+  .service-catalog-form .form-row,
+  .service-catalog-form .form-row-3,
+  .service-catalog-form .form-row-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --admin-page-padding: 16px;
+  }
+
+  .catalog-results-grid,
+  .catalog-browser-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
