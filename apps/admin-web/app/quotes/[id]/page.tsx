@@ -1921,6 +1921,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               <QuoteServicePlanner
                 apiBaseUrl={ACTION_API_BASE_URL}
                 quote={quote}
+                quoteItinerary={quoteItinerary}
                 quoteBlocks={quoteBlocks}
                 services={services}
                 transportServiceTypes={transportServiceTypes}
@@ -1969,6 +1970,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               <QuoteServicePlanner
                 apiBaseUrl={ACTION_API_BASE_URL}
                 quote={quote}
+                quoteItinerary={quoteItinerary}
                 quoteBlocks={quoteBlocks}
                 services={services}
                 transportServiceTypes={transportServiceTypes}

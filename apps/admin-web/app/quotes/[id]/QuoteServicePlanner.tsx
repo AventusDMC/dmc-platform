@@ -111,6 +111,26 @@ type HotelRate = {
   };
 };
 
+type PlannerItineraryDayItem = {
+  quoteServiceId: string;
+  isActive: boolean;
+};
+
+type PlannerItineraryDay = {
+  id: string;
+  dayNumber: number;
+  title: string;
+  notes?: string | null;
+  description?: string | null;
+  isActive: boolean;
+  dayItems: PlannerItineraryDayItem[];
+};
+
+type PlannerItineraryResponse = {
+  quoteId: string;
+  days: PlannerItineraryDay[];
+};
+
 type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   service: SupplierService;
   hotel: {
@@ -183,6 +203,7 @@ type Quote = Omit<QuoteReadinessQuote, 'itineraries' | 'quoteItems' | 'quoteOpti
 type QuoteServicePlannerProps = {
   apiBaseUrl: string;
   quote: Quote;
+  quoteItinerary?: PlannerItineraryResponse;
   quoteBlocks: QuoteBlock[];
   services: SupplierService[];
   transportServiceTypes: TransportServiceType[];
@@ -549,6 +570,51 @@ function getLaneItemIds(items: QuoteItem[], dayId: string, category: ServicePlan
     .filter((item) => item.itineraryId === dayId && getQuoteServiceCategoryKey(item.service) === category)
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))
     .map((item) => item.id);
+}
+
+function getPlannerDays(quote: Quote, quoteItinerary?: PlannerItineraryResponse): QuoteReadinessDay[] {
+  const quoteItineraryDays = (quoteItinerary?.days || [])
+    .filter((day) => day.isActive)
+    .sort((left, right) => left.dayNumber - right.dayNumber)
+    .map((day) => ({
+      id: day.id,
+      dayNumber: day.dayNumber,
+      title: day.title || `Day ${day.dayNumber}`,
+      description: day.description || day.notes || null,
+    }));
+
+  return quoteItineraryDays.length > 0 ? quoteItineraryDays : quote.itineraries;
+}
+
+function getPlannerDayAssignmentMap(quoteItinerary?: PlannerItineraryResponse) {
+  const assignments = new Map<string, string>();
+
+  for (const day of quoteItinerary?.days || []) {
+    if (!day.isActive) {
+      continue;
+    }
+
+    for (const item of day.dayItems || []) {
+      if (item.isActive && item.quoteServiceId) {
+        assignments.set(item.quoteServiceId, day.id);
+      }
+    }
+  }
+
+  return assignments;
+}
+
+function applyPlannerDayAssignments(items: QuoteItem[], quoteItinerary?: PlannerItineraryResponse): QuoteItem[] {
+  const assignments = getPlannerDayAssignmentMap(quoteItinerary);
+
+  if (assignments.size === 0) {
+    return items;
+  }
+
+  return items.map((item) => {
+    const itineraryId = assignments.get(item.id);
+    return itineraryId ? { ...item, itineraryId } : item;
+  });
 }
 
 function getOrderedLaneItems(items: QuoteItem[], laneOrder: string[]) {
@@ -1382,6 +1448,33 @@ function ScopePlanner({
     }
   }
 
+  async function refreshScopeItemsFromQuote() {
+    const [quoteResponse, itineraryResponse] = await Promise.all([
+      fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}`, {
+        headers: buildAuthHeaders(),
+        cache: 'no-store',
+      }),
+      fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/itinerary`, {
+        headers: buildAuthHeaders(),
+        cache: 'no-store',
+      }),
+    ]);
+
+    if (!quoteResponse.ok) {
+      throw new Error(await getErrorMessage(quoteResponse, 'Could not refresh quote services.'));
+    }
+
+    const latestQuote = await readJsonResponse<Quote>(quoteResponse, 'Could not read refreshed quote services.');
+    const latestItinerary = itineraryResponse.ok
+      ? await readJsonResponse<PlannerItineraryResponse>(itineraryResponse, 'Could not read refreshed itinerary services.')
+      : plannerProps.quoteItinerary;
+    const latestItems = scope.optionId
+      ? latestQuote.quoteOptions.find((option) => option.id === scope.optionId)?.quoteItems || []
+      : latestQuote.quoteItems;
+
+    setLocalItems(applyPlannerDayAssignments(latestItems, latestItinerary));
+  }
+
   async function handleServiceDragEnd(event: DragEndEvent) {
     const activeData = event.active.data.current as ServiceLaneDragData | undefined;
     const overData = event.over?.data.current as ServiceLaneDragData | undefined;
@@ -1529,17 +1622,25 @@ function ScopePlanner({
       }
 
       const createdItem = await readJsonResponse<QuoteItem>(response, 'Could not read quick-added service.');
+      const optimisticItem = {
+        ...createdItem,
+        itineraryId: createdItem.itineraryId || activeServicePanel.day.id,
+      };
       const laneId = buildServiceLaneId(activeServicePanel.day.id, activeServicePanel.category);
 
-      setLocalItems((current) => [...current.filter((entry) => entry.id !== createdItem.id), createdItem]);
+      setLocalItems((current) => [...current.filter((entry) => entry.id !== optimisticItem.id), optimisticItem]);
       setLaneOrders((current) => ({
         ...current,
-        [laneId]: [...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)), createdItem.id],
+        [laneId]: [
+          ...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)).filter((id) => id !== optimisticItem.id),
+          optimisticItem.id,
+        ],
       }));
-      setRecentlyAddedItemId(createdItem.id);
+      setRecentlyAddedItemId(optimisticItem.id);
       setActiveServicePanel(null);
       window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
-      window.setTimeout(() => setRecentlyAddedItemId((current) => (current === createdItem.id ? null : current)), 1800);
+      await refreshScopeItemsFromQuote();
+      window.setTimeout(() => setRecentlyAddedItemId((current) => (current === optimisticItem.id ? null : current)), 1800);
       router.refresh();
     } catch (caughtError) {
       setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not quick add service.');
@@ -1966,11 +2067,20 @@ function ScopePlanner({
 }
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
-  const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
-  const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
+  const incomingPlannerDays = getPlannerDays(props.quote, props.quoteItinerary);
+  const [localItineraries, setLocalItineraries] = useState(incomingPlannerDays);
+  const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(incomingPlannerDays.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const itineraryDays = localItineraries;
-  const plannerQuote = { ...props.quote, itineraries: localItineraries };
+  const plannerQuote = {
+    ...props.quote,
+    itineraries: localItineraries,
+    quoteItems: applyPlannerDayAssignments(props.quote.quoteItems, props.quoteItinerary),
+    quoteOptions: props.quote.quoteOptions.map((option) => ({
+      ...option,
+      quoteItems: applyPlannerDayAssignments(option.quoteItems, props.quoteItinerary),
+    })),
+  };
   const quoteIdRef = useRef(props.quote.id);
   const scopes: PlannerScope[] = [
     {
@@ -1988,21 +2098,22 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
   useEffect(() => {
     const quoteChanged = quoteIdRef.current !== props.quote.id;
-    const savedDayIds = props.quote.itineraries.map((day) => day.id);
+    const nextPlannerDays = getPlannerDays(props.quote, props.quoteItinerary);
+    const savedDayIds = nextPlannerDays.map((day) => day.id);
 
     if (quoteChanged) {
       quoteIdRef.current = props.quote.id;
     }
 
     setLocalItineraries((currentItineraries) => {
-      if (quoteChanged || props.quote.itineraries.length > 0) {
-        return props.quote.itineraries;
+      if (quoteChanged || nextPlannerDays.length > 0) {
+        return nextPlannerDays;
       }
 
       return currentItineraries;
     });
 
-    if (props.quote.itineraries.length > 0) {
+    if (nextPlannerDays.length > 0) {
       setSelectedScopeId('shared');
     }
 
@@ -2015,7 +2126,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       savedDayIds.forEach((dayId) => nextOpenDayIds.add(dayId));
       return nextOpenDayIds;
     });
-  }, [props.quote.id, props.quote.itineraries]);
+  }, [props.quote, props.quoteItinerary]);
 
   useEffect(() => {
     function handleDaysReady(event: Event) {
