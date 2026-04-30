@@ -13,6 +13,7 @@ import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
+import { type ExternalPackageFormState } from './external-package-ui';
 import {
   buildQuoteWorkspaceHref,
   buildQuoteReadinessModel,
@@ -180,6 +181,18 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   roomCategoryId: string | null;
   occupancyType: 'SGL' | 'DBL' | 'TPL' | null;
   mealPlan: 'BB' | 'HB' | 'FB' | null;
+  externalPackageCountry?: string | null;
+  externalSupplierName?: string | null;
+  externalStartDay?: number | null;
+  externalEndDay?: number | null;
+  externalStartDate?: string | null;
+  externalEndDate?: string | null;
+  externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+  externalNetCost?: number | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalInternalNotes?: string | null;
+  externalClientDescription?: string | null;
 };
 
 type Quote = Omit<QuoteReadinessQuote, 'itineraries' | 'quoteItems' | 'quoteOptions'> & {
@@ -289,6 +302,7 @@ type QuoteItemInitialValues = {
   guideType: 'local' | 'escort';
   guideDuration: 'half_day' | 'full_day';
   overnight: 'no' | 'yes';
+  externalPackage?: ExternalPackageFormState;
 };
 
 type PlannerScope = {
@@ -304,7 +318,7 @@ type ScopePlannerState = {
 };
 
 type ServiceWorkflowStep = {
-  category: 'hotel' | 'transport' | 'activity' | 'meal';
+  category: ServicePlannerCategory;
   step: string;
   label: string;
   hasItem: boolean;
@@ -360,6 +374,7 @@ const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   guide: 'Guide',
   activity: 'Experience',
   meal: 'Meals',
+  externalPackage: 'External Package',
   other: 'Other',
 };
 
@@ -368,14 +383,16 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'transport', label: 'Add Transport' },
   { category: 'activity', label: 'Add Activity' },
   { category: 'meal', label: 'Add Meal' },
+  { category: 'externalPackage', label: 'Add External Package' },
 ];
 
-const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal'];
+const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal', 'externalPackage'];
 const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Hotel',
   transport: 'Transport',
   activity: 'Activity',
   meal: 'Meal',
+  externalPackage: 'External Package',
   // These are unused for the planner tabs, but keep the record exhaustive.
   guide: 'Guide',
   other: 'Other',
@@ -385,6 +402,7 @@ const SERVICE_PLANNER_ICONS: Record<ServicePlannerCategory, string> = {
   transport: 'T',
   activity: 'A',
   meal: 'M',
+  externalPackage: 'P',
   guide: 'G',
   other: 'O',
 };
@@ -418,6 +436,10 @@ function parseGuideInitialValues(pricingDescription: string | null) {
     guideDuration: normalized.includes('half day') ? ('half_day' as const) : ('full_day' as const),
     overnight: normalized.includes('overnight: yes') ? ('yes' as const) : ('no' as const),
   };
+}
+
+function toDateInputValue(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : '';
 }
 
 function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCount: number, nightCount: number): QuoteItemInitialValues {
@@ -460,6 +482,21 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     guideType: guideValues.guideType,
     guideDuration: guideValues.guideDuration,
     overnight: guideValues.overnight,
+    externalPackage: {
+      country: item.externalPackageCountry || '',
+      supplierName: item.externalSupplierName || '',
+      startDay: item.externalStartDay !== null && item.externalStartDay !== undefined ? String(item.externalStartDay) : '',
+      endDay: item.externalEndDay !== null && item.externalEndDay !== undefined ? String(item.externalEndDay) : '',
+      startDate: toDateInputValue(item.externalStartDate),
+      endDate: toDateInputValue(item.externalEndDate),
+      pricingBasis: item.externalPricingBasis === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
+      netCost: item.externalNetCost !== null && item.externalNetCost !== undefined ? String(item.externalNetCost) : '',
+      currency: item.currency || 'USD',
+      includes: item.externalIncludes || '',
+      excludes: item.externalExcludes || '',
+      internalNotes: item.externalInternalNotes || '',
+      clientDescription: item.externalClientDescription || '',
+    },
   };
 }
 
@@ -551,6 +588,8 @@ function WorkflowProgress({ quoteId, workflow }: { quoteId: string; workflow: Se
 
 function getServiceNotes(item: QuoteItem) {
   return (
+    item.externalClientDescription ||
+    item.externalPackageCountry ||
     item.appliedVehicleRate?.routeName ||
     item.pickupLocation ||
     item.meetingPoint ||
@@ -561,7 +600,7 @@ function getServiceNotes(item: QuoteItem) {
 }
 
 function getServiceSupplierLabel(item: QuoteItem) {
-  return item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
+  return item.externalSupplierName || item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
 }
 
 function buildServiceLaneId(dayId: string, category: ServicePlannerCategory) {
@@ -863,6 +902,14 @@ function buildQuickAddPayload(
     payload.unitCost = service.baseCost;
     payload.pricingBasis = 'PER_PERSON';
     payload.currency = service.currency;
+  } else if (category === 'externalPackage') {
+    const country = item.label.match(/\b(?:in|for)\s+([A-Z][A-Za-z\s]+)$/)?.[1]?.trim() || service.name.replace(/external package/i, '').trim() || 'External destination';
+    payload.country = country;
+    payload.supplierName = service.supplierId || null;
+    payload.pricingBasis = 'PER_GROUP';
+    payload.netCost = Number(service.baseCost || 0);
+    payload.currency = service.currency;
+    payload.clientDescription = item.label || service.name;
   }
 
   return payload;
@@ -877,6 +924,7 @@ function AddServiceEditorPanel({
   selectedServiceId,
   selectedHotelId,
   selectedRouteId,
+  onSaved,
 }: {
   category: ServicePlannerCategory;
   label: string;
@@ -886,6 +934,7 @@ function AddServiceEditorPanel({
   selectedServiceId?: string;
   selectedHotelId?: string;
   selectedRouteId?: string;
+  onSaved?: (item: QuoteItem) => void;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -941,6 +990,7 @@ function AddServiceEditorPanel({
         preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
         preferredRouteId={category === 'transport' ? selectedRouteId || plannerProps.preferredCatalogRouteId : undefined}
         submitLabel={label}
+        onSaved={(item) => onSaved?.(item as QuoteItem)}
       />
     </>
   );
@@ -1102,11 +1152,13 @@ function EditServiceEditorPanel({
   plannerProps,
   optionId,
   dayNumber,
+  onSaved,
 }: {
   item: QuoteItem;
   plannerProps: QuoteServicePlannerProps;
   optionId?: string;
   dayNumber: number | null;
+  onSaved?: (item: QuoteItem) => void;
 }) {
   const itineraryDay = item.itineraryId ? plannerProps.quote.itineraries.find((day) => day.id === item.itineraryId) ?? null : null;
 
@@ -1137,6 +1189,7 @@ function EditServiceEditorPanel({
       itineraryId={item.itineraryId || undefined}
       submitLabel="Save item"
       initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
+      onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
     />
   );
 }
@@ -1615,6 +1668,45 @@ function ScopePlanner({
       : latestQuote.quoteItems;
 
     setLocalItems(applyPlannerDayAssignments(latestItems, latestItinerary));
+  }
+
+  function handleEditorItemSaved(savedItem: QuoteItem) {
+    setLocalItems((current) => {
+      if (!savedItem?.id) {
+        return current;
+      }
+
+      const fallbackItineraryId =
+        activeServicePanel?.kind === 'add'
+          ? activeServicePanel.day.id
+          : activeServicePanel?.kind === 'edit'
+            ? activeServicePanel.item.itineraryId
+            : null;
+      const nextItem = {
+        ...savedItem,
+        itineraryId: savedItem.itineraryId || fallbackItineraryId,
+      };
+
+      return [...current.filter((item) => item.id !== nextItem.id), nextItem];
+    });
+
+    if (savedItem?.id && activeServicePanel?.kind === 'add') {
+      const laneId = buildServiceLaneId(activeServicePanel.day.id, activeServicePanel.category);
+      setLaneOrders((current) => ({
+        ...current,
+        [laneId]: [
+          ...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)).filter((id) => id !== savedItem.id),
+          savedItem.id,
+        ],
+      }));
+      setRecentlyAddedItemId(savedItem.id);
+      window.setTimeout(() => setRecentlyAddedItemId((current) => (current === savedItem.id ? null : current)), 1800);
+    }
+
+    setActiveServicePanel(null);
+    void refreshScopeItemsFromQuote().catch((caughtError) => {
+      setReorderError(caughtError instanceof Error ? caughtError.message : 'Quote item was saved, but the service lane could not refresh.');
+    });
   }
 
   async function handleServiceDragEnd(event: DragEndEvent) {
@@ -2197,6 +2289,7 @@ function ScopePlanner({
                 selectedServiceId={activeServicePanel.selectedServiceId}
                 selectedHotelId={activeServicePanel.selectedHotelId}
                 selectedRouteId={activeServicePanel.selectedRouteId}
+                onSaved={handleEditorItemSaved}
               />
             </div>
           ) : activeServicePanel?.kind === 'edit' ? (
@@ -2205,11 +2298,12 @@ function ScopePlanner({
               plannerProps={plannerProps}
               optionId={activeServicePanel.optionId}
               dayNumber={activeServicePanel.dayNumber}
+              onSaved={handleEditorItemSaved}
             />
           ) : (
             <div className="quote-service-empty-state">
               <strong>Select a service type to begin</strong>
-              <p>Choose Add Hotel, Transport, Activity, or Meal from a day card.</p>
+              <p>Choose Add Hotel, Transport, Activity, Meal, or External Package from a day card.</p>
             </div>
           )}
         </aside>
