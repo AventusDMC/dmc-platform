@@ -1256,6 +1256,7 @@ function LivePricingPanel({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const marginAmount = Number((summary.totalSell - summary.totalCost).toFixed(2));
   const marginPercent = summary.totalSell > 0 ? Number(((marginAmount / summary.totalSell) * 100).toFixed(2)) : 0;
+  const marginTone = marginPercent > 25 ? 'good' : marginPercent >= 10 ? 'watch' : 'risk';
 
   useEffect(() => {
     setSummary(getLivePricingSummary(quote));
@@ -1318,33 +1319,32 @@ function LivePricingPanel({
       <div className="quote-live-pricing-head">
         <div>
           <p className="eyebrow">Live Pricing</p>
-          <h3>{formatLiveMoney(summary.totalSell, summary.quoteCurrency)}</h3>
+          <h3>Decision summary</h3>
         </div>
         <span className={isRefreshing ? 'quote-live-pricing-status quote-live-pricing-status-active' : 'quote-live-pricing-status'}>
           {isRefreshing ? 'Updating' : 'Current'}
         </span>
       </div>
-      <div className="quote-live-pricing-grid">
-        <div>
+      <div className={`quote-live-pricing-profit quote-live-pricing-profit-${marginTone}`}>
+        <span>Profit</span>
+        <strong>{formatLiveMoney(showAdminMetrics ? marginAmount : summary.totalSell, summary.quoteCurrency)}</strong>
+        <em>{showAdminMetrics ? `${marginPercent.toFixed(1)}% margin` : 'Total sell'}</em>
+      </div>
+      <div className="quote-live-pricing-list">
+        <div className="quote-live-pricing-row">
           <span>Total sell</span>
           <strong>{formatLiveMoney(summary.totalSell, summary.quoteCurrency)}</strong>
         </div>
         {showAdminMetrics ? (
-          <div>
+          <div className="quote-live-pricing-row">
             <span>Total cost</span>
             <strong>{formatLiveMoney(summary.totalCost, summary.quoteCurrency)}</strong>
           </div>
         ) : null}
-        <div>
-          <span>Price per pax</span>
-          <strong>{formatLiveMoney(summary.pricePerPax, summary.quoteCurrency)}</strong>
-        </div>
         {showAdminMetrics ? (
-          <div>
-            <span>Margin</span>
-            <strong>
-              {formatLiveMoney(marginAmount, summary.quoteCurrency)} ({marginPercent.toFixed(2)}%)
-            </strong>
+          <div className="quote-live-pricing-row">
+            <span>Margin %</span>
+            <strong className={`quote-live-pricing-margin quote-live-pricing-margin-${marginTone}`}>{marginPercent.toFixed(1)}%</strong>
           </div>
         ) : null}
       </div>

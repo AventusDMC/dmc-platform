@@ -3047,12 +3047,12 @@ h1 {
   top: 0.85rem;
   z-index: 8;
   display: grid;
-  gap: 0.85rem;
-  padding: 1rem;
-  border-radius: 0.95rem;
-  border: 1px solid rgba(31, 163, 214, 0.16);
-  background: rgba(249, 250, 251, 0.96);
-  box-shadow: 0 16px 34px rgba(34, 28, 22, 0.08);
+  gap: 1rem;
+  padding: 1.15rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(10px);
 }
 
@@ -3065,7 +3065,7 @@ h1 {
 
 .quote-live-pricing-head h3 {
   margin: 0.12rem 0 0;
-  font-size: 1.35rem;
+  font-size: 1.05rem;
 }
 
 .quote-live-pricing-status {
@@ -3088,32 +3088,88 @@ h1 {
   color: #1FA3D6;
 }
 
-.quote-live-pricing-grid {
+.quote-live-pricing-profit {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.28rem;
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: rgba(248, 250, 252, 0.9);
 }
 
-.quote-live-pricing-grid div {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-  padding: 0.75rem 0.8rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(30, 27, 24, 0.08);
-  background: rgba(248, 244, 238, 0.55);
-}
-
-.quote-live-pricing-grid span {
-  color: rgba(30, 27, 24, 0.62);
+.quote-live-pricing-profit span,
+.quote-live-pricing-row span {
+  color: var(--muted-text);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.quote-live-pricing-grid strong {
-  color: rgba(30, 27, 24, 0.94);
-  font-size: 0.95rem;
-  line-height: 1.25;
+.quote-live-pricing-profit strong {
+  color: var(--saas-text);
+  font-size: 2rem;
+  line-height: 1.05;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-live-pricing-profit em {
+  font-style: normal;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.quote-live-pricing-profit-good {
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.quote-live-pricing-profit-good em,
+.quote-live-pricing-margin-good {
+  color: #15803d;
+}
+
+.quote-live-pricing-profit-watch {
+  background: rgba(254, 252, 232, 0.94);
+}
+
+.quote-live-pricing-profit-watch em,
+.quote-live-pricing-margin-watch {
+  color: #a16207;
+}
+
+.quote-live-pricing-profit-risk {
+  background: rgba(254, 242, 242, 0.94);
+}
+
+.quote-live-pricing-profit-risk em,
+.quote-live-pricing-margin-risk {
+  color: #b42318;
+}
+
+.quote-live-pricing-list {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.quote-live-pricing-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.72rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.quote-live-pricing-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.quote-live-pricing-row strong {
+  color: var(--saas-text);
+  font-size: 1rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
 }
 
 .quote-service-workflow-step {
@@ -7715,7 +7771,6 @@ th.money-cell {
 @media (max-width: 860px) {
   .quote-guided-starter-actions,
   .quote-service-workflow-progress,
-  .quote-live-pricing-grid,
   .quote-auto-itinerary-grid,
   .quote-auto-itinerary-status-grid,
   .quote-auto-itinerary-days,
@@ -13959,10 +14014,6 @@ textarea:focus,
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.quote-service-editor-panel .quote-live-pricing-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .quote-service-planner .quote-service-day-layout-visual {
