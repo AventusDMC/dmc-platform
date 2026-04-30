@@ -306,6 +306,10 @@ type ActiveServicePanel =
       day: QuoteReadinessDay;
       category: ServicePlannerCategory;
       label: string;
+      formReady?: boolean;
+      selectedServiceId?: string;
+      selectedHotelId?: string;
+      selectedRouteId?: string;
     }
   | {
       kind: 'edit';
@@ -314,6 +318,17 @@ type ActiveServicePanel =
       item: QuoteItem;
       dayNumber: number | null;
     };
+
+type SmartSuggestionItem = {
+  id: string;
+  label: string;
+  detail: string;
+  category: ServicePlannerCategory;
+  source: 'service' | 'hotel' | 'route';
+  serviceId?: string;
+  hotelId?: string;
+  routeId?: string;
+};
 
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Stay',
@@ -542,18 +557,64 @@ function getOrderedLaneItems(items: QuoteItem[], laneOrder: string[]) {
   return laneOrder.map((id) => itemById.get(id)).filter((item): item is QuoteItem => Boolean(item));
 }
 
+function getServiceTypeLabel(service: SupplierService) {
+  return service.serviceType?.name || service.category || service.unitType || 'Service';
+}
+
+function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps): SmartSuggestionItem[] {
+  if (category === 'hotel') {
+    return plannerProps.hotels.slice(0, 24).map((hotel) => ({
+      id: `hotel:${hotel.id}`,
+      label: hotel.name,
+      detail: [hotel.city, hotel.category].filter(Boolean).join(' · ') || 'Hotel',
+      category,
+      source: 'hotel',
+      hotelId: hotel.id,
+    }));
+  }
+
+  if (category === 'transport') {
+    return plannerProps.routes.slice(0, 24).map((route) => ({
+      id: `route:${route.id}`,
+      label: route.name,
+      detail: 'Transport route',
+      category,
+      source: 'route',
+      routeId: route.id,
+    }));
+  }
+
+  return plannerProps.services
+    .filter((service) => getQuoteServiceCategoryKey(service) === category)
+    .slice(0, 36)
+    .map((service) => ({
+      id: `service:${service.id}`,
+      label: service.name,
+      detail: `${getServiceTypeLabel(service)} · ${formatLiveMoney(service.baseCost, service.currency)}`,
+      category,
+      source: 'service',
+      serviceId: service.id,
+    }));
+}
+
 function AddServiceEditorPanel({
   category,
   label,
   plannerProps,
   optionId,
   day,
+  selectedServiceId,
+  selectedHotelId,
+  selectedRouteId,
 }: {
   category: ServicePlannerCategory;
   label: string;
   plannerProps: QuoteServicePlannerProps;
   optionId?: string;
   day: QuoteReadinessDay;
+  selectedServiceId?: string;
+  selectedHotelId?: string;
+  selectedRouteId?: string;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -596,8 +657,8 @@ function AddServiceEditorPanel({
         itineraryDayNumber={day.dayNumber}
         itineraryId={day.id}
         initialServiceTypeKey={category}
-        preferredServiceId={category !== 'hotel' && category !== 'transport' ? plannerProps.preferredCatalogServiceId : undefined}
-        preferredHotelId={category === 'hotel' ? plannerProps.preferredCatalogHotelId : undefined}
+        preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}
+        preferredHotelId={category === 'hotel' ? selectedHotelId || plannerProps.preferredCatalogHotelId : undefined}
         preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
         preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}
         preferredMealPlan={category === 'hotel' ? plannerProps.preferredCatalogMealPlan : undefined}
@@ -605,10 +666,114 @@ function AddServiceEditorPanel({
         preferredRateCost={category === 'hotel' ? plannerProps.preferredCatalogRateCost : undefined}
         preferredRateCurrency={category === 'hotel' ? plannerProps.preferredCatalogRateCurrency : undefined}
         preferredRateNote={category === 'hotel' ? plannerProps.preferredCatalogRateNote : undefined}
-        preferredRouteId={category === 'transport' ? plannerProps.preferredCatalogRouteId : undefined}
+        preferredRouteId={category === 'transport' ? selectedRouteId || plannerProps.preferredCatalogRouteId : undefined}
         submitLabel={label}
       />
     </>
+  );
+}
+
+function SmartSuggestionsPanel({
+  category,
+  day,
+  plannerProps,
+  recentSuggestions,
+  onSelect,
+  onManualSelect,
+}: {
+  category: ServicePlannerCategory;
+  day: QuoteReadinessDay;
+  plannerProps: QuoteServicePlannerProps;
+  recentSuggestions: SmartSuggestionItem[];
+  onSelect: (item: SmartSuggestionItem) => void;
+  onManualSelect: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const candidates = getSmartSuggestionCandidates(category, plannerProps);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredCandidates = normalizedQuery
+    ? candidates.filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(normalizedQuery))
+    : candidates;
+  const suggested = candidates.slice(0, 3);
+  const recent = recentSuggestions.filter((item) => item.category === category).slice(0, 5);
+
+  return (
+    <div className="quote-smart-suggestions">
+      <div className="quote-smart-suggestion-intro">
+        <p className="eyebrow">Smart Suggestions</p>
+        <h4>{SERVICE_PLANNER_TAB_LABELS[category]} for Day {day.dayNumber}</h4>
+        <p className="detail-copy">Pick a suggestion to open the existing service form with the choice preselected.</p>
+        <button type="button" className="secondary-button" onClick={onManualSelect}>
+          Open blank form
+        </button>
+      </div>
+
+      <SmartSuggestionSection title="Suggested for this day" items={suggested} emptyText="No suggestions available for this service type." onSelect={onSelect} />
+      <SmartSuggestionSection title="Recent services" items={recent} emptyText="Recent choices will appear here as you add services." onSelect={onSelect} />
+
+      <section className="quote-smart-suggestion-section">
+        <div className="quote-smart-suggestion-section-head">
+          <h5>All services</h5>
+          <span>{filteredCandidates.length}</span>
+        </div>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={`Search ${SERVICE_PLANNER_TAB_LABELS[category].toLowerCase()}`}
+        />
+        <div className="quote-smart-suggestion-list quote-smart-suggestion-list-scroll">
+          {filteredCandidates.length > 0 ? (
+            filteredCandidates.map((item) => <SmartSuggestionButton key={item.id} item={item} onSelect={onSelect} />)
+          ) : (
+            <p className="detail-copy">No matching services found.</p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SmartSuggestionSection({
+  title,
+  items,
+  emptyText,
+  onSelect,
+}: {
+  title: string;
+  items: SmartSuggestionItem[];
+  emptyText: string;
+  onSelect: (item: SmartSuggestionItem) => void;
+}) {
+  return (
+    <section className="quote-smart-suggestion-section">
+      <div className="quote-smart-suggestion-section-head">
+        <h5>{title}</h5>
+        <span>{items.length}</span>
+      </div>
+      <div className="quote-smart-suggestion-list">
+        {items.length > 0 ? (
+          items.map((item) => <SmartSuggestionButton key={item.id} item={item} onSelect={onSelect} />)
+        ) : (
+          <p className="detail-copy">{emptyText}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SmartSuggestionButton({
+  item,
+  onSelect,
+}: {
+  item: SmartSuggestionItem;
+  onSelect: (item: SmartSuggestionItem) => void;
+}) {
+  return (
+    <button type="button" className="quote-smart-suggestion-button" onClick={() => onSelect(item)}>
+      <strong>{item.label}</strong>
+      <span>{item.detail}</span>
+    </button>
   );
 }
 
@@ -1017,6 +1182,7 @@ function ScopePlanner({
   const [localItems, setLocalItems] = useState<QuoteItem[]>(scope.items);
   const [laneOrders, setLaneOrders] = useState<ServiceLaneOrders>({});
   const [reorderError, setReorderError] = useState('');
+  const [recentSuggestions, setRecentSuggestions] = useState<SmartSuggestionItem[]>([]);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
     ...summary,
@@ -1187,6 +1353,58 @@ function ScopePlanner({
       day,
       category,
       label: action?.label || `Add ${SERVICE_PLANNER_TAB_LABELS[category] || category}`,
+    });
+  }
+
+  function openAddFormFromSuggestion(item: SmartSuggestionItem) {
+    setRecentSuggestions((current) => [item, ...current.filter((entry) => entry.id !== item.id)].slice(0, 8));
+    setActiveServicePanel((current) => {
+      if (!current || current.kind !== 'add') {
+        return current;
+      }
+
+      return {
+        ...current,
+        key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:${item.id}`,
+        formReady: true,
+        selectedServiceId: item.serviceId,
+        selectedHotelId: item.hotelId,
+        selectedRouteId: item.routeId,
+      };
+    });
+  }
+
+  function openManualAddForm() {
+    setActiveServicePanel((current) => {
+      if (!current || current.kind !== 'add') {
+        return current;
+      }
+
+      return {
+        ...current,
+        key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:manual`,
+        formReady: true,
+        selectedServiceId: undefined,
+        selectedHotelId: undefined,
+        selectedRouteId: undefined,
+      };
+    });
+  }
+
+  function returnToSmartSuggestions() {
+    setActiveServicePanel((current) => {
+      if (!current || current.kind !== 'add') {
+        return current;
+      }
+
+      return {
+        ...current,
+        key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:suggestions`,
+        formReady: false,
+        selectedServiceId: undefined,
+        selectedHotelId: undefined,
+        selectedRouteId: undefined,
+      };
     });
   }
 
@@ -1403,6 +1621,7 @@ function ScopePlanner({
                                 day: summary.day,
                                 category: suggestion.category,
                                 label,
+                                formReady: false,
                               })
                             }
                           >
@@ -1479,6 +1698,7 @@ function ScopePlanner({
                         day: tabDay,
                         category: tabCategory,
                         label: tabAction.label,
+                        formReady: false,
                       });
                     }}
                   >
@@ -1489,14 +1709,29 @@ function ScopePlanner({
             </div>
           ) : null}
 
-          {activeServicePanel?.kind === 'add' ? (
+          {activeServicePanel?.kind === 'add' && !activeServicePanel.formReady ? (
+            <SmartSuggestionsPanel
+              category={activeServicePanel.category}
+              day={activeServicePanel.day}
+              plannerProps={plannerProps}
+              recentSuggestions={recentSuggestions}
+              onSelect={openAddFormFromSuggestion}
+              onManualSelect={openManualAddForm}
+            />
+          ) : activeServicePanel?.kind === 'add' ? (
             <div key={activeServicePanel.key}>
+              <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
+                Change selection
+              </button>
               <AddServiceEditorPanel
                 category={activeServicePanel.category}
                 label={activeServicePanel.label}
                 plannerProps={plannerProps}
                 optionId={activeServicePanel.optionId}
                 day={activeServicePanel.day}
+                selectedServiceId={activeServicePanel.selectedServiceId}
+                selectedHotelId={activeServicePanel.selectedHotelId}
+                selectedRouteId={activeServicePanel.selectedRouteId}
               />
             </div>
           ) : activeServicePanel?.kind === 'edit' ? (

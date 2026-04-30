@@ -39,6 +39,8 @@ type SupplierService = {
 type Hotel = {
   id: string;
   name: string;
+  city?: string;
+  category?: string;
   roomCategories?: {
     id: string;
     name: string;
@@ -747,6 +749,27 @@ export function QuoteItemsForm({
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false;
 
+  const selectedHotel = hotels.find((hotel) => hotel.id === hotelId) || null;
+  const hotelRatePreviewByHotelId = useMemo(() => {
+    const contractById = new Map(hotelContracts.map((contract) => [contract.id, contract]));
+    const previewByHotel = new Map<string, { cost: number; currency: string }>();
+
+    for (const rate of hotelRates) {
+      const hotelContract = contractById.get(rate.contractId);
+
+      if (!hotelContract) {
+        continue;
+      }
+
+      const current = previewByHotel.get(hotelContract.hotelId);
+
+      if (!current || rate.cost < current.cost) {
+        previewByHotel.set(hotelContract.hotelId, { cost: rate.cost, currency: rate.currency });
+      }
+    }
+
+    return previewByHotel;
+  }, [hotelContracts, hotelRates]);
   const filteredHotelContracts = hotelContracts.filter((contract) => contract.hotelId === hotelId);
   const selectedHotelContract = filteredHotelContracts.find((contract) => contract.id === contractId) || null;
   const filteredSeasonRates = hotelRates.filter((rate) => rate.contractId === contractId);
@@ -1075,12 +1098,7 @@ export function QuoteItemsForm({
       setPendingHotelRateSubmit(false);
       return;
     }
-
-    const nextHotelId = hotelId || hotels[0]?.id || '';
-    if (nextHotelId !== hotelId) {
-      setHotelId(nextHotelId);
-    }
-  }, [hotelId, hotels, isHotelService]);
+  }, [isHotelService]);
 
   useEffect(() => {
     if (!manualHotelRateDraft) {
@@ -1806,6 +1824,66 @@ export function QuoteItemsForm({
             <p className="form-helper">Catalog route selection applied. Choose the transport service type to complete transfer pricing.</p>
           ) : null}
 
+          {isHotelService ? (
+            <section className="quote-hotel-step-panel quote-hotel-step-panel-primary">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 1</p>
+                  <h3>Choose a hotel</h3>
+                  <p className="detail-copy">Start with the property. Room, contract, season, and pricing fields appear after selection.</p>
+                </div>
+                {selectedHotel ? <span className="page-tab-badge">Selected</span> : null}
+              </div>
+
+              {hotels.length === 0 ? (
+                <div className="quote-service-empty-state">
+                  <strong>Create a hotel first</strong>
+                  <p>Hotel services need a property before contract rates can be selected.</p>
+                </div>
+              ) : (
+                <div className="quote-hotel-picker-grid" role="listbox" aria-label="Select hotel">
+                  {hotels.map((hotel) => {
+                    const preview = hotelRatePreviewByHotelId.get(hotel.id);
+                    const isSelected = hotel.id === hotelId;
+
+                    return (
+                      <button
+                        key={hotel.id}
+                        type="button"
+                        className={isSelected ? 'quote-hotel-choice-card quote-hotel-choice-card-active' : 'quote-hotel-choice-card'}
+                        onClick={() => {
+                          setHotelId(hotel.id);
+                          setContractId('');
+                          setSeasonId('');
+                          setSeasonName('');
+                          setRoomCategoryId('');
+                          setOccupancyType('DBL');
+                          setMealPlan('BB');
+                          setManualHotelRateDraft(null);
+                          setHotelRateReference(null);
+                        }}
+                        role="option"
+                        aria-selected={isSelected}
+                      >
+                        <strong>{hotel.name}</strong>
+                        <span>{[hotel.city, hotel.category].filter(Boolean).join(' · ') || 'Hotel property'}</span>
+                        <em>{preview ? `Rates from ${preview.currency} ${Number(preview.cost || 0).toFixed(2)}` : 'No rate preview'}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {isHotelService && !hotelId ? (
+            <div className="quote-service-empty-state">
+              <strong>Select a hotel to continue</strong>
+              <p>Contract, room, stay dates, and pricing controls will appear after this step.</p>
+            </div>
+          ) : null}
+
+          {(!isHotelService || hotelId) ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -1853,7 +1931,9 @@ export function QuoteItemsForm({
               </label>
             ) : null}
           </div>
+          ) : null}
 
+          {(!isHotelService || hotelId) ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -1893,6 +1973,7 @@ export function QuoteItemsForm({
               </span>
             </div>
           </div>
+          ) : null}
 
           {!isHotelService && !isMealService ? (
             <details className="quote-advanced-settings" open={useOverride}>
@@ -2287,85 +2368,83 @@ export function QuoteItemsForm({
             </>
           ) : null}
 
-          {isHotelService ? (
-            <div className="form-row form-row-4">
-              <label>
-                Hotel selector
-                <select value={hotelId} onChange={(event) => setHotelId(event.target.value)} required>
-                  {hotels.length === 0 ? <option value="">Create a hotel first</option> : null}
-                  {hotels.map((hotel) => (
-                    <option key={hotel.id} value={hotel.id}>
-                      {hotel.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          {isHotelService && hotelId ? (
+            <section className="quote-hotel-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 2</p>
+                  <h3>Choose contract and room</h3>
+                  <p className="detail-copy">{selectedHotel?.name || 'Selected hotel'} is selected. Now choose the rate source.</p>
+                </div>
+              </div>
 
-              <label>
-                Contract
-                <select value={contractId} onChange={(event) => setContractId(event.target.value)} required disabled={filteredHotelContracts.length === 0}>
-                  {filteredHotelContracts.length === 0 ? <option value="">No contracts for this hotel</option> : null}
-                  {filteredHotelContracts.map((contract) => (
-                    <option key={contract.id} value={contract.id}>
-                      {contract.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="form-row form-row-3">
+                <label>
+                  Contract
+                  <select value={contractId} onChange={(event) => setContractId(event.target.value)} required disabled={filteredHotelContracts.length === 0}>
+                    {filteredHotelContracts.length === 0 ? <option value="">No contracts for this hotel</option> : null}
+                    {filteredHotelContracts.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              <label>
-                Season
-                <select
-                  value={selectedSeasonValue}
-                  onChange={(event) => {
-                    if (event.target.value.startsWith('legacy:')) {
-                      setSeasonId('');
-                      setSeasonName(event.target.value.slice('legacy:'.length));
-                      return;
-                    }
+                <label>
+                  Season
+                  <select
+                    value={selectedSeasonValue}
+                    onChange={(event) => {
+                      if (event.target.value.startsWith('legacy:')) {
+                        setSeasonId('');
+                        setSeasonName(event.target.value.slice('legacy:'.length));
+                        return;
+                      }
 
-                    const nextSeason = seasons.find((season) => season.id === event.target.value) || null;
-                    setSeasonId(nextSeason?.id || '');
-                    setSeasonName(nextSeason?.name || '');
-                  }}
-                  required
-                  disabled={availableSeasons.length === 0}
-                >
-                  {availableSeasons.length === 0 ? <option value="">No seasons in hotel rates</option> : null}
-                  {availableSeasons.map((season) => (
-                    <option key={season.id} value={season.id}>
-                      {formatDisplayLabel(season.name)}
-                    </option>
-                  ))}
-                  {!selectedSeason && seasonName ? (
-                    <option value={`legacy:${seasonName}`} hidden>
-                      {formatDisplayLabel(seasonName)}
-                    </option>
-                  ) : null}
-                </select>
-              </label>
+                      const nextSeason = seasons.find((season) => season.id === event.target.value) || null;
+                      setSeasonId(nextSeason?.id || '');
+                      setSeasonName(nextSeason?.name || '');
+                    }}
+                    required
+                    disabled={availableSeasons.length === 0}
+                  >
+                    {availableSeasons.length === 0 ? <option value="">No seasons in hotel rates</option> : null}
+                    {availableSeasons.map((season) => (
+                      <option key={season.id} value={season.id}>
+                        {formatDisplayLabel(season.name)}
+                      </option>
+                    ))}
+                    {!selectedSeason && seasonName ? (
+                      <option value={`legacy:${seasonName}`} hidden>
+                        {formatDisplayLabel(seasonName)}
+                      </option>
+                    ) : null}
+                  </select>
+                </label>
 
-              <label>
-                Room category
-                <select
-                  value={roomCategoryId}
-                  onChange={(event) => setRoomCategoryId(event.target.value)}
-                  required
-                  disabled={roomCategoryOptions.length === 0}
-                >
-                  {roomCategoryOptions.length === 0 ? <option value="">No room categories in hotel rates</option> : null}
-                  {roomCategoryOptions.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                      {category.code ? ` (${category.code})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+                <label>
+                  Room category
+                  <select
+                    value={roomCategoryId}
+                    onChange={(event) => setRoomCategoryId(event.target.value)}
+                    required
+                    disabled={roomCategoryOptions.length === 0}
+                  >
+                    {roomCategoryOptions.length === 0 ? <option value="">No room categories in hotel rates</option> : null}
+                    {roomCategoryOptions.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                        {category.code ? ` (${category.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
           ) : null}
 
-          {isHotelService ? (
+          {isHotelService && hotelId ? (
             <div className="form-row form-row-4">
               <label>
                 Occupancy
@@ -2435,7 +2514,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isHotelService ? (
+          {isHotelService && hotelId ? (
             <div className="quote-hotel-source-panel">
               <div>
                 <p className="eyebrow">Source Contract Rate</p>
@@ -2491,7 +2570,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isHotelService ? (
+          {isHotelService && hotelId ? (
             <div className="quote-hotel-override-panel">
               <div className="quote-hotel-override-panel-head">
                 <div>
@@ -2552,7 +2631,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isHotelService ? (
+          {isHotelService && hotelId ? (
             <div className="quote-hotel-rate-helper">
               <div>
                 <strong>Need a quote-only hotel price input?</strong>

@@ -14244,6 +14244,175 @@ textarea:focus,
   font-size: 0.8rem;
 }
 
+.quote-smart-suggestions {
+  display: grid;
+  gap: 14px;
+}
+
+.quote-smart-suggestion-intro {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.86), rgba(248, 250, 252, 0.92));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.quote-smart-suggestion-intro h4,
+.quote-smart-suggestion-section h5 {
+  margin: 0;
+}
+
+.quote-smart-suggestion-intro .secondary-button {
+  justify-self: start;
+}
+
+.quote-smart-suggestion-section {
+  display: grid;
+  gap: 10px;
+}
+
+.quote-smart-suggestion-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quote-smart-suggestion-section-head span {
+  display: inline-flex;
+  min-width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--muted-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.quote-smart-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.quote-smart-suggestion-list-scroll {
+  max-height: 310px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.quote-smart-suggestion-button {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 11px 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.quote-smart-suggestion-button:hover,
+.quote-smart-suggestion-button:focus-visible {
+  border-color: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.quote-smart-suggestion-button strong {
+  font-size: 0.92rem;
+}
+
+.quote-smart-suggestion-button span {
+  color: var(--muted-text);
+  font-size: 0.8rem;
+}
+
+.quote-smart-back-button {
+  margin-bottom: 12px;
+}
+
+.quote-hotel-step-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.quote-hotel-step-panel-primary {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.9), rgba(255, 255, 255, 0.94));
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.quote-hotel-step-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.quote-hotel-step-head h3 {
+  margin: 2px 0 4px;
+  font-size: 1.08rem;
+}
+
+.quote-hotel-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.quote-hotel-choice-card {
+  display: grid;
+  gap: 6px;
+  min-height: 116px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.quote-hotel-choice-card:hover,
+.quote-hotel-choice-card:focus-visible,
+.quote-hotel-choice-card-active {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.quote-hotel-choice-card strong {
+  font-size: 0.96rem;
+}
+
+.quote-hotel-choice-card span {
+  color: var(--muted-text);
+  font-size: 0.84rem;
+}
+
+.quote-hotel-choice-card em {
+  align-self: end;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .secondary-button-danger {
   border-color: rgba(244, 63, 94, 0.22) !important;
   color: #b42318 !important;
