@@ -387,7 +387,7 @@ test('finance summary calculates supplier payable totals and unpaid rows', async
   assert.equal(summary.unpaidSupplierPayables[0].serviceName, 'Hotel');
 });
 
-test('finance summary requires auth without actor company filtering', async () => {
+test('finance summary requires auth and scopes invoice queries by actor company', async () => {
   const { service, seenInvoiceWheres, seenPaymentWheres } = createFinanceService(
     [invoice('invoice-1', 'Q-1', 'Client One', 100, '2026-01-10', [])],
     [supplierPayment('supplier-payable-1', 'BK-1', 50, 'PENDING', 'service:service-1', 'Supplier payable | supplier:Petra Hotel | Hotel')],
@@ -397,9 +397,9 @@ test('finance summary requires auth without actor company filtering', async () =
 
   await service.getFinanceSummary({ companyId: 'dmc-company' });
 
-  assert.deepEqual(seenInvoiceWheres[0], {});
+  assert.deepEqual(seenInvoiceWheres[0], { quote: { clientCompanyId: 'dmc-company' } });
   assert.deepEqual(seenPaymentWheres[0], { type: 'SUPPLIER' });
-  assert.equal(JSON.stringify(seenInvoiceWheres[0]).includes('dmc-company'), false);
+  assert.equal(JSON.stringify(seenInvoiceWheres[0]).includes('dmc-company'), true);
   assert.equal(JSON.stringify(seenPaymentWheres[0]).includes('dmc-company'), false);
 });
 
@@ -493,7 +493,7 @@ test('alerts include only latest booking amendments', async () => {
   assert.deepEqual(seenBookingWheres[0].AND[1], { amendments: { none: {} } });
 });
 
-test('alerts include unpaid supplier payables and require auth without actor company filtering', async () => {
+test('alerts include unpaid supplier payables and scope invoice queries by actor company', async () => {
   const { service, seenInvoiceWheres, seenPaymentWheres, seenBookingWheres } = createFinanceService(
     [],
     [supplierPayment('supplier-payable-1', 'BK-1', 300, 'PENDING', 'service:service-1', 'Supplier payable | supplier:Petra Hotel | Hotel')],
@@ -507,10 +507,10 @@ test('alerts include unpaid supplier payables and require auth without actor com
   assert.equal(alerts.unpaidSupplierPayables.length, 1);
   assert.equal(alerts.unpaidSupplierPayables[0].supplierName, 'Petra Hotel');
   assert.equal(alerts.unpaidSupplierPayables[0].balanceDue, 300);
-  assert.deepEqual(seenInvoiceWheres[0], {});
+  assert.deepEqual(seenInvoiceWheres[0], { quote: { clientCompanyId: 'dmc-company' } });
   assert.deepEqual(seenPaymentWheres[0], { type: 'SUPPLIER' });
   assert.deepEqual(seenBookingWheres[0], { AND: [{}, { amendments: { none: {} } }] });
-  assert.equal(JSON.stringify(seenInvoiceWheres[0]).includes('dmc-company'), false);
+  assert.equal(JSON.stringify(seenInvoiceWheres[0]).includes('dmc-company'), true);
   assert.equal(JSON.stringify(seenPaymentWheres[0]).includes('dmc-company'), false);
 });
 
@@ -559,11 +559,13 @@ function invoice(
     quote: {
       quoteNumber,
       clientCompany: { name: clientCompanyName },
-      booking: {
-        id: `booking-${id}`,
-        bookingRef: `BK-${quoteNumber}`,
-        payments,
-      },
+      bookings: [
+        {
+          id: `booking-${id}`,
+          bookingRef: `BK-${quoteNumber}`,
+          payments,
+        },
+      ],
     },
   };
 }

@@ -59,15 +59,6 @@ type FinanceInvoiceRecord = {
   quote?: {
     quoteNumber?: string | null;
     clientCompany?: { name?: string | null } | null;
-    booking?: {
-      id: string;
-      bookingRef?: string | null;
-      payments?: Array<{
-        type: string | null;
-        amount: number | null;
-        status: string | null;
-      }>;
-    } | null;
     bookings?: Array<{
       id: string;
       bookingRef?: string | null;
@@ -635,7 +626,7 @@ export class ReportsService {
   }
 
   private mapFinanceInvoice(invoice: FinanceInvoiceRecord) {
-    const booking = invoice.quote?.booking || invoice.quote?.bookings?.[0] || null;
+    const booking = invoice.quote?.bookings?.[0] || null;
     const clientPayments = (booking?.payments || []).filter((payment) => String(payment.type || '').toUpperCase() === 'CLIENT');
     const paidAmount = this.roundMoney(
       clientPayments
