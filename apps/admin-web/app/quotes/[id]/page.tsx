@@ -27,7 +27,7 @@ import { SupportTextForm } from './SupportTextForm';
 import { QuoteGroupPricing } from './QuoteGroupPricing';
 import { QuotesForm } from '../QuotesForm';
 import { ConvertToBookingButton } from './ConvertToBookingButton';
-import { QuoteItineraryTab, type QuoteItineraryAssignableService, type QuoteItineraryResponse } from './QuoteItineraryTab';
+import type { QuoteItineraryResponse } from './QuoteItineraryTab';
 import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
 import { CancelQuoteButton } from './CancelQuoteButton';
@@ -1438,52 +1438,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   ].filter(Boolean) as string[];
   const quoteUnassignedServicesCount =
     sharedUnassignedItems.length + quote.quoteOptions.reduce((total, option) => total + option.quoteItems.filter((item) => !item.itineraryId).length, 0);
-  const itineraryAssignableServices: QuoteItineraryAssignableService[] = [
-    ...quote.quoteItems.map((item) => ({
-      id: item.id,
-      optionId: null,
-      serviceDate: item.serviceDate,
-      service: {
-        name: item.service.name,
-        category: item.service.category,
-        serviceType: item.service.serviceType
-          ? {
-              name: item.service.serviceType.name,
-              code: item.service.serviceType.code,
-            }
-          : null,
-      },
-      hotel: item.hotel ? { name: item.hotel.name } : null,
-      contract: item.contract ? { name: item.contract.name } : null,
-      roomCategory: item.roomCategory ? { name: item.roomCategory.name } : null,
-      seasonName: item.seasonName,
-      occupancyType: item.occupancyType,
-      mealPlan: item.mealPlan,
-    })),
-    ...quote.quoteOptions.flatMap((option) =>
-      option.quoteItems.map((item) => ({
-        id: item.id,
-        optionId: option.id,
-        serviceDate: item.serviceDate,
-        service: {
-          name: item.service.name,
-          category: item.service.category,
-          serviceType: item.service.serviceType
-            ? {
-                name: item.service.serviceType.name,
-                code: item.service.serviceType.code,
-              }
-            : null,
-        },
-        hotel: item.hotel ? { name: item.hotel.name } : null,
-        contract: item.contract ? { name: item.contract.name } : null,
-        roomCategory: item.roomCategory ? { name: item.roomCategory.name } : null,
-        seasonName: item.seasonName,
-        occupancyType: item.occupancyType,
-        mealPlan: item.mealPlan,
-      })),
-    ),
-  ];
   const buildTabHref = (tab: QuoteDetailTab) => `/quotes/${quote.id}?tab=${tab}`;
   const buildStepHref = (step: QuoteWorkspaceStep, params?: Record<string, string | null | undefined>) => {
     return buildQuoteWorkspaceHref(quote.id, step, params);
@@ -1964,11 +1918,32 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
           {activeTab === 'itinerary' ? (
             <div className="section-stack">
-              <QuoteItineraryTab
+              <QuoteServicePlanner
                 apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                itinerary={quoteItinerary}
-                assignableServices={itineraryAssignableServices}
+                quote={quote}
+                quoteBlocks={quoteBlocks}
+                services={services}
+                transportServiceTypes={transportServiceTypes}
+                routes={routes}
+                hotels={hotels}
+                hotelContracts={hotelContracts}
+                hotelRates={hotelRates}
+                seasons={seasons}
+                totalPax={totalPax}
+                routeContext={{ quoteId: quote.id }}
+                focusedDayId={resolvedSearchParams?.day}
+                initialAddCategory={resolvedSearchParams?.addCategory}
+                preferredCatalogServiceId={resolvedSearchParams?.catalogServiceId}
+                preferredCatalogHotelId={resolvedSearchParams?.catalogHotelId}
+                preferredCatalogContractId={resolvedSearchParams?.catalogContractId}
+                preferredCatalogRoomCategoryId={resolvedSearchParams?.catalogRoomCategoryId}
+                preferredCatalogMealPlan={resolvedSearchParams?.catalogMealPlan}
+                preferredCatalogOccupancyType={resolvedSearchParams?.catalogOccupancyType}
+                preferredCatalogRateCost={resolvedSearchParams?.catalogRateCost}
+                preferredCatalogRateCurrency={resolvedSearchParams?.catalogRateCurrency}
+                preferredCatalogRateNote={resolvedSearchParams?.catalogRateNote}
+                preferredCatalogRouteId={resolvedSearchParams?.catalogRouteId}
+                sessionRole={session?.role || null}
               />
               {guidedStepFooter}
             </div>
