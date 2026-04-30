@@ -133,7 +133,7 @@ export function HotelContractsTable({ apiBaseUrl, hotels, hotelContracts }: Hote
                     <td>{contract.currency}</td>
                     <td>
                       <div className="table-action-row">
-                        <Link className="compact-button" href={`/hotels?tab=contracts&contractId=${contract.id}`}>
+                        <Link className="compact-button" href={`/hotels/contracts/${contract.id}`}>
                           Open contract
                         </Link>
                         <button

@@ -60,7 +60,7 @@ export async function HotelContractsSection({ contractId }: HotelContractsSectio
   const currentContract = contractId ? hotelContracts.find((contract) => contract.id === contractId) || null : null;
   const currentContractLinks = currentContract
     ? [
-        { href: `/hotels?tab=contracts&contractId=${currentContract.id}`, label: 'Overview', helper: 'Contract summary and validity' },
+        { href: `/hotels/contracts/${currentContract.id}`, label: 'Overview', helper: 'Contract summary and validity' },
         { href: `/hotels?tab=rates&contractId=${currentContract.id}`, label: 'Rates', helper: 'Published costs' },
         {
           href: `/hotels?tab=occupancy-child-policy&contractId=${currentContract.id}`,
