@@ -272,6 +272,7 @@ type QuoteItemsFormProps = {
   preferredRouteId?: string;
   submitLabel?: string;
   initialValues?: QuoteItemInitialValues;
+  onSaved?: (item: any) => void;
 };
 
 function notifyQuotePricingChanged(quoteId: string) {
@@ -622,6 +623,7 @@ export function QuoteItemsForm({
   preferredRouteId,
   submitLabel = 'Add item',
   initialValues,
+  onSaved,
 }: QuoteItemsFormProps) {
   const router = useRouter();
   const isEditing = Boolean(itemId);
@@ -1755,7 +1757,9 @@ export function QuoteItemsForm({
         throw new Error(await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'add'} quote item.`));
       }
 
+      const savedItem = await readJsonResponse<any>(response, `Could not read ${isEditing ? 'updated' : 'created'} quote item.`);
       notifyQuotePricingChanged(quoteId);
+      onSaved?.(savedItem);
 
       if (!isEditing) {
         setQuantity('1');
@@ -1800,7 +1804,9 @@ export function QuoteItemsForm({
       }
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : `Could not ${isEditing ? 'update' : 'add'} quote item.`);
+      const fallbackMessage = `Could not ${isEditing ? 'update' : 'add'} quote item.`;
+      const message = caughtError instanceof Error ? caughtError.message : fallbackMessage;
+      setError(isTransportService && !message.toLowerCase().includes('transport') ? `Could not add transport item: ${message}` : message);
     } finally {
       setIsSubmitting(false);
     }
