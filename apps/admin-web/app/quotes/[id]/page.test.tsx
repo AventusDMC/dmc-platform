@@ -269,7 +269,7 @@ describe('quote detail page regression', () => {
       'onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}',
       'id={`planner-day-${summary.day.id}`}',
       'items: scope.items.filter((item) => item.itineraryId === summary.day.id),',
-      '<aside className="quote-service-editor-panel">',
+      'className="quote-service-editor-panel"',
       '<table className="quote-service-assigned-table">',
       'setActiveServicePanel({',
       '<strong>Select a service type to begin</strong>',

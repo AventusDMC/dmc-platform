@@ -1517,6 +1517,7 @@ function ScopePlanner({
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
   const editorPanelRef = useRef<HTMLElement | null>(null);
+  const scrollToEditorPanelKeyRef = useRef<string | null>(null);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
     ...summary,
@@ -1527,6 +1528,7 @@ function ScopePlanner({
   const workflow = buildServiceWorkflowState(localItems, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
+  const [highlightedEditorPanelKey, setHighlightedEditorPanelKey] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
@@ -1706,18 +1708,20 @@ function ScopePlanner({
 
   function openAddPanel(day: QuoteReadinessDay, category: ServicePlannerCategory) {
     const action = DAY_WORKFLOW_ACTIONS.find((entry) => entry.category === category);
+    const panelKey = `${scope.optionId || 'base'}:${day.id}:${day.dayNumber}:${category}:manual`;
 
     setQuickAddPendingId(null);
     setReorderError('');
     plannerState.onDayOpenChange(day.id, true);
+    scrollToEditorPanelKeyRef.current = panelKey;
     setActiveServicePanel({
       kind: 'add',
-      key: `${scope.optionId || 'base'}:${day.id}:${day.dayNumber}:${category}:suggestions`,
+      key: panelKey,
       optionId: scope.optionId,
       day,
       category,
       label: action?.label || `Add ${SERVICE_PLANNER_TAB_LABELS[category] || category}`,
-      formReady: false,
+      formReady: true,
       selectedServiceId: undefined,
       selectedHotelId: undefined,
       selectedRouteId: undefined,
@@ -1725,14 +1729,44 @@ function ScopePlanner({
   }
 
   useEffect(() => {
-    if (!activeServicePanel) {
+    if (!activeServicePanel || scrollToEditorPanelKeyRef.current !== activeServicePanel.key) {
       return;
     }
 
-    window.requestAnimationFrame(() => {
-      editorPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const panelKey = activeServicePanel.key;
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const editorPanel = editorPanelRef.current;
+
+        if (!editorPanel || scrollToEditorPanelKeyRef.current !== panelKey) {
+          return;
+        }
+
+        editorPanel.scrollTop = 0;
+        editorPanel.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        editorPanel.focus({ preventScroll: true });
+        setHighlightedEditorPanelKey(panelKey);
+        scrollToEditorPanelKeyRef.current = null;
+      });
     });
-  }, [activeServicePanel?.key]);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [activeServicePanel]);
+
+  useEffect(() => {
+    if (!highlightedEditorPanelKey) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setHighlightedEditorPanelKey(null), 1200);
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedEditorPanelKey]);
 
   function openAddFormFromSuggestion(item: SmartSuggestionItem) {
     setActiveServicePanel((current) => {
@@ -2059,7 +2093,12 @@ function ScopePlanner({
           </DndContext>
         </div>
 
-        <aside ref={editorPanelRef} className="quote-service-editor-panel">
+        <aside
+          ref={editorPanelRef}
+          className="quote-service-editor-panel"
+          tabIndex={-1}
+          data-highlight={highlightedEditorPanelKey === activeServicePanel?.key ? 'true' : undefined}
+        >
           <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
           <div className="quote-service-editor-panel-head">
             <div>
@@ -2113,14 +2152,16 @@ function ScopePlanner({
                       setQuickAddPendingId(null);
                       setReorderError('');
                       plannerState.onDayOpenChange(tabDay.id, true);
+                      const panelKey = `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:manual`;
+                      scrollToEditorPanelKeyRef.current = panelKey;
                       setActiveServicePanel({
                         kind: 'add',
-                        key: `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:suggestions`,
+                        key: panelKey,
                         optionId: scope.optionId,
                         day: tabDay,
                         category: tabCategory,
                         label: tabAction.label,
-                        formReady: false,
+                        formReady: true,
                       });
                     }}
                   >

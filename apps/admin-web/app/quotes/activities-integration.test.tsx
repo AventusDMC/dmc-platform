@@ -144,7 +144,7 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
 
     expectSourceContains(quotePlannerSource, [
-      '<aside className="quote-service-editor-panel">',
+      'className="quote-service-editor-panel"',
       '<AssignedServicesTable',
       '<AddServiceEditorPanel',
       '<EditServiceEditorPanel',
