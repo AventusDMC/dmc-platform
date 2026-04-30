@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
@@ -328,6 +330,14 @@ const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
   guide: 'Guide',
   other: 'Other',
 };
+const SERVICE_PLANNER_ICONS: Record<ServicePlannerCategory, string> = {
+  hotel: 'H',
+  transport: 'T',
+  activity: 'A',
+  meal: 'M',
+  guide: 'G',
+  other: 'O',
+};
 
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
   { key: 'hotel', label: 'Stay' },
@@ -629,70 +639,114 @@ function AssignedServicesTable({
   onAdd: (category: ServicePlannerCategory) => void;
   deletingItemId?: string;
 }) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+  );
+  const [orderByCategory, setOrderByCategory] = useState<Partial<Record<ServicePlannerCategory, string[]>>>({});
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
     label: SERVICE_PLANNER_TAB_LABELS[category],
     items: items.filter((item) => getQuoteServiceCategoryKey(item.service) === category),
   }));
 
+  useEffect(() => {
+    setOrderByCategory((current) => {
+      const next = { ...current };
+
+      for (const group of groupedCategories) {
+        const currentIds = next[group.category] || [];
+        const incomingIds = group.items.map((item) => item.id);
+        next[group.category] = [
+          ...currentIds.filter((id) => incomingIds.includes(id)),
+          ...incomingIds.filter((id) => !currentIds.includes(id)),
+        ];
+      }
+
+      return next;
+    });
+  }, [items]);
+
+  function getOrderedItems(category: ServicePlannerCategory, laneItems: QuoteItem[]) {
+    const laneOrder = orderByCategory[category] || laneItems.map((item) => item.id);
+    const itemById = new Map(laneItems.map((item) => [item.id, item]));
+
+    return laneOrder.map((id) => itemById.get(id)).filter((item): item is QuoteItem => Boolean(item));
+  }
+
+  function handleDragEnd(category: ServicePlannerCategory, event: DragEndEvent) {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    setOrderByCategory((current) => {
+      const laneOrder = current[category] || [];
+      const oldIndex = laneOrder.indexOf(String(active.id));
+      const newIndex = laneOrder.indexOf(String(over.id));
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [category]: arrayMove(laneOrder, oldIndex, newIndex),
+      };
+    });
+  }
+
   return (
     <div className="quote-service-visual-board">
-      {groupedCategories.map((group) => (
-        <section key={group.category} className={`quote-service-lane quote-service-lane-${group.category}`}>
-          <div className="quote-service-lane-head">
-            <div>
-              <span>{group.label}</span>
-              <strong>{group.items.length}</strong>
-            </div>
-            <button type="button" className="quote-service-lane-add" onClick={() => onAdd(group.category)}>
-              Add {group.label}
-            </button>
-          </div>
+      {groupedCategories.map((group) => {
+        const orderedItems = getOrderedItems(group.category, group.items);
 
-          {group.items.length === 0 ? (
-            <div className="quote-service-lane-empty">
-              <strong>No {group.label.toLowerCase()} yet</strong>
-              <span>Add one when this day needs it.</span>
+        return (
+          <section key={group.category} className={`quote-service-lane quote-service-lane-${group.category}`}>
+            <div className="quote-service-lane-head">
+              <div>
+                <span>{group.label}</span>
+                <strong>{group.items.length}</strong>
+              </div>
+              <button type="button" className="quote-service-lane-add" onClick={() => onAdd(group.category)}>
+                Add {group.label}
+              </button>
             </div>
-          ) : (
-            <div className="quote-service-card-row">
-              {group.items.map((item) => (
-                <article key={item.id} className="quote-service-mini-card">
-                  <div className="quote-service-mini-card-head">
-                    <span>{CATEGORY_LABELS[getQuoteServiceCategoryKey(item.service)] || item.service.category}</span>
-                    {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
+
+            {orderedItems.length === 0 ? (
+              <button type="button" className="quote-service-empty-add" onClick={() => onAdd(group.category)}>
+                <span aria-hidden="true">+</span>
+                Add {group.label}
+              </button>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => handleDragEnd(group.category, event)}
+              >
+                <SortableContext items={orderedItems.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
+                  <div className="quote-service-card-row">
+                    {orderedItems.map((item) => (
+                      <SortableServiceCard
+                        key={item.id}
+                        item={item}
+                        currency={currency}
+                        deletingItemId={deletingItemId}
+                        onEdit={onEdit}
+                        onRemove={onRemove}
+                      />
+                    ))}
                   </div>
-                  <h5>{item.hotel?.name || item.service.name}</h5>
-                  <dl>
-                    <div>
-                      <dt>Supplier</dt>
-                      <dd>{getServiceSupplierLabel(item)}</dd>
-                    </div>
-                    <div>
-                      <dt>Price</dt>
-                      <dd>{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</dd>
-                    </div>
-                  </dl>
-                  <p>{getServiceNotes(item)}</p>
-                  <div className="quote-service-mini-card-actions">
-                    <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button secondary-button-danger"
-                      onClick={() => onRemove(item)}
-                      disabled={deletingItemId === item.id}
-                    >
-                      {deletingItemId === item.id ? 'Removing...' : 'Remove'}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-      ))}
+                </SortableContext>
+              </DndContext>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -703,6 +757,79 @@ function formatLiveMoney(value: number, currency: string) {
     currency,
     maximumFractionDigits: 2,
   }).format(value || 0);
+}
+
+function buildSortableTransform(transform: ReturnType<typeof useSortable>['transform']) {
+  if (!transform) {
+    return undefined;
+  }
+
+  return `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`;
+}
+
+function SortableServiceCard({
+  item,
+  currency,
+  deletingItemId,
+  onEdit,
+  onRemove,
+}: {
+  item: QuoteItem;
+  currency: Quote['quoteCurrency'];
+  deletingItemId?: string;
+  onEdit: (item: QuoteItem) => void;
+  onRemove: (item: QuoteItem) => void;
+}) {
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+
+  return (
+    <article
+      ref={setNodeRef}
+      className={`quote-service-mini-card quote-service-sortable-card${isDragging ? ' quote-service-sortable-card-dragging' : ''}`}
+      style={{
+        transform: buildSortableTransform(transform),
+        transition,
+      }}
+    >
+      <div className="quote-service-mini-card-head">
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          className="quote-service-drag-handle"
+          aria-label={`Drag ${item.hotel?.name || item.service.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          <span className="quote-service-type-icon" aria-hidden="true">
+            {SERVICE_PLANNER_ICONS[getQuoteServiceCategoryKey(item.service)] || 'S'}
+          </span>
+        </button>
+        {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
+      </div>
+      <h5>{item.hotel?.name || item.service.name}</h5>
+      <p className="quote-service-card-supplier">{getServiceSupplierLabel(item)}</p>
+      <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
+      <details className="quote-service-card-details">
+        <summary>Details</summary>
+        <p>{getServiceNotes(item)}</p>
+      </details>
+      <div className="quote-service-mini-card-actions">
+        <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
+          Edit
+        </button>
+        <button
+          type="button"
+          className="secondary-button secondary-button-danger"
+          onClick={() => onRemove(item)}
+          disabled={deletingItemId === item.id}
+        >
+          {deletingItemId === item.id ? 'Removing...' : 'Remove'}
+        </button>
+      </div>
+    </article>
+  );
 }
 
 function getLivePricingSummary(quote: Quote): LivePricingSummary {

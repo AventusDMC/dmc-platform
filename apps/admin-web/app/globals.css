@@ -13977,15 +13977,16 @@ textarea:focus,
 
 .quote-service-visual-board {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .quote-service-lane {
   min-width: 0;
-  padding: 14px;
+  padding: 10px 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 16px;
-  background: rgba(248, 250, 252, 0.7);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
 }
 
 .quote-service-lane-head {
@@ -13993,7 +13994,7 @@ textarea:focus,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .quote-service-lane-head div {
@@ -14038,11 +14039,45 @@ textarea:focus,
   background: rgba(31, 163, 214, 0.14);
 }
 
+.quote-service-empty-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  width: fit-content;
+  padding: 0.52rem 0.82rem;
+  border: 1px dashed rgba(31, 163, 214, 0.32);
+  border-radius: 12px;
+  background: rgba(31, 163, 214, 0.05);
+  color: #0f6f91;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.quote-service-empty-add span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(31, 163, 214, 0.12);
+  line-height: 1;
+}
+
+.quote-service-empty-add:hover {
+  border-style: solid;
+  background: rgba(31, 163, 214, 0.1);
+}
+
 .quote-service-card-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(245px, 300px);
-  gap: 12px;
+  grid-auto-columns: minmax(220px, 260px);
+  gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
   scroll-snap-type: x proximity;
@@ -14050,14 +14085,25 @@ textarea:focus,
 
 .quote-service-mini-card {
   display: grid;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 14px;
+  border-radius: 13px;
   background: #ffffff;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
   scroll-snap-align: start;
+}
+
+.quote-service-sortable-card {
+  will-change: transform;
+}
+
+.quote-service-sortable-card-dragging {
+  z-index: 5;
+  border-color: rgba(31, 163, 214, 0.34);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  opacity: 0.96;
 }
 
 .quote-service-mini-card-head,
@@ -14068,7 +14114,6 @@ textarea:focus,
   gap: 8px;
 }
 
-.quote-service-mini-card-head span,
 .quote-service-mini-card-head em {
   color: #667085;
   font-size: 0.76rem;
@@ -14084,47 +14129,89 @@ textarea:focus,
   color: #92400e;
 }
 
+.quote-service-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: rgba(31, 163, 214, 0.1);
+  color: #0f6f91;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.quote-service-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+
+.quote-service-drag-handle:active {
+  cursor: grabbing;
+}
+
+.quote-service-drag-handle:focus-visible {
+  outline: 2px solid rgba(31, 163, 214, 0.42);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
 .quote-service-mini-card h5 {
   margin: 0;
-  min-height: 2.4em;
   color: var(--saas-text);
-  font-size: 0.98rem;
+  font-size: 0.96rem;
   line-height: 1.22;
   overflow-wrap: anywhere;
 }
 
-.quote-service-mini-card dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
+.quote-service-card-supplier {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.quote-service-mini-card dl div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  padding: 8px;
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.82);
-}
-
-.quote-service-mini-card dt,
-.quote-service-mini-card dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.quote-service-mini-card dt {
-  color: #667085;
-  font-size: 0.74rem;
-  font-weight: 760;
-}
-
-.quote-service-mini-card dd {
+.quote-service-card-price {
   color: var(--saas-text);
-  font-size: 0.85rem;
+  font-size: 1.02rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-service-card-details {
+  margin-top: 2px;
+}
+
+.quote-service-card-details summary {
+  width: fit-content;
+  color: #667085;
+  cursor: pointer;
+  font-size: 0.78rem;
   font-weight: 800;
+  list-style: none;
+}
+
+.quote-service-card-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.quote-service-card-details summary:hover {
+  color: #0f6f91;
+}
+
+.quote-service-card-details p {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.quote-service-card-supplier {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -14140,11 +14227,14 @@ textarea:focus,
 
 .quote-service-mini-card-actions {
   justify-content: flex-start;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .quote-service-mini-card-actions .secondary-button {
-  min-height: 34px;
-  padding: 0.42rem 0.7rem;
+  min-height: 32px;
+  padding: 0.36rem 0.64rem;
+  font-size: 0.8rem;
 }
 
 .secondary-button-danger {
@@ -14156,24 +14246,9 @@ textarea:focus,
   background: rgba(244, 63, 94, 0.08) !important;
 }
 
-.quote-service-lane-empty {
-  display: grid;
-  gap: 4px;
-  min-height: 90px;
-  align-content: center;
-  padding: 14px;
-  border: 1px dashed rgba(148, 163, 184, 0.28);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.66);
-}
-
-.quote-service-lane-empty strong {
-  color: var(--saas-text);
-}
-
 @media (min-width: 1500px) {
   .quote-service-card-row {
-    grid-auto-columns: minmax(260px, 320px);
+    grid-auto-columns: minmax(230px, 270px);
   }
 }
 
