@@ -8,5 +8,6 @@ if (!API_BASE_URL) {
 }
 
 export async function GET(request: NextRequest) {
-  return proxyRequest(request, `${API_BASE_URL}/reports/supplier-payables${request.nextUrl.search}`, 'GET');
+  const query = request.nextUrl.search;
+  return proxyRequest(request, `${API_BASE_URL}/reports/supplier-payables${query}`, 'GET');
 }

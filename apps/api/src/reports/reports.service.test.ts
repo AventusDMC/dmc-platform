@@ -47,6 +47,20 @@ function createFinanceService(invoices: any[], supplierPayments: any[], bookings
   return { service, seenInvoiceWheres, seenPaymentWheres, seenBookingWheres };
 }
 
+function createSupplierPayablesService(services: any[]) {
+  const seenWheres: any[] = [];
+  const service = new ReportsService({
+    bookingService: {
+      findMany: async ({ where }: any) => {
+        seenWheres.push(where);
+        return services.filter((bookingService) => matchesBookingServiceWhere(bookingService, where));
+      },
+    },
+  } as any);
+
+  return { service, seenWheres };
+}
+
 test('booking summary calculates totals profit margin top and low-margin bookings', async () => {
   const { service } = createService([
     booking('booking-1', 'BK-1', 'client-1', 'Client One', '2026-06-01', [
@@ -288,6 +302,23 @@ test('supplier performance requires auth without actor company filtering', async
   assert.equal(performance.suppliers.length, 2);
   assert.deepEqual(seenWheres[0], { AND: [{}, { amendments: { none: {} } }] });
   assert.equal(JSON.stringify(seenWheres[0]).includes('dmc-company'), false);
+});
+
+test('supplier payables filters supplier costs by booking date range', async () => {
+  const { service, seenWheres } = createSupplierPayablesService([
+    supplierPayableService('supplier-1', 'Petra Hotels', '2026-06-01', 100),
+    supplierPayableService('supplier-1', 'Petra Hotels', '2026-06-15', 50),
+    supplierPayableService('supplier-2', 'Desert Transport', '2026-07-01', 120),
+  ]);
+
+  const payables = await service.getSupplierPayables({ from: '2026-06-01', to: '2026-06-30' }, { companyId: 'dmc-company' });
+
+  assert.equal(payables.length, 1);
+  assert.equal(payables[0].supplierId, 'supplier-1');
+  assert.equal(payables[0].supplierName, 'Petra Hotels');
+  assert.equal(payables[0].totalCost, 150);
+  assert.ok(seenWheres[0].booking.startDate.gte instanceof Date);
+  assert.ok(seenWheres[0].booking.startDate.lte instanceof Date);
 });
 
 test('finance summary calculates receivables from invoices and partial payments', async () => {
@@ -569,6 +600,18 @@ function supplierPayment(
   };
 }
 
+function supplierPayableService(supplierId: string | null, supplierName: string | null, bookingStartDate: string, totalCost: number) {
+  return {
+    supplierId,
+    supplierName,
+    totalCost,
+    supplier: supplierName ? { name: supplierName } : null,
+    booking: {
+      startDate: new Date(`${bookingStartDate}T12:00:00.000Z`),
+    },
+  };
+}
+
 function matchesWhere(booking: any, where: any, bookings: any[]): boolean {
   if (!where) return true;
   if (Array.isArray(where.AND)) {
@@ -583,6 +626,19 @@ function matchesWhere(booking: any, where: any, bookings: any[]): boolean {
   if (where.amendments?.none) {
     const hasNewerAmendment = bookings.some((candidate) => candidate.amendedFromId === booking.id);
     if (hasNewerAmendment) return false;
+  }
+
+  return true;
+}
+
+function matchesBookingServiceWhere(service: any, where: any): boolean {
+  if (!where) return true;
+
+  const startDateWhere = where.booking?.startDate;
+  if (startDateWhere) {
+    const startDate = service.booking?.startDate;
+    if (startDateWhere.gte && startDate < startDateWhere.gte) return false;
+    if (startDateWhere.lte && startDate > startDateWhere.lte) return false;
   }
 
   return true;

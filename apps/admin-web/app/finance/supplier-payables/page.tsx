@@ -14,8 +14,20 @@ type SupplierPayable = {
   totalCost: number;
 };
 
-async function getSupplierPayables() {
-  return adminPageFetchJson<unknown>('/api/reports/supplier-payables', 'Supplier payables report', {
+type SupplierPayablesPageProps = {
+  searchParams?: Promise<{
+    from?: string;
+    to?: string;
+  }>;
+};
+
+async function getSupplierPayables(from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const query = params.toString();
+
+  return adminPageFetchJson<unknown>(`/api/reports/supplier-payables${query ? `?${query}` : ''}`, 'Supplier payables report', {
     cache: 'no-store',
   });
 }
@@ -38,7 +50,8 @@ function asNullableString(value: unknown) {
 }
 
 function normalizeSupplierPayables(value: unknown): SupplierPayable[] {
-  const rows = Array.isArray(value) ? value : Array.isArray(asRecord(value).suppliers) ? asRecord(value).suppliers : [];
+  const record = asRecord(value);
+  const rows: unknown[] = Array.isArray(value) ? value : Array.isArray(record.suppliers) ? record.suppliers : [];
 
   return rows.map((entry) => {
     const row = asRecord(entry);
@@ -58,12 +71,15 @@ function formatMoney(value: number) {
   }).format(value || 0);
 }
 
-export default async function SupplierPayablesPage() {
+export default async function SupplierPayablesPage({ searchParams }: SupplierPayablesPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const from = resolvedSearchParams.from || '';
+  const to = resolvedSearchParams.to || '';
   let payables: SupplierPayable[] = [];
   let loadError = false;
 
   try {
-    payables = normalizeSupplierPayables(await getSupplierPayables());
+    payables = normalizeSupplierPayables(await getSupplierPayables(from, to));
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
@@ -74,6 +90,7 @@ export default async function SupplierPayablesPage() {
   }
 
   const totalCost = payables.reduce((total, payable) => total + payable.totalCost, 0);
+  const dateRangeLabel = from || to ? `${from || 'Any date'} to ${to || 'Any date'}` : 'All dates';
 
   return (
     <main className="page">
@@ -98,7 +115,7 @@ export default async function SupplierPayablesPage() {
             <SummaryStrip
               items={[
                 { id: 'suppliers', label: 'Suppliers', value: String(payables.length), helper: 'Rows in report' },
-                { id: 'total-cost', label: 'Total Cost', value: formatMoney(totalCost), helper: 'Supplier payable total' },
+                { id: 'total-cost', label: 'Total Cost', value: formatMoney(totalCost), helper: dateRangeLabel },
               ]}
             />
           }
@@ -107,7 +124,7 @@ export default async function SupplierPayablesPage() {
             <WorkspaceSubheader
               eyebrow="Supplier Payables"
               title="Supplier payable summary"
-              description="A simple supplier-level view of total cost obligations."
+              description="A simple supplier-level view of total cost obligations, optionally filtered by booking date."
               actions={
                 <>
                   <Link href="/finance" className="dashboard-toolbar-link">
@@ -120,6 +137,25 @@ export default async function SupplierPayablesPage() {
               }
             />
 
+            <form className="reports-filter-bar" action="/finance/supplier-payables">
+              <label>
+                From date
+                <input type="date" name="from" defaultValue={from} />
+              </label>
+              <label>
+                To date
+                <input type="date" name="to" defaultValue={to} />
+              </label>
+              <button type="submit" className="primary-button">
+                Apply
+              </button>
+              {from || to ? (
+                <Link href="/finance/supplier-payables" className="secondary-button">
+                  Clear
+                </Link>
+              ) : null}
+            </form>
+
             {loadError ? (
               <section className="workspace-section">
                 <p className="eyebrow">Report unavailable</p>
@@ -130,7 +166,7 @@ export default async function SupplierPayablesPage() {
 
             <TableSectionShell
               title="Supplier payables"
-              description="Supplier names and total costs from the supplier payables report."
+              description={`Supplier names and total costs from the supplier payables report. ${dateRangeLabel}.`}
               context={<p>{payables.length} suppliers in scope</p>}
               emptyState={
                 payables.length === 0 ? (

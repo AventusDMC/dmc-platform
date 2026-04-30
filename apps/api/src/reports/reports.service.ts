@@ -9,6 +9,11 @@ type BookingSummaryInput = {
   endDate?: string;
 };
 
+type SupplierPayablesInput = {
+  from?: string;
+  to?: string;
+};
+
 type BookingSummaryBooking = {
   id: string;
   bookingRef: string;
@@ -258,10 +263,12 @@ export class ReportsService {
     };
   }
 
-  async getSupplierPayables(actor?: CompanyScopedActor) {
+  async getSupplierPayables(input: SupplierPayablesInput = {}, actor?: CompanyScopedActor) {
     requireActorCompanyId(actor);
+    const where = this.buildSupplierPayablesWhere(input);
 
     const services = (await (this.prisma.bookingService as any).findMany({
+      where,
       select: {
         supplierId: true,
         supplierName: true,
@@ -521,6 +528,28 @@ export class ReportsService {
       },
       orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
     } as any)) as ReportBookingRecord[];
+  }
+
+  private buildSupplierPayablesWhere(input: SupplierPayablesInput): Prisma.BookingServiceWhereInput {
+    const fromDate = this.normalizeDate(input.from, 'from');
+    const toDate = this.normalizeDate(input.to, 'to');
+
+    if (fromDate && toDate && fromDate > toDate) {
+      throw new BadRequestException('from must be before or equal to to');
+    }
+
+    if (!fromDate && !toDate) {
+      return {};
+    }
+
+    return {
+      booking: {
+        startDate: {
+          ...(fromDate ? { gte: fromDate } : {}),
+          ...(toDate ? { lte: this.endOfUtcDay(toDate) } : {}),
+        },
+      },
+    };
   }
 
   private buildDateWhere(input: BookingSummaryInput): Prisma.BookingWhereInput {

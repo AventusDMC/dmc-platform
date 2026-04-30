@@ -43,8 +43,12 @@ export class ReportsController {
 
   @Get('supplier-payables')
   @Roles('admin', 'finance', 'operations')
-  getSupplierPayables(@Actor() actor: AuthenticatedActor) {
-    return this.reportsService.getSupplierPayables(actor);
+  getSupplierPayables(
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.reportsService.getSupplierPayables({ from, to }, actor);
   }
 
   @Get('finance-summary')
