@@ -39,6 +39,7 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  createdAt?: string;
 };
 
 type Hotel = {
@@ -349,6 +350,8 @@ type SmartSuggestionItem = {
   serviceId?: string;
   hotelId?: string;
   routeId?: string;
+  createdAt?: string;
+  catalogRank: number;
 };
 
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
@@ -627,40 +630,173 @@ function getServiceTypeLabel(service: SupplierService) {
   return service.serviceType?.name || service.category || service.unitType || 'Service';
 }
 
+function normalizeSuggestionText(value: string | null | undefined) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+}
+
+function getSuggestionLocationTerms(day: QuoteReadinessDay) {
+  const genericTerms = new Set(['day', 'overnight', 'arrival', 'departure', 'city', 'tour', 'trip', 'stay', 'the', 'and', 'from', 'to']);
+  const text = normalizeSuggestionText(`${day.title || ''} ${day.description || ''}`);
+
+  return Array.from(new Set(text.split(/\s+/).filter((term) => term.length >= 3 && !/^\d+$/.test(term) && !genericTerms.has(term)))).slice(0, 8);
+}
+
+function getAllPlannerItems(quote: Quote) {
+  return [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
+}
+
+function getQuoteUsageCounts(quote: Quote) {
+  const counts = new Map<string, number>();
+
+  for (const item of getAllPlannerItems(quote)) {
+    const keys = [item.service.id, item.hotelId ? `hotel:${item.hotelId}` : null, item.appliedVehicleRate?.routeId ? `route:${item.appliedVehicleRate.routeId}` : null].filter(
+      (key): key is string => Boolean(key),
+    );
+
+    keys.forEach((key) => counts.set(key, (counts.get(key) || 0) + 1));
+  }
+
+  return counts;
+}
+
+function getSuggestionUsageScore(item: SmartSuggestionItem, usageCounts: Map<string, number>) {
+  return Math.max(
+    item.serviceId ? usageCounts.get(item.serviceId) || 0 : 0,
+    item.hotelId ? usageCounts.get(`hotel:${item.hotelId}`) || 0 : 0,
+    item.routeId ? usageCounts.get(`route:${item.routeId}`) || 0 : 0,
+  );
+}
+
+function getSuggestionLocationScore(item: SmartSuggestionItem, terms: string[]) {
+  if (terms.length === 0) {
+    return 0;
+  }
+
+  const haystack = normalizeSuggestionText(`${item.label} ${item.detail}`);
+  return terms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
+}
+
+function compareSmartSuggestions(left: SmartSuggestionItem, right: SmartSuggestionItem, usageCounts: Map<string, number>) {
+  const usageDelta = getSuggestionUsageScore(right, usageCounts) - getSuggestionUsageScore(left, usageCounts);
+
+  if (usageDelta !== 0) {
+    return usageDelta;
+  }
+
+  const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+  const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+
+  if (leftTime !== rightTime) {
+    return rightTime - leftTime;
+  }
+
+  return left.catalogRank - right.catalogRank || left.label.localeCompare(right.label);
+}
+
 function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps): SmartSuggestionItem[] {
+  const usageCounts = getQuoteUsageCounts(plannerProps.quote);
   if (category === 'hotel') {
-    return plannerProps.hotels.slice(0, 24).map((hotel) => ({
-      id: `hotel:${hotel.id}`,
-      label: hotel.name,
-      detail: [hotel.city, hotel.category].filter(Boolean).join(' - ') || 'Hotel',
-      category,
-      source: 'hotel',
-      hotelId: hotel.id,
-    }));
+    return plannerProps.hotels
+      .map((hotel, index) => ({
+        id: `hotel:${hotel.id}`,
+        label: hotel.name,
+        detail: [hotel.city, hotel.category].filter(Boolean).join(' - ') || 'Hotel',
+        category,
+        source: 'hotel' as const,
+        hotelId: hotel.id,
+        catalogRank: index,
+      }))
+      .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
   }
 
   if (category === 'transport') {
-    return plannerProps.routes.slice(0, 24).map((route) => ({
-      id: `route:${route.id}`,
-      label: route.name,
-      detail: 'Transport route',
-      category,
-      source: 'route',
-      routeId: route.id,
-    }));
+    return plannerProps.routes
+      .map((route, index) => ({
+        id: `route:${route.id}`,
+        label: route.name,
+        detail: 'Transport route',
+        category,
+        source: 'route' as const,
+        routeId: route.id,
+        catalogRank: index,
+      }))
+      .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
   }
 
   return plannerProps.services
     .filter((service) => getQuoteServiceCategoryKey(service) === category)
-    .slice(0, 36)
-    .map((service) => ({
+    .map((service, index) => ({
       id: `service:${service.id}`,
       label: service.name,
       detail: `${getServiceTypeLabel(service)} - ${formatLiveMoney(service.baseCost, service.currency)}`,
       category,
-      source: 'service',
+      source: 'service' as const,
       serviceId: service.id,
-    }));
+      createdAt: service.createdAt,
+      catalogRank: index,
+    }))
+    .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
+}
+
+function getSuggestedForDay(category: ServicePlannerCategory, day: QuoteReadinessDay, plannerProps: QuoteServicePlannerProps) {
+  const candidates = getSmartSuggestionCandidates(category, plannerProps);
+  const terms = getSuggestionLocationTerms(day);
+  const usageCounts = getQuoteUsageCounts(plannerProps.quote);
+  const ranked = candidates
+    .map((item) => ({
+      item,
+      locationScore: getSuggestionLocationScore(item, terms),
+      usageScore: getSuggestionUsageScore(item, usageCounts),
+    }))
+    .sort((left, right) => right.locationScore - left.locationScore || right.usageScore - left.usageScore || compareSmartSuggestions(left.item, right.item, usageCounts));
+  const locationMatches = ranked.filter((entry) => entry.locationScore > 0).map((entry) => entry.item);
+
+  return (locationMatches.length > 0 ? locationMatches : ranked.map((entry) => entry.item)).slice(0, 5);
+}
+
+function getUsedInQuoteSuggestions(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps) {
+  const used = new Map<string, SmartSuggestionItem>();
+
+  for (const item of getAllPlannerItems(plannerProps.quote)) {
+    if (getQuoteServiceCategoryKey(item.service) !== category) {
+      continue;
+    }
+
+    if (category === 'hotel' && item.hotelId) {
+      used.set(`hotel:${item.hotelId}`, {
+        id: `hotel:${item.hotelId}`,
+        label: item.hotel?.name || item.service.name,
+        detail: item.contract?.name || 'Used in this quote',
+        category,
+        source: 'hotel',
+        hotelId: item.hotelId,
+        catalogRank: 0,
+      });
+    } else if (category === 'transport' && item.appliedVehicleRate?.routeId) {
+      used.set(`route:${item.appliedVehicleRate.routeId}`, {
+        id: `route:${item.appliedVehicleRate.routeId}`,
+        label: item.appliedVehicleRate.routeName || item.service.name,
+        detail: item.appliedVehicleRate.serviceType.name || 'Used in this quote',
+        category,
+        source: 'route',
+        routeId: item.appliedVehicleRate.routeId,
+        catalogRank: 0,
+      });
+    } else {
+      used.set(`service:${item.service.id}`, {
+        id: `service:${item.service.id}`,
+        label: item.service.name,
+        detail: `${getServiceTypeLabel(item.service)} - used in this quote`,
+        category,
+        source: 'service',
+        serviceId: item.service.id,
+        createdAt: item.service.createdAt,
+        catalogRank: 0,
+      });
+    }
+  }
+
+  return Array.from(used.values()).slice(0, 6);
 }
 
 function findDefaultPlannerService(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps, suggestion: SmartSuggestionItem) {
@@ -812,7 +948,6 @@ function SmartSuggestionsPanel({
   category,
   day,
   plannerProps,
-  recentSuggestions,
   onQuickAdd,
   onConfigure,
   onManualSelect,
@@ -821,7 +956,6 @@ function SmartSuggestionsPanel({
   category: ServicePlannerCategory;
   day: QuoteReadinessDay;
   plannerProps: QuoteServicePlannerProps;
-  recentSuggestions: SmartSuggestionItem[];
   onQuickAdd: (item: SmartSuggestionItem) => void;
   onConfigure: (item: SmartSuggestionItem) => void;
   onManualSelect: () => void;
@@ -833,8 +967,8 @@ function SmartSuggestionsPanel({
   const filteredCandidates = normalizedQuery
     ? candidates.filter((item) => `${item.label} ${item.detail}`.toLowerCase().includes(normalizedQuery))
     : candidates;
-  const suggested = candidates.slice(0, 3);
-  const recent = recentSuggestions.filter((item) => item.category === category).slice(0, 5);
+  const suggested = getSuggestedForDay(category, day, plannerProps);
+  const usedInQuote = getUsedInQuoteSuggestions(category, plannerProps);
 
   return (
     <div className="quote-smart-suggestions">
@@ -856,9 +990,9 @@ function SmartSuggestionsPanel({
         quickAddPendingId={quickAddPendingId}
       />
       <SmartSuggestionSection
-        title="Recent services"
-        items={recent}
-        emptyText="Recent choices will appear here as you add services."
+        title="Used in this quote"
+        items={usedInQuote}
+        emptyText="Services used elsewhere in this quote will appear here."
         onQuickAdd={onQuickAdd}
         onConfigure={onConfigure}
         quickAddPendingId={quickAddPendingId}
@@ -1374,9 +1508,9 @@ function ScopePlanner({
   const [localItems, setLocalItems] = useState<QuoteItem[]>(scope.items);
   const [laneOrders, setLaneOrders] = useState<ServiceLaneOrders>({});
   const [reorderError, setReorderError] = useState('');
-  const [recentSuggestions, setRecentSuggestions] = useState<SmartSuggestionItem[]>([]);
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
+  const editorPanelRef = useRef<HTMLElement | null>(null);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
     ...summary,
@@ -1567,18 +1701,34 @@ function ScopePlanner({
   function openAddPanel(day: QuoteReadinessDay, category: ServicePlannerCategory) {
     const action = DAY_WORKFLOW_ACTIONS.find((entry) => entry.category === category);
 
+    setQuickAddPendingId(null);
+    setReorderError('');
+    plannerState.onDayOpenChange(day.id, true);
     setActiveServicePanel({
       kind: 'add',
-      key: `${scope.optionId || 'base'}:${day.id}:${category}`,
+      key: `${scope.optionId || 'base'}:${day.id}:${day.dayNumber}:${category}:suggestions`,
       optionId: scope.optionId,
       day,
       category,
       label: action?.label || `Add ${SERVICE_PLANNER_TAB_LABELS[category] || category}`,
+      formReady: false,
+      selectedServiceId: undefined,
+      selectedHotelId: undefined,
+      selectedRouteId: undefined,
     });
   }
 
+  useEffect(() => {
+    if (!activeServicePanel) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      editorPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, [activeServicePanel?.key]);
+
   function openAddFormFromSuggestion(item: SmartSuggestionItem) {
-    setRecentSuggestions((current) => [item, ...current.filter((entry) => entry.id !== item.id)].slice(0, 8));
     setActiveServicePanel((current) => {
       if (!current || current.kind !== 'add') {
         return current;
@@ -1600,7 +1750,6 @@ function ScopePlanner({
       return;
     }
 
-    setRecentSuggestions((current) => [item, ...current.filter((entry) => entry.id !== item.id)].slice(0, 8));
     setQuickAddPendingId(item.id);
     setReorderError('');
 
@@ -1881,31 +2030,19 @@ function ScopePlanner({
                       </div>
                     </div>
                     <div className="quote-service-suggestions">
-                      {summary.suggestions.map((suggestion) => {
-                        const label = DAY_WORKFLOW_ACTIONS.find((action) => action.category === suggestion.category)?.label || `Add ${suggestion.category}`;
-
-                        return (
+                      {summary.suggestions.map((suggestion) => (
                           <button
                             key={suggestion.id}
                             type="button"
                             className="quote-service-suggestion-button"
                             onClick={() =>
-                              setActiveServicePanel({
-                                kind: 'add',
-                                key: `${scope.optionId || 'base'}:${summary.day.id}:${suggestion.category}`,
-                                optionId: scope.optionId,
-                                day: summary.day,
-                                category: suggestion.category,
-                                label,
-                                formReady: false,
-                              })
+                              openAddPanel(summary.day, suggestion.category)
                             }
                           >
                             <strong>{suggestion.title}</strong>
                             <span>{suggestion.description}</span>
                           </button>
-                        );
-                      })}
+                      ))}
                     </div>
                   </section>
                 ) : null}
@@ -1916,7 +2053,7 @@ function ScopePlanner({
           </DndContext>
         </div>
 
-        <aside className="quote-service-editor-panel">
+        <aside ref={editorPanelRef} className="quote-service-editor-panel">
           <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
           <div className="quote-service-editor-panel-head">
             <div>
@@ -1967,9 +2104,12 @@ function ScopePlanner({
                         return;
                       }
 
+                      setQuickAddPendingId(null);
+                      setReorderError('');
+                      plannerState.onDayOpenChange(tabDay.id, true);
                       setActiveServicePanel({
                         kind: 'add',
-                        key: `${scope.optionId || 'base'}:${tabDay.id}:${tabCategory}`,
+                        key: `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:suggestions`,
                         optionId: scope.optionId,
                         day: tabDay,
                         category: tabCategory,
@@ -1987,10 +2127,10 @@ function ScopePlanner({
 
           {activeServicePanel?.kind === 'add' && !activeServicePanel.formReady ? (
             <SmartSuggestionsPanel
+              key={activeServicePanel.key}
               category={activeServicePanel.category}
               day={activeServicePanel.day}
               plannerProps={plannerProps}
-              recentSuggestions={recentSuggestions}
               onQuickAdd={quickAddSuggestion}
               onConfigure={openAddFormFromSuggestion}
               onManualSelect={openManualAddForm}
