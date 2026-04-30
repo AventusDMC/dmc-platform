@@ -13922,3 +13922,282 @@ textarea:focus,
     padding-inline: 18px;
   }
 }
+
+/* Visual Quote Service Planner */
+.quote-service-planner .workspace-tab-header {
+  align-items: stretch;
+}
+
+.quote-service-planner-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+  gap: 22px;
+}
+
+.quote-service-day-column {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.quote-service-editor-panel {
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  align-self: start;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-left: 0;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.quote-service-editor-panel .quote-live-pricing-panel {
+  position: static;
+  padding: 0 0 1rem;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quote-service-editor-panel .quote-live-pricing-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quote-service-planner .quote-service-day-layout-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.quote-service-planner .quote-service-current-services {
+  min-width: 0;
+}
+
+.quote-service-visual-board {
+  display: grid;
+  gap: 14px;
+}
+
+.quote-service-lane {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.quote-service-lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.quote-service-lane-head div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quote-service-lane-head span {
+  color: #475467;
+  font-weight: 820;
+}
+
+.quote-service-lane-head strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--saas-text);
+  font-size: 0.82rem;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
+}
+
+.quote-service-lane-add {
+  min-height: 34px;
+  padding: 0.46rem 0.72rem;
+  border: 1px solid rgba(31, 163, 214, 0.24);
+  border-radius: 10px;
+  background: rgba(31, 163, 214, 0.08);
+  color: #0f6f91;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.quote-service-lane-add:hover {
+  background: rgba(31, 163, 214, 0.14);
+}
+
+.quote-service-card-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(245px, 300px);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.quote-service-mini-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  scroll-snap-align: start;
+}
+
+.quote-service-mini-card-head,
+.quote-service-mini-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quote-service-mini-card-head span,
+.quote-service-mini-card-head em {
+  color: #667085;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 820;
+  text-transform: uppercase;
+}
+
+.quote-service-mini-card-head em {
+  padding: 0.18rem 0.46rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.16);
+  color: #92400e;
+}
+
+.quote-service-mini-card h5 {
+  margin: 0;
+  min-height: 2.4em;
+  color: var(--saas-text);
+  font-size: 0.98rem;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.quote-service-mini-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.quote-service-mini-card dl div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.quote-service-mini-card dt,
+.quote-service-mini-card dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.quote-service-mini-card dt {
+  color: #667085;
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.quote-service-mini-card dd {
+  color: var(--saas-text);
+  font-size: 0.85rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-service-mini-card p,
+.quote-service-lane-empty span {
+  margin: 0;
+  color: #667085;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.quote-service-mini-card-actions {
+  justify-content: flex-start;
+}
+
+.quote-service-mini-card-actions .secondary-button {
+  min-height: 34px;
+  padding: 0.42rem 0.7rem;
+}
+
+.secondary-button-danger {
+  border-color: rgba(244, 63, 94, 0.22) !important;
+  color: #b42318 !important;
+}
+
+.secondary-button-danger:hover {
+  background: rgba(244, 63, 94, 0.08) !important;
+}
+
+.quote-service-lane-empty {
+  display: grid;
+  gap: 4px;
+  min-height: 90px;
+  align-content: center;
+  padding: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.quote-service-lane-empty strong {
+  color: var(--saas-text);
+}
+
+@media (min-width: 1500px) {
+  .quote-service-card-row {
+    grid-auto-columns: minmax(260px, 320px);
+  }
+}
+
+@media (max-width: 1180px) {
+  .quote-service-planner-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-editor-panel {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-card-row {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: visible;
+  }
+
+  .quote-service-mini-card dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { readJsonResponse } from '../../lib/api';
+import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
@@ -616,53 +618,81 @@ function AssignedServicesTable({
   items,
   currency,
   onEdit,
+  onRemove,
+  onAdd,
+  deletingItemId,
 }: {
   items: QuoteItem[];
   currency: Quote['quoteCurrency'];
   onEdit: (item: QuoteItem) => void;
+  onRemove: (item: QuoteItem) => void;
+  onAdd: (category: ServicePlannerCategory) => void;
+  deletingItemId?: string;
 }) {
-  if (items.length === 0) {
-    return (
-      <div className="quote-service-empty-state">
-        <strong>No services yet.</strong>
-        <p>No services yet. Add Hotel, Transport, Activity, or Meal.</p>
-      </div>
-    );
-  }
+  const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
+    category,
+    label: SERVICE_PLANNER_TAB_LABELS[category],
+    items: items.filter((item) => getQuoteServiceCategoryKey(item.service) === category),
+  }));
 
   return (
-    <div className="quote-service-assigned-table-wrap">
-      <table className="quote-service-assigned-table">
-        <thead>
-          <tr>
-            <th>Service</th>
-            <th>Supplier</th>
-            <th>Route</th>
-            <th>Pax</th>
-            <th>Price</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>
-                <strong>{item.hotel?.name || item.service.name}</strong>
-                <span>{CATEGORY_LABELS[getQuoteServiceCategoryKey(item.service)] || item.service.category}</span>
-              </td>
-              <td>{getServiceSupplierLabel(item)}</td>
-              <td>{getServiceNotes(item)}</td>
-              <td>{item.paxCount ?? item.participantCount ?? '-'}</td>
-              <td>{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</td>
-              <td>
-                <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
-                  Edit
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="quote-service-visual-board">
+      {groupedCategories.map((group) => (
+        <section key={group.category} className={`quote-service-lane quote-service-lane-${group.category}`}>
+          <div className="quote-service-lane-head">
+            <div>
+              <span>{group.label}</span>
+              <strong>{group.items.length}</strong>
+            </div>
+            <button type="button" className="quote-service-lane-add" onClick={() => onAdd(group.category)}>
+              Add {group.label}
+            </button>
+          </div>
+
+          {group.items.length === 0 ? (
+            <div className="quote-service-lane-empty">
+              <strong>No {group.label.toLowerCase()} yet</strong>
+              <span>Add one when this day needs it.</span>
+            </div>
+          ) : (
+            <div className="quote-service-card-row">
+              {group.items.map((item) => (
+                <article key={item.id} className="quote-service-mini-card">
+                  <div className="quote-service-mini-card-head">
+                    <span>{CATEGORY_LABELS[getQuoteServiceCategoryKey(item.service)] || item.service.category}</span>
+                    {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
+                  </div>
+                  <h5>{item.hotel?.name || item.service.name}</h5>
+                  <dl>
+                    <div>
+                      <dt>Supplier</dt>
+                      <dd>{getServiceSupplierLabel(item)}</dd>
+                    </div>
+                    <div>
+                      <dt>Price</dt>
+                      <dd>{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</dd>
+                    </div>
+                  </dl>
+                  <p>{getServiceNotes(item)}</p>
+                  <div className="quote-service-mini-card-actions">
+                    <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button secondary-button-danger"
+                      onClick={() => onRemove(item)}
+                      disabled={deletingItemId === item.id}
+                    >
+                      {deletingItemId === item.id ? 'Removing...' : 'Remove'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -803,6 +833,7 @@ function ScopePlanner({
   plannerProps: QuoteServicePlannerProps;
   plannerState: ScopePlannerState;
 }) {
+  const router = useRouter();
   const buildStepHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) =>
     buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, step, params);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
@@ -815,6 +846,7 @@ function ScopePlanner({
   const workflow = buildServiceWorkflowState(scope.items, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
       summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
@@ -828,6 +860,54 @@ function ScopePlanner({
       ).length
     );
   }, 0);
+
+  function openAddPanel(day: QuoteReadinessDay, category: ServicePlannerCategory) {
+    const action = DAY_WORKFLOW_ACTIONS.find((entry) => entry.category === category);
+
+    setActiveServicePanel({
+      kind: 'add',
+      key: `${scope.optionId || 'base'}:${day.id}:${category}`,
+      optionId: scope.optionId,
+      day,
+      category,
+      label: action?.label || `Add ${SERVICE_PLANNER_TAB_LABELS[category] || category}`,
+    });
+  }
+
+  async function handleRemoveItem(item: QuoteItem) {
+    const displayName = item.hotel?.name || item.service.name;
+
+    if (!window.confirm(`Remove ${displayName}?`)) {
+      return;
+    }
+
+    setDeletingItemId(item.id);
+
+    try {
+      const deletePath = scope.optionId
+        ? `/quotes/${plannerProps.quote.id}/options/${scope.optionId}/items/${item.id}`
+        : `/quotes/${plannerProps.quote.id}/items/${item.id}`;
+      const response = await fetch(`${plannerProps.apiBaseUrl}${deletePath}`, {
+        method: 'DELETE',
+        headers: buildAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not remove quote service.'));
+      }
+
+      if (activeServicePanel?.kind === 'edit' && activeServicePanel.item.id === item.id) {
+        setActiveServicePanel(null);
+      }
+
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
+      router.refresh();
+    } catch (caughtError) {
+      window.alert(caughtError instanceof Error ? caughtError.message : 'Could not remove quote service.');
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
 
   return (
     <div className="section-stack">
@@ -934,46 +1014,19 @@ function ScopePlanner({
               </div>
             </div>
 
-            <div className="quote-service-day-layout">
-              <section className="quote-service-day-workflow quote-service-side-section">
-                <div className="quote-service-day-actions">
-                  {DAY_WORKFLOW_ACTIONS.map((action) => {
-                    const key = `${scope.optionId || 'base'}:${summary.day.id}:${action.category}`;
-                    const active = activeServicePanel?.kind === 'add' && activeServicePanel.key === key;
-
-                    return (
-                      <button
-                        key={action.category}
-                        type="button"
-                        className={`quote-service-day-action-button${workflow.recommendedCategory === action.category ? ' quote-service-day-action-button-recommended' : ''}${active ? ' quote-service-day-action-button-active' : ''}`}
-                        onClick={() =>
-                          setActiveServicePanel({
-                            kind: 'add',
-                            key,
-                            optionId: scope.optionId,
-                            day: summary.day,
-                            category: action.category,
-                            label: action.label,
-                          })
-                        }
-                      >
-                        {action.label.startsWith('Add ') ? `+ ${action.label.slice(4)}` : action.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
+            <div className="quote-service-day-layout quote-service-day-layout-visual">
               <section className="quote-service-current-services quote-service-day-main">
                 <div className="workspace-section-head">
                   <div>
                     <p className="eyebrow">Assigned Services</p>
-                    <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'No services added yet'}</h4>
+                    <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'Build this day visually'}</h4>
                   </div>
                 </div>
                 <AssignedServicesTable
                   items={summary.items}
                   currency={plannerProps.quote.quoteCurrency}
+                  deletingItemId={deletingItemId || undefined}
+                  onAdd={(category) => openAddPanel(summary.day, category)}
                   onEdit={(item) =>
                     setActiveServicePanel({
                       kind: 'edit',
@@ -983,6 +1036,7 @@ function ScopePlanner({
                       dayNumber: summary.day.dayNumber,
                     })
                   }
+                  onRemove={handleRemoveItem}
                 />
               </section>
 
@@ -1046,6 +1100,7 @@ function ScopePlanner({
         </div>
 
         <aside className="quote-service-editor-panel">
+          <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
           <div className="quote-service-editor-panel-head">
             <div>
               <p className="eyebrow">Add/Edit Service</p>
@@ -1177,7 +1232,6 @@ function ScopePlanner({
 }
 
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
-  const showAdminMetrics = props.sessionRole === 'admin';
   const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);
   const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
@@ -1286,7 +1340,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           <p className="detail-copy">
           Use each day card below to complete the trip step by step. Add the core services first, then review what is still missing before pricing.
           </p>
-        <LivePricingPanel apiBaseUrl={props.apiBaseUrl} quote={props.quote} showAdminMetrics={showAdminMetrics} />
         {props.focusedDayId ? (
           <p className="form-helper">
             Focused day mode is active. Use the highlighted day card below to complete the targeted operating task.
