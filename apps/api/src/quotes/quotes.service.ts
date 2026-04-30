@@ -187,6 +187,11 @@ type ReorderQuoteItemsInput = {
   orderedItemIds: string[];
 };
 
+type MoveQuoteItemInput = {
+  day: number;
+  serviceType: string;
+};
+
 type GenerateQuoteScenariosInput = {
   quoteId: string;
   paxCounts: number[];
@@ -2204,6 +2209,88 @@ export class QuotesService {
       day: dayNumber,
       serviceType,
       orderedItemIds,
+    };
+  }
+
+  async moveItem(quoteId: string, itemId: string, data: MoveQuoteItemInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const dayNumber = Number(data.day);
+    const serviceType = this.normalizePlannerServiceType(data.serviceType);
+
+    if (!Number.isInteger(dayNumber) || dayNumber <= 0) {
+      throw new BadRequestException('A valid day number is required');
+    }
+
+    if (!serviceType) {
+      throw new BadRequestException('A valid service type is required');
+    }
+
+    const [item, targetItinerary] = await Promise.all([
+      this.prisma.quoteItem.findFirst({
+        where: {
+          id: itemId,
+          quoteId: quote.id,
+        },
+        include: {
+          service: {
+            include: {
+              serviceType: true,
+            },
+          },
+        },
+      }),
+      this.prisma.itinerary.findFirst({
+        where: {
+          quoteId: quote.id,
+          dayNumber,
+        },
+      }),
+    ]);
+
+    if (!item) {
+      throw new BadRequestException('Quote item not found');
+    }
+
+    if (!targetItinerary) {
+      throw new BadRequestException('Target itinerary day not found');
+    }
+
+    if (this.getPlannerServiceType(item.service) !== serviceType) {
+      throw new BadRequestException('Item must stay in its current service type lane');
+    }
+
+    const lastTargetItem = await this.prisma.quoteItem.findFirst({
+      where: {
+        quoteId: quote.id,
+        optionId: item.optionId,
+        itineraryId: targetItinerary.id,
+      } as any,
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    } as any);
+
+    const movedItem = await this.prisma.quoteItem.update({
+      where: { id: item.id },
+      data: {
+        itineraryId: targetItinerary.id,
+        sortOrder: (lastTargetItem?.sortOrder ?? -1) + 1,
+      } as any,
+      include: {
+        itinerary: true,
+        service: {
+          include: {
+            serviceType: true,
+          },
+        },
+      },
+    } as any);
+
+    return {
+      quoteId: quote.id,
+      itemId: movedItem.id,
+      day: dayNumber,
+      serviceType,
+      itineraryId: targetItinerary.id,
     };
   }
 

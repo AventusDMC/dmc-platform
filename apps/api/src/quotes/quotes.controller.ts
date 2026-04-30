@@ -142,6 +142,11 @@ type ReorderQuoteItemsBody = {
   orderedItemIds: string[];
 };
 
+type MoveQuoteItemBody = {
+  day: number;
+  serviceType: string;
+};
+
 type CreateQuoteOptionBody = {
   name?: string;
   notes?: string;
@@ -533,6 +538,26 @@ export class QuotesController {
       day: Number(body.day),
       serviceType: body.serviceType,
       orderedItemIds: Array.isArray(body.orderedItemIds) ? body.orderedItemIds : [],
+    }, actor);
+  }
+
+  @Patch(':id/items/:itemId/move')
+  @Roles('admin', 'viewer', 'finance')
+  async moveItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: MoveQuoteItemBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.moveItem(id, itemId, {
+      day: Number(body.day),
+      serviceType: body.serviceType,
     }, actor);
   }
 

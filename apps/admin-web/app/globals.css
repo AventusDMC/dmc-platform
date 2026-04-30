@@ -13987,6 +13987,13 @@ textarea:focus,
   border-width: 0 0 1px;
   border-radius: 0;
   background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quote-service-lane-drag-over {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: rgba(239, 246, 255, 0.72);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.1);
 }
 
 .quote-service-lane-head {

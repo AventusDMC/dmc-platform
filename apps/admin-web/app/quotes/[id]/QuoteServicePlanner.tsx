@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
@@ -219,6 +219,16 @@ type LivePricingSummary = {
   totalSell: number;
   pricePerPax: number;
 };
+
+type ServiceLaneDragData = {
+  type: 'item' | 'lane';
+  dayId: string;
+  dayNumber: number;
+  category: ServicePlannerCategory;
+  itemId?: string;
+};
+
+type ServiceLaneOrders = Record<string, string[]>;
 
 type QuoteItemInitialValues = {
   serviceId: string;
@@ -515,6 +525,23 @@ function getServiceSupplierLabel(item: QuoteItem) {
   return item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
 }
 
+function buildServiceLaneId(dayId: string, category: ServicePlannerCategory) {
+  return `${dayId}::${category}`;
+}
+
+function getLaneItemIds(items: QuoteItem[], dayId: string, category: ServicePlannerCategory) {
+  return items
+    .filter((item) => item.itineraryId === dayId && getQuoteServiceCategoryKey(item.service) === category)
+    .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))
+    .map((item) => item.id);
+}
+
+function getOrderedLaneItems(items: QuoteItem[], laneOrder: string[]) {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
+  return laneOrder.map((id) => itemById.get(id)).filter((item): item is QuoteItem => Boolean(item));
+}
+
 function AddServiceEditorPanel({
   category,
   label,
@@ -626,163 +653,132 @@ function EditServiceEditorPanel({
 }
 
 function AssignedServicesTable({
-  apiBaseUrl,
-  quoteId,
+  dayId,
   dayNumber,
   items,
+  laneOrders,
   currency,
   onEdit,
   onRemove,
   onAdd,
   deletingItemId,
 }: {
-  apiBaseUrl: string;
-  quoteId: string;
+  dayId: string;
   dayNumber: number;
   items: QuoteItem[];
+  laneOrders: ServiceLaneOrders;
   currency: Quote['quoteCurrency'];
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
   onAdd: (category: ServicePlannerCategory) => void;
   deletingItemId?: string;
 }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 6,
-      },
-    }),
-  );
-  const [orderByCategory, setOrderByCategory] = useState<Partial<Record<ServicePlannerCategory, string[]>>>({});
-  const [reorderError, setReorderError] = useState('');
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
     label: SERVICE_PLANNER_TAB_LABELS[category],
     items: items.filter((item) => getQuoteServiceCategoryKey(item.service) === category),
   }));
 
-  useEffect(() => {
-    setOrderByCategory((current) => {
-      const next = { ...current };
-
-      for (const group of groupedCategories) {
-        const currentIds = next[group.category] || [];
-        const incomingIds = group.items.map((item) => item.id);
-        next[group.category] = [
-          ...currentIds.filter((id) => incomingIds.includes(id)),
-          ...incomingIds.filter((id) => !currentIds.includes(id)),
-        ];
-      }
-
-      return next;
-    });
-  }, [items]);
-
-  function getOrderedItems(category: ServicePlannerCategory, laneItems: QuoteItem[]) {
-    const laneOrder = orderByCategory[category] || laneItems.map((item) => item.id);
-    const itemById = new Map(laneItems.map((item) => [item.id, item]));
-
-    return laneOrder.map((id) => itemById.get(id)).filter((item): item is QuoteItem => Boolean(item));
-  }
-
-  async function handleDragEnd(category: ServicePlannerCategory, event: DragEndEvent) {
-    const { active, over } = event;
-
-    if (!over || active.id === over.id) {
-      return;
-    }
-
-    const laneOrder = orderByCategory[category] || groupedCategories.find((group) => group.category === category)?.items.map((item) => item.id) || [];
-    const oldIndex = laneOrder.indexOf(String(active.id));
-    const newIndex = laneOrder.indexOf(String(over.id));
-
-    if (oldIndex === -1 || newIndex === -1) {
-      return;
-    }
-
-    const nextOrder = arrayMove(laneOrder, oldIndex, newIndex);
-    setReorderError('');
-    setOrderByCategory((current) => {
-      return {
-        ...current,
-        [category]: nextOrder,
-      };
-    });
-
-    try {
-      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items/reorder`, {
-        method: 'PATCH',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          day: dayNumber,
-          serviceType: category,
-          orderedItemIds: nextOrder,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not persist service order.'));
-      }
-    } catch (caughtError) {
-      setOrderByCategory((current) => ({
-        ...current,
-        [category]: laneOrder,
-      }));
-      setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not persist service order.');
-    }
-  }
-
   return (
     <div className="quote-service-visual-board">
-      {reorderError ? <p className="form-error">{reorderError}</p> : null}
       {groupedCategories.map((group) => {
-        const orderedItems = getOrderedItems(group.category, group.items);
+        const laneId = buildServiceLaneId(dayId, group.category);
+        const laneOrder = laneOrders[laneId] || group.items.map((item) => item.id);
+        const orderedItems = getOrderedLaneItems(group.items, laneOrder);
 
         return (
-          <section key={group.category} className={`quote-service-lane quote-service-lane-${group.category}`}>
-            <div className="quote-service-lane-head">
-              <div>
-                <span>{group.label}</span>
-                <strong>{group.items.length}</strong>
-              </div>
-              <button type="button" className="quote-service-lane-add" onClick={() => onAdd(group.category)}>
-                Add {group.label}
-              </button>
-            </div>
-
-            {orderedItems.length === 0 ? (
-              <button type="button" className="quote-service-empty-add" onClick={() => onAdd(group.category)}>
-                <span aria-hidden="true">+</span>
-                Add {group.label}
-              </button>
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => handleDragEnd(group.category, event)}
-              >
-                <SortableContext items={orderedItems.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
-                  <div className="quote-service-card-row">
-                    {orderedItems.map((item) => (
-                      <SortableServiceCard
-                        key={item.id}
-                        item={item}
-                        currency={currency}
-                        deletingItemId={deletingItemId}
-                        onEdit={onEdit}
-                        onRemove={onRemove}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </section>
+          <ServiceLane
+            key={group.category}
+            dayId={dayId}
+            dayNumber={dayNumber}
+            category={group.category}
+            label={group.label}
+            orderedItems={orderedItems}
+            currency={currency}
+            deletingItemId={deletingItemId}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onRemove={onRemove}
+          />
         );
       })}
     </div>
+  );
+}
+
+function ServiceLane({
+  dayId,
+  dayNumber,
+  category,
+  label,
+  orderedItems,
+  currency,
+  deletingItemId,
+  onAdd,
+  onEdit,
+  onRemove,
+}: {
+  dayId: string;
+  dayNumber: number;
+  category: ServicePlannerCategory;
+  label: string;
+  orderedItems: QuoteItem[];
+  currency: Quote['quoteCurrency'];
+  deletingItemId?: string;
+  onAdd: (category: ServicePlannerCategory) => void;
+  onEdit: (item: QuoteItem) => void;
+  onRemove: (item: QuoteItem) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: buildServiceLaneId(dayId, category),
+    data: {
+      type: 'lane',
+      dayId,
+      dayNumber,
+      category,
+    } satisfies ServiceLaneDragData,
+  });
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`quote-service-lane quote-service-lane-${category}${isOver ? ' quote-service-lane-drag-over' : ''}`}
+    >
+      <div className="quote-service-lane-head">
+        <div>
+          <span>{label}</span>
+          <strong>{orderedItems.length}</strong>
+        </div>
+        <button type="button" className="quote-service-lane-add" onClick={() => onAdd(category)}>
+          Add {label}
+        </button>
+      </div>
+
+      {orderedItems.length === 0 ? (
+        <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
+          <span aria-hidden="true">+</span>
+          Add {label}
+        </button>
+      ) : (
+        <SortableContext items={orderedItems.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
+          <div className="quote-service-card-row">
+            {orderedItems.map((item) => (
+              <SortableServiceCard
+                key={item.id}
+                item={item}
+                dayId={dayId}
+                dayNumber={dayNumber}
+                category={category}
+                currency={currency}
+                deletingItemId={deletingItemId}
+                onEdit={onEdit}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      )}
+    </section>
   );
 }
 
@@ -804,12 +800,18 @@ function buildSortableTransform(transform: ReturnType<typeof useSortable>['trans
 
 function SortableServiceCard({
   item,
+  dayId,
+  dayNumber,
+  category,
   currency,
   deletingItemId,
   onEdit,
   onRemove,
 }: {
   item: QuoteItem;
+  dayId: string;
+  dayNumber: number;
+  category: ServicePlannerCategory;
   currency: Quote['quoteCurrency'];
   deletingItemId?: string;
   onEdit: (item: QuoteItem) => void;
@@ -817,6 +819,13 @@ function SortableServiceCard({
 }) {
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
+    data: {
+      type: 'item',
+      itemId: item.id,
+      dayId,
+      dayNumber,
+      category,
+    } satisfies ServiceLaneDragData,
   });
 
   return (
@@ -996,16 +1005,26 @@ function ScopePlanner({
   plannerState: ScopePlannerState;
 }) {
   const router = useRouter();
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+  );
   const buildStepHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) =>
     buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, step, params);
+  const [localItems, setLocalItems] = useState<QuoteItem[]>(scope.items);
+  const [laneOrders, setLaneOrders] = useState<ServiceLaneOrders>({});
+  const [reorderError, setReorderError] = useState('');
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
     ...summary,
-    items: scope.items.filter((item) => item.itineraryId === summary.day.id),
+    items: localItems.filter((item) => item.itineraryId === summary.day.id),
   }));
-  const unassignedItems = scope.items.filter((item) => !item.itineraryId);
-  const unresolvedItems = scope.items.filter((item) => item.service.supplierId === 'import-itinerary-system');
-  const workflow = buildServiceWorkflowState(scope.items, plannerProps.quote.quoteType);
+  const unassignedItems = localItems.filter((item) => !item.itineraryId);
+  const unresolvedItems = localItems.filter((item) => item.service.supplierId === 'import-itinerary-system');
+  const workflow = buildServiceWorkflowState(localItems, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
@@ -1022,6 +1041,141 @@ function ScopePlanner({
       ).length
     );
   }, 0);
+
+  useEffect(() => {
+    setLocalItems(scope.items);
+  }, [scope.items]);
+
+  useEffect(() => {
+    setLaneOrders((current) => {
+      const next = { ...current };
+
+      for (const summary of readiness.daySummaries) {
+        for (const category of SERVICE_PLANNER_TABS) {
+          const laneId = buildServiceLaneId(summary.day.id, category);
+          const incomingIds = getLaneItemIds(localItems, summary.day.id, category);
+          const currentIds = next[laneId] || [];
+          next[laneId] = [
+            ...currentIds.filter((id) => incomingIds.includes(id)),
+            ...incomingIds.filter((id) => !currentIds.includes(id)),
+          ];
+        }
+      }
+
+      return next;
+    });
+  }, [localItems, plannerProps.quote.itineraries]);
+
+  async function persistLaneOrder(dayNumber: number, category: ServicePlannerCategory, orderedItemIds: string[]) {
+    if (orderedItemIds.length === 0) {
+      return;
+    }
+
+    const response = await fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/items/reorder`, {
+      method: 'PATCH',
+      headers: buildAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        day: dayNumber,
+        serviceType: category,
+        orderedItemIds,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await getErrorMessage(response, 'Could not persist service order.'));
+    }
+  }
+
+  async function handleServiceDragEnd(event: DragEndEvent) {
+    const activeData = event.active.data.current as ServiceLaneDragData | undefined;
+    const overData = event.over?.data.current as ServiceLaneDragData | undefined;
+
+    if (!activeData?.itemId || !overData) {
+      return;
+    }
+
+    if (activeData.category !== overData.category) {
+      setReorderError('Move services within the same service type lane.');
+      return;
+    }
+
+    const sourceLaneId = buildServiceLaneId(activeData.dayId, activeData.category);
+    const targetLaneId = buildServiceLaneId(overData.dayId, overData.category);
+    const sourceOrder = laneOrders[sourceLaneId] || getLaneItemIds(localItems, activeData.dayId, activeData.category);
+    const targetOrder = laneOrders[targetLaneId] || getLaneItemIds(localItems, overData.dayId, overData.category);
+    const activeId = activeData.itemId;
+
+    if (sourceLaneId === targetLaneId) {
+      const oldIndex = sourceOrder.indexOf(activeId);
+      const newIndex = sourceOrder.indexOf(String(event.over?.id || ''));
+
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+        return;
+      }
+
+      const nextOrder = arrayMove(sourceOrder, oldIndex, newIndex);
+      const previousLaneOrders = laneOrders;
+      setReorderError('');
+      setLaneOrders((current) => ({ ...current, [sourceLaneId]: nextOrder }));
+
+      try {
+        await persistLaneOrder(activeData.dayNumber, activeData.category, nextOrder);
+      } catch (caughtError) {
+        setLaneOrders(previousLaneOrders);
+        setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not persist service order.');
+      }
+
+      return;
+    }
+
+    const sourceNextOrder = sourceOrder.filter((id) => id !== activeId);
+    const targetWithoutActive = targetOrder.filter((id) => id !== activeId);
+    const targetIndex = overData.itemId ? targetWithoutActive.indexOf(overData.itemId) : -1;
+    const insertIndex = targetIndex >= 0 ? targetIndex : targetWithoutActive.length;
+    const targetNextOrder = [
+      ...targetWithoutActive.slice(0, insertIndex),
+      activeId,
+      ...targetWithoutActive.slice(insertIndex),
+    ];
+    const previousItems = localItems;
+    const previousLaneOrders = laneOrders;
+
+    setReorderError('');
+    setLocalItems((current) =>
+      current.map((item) => (item.id === activeId ? { ...item, itineraryId: overData.dayId } : item)),
+    );
+    setLaneOrders((current) => ({
+      ...current,
+      [sourceLaneId]: sourceNextOrder,
+      [targetLaneId]: targetNextOrder,
+    }));
+
+    try {
+      const response = await fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/items/${activeId}/move`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          day: overData.dayNumber,
+          serviceType: overData.category,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not move quote service.'));
+      }
+
+      await persistLaneOrder(activeData.dayNumber, activeData.category, sourceNextOrder);
+      await persistLaneOrder(overData.dayNumber, overData.category, targetNextOrder);
+    } catch (caughtError) {
+      setLocalItems(previousItems);
+      setLaneOrders(previousLaneOrders);
+      setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not move quote service.');
+    }
+  }
 
   function openAddPanel(day: QuoteReadinessDay, category: ServicePlannerCategory) {
     const action = DAY_WORKFLOW_ACTIONS.find((entry) => entry.category === category);
@@ -1138,6 +1292,8 @@ function ScopePlanner({
 
       <div className="quote-service-planner-shell">
         <div className="quote-service-day-column">
+          {reorderError ? <p className="form-error">{reorderError}</p> : null}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>
       {daySummaries.map((summary) => {
         const completeness = dayCompletenessRules.map((rule) => ({
           ...rule,
@@ -1185,10 +1341,10 @@ function ScopePlanner({
                   </div>
                 </div>
                 <AssignedServicesTable
-                  apiBaseUrl={plannerProps.apiBaseUrl}
-                  quoteId={plannerProps.quote.id}
+                  dayId={summary.day.id}
                   dayNumber={summary.day.dayNumber}
                   items={summary.items}
+                  laneOrders={laneOrders}
                   currency={plannerProps.quote.quoteCurrency}
                   deletingItemId={deletingItemId || undefined}
                   onAdd={(category) => openAddPanel(summary.day, category)}
@@ -1262,6 +1418,7 @@ function ScopePlanner({
           </RowDetailsPanel>
         );
       })}
+          </DndContext>
         </div>
 
         <aside className="quote-service-editor-panel">
