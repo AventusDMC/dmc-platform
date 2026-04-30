@@ -4288,6 +4288,418 @@ h1 {
   vertical-align: middle;
 }
 
+/* Admin visual refresh: spacious ERP defaults without touching business logic */
+:root {
+  --admin-page-max: 1600px;
+  --admin-card-radius: 12px;
+  --admin-card-padding: 24px;
+  --admin-field-height: 46px;
+  --admin-row-gap: 18px;
+  --admin-page-padding: 32px;
+}
+
+.admin-shell {
+  background: #f6f8fb;
+}
+
+.admin-sidebar {
+  gap: 1.5rem;
+  padding: 1.6rem 1.15rem;
+}
+
+.admin-sidebar-brand {
+  padding: 0.35rem 0.55rem 1.25rem;
+}
+
+.admin-sidebar-copy {
+  max-width: 16rem;
+  font-size: 0.9rem;
+}
+
+.admin-sidebar-nav,
+.admin-sidebar-subnav {
+  gap: 0.65rem;
+}
+
+.admin-top-nav-link {
+  min-height: 58px;
+  padding: 0.85rem 0.95rem;
+  border-radius: var(--admin-card-radius);
+}
+
+.admin-top-nav-link strong {
+  font-size: 0.96rem;
+}
+
+.admin-top-nav-link span {
+  max-width: 15rem;
+}
+
+.admin-top-nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.admin-top-nav-link-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.admin-top-nav-link-active span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.admin-main-shell {
+  min-width: 0;
+}
+
+.site-header {
+  padding: 1.4rem var(--admin-page-padding) 0;
+}
+
+.admin-topbar,
+.admin-subnav-shell {
+  border-radius: var(--admin-card-radius);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.admin-topbar {
+  align-items: center;
+  min-height: 76px;
+  padding: 1.15rem 1.35rem;
+}
+
+.admin-subnav-shell {
+  padding: 1rem 1.1rem;
+}
+
+.admin-subnav {
+  gap: 0.65rem;
+}
+
+.admin-subnav-link {
+  min-height: 42px;
+  padding: 0.72rem 1rem;
+}
+
+.page,
+.panel,
+.workspace-shell-card,
+.executive-dashboard-page,
+.booking-ops-workspace-page,
+.panel.quote-workspace-page {
+  max-width: var(--admin-page-max);
+}
+
+.page {
+  padding: var(--admin-page-padding);
+}
+
+.panel {
+  padding-inline: 0;
+}
+
+.page-header,
+.panel-header,
+.workspace-section-head,
+.dashboard-panel-header,
+.entity-card-header {
+  gap: 18px;
+  margin-bottom: 1.35rem;
+}
+
+.workspace-shell,
+.settings-stack,
+.reports-dashboard,
+.dashboard-main-grid,
+.dashboard-column,
+.dashboard-list,
+.reports-list-grid,
+.detail-grid,
+.leads-list,
+.entity-list {
+  gap: 20px;
+}
+
+.detail-card,
+.entity-card,
+.lead-card,
+.workspace-section,
+.workspace-sidebar-card,
+.workspace-summary,
+.dashboard-panel,
+.dashboard-section-card,
+.dashboard-kpi-card,
+.dashboard-stat-card,
+.dashboard-card,
+.executive-dashboard-section-card,
+.booking-ops-panel-card,
+.booking-ops-sidebar-card,
+.quote-dashboard-header,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-step-shell,
+.quote-pricing-summary-card,
+.quote-builder-health-card,
+.tab-panel-card,
+.lead-form,
+.entity-form,
+.form-fieldset,
+.branding-section,
+.inline-create-panel,
+.invoice-card,
+.catalog-card,
+.service-card,
+.costing-card,
+.quote-item-row,
+.reports-alert-row {
+  border-color: #dfe5ee;
+  border-radius: var(--admin-card-radius);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 26px rgba(15, 23, 42, 0.04);
+}
+
+.detail-card,
+.workspace-section,
+.workspace-sidebar-card,
+.workspace-summary,
+.dashboard-panel,
+.dashboard-section-card,
+.dashboard-card,
+.executive-dashboard-section-card,
+.booking-ops-panel-card,
+.booking-ops-sidebar-card,
+.quote-dashboard-header,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-step-shell,
+.quote-pricing-summary-card,
+.quote-builder-health-card,
+.tab-panel-card,
+.lead-form,
+.entity-form,
+.form-fieldset,
+.branding-section,
+.inline-create-panel {
+  padding: var(--admin-card-padding);
+}
+
+.workspace-section h2,
+.dashboard-panel-header h2,
+.detail-card h2 {
+  margin-bottom: 0.85rem;
+}
+
+.section-copy,
+.detail-copy,
+.form-helper,
+.table-subcopy {
+  line-height: 1.6;
+}
+
+.entity-form,
+.lead-form {
+  gap: var(--admin-row-gap);
+  margin-bottom: 2rem;
+}
+
+.form-row,
+.form-row-3,
+.form-row-4 {
+  gap: var(--admin-row-gap);
+}
+
+.lead-form label,
+.entity-form label,
+.reports-filter-bar label {
+  gap: 0.55rem;
+  color: #344054;
+  font-weight: 650;
+}
+
+input,
+select,
+textarea,
+.lead-form input,
+.entity-form input,
+.entity-form select,
+.entity-form textarea,
+.lead-form textarea {
+  min-height: var(--admin-field-height);
+  padding: 0.78rem 0.95rem;
+  border-color: #d8dee8;
+}
+
+textarea,
+.entity-form textarea,
+.lead-form textarea {
+  min-height: 110px;
+}
+
+.checkbox-field input,
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 0;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.secondary-link,
+.lead-form button,
+.entity-form button,
+.invoice-portal-primary-button,
+.dashboard-toolbar-link {
+  min-height: 42px;
+  padding: 0.72rem 1rem;
+  border-radius: 10px;
+}
+
+.reports-filter-bar {
+  align-items: end;
+  gap: 16px;
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid #dfe5ee;
+  border-radius: var(--admin-card-radius);
+  background: #ffffff;
+}
+
+.reports-filter-bar input {
+  min-width: 190px;
+}
+
+.table-wrap,
+.table-scroll,
+.data-table-wrapper,
+.dashboard-table-wrapper {
+  border: 1px solid #dfe5ee;
+  border-radius: var(--admin-card-radius);
+  background: #ffffff;
+}
+
+.data-table,
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table {
+  border: 0;
+  border-radius: 0;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) td,
+.data-table th,
+.data-table td,
+.reports-visual-table th,
+.reports-visual-table td {
+  padding: 1rem 1.05rem;
+  border-bottom: 1px solid #e8edf3;
+  vertical-align: middle;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
+.data-table th,
+.reports-visual-table th {
+  background: #f7f9fc;
+  color: #475467;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:hover td,
+.data-table tbody tr:hover td,
+.reports-visual-table tbody tr:hover td {
+  background: #f9fbfe;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:last-child td,
+.data-table tbody tr:last-child td,
+.reports-visual-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty-state,
+.catalog-empty-state,
+.quote-builder-empty-state,
+.quote-service-empty-state,
+.booking-ops-empty-state,
+.executive-dashboard-empty-state {
+  padding: 1.35rem;
+  color: #667085;
+}
+
+.dashboard-grid,
+.dashboard-summary-grid,
+.dashboard-kpi-grid,
+.dashboard-quick-links {
+  gap: 20px;
+}
+
+.admin-dashboard-page {
+  max-width: var(--admin-page-max);
+}
+
+.page.admin-dashboard-shell {
+  padding: var(--admin-page-padding);
+}
+
+@media (min-width: 980px) {
+  .admin-shell {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 860px) and (max-width: 1199px) {
+  .form-row-3,
+  .form-row-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .form-row-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .form-row-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 979px) {
+  :root {
+    --admin-page-padding: 20px;
+  }
+
+  .site-header {
+    padding-inline: var(--admin-page-padding);
+  }
+
+  .admin-topbar {
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --admin-card-padding: 16px;
+    --admin-page-padding: 14px;
+  }
+
+  .reports-filter-bar {
+    padding: 14px;
+  }
+
+  .reports-filter-bar input {
+    min-width: 0;
+  }
+}
+
 .table-action-row {
   display: flex;
   gap: 0.45rem;
