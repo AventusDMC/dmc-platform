@@ -4700,6 +4700,505 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   }
 }
 
+/* Modern SaaS polish layer */
+:root {
+  --saas-bg: #f3f6fb;
+  --saas-bg-soft: #f8fafd;
+  --saas-surface: rgba(255, 255, 255, 0.92);
+  --saas-surface-solid: #ffffff;
+  --saas-border: rgba(148, 163, 184, 0.22);
+  --saas-border-strong: rgba(100, 116, 139, 0.24);
+  --saas-text: #172033;
+  --saas-muted: #667085;
+  --saas-muted-soft: #8792a2;
+  --saas-accent: #168dbc;
+  --saas-accent-strong: #0f79a6;
+  --saas-accent-soft: rgba(31, 163, 214, 0.12);
+  --saas-focus: rgba(31, 163, 214, 0.18);
+  --saas-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 44px rgba(15, 23, 42, 0.055);
+  --saas-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.035), 0 10px 28px rgba(15, 23, 42, 0.045);
+  --saas-radius: 16px;
+  --saas-radius-sm: 12px;
+  --background: var(--saas-bg);
+  --foreground: var(--saas-muted);
+  --text: var(--saas-text);
+  --border: var(--saas-border);
+  --accent: #1FA3D6;
+  --admin-card-radius: var(--saas-radius);
+  --admin-card-padding: 28px;
+  --admin-field-height: 48px;
+  --admin-row-gap: 20px;
+  --admin-page-padding: 36px;
+}
+
+body,
+.admin-shell,
+.admin-main-shell,
+.admin-content-shell {
+  background:
+    radial-gradient(circle at 22% 0%, rgba(31, 163, 214, 0.08), transparent 34rem),
+    linear-gradient(180deg, #f8fbff 0%, var(--saas-bg) 42%, #eef3f9 100%);
+  color: var(--saas-muted);
+}
+
+body {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.admin-sidebar {
+  margin: 18px 0 18px 18px;
+  min-height: calc(100vh - 36px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(10, 35, 64, 0.98) 0%, rgba(6, 27, 51, 0.98) 56%, rgba(8, 22, 41, 0.98) 100%);
+  box-shadow: 0 24px 60px rgba(6, 27, 51, 0.18);
+}
+
+.admin-sidebar-brand {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-sidebar-copy {
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.55;
+}
+
+.admin-top-nav-link {
+  position: relative;
+  overflow: hidden;
+  min-height: 62px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.84);
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.admin-top-nav-link:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.admin-top-nav-link-active {
+  background: linear-gradient(135deg, rgba(31, 163, 214, 0.22), rgba(255, 255, 255, 0.08));
+  color: #ffffff;
+}
+
+.admin-top-nav-link-active::before {
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  background: #38bdf8;
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.38);
+}
+
+.admin-sidebar-footer {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.site-header {
+  padding: 24px var(--admin-page-padding) 0;
+}
+
+.admin-topbar,
+.admin-subnav-shell {
+  border: 1px solid var(--saas-border);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--saas-shadow-subtle);
+  backdrop-filter: blur(14px);
+}
+
+.admin-topbar {
+  min-height: 84px;
+  padding: 18px 22px;
+}
+
+.admin-subnav-shell {
+  padding: 14px;
+}
+
+.admin-subnav-link,
+.secondary-button,
+.secondary-link,
+.dashboard-toolbar-link,
+.dashboard-quick-link {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.78);
+  color: #344054;
+  box-shadow: inset 0 0 0 1px var(--saas-border);
+  transition: background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.admin-subnav-link:hover,
+.secondary-button:hover,
+.secondary-link:hover,
+.dashboard-toolbar-link:hover,
+.dashboard-quick-link:hover {
+  transform: translateY(-1px);
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--saas-border-strong), var(--saas-shadow-subtle);
+}
+
+.admin-subnav-link-active,
+.quote-dashboard-tab-active,
+.booking-dashboard-tab-active,
+.reports-sort-links .active {
+  background: linear-gradient(135deg, rgba(31, 163, 214, 0.14), rgba(255, 255, 255, 0.92));
+  color: var(--saas-accent-strong);
+  box-shadow: inset 0 0 0 1px rgba(31, 163, 214, 0.28);
+}
+
+.page,
+.panel,
+.workspace-shell-card,
+.executive-dashboard-page,
+.booking-ops-workspace-page,
+.panel.quote-workspace-page {
+  max-width: 1640px;
+}
+
+.page {
+  padding: var(--admin-page-padding);
+}
+
+.panel-header,
+.page-header,
+.workspace-section-head,
+.dashboard-panel-header {
+  margin-bottom: 1.5rem;
+}
+
+.page h1,
+.section-title,
+.workspace-shell-title {
+  color: var(--saas-text);
+  font-size: clamp(2.05rem, 3.4vw, 3.45rem);
+  line-height: 1.04;
+  font-weight: 820;
+}
+
+.admin-subnav-title {
+  color: var(--saas-text);
+  font-size: clamp(1.35rem, 2vw, 1.75rem);
+  line-height: 1.15;
+  font-weight: 780;
+}
+
+.workspace-section h2,
+.dashboard-panel-header h2,
+.detail-card h2,
+.entity-card h2,
+.lead-card h2 {
+  color: var(--saas-text);
+  font-size: 1.32rem;
+  line-height: 1.25;
+}
+
+.copy,
+.section-copy,
+.detail-copy,
+.admin-subnav-copy,
+.form-helper,
+.table-subcopy,
+.entity-card p,
+.lead-card p {
+  color: var(--saas-muted);
+  line-height: 1.68;
+}
+
+.eyebrow {
+  margin-bottom: 0.65rem;
+  color: var(--saas-accent);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+.workspace-shell,
+.settings-stack,
+.reports-dashboard,
+.dashboard-main-grid,
+.dashboard-column,
+.dashboard-list,
+.reports-list-grid,
+.detail-grid,
+.leads-list,
+.entity-list {
+  gap: 24px;
+}
+
+.detail-card,
+.entity-card,
+.lead-card,
+.workspace-section,
+.workspace-sidebar-card,
+.workspace-summary,
+.dashboard-panel,
+.dashboard-section-card,
+.dashboard-kpi-card,
+.dashboard-stat-card,
+.dashboard-card,
+.executive-dashboard-section-card,
+.booking-ops-panel-card,
+.booking-ops-sidebar-card,
+.quote-dashboard-header,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-step-shell,
+.quote-pricing-summary-card,
+.quote-builder-health-card,
+.tab-panel-card,
+.lead-form,
+.entity-form,
+.form-fieldset,
+.branding-section,
+.inline-create-panel,
+.invoice-card,
+.catalog-card,
+.service-card,
+.costing-card,
+.quote-item-row,
+.reports-alert-row {
+  border: 1px solid var(--saas-border);
+  border-radius: var(--saas-radius);
+  background: var(--saas-surface);
+  box-shadow: var(--saas-shadow-card);
+}
+
+.detail-card,
+.workspace-section,
+.workspace-sidebar-card,
+.workspace-summary,
+.dashboard-panel,
+.dashboard-section-card,
+.dashboard-card,
+.executive-dashboard-section-card,
+.booking-ops-panel-card,
+.booking-ops-sidebar-card,
+.quote-dashboard-header,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-step-shell,
+.quote-pricing-summary-card,
+.quote-builder-health-card,
+.tab-panel-card,
+.lead-form,
+.entity-form,
+.form-fieldset,
+.branding-section,
+.inline-create-panel {
+  padding: var(--admin-card-padding);
+}
+
+.entity-card:hover,
+.lead-card:hover,
+.reports-alert-row:hover,
+.dashboard-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(31, 163, 214, 0.2);
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.085);
+}
+
+.entity-form,
+.lead-form {
+  gap: 22px;
+}
+
+.form-row,
+.form-row-3,
+.form-row-4 {
+  gap: 20px;
+}
+
+.lead-form label,
+.entity-form label,
+.reports-filter-bar label,
+.form-field-stack label {
+  color: #344054;
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+input,
+select,
+textarea,
+.lead-form input,
+.entity-form input,
+.entity-form select,
+.entity-form textarea,
+.lead-form textarea {
+  min-height: var(--admin-field-height);
+  border-color: rgba(148, 163, 184, 0.32);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--saas-text);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover,
+.lead-form input:hover,
+.entity-form input:hover,
+.entity-form select:hover,
+.entity-form textarea:hover,
+.lead-form textarea:hover {
+  border-color: rgba(100, 116, 139, 0.42);
+  background: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.lead-form input:focus,
+.entity-form input:focus,
+.entity-form select:focus,
+.entity-form textarea:focus,
+.lead-form textarea:focus {
+  border-color: rgba(31, 163, 214, 0.58);
+  background: #ffffff;
+  box-shadow: 0 0 0 4px var(--saas-focus);
+}
+
+.primary-button,
+.lead-form button,
+.entity-form button,
+.invoice-portal-primary-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #1FA3D6, #168DBC);
+  box-shadow: 0 14px 28px rgba(31, 163, 214, 0.22);
+}
+
+.primary-button:hover,
+.lead-form button:hover,
+.entity-form button:hover,
+.invoice-portal-primary-button:hover {
+  background: linear-gradient(135deg, #1b98c9, #0f79a6);
+  box-shadow: 0 16px 34px rgba(31, 163, 214, 0.28);
+  transform: translateY(-1px);
+}
+
+.danger-button {
+  border-color: rgba(220, 38, 38, 0.2);
+  border-radius: 13px;
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.reports-filter-bar {
+  gap: 18px;
+  padding: 20px;
+  border-color: var(--saas-border);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--saas-shadow-subtle);
+}
+
+.table-wrap,
+.table-scroll,
+.data-table-wrapper,
+.dashboard-table-wrapper {
+  overflow: hidden;
+  overflow-x: auto;
+  border: 1px solid var(--saas-border);
+  border-radius: var(--saas-radius);
+  background: var(--saas-surface-solid);
+  box-shadow: var(--saas-shadow-subtle);
+}
+
+.data-table,
+.reports-visual-table {
+  min-width: 760px;
+  border: 0;
+  background: transparent;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
+.data-table th,
+.reports-visual-table th {
+  background: #f9fbfd;
+  color: #667085;
+  font-size: 0.78rem;
+  letter-spacing: 0.035em;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) th,
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) td,
+.data-table th,
+.data-table td,
+.reports-visual-table th,
+.reports-visual-table td {
+  padding: 1.08rem 1.15rem;
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}
+
+.data-table td,
+.reports-visual-table td {
+  color: #344054;
+}
+
+table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:hover td,
+.data-table tbody tr:hover td,
+.reports-visual-table tbody tr:hover td {
+  background: #fbfdff;
+}
+
+.empty-state,
+.catalog-empty-state,
+.quote-builder-empty-state,
+.quote-service-empty-state,
+.booking-ops-empty-state,
+.executive-dashboard-empty-state {
+  padding: 1.5rem;
+  border-color: rgba(148, 163, 184, 0.3);
+  border-radius: var(--saas-radius);
+  background: rgba(248, 250, 252, 0.8);
+  color: var(--saas-muted);
+}
+
+.status-badge,
+.booking-payment-status-badge,
+.invoice-portal-status-badge,
+.page-tab-badge {
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+@media (min-width: 980px) {
+  .admin-shell {
+    grid-template-columns: 318px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 979px) {
+  :root {
+    --admin-page-padding: 22px;
+  }
+
+  .admin-sidebar {
+    margin: 0;
+    min-height: auto;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --admin-card-padding: 18px;
+    --admin-page-padding: 16px;
+  }
+
+  .page h1,
+  .section-title,
+  .workspace-shell-title {
+    font-size: clamp(1.75rem, 10vw, 2.35rem);
+  }
+}
+
 .table-action-row {
   display: flex;
   gap: 0.45rem;
