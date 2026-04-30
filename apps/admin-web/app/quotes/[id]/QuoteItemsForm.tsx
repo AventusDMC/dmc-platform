@@ -748,6 +748,20 @@ export function QuoteItemsForm({
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false;
+  const hasPrimarySelection = isEditing || (isHotelService ? Boolean(hotelId) : Boolean(serviceId));
+  const needsServiceSelection = !isEditing && Boolean(activeServiceType) && activeServiceType !== 'hotel' && !serviceId;
+  const selectionStepTitle =
+    activeServiceType === 'transport'
+      ? 'Choose transport service'
+      : activeServiceType === 'activity'
+        ? 'Choose activity'
+        : activeServiceType === 'meal'
+          ? 'Choose meal'
+          : activeServiceType === 'guide'
+            ? 'Choose guide service'
+            : activeServiceType === 'externalPackage'
+              ? 'Choose external package'
+              : 'Choose service';
 
   const selectedHotel = hotels.find((hotel) => hotel.id === hotelId) || null;
   const hotelRatePreviewByHotelId = useMemo(() => {
@@ -1503,6 +1517,10 @@ export function QuoteItemsForm({
         ? `${apiBaseUrl}/quotes/${quoteId}/options/${optionId}/items${itemId ? `/${itemId}` : ''}`
         : `${apiBaseUrl}/quotes/${quoteId}/items${itemId ? `/${itemId}` : ''}`;
 
+      if (!hasPrimarySelection) {
+        throw new Error(isHotelService ? 'Choose a hotel before configuring this item.' : 'Choose a service before configuring this item.');
+      }
+
       if (isHotelService) {
         if (!hotelId || !contractId || !seasonName || !roomCategoryId || !occupancyType || !mealPlan || !hotelCheckInDate || !hotelCheckOutDate) {
           throw new Error('Complete the hotel pricing selection.');
@@ -1779,7 +1797,7 @@ export function QuoteItemsForm({
             ) : null}
           </div>
 
-          {!(activeServiceType === 'hotel' && !isEditing) ? (
+          {isEditing ? (
             <label>
               {activeServiceType === 'transport'
                 ? 'Transport selector'
@@ -1812,6 +1830,89 @@ export function QuoteItemsForm({
                 )}
               </select>
             </label>
+          ) : null}
+
+          {!isEditing && activeServiceType && activeServiceType !== 'hotel' ? (
+            <section className="quote-hotel-step-panel quote-hotel-step-panel-primary">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 1</p>
+                  <h3>{selectionStepTitle}</h3>
+                  <p className="detail-copy">Select the service first. Route, date, pax, pricing, and markup fields appear next.</p>
+                </div>
+                {serviceId ? <span className="page-tab-badge">Selected</span> : null}
+              </div>
+
+              {filteredServices.length === 0 ? (
+                <div className="quote-service-empty-state">
+                  <strong>No services available</strong>
+                  <p>Create a catalog service for this type before adding it to the quote.</p>
+                </div>
+              ) : (
+                <div className="quote-service-selection-stack">
+                  <div className="quote-smart-suggestion-section">
+                    <div className="quote-smart-suggestion-section-head">
+                      <h5>Suggested for this day</h5>
+                      <span>{Math.min(3, filteredServices.length)}</span>
+                    </div>
+                    <div className="quote-service-picker-grid" role="listbox" aria-label={selectionStepTitle}>
+                      {filteredServices.slice(0, 3).map((service) => {
+                        const isSelected = service.id === serviceId;
+
+                        return (
+                          <button
+                            key={service.id}
+                            type="button"
+                            className={isSelected ? 'quote-hotel-choice-card quote-hotel-choice-card-active' : 'quote-hotel-choice-card'}
+                            onClick={() => {
+                              setServiceId(service.id);
+                              if (getServiceTypeKey(service) === 'transport') {
+                                setTransportSuggestionOverridden(true);
+                              }
+                            }}
+                            role="option"
+                            aria-selected={isSelected}
+                          >
+                            <strong>{service.name}</strong>
+                            <span>{service.serviceType?.name || service.category || service.unitType}</span>
+                            <em>{service.currency} {Number(service.baseCost || 0).toFixed(2)}</em>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="quote-smart-suggestion-section">
+                    <div className="quote-smart-suggestion-section-head">
+                      <h5>Recent services</h5>
+                      <span>0</span>
+                    </div>
+                    <p className="detail-copy">Recent selections from the suggestion drawer appear before this form.</p>
+                  </div>
+
+                  <label>
+                    All services
+                    <select
+                      value={serviceId}
+                      onChange={(event) => {
+                        setServiceId(event.target.value);
+                        if (activeServiceType === 'transport') {
+                          setTransportSuggestionOverridden(true);
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">Select {SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label || 'service'}</option>
+                      {filteredServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} ({service.unitType})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </section>
           ) : null}
 
           {!isEditing && preferredServiceId && activeServiceType !== 'hotel' ? (
@@ -1866,7 +1967,7 @@ export function QuoteItemsForm({
                         aria-selected={isSelected}
                       >
                         <strong>{hotel.name}</strong>
-                        <span>{[hotel.city, hotel.category].filter(Boolean).join(' · ') || 'Hotel property'}</span>
+                        <span>{[hotel.city, hotel.category].filter(Boolean).join(' - ') || 'Hotel property'}</span>
                         <em>{preview ? `Rates from ${preview.currency} ${Number(preview.cost || 0).toFixed(2)}` : 'No rate preview'}</em>
                       </button>
                     );
@@ -1883,7 +1984,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {(!isHotelService || hotelId) ? (
+          {hasPrimarySelection ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -1933,7 +2034,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {(!isHotelService || hotelId) ? (
+          {hasPrimarySelection ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -1975,7 +2076,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {!isHotelService && !isMealService ? (
+          {hasPrimarySelection && !isHotelService && !isMealService ? (
             <details className="quote-advanced-settings" open={useOverride}>
               <summary>Advanced cost settings</summary>
 
@@ -2027,6 +2128,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
+          {hasPrimarySelection ? (
           <div className="form-row form-row-3">
             <label>
               Pax count
@@ -2047,8 +2149,9 @@ export function QuoteItemsForm({
               </label>
             ) : null}
           </div>
+          ) : null}
 
-          {isGuideService ? (
+          {hasPrimarySelection && isGuideService ? (
             <div className="form-row form-row-3">
               <label>
                 Guide type
@@ -2080,7 +2183,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isMealService ? (
+          {hasPrimarySelection && isMealService ? (
             <>
               <div className="form-row form-row-4">
                 <label>
@@ -2118,7 +2221,7 @@ export function QuoteItemsForm({
             </>
           ) : null}
 
-          {isExternalPackageService ? (
+          {hasPrimarySelection && isExternalPackageService ? (
             <>
               <div className="form-row form-row-4">
                 <label>
@@ -2277,7 +2380,7 @@ export function QuoteItemsForm({
             </>
           ) : null}
 
-          {isActivityService ? (
+          {hasPrimarySelection && isActivityService ? (
             <>
               <div className="form-row form-row-3">
                 <label>
@@ -2521,7 +2624,7 @@ export function QuoteItemsForm({
                 <h4>{activeHotelSourceRate ? activeHotelSourceRate.roomCategoryLabel : 'No source rate selected yet'}</h4>
                 <p className="detail-copy">
                   {activeHotelSourceRate
-                    ? `${activeHotelSourceRate.mealPlan} board · ${activeHotelSourceRate.occupancyType} occupancy`
+                    ? `${activeHotelSourceRate.mealPlan} board - ${activeHotelSourceRate.occupancyType} occupancy`
                     : 'Use the hotel workflow modal to inspect contract rates and choose one as the source reference.'}
                 </p>
               </div>
@@ -2673,7 +2776,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isTransportService ? (
+          {hasPrimarySelection && isTransportService ? (
             <div className="form-row">
               <label>
                 Transport selector
@@ -2710,7 +2813,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isTransportService ? (
+          {hasPrimarySelection && isTransportService ? (
             <div className="form-row">
               <label>
                 Legacy route text
@@ -2727,7 +2830,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isTransportService ? (
+          {hasPrimarySelection && isTransportService ? (
             <div className="quote-selected-transport-card">
               <div className="form-row form-row-3">
                 <label>
@@ -2801,7 +2904,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {isTransportService &&
+          {hasPrimarySelection && isTransportService &&
           resolvedTransportPricing?.pricingMode === 'capacity_unit' &&
           resolvedTransportPricing.unitCount &&
           resolvedTransportPricing.discountedBaseCost !== undefined ? (
@@ -2810,7 +2913,7 @@ export function QuoteItemsForm({
             </p>
           ) : null}
 
-          {isTransportService && transportCandidates.length > 0 ? (
+          {hasPrimarySelection && isTransportService && transportCandidates.length > 0 ? (
             <details className="quote-advanced-settings" open={transportSuggestionOverridden}>
               <summary>Advanced transport suggestions</summary>
 
@@ -2862,23 +2965,30 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={
-              isSubmitting ||
-              isLoadingTransportCost ||
-              filteredServices.length === 0 ||
-              !selectedService ||
-              (isHotelService && !selectedHotelRate && !manualHotelRateDraft)
-            }
-          >
-            {isSubmitting ? 'Saving...' : submitLabel}
-          </button>
+          {hasPrimarySelection ? (
+            <button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                isLoadingTransportCost ||
+                filteredServices.length === 0 ||
+                !selectedService ||
+                (isHotelService && !selectedHotelRate && !manualHotelRateDraft)
+              }
+            >
+              {isSubmitting ? 'Saving...' : submitLabel}
+            </button>
+          ) : needsServiceSelection ? (
+            <div className="quote-service-empty-state">
+              <strong>Select a service to continue</strong>
+              <p>Configuration and pricing controls will appear after this step.</p>
+            </div>
+          ) : null}
 
-          {isHotelService && !selectedHotelRate && !manualHotelRateDraft ? (
+          {hasPrimarySelection && isHotelService && !selectedHotelRate && !manualHotelRateDraft ? (
             <p className="form-error">No hotel rate matches the selected contract, season, room category, occupancy, and meal plan.</p>
           ) : null}
-          {isTransportService && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (
+          {hasPrimarySelection && isTransportService && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (
             <p className="form-error">No transport pricing rule matches the selected route, service type, and pax count.</p>
           ) : null}
           {error ? <p className="form-error">{error}</p> : null}

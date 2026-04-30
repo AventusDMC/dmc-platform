@@ -566,7 +566,7 @@ function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerP
     return plannerProps.hotels.slice(0, 24).map((hotel) => ({
       id: `hotel:${hotel.id}`,
       label: hotel.name,
-      detail: [hotel.city, hotel.category].filter(Boolean).join(' · ') || 'Hotel',
+      detail: [hotel.city, hotel.category].filter(Boolean).join(' - ') || 'Hotel',
       category,
       source: 'hotel',
       hotelId: hotel.id,
@@ -590,7 +590,7 @@ function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerP
     .map((service) => ({
       id: `service:${service.id}`,
       label: service.name,
-      detail: `${getServiceTypeLabel(service)} · ${formatLiveMoney(service.baseCost, service.currency)}`,
+      detail: `${getServiceTypeLabel(service)} - ${formatLiveMoney(service.baseCost, service.currency)}`,
       category,
       source: 'service',
       serviceId: service.id,

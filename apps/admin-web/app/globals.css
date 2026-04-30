@@ -14373,6 +14373,17 @@ textarea:focus,
   padding-right: 2px;
 }
 
+.quote-service-selection-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.quote-service-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
 .quote-hotel-choice-card {
   display: grid;
   gap: 6px;
