@@ -13,7 +13,7 @@ import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
-import { type ExternalPackageFormState } from './external-package-ui';
+import { getExternalPackagePricingBasisForService, type ExternalPackageFormState } from './external-package-ui';
 import {
   buildQuoteWorkspaceHref,
   buildQuoteReadinessModel,
@@ -904,9 +904,10 @@ function buildQuickAddPayload(
     payload.currency = service.currency;
   } else if (category === 'externalPackage') {
     const country = item.label.match(/\b(?:in|for)\s+([A-Z][A-Za-z\s]+)$/)?.[1]?.trim() || service.name.replace(/external package/i, '').trim() || 'External destination';
+    const pricingBasis = getExternalPackagePricingBasisForService(service);
     payload.country = country;
     payload.supplierName = service.supplierId || null;
-    payload.pricingBasis = 'PER_GROUP';
+    payload.pricingBasis = pricingBasis;
     payload.netCost = Number(service.baseCost || 0);
     payload.currency = service.currency;
     payload.clientDescription = item.label || service.name;

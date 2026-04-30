@@ -7,6 +7,7 @@ import {
   getExternalPackageCalculatedCost,
   getExternalPackageClientLines,
   getExternalPackageInternalLines,
+  getExternalPackagePricingBasisForService,
   getExternalPackagePricingBasisLabel,
   isExternalPackageCategory,
   validateExternalPackageFormState,
@@ -45,6 +46,19 @@ describe('external package quote builder UI', () => {
     ]);
     assert.equal(getExternalPackagePricingBasisLabel('PER_PERSON'), 'Per person');
     assert.equal(getExternalPackagePricingBasisLabel('PER_GROUP'), 'Per group');
+  });
+
+  it('infers external package pricing basis from catalog service unit type', () => {
+    assert.equal(getExternalPackagePricingBasisForService({ unitType: 'per_person' }), 'PER_PERSON');
+    assert.equal(getExternalPackagePricingBasisForService({ unitType: 'per_group' }), 'PER_GROUP');
+    assert.equal(getExternalPackagePricingBasisForService({ unitType: 'PER GROUP' }), 'PER_GROUP');
+    assert.equal(
+      getExternalPackagePricingBasisForService({
+        unitType: null,
+        serviceType: { code: 'EXTERNAL_PACKAGE', name: 'External Package' },
+      }),
+      'PER_PERSON',
+    );
   });
 
   it('builds a save payload that preserves all external package fields', () => {

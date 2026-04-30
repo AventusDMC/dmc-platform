@@ -15,6 +15,7 @@ import {
   ExternalPackageFormState,
   ExternalPackagePricingBasis,
   getExternalPackageCalculatedCost,
+  getExternalPackagePricingBasisForService,
   isExternalPackageCategory,
   validateExternalPackageFormState,
 } from './external-package-ui';
@@ -703,6 +704,7 @@ export function QuoteItemsForm({
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
   const hotelCostLastRequestedKeyRef = useRef<string | null>(null);
+  const externalPackageDefaultsServiceIdRef = useRef<string | null>(isEditing ? initialService?.id || null : null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
 
   const transportCandidates = useMemo(() => {
@@ -1056,11 +1058,29 @@ export function QuoteItemsForm({
     }
 
     if (isExternalPackageService) {
+      const isNewExternalPackageService = externalPackageDefaultsServiceIdRef.current !== selectedService.id;
+      const inferredPricingBasis = getExternalPackagePricingBasisForService(selectedService);
       setExternalPackage((current) => ({
         ...current,
         currency: current.currency || selectedService.currency || 'USD',
+        pricingBasis: isNewExternalPackageService && !isEditing ? inferredPricingBasis : current.pricingBasis,
+        netCost: current.netCost.trim() ? current.netCost : String(selectedService.baseCost || 0),
+        supplierName: current.supplierName.trim() ? current.supplierName : selectedService.supplierId || '',
+        clientDescription: current.clientDescription.trim() ? current.clientDescription : selectedService.name,
       }));
-      setBaseCost(externalPackage.netCost.trim() || String(selectedService.baseCost || ''));
+      externalPackageDefaultsServiceIdRef.current = selectedService.id;
+      const resolvedNetCost = externalPackage.netCost.trim() || String(selectedService.baseCost || 0);
+      setBaseCost(
+        String(
+          getExternalPackageCalculatedCost(
+            {
+              pricingBasis: isNewExternalPackageService && !isEditing ? inferredPricingBasis : externalPackage.pricingBasis,
+              netCost: resolvedNetCost,
+            },
+            Number(paxCount || defaultPaxCount || 1),
+          ) ?? '',
+        ),
+      );
       return;
     }
 
@@ -1088,7 +1108,9 @@ export function QuoteItemsForm({
     isMealService,
     isTransportService,
     externalPackage.netCost,
+    externalPackage.pricingBasis,
     hotelCostCalculation,
+    paxCount,
     mealCost,
     mealCurrency,
     mealName,

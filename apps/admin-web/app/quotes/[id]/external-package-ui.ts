@@ -23,6 +23,23 @@ export const EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS: Array<{ value: ExternalPack
   { value: 'PER_GROUP', label: 'Per group' },
 ];
 
+export function getExternalPackagePricingBasisForService(service: {
+  unitType?: string | null;
+  category?: string | null;
+  serviceType?: { name?: string | null; code?: string | null } | null;
+}): ExternalPackagePricingBasis {
+  const pricingText = [service.unitType, service.category, service.serviceType?.code, service.serviceType?.name]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (/\b(per[_\s-]?group|group)\b/.test(pricingText)) {
+    return 'PER_GROUP';
+  }
+
+  return 'PER_PERSON';
+}
+
 function normalizeServiceTypeText(value: string | null | undefined) {
   return String(value || '')
     .trim()
