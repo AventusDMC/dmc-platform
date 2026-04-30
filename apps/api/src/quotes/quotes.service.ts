@@ -181,6 +181,12 @@ type CreateQuoteItemInput = {
 
 type UpdateQuoteItemInput = Partial<CreateQuoteItemInput>;
 
+type ReorderQuoteItemsInput = {
+  day: number;
+  serviceType: string;
+  orderedItemIds: string[];
+};
+
 type GenerateQuoteScenariosInput = {
   quoteId: string;
   paxCounts: number[];
@@ -2116,10 +2122,89 @@ export class QuotesService {
           },
         },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
     } as any);
+  }
+
+  async reorderItems(quoteId: string, data: ReorderQuoteItemsInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const dayNumber = Number(data.day);
+    const serviceType = this.normalizePlannerServiceType(data.serviceType);
+    const orderedItemIds = Array.isArray(data.orderedItemIds)
+      ? data.orderedItemIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+
+    if (!Number.isInteger(dayNumber) || dayNumber <= 0) {
+      throw new BadRequestException('A valid day number is required');
+    }
+
+    if (!serviceType) {
+      throw new BadRequestException('A valid service type is required');
+    }
+
+    if (orderedItemIds.length === 0) {
+      throw new BadRequestException('orderedItemIds must contain at least one item');
+    }
+
+    if (new Set(orderedItemIds).size !== orderedItemIds.length) {
+      throw new BadRequestException('orderedItemIds must not contain duplicates');
+    }
+
+    const items = await this.prisma.quoteItem.findMany({
+      where: {
+        id: {
+          in: orderedItemIds,
+        },
+      },
+      include: {
+        itinerary: true,
+        service: {
+          include: {
+            serviceType: true,
+          },
+        },
+      },
+    });
+
+    if (items.length !== orderedItemIds.length) {
+      throw new BadRequestException('All ordered items must exist');
+    }
+
+    const optionIds = new Set(items.map((item) => item.optionId || 'base'));
+
+    if (optionIds.size !== 1) {
+      throw new BadRequestException('Items must belong to the same quote option scope');
+    }
+
+    for (const item of items) {
+      if (item.quoteId !== quote.id) {
+        throw new BadRequestException('Items must belong to the selected quote');
+      }
+
+      if (!item.itinerary || item.itinerary.dayNumber !== dayNumber) {
+        throw new BadRequestException('Items must belong to the selected day');
+      }
+
+      if (this.getPlannerServiceType(item.service) !== serviceType) {
+        throw new BadRequestException('Items must belong to the selected service type lane');
+      }
+    }
+
+    await this.prisma.$transaction(
+      orderedItemIds.map((itemId, index) =>
+        this.prisma.quoteItem.update({
+          where: { id: itemId },
+          data: { sortOrder: index } as any,
+        }),
+      ),
+    );
+
+    return {
+      quoteId: quote.id,
+      day: dayNumber,
+      serviceType,
+      orderedItemIds,
+    };
   }
 
   async findSuggestedServices(quoteId: string, itemId: string) {
@@ -4018,9 +4103,7 @@ export class QuotesService {
           },
         },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
     } as any);
   }
 
@@ -4616,6 +4699,56 @@ export class QuotesService {
     const normalizedCategory = this.getNormalizedServiceCategory(service).replace(/[\s-]+/g, '_');
 
     return normalizedCategory === 'external_package' || normalizedCategory.includes('external_package') || normalizedCategory.includes('partner_package');
+  }
+
+  private getPlannerServiceType(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
+    if (this.isHotelService(service)) {
+      return 'hotel';
+    }
+
+    if (this.isTransportService(service)) {
+      return 'transport';
+    }
+
+    if (this.isMealService(service)) {
+      return 'meal';
+    }
+
+    if (this.isActivityService(service)) {
+      return 'activity';
+    }
+
+    if (this.isGuideService(service)) {
+      return 'guide';
+    }
+
+    return 'other';
+  }
+
+  private normalizePlannerServiceType(value: string | null | undefined) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+    if (normalized === 'stay' || normalized === 'accommodation') {
+      return 'hotel';
+    }
+
+    if (normalized === 'transfer' || normalized === 'vehicle') {
+      return 'transport';
+    }
+
+    if (normalized === 'experience' || normalized === 'tour' || normalized === 'excursion') {
+      return 'activity';
+    }
+
+    if (normalized === 'meals' || normalized === 'dining') {
+      return 'meal';
+    }
+
+    if (['hotel', 'transport', 'activity', 'meal', 'guide', 'other'].includes(normalized)) {
+      return normalized;
+    }
+
+    return '';
   }
 
   private getNormalizedServiceCategory(service: {
@@ -6311,7 +6444,7 @@ export class QuotesService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
       }), [] as any[]),
       safeLoad('itineraries', () => prismaClient.itinerary.findMany({
         where: { quoteId: quote.id },
@@ -6342,7 +6475,7 @@ export class QuotesService {
                 },
               },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
           },
         },
         orderBy: { createdAt: 'asc' },

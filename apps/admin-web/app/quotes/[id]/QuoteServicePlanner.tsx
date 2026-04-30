@@ -132,6 +132,7 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   jordanPassCovered?: boolean;
   jordanPassSavingsJod?: number;
   markupPercent: number;
+  sortOrder?: number | null;
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
@@ -625,6 +626,9 @@ function EditServiceEditorPanel({
 }
 
 function AssignedServicesTable({
+  apiBaseUrl,
+  quoteId,
+  dayNumber,
   items,
   currency,
   onEdit,
@@ -632,6 +636,9 @@ function AssignedServicesTable({
   onAdd,
   deletingItemId,
 }: {
+  apiBaseUrl: string;
+  quoteId: string;
+  dayNumber: number;
   items: QuoteItem[];
   currency: Quote['quoteCurrency'];
   onEdit: (item: QuoteItem) => void;
@@ -647,6 +654,7 @@ function AssignedServicesTable({
     }),
   );
   const [orderByCategory, setOrderByCategory] = useState<Partial<Record<ServicePlannerCategory, string[]>>>({});
+  const [reorderError, setReorderError] = useState('');
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
     label: SERVICE_PLANNER_TAB_LABELS[category],
@@ -677,31 +685,58 @@ function AssignedServicesTable({
     return laneOrder.map((id) => itemById.get(id)).filter((item): item is QuoteItem => Boolean(item));
   }
 
-  function handleDragEnd(category: ServicePlannerCategory, event: DragEndEvent) {
+  async function handleDragEnd(category: ServicePlannerCategory, event: DragEndEvent) {
     const { active, over } = event;
 
     if (!over || active.id === over.id) {
       return;
     }
 
+    const laneOrder = orderByCategory[category] || groupedCategories.find((group) => group.category === category)?.items.map((item) => item.id) || [];
+    const oldIndex = laneOrder.indexOf(String(active.id));
+    const newIndex = laneOrder.indexOf(String(over.id));
+
+    if (oldIndex === -1 || newIndex === -1) {
+      return;
+    }
+
+    const nextOrder = arrayMove(laneOrder, oldIndex, newIndex);
+    setReorderError('');
     setOrderByCategory((current) => {
-      const laneOrder = current[category] || [];
-      const oldIndex = laneOrder.indexOf(String(active.id));
-      const newIndex = laneOrder.indexOf(String(over.id));
-
-      if (oldIndex === -1 || newIndex === -1) {
-        return current;
-      }
-
       return {
         ...current,
-        [category]: arrayMove(laneOrder, oldIndex, newIndex),
+        [category]: nextOrder,
       };
     });
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items/reorder`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          day: dayNumber,
+          serviceType: category,
+          orderedItemIds: nextOrder,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not persist service order.'));
+      }
+    } catch (caughtError) {
+      setOrderByCategory((current) => ({
+        ...current,
+        [category]: laneOrder,
+      }));
+      setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not persist service order.');
+    }
   }
 
   return (
     <div className="quote-service-visual-board">
+      {reorderError ? <p className="form-error">{reorderError}</p> : null}
       {groupedCategories.map((group) => {
         const orderedItems = getOrderedItems(group.category, group.items);
 
@@ -1150,6 +1185,9 @@ function ScopePlanner({
                   </div>
                 </div>
                 <AssignedServicesTable
+                  apiBaseUrl={plannerProps.apiBaseUrl}
+                  quoteId={plannerProps.quote.id}
+                  dayNumber={summary.day.dayNumber}
                   items={summary.items}
                   currency={plannerProps.quote.quoteCurrency}
                   deletingItemId={deletingItemId || undefined}

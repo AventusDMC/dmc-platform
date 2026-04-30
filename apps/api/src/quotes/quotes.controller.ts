@@ -136,6 +136,12 @@ type AssignQuoteItemServiceBody = {
   serviceId: string;
 };
 
+type ReorderQuoteItemsBody = {
+  day: number;
+  serviceType: string;
+  orderedItemIds: string[];
+};
+
 type CreateQuoteOptionBody = {
   name?: string;
   notes?: string;
@@ -508,6 +514,26 @@ export class QuotesController {
   @Roles('admin', 'viewer', 'finance')
   cancelQuote(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
     return this.quotesService.cancelQuote(id, actor);
+  }
+
+  @Patch(':id/items/reorder')
+  @Roles('admin', 'viewer', 'finance')
+  async reorderItems(
+    @Param('id') id: string,
+    @Body() body: ReorderQuoteItemsBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.reorderItems(id, {
+      day: Number(body.day),
+      serviceType: body.serviceType,
+      orderedItemIds: Array.isArray(body.orderedItemIds) ? body.orderedItemIds : [],
+    }, actor);
   }
 
   @Post(':id/requote')

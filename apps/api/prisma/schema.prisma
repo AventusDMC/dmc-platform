@@ -908,6 +908,7 @@ model QuoteItem {
   sellPrice                 Float?
   totalCost                 Float
   totalSell                 Float
+  sortOrder                 Int                     @default(0)
   createdAt                 DateTime                @default(now())
   updatedAt                 DateTime                @updatedAt
   appliedVehicleRateId      String?                 @db.Uuid
@@ -978,6 +979,7 @@ model QuoteItem {
   @@index([activityId])
   @@index([entranceFeeId])
   @@index([hotelId])
+  @@index([quoteId, itineraryId, sortOrder])
   @@index([quoteId, optionId])
   @@index([roomCategoryId])
   @@map("quote_items")
