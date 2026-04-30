@@ -204,6 +204,7 @@ describe('quote detail page regression', () => {
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",
+      "{ category: 'externalPackage', label: 'Add External Package' }",
       'itineraryDayNumber={day.dayNumber}',
       'itineraryId={day.id}',
       'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',

@@ -162,7 +162,7 @@ export type QuoteReadinessModel = {
   unassignedItems: QuoteReadinessItem[];
 };
 
-export type ServicePlannerCategory = 'hotel' | 'transport' | 'guide' | 'activity' | 'meal' | 'other';
+export type ServicePlannerCategory = 'hotel' | 'transport' | 'guide' | 'activity' | 'meal' | 'externalPackage' | 'other';
 
 type BuildWorkspaceHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) => string;
 type QuoteWorkspaceStepTarget = 'overview' | 'itinerary' | 'services' | 'pricing' | 'review';
@@ -195,6 +195,10 @@ function titleCase(value: string) {
 
 export function getQuoteServiceCategoryKey(service: Pick<QuoteReadinessService, 'category' | 'serviceType'>): ServicePlannerCategory {
   const normalized = normalizeCategory(service.serviceType?.code || service.serviceType?.name || service.category);
+
+  if (normalized.includes('external_package') || normalized.includes('external package') || normalized.includes('partner_package') || normalized.includes('partner package')) {
+    return 'externalPackage';
+  }
 
   if (normalized.includes('hotel') || normalized.includes('accommodation')) {
     return 'hotel';

@@ -68,7 +68,8 @@ describe('activities quote and booking UI integration regression', () => {
   it('keeps activity add/edit affordances and existing quote service handlers wired', () => {
     expectSourceContains(quotePlannerSource, [
       "{ category: 'activity', label: 'Add Activity' }",
-      'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? plannerProps.preferredCatalogServiceId : undefined}',
+      "{ category: 'externalPackage', label: 'Add External Package' }",
+      'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}',
       '<QuoteItemsForm',
       '<QuoteItemCard',
     ]);
@@ -93,6 +94,7 @@ describe('activities quote and booking UI integration regression', () => {
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",
+      "{ category: 'externalPackage', label: 'Add External Package' }",
     ]);
     assert.doesNotMatch(quotePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'|workspace-tab-panel workspace-panel-shared/);
   });
@@ -148,11 +150,10 @@ describe('activities quote and booking UI integration regression', () => {
       '<AssignedServicesTable',
       '<AddServiceEditorPanel',
       '<EditServiceEditorPanel',
-      '<table className="quote-service-assigned-table">',
-      '<th>Route</th>',
+      "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal', 'externalPackage'];",
       'const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);',
       '<strong>Select a service type to begin</strong>',
-      'No services yet. Add Hotel, Transport, Activity, or Meal.',
+      'Choose Add Hotel, Transport, Activity, Meal, or External Package from a day card.',
     ]);
     assert.doesNotMatch(quotePlannerSource, /function DayWorkflowAction|openServiceEditorKey|initialActivePanel|<DayWorkflowAction|Route\/Notes|quote-service-day-action`\}/);
     assert.doesNotMatch(bookingCssSource, /quote-service-day-action\[open\]|grid-template-columns: minmax\(0, 1\.45fr\) minmax\(360px, 0\.72fr\)/);
@@ -211,7 +212,7 @@ describe('activities quote and booking UI integration regression', () => {
   });
 
   it('keeps permission and responsive protections around activity workflows', () => {
-    expectSourceContains(quotePlannerSource, ['const showAdminMetrics = props.sessionRole === \'admin\';']);
+    expectSourceContains(quotePlannerSource, ["showAdminMetrics={plannerProps.sessionRole === 'admin'}"]);
     expectSourceContains(quotePageSource, ['sessionRole={session?.role || null}', 'activeTab === \'services\'']);
     expectSourceContains(bookingPageSource, [
       'const allowedTransitions = getAllowedBookingStatusTransitions(booking.status);',

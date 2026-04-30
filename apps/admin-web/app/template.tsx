@@ -9,20 +9,38 @@ type RootTemplateProps = {
   children: ReactNode;
 };
 
+const PUBLIC_ROUTE_PREFIXES = ['/portal', '/invoice', '/proposal', '/q'];
+const PUBLIC_ROUTE_PATHS = new Set(['/login', '/signup', '/accept-invite']);
+const PROTECTED_ADMIN_ROUTE_PREFIXES = ['/admin', '/quotes', '/bookings', '/finance', '/catalog'];
+
+function normalizePathname(value: string | null) {
+  const pathname = value?.trim() || '/';
+  const [withoutQuery] = pathname.split('?');
+  return withoutQuery || '/';
+}
+
+function matchesPathPrefix(pathname: string, prefix: string) {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_ROUTE_PATHS.has(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => matchesPathPrefix(pathname, prefix));
+}
+
+function isProtectedAdminPath(pathname: string) {
+  return pathname === '/' || pathname === '/dashboard' || PROTECTED_ADMIN_ROUTE_PREFIXES.some((prefix) => matchesPathPrefix(pathname, prefix));
+}
+
 export default async function RootTemplate({ children }: RootTemplateProps) {
   const cookieStore = await cookies();
   const requestHeaders = await headers();
-  const pathname = requestHeaders.get('x-dmc-pathname') || '/';
+  const pathname = normalizePathname(requestHeaders.get('x-dmc-pathname') || requestHeaders.get('next-url'));
   const sessionToken = cookieStore.get('dmc_session')?.value || '';
   const session = readSessionActor(sessionToken);
-  const isPublicRoute =
-    pathname === '/login' ||
-    pathname.startsWith('/portal') ||
-    pathname.startsWith('/invoice') ||
-    pathname.startsWith('/proposal') ||
-    pathname.startsWith('/q');
+  const isProtectedAdminRoute = isProtectedAdminPath(pathname);
+  const isPublicRoute = !isProtectedAdminRoute && isPublicPath(pathname);
   const isAgentRoute = pathname.startsWith('/agent');
-  const isDashboardRoute = pathname === '/' || pathname === '/dashboard';
+  const isDashboardRoute = pathname === '/' || pathname === '/dashboard' || pathname === '/admin/dashboard';
 
   if (!isPublicRoute && !session) {
     redirect(`/login?reason=session-expired&next=${encodeURIComponent(pathname)}`);

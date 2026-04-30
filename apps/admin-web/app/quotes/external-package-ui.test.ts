@@ -11,6 +11,7 @@ import {
   isExternalPackageCategory,
   validateExternalPackageFormState,
 } from './[id]/external-package-ui';
+import { getQuoteServiceCategoryKey } from './[id]/quote-readiness';
 
 describe('external package quote builder UI', () => {
   it('recognizes EXTERNAL_PACKAGE services and exposes the expected form fields', () => {
@@ -18,6 +19,7 @@ describe('external package quote builder UI', () => {
 
     assert.equal(isExternalPackageCategory('EXTERNAL_PACKAGE'), true);
     assert.equal(isExternalPackageCategory('External Package'), true);
+    assert.equal(getQuoteServiceCategoryKey({ category: 'External Package', serviceType: { id: 'st-1', name: 'External Package', code: 'EXTERNAL_PACKAGE' } }), 'externalPackage');
     assert.deepEqual(Object.keys(state), [
       'country',
       'supplierName',

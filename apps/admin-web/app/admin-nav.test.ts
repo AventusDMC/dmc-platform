@@ -5,7 +5,7 @@ import path = require('node:path');
 import { fileURLToPath } from 'node:url';
 import { NAV_GROUPS, getActiveNavGroup, getVisibleNavGroups } from './admin-nav';
 
-const layoutSource = readFileSync(new URL('./layout.tsx', import.meta.url), 'utf8');
+const templateSource = readFileSync(new URL('./template.tsx', import.meta.url), 'utf8');
 const loginPageSource = readFileSync(new URL('./login/page.tsx', import.meta.url), 'utf8');
 const middlewareSource = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
 const adminServerSource = readFileSync(new URL('./lib/admin-server.ts', import.meta.url), 'utf8');
@@ -207,8 +207,8 @@ test('admin UI does not link to legacy dashboard aliases', () => {
 });
 
 test('mobile admin navigation hooks and collapse classes exist', () => {
-  assert.match(layoutSource, /className="admin-mobile-nav"/);
-  assert.match(layoutSource, /<summary className="secondary-button">Menu<\/summary>/);
+  assert.match(templateSource, /className="admin-mobile-nav"/);
+  assert.match(templateSource, /<summary className="secondary-button">Menu<\/summary>/);
   assert.match(cssSource, /\.admin-mobile-nav/);
   assert.match(cssSource, /@media \(max-width: 859px\)/);
   assert.match(cssSource, /\.admin-sidebar\s*\{\s*display: none;/);
@@ -219,13 +219,13 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
   const adminLogoWrapperBlock = cssSource.match(/\.admin-brand-logo-wrapper\s*\{[\s\S]*?\n\}/)?.[0] || '';
   const loginLogoBlock = cssSource.match(/\.login-brand-logo\s*\{[\s\S]*?\n\}/)?.[0] || '';
 
-  assert.match(layoutSource, /src="\/axis-logo\.png"/);
-  assert.match(layoutSource, /alt="AXIS"/);
-  assert.match(layoutSource, /className="admin-brand-logo-wrapper"/);
-  assert.match(layoutSource, /className="admin-brand-logo"/);
-  assert.doesNotMatch(layoutSource, /<h1 className="admin-brand-title">AXIS<\/h1>/);
-  assert.match(layoutSource, /Powered by Aventus IT/);
-  assert.match(layoutSource, /className="admin-sidebar-powered"/);
+  assert.match(templateSource, /src="\/axis-logo\.png"/);
+  assert.match(templateSource, /alt="AXIS"/);
+  assert.match(templateSource, /className="admin-brand-logo-wrapper"/);
+  assert.match(templateSource, /className="admin-brand-logo"/);
+  assert.doesNotMatch(templateSource, /<h1 className="admin-brand-title">AXIS<\/h1>/);
+  assert.match(templateSource, /Powered by Aventus IT/);
+  assert.match(templateSource, /className="admin-sidebar-powered"/);
   assert.match(loginPageSource, /src="\/axis-logo\.png"/);
   assert.match(loginPageSource, /className="login-brand-logo-wrapper"/);
   assert.match(loginPageSource, /className="login-brand-logo"/);
@@ -244,6 +244,13 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
   assert.match(loginLogoBlock, /height:\s*auto;/);
   assert.match(loginLogoBlock, /object-fit:\s*contain/);
   assert.doesNotMatch(adminLogoBlock, /overflow:\s*hidden|max-width:\s*80px|max-height:\s*(?:40|78|86)px/);
+});
+
+test('root template classifies admin workspaces as protected shell routes', () => {
+  assert.match(templateSource, /const PROTECTED_ADMIN_ROUTE_PREFIXES = \['\/admin', '\/quotes', '\/bookings', '\/finance', '\/catalog'\]/);
+  assert.match(templateSource, /pathname === '\/admin\/dashboard'/);
+  assert.match(templateSource, /const isPublicRoute = !isProtectedAdminRoute && isPublicPath\(pathname\);/);
+  assert.match(templateSource, /<AdminChromeNav mode="primary" sessionRole=\{session\?\.role\} \/>/);
 });
 
 test('AXIS color system is applied to admin controls and active navigation', () => {
