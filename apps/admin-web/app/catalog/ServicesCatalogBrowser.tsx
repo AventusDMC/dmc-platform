@@ -154,6 +154,10 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
       return true;
     });
   }, [categoryFilter, query, services, typeFilter]);
+  const editingService = useMemo(
+    () => services.find((service) => service.id === editingServiceId) || null,
+    [editingServiceId, services],
+  );
 
   async function handleDelete(service: SupplierService) {
     if (!window.confirm(`Delete ${service.name}?`)) {
@@ -270,7 +274,7 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
                 <button
                   type="button"
                   className="secondary-button"
-                  onClick={() => setEditingServiceId((current) => (current === service.id ? null : service.id))}
+                  onClick={() => setEditingServiceId(service.id)}
                 >
                   Edit
                 </button>
@@ -291,27 +295,6 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
                 </button>
               </div>
 
-              {editingServiceId === service.id ? (
-                <div className="stacked-card catalog-service-edit-panel">
-                  <ServicesForm
-                    apiBaseUrl={apiBaseUrl}
-                    serviceTypes={serviceTypes}
-                    suppliers={suppliers}
-                    serviceId={service.id}
-                    submitLabel="Save service"
-                    initialValues={{
-                      supplierId: service.supplierId,
-                      name: service.name,
-                      category: service.category,
-                      serviceTypeId: service.serviceTypeId,
-                      unitType: service.unitType as 'per_person',
-                      baseCost: String(service.baseCost),
-                      currency: service.currency as SupportedCurrency,
-                    }}
-                  />
-                </div>
-              ) : null}
-
               {ratesServiceId === service.id ? (
                 <ServiceRatesManager
                   apiBaseUrl={apiBaseUrl}
@@ -325,6 +308,42 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
           ))
         )}
       </section>
+
+      {editingService ? (
+        <aside className="catalog-edit-drawer" aria-label={`Edit ${editingService.name}`}>
+          <div className="catalog-edit-drawer-backdrop" onClick={() => setEditingServiceId(null)} />
+          <div className="catalog-edit-drawer-panel">
+            <header className="catalog-edit-drawer-header">
+              <div>
+                <p className="eyebrow">Edit service</p>
+                <h3>{editingService.name}</h3>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setEditingServiceId(null)}>
+                Close
+              </button>
+            </header>
+
+            <div className="catalog-edit-drawer-body">
+              <ServicesForm
+                apiBaseUrl={apiBaseUrl}
+                serviceTypes={serviceTypes}
+                suppliers={suppliers}
+                serviceId={editingService.id}
+                submitLabel="Save service"
+                initialValues={{
+                  supplierId: editingService.supplierId,
+                  name: editingService.name,
+                  category: editingService.category,
+                  serviceTypeId: editingService.serviceTypeId,
+                  unitType: editingService.unitType as 'per_person',
+                  baseCost: String(editingService.baseCost),
+                  currency: editingService.currency as SupportedCurrency,
+                }}
+              />
+            </div>
+          </div>
+        </aside>
+      ) : null}
     </div>
   );
 }
