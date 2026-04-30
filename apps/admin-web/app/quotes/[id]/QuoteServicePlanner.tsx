@@ -597,6 +597,75 @@ function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerP
     }));
 }
 
+function findDefaultPlannerService(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps, suggestion: SmartSuggestionItem) {
+  if (suggestion.serviceId) {
+    return plannerProps.services.find((service) => service.id === suggestion.serviceId) || null;
+  }
+
+  return plannerProps.services.find((service) => getQuoteServiceCategoryKey(service) === category) || null;
+}
+
+function buildQuickAddPayload(
+  item: SmartSuggestionItem,
+  day: QuoteReadinessDay,
+  category: ServicePlannerCategory,
+  plannerProps: QuoteServicePlannerProps,
+) {
+  const service = findDefaultPlannerService(category, plannerProps, item);
+
+  if (!service) {
+    throw new Error(`No ${SERVICE_PLANNER_TAB_LABELS[category].toLowerCase()} catalog service is available for quick add.`);
+  }
+
+  const payload: Record<string, unknown> = {
+    serviceId: service.id,
+    itineraryId: day.id,
+    quantity: 1,
+    paxCount: Math.max(1, plannerProps.totalPax || 1),
+    markupPercent: 20,
+    overrideCost: null,
+    overrideReason: null,
+    useOverride: false,
+    markupAmount: null,
+    sellPrice: null,
+  };
+
+  if (category === 'hotel') {
+    const hotelId = item.hotelId;
+    const contract = hotelId ? plannerProps.hotelContracts.find((entry) => entry.hotelId === hotelId) : null;
+    const rate = contract ? plannerProps.hotelRates.find((entry) => entry.contractId === contract.id) : null;
+
+    if (!hotelId || !contract || !rate) {
+      throw new Error('Choose Configure to select a hotel contract and room rate before adding this hotel.');
+    }
+
+    payload.hotelId = hotelId;
+    payload.contractId = contract.id;
+    payload.seasonName = rate.seasonName;
+    payload.roomCategoryId = rate.roomCategoryId;
+    payload.occupancyType = rate.occupancyType;
+    payload.mealPlan = rate.mealPlan;
+    payload.roomCount = Math.max(1, plannerProps.quote.roomCount || 1);
+    payload.nightCount = Math.max(1, plannerProps.quote.nightCount || 1);
+  } else if (category === 'transport') {
+    const transportServiceType = plannerProps.transportServiceTypes[0];
+
+    if (!transportServiceType || !item.routeId) {
+      throw new Error('Choose Configure to select a route and transport type before adding this transport.');
+    }
+
+    payload.transportServiceTypeId = transportServiceType.id;
+    payload.routeId = item.routeId;
+  } else if (category === 'meal') {
+    payload.customServiceName = item.label;
+    payload.unitCost = service.baseCost;
+    payload.pricingBasis = 'PER_PERSON';
+    payload.currency = service.currency;
+  }
+
+  return payload;
+}
+
 function AddServiceEditorPanel({
   category,
   label,
@@ -678,15 +747,19 @@ function SmartSuggestionsPanel({
   day,
   plannerProps,
   recentSuggestions,
-  onSelect,
+  onQuickAdd,
+  onConfigure,
   onManualSelect,
+  quickAddPendingId,
 }: {
   category: ServicePlannerCategory;
   day: QuoteReadinessDay;
   plannerProps: QuoteServicePlannerProps;
   recentSuggestions: SmartSuggestionItem[];
-  onSelect: (item: SmartSuggestionItem) => void;
+  onQuickAdd: (item: SmartSuggestionItem) => void;
+  onConfigure: (item: SmartSuggestionItem) => void;
   onManualSelect: () => void;
+  quickAddPendingId?: string | null;
 }) {
   const [query, setQuery] = useState('');
   const candidates = getSmartSuggestionCandidates(category, plannerProps);
@@ -702,14 +775,28 @@ function SmartSuggestionsPanel({
       <div className="quote-smart-suggestion-intro">
         <p className="eyebrow">Smart Suggestions</p>
         <h4>{SERVICE_PLANNER_TAB_LABELS[category]} for Day {day.dayNumber}</h4>
-        <p className="detail-copy">Pick a suggestion to open the existing service form with the choice preselected.</p>
+        <p className="detail-copy">Click a suggestion to add it with smart defaults, or configure it first when details matter.</p>
         <button type="button" className="secondary-button" onClick={onManualSelect}>
-          Open blank form
+          Advanced / Configure before adding
         </button>
       </div>
 
-      <SmartSuggestionSection title="Suggested for this day" items={suggested} emptyText="No suggestions available for this service type." onSelect={onSelect} />
-      <SmartSuggestionSection title="Recent services" items={recent} emptyText="Recent choices will appear here as you add services." onSelect={onSelect} />
+      <SmartSuggestionSection
+        title="Suggested for this day"
+        items={suggested}
+        emptyText="No suggestions available for this service type."
+        onQuickAdd={onQuickAdd}
+        onConfigure={onConfigure}
+        quickAddPendingId={quickAddPendingId}
+      />
+      <SmartSuggestionSection
+        title="Recent services"
+        items={recent}
+        emptyText="Recent choices will appear here as you add services."
+        onQuickAdd={onQuickAdd}
+        onConfigure={onConfigure}
+        quickAddPendingId={quickAddPendingId}
+      />
 
       <section className="quote-smart-suggestion-section">
         <div className="quote-smart-suggestion-section-head">
@@ -724,7 +811,15 @@ function SmartSuggestionsPanel({
         />
         <div className="quote-smart-suggestion-list quote-smart-suggestion-list-scroll">
           {filteredCandidates.length > 0 ? (
-            filteredCandidates.map((item) => <SmartSuggestionButton key={item.id} item={item} onSelect={onSelect} />)
+            filteredCandidates.map((item) => (
+              <SmartSuggestionButton
+                key={item.id}
+                item={item}
+                onQuickAdd={onQuickAdd}
+                onConfigure={onConfigure}
+                quickAddPendingId={quickAddPendingId}
+              />
+            ))
           ) : (
             <p className="detail-copy">No matching services found.</p>
           )}
@@ -738,12 +833,16 @@ function SmartSuggestionSection({
   title,
   items,
   emptyText,
-  onSelect,
+  onQuickAdd,
+  onConfigure,
+  quickAddPendingId,
 }: {
   title: string;
   items: SmartSuggestionItem[];
   emptyText: string;
-  onSelect: (item: SmartSuggestionItem) => void;
+  onQuickAdd: (item: SmartSuggestionItem) => void;
+  onConfigure: (item: SmartSuggestionItem) => void;
+  quickAddPendingId?: string | null;
 }) {
   return (
     <section className="quote-smart-suggestion-section">
@@ -753,7 +852,15 @@ function SmartSuggestionSection({
       </div>
       <div className="quote-smart-suggestion-list">
         {items.length > 0 ? (
-          items.map((item) => <SmartSuggestionButton key={item.id} item={item} onSelect={onSelect} />)
+          items.map((item) => (
+            <SmartSuggestionButton
+              key={item.id}
+              item={item}
+              onQuickAdd={onQuickAdd}
+              onConfigure={onConfigure}
+              quickAddPendingId={quickAddPendingId}
+            />
+          ))
         ) : (
           <p className="detail-copy">{emptyText}</p>
         )}
@@ -764,16 +871,27 @@ function SmartSuggestionSection({
 
 function SmartSuggestionButton({
   item,
-  onSelect,
+  onQuickAdd,
+  onConfigure,
+  quickAddPendingId,
 }: {
   item: SmartSuggestionItem;
-  onSelect: (item: SmartSuggestionItem) => void;
+  onQuickAdd: (item: SmartSuggestionItem) => void;
+  onConfigure: (item: SmartSuggestionItem) => void;
+  quickAddPendingId?: string | null;
 }) {
+  const isPending = quickAddPendingId === item.id;
+
   return (
-    <button type="button" className="quote-smart-suggestion-button" onClick={() => onSelect(item)}>
-      <strong>{item.label}</strong>
-      <span>{item.detail}</span>
-    </button>
+    <div className="quote-smart-suggestion-choice">
+      <button type="button" className="quote-smart-suggestion-button" onClick={() => onQuickAdd(item)} disabled={Boolean(quickAddPendingId)}>
+        <strong>{item.label}</strong>
+        <span>{isPending ? 'Adding...' : item.detail}</span>
+      </button>
+      <button type="button" className="quote-smart-suggestion-configure" onClick={() => onConfigure(item)} disabled={Boolean(quickAddPendingId)}>
+        Configure
+      </button>
+    </div>
   );
 }
 
@@ -827,6 +945,7 @@ function AssignedServicesTable({
   onRemove,
   onAdd,
   deletingItemId,
+  recentlyAddedItemId,
 }: {
   dayId: string;
   dayNumber: number;
@@ -837,6 +956,7 @@ function AssignedServicesTable({
   onRemove: (item: QuoteItem) => void;
   onAdd: (category: ServicePlannerCategory) => void;
   deletingItemId?: string;
+  recentlyAddedItemId?: string;
 }) {
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
@@ -861,6 +981,7 @@ function AssignedServicesTable({
             orderedItems={orderedItems}
             currency={currency}
             deletingItemId={deletingItemId}
+            recentlyAddedItemId={recentlyAddedItemId}
             onAdd={onAdd}
             onEdit={onEdit}
             onRemove={onRemove}
@@ -879,6 +1000,7 @@ function ServiceLane({
   orderedItems,
   currency,
   deletingItemId,
+  recentlyAddedItemId,
   onAdd,
   onEdit,
   onRemove,
@@ -890,6 +1012,7 @@ function ServiceLane({
   orderedItems: QuoteItem[];
   currency: Quote['quoteCurrency'];
   deletingItemId?: string;
+  recentlyAddedItemId?: string;
   onAdd: (category: ServicePlannerCategory) => void;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
@@ -936,6 +1059,7 @@ function ServiceLane({
                 category={category}
                 currency={currency}
                 deletingItemId={deletingItemId}
+                recentlyAddedItemId={recentlyAddedItemId}
                 onEdit={onEdit}
                 onRemove={onRemove}
               />
@@ -970,6 +1094,7 @@ function SortableServiceCard({
   category,
   currency,
   deletingItemId,
+  recentlyAddedItemId,
   onEdit,
   onRemove,
 }: {
@@ -979,6 +1104,7 @@ function SortableServiceCard({
   category: ServicePlannerCategory;
   currency: Quote['quoteCurrency'];
   deletingItemId?: string;
+  recentlyAddedItemId?: string;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
 }) {
@@ -996,7 +1122,7 @@ function SortableServiceCard({
   return (
     <article
       ref={setNodeRef}
-      className={`quote-service-mini-card quote-service-sortable-card${isDragging ? ' quote-service-sortable-card-dragging' : ''}`}
+      className={`quote-service-mini-card quote-service-sortable-card${isDragging ? ' quote-service-sortable-card-dragging' : ''}${recentlyAddedItemId === item.id ? ' quote-service-mini-card-added' : ''}`}
       style={{
         transform: buildSortableTransform(transform),
         transition,
@@ -1183,6 +1309,8 @@ function ScopePlanner({
   const [laneOrders, setLaneOrders] = useState<ServiceLaneOrders>({});
   const [reorderError, setReorderError] = useState('');
   const [recentSuggestions, setRecentSuggestions] = useState<SmartSuggestionItem[]>([]);
+  const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
+  const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
     ...summary,
@@ -1372,6 +1500,52 @@ function ScopePlanner({
         selectedRouteId: item.routeId,
       };
     });
+  }
+
+  async function quickAddSuggestion(item: SmartSuggestionItem) {
+    if (!activeServicePanel || activeServicePanel.kind !== 'add' || quickAddPendingId) {
+      return;
+    }
+
+    setRecentSuggestions((current) => [item, ...current.filter((entry) => entry.id !== item.id)].slice(0, 8));
+    setQuickAddPendingId(item.id);
+    setReorderError('');
+
+    try {
+      const payload = buildQuickAddPayload(item, activeServicePanel.day, activeServicePanel.category, plannerProps);
+      const endpoint = activeServicePanel.optionId
+        ? `${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/options/${activeServicePanel.optionId}/items`
+        : `${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/items`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not quick add service.'));
+      }
+
+      const createdItem = await readJsonResponse<QuoteItem>(response, 'Could not read quick-added service.');
+      const laneId = buildServiceLaneId(activeServicePanel.day.id, activeServicePanel.category);
+
+      setLocalItems((current) => [...current.filter((entry) => entry.id !== createdItem.id), createdItem]);
+      setLaneOrders((current) => ({
+        ...current,
+        [laneId]: [...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)), createdItem.id],
+      }));
+      setRecentlyAddedItemId(createdItem.id);
+      setActiveServicePanel(null);
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
+      window.setTimeout(() => setRecentlyAddedItemId((current) => (current === createdItem.id ? null : current)), 1800);
+      router.refresh();
+    } catch (caughtError) {
+      setReorderError(caughtError instanceof Error ? caughtError.message : 'Could not quick add service.');
+    } finally {
+      setQuickAddPendingId(null);
+    }
   }
 
   function openManualAddForm() {
@@ -1565,6 +1739,7 @@ function ScopePlanner({
                   laneOrders={laneOrders}
                   currency={plannerProps.quote.quoteCurrency}
                   deletingItemId={deletingItemId || undefined}
+                  recentlyAddedItemId={recentlyAddedItemId || undefined}
                   onAdd={(category) => openAddPanel(summary.day, category)}
                   onEdit={(item) =>
                     setActiveServicePanel({
@@ -1715,8 +1890,10 @@ function ScopePlanner({
               day={activeServicePanel.day}
               plannerProps={plannerProps}
               recentSuggestions={recentSuggestions}
-              onSelect={openAddFormFromSuggestion}
+              onQuickAdd={quickAddSuggestion}
+              onConfigure={openAddFormFromSuggestion}
               onManualSelect={openManualAddForm}
+              quickAddPendingId={quickAddPendingId}
             />
           ) : activeServicePanel?.kind === 'add' ? (
             <div key={activeServicePanel.key}>
