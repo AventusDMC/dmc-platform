@@ -14229,6 +14229,17 @@ textarea:focus,
   scroll-snap-align: start;
 }
 
+.quote-service-mini-card-external-package {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: linear-gradient(180deg, rgba(240, 253, 250, 0.94), #ffffff);
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.09);
+}
+
+.quote-service-mini-card-external-package .quote-service-type-icon {
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+}
+
 .quote-service-sortable-card {
   will-change: transform;
 }
@@ -14333,6 +14344,65 @@ textarea:focus,
   font-size: 1.02rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+}
+
+.quote-service-day-range-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+  font-size: 0.76rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.quote-service-external-package-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.quote-service-external-package-meta span,
+.quote-service-external-package-meta strong,
+.quote-service-external-package-meta em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0.18rem 0.46rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 820;
+}
+
+.quote-service-external-package-meta span {
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+}
+
+.quote-service-external-package-meta strong {
+  background: rgba(31, 163, 214, 0.1);
+  color: #0f6f91;
+}
+
+.quote-service-external-package-meta em {
+  background: rgba(148, 163, 184, 0.14);
+  color: #475467;
+}
+
+.quote-service-card-pricing-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.quote-service-card-pricing-summary span {
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 750;
 }
 
 .quote-service-card-details {

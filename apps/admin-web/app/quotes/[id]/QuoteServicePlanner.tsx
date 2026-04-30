@@ -605,6 +605,29 @@ function getServiceSupplierLabel(item: QuoteItem) {
   return item.externalSupplierName || item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
 }
 
+function isExternalPackageItem(item: QuoteItem) {
+  return getQuoteServiceCategoryKey(item.service) === 'externalPackage';
+}
+
+function getExternalPackageName(item: QuoteItem) {
+  return item.externalPackageName || item.service.name || 'External package';
+}
+
+function getExternalPackageDayRange(item: QuoteItem, fallbackDayNumber?: number | null) {
+  const startDay = item.externalStartDay ?? fallbackDayNumber ?? null;
+  const endDay = item.externalEndDay ?? startDay;
+
+  if (!startDay || !endDay) {
+    return null;
+  }
+
+  return {
+    startDay,
+    endDay,
+    label: startDay === endDay ? `Day ${startDay}` : `Day ${startDay}-${endDay}`,
+  };
+}
+
 function buildServiceLaneId(dayId: string, category: ServicePlannerCategory) {
   return `${dayId}::${category}`;
 }
@@ -1372,6 +1395,10 @@ function SortableServiceCard({
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
 }) {
+  const isExternalPackage = isExternalPackageItem(item);
+  const externalRange = isExternalPackage ? getExternalPackageDayRange(item, dayNumber) : null;
+  const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || item.service.name;
+
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     data: {
@@ -1386,7 +1413,7 @@ function SortableServiceCard({
   return (
     <article
       ref={setNodeRef}
-      className={`quote-service-mini-card quote-service-sortable-card${isDragging ? ' quote-service-sortable-card-dragging' : ''}${recentlyAddedItemId === item.id ? ' quote-service-mini-card-added' : ''}`}
+      className={`quote-service-mini-card quote-service-sortable-card${isExternalPackage ? ' quote-service-mini-card-external-package' : ''}${isDragging ? ' quote-service-sortable-card-dragging' : ''}${recentlyAddedItemId === item.id ? ' quote-service-mini-card-added' : ''}`}
       style={{
         transform: buildSortableTransform(transform),
         transition,
@@ -1397,7 +1424,7 @@ function SortableServiceCard({
           ref={setActivatorNodeRef}
           type="button"
           className="quote-service-drag-handle"
-          aria-label={`Drag ${item.hotel?.name || item.service.name}`}
+          aria-label={`Drag ${displayName}`}
           {...attributes}
           {...listeners}
         >
@@ -1405,11 +1432,28 @@ function SortableServiceCard({
             {SERVICE_PLANNER_ICONS[getQuoteServiceCategoryKey(item.service)] || 'S'}
           </span>
         </button>
+        {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
         {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
       </div>
-      <h5>{item.hotel?.name || item.service.name}</h5>
-      <p className="quote-service-card-supplier">{getServiceSupplierLabel(item)}</p>
-      <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
+      <h5>{displayName}</h5>
+      {isExternalPackage ? (
+        <div className="quote-service-external-package-meta">
+          <span>Multi-day partner package</span>
+          {externalRange ? <strong>Spans {externalRange.label}</strong> : null}
+          <em>{item.externalPackageCountry || 'Country pending'}</em>
+        </div>
+      ) : null}
+      <p className="quote-service-card-supplier">
+        {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
+      </p>
+      <div className="quote-service-card-pricing-summary">
+        <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
+        {isExternalPackage ? (
+          <span>
+            {item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'} | Cost {formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}
+          </span>
+        ) : null}
+      </div>
       <details className="quote-service-card-details">
         <summary>Details</summary>
         <p>{getServiceNotes(item)}</p>
@@ -1770,7 +1814,26 @@ function ScopePlanner({
 
     setReorderError('');
     setLocalItems((current) =>
-      current.map((item) => (item.id === activeId ? { ...item, itineraryId: overData.dayId } : item)),
+      current.map((item) => {
+        if (item.id !== activeId) {
+          return item;
+        }
+
+        if (!isExternalPackageItem(item)) {
+          return { ...item, itineraryId: overData.dayId };
+        }
+
+        const currentStartDay = item.externalStartDay ?? activeData.dayNumber;
+        const currentEndDay = item.externalEndDay ?? currentStartDay;
+        const duration = Math.max(0, currentEndDay - currentStartDay);
+
+        return {
+          ...item,
+          itineraryId: overData.dayId,
+          externalStartDay: overData.dayNumber,
+          externalEndDay: overData.dayNumber + duration,
+        };
+      }),
     );
     setLaneOrders((current) => ({
       ...current,
@@ -1796,6 +1859,8 @@ function ScopePlanner({
 
       await persistLaneOrder(activeData.dayNumber, activeData.category, sourceNextOrder);
       await persistLaneOrder(overData.dayNumber, overData.category, targetNextOrder);
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
+      void refreshScopeItemsFromQuote();
     } catch (caughtError) {
       setLocalItems(previousItems);
       setLaneOrders(previousLaneOrders);

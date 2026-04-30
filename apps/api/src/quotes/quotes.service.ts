@@ -2228,13 +2228,14 @@ export class QuotesService {
       throw new BadRequestException('A valid service type is required');
     }
 
-    const [item, targetItinerary] = await Promise.all([
+    const [item, targetItinerary, targetQuoteItineraryDay] = await Promise.all([
       this.prisma.quoteItem.findFirst({
         where: {
           id: itemId,
           quoteId: quote.id,
         },
         include: {
+          itinerary: true,
           service: {
             include: {
               serviceType: true,
@@ -2248,13 +2249,20 @@ export class QuotesService {
           dayNumber,
         },
       }),
+      (this.prisma as any).quoteItineraryDay.findFirst({
+        where: {
+          quoteId: quote.id,
+          dayNumber,
+          isActive: true,
+        },
+      }),
     ]);
 
     if (!item) {
       throw new BadRequestException('Quote item not found');
     }
 
-    if (!targetItinerary) {
+    if (!targetItinerary && !targetQuoteItineraryDay) {
       throw new BadRequestException('Target itinerary day not found');
     }
 
@@ -2268,18 +2276,31 @@ export class QuotesService {
       where: {
         quoteId: quote.id,
         optionId: item.optionId,
-        itineraryId: targetItinerary.id,
+        itineraryId: targetItinerary?.id ?? null,
       } as any,
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true },
     } as any);
+    const moveData: Record<string, unknown> = {
+      itineraryId: targetItinerary?.id ?? item.itineraryId ?? null,
+      sortOrder: (lastTargetItem?.sortOrder ?? -1) + 1,
+    };
+
+    if (this.isExternalPackageService(hydratedItem.service)) {
+      const currentStartDay = item.externalStartDay ?? item.itinerary?.dayNumber ?? dayNumber;
+      const currentEndDay = item.externalEndDay ?? currentStartDay;
+      const duration = Math.max(0, currentEndDay - currentStartDay);
+      const nextStartDay = dayNumber;
+      const nextEndDay = nextStartDay + duration;
+
+      await this.assertExternalPackageDayRangeWithinQuote(quote.id, nextStartDay, nextEndDay);
+      moveData.externalStartDay = nextStartDay;
+      moveData.externalEndDay = nextEndDay;
+    }
 
     const movedItem = await this.prisma.quoteItem.update({
       where: { id: item.id },
-      data: {
-        itineraryId: targetItinerary.id,
-        sortOrder: (lastTargetItem?.sortOrder ?? -1) + 1,
-      } as any,
+      data: moveData as any,
       include: {
         itinerary: true,
         service: {
@@ -2290,12 +2311,60 @@ export class QuotesService {
       },
     } as any);
 
+    if (targetQuoteItineraryDay) {
+      const existingDayItem = await (this.prisma as any).quoteItineraryDayItem.findFirst({
+        where: {
+          quoteServiceId: item.id,
+        },
+        select: {
+          id: true,
+          dayId: true,
+          sortOrder: true,
+        },
+      });
+      const lastTargetDayItem = await (this.prisma as any).quoteItineraryDayItem.findFirst({
+        where: {
+          dayId: targetQuoteItineraryDay.id,
+          isActive: true,
+        },
+        orderBy: {
+          sortOrder: 'desc',
+        },
+        select: {
+          sortOrder: true,
+        },
+      });
+      const nextSortOrder = (lastTargetDayItem?.sortOrder ?? -1) + 1;
+
+      if (existingDayItem) {
+        await (this.prisma as any).quoteItineraryDayItem.update({
+          where: {
+            id: existingDayItem.id,
+          },
+          data: {
+            dayId: targetQuoteItineraryDay.id,
+            sortOrder: existingDayItem.dayId === targetQuoteItineraryDay.id ? existingDayItem.sortOrder : nextSortOrder,
+            isActive: true,
+          },
+        });
+      } else {
+        await (this.prisma as any).quoteItineraryDayItem.create({
+          data: {
+            dayId: targetQuoteItineraryDay.id,
+            quoteServiceId: item.id,
+            sortOrder: nextSortOrder,
+            isActive: true,
+          },
+        });
+      }
+    }
+
     return {
       quoteId: quote.id,
       itemId: movedItem.id,
       day: dayNumber,
       serviceType,
-      itineraryId: targetItinerary.id,
+      itineraryId: targetItinerary?.id ?? null,
     };
   }
 
@@ -2751,6 +2820,9 @@ export class QuotesService {
       throw new BadRequestException('Quote option does not belong to the selected quote');
     }
 
+    let itemLegacyItinerary = legacyItinerary;
+    let itemQuoteItineraryDay = quoteItineraryDay;
+
     const quantity = Math.max(1, data.quantity || 1);
     const paxCount = Math.max(1, data.paxCount ?? quote.adults + quote.children);
     const roomCount = Math.max(1, data.roomCount ?? quote.roomCount);
@@ -3087,8 +3159,9 @@ export class QuotesService {
         throw new BadRequestException('External package currency is required');
       }
       const netCost = this.normalizeExternalPackageNetCost(data.netCost);
-      const startDay = this.normalizeOptionalPositiveInteger(data.startDay, 'startDay');
-      const endDay = this.normalizeOptionalPositiveInteger(data.endDay, 'endDay');
+      const requestedStartDay = this.normalizeOptionalPositiveInteger(data.startDay, 'startDay');
+      const startDay = requestedStartDay ?? legacyItinerary?.dayNumber ?? quoteItineraryDay?.dayNumber ?? null;
+      const endDay = this.normalizeOptionalPositiveInteger(data.endDay, 'endDay') ?? startDay;
       const startDate = this.normalizeQuoteItemOperationalDate(data.startDate ?? data.serviceDate);
       const endDate = this.normalizeQuoteItemOperationalDate(data.endDate ?? null);
 
@@ -3100,6 +3173,32 @@ export class QuotesService {
       }
       if (startDay !== null && endDay !== null && endDay < startDay) {
         throw new BadRequestException('External package endDay cannot be before startDay');
+      }
+      await this.assertExternalPackageDayRangeWithinQuote(data.quoteId, startDay, endDay);
+      if (startDay !== null) {
+        const quoteItineraryDayDelegate = (this.prisma as any).quoteItineraryDay;
+        const itineraryDelegate = this.prisma.itinerary as any;
+        const [startLegacyItinerary, startQuoteItineraryDay] = await Promise.all([
+          itineraryDelegate?.findFirst
+            ? itineraryDelegate.findFirst({
+                where: {
+                  quoteId: data.quoteId,
+                  dayNumber: startDay,
+                },
+              })
+            : Promise.resolve(null),
+          quoteItineraryDayDelegate?.findFirst
+            ? quoteItineraryDayDelegate.findFirst({
+                where: {
+                  quoteId: data.quoteId,
+                  dayNumber: startDay,
+                  isActive: true,
+                },
+              })
+            : Promise.resolve(null),
+        ]);
+        itemLegacyItinerary = startLegacyItinerary || itemLegacyItinerary;
+        itemQuoteItineraryDay = startQuoteItineraryDay || itemQuoteItineraryDay;
       }
       if (startDate && endDate && endDate < startDate) {
         throw new BadRequestException('External package endDate cannot be before startDate');
@@ -3215,7 +3314,7 @@ export class QuotesService {
         optionId: data.optionId || null,
         serviceId: data.serviceId || null,
         activityId: activity?.id ?? null,
-        itineraryId: legacyItinerary?.id || null,
+        itineraryId: itemLegacyItinerary?.id || null,
         serviceDate,
         startTime,
         pickupTime,
@@ -3269,7 +3368,7 @@ export class QuotesService {
         totalCost: pricing.totalCost,
         totalSell: promotionResult?.adjustedPricing.adjustedSell ?? pricing.totalSell,
       },
-      quoteItineraryDayId: quoteItineraryDay?.id ?? null,
+      quoteItineraryDayId: itemQuoteItineraryDay?.id ?? null,
       promotionExplanation: promotionResult?.explanation ?? null,
       include: {
         service: {
@@ -4807,6 +4906,62 @@ export class QuotesService {
       ...holder,
       quoteItems: (holder.quoteItems || []).map((item) => this.hydrateOneOffExternalPackageItem(item)),
     };
+  }
+
+  private async getQuotePlannerDayRange(quoteId: string) {
+    const quoteItineraryDayDelegate = (this.prisma as any).quoteItineraryDay;
+    const itineraryDelegate = this.prisma.itinerary as any;
+    const [quoteItineraryDays, legacyItineraries] = await Promise.all([
+      quoteItineraryDayDelegate?.findMany
+        ? quoteItineraryDayDelegate.findMany({
+            where: {
+              quoteId,
+              isActive: true,
+            },
+            select: {
+              dayNumber: true,
+            },
+          })
+        : Promise.resolve([]),
+      itineraryDelegate?.findMany
+        ? itineraryDelegate.findMany({
+            where: {
+              quoteId,
+            },
+            select: {
+              dayNumber: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+    const dayNumbers = [...quoteItineraryDays, ...legacyItineraries]
+      .map((day: { dayNumber?: number | null }) => day.dayNumber)
+      .filter((dayNumber): dayNumber is number => Number.isInteger(dayNumber) && Number(dayNumber) > 0);
+
+    if (dayNumbers.length === 0) {
+      return null;
+    }
+
+    return {
+      minDay: Math.min(...dayNumbers),
+      maxDay: Math.max(...dayNumbers),
+    };
+  }
+
+  private async assertExternalPackageDayRangeWithinQuote(quoteId: string, startDay: number | null, endDay: number | null) {
+    if (startDay === null || endDay === null) {
+      return;
+    }
+
+    const quoteDayRange = await this.getQuotePlannerDayRange(quoteId);
+
+    if (!quoteDayRange) {
+      return;
+    }
+
+    if (startDay < quoteDayRange.minDay || endDay > quoteDayRange.maxDay) {
+      throw new BadRequestException(`External package days must be within Day ${quoteDayRange.minDay}-${quoteDayRange.maxDay}`);
+    }
   }
 
   private isHotelService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
