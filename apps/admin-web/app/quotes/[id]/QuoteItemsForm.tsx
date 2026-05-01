@@ -839,6 +839,18 @@ export function QuoteItemsForm({
   const selectedTransportServiceType = transportServiceTypes.find((serviceType) => serviceType.id === transportServiceTypeId) || null;
   const selectedTransportClassification =
     resolvedTransportPricing?.serviceType.classification || selectedTransportServiceType?.classification || 'ROUTE_TRANSFER';
+
+  useEffect(() => {
+    if (!isTransportService) {
+      return;
+    }
+
+    console.log('QuoteItemsForm transport candidates debug', {
+      rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
+      filteredTransportCandidates: transportCandidates,
+    });
+  }, [isTransportService, resolvedTransportPricing?.candidates, transportCandidates]);
+
   const transportSelectedDays = Math.max(1, Number(dayCount) || 1);
   const transportBillableDays =
     selectedTransportClassification === 'FULL_DAY' || selectedTransportClassification === 'DAILY_PACKAGE'
@@ -3148,6 +3160,31 @@ export function QuoteItemsForm({
                 </div>
               )}
             </div>
+          ) : null}
+
+          {isTransportService ? (
+            <pre className="quote-transport-debug">
+              {JSON.stringify(
+                {
+                  activeServiceType,
+                  serviceId,
+                  selectedServiceName: selectedService?.name,
+                  isTransportService,
+                  transportServiceTypeId,
+                  routeId,
+                  routeName,
+                  resolvedTransportPricingPrice: resolvedTransportPricing?.price,
+                  resolvedTransportPricingCandidatesLength: resolvedTransportPricing?.candidates?.length,
+                  transportCandidatesLength: transportCandidates.length,
+                  hasPrimarySelection,
+                  transportSuggestionOverridden,
+                  rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
+                  filteredTransportCandidates: transportCandidates,
+                },
+                null,
+                2,
+              )}
+            </pre>
           ) : null}
 
           {hasPrimarySelection && isTransportService ? (
