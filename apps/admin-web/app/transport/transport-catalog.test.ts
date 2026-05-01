@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.meta.url), 'utf8');
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
+const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -22,7 +23,7 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(sectionSource, [
       'title="Supplier Rate Cards"',
-      'Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods.',
+      'Upload supplier Excel contracts, confirm the parsed rows, and publish route rates, full-day packages, and add-ons for Quote Planner.',
     ]);
 
     assert.equal(sectionSource.includes('Create rate line'), false);
@@ -52,6 +53,7 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(tableSource, [
       'transport-contract-table',
       '<th>Service / Route</th>',
+      '<th>Classification</th>',
       '<th>Vehicle Size</th>',
       '<th>Duration / Basis</th>',
       '<th>Pax / Capacity</th>',
@@ -67,10 +69,10 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(tableSource, [
       'const [activeForm, setActiveForm] = useState<ActiveRateForm>(null);',
       'transport-rate-card-toolbar',
-      '+ Create Rate Card',
+      'Advanced / manual rate card',
       "onClick={() => setActiveForm({ mode: 'create-rate-card' })}",
       'transport-rate-card-form-panel',
-      "activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : 'Edit rate line'",
+      "activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : activeForm.rate.routeName",
     ]);
 
     assert.equal(sectionSource.includes("import { VehicleRatesForm }"), false);
@@ -100,7 +102,24 @@ describe('transport catalog supplier rate-card UX', () => {
       'Notes',
       'Alpha Bus and Limo Co',
       'Buses 2026 Rates in USD',
-      'Rate card metadata is captured in the UI model for now.',
+      'Use Excel contract upload for normal supplier rates.',
+    ]);
+  });
+
+  it('makes contract import the primary supplier rate-card workflow', () => {
+    expectSourceContains(sectionSource, [
+      'transport-contract-import-hero',
+      'Upload Contract',
+      '<TransportContractImportPanel apiBaseUrl={ACTION_API_BASE_URL} />',
+    ]);
+
+    expectSourceContains(importPanelSource, [
+      'Route transfers',
+      'Full-day services',
+      'Add-ons',
+      'Confirm import',
+      'detected service classification',
+      'window.location.href = \'/transport?tab=rates&imported=1\'',
     ]);
   });
 });

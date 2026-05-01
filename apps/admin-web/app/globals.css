@@ -3450,7 +3450,98 @@ h1 {
 
 .transport-rate-card-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.85rem;
+  background: rgba(249, 250, 251, 0.72);
+}
+
+.transport-contract-import-hero {
+  display: grid;
+  gap: 1rem;
+  padding: 1.2rem;
+  border: 1px solid rgba(31, 163, 214, 0.18);
+  border-radius: 1rem;
+  background: rgba(31, 163, 214, 0.05);
+}
+
+.transport-contract-import-hero h3 {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.94);
+}
+
+.transport-contract-import-hero p {
+  margin: 0.35rem 0 0;
+  max-width: 820px;
+  color: rgba(30, 27, 24, 0.68);
+}
+
+.transport-contract-import-workflow {
+  padding: 1rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.transport-import-errors {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(180, 83, 9, 0.22);
+  border-radius: 0.85rem;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.transport-import-errors p {
+  margin: 0.25rem 0 0;
+  color: rgba(30, 27, 24, 0.68);
+}
+
+.transport-import-preview-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.transport-import-preview-group {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.85rem;
+  background: #fff;
+}
+
+.transport-import-preview-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transport-import-preview-group-head h4,
+.transport-import-preview-group-head p {
+  margin: 0;
+}
+
+.transport-import-preview-group-head p {
+  margin-top: 0.25rem;
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.9rem;
+}
+
+.transport-import-preview-group-head span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(31, 163, 214, 0.1);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .transport-rate-card-workspace {

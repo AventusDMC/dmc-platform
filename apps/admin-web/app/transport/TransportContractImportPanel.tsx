@@ -33,6 +33,44 @@ function buildUploadBody(file: File) {
   return formData;
 }
 
+function getPreviewGroup(row: Record<string, unknown>) {
+  const classification = String(row.classification || '').toUpperCase();
+  const serviceName = String(row.serviceName || '').toLowerCase();
+
+  if (classification === 'ADD_ON' || /overnight|stationary|waiting|daily charge/.test(serviceName)) {
+    return 'addOns';
+  }
+
+  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || /full day|daily fd|\bfd\b/.test(serviceName)) {
+    return 'fullDay';
+  }
+
+  return 'routeTransfers';
+}
+
+function getPreviewGroups(rows: Array<Record<string, unknown>>) {
+  return [
+    {
+      id: 'routeTransfers',
+      title: 'Route transfers',
+      helper: 'Origin to destination transfer rates. These do not count as full-day usage.',
+      rows: rows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
+    },
+    {
+      id: 'fullDay',
+      title: 'Full-day services',
+      helper: 'Full-day and Daily FD package rows. Daily FD minimum rules apply in Quote Planner.',
+      rows: rows.filter((row) => getPreviewGroup(row) === 'fullDay'),
+    },
+    {
+      id: 'addOns',
+      title: 'Add-ons',
+      helper: 'Driver overnight, stationary, waiting, and other optional charges.',
+      rows: rows.filter((row) => getPreviewGroup(row) === 'addOns'),
+    },
+  ];
+}
+
 export function TransportContractImportPanel({ apiBaseUrl }: TransportContractImportPanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportSummary | null>(null);
@@ -79,6 +117,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
       }));
       setResult(nextResult);
       setPreview(nextResult);
+      window.location.href = '/transport?tab=rates&imported=1';
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not import transport contract.');
     } finally {
@@ -87,10 +126,12 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
   }
 
   const activeSummary = result || preview;
-  const canImport = Boolean(preview && preview.errors.length === 0 && file);
+  const canImport = Boolean(preview && file);
+  const previewGroups = preview ? getPreviewGroups(preview.previewRows) : [];
+  const skippedInvalidRows = preview?.errors.length || 0;
 
   return (
-    <div className="section-stack">
+    <div className="section-stack transport-contract-import-workflow">
       <div className="form-row form-row-3">
         <label>
           Transport contract Excel
@@ -114,7 +155,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
             Preview import
           </button>
           <button className="button" type="button" onClick={handleImport} disabled={isBusy || !canImport}>
-            Import rates
+            Confirm import
           </button>
         </div>
       </div>
@@ -123,7 +164,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
 
       {activeSummary ? (
         <div className="quote-item-override-status quote-item-override-status-active">
-          <strong>{result ? 'Import complete' : 'Import preview'}</strong>
+          <strong>{result ? 'Import complete' : 'Ready to confirm import'}</strong>
           <span>
             {[
               `${activeSummary.rows} rows`,
@@ -132,15 +173,20 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
               `${activeSummary.createdServices} services created`,
               `${activeSummary.createdRates} rates created`,
               `${activeSummary.updatedRates} rates updated`,
-              `${activeSummary.skippedRows} skipped`,
+              `${activeSummary.skippedRows + (result ? 0 : skippedInvalidRows)} skipped/invalid`,
             ].join(' | ')}
           </span>
         </div>
       ) : null}
 
       {preview?.errors.length ? (
-        <div className="table-wrap">
-          <table>
+        <div className="transport-import-errors">
+          <div>
+            <strong>{preview.errors.length} row-level issue{preview.errors.length === 1 ? '' : 's'}</strong>
+            <p>Invalid rows are not imported. Fix the Excel file and preview again, or continue to import valid rows only.</p>
+          </div>
+          <div className="table-wrap">
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Row</th>
@@ -156,37 +202,61 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
 
-      {preview?.previewRows.length ? (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Row</th>
-                <th>Supplier</th>
-                <th>Service</th>
-                <th>Route</th>
-                <th>Vehicle</th>
-                <th>Capacity</th>
-                <th>Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.previewRows.slice(0, 10).map((row) => (
-                <tr key={String(row.row)}>
-                  <td>{String(row.row)}</td>
-                  <td>{String(row.supplierName || '')}</td>
-                  <td>{String(row.serviceName || '')}</td>
-                  <td>{String(row.routeName || '')}</td>
-                  <td>{String(row.vehicleType || '')}</td>
-                  <td>{String(row.maxPaxPerUnit || '')}</td>
-                  <td>{String(row.currency || '')} {String(row.cost || '')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {previewGroups.some((group) => group.rows.length > 0) ? (
+        <div className="transport-import-preview-groups">
+          {previewGroups.map((group) =>
+            group.rows.length > 0 ? (
+              <section key={group.id} className="transport-import-preview-group">
+                <div className="transport-import-preview-group-head">
+                  <div>
+                    <h4>{group.title}</h4>
+                    <p>{group.helper}</p>
+                  </div>
+                  <span>{group.rows.length} row{group.rows.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>Supplier</th>
+                        <th>Service</th>
+                        <th>Classification</th>
+                        <th>Route</th>
+                        <th>Vehicle / Capacity</th>
+                        <th>Pricing</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rows.map((row) => (
+                        <tr key={String(row.row)}>
+                          <td>{String(row.row)}</td>
+                          <td>{String(row.supplierName || '')}</td>
+                          <td>{String(row.serviceName || '')}</td>
+                          <td>
+                            <span className="status-badge" title="detected service classification">{String(row.classification || 'ROUTE_TRANSFER')}</span>
+                          </td>
+                          <td>{String(row.routeName || '')}</td>
+                          <td>
+                            <strong>{String(row.vehicleType || '')}</strong>
+                            <div className="table-subcopy">{String(row.maxPaxPerUnit || '')} pax per unit</div>
+                          </td>
+                          <td>
+                            <strong>{String(row.currency || '')} {String(row.cost || '')}</strong>
+                            <div className="table-subcopy">{String(row.pricingMode || 'PER_GROUP')}</div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null,
+          )}
         </div>
       ) : null}
     </div>

@@ -21,6 +21,7 @@ type TransportServiceType = {
   id: string;
   name: string;
   code: string;
+  classification?: string;
 };
 
 type VehicleRate = {
@@ -45,7 +46,7 @@ type VehicleRate = {
       name: string;
     } | null;
   };
-  serviceType: { name: string; code: string };
+  serviceType: { name: string; code: string; classification?: string };
   route: RouteOption | null;
 };
 
@@ -87,6 +88,16 @@ function getSupplierName(rate: VehicleRate) {
 }
 
 function getRateCardCategory(rates: VehicleRate[]) {
+  const classifications = new Set(rates.map((rate) => rate.serviceType.classification || 'ROUTE_TRANSFER'));
+
+  if (classifications.size === 1 && classifications.has('ADD_ON')) {
+    return 'Add-ons';
+  }
+
+  if (classifications.has('FULL_DAY') || classifications.has('DAILY_PACKAGE')) {
+    return 'Full-day packages';
+  }
+
   const joinedText = rates.map((rate) => `${rate.vehicle.name} ${rate.serviceType.name} ${rate.routeName}`).join(' ').toLowerCase();
 
   if (joinedText.includes('bus') || joinedText.includes('coach')) {
@@ -94,6 +105,10 @@ function getRateCardCategory(rates: VehicleRate[]) {
   }
 
   return 'Transport';
+}
+
+function getClassificationLabel(value?: string) {
+  return String(value || 'ROUTE_TRANSFER').replaceAll('_', ' ');
 }
 
 function getEffectiveFrom(rates: VehicleRate[]) {
@@ -198,8 +213,12 @@ export function VehicleRatesTable({
       {error ? <p className="form-error">{error}</p> : null}
 
       <div className="transport-rate-card-toolbar">
-        <button type="button" className="primary-button transport-contract-new-button" onClick={() => setActiveForm({ mode: 'create-rate-card' })}>
-          + Create Rate Card
+        <div>
+          <p className="transport-rate-card-label">Imported supplier contracts</p>
+          <strong>Grouped rate cards</strong>
+        </div>
+        <button type="button" className="compact-button transport-contract-new-button" onClick={() => setActiveForm({ mode: 'create-rate-card' })}>
+          Advanced / manual rate card
         </button>
       </div>
 
@@ -238,6 +257,7 @@ export function VehicleRatesTable({
                   <thead>
                     <tr>
                       <th>Service / Route</th>
+                      <th>Classification</th>
                       <th>Vehicle Size</th>
                       <th>Duration / Basis</th>
                       <th>Pax / Capacity</th>
@@ -255,6 +275,7 @@ export function VehicleRatesTable({
                             <strong>{rate.routeName}</strong>
                             <div className="table-subcopy">{[rate.route?.name, rate.serviceType.code].filter(Boolean).join(' - ')}</div>
                           </td>
+                          <td><span className="status-badge">{getClassificationLabel(rate.serviceType.classification)}</span></td>
                           <td>{rate.vehicle.name}</td>
                           <td>{rate.serviceType.name}</td>
                           <td>
@@ -297,8 +318,8 @@ export function VehicleRatesTable({
           <aside className="transport-rate-card-form-panel" aria-label={activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : 'Edit rate line'}>
             <div className="transport-rate-card-form-head">
               <div>
-                <p className="transport-rate-card-label">{activeForm.mode === 'create-rate-card' ? 'Create' : 'Edit rate line'}</p>
-                <h3>{activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : activeForm.rate.routeName}</h3>
+                <p className="transport-rate-card-label">{activeForm.mode === 'create-rate-card' ? 'Advanced / manual' : 'Advanced / manual edit'}</p>
+                <h3>{activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : activeForm.rate.routeName}</h3>
               </div>
               <button type="button" className="compact-button" onClick={() => setActiveForm(null)}>
                 Close
@@ -306,6 +327,7 @@ export function VehicleRatesTable({
             </div>
             {activeForm.mode === 'create-rate-card' ? (
               <form className="transport-rate-card-metadata-form" onSubmit={(event) => event.preventDefault()}>
+                <p className="detail-copy">Use Excel contract upload for normal supplier rates. This manual form is reserved for cleanup and exceptional one-off maintenance.</p>
                 <label>
                   Supplier
                   <input name="supplier" list="transport-rate-card-suppliers" placeholder="Alpha Bus and Limo Co" />

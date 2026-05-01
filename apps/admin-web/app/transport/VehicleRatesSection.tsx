@@ -22,6 +22,7 @@ type TransportServiceType = {
   id: string;
   name: string;
   code: string;
+  classification?: string;
 };
 
 type VehicleRate = {
@@ -49,6 +50,7 @@ type VehicleRate = {
   serviceType: {
     name: string;
     code: string;
+    classification?: string;
   };
   route: RouteOption | null;
   fromPlace: PlaceOption | null;
@@ -126,14 +128,17 @@ export async function VehicleRatesSection() {
 
       <TableSectionShell
         title="Supplier Rate Cards"
-        description="Manage supplier transport rate cards, vehicle rates, routes, pax ranges, and validity periods."
+        description="Upload supplier Excel contracts, confirm the parsed rows, and publish route rates, full-day packages, and add-ons for Quote Planner."
         context={<p>{vehicleRates.length} rate lines in scope</p>}
-        createPanel={
-          <CollapsibleCreatePanel title="Import transport contract" description="Upload the official supplier transport contract Excel format." triggerLabelOpen="Import contract">
-            <TransportContractImportPanel apiBaseUrl={ACTION_API_BASE_URL} />
-          </CollapsibleCreatePanel>
-        }
       >
+        <section className="transport-contract-import-hero">
+          <div>
+            <p className="eyebrow">Primary workflow</p>
+            <h3>Upload Contract</h3>
+            <p>Import the supplier Excel contract, review route transfers, full-day services, and add-ons, then confirm. Imported rates are available in Quote Planner immediately.</p>
+          </div>
+          <TransportContractImportPanel apiBaseUrl={ACTION_API_BASE_URL} />
+        </section>
         <VehicleRatesTable
           apiBaseUrl={ACTION_API_BASE_URL}
           vehicleRates={vehicleRates}
