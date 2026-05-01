@@ -6,6 +6,8 @@ import { AgentController } from './agent/agent.controller';
 import { AgentService } from './agent/agent.service';
 import { ActivitiesController } from './activities/activities.controller';
 import { ActivitiesService } from './activities/activities.service';
+import { AdminResetController } from './admin/admin-reset.controller';
+import { AdminResetService } from './admin/admin-reset.service';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { AuditService } from './audit/audit.service';
@@ -100,6 +102,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
   imports: [PrismaModule, QuoteItineraryModule],
   controllers: [
     AppController,
+    AdminResetController,
     AgentController,
     ActivitiesController,
     AuthController,
@@ -148,6 +151,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
   ],
   providers: [
     AppService,
+    AdminResetService,
     AgentService,
     ActivitiesService,
     AuditService,
