@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
+import { formatServiceTypeLabel } from '../lib/transport-formatters';
 import { TransportServiceTypeForm } from '../vehicle-rates/TransportServiceTypeForm';
 
 type TransportServiceType = {
@@ -25,7 +26,7 @@ export function TransportServiceTypesTable({ apiBaseUrl, serviceTypes }: Transpo
   const [error, setError] = useState('');
 
   async function handleDelete(serviceType: TransportServiceType) {
-    if (!window.confirm(`Delete ${serviceType.name}?`)) {
+    if (!window.confirm(`Delete ${formatServiceTypeLabel(serviceType.name)}?`)) {
       return;
     }
 
@@ -63,7 +64,7 @@ export function TransportServiceTypesTable({ apiBaseUrl, serviceTypes }: Transpo
           <thead>
             <tr>
               <th>Service type</th>
-              <th>Code</th>
+              <th>Label</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -75,9 +76,9 @@ export function TransportServiceTypesTable({ apiBaseUrl, serviceTypes }: Transpo
                 <Fragment key={serviceType.id}>
                   <tr>
                     <td>
-                      <strong>{serviceType.name}</strong>
+                      <strong>{formatServiceTypeLabel(serviceType.name)}</strong>
                     </td>
-                    <td>{serviceType.code}</td>
+                    <td>{formatServiceTypeLabel(serviceType.code)}</td>
                     <td>
                       <div className="table-action-row">
                         <button

@@ -7,6 +7,7 @@ import { RouteCombobox } from '../../components/RouteCombobox';
 import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
+import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
 import {
   buildExternalPackagePayload,
@@ -3067,7 +3068,7 @@ export function QuoteItemsForm({
                   <option value="">Select service type</option>
                   {transportServiceTypes.map((serviceType) => (
                     <option key={serviceType.id} value={serviceType.id}>
-                      {serviceType.name} ({serviceType.code})
+                      {formatServiceTypeLabel(serviceType.name)}
                     </option>
                   ))}
                 </select>
@@ -3147,7 +3148,7 @@ export function QuoteItemsForm({
                   <input
                     value={
                       resolvedTransportPricing
-                        ? `${resolvedTransportPricing.serviceType.name} | ${selectedTransportClassification} | ${resolvedTransportPricing.routeName}`
+                        ? `${formatServiceTypeLabel(resolvedTransportPricing.serviceType.name)} | ${formatClassificationLabel(selectedTransportClassification)} | ${formatRouteLabel(resolvedTransportPricing.routeName)}`
                         : ''
                     }
                     readOnly
@@ -3174,7 +3175,7 @@ export function QuoteItemsForm({
                 <div className="quote-selected-transport-explanation">
                   <strong>{transportSuggestionOverridden ? 'Selected transport option' : 'Smart Transport Picker selected this option.'}</strong>
                   <p>
-                    Supplier: {resolvedTransportPricing.supplier?.name || 'Supplier pending'} | Pax {Number(paxCount) || defaultPaxCount || 1}
+                    Supplier: {formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)} | Pax {Number(paxCount) || defaultPaxCount || 1}
                     {resolvedTransportPricing.unitCount && resolvedTransportPricing.unitCapacity
                       ? ` -> ${resolvedTransportPricing.unitCount} unit${resolvedTransportPricing.unitCount === 1 ? '' : 's'} (${resolvedTransportPricing.unitCapacity} pax each)`
                       : ''}
@@ -3247,8 +3248,8 @@ export function QuoteItemsForm({
                             }))
                           }
                         />
-                        <strong>{addOn.name}</strong>
-                        <em>{addOn.addOnType.replaceAll('_', ' ').toLowerCase()}</em>
+                        <strong>{formatServiceTypeLabel(addOn.name)}</strong>
+                        <em>{formatServiceTypeLabel(addOn.addOnType)}</em>
                       </span>
                       <span>
                         <input
@@ -3311,7 +3312,7 @@ export function QuoteItemsForm({
                       {candidate.currency} {candidate.price.toFixed(2)}
                     </strong>
                     <span>
-                      Supplier: {candidate.supplier?.name || 'Supplier pending'} / {candidate.category} / {candidate.vehicle.maxPax} pax capacity / {candidate.serviceType.classification || candidate.classification || 'ROUTE_TRANSFER'}
+                      Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)} / {candidate.category} / {candidate.vehicle.maxPax} pax capacity / {formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}
                       {candidate.unitCount ? ` / ${candidate.unitCount} unit${candidate.unitCount === 1 ? '' : 's'}` : ''}
                     </span>
                   </button>

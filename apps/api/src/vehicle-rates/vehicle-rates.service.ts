@@ -177,7 +177,12 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
-        supplier: true,
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         toPlace: true,
       },
       orderBy: [
@@ -204,7 +209,12 @@ export class VehicleRatesService {
           },
         },
         fromPlace: true,
-        supplier: true,
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         toPlace: true,
         _count: {
           select: {

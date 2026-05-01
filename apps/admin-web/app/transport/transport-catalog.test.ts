@@ -33,7 +33,11 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(tableSource, [
       'type SupplierRateCard =',
       'function getSupplierName(rate: VehicleRate)',
-      "rate.vehicle.supplier?.name || rate.vehicle.supplierId || 'Unassigned supplier'",
+      'rate.supplier?.name ??',
+      'rate.supplierName ??',
+      'rate.transportService?.supplier?.name ??',
+      'rate.service?.supplier?.name',
+      'null,',
       'function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[]',
       'const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);',
       'transport-contract-supplier-group',
@@ -72,7 +76,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'Advanced / manual rate card',
       "onClick={() => setActiveForm({ mode: 'create-rate-card' })}",
       'transport-rate-card-form-panel',
-      "activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : activeForm.rate.routeName",
+      "activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : formatRouteLabel(activeForm.rate.routeName)",
     ]);
 
     assert.equal(sectionSource.includes("import { VehicleRatesForm }"), false);

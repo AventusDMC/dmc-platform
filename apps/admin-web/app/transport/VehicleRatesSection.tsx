@@ -40,12 +40,23 @@ type VehicleRate = {
   active: boolean;
   validFrom: string;
   validTo: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplier?: {
+    name: string;
+  } | null;
+  transportService?: {
+    supplier?: {
+      name?: string | null;
+    } | null;
+  } | null;
+  service?: {
+    supplier?: {
+      name?: string | null;
+    } | null;
+  } | null;
   vehicle: {
     name: string;
-    supplierId?: string | null;
-    supplier?: {
-      name: string;
-    } | null;
   };
   serviceType: {
     name: string;

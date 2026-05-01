@@ -11,6 +11,7 @@ import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
+import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
 
 type Vehicle = {
   id: string;
@@ -39,12 +40,23 @@ type VehicleRate = {
   active: boolean;
   validFrom: string;
   validTo: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplier?: {
+    name: string;
+  } | null;
+  transportService?: {
+    supplier?: {
+      name?: string | null;
+    } | null;
+  } | null;
+  service?: {
+    supplier?: {
+      name?: string | null;
+    } | null;
+  } | null;
   vehicle: {
     name: string;
-    supplierId?: string | null;
-    supplier?: {
-      name: string;
-    } | null;
   };
   serviceType: { name: string; code: string; classification?: string };
   route: RouteOption | null;
@@ -84,7 +96,13 @@ function formatMonthYear(value: string) {
 }
 
 function getSupplierName(rate: VehicleRate) {
-  return rate.vehicle.supplier?.name || rate.vehicle.supplierId || 'Unassigned supplier';
+  return formatSupplierName(
+    rate.supplier?.name ??
+      rate.supplierName ??
+      rate.transportService?.supplier?.name ??
+      rate.service?.supplier?.name,
+    null,
+  );
 }
 
 function getRateCardCategory(rates: VehicleRate[]) {
@@ -98,17 +116,13 @@ function getRateCardCategory(rates: VehicleRate[]) {
     return 'Full-day packages';
   }
 
-  const joinedText = rates.map((rate) => `${rate.vehicle.name} ${rate.serviceType.name} ${rate.routeName}`).join(' ').toLowerCase();
+  const joinedText = rates.map((rate) => `${rate.vehicle.name} ${formatServiceTypeLabel(rate.serviceType.name)} ${formatRouteLabel(rate.routeName)}`).join(' ').toLowerCase();
 
   if (joinedText.includes('bus') || joinedText.includes('coach')) {
     return 'Buses';
   }
 
   return 'Transport';
-}
-
-function getClassificationLabel(value?: string) {
-  return String(value || 'ROUTE_TRANSFER').replaceAll('_', ' ');
 }
 
 function getEffectiveFrom(rates: VehicleRate[]) {
@@ -123,7 +137,7 @@ function getRateCardTitle(rates: VehicleRate[]) {
   const effectiveFrom = getEffectiveFrom(rates);
   const year = effectiveFrom ? new Date(effectiveFrom).getFullYear() : new Date().getFullYear();
 
-  return `${getRateCardCategory(rates)} ${year} Rates in ${getPrimaryCurrency(rates)}`;
+  return `${getSupplierName(rates[0])} - ${getRateCardCategory(rates)} ${year} Rates in ${getPrimaryCurrency(rates)}`;
 }
 
 function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[] {
@@ -179,7 +193,7 @@ export function VehicleRatesTable({
   const supplierOptions = useMemo(() => Array.from(new Set(vehicleRates.map(getSupplierName))).sort(), [vehicleRates]);
 
   async function handleDelete(rate: VehicleRate) {
-    if (!window.confirm(`Delete ${rate.routeName}?`)) {
+    if (!window.confirm(`Delete ${formatRouteLabel(rate.routeName)}?`)) {
       return;
     }
 
@@ -272,12 +286,12 @@ export function VehicleRatesTable({
                       <Fragment key={rate.id}>
                         <tr>
                           <td>
-                            <strong>{rate.routeName}</strong>
-                            <div className="table-subcopy">{[rate.route?.name, rate.serviceType.code].filter(Boolean).join(' - ')}</div>
+                            <strong>{formatRouteLabel(rate.routeName)}</strong>
+                            <div className="table-subcopy">{formatRouteLabel(rate.route?.name)}</div>
                           </td>
-                          <td><span className="status-badge">{getClassificationLabel(rate.serviceType.classification)}</span></td>
+                          <td><span className="status-badge">{formatClassificationLabel(rate.serviceType.classification)}</span></td>
                           <td>{rate.vehicle.name}</td>
-                          <td>{rate.serviceType.name}</td>
+                          <td>{formatServiceTypeLabel(rate.serviceType.name)}</td>
                           <td>
                             {rate.minPax} - {rate.maxPax}
                           </td>
@@ -319,7 +333,7 @@ export function VehicleRatesTable({
             <div className="transport-rate-card-form-head">
               <div>
                 <p className="transport-rate-card-label">{activeForm.mode === 'create-rate-card' ? 'Advanced / manual' : 'Advanced / manual edit'}</p>
-                <h3>{activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : activeForm.rate.routeName}</h3>
+                <h3>{activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : formatRouteLabel(activeForm.rate.routeName)}</h3>
               </div>
               <button type="button" className="compact-button" onClick={() => setActiveForm(null)}>
                 Close

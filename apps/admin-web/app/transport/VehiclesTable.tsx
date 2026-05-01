@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
+import { formatSupplierName } from '../lib/transport-formatters';
 import { VehiclesForm } from '../vehicles/VehiclesForm';
 
 type Vehicle = {
@@ -144,7 +145,7 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
                       <strong>{vehicle.name}</strong>
                     </td>
                     <td>
-                      {vehicle.supplierName || vehicle.supplierId}
+                      {formatSupplierName(vehicle.supplierName, vehicle.supplierId)}
                       {vehicle.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
                       {vehicle.supplierStatus === 'unresolved' ? (
                         <select

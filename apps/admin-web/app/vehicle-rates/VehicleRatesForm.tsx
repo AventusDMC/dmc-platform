@@ -12,6 +12,7 @@ import { type SupportedCurrency } from '../lib/currencyOptions';
 import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
+import { formatServiceTypeLabel } from '../lib/transport-formatters';
 
 type VehicleOption = {
   id: string;
@@ -228,7 +229,7 @@ export function VehicleRatesForm({
             ) : (
               serviceTypes.map((serviceType) => (
                 <option key={serviceType.id} value={serviceType.id}>
-                  {serviceType.name} ({serviceType.code})
+                  {formatServiceTypeLabel(serviceType.name)}
                 </option>
               ))
             )}

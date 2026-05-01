@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
 
 type ImportSummary = {
   rows: number;
@@ -69,6 +70,13 @@ function getPreviewGroups(rows: Array<Record<string, unknown>>) {
       rows: rows.filter((row) => getPreviewGroup(row) === 'addOns'),
     },
   ];
+}
+
+function formatPricingModeLabel(value?: string | null) {
+  const normalized = String(value || 'PER_GROUP').trim().toUpperCase();
+  if (normalized === 'PER_GROUP') return 'Per group';
+  if (normalized === 'CAPACITY_UNIT') return 'Capacity unit';
+  return formatServiceTypeLabel(normalized);
 }
 
 export function TransportContractImportPanel({ apiBaseUrl }: TransportContractImportPanelProps) {
@@ -235,19 +243,19 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                       {group.rows.map((row) => (
                         <tr key={String(row.row)}>
                           <td>{String(row.row)}</td>
-                          <td>{String(row.supplierName || '')}</td>
-                          <td>{String(row.serviceName || '')}</td>
+                          <td>{formatSupplierName(String(row.supplierName || ''), null)}</td>
+                          <td>{formatServiceTypeLabel(String(row.serviceName || ''))}</td>
                           <td>
-                            <span className="status-badge" title="detected service classification">{String(row.classification || 'ROUTE_TRANSFER')}</span>
+                            <span className="status-badge" title="detected service classification">{formatClassificationLabel(String(row.classification || 'ROUTE_TRANSFER'))}</span>
                           </td>
-                          <td>{String(row.routeName || '')}</td>
+                          <td>{formatRouteLabel(String(row.routeName || ''))}</td>
                           <td>
                             <strong>{String(row.vehicleType || '')}</strong>
                             <div className="table-subcopy">{String(row.maxPaxPerUnit || '')} pax per unit</div>
                           </td>
                           <td>
                             <strong>{String(row.currency || '')} {String(row.cost || '')}</strong>
-                            <div className="table-subcopy">{String(row.pricingMode || 'PER_GROUP')}</div>
+                            <div className="table-subcopy">{formatPricingModeLabel(String(row.pricingMode || 'PER_GROUP'))}</div>
                           </td>
                         </tr>
                       ))}
