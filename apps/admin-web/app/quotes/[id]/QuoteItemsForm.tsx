@@ -148,6 +148,7 @@ type TransportPricingAddOn = {
 };
 
 type ResolvedTransportPricing = {
+  vehicleRateId?: string | null;
   routeName: string;
   currency: string;
   price: number;
@@ -363,6 +364,26 @@ function getRecommendedVehicleCategories(quoteType: QuoteType, pax: number): Veh
 
 function isRecommendedVehicleCategory(quoteType: QuoteType, pax: number, category: VehicleCategory) {
   return getRecommendedVehicleCategories(quoteType, pax).includes(category);
+}
+
+function getTransportCandidateCapacity(candidate: Pick<TransportPricingCandidate, 'unitCapacity' | 'vehicle'>) {
+  return candidate.unitCapacity && candidate.unitCapacity > 0 ? candidate.unitCapacity : candidate.vehicle.maxPax;
+}
+
+function compareTransportCandidates(left: TransportPricingCandidate, right: TransportPricingCandidate, pax: number) {
+  const leftCapacity = getTransportCandidateCapacity(left);
+  const rightCapacity = getTransportCandidateCapacity(right);
+  const leftCapacityGap = leftCapacity >= pax ? leftCapacity - pax : Number.MAX_SAFE_INTEGER;
+  const rightCapacityGap = rightCapacity >= pax ? rightCapacity - pax : Number.MAX_SAFE_INTEGER;
+  const leftSupplier = formatSupplierName(left.supplier?.name, left.supplier?.id);
+  const rightSupplier = formatSupplierName(right.supplier?.name, right.supplier?.id);
+
+  return (
+    leftCapacityGap - rightCapacityGap ||
+    left.price - right.price ||
+    leftSupplier.localeCompare(rightSupplier) ||
+    left.vehicle.name.localeCompare(right.vehicle.name)
+  );
 }
 
 const SERVICE_TYPE_BUTTONS = [
@@ -765,30 +786,10 @@ export function QuoteItemsForm({
         };
       });
 
-    const bestValueCandidate = normalizedCandidates.reduce<(typeof normalizedCandidates)[number] | null>((bestCandidate, candidate) => {
-      if (!bestCandidate) {
-        return candidate;
-      }
+    const sortedCandidates = [...normalizedCandidates].sort((left, right) => compareTransportCandidates(left, right, currentPax));
+    const bestValueCandidate = sortedCandidates[0] || null;
 
-      const candidatePricePerPax = candidate.price / Math.max(currentPax, 1);
-      const bestPricePerPax = bestCandidate.price / Math.max(currentPax, 1);
-      const candidateCapacityGap =
-        candidate.vehicle.maxPax >= currentPax ? candidate.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
-      const bestCapacityGap =
-        bestCandidate.vehicle.maxPax >= currentPax ? bestCandidate.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
-
-      if (candidatePricePerPax < bestPricePerPax) {
-        return candidate;
-      }
-
-      if (candidatePricePerPax === bestPricePerPax && candidateCapacityGap < bestCapacityGap) {
-        return candidate;
-      }
-
-      return bestCandidate;
-    }, null);
-
-    return normalizedCandidates
+    return sortedCandidates
       .map((candidate) => ({
         ...candidate,
         isBestValue:
@@ -796,21 +797,10 @@ export function QuoteItemsForm({
           candidate.vehicle.id === bestValueCandidate?.vehicle.id &&
           candidate.serviceType.id === bestValueCandidate.serviceType.id &&
           (candidate.routeId || candidate.routeName) === (bestValueCandidate.routeId || bestValueCandidate.routeName),
-      }))
-      .sort((left, right) => {
-        const leftCapacityGap = left.vehicle.maxPax >= currentPax ? left.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
-        const rightCapacityGap = right.vehicle.maxPax >= currentPax ? right.vehicle.maxPax - currentPax : Number.MAX_SAFE_INTEGER;
-
-        return leftCapacityGap - rightCapacityGap || left.price - right.price;
-      });
+      }));
   }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
   const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
-  const autoTransportCandidate =
-    transportCandidates.find((candidate) => candidate.isRecommended && candidate.isBestValue) ||
-    transportCandidates.find((candidate) => candidate.isRecommended) ||
-    transportCandidates.find((candidate) => candidate.isBestValue) ||
-    transportCandidates[0] ||
-    null;
+  const autoTransportCandidate = transportCandidates[0] || null;
   const selectedTransportCandidate = resolvedTransportPricing
     ? transportCandidates.find(
         (candidate) =>
@@ -1496,6 +1486,7 @@ export function QuoteItemsForm({
     setRouteName(candidate.routeId ? '' : candidate.routeName);
     setBaseCost(String(candidate.price));
     setResolvedTransportPricing({
+      vehicleRateId: candidate.vehicleRateId,
       routeName: candidate.routeName,
       currency: candidate.currency,
       price: candidate.price,
@@ -1859,6 +1850,7 @@ export function QuoteItemsForm({
           sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
           markupPercent: Number(markupPercent),
           transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
+          transportVehicleId: isTransportService ? resolvedTransportPricing?.vehicle.id : undefined,
           routeId: isTransportService ? routeId || undefined : undefined,
           routeName: isTransportService ? routeName.trim() : undefined,
           transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,

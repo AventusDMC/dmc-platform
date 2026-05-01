@@ -4,6 +4,7 @@ import { buildRouteNormalizedKey, formatRouteName, normalizeRouteName } from '..
 
 type FindTransportRateInput = {
   serviceTypeId: string;
+  vehicleId?: string | null;
   routeId?: string | null;
   normalizedKey?: string | null;
   fromPlaceId?: string | null;
@@ -63,6 +64,7 @@ type ResolveTransportPricingRuleInput = {
   routeId?: string | null;
   normalizedKey?: string | null;
   transportServiceTypeId: string;
+  vehicleId?: string | null;
   pax: number;
 };
 
@@ -172,6 +174,7 @@ export class TransportPricingService {
       where: {
         routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
+        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         isActive: true,
         minPax: {
           lte: data.pax,
@@ -188,13 +191,13 @@ export class TransportPricingService {
       },
       orderBy: [
         {
-          maxPax: 'asc',
-        },
-        {
-          minPax: 'desc',
+          unitCapacity: 'asc',
         },
         {
           baseCost: 'asc',
+        },
+        {
+          vehicleId: 'asc',
         },
       ],
     });
@@ -242,6 +245,7 @@ export class TransportPricingService {
       where: {
         routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
+        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         isActive: true,
         minPax: {
           lte: data.pax,
@@ -258,13 +262,13 @@ export class TransportPricingService {
       },
       orderBy: [
         {
-          maxPax: 'asc',
+          unitCapacity: 'asc',
         },
         {
           baseCost: 'asc',
         },
         {
-          minPax: 'desc',
+          vehicleId: 'asc',
         },
       ],
     });
@@ -322,6 +326,7 @@ export class TransportPricingService {
     const rates = await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
+        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         active: true,
         ...routeFilter,
         minPax: {
@@ -399,6 +404,7 @@ export class TransportPricingService {
     const rate = await this.prisma.vehicleRate.findFirst({
       where: {
         serviceTypeId: data.serviceTypeId,
+        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         active: true,
         ...routeFilter,
         minPax: {
@@ -454,12 +460,14 @@ export class TransportPricingService {
           routeId: data.routeId,
           normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
           transportServiceTypeId: data.serviceTypeId,
+          vehicleId: data.vehicleId,
           pax: data.paxCount,
         });
         const candidates = await this.resolvePricingRuleCandidates({
           routeId: data.routeId,
           normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
           transportServiceTypeId: data.serviceTypeId,
+          vehicleId: data.vehicleId,
           pax: data.paxCount,
         });
 

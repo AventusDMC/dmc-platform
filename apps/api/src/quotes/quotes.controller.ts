@@ -126,6 +126,7 @@ type CreateQuoteItemBody = {
   currency?: string | null;
   markupPercent?: number;
   transportServiceTypeId?: string;
+  transportVehicleId?: string;
   routeId?: string;
   normalizedKey?: string;
   routeName?: string;
@@ -798,6 +799,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
@@ -883,6 +885,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
@@ -1101,6 +1104,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
@@ -1186,6 +1190,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,

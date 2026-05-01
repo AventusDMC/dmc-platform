@@ -175,6 +175,7 @@ type CreateQuoteItemInput = {
   currency?: string | null;
   markupPercent: number;
   transportServiceTypeId?: string;
+  transportVehicleId?: string;
   routeId?: string;
   normalizedKey?: string;
   routeName?: string;
@@ -3011,6 +3012,7 @@ export class QuotesService {
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,
           transportServiceTypeId: data.transportServiceTypeId,
+          vehicleId: data.transportVehicleId,
           pax: paxCount,
         });
 
@@ -3054,6 +3056,7 @@ export class QuotesService {
 
         const vehicleRate = await this.transportPricingService.findMatchingRate({
           serviceTypeId: data.transportServiceTypeId,
+          vehicleId: data.transportVehicleId,
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,
           paxCount,
