@@ -208,8 +208,33 @@ function sanitizeExportFileName(value: string) {
       .trim()
       .replace(/[^a-zA-Z0-9._-]+/g, '_')
       .replace(/^_+|_+$/g, '')
-      .slice(0, 140) || 'transport_contract'
+      .slice(0, 70) || 'transport_contract'
   );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildTransportExportFileName(supplierName: string, contractName: string, currency: string) {
+  const normalizedCurrency = currency.trim().toUpperCase();
+  const supplierPart = sanitizeExportFileName(supplierName).slice(0, 40);
+  const supplierPattern = new RegExp(`\\b${escapeRegExp(supplierName.trim())}\\b`, 'ig');
+  const currencyPattern = new RegExp(`\\b${escapeRegExp(normalizedCurrency)}\\b`, 'ig');
+  const contractPart = sanitizeExportFileName(
+    contractName
+      .replace(supplierPattern, ' ')
+      .replace(new RegExp(`\\brates?\\s+in\\s+${escapeRegExp(normalizedCurrency)}\\b`, 'ig'), ' ')
+      .replace(new RegExp(`\\bin\\s+${escapeRegExp(normalizedCurrency)}\\b`, 'ig'), ' ')
+      .replace(currencyPattern, ' ')
+      .replace(/\brates?\b/gi, ' ')
+      .replace(/\btransport\s+contract\b/gi, 'Transport')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  ).slice(0, 70);
+
+  return `${supplierPart}_${contractPart || 'Transport'}_${sanitizeExportFileName(normalizedCurrency)}.xlsx`;
 }
 
 function getExportSupplierName(rate: { supplier?: { name?: string | null } | null }) {
@@ -728,7 +753,7 @@ export class VehicleRatesService {
 
     return {
       buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
-      fileName: `${sanitizeExportFileName(supplierName)}_${sanitizeExportFileName(contractName)}_transport.xlsx`,
+      fileName: buildTransportExportFileName(supplierName, contractName, currency),
     };
   }
 
