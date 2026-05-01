@@ -918,6 +918,9 @@ export class VehicleRatesService {
       skippedRows: 0,
       errors: [] as Array<{ row: number; message: string }>,
       previewRows: [] as Array<Record<string, unknown>>,
+      routeTransfers: [] as Array<Record<string, unknown>>,
+      fullDay: [] as Array<Record<string, unknown>>,
+      addOns: [] as Array<Record<string, unknown>>,
       contractWarnings: [] as Array<{
         supplierName: string;
         currency: string;
@@ -983,7 +986,8 @@ export class VehicleRatesService {
     }
 
     for (const { rowNumber, normalized } of validRows) {
-      summary.previewRows.push({
+      const classification = classifyTransportServiceName(normalized.serviceName);
+      const previewRow = {
         row: rowNumber,
         supplierName: normalized.supplierName,
         contractName: normalized.contractName,
@@ -991,7 +995,7 @@ export class VehicleRatesService {
         contractValidTo: formatImportDate(normalized.contractValidTo),
         country: normalized.country,
         serviceName: normalized.serviceName,
-        classification: classifyTransportServiceName(normalized.serviceName),
+        classification,
         routeName: normalized.routeName,
         vehicleType: normalized.vehicleType,
         maxPaxPerUnit: normalized.maxPaxPerUnit,
@@ -999,7 +1003,16 @@ export class VehicleRatesService {
         cost: normalized.cost,
         currency: normalized.currency,
         active: normalized.active,
-      });
+      };
+
+      summary.previewRows.push(previewRow);
+      if (classification === 'ADD_ON') {
+        summary.addOns.push(previewRow);
+      } else if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
+        summary.fullDay.push(previewRow);
+      } else {
+        summary.routeTransfers.push(previewRow);
+      }
 
       if (!normalized.active) {
         summary.skippedRows += 1;

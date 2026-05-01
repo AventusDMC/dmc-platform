@@ -295,6 +295,9 @@ test('transport contract import creates capacity pricing and re-import updates w
   const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' });
   assert.deepEqual(preview.errors, []);
   assert.equal(preview.previewRows[0].pricingMode, 'PER_GROUP');
+  assert.equal(preview.routeTransfers.length, 1);
+  assert.deepEqual(preview.fullDay, []);
+  assert.deepEqual(preview.addOns, []);
 
   const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' });
   assert.equal(imported.createdSuppliers, 1);
@@ -341,6 +344,9 @@ test('transport contract import prefers Import Compatible sheet when workbook ha
   assert.equal(preview.previewRows.length, 1);
   assert.equal(preview.previewRows[0].supplierName, 'Test Supplier');
   assert.equal(preview.previewRows[0].pricingMode, 'PER_GROUP');
+  assert.equal(preview.routeTransfers.length, 1);
+  assert.deepEqual(preview.fullDay, []);
+  assert.deepEqual(preview.addOns, []);
 });
 
 test('transport contract import preview warns and can merge split contract names', async () => {

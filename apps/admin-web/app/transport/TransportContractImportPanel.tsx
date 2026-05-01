@@ -12,7 +12,10 @@ type ImportSummary = {
   updatedRates: number;
   skippedRows: number;
   errors: Array<{ row: number; message: string }>;
-  previewRows: Array<Record<string, unknown>>;
+  previewRows?: Array<Record<string, unknown>>;
+  routeTransfers?: Array<Record<string, unknown>>;
+  fullDay?: Array<Record<string, unknown>>;
+  addOns?: Array<Record<string, unknown>>;
   contractWarnings?: Array<{
     supplierName: string;
     currency: string;
@@ -66,25 +69,46 @@ function getPreviewGroup(row: Record<string, unknown>) {
   return 'routeTransfers';
 }
 
-function getPreviewGroups(rows: Array<Record<string, unknown>>) {
+function getSafeRows(rows?: Array<Record<string, unknown>>) {
+  return Array.isArray(rows) ? rows : [];
+}
+
+function getPreviewGroups(summary: ImportSummary | null) {
+  if (!summary) {
+    return [];
+  }
+
+  const previewRows = getSafeRows(summary.previewRows);
+  const routeTransfers = getSafeRows(summary.routeTransfers);
+  const fullDay = getSafeRows(summary.fullDay);
+  const addOns = getSafeRows(summary.addOns);
+  const hasGroupedRows = [routeTransfers, fullDay, addOns].some((rows) => rows.length > 0);
+  const groups = hasGroupedRows
+    ? [routeTransfers || [], fullDay || [], addOns || []]
+    : [
+        previewRows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'fullDay'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'addOns'),
+      ];
+
   return [
     {
       id: 'routeTransfers',
       title: 'Route transfers',
       helper: 'Origin to destination transfer rates. These do not count as full-day usage.',
-      rows: rows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
+      rows: groups[0] || [],
     },
     {
       id: 'fullDay',
       title: 'Full-day services',
       helper: 'Full-day and Daily FD package rows. Daily FD minimum rules apply in Quote Planner.',
-      rows: rows.filter((row) => getPreviewGroup(row) === 'fullDay'),
+      rows: groups[1] || [],
     },
     {
       id: 'addOns',
       title: 'Add-ons',
       helper: 'Driver overnight, stationary, waiting, and other optional charges.',
-      rows: rows.filter((row) => getPreviewGroup(row) === 'addOns'),
+      rows: groups[2] || [],
     },
   ];
 }
@@ -166,8 +190,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
 
   const activeSummary = result || preview;
   const canImport = Boolean(preview && file);
-  const previewGroups = preview ? getPreviewGroups(preview.previewRows) : [];
-  const skippedInvalidRows = preview?.errors.length || 0;
+  const previewGroups = getPreviewGroups(preview);
+  const skippedInvalidRows = preview?.errors?.length || 0;
 
   return (
     <div className="section-stack transport-contract-import-workflow">
@@ -220,7 +244,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
         </div>
       ) : null}
 
-      {preview?.errors.length ? (
+      {preview?.errors?.length ? (
         <div className="transport-import-errors">
           <div>
             <strong>{preview.errors.length} row-level issue{preview.errors.length === 1 ? '' : 's'}</strong>
@@ -315,10 +339,10 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
         </div>
       ) : null}
 
-      {previewGroups.some((group) => group.rows.length > 0) ? (
+      {previewGroups.some((group) => (group.rows?.length || 0) > 0) ? (
         <div className="transport-import-preview-groups">
           {previewGroups.map((group) =>
-            group.rows.length > 0 ? (
+            (group.rows?.length || 0) > 0 ? (
               <section key={group.id} className="transport-import-preview-group">
                 <div className="transport-import-preview-group-head">
                   <div>
