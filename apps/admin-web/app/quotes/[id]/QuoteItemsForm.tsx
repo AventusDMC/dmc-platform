@@ -840,17 +840,6 @@ export function QuoteItemsForm({
   const selectedTransportClassification =
     resolvedTransportPricing?.serviceType.classification || selectedTransportServiceType?.classification || 'ROUTE_TRANSFER';
 
-  useEffect(() => {
-    if (!isTransportService) {
-      return;
-    }
-
-    console.log('QuoteItemsForm transport candidates debug', {
-      rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
-      filteredTransportCandidates: transportCandidates,
-    });
-  }, [isTransportService, resolvedTransportPricing?.candidates, transportCandidates]);
-
   const transportSelectedDays = Math.max(1, Number(dayCount) || 1);
   const transportBillableDays =
     selectedTransportClassification === 'FULL_DAY' || selectedTransportClassification === 'DAILY_PACKAGE'
@@ -921,6 +910,18 @@ export function QuoteItemsForm({
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+
+  useEffect(() => {
+    if (!isTransportService) {
+      return;
+    }
+
+    console.log('QuoteItemsForm transport candidates debug', {
+      rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
+      filteredTransportCandidates: transportCandidates,
+    });
+  }, [isTransportService, resolvedTransportPricing?.candidates, transportCandidates]);
+
   const hasPrimarySelection = isEditing || isExternalPackageService || (isHotelService ? Boolean(hotelId) : Boolean(serviceId));
   const needsServiceSelection = !isEditing && Boolean(activeServiceType) && activeServiceType !== 'hotel' && activeServiceType !== 'externalPackage' && !serviceId;
   const selectionStepTitle =
