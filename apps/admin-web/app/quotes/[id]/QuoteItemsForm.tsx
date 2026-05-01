@@ -817,14 +817,14 @@ export function QuoteItemsForm({
           (candidate.routeId || candidate.routeName) === (bestValueCandidate.routeId || bestValueCandidate.routeName),
       }));
   }, [defaultPaxCount, paxCount, quoteType, resolvedTransportPricing?.candidates]);
-  const hasRecommendedTransportCandidate = transportCandidates.some((candidate) => candidate.isRecommended);
   const autoTransportCandidate = transportCandidates[0] || null;
   const selectedTransportCandidate = resolvedTransportPricing
     ? transportCandidates.find(
         (candidate) =>
           candidate.vehicle.id === resolvedTransportPricing.vehicle.id &&
           candidate.serviceType.id === resolvedTransportPricing.serviceType.id &&
-          (candidate.routeId || candidate.routeName) === (routeId || resolvedTransportPricing.routeName),
+          (candidate.routeId || candidate.routeName) === (routeId || resolvedTransportPricing.routeName) &&
+          (candidate.supplier?.id || '') === (resolvedTransportPricing.supplier?.id || ''),
       ) || null
     : null;
   const resolvedTransportMatchesCurrentSelection = Boolean(
@@ -917,6 +917,12 @@ export function QuoteItemsForm({
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
   const hasTransportRouteSelection = Boolean(routeId);
   const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
+  const isTransportVehicleSelected = Boolean(
+    isTransportService &&
+      selectedTransportVehicleId &&
+      resolvedTransportPricing &&
+      resolvedTransportMatchesCurrentSelection,
+  );
 
   useEffect(() => {
     if (!isTransportService) {
@@ -2365,7 +2371,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {hasPrimarySelection ? (
+          {hasPrimarySelection && !isTransportService ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -2415,7 +2421,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection ? (
+          {hasPrimarySelection && !isTransportService ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -2457,7 +2463,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isHotelService && !isMealService ? (
+          {hasPrimarySelection && !isHotelService && !isMealService && !isTransportService ? (
             <details className="quote-advanced-settings" open={useOverride}>
               <summary>Advanced cost settings</summary>
 
@@ -2509,7 +2515,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection ? (
+          {hasPrimarySelection && !isTransportService ? (
           <div className="form-row form-row-3">
             <label>
               Pax count
@@ -3167,332 +3173,360 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {hasPrimarySelection && isTransportService ? (
-            <div className="form-row">
-              <label>
-                Transport selector
-                <select
-                  value={transportServiceTypeId}
-                  onChange={(event) => {
-                    setTransportServiceTypeId(event.target.value);
-                    setRouteSelectionManuallyChanged(false);
-                    setTransportSuggestionOverridden(true);
-                  }}
-                  required
-                >
-                  <option value="">Select service type</option>
-                  {transportServiceTypes.map((serviceType) => (
-                    <option key={serviceType.id} value={serviceType.id}>
-                      {formatServiceTypeLabel(serviceType.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          {isTransportService ? (
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 1</p>
+                  <h3>Transport type, route, and pax</h3>
+                  <p className="detail-copy">Choose a priced route first. Vehicle and supplier options appear immediately after pricing resolves.</p>
+                </div>
+                {routeId ? <span className="page-tab-badge">Route selected</span> : null}
+              </div>
 
-              {isLoadingTransportPricingRules ? (
-                <div className="quote-transport-route-empty">
-                  <span>Route</span>
-                  <strong>Loading priced routes</strong>
-                  <p>Routes will appear after active pricing rules are loaded.</p>
-                </div>
-              ) : hasTransportRoutes ? (
-                <div className={showTransportRouteRequired ? 'quote-transport-route-required' : undefined}>
-                  <RouteCombobox
-                    label="Route *"
-                    routes={validTransportRoutes}
-                    value={routeId}
-                    onChange={(value) => {
-                      const nextRouteId = validTransportRoutes.some((route) => route.id === value) ? value : '';
-                      setRouteSelectionManuallyChanged(true);
-                      setRouteId(nextRouteId);
-                      setRouteName('');
-                      setBaseCost('');
-                      setResolvedTransportPricing(null);
-                      setTransportSuggestionOverridden(false);
+              <div className="form-row form-row-3">
+                <label>
+                  Transport type
+                  <select
+                    value={transportServiceTypeId}
+                    onChange={(event) => {
+                      setTransportServiceTypeId(event.target.value);
+                      setRouteSelectionManuallyChanged(false);
+                      setTransportSuggestionOverridden(true);
                     }}
-                    placeholder="Select origin -> destination route"
-                    emptyText="No routes available for this service"
-                  />
-                  {showTransportRouteRequired ? (
-                    <p className="form-error">Choose a route before transport pricing can be calculated.</p>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="quote-transport-route-empty">
-                  <span>Route</span>
-                  <strong>No priced routes for this service type</strong>
-                  <p>Add active transport pricing rules for this service type before saving this quote service.</p>
-                </div>
-              )}
-            </div>
+                    required
+                  >
+                    <option value="">Select service type</option>
+                    {transportServiceTypes.map((serviceType) => (
+                      <option key={serviceType.id} value={serviceType.id}>
+                        {formatServiceTypeLabel(serviceType.name)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Pax
+                  <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
+                </label>
+
+                {isLoadingTransportPricingRules ? (
+                  <div className="quote-transport-route-empty">
+                    <span>Route</span>
+                    <strong>Loading priced routes</strong>
+                    <p>Routes will appear after active pricing rules are loaded.</p>
+                  </div>
+                ) : hasTransportRoutes ? (
+                  <div className={showTransportRouteRequired ? 'quote-transport-route-required' : undefined}>
+                    <RouteCombobox
+                      label="Route *"
+                      routes={validTransportRoutes}
+                      value={routeId}
+                      onChange={(value) => {
+                        const nextRouteId = validTransportRoutes.some((route) => route.id === value) ? value : '';
+                        setRouteSelectionManuallyChanged(true);
+                        setRouteId(nextRouteId);
+                        setRouteName('');
+                        setBaseCost('');
+                        setResolvedTransportPricing(null);
+                        setTransportSuggestionOverridden(false);
+                      }}
+                      placeholder="Select priced route"
+                      emptyText="No priced routes available for this service"
+                    />
+                    {showTransportRouteRequired ? (
+                      <p className="form-error">Choose a route before transport pricing can be calculated.</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="quote-transport-route-empty">
+                    <span>Route</span>
+                    <strong>No priced routes for this service type</strong>
+                    <p>Add active transport pricing rules for this service type before saving this quote service.</p>
+                  </div>
+                )}
+              </div>
+            </section>
           ) : null}
 
           {isTransportService ? (
-            <pre className="quote-transport-debug">
-              {JSON.stringify(
-                {
-                  activeServiceType,
-                  serviceId,
-                  selectedServiceName: selectedService?.name,
-                  isTransportService,
-                  transportServiceTypeId,
-                  routeId,
-                  routeName,
-                  resolvedTransportPricingPrice: resolvedTransportPricing?.price,
-                  resolvedTransportPricingCandidatesLength: resolvedTransportPricing?.candidates?.length,
-                  transportCandidatesLength: transportCandidates.length,
-                  hasPrimarySelection,
-                  transportSuggestionOverridden,
-                  rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
-                  filteredTransportCandidates: transportCandidates,
-                },
-                null,
-                2,
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 2</p>
+                  <h3>Vehicle and supplier options</h3>
+                  <p className="detail-copy">Pick the supplier and vehicle that should be saved on this quote item.</p>
+                </div>
+                {transportCandidates.length > 0 ? <span className="page-tab-badge">{transportCandidates.length} option{transportCandidates.length === 1 ? '' : 's'}</span> : null}
+              </div>
+
+              {!routeId ? (
+                <div className="quote-service-empty-state">
+                  <strong>Select a route first</strong>
+                  <p>Vehicle and supplier options appear after a priced route is selected.</p>
+                </div>
+              ) : isLoadingTransportCost ? (
+                <div className="quote-service-empty-state">
+                  <strong>Loading vehicle options</strong>
+                  <p>Checking active rates for {Number(paxCount) || defaultPaxCount || 1} pax.</p>
+                </div>
+              ) : transportCandidates.length > 0 ? (
+                <div className="quote-preview-total-list">
+                  {transportCandidates.map((candidate) => {
+                    const candidateKey = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}:${candidate.supplier?.id || ''}`;
+                    const selectedCandidateKey = selectedTransportCandidate
+                      ? `${selectedTransportCandidate.vehicle.id}:${selectedTransportCandidate.serviceType.id}:${selectedTransportCandidate.routeId || selectedTransportCandidate.routeName}:${selectedTransportCandidate.supplier?.id || ''}`
+                      : null;
+                    const isCurrentCandidate = candidateKey === selectedCandidateKey;
+
+                    return (
+                      <button
+                        key={candidateKey}
+                        type="button"
+                        className={
+                          isCurrentCandidate
+                            ? 'quote-transport-suggestion-option quote-transport-suggestion-option-selected'
+                            : 'quote-transport-suggestion-option'
+                        }
+                        onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
+                      >
+                        <span className="quote-transport-suggestion-main">
+                          <span>
+                            <strong>{candidate.vehicle.name}</strong>
+                            <span className="quote-transport-suggestion-badges">
+                              {isCurrentCandidate ? <span className="status-badge">Selected</span> : null}
+                              {candidate.isRecommended ? <span className="status-badge">Recommended</span> : null}
+                              {candidate.isBestValue ? <span className="status-badge">Cheapest</span> : null}
+                            </span>
+                          </span>
+                          <strong className="quote-transport-suggestion-price">
+                            {candidate.currency} {candidate.price.toFixed(2)}
+                          </strong>
+                        </span>
+                        <span className="quote-transport-suggestion-details">
+                          <span>{candidate.vehicle.maxPax} pax capacity</span>
+                          <span>Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
+                          <span>{formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}</span>
+                          {candidate.unitCount ? (
+                            <span>{candidate.unitCount} unit{candidate.unitCount === 1 ? '' : 's'}</span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="quote-service-empty-state">
+                  <strong>No vehicle options found</strong>
+                  <p>No active vehicle rate matches this route, service type, and pax count.</p>
+                </div>
               )}
-            </pre>
+            </section>
           ) : null}
 
-          {hasPrimarySelection && isTransportService ? (
-            <div className="form-row">
-              <label>
-                Legacy route text
-                <input
-                  value={routeName}
-                  onChange={(event) => {
-                    setRouteSelectionManuallyChanged(true);
-                    setRouteName(event.target.value);
-                    setTransportSuggestionOverridden(true);
-                  }}
-                  placeholder="Airport - Hotel"
-                  disabled={Boolean(routeId)}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {hasPrimarySelection && isTransportService ? (
-            <div className="quote-selected-transport-card">
-              <div className="form-row form-row-3">
-                <label>
-                  Resolved vehicle
-                  <input
-                    value={resolvedTransportPricing?.vehicle.name || ''}
-                    readOnly
-                    placeholder={isLoadingTransportCost ? 'Resolving vehicle...' : 'Auto from pricing rule'}
-                  />
-                </label>
-
-                <label>
-                  Resolved pricing
-                  <input
-                    value={
-                      resolvedTransportPricing
-                        ? `${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)}`
-                        : ''
-                    }
-                    readOnly
-                    placeholder={isLoadingTransportCost ? 'Resolving cost...' : 'Auto from pricing rule'}
-                  />
-                </label>
-
-                <label>
-                  Pricing rule
-                  <input
-                    value={
-                      resolvedTransportPricing
-                        ? `${formatServiceTypeLabel(resolvedTransportPricing.serviceType.name)} | ${formatClassificationLabel(selectedTransportClassification)} | ${formatRouteLabel(resolvedTransportPricing.routeName)}`
-                        : ''
-                    }
-                    readOnly
-                    placeholder={isLoadingTransportCost ? 'Resolving rule...' : 'Auto from route, service type, and pax'}
-                  />
-                </label>
-
-                {resolvedTransportPricing?.unitCount ? (
-                  <label>
-                    Unit count
-                    <input
-                      value={
-                        resolvedTransportPricing.unitCapacity
-                          ? `${resolvedTransportPricing.unitCount} units required (${resolvedTransportPricing.unitCapacity} pax each)`
-                          : `${resolvedTransportPricing.unitCount} units required`
-                      }
-                      readOnly
-                    />
-                  </label>
-                ) : null}
+          {isTransportService ? (
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Step 3</p>
+                  <h3>Confirm transport</h3>
+                  <p className="detail-copy">Review the selected supplier, vehicle, and calculated price before adding it to the quote.</p>
+                </div>
+                {isTransportVehicleSelected ? <span className="page-tab-badge">Ready</span> : null}
               </div>
 
               {resolvedTransportPricing ? (
-                <div className="quote-selected-transport-explanation">
-                  <strong>{transportSuggestionOverridden ? 'Selected transport option' : 'Smart Transport Picker selected this option.'}</strong>
-                  <p>
-                    Supplier: {formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)} | Pax {Number(paxCount) || defaultPaxCount || 1}
-                    {resolvedTransportPricing.unitCount && resolvedTransportPricing.unitCapacity
-                      ? ` -> ${resolvedTransportPricing.unitCount} unit${resolvedTransportPricing.unitCount === 1 ? '' : 's'} (${resolvedTransportPricing.unitCapacity} pax each)`
-                      : ''}
-                  </p>
-                  {transportBillableDays > 1 ? (
+                <div className="quote-selected-transport-card">
+                  <div className="quote-selected-transport-explanation">
+                    <strong>{resolvedTransportPricing.vehicle.name}</strong>
                     <p>
-                      Daily full-day package: {transportSelectedDays} selected day{transportSelectedDays === 1 ? '' : 's'}, {transportBillableDays} charged.
+                      Supplier: {formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)} | Pax {Number(paxCount) || defaultPaxCount || 1}
+                      {resolvedTransportPricing.unitCount && resolvedTransportPricing.unitCapacity
+                        ? ` -> ${resolvedTransportPricing.unitCount} unit${resolvedTransportPricing.unitCount === 1 ? '' : 's'} (${resolvedTransportPricing.unitCapacity} pax each)`
+                        : ''}
                     </p>
-                  ) : null}
-                  {transportRecommendationReasons.length > 0 ? (
-                    <ul>
-                      {transportRecommendationReasons.map((reason) => (
-                        <li key={reason}>{reason}</li>
-                      ))}
-                    </ul>
-                  ) : (
                     <p>
-                      {transportSuggestionOverridden
-                        ? 'You changed the transport selection. Pricing is based on the selected route, service type, and pax.'
-                        : 'Selected from the best available pricing for this route and pax.'}
+                      {resolvedTransportPricing.currency} {resolvedTransportPricing.price.toFixed(2)} | {formatServiceTypeLabel(resolvedTransportPricing.serviceType.name)} | {formatRouteLabel(resolvedTransportPricing.routeName)}
                     </p>
-                  )}
+                    {transportRecommendationReasons.length > 0 ? (
+                      <ul>
+                        {transportRecommendationReasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
                 </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {hasPrimarySelection && isTransportService &&
-          resolvedTransportPricing?.pricingMode === 'capacity_unit' &&
-          resolvedTransportPricing.unitCount &&
-          resolvedTransportPricing.discountedBaseCost !== undefined ? (
-            <p className="form-helper">
-              {`${resolvedTransportPricing.currency} ${resolvedTransportPricing.discountedBaseCost.toFixed(2)} per unit -> ${resolvedTransportPricing.unitCount} units -> ${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)} total`}
-            </p>
-          ) : null}
-
-          {hasPrimarySelection && isTransportService && transportAddOnRows.length > 0 ? (
-            <div className="quote-selected-transport-card">
-              <div className="panel-header" style={{ marginBottom: 12 }}>
-                <div>
-                  <p className="eyebrow">Transport add-ons</p>
-                  <h3 className="section-title" style={{ fontSize: '1rem' }}>Optional package rules</h3>
+              ) : (
+                <div className="quote-service-empty-state">
+                  <strong>Select a vehicle option</strong>
+                  <p>The Add Transport button is enabled after a priced vehicle and supplier option is selected.</p>
                 </div>
-                <strong>
-                  {transportAddOnRows[0]?.currency || resolvedTransportPricing?.currency || 'JOD'} {selectedTransportAddOnTotal.toFixed(2)}
-                </strong>
-              </div>
-
-              <div className="quote-preview-total-list">
-                {transportAddOnRows.map((addOn) => {
-                  const state = selectedTransportAddOns[addOn.rateId];
-                  const selected = state?.selected ?? addOn.defaultQuantity > 0;
-                  const quantity = Math.max(1, Number(state?.quantity || addOn.defaultQuantity || 1));
-                  const units = resolvedTransportPricing?.unitCount || Math.ceil((Number(paxCount) || defaultPaxCount || 1) / Math.max(1, addOn.unitCapacity));
-                  const addOnTotal = units * addOn.unitCost * quantity;
-
-                  return (
-                    <label key={addOn.rateId} className="quote-transport-addon-option">
-                      <span>
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={(event) =>
-                            setSelectedTransportAddOns((current) => ({
-                              ...current,
-                              [addOn.rateId]: {
-                                selected: event.target.checked,
-                                quantity: current[addOn.rateId]?.quantity || String(quantity),
-                              },
-                            }))
-                          }
-                        />
-                        <strong>{formatServiceTypeLabel(addOn.name)}</strong>
-                        <em>{formatServiceTypeLabel(addOn.addOnType)}</em>
-                      </span>
-                      <span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={state?.quantity || String(quantity)}
-                          onChange={(event) =>
-                            setSelectedTransportAddOns((current) => ({
-                              ...current,
-                              [addOn.rateId]: {
-                                selected,
-                                quantity: event.target.value,
-                              },
-                            }))
-                          }
-                          disabled={!selected}
-                        />
-                        {addOn.currency} {addOn.unitCost.toFixed(2)} x {units} x {quantity} = {addOn.currency} {addOnTotal.toFixed(2)}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+              )}
+            </section>
           ) : null}
 
-          {isTransportService && transportCandidates.length > 0 ? (
-            <details className="quote-advanced-settings" open={transportSuggestionOverridden}>
-              <summary>Advanced transport suggestions</summary>
+          {isTransportService ? (
+            <details className="quote-advanced-settings">
+              <summary>More options</summary>
 
-              <div className="stacked-card">
-              <div className="panel-header" style={{ marginBottom: 12 }}>
-                <div>
-                  <p className="eyebrow">Smart Transport Suggestions</p>
-                  <h3 className="section-title" style={{ fontSize: '1rem' }}>
-                    {quoteType} / {Number(paxCount) || defaultPaxCount || 1} pax
-                  </h3>
+              <div className="form-row form-row-4">
+                <label>
+                  Markup %
+                  <input
+                    value={markupPercent}
+                    onChange={(event) => setMarkupPercent(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Markup amount
+                  <input
+                    value={markupAmount}
+                    onChange={(event) => setMarkupAmount(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Overrides percent"
+                  />
+                </label>
+
+                <label>
+                  Sell price override
+                  <input
+                    value={sellPrice}
+                    onChange={(event) => setSellPrice(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Optional"
+                  />
+                </label>
+
+                <div className={sellPrice.trim() ? 'quote-item-override-status quote-item-override-status-active' : 'quote-item-override-status'}>
+                  <strong>Final sell price</strong>
+                  <span>
+                    {finalSellPrice !== null && Number.isFinite(finalSellPrice)
+                      ? `${displayCurrency} ${finalSellPrice.toFixed(2)}`
+                      : 'Waiting for cost'}
+                  </span>
                 </div>
               </div>
 
-              <div className="quote-preview-total-list">
-                {transportCandidates.map((candidate) => {
-                  const candidateKey = `${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`;
-                  const selectedCandidateKey = selectedTransportCandidate
-                    ? `${selectedTransportCandidate.vehicle.id}:${selectedTransportCandidate.routeId || selectedTransportCandidate.routeName}`
-                    : null;
-                  const isCurrentCandidate = candidateKey === selectedCandidateKey;
-
-                  return (
-                    <button
-                      key={candidateKey}
-                      type="button"
-                      className={
-                        isCurrentCandidate
-                          ? 'quote-transport-suggestion-option quote-transport-suggestion-option-selected'
-                          : 'quote-transport-suggestion-option'
-                      }
-                      onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
-                    >
-                      <span className="quote-transport-suggestion-main">
-                        <span>
-                          <strong>{candidate.vehicle.name}</strong>
-                          <span className="quote-transport-suggestion-badges">
-                            {isCurrentCandidate ? <span className="status-badge">Selected</span> : null}
-                            {candidate.isRecommended ? <span className="status-badge">Recommended</span> : null}
-                            {candidate.isBestValue ? <span className="status-badge">Best Value</span> : null}
-                          </span>
-                        </span>
-                        <strong className="quote-transport-suggestion-price">
-                          {candidate.currency} {candidate.price.toFixed(2)}
-                        </strong>
-                      </span>
-                      <span className="quote-transport-suggestion-details">
-                        <span>{candidate.vehicle.maxPax} pax capacity</span>
-                        <span>Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
-                        <span>{formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}</span>
-                        {candidate.unitCount ? (
-                          <span>{candidate.unitCount} unit{candidate.unitCount === 1 ? '' : 's'}</span>
-                        ) : null}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="form-row">
+                <label>
+                  Legacy route text
+                  <input
+                    value={routeName}
+                    onChange={(event) => {
+                      setRouteSelectionManuallyChanged(true);
+                      setRouteName(event.target.value);
+                      setTransportSuggestionOverridden(true);
+                    }}
+                    placeholder="Airport - Hotel"
+                    disabled={Boolean(routeId)}
+                  />
+                </label>
               </div>
 
-              {!hasRecommendedTransportCandidate ? (
+              {resolvedTransportPricing?.pricingMode === 'capacity_unit' &&
+              resolvedTransportPricing.unitCount &&
+              resolvedTransportPricing.discountedBaseCost !== undefined ? (
                 <p className="form-helper">
-                  Recommended vehicle not available for this route. Showing best available options.
+                  {`${resolvedTransportPricing.currency} ${resolvedTransportPricing.discountedBaseCost.toFixed(2)} per unit -> ${resolvedTransportPricing.unitCount} units -> ${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)} total`}
                 </p>
               ) : null}
-              </div>
+
+              {transportAddOnRows.length > 0 ? (
+                <div className="quote-selected-transport-card">
+                  <div className="panel-header" style={{ marginBottom: 12 }}>
+                    <div>
+                      <p className="eyebrow">Transport add-ons</p>
+                      <h3 className="section-title" style={{ fontSize: '1rem' }}>Optional package rules</h3>
+                    </div>
+                    <strong>
+                      {transportAddOnRows[0]?.currency || resolvedTransportPricing?.currency || 'JOD'} {selectedTransportAddOnTotal.toFixed(2)}
+                    </strong>
+                  </div>
+
+                  <div className="quote-preview-total-list">
+                    {transportAddOnRows.map((addOn) => {
+                      const state = selectedTransportAddOns[addOn.rateId];
+                      const selected = state?.selected ?? addOn.defaultQuantity > 0;
+                      const quantity = Math.max(1, Number(state?.quantity || addOn.defaultQuantity || 1));
+                      const units = resolvedTransportPricing?.unitCount || Math.ceil((Number(paxCount) || defaultPaxCount || 1) / Math.max(1, addOn.unitCapacity));
+                      const addOnTotal = units * addOn.unitCost * quantity;
+
+                      return (
+                        <label key={addOn.rateId} className="quote-transport-addon-option">
+                          <span>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={(event) =>
+                                setSelectedTransportAddOns((current) => ({
+                                  ...current,
+                                  [addOn.rateId]: {
+                                    selected: event.target.checked,
+                                    quantity: current[addOn.rateId]?.quantity || String(quantity),
+                                  },
+                                }))
+                              }
+                            />
+                            <strong>{formatServiceTypeLabel(addOn.name)}</strong>
+                            <em>{formatServiceTypeLabel(addOn.addOnType)}</em>
+                          </span>
+                          <span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={state?.quantity || String(quantity)}
+                              onChange={(event) =>
+                                setSelectedTransportAddOns((current) => ({
+                                  ...current,
+                                  [addOn.rateId]: {
+                                    selected,
+                                    quantity: event.target.value,
+                                  },
+                                }))
+                              }
+                              disabled={!selected}
+                            />
+                            {addOn.currency} {addOn.unitCost.toFixed(2)} x {units} x {quantity} = {addOn.currency} {addOnTotal.toFixed(2)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <pre className="quote-transport-debug">
+                {JSON.stringify(
+                  {
+                    activeServiceType,
+                    serviceId,
+                    selectedServiceName: selectedService?.name,
+                    isTransportService,
+                    transportServiceTypeId,
+                    routeId,
+                    routeName,
+                    resolvedTransportPricingPrice: resolvedTransportPricing?.price,
+                    resolvedTransportPricingCandidatesLength: resolvedTransportPricing?.candidates?.length,
+                    transportCandidatesLength: transportCandidates.length,
+                    hasPrimarySelection,
+                    transportSuggestionOverridden,
+                    rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
+                    filteredTransportCandidates: transportCandidates,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
             </details>
           ) : null}
 
@@ -3505,10 +3539,11 @@ export function QuoteItemsForm({
                 filteredServices.length === 0 ||
                 !selectedService ||
                 showTransportRouteRequired ||
+                (isTransportService && !isTransportVehicleSelected) ||
                 (isHotelService && !selectedHotelRate && !manualHotelRateDraft)
               }
             >
-              {isSubmitting ? 'Saving...' : submitLabel}
+              {isSubmitting ? 'Saving...' : isTransportService ? 'Add Transport' : submitLabel}
             </button>
           ) : needsServiceSelection ? (
             <div className="quote-service-empty-state">
