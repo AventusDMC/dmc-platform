@@ -14528,6 +14528,25 @@ textarea:focus,
   font-weight: 750;
 }
 
+.quote-service-card-pricing-summary .quote-ui-badge,
+.quote-item-margin-intelligence .quote-ui-badge,
+.quote-item-row-totals .quote-ui-badge,
+.quote-live-pricing-profit .quote-ui-badge {
+  justify-self: flex-start;
+  margin-top: 0.15rem;
+}
+
+.quote-item-margin-intelligence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem 0.65rem;
+  align-items: center;
+  margin: 0.45rem 0;
+  color: rgba(30, 27, 24, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .quote-transport-addon-option {
   display: flex;
   align-items: center;

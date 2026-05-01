@@ -35,6 +35,7 @@ import { ReviseQuoteButton } from './ReviseQuoteButton';
 import { HotelCategoryOption } from '../../lib/hotelCategories';
 import { RouteOption } from '../../lib/routes';
 import { formatNightCountLabel } from '../../lib/formatters';
+import { calculateMarginPercent, calculateProfit, formatMarginPercent, getQuoteMarginWarning } from '../../lib/financials';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
 import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
 
@@ -916,8 +917,8 @@ function getDayTotals(items: QuoteItem[], itineraryId: string): CostSummary {
 }
 
 function getInternalCostingMetrics(totalCost: number, totalSell: number): InternalCostingMetrics {
-  const marginAmount = Number((totalSell - totalCost).toFixed(2));
-  const marginPercent = totalSell > 0 ? Number(((marginAmount / totalSell) * 100).toFixed(2)) : 0;
+  const marginAmount = calculateProfit(totalSell, totalCost);
+  const marginPercent = calculateMarginPercent(totalSell, totalCost);
 
   return { marginAmount, marginPercent };
 }
@@ -933,8 +934,8 @@ function buildServiceCostBreakdown(items: QuoteItem[]): ServiceCostBreakdown[] {
       existing.itemCount += 1;
       existing.totalCost = Number((existing.totalCost + item.totalCost).toFixed(2));
       existing.totalSell = Number((existing.totalSell + item.totalSell).toFixed(2));
-      existing.marginAmount = Number((existing.totalSell - existing.totalCost).toFixed(2));
-      existing.marginPercent = existing.totalSell > 0 ? Number(((existing.marginAmount / existing.totalSell) * 100).toFixed(2)) : 0;
+      existing.marginAmount = calculateProfit(existing.totalSell, existing.totalCost);
+      existing.marginPercent = calculateMarginPercent(existing.totalSell, existing.totalCost);
       continue;
     }
 
@@ -944,8 +945,8 @@ function buildServiceCostBreakdown(items: QuoteItem[]): ServiceCostBreakdown[] {
       itemCount: 1,
       totalCost: item.totalCost,
       totalSell: item.totalSell,
-      marginAmount: Number((item.totalSell - item.totalCost).toFixed(2)),
-      marginPercent: item.totalSell > 0 ? Number((((item.totalSell - item.totalCost) / item.totalSell) * 100).toFixed(2)) : 0,
+      marginAmount: calculateProfit(item.totalSell, item.totalCost),
+      marginPercent: calculateMarginPercent(item.totalSell, item.totalCost),
       currency: item.currency,
     });
   }
@@ -1165,6 +1166,7 @@ function renderInternalCostingPanel({
 }) {
   const metrics = getInternalCostingMetrics(totals.totalCost, totals.totalSell);
   const breakdown = buildServiceCostBreakdown(items);
+  const quoteMarginWarning = getQuoteMarginWarning(totals.totalSell, totals.totalCost);
 
   return (
     <article className="workspace-section internal-costing-panel">
@@ -1187,10 +1189,11 @@ function renderInternalCostingPanel({
         <div className="workspace-summary-card">
           <span>Gross profit</span>
           <strong>{formatMoney(metrics.marginAmount)}</strong>
+          {quoteMarginWarning ? <em className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</em> : null}
         </div>
         <div className="workspace-summary-card">
           <span>Margin %</span>
-          <strong>{metrics.marginPercent.toFixed(2)}%</strong>
+          <strong>{formatMarginPercent(metrics.marginPercent)}</strong>
         </div>
         <div className="workspace-summary-card">
           <span>Price per person</span>
@@ -1395,6 +1398,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
   const totalPax = quote.adults + quote.children;
   const quoteExpired = isQuoteExpired(quote);
+  const quoteProfit = calculateProfit(quote.totalSell, quote.totalCost);
+  const quoteMarginPercent = calculateMarginPercent(quote.totalSell, quote.totalCost);
+  const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);
   const authoringSummary = collectQuoteAuthoringSummary(quote);
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
   const sharedUnassignedItems = quote.quoteItems.filter((item) => !item.itineraryId);
@@ -1861,11 +1867,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     </div>
                     <div>
                       <span>Gross profit</span>
-                      <strong>{formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency)}</strong>
+                      <strong>{formatMoney(quoteProfit, quote.quoteCurrency)}</strong>
+                      {quoteMarginWarning ? <em className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</em> : null}
                     </div>
                     <div>
                       <span>Margin %</span>
-                      <strong>{quote.totalSell > 0 ? (((quote.totalSell - quote.totalCost) / quote.totalSell) * 100).toFixed(2) : '0.00'}%</strong>
+                      <strong>{formatMarginPercent(quoteMarginPercent)}</strong>
                     </div>
                     <div>
                       <span>Quote currency</span>
@@ -2541,8 +2548,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 items={[
                   { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
                   { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
-                  { label: 'Gross profit', value: formatMoney(quote.totalSell - quote.totalCost, quote.quoteCurrency), helper: 'Internal only' },
-                  { label: 'Margin', value: quote.totalSell > 0 ? `${(((quote.totalSell - quote.totalCost) / quote.totalSell) * 100).toFixed(2)}%` : '0.00%', helper: 'Internal only' },
+                  { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Internal only' },
+                  { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Internal only' },
                 ]}
               />
 

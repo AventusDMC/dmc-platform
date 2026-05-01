@@ -9,6 +9,7 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
@@ -110,10 +111,35 @@ describe('quote detail page regression', () => {
       '<QuoteSummaryPanel',
       'totalSell={quote.totalSell}',
       'totalCost={quote.totalCost}',
+      'const quoteProfit = calculateProfit(quote.totalSell, quote.totalCost);',
+      'const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);',
     ]);
 
     assert.match(versionPageSource, /formatMoney\(item\.totalSell, item\.currency\)/);
     assert.doesNotMatch(versionPageSource, /supplier cost|Supplier cost|gross profit|Gross profit|margin|Margin/);
+  });
+
+  it('adds margin intelligence to live pricing and quote item cards without repricing', () => {
+    expectSourceContains(quoteServicePlannerSource, [
+      'calculateProfit(item.totalSell, item.totalCost)',
+      'calculateMarginPercent(item.totalSell, item.totalCost)',
+      'getItemMarginWarning(item.totalSell, item.totalCost)',
+      'Sell {formatLiveMoney(item.totalSell',
+      'Cost {formatLiveMoney(item.totalCost',
+      'Profit {formatLiveMoney(itemProfit',
+      'Margin {formatMarginPercent(itemMarginPercent)}',
+      'getQuoteMarginWarning(summary.totalSell, summary.totalCost)',
+    ]);
+
+    expectSourceContains(quoteItemCardSource, [
+      'quote-item-margin-intelligence',
+      'Sell {formatMoney(currentItem.totalSell, currentItem.currency)}',
+      'Cost {formatMoney(currentItem.totalCost, currentItem.currency)}',
+      'Profit {formatMoney(marginMetrics.profit, currentItem.currency)}',
+      'Margin {formatMarginPercent(marginMetrics.marginPercent)}',
+      'getItemMarginWarning(currentItem.totalSell, currentItem.totalCost)',
+      "marginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'",
+    ]);
   });
 
   it('keeps PDF, share, and version actions pointed at existing handlers', () => {

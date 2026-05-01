@@ -7,6 +7,7 @@ import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppab
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
@@ -1398,6 +1399,9 @@ function SortableServiceCard({
   const isExternalPackage = isExternalPackageItem(item);
   const externalRange = isExternalPackage ? getExternalPackageDayRange(item, dayNumber) : null;
   const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || item.service.name;
+  const itemProfit = calculateProfit(item.totalSell, item.totalCost);
+  const itemMarginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
+  const itemMarginWarning = getItemMarginWarning(item.totalSell, item.totalCost);
 
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -1448,11 +1452,16 @@ function SortableServiceCard({
       </p>
       <div className="quote-service-card-pricing-summary">
         <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
+        <span>
+          Sell {formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)} | Cost {formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}
+        </span>
+        <span>
+          Profit {formatLiveMoney(itemProfit, (item.currency as Quote['quoteCurrency']) || currency)} | Margin {formatMarginPercent(itemMarginPercent)}
+        </span>
         {isExternalPackage ? (
-          <span>
-            {item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'} | Cost {formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}
-          </span>
+          <span>{item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'}</span>
         ) : null}
+        {itemMarginWarning ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
       </div>
       <details className="quote-service-card-details">
         <summary>Details</summary>
@@ -1496,9 +1505,10 @@ function LivePricingPanel({
   const [summary, setSummary] = useState<LivePricingSummary>(() => getLivePricingSummary(quote));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const marginAmount = Number((summary.totalSell - summary.totalCost).toFixed(2));
-  const marginPercent = summary.totalSell > 0 ? Number(((marginAmount / summary.totalSell) * 100).toFixed(2)) : 0;
-  const marginTone = marginPercent > 25 ? 'good' : marginPercent >= 10 ? 'watch' : 'risk';
+  const marginAmount = calculateProfit(summary.totalSell, summary.totalCost);
+  const marginPercent = calculateMarginPercent(summary.totalSell, summary.totalCost);
+  const quoteMarginWarning = getQuoteMarginWarning(summary.totalSell, summary.totalCost);
+  const marginTone = marginAmount < 0 ? 'risk' : marginPercent < 15 ? 'watch' : 'good';
 
   useEffect(() => {
     setSummary(getLivePricingSummary(quote));
@@ -1570,7 +1580,8 @@ function LivePricingPanel({
       <div className={`quote-live-pricing-profit quote-live-pricing-profit-${marginTone}`}>
         <span>Profit</span>
         <strong>{formatLiveMoney(showAdminMetrics ? marginAmount : summary.totalSell, summary.quoteCurrency)}</strong>
-        <em>{showAdminMetrics ? `${marginPercent.toFixed(1)}% margin` : 'Total sell'}</em>
+        <em>{showAdminMetrics ? `${formatMarginPercent(marginPercent)} margin` : 'Total sell'}</em>
+        {showAdminMetrics && quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : null}
       </div>
       <div className="quote-live-pricing-list">
         <div className="quote-live-pricing-row">
@@ -1585,8 +1596,14 @@ function LivePricingPanel({
         ) : null}
         {showAdminMetrics ? (
           <div className="quote-live-pricing-row">
+            <span>Profit</span>
+            <strong className={`quote-live-pricing-margin quote-live-pricing-margin-${marginTone}`}>{formatLiveMoney(marginAmount, summary.quoteCurrency)}</strong>
+          </div>
+        ) : null}
+        {showAdminMetrics ? (
+          <div className="quote-live-pricing-row">
             <span>Margin %</span>
-            <strong className={`quote-live-pricing-margin quote-live-pricing-margin-${marginTone}`}>{marginPercent.toFixed(1)}%</strong>
+            <strong className={`quote-live-pricing-margin quote-live-pricing-margin-${marginTone}`}>{formatMarginPercent(marginPercent)}</strong>
           </div>
         ) : null}
       </div>

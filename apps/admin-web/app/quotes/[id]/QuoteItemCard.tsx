@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { InlineEntityActions } from '../../components/InlineEntityActions';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
+import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import {
@@ -321,12 +322,9 @@ function getFinalItemCost(item: Pick<QuoteItem, 'baseCost' | 'overrideCost' | 'f
 }
 
 function getMarginMetrics(item: Pick<QuoteItem, 'totalCost' | 'totalSell'>) {
-  const profit = Number((item.totalSell - item.totalCost).toFixed(2));
-  const marginPercent = item.totalSell > 0 ? Number(((profit / item.totalSell) * 100).toFixed(2)) : 0;
-
   return {
-    profit,
-    marginPercent,
+    profit: calculateProfit(item.totalSell, item.totalCost),
+    marginPercent: calculateMarginPercent(item.totalSell, item.totalCost),
   };
 }
 
@@ -418,6 +416,7 @@ export function QuoteItemCard({
   const selectedContract = currentItem.contractId ? hotelContracts.find((contract) => contract.id === currentItem.contractId) || null : null;
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
   const marginMetrics = getMarginMetrics(currentItem);
+  const marginWarning = getItemMarginWarning(currentItem.totalSell, currentItem.totalCost);
   const externalPackageInternalLines = isExternalPackage ? getExternalPackageInternalLines(currentItem) : [];
   const externalPackageClientLines = isExternalPackage ? getExternalPackageClientLines(currentItem) : [];
   const itineraryDayNumber = currentItem.itineraryId
@@ -598,9 +597,13 @@ export function QuoteItemCard({
             </div>
           ) : null}
           {currentItem.totalSell > 0 || currentItem.totalCost > 0 ? (
-            <p>
-              Profit {formatMoney(marginMetrics.profit, currentItem.currency)} | Margin {marginMetrics.marginPercent.toFixed(2)}%
-            </p>
+            <div className="quote-item-margin-intelligence">
+              <span>Sell {formatMoney(currentItem.totalSell, currentItem.currency)}</span>
+              <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)}</span>
+              <span>Profit {formatMoney(marginMetrics.profit, currentItem.currency)}</span>
+              <span>Margin {formatMarginPercent(marginMetrics.marginPercent)}</span>
+              {marginWarning ? <em className={`quote-ui-badge ${marginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{marginWarning}</em> : null}
+            </div>
           ) : null}
           {currentItem.serviceDate || currentItem.startTime || currentItem.pickupTime ? (
             <p>
@@ -683,7 +686,8 @@ export function QuoteItemCard({
         </div>
         <div className="quote-item-row-totals">
           <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
-          <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Profit {formatMoney(marginMetrics.profit, currentItem.currency)}</span>
+          <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Profit {formatMoney(marginMetrics.profit, currentItem.currency)} | Margin {formatMarginPercent(marginMetrics.marginPercent)}</span>
+          {marginWarning ? <em className={`quote-ui-badge ${marginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{marginWarning}</em> : null}
         </div>
       </article>
 
