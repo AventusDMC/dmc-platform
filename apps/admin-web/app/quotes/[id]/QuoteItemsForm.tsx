@@ -147,6 +147,13 @@ type TransportPricingAddOn = {
   defaultQuantity: number;
 };
 
+type TransportPricingRuleSummary = {
+  id: string;
+  routeId: string;
+  transportServiceTypeId: string;
+  isActive: boolean;
+};
+
 type ResolvedTransportPricing = {
   vehicleRateId?: string | null;
   routeId?: string | null;
@@ -762,6 +769,8 @@ export function QuoteItemsForm({
   const [transportSuggestionOverridden, setTransportSuggestionOverridden] = useState(false);
   const [routeSelectionManuallyChanged, setRouteSelectionManuallyChanged] = useState(Boolean(initialRouteId || initialRouteName));
   const [selectedTransportAddOns, setSelectedTransportAddOns] = useState<Record<string, { selected: boolean; quantity: string }>>({});
+  const [transportPricingRules, setTransportPricingRules] = useState<TransportPricingRuleSummary[]>([]);
+  const [isLoadingTransportPricingRules, setIsLoadingTransportPricingRules] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
@@ -864,25 +873,21 @@ export function QuoteItemsForm({
     return selected ? total + units * addOn.unitCost * quantity : total;
   }, 0);
   const activeTransportRoutes = useMemo(() => routes.filter((route) => route.isActive !== false), [routes]);
-  const serviceTypeMatchedRoutes = useMemo(() => {
-    if (!selectedTransportServiceType) {
-      return activeTransportRoutes;
+  const pricedTransportRouteIds = useMemo(() => {
+    if (!transportServiceTypeId) {
+      return new Set<string>();
     }
 
-    const serviceTypeTerms = [
-      selectedTransportServiceType.code,
-      selectedTransportServiceType.name,
-      selectedTransportServiceType.name.replace(/\s+/g, '_'),
-    ]
-      .filter(Boolean)
-      .map((value) => value.toLowerCase());
-
-    return activeTransportRoutes.filter((route) => {
-      const routeType = (route.routeType || '').toLowerCase();
-      return routeType && serviceTypeTerms.some((term) => routeType.includes(term) || term.includes(routeType));
-    });
-  }, [activeTransportRoutes, selectedTransportServiceType]);
-  const validTransportRoutes = serviceTypeMatchedRoutes.length > 0 ? serviceTypeMatchedRoutes : activeTransportRoutes;
+    return new Set(
+      transportPricingRules
+        .filter((rule) => rule.isActive !== false && rule.transportServiceTypeId === transportServiceTypeId)
+        .map((rule) => rule.routeId),
+    );
+  }, [transportPricingRules, transportServiceTypeId]);
+  const validTransportRoutes = useMemo(
+    () => activeTransportRoutes.filter((route) => pricedTransportRouteIds.has(route.id)),
+    [activeTransportRoutes, pricedTransportRouteIds],
+  );
   const hasTransportRoutes = validTransportRoutes.length > 0;
   const smartDefaultTransportRoute = useMemo(
     () => findSmartDefaultTransportRoute(validTransportRoutes, itineraryDayTitle, itineraryDayDescription),
@@ -912,6 +917,49 @@ export function QuoteItemsForm({
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
   const hasTransportRouteSelection = Boolean(routeId);
   const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
+
+  useEffect(() => {
+    if (!isTransportService) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    setIsLoadingTransportPricingRules(true);
+
+    fetch('/api/transport-pricing/rules', {
+      cache: 'no-store',
+      signal: abortController.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not load transport priced routes.'));
+        }
+
+        return readJsonResponse<TransportPricingRuleSummary[]>(response, 'Could not load transport priced routes.');
+      })
+      .then((rules) => {
+        if (!abortController.signal.aborted) {
+          setTransportPricingRules(rules);
+        }
+      })
+      .catch((caughtError) => {
+        if (caughtError instanceof Error && caughtError.name === 'AbortError') {
+          return;
+        }
+
+        if (!abortController.signal.aborted) {
+          setError(caughtError instanceof Error ? caughtError.message : 'Could not load transport priced routes.');
+          setTransportPricingRules([]);
+        }
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setIsLoadingTransportPricingRules(false);
+        }
+      });
+
+    return () => abortController.abort();
+  }, [isTransportService]);
 
   useEffect(() => {
     if (!isTransportService) {
@@ -1553,13 +1601,13 @@ export function QuoteItemsForm({
       return;
     }
 
-    if (!activeTransportRoutes.some((route) => route.id === routeId)) {
+    if (!validTransportRoutes.some((route) => route.id === routeId)) {
       setRouteId('');
       setRouteName('');
       setBaseCost('');
       setResolvedTransportPricing(null);
     }
-  }, [activeTransportRoutes, isTransportService, routeId]);
+  }, [isTransportService, routeId, validTransportRoutes]);
 
   useEffect(() => {
     if (!isTransportService) {
@@ -3141,7 +3189,13 @@ export function QuoteItemsForm({
                 </select>
               </label>
 
-              {hasTransportRoutes ? (
+              {isLoadingTransportPricingRules ? (
+                <div className="quote-transport-route-empty">
+                  <span>Route</span>
+                  <strong>Loading priced routes</strong>
+                  <p>Routes will appear after active pricing rules are loaded.</p>
+                </div>
+              ) : hasTransportRoutes ? (
                 <div className={showTransportRouteRequired ? 'quote-transport-route-required' : undefined}>
                   <RouteCombobox
                     label="Route *"
@@ -3166,8 +3220,8 @@ export function QuoteItemsForm({
               ) : (
                 <div className="quote-transport-route-empty">
                   <span>Route</span>
-                  <strong>No routes available for this service</strong>
-                  <p>Add a route in Transport before saving this quote service.</p>
+                  <strong>No priced routes for this service type</strong>
+                  <p>Add active transport pricing rules for this service type before saving this quote service.</p>
                 </div>
               )}
             </div>
