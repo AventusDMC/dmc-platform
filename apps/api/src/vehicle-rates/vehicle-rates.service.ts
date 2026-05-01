@@ -161,6 +161,62 @@ function classifyTransportServiceName(serviceName: string): TransportServiceClas
   return 'ROUTE_TRANSFER';
 }
 
+function formatExportDate(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function sanitizeExportFileName(value: string) {
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 140) || 'transport_contract'
+  );
+}
+
+function getExportSupplierName(rate: { supplier?: { name?: string | null } | null }) {
+  return rate.supplier?.name?.trim() || 'Unknown supplier';
+}
+
+function getExportRouteCategory(rates: Array<{ serviceType: { classification?: TransportServiceClassification | string | null }; vehicle: { name: string }; routeName: string }>) {
+  const classifications = new Set(rates.map((rate) => rate.serviceType.classification || 'ROUTE_TRANSFER'));
+
+  if (classifications.size === 1 && classifications.has('ADD_ON')) {
+    return 'Add-ons';
+  }
+
+  if (classifications.has('FULL_DAY') || classifications.has('DAILY_PACKAGE')) {
+    return 'Full-day packages';
+  }
+
+  const joinedText = rates.map((rate) => `${rate.vehicle.name} ${rate.routeName}`).join(' ').toLowerCase();
+
+  if (joinedText.includes('bus') || joinedText.includes('coach')) {
+    return 'Buses';
+  }
+
+  return 'Transport';
+}
+
+function getExportRateCardKey(rate: {
+  supplier?: { name?: string | null } | null;
+  serviceType: { classification?: TransportServiceClassification | string | null };
+  vehicle: { name: string };
+  routeName: string;
+  currency: string;
+  validFrom: Date;
+  validTo: Date;
+}) {
+  return [
+    getExportSupplierName(rate).trim().toLowerCase() || 'unassigned supplier',
+    getExportRouteCategory([rate]).toLowerCase(),
+    rate.currency,
+    formatExportDate(rate.validFrom),
+    formatExportDate(rate.validTo),
+  ].join('|');
+}
+
 @Injectable()
 export class VehicleRatesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -521,6 +577,121 @@ export class VehicleRatesService {
     return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
   }
 
+  async exportTransportRateCard(rateCardId: string) {
+    if (!rateCardId?.trim()) {
+      throw new BadRequestException('rateCardId is required');
+    }
+
+    const allRates = await this.prisma.vehicleRate.findMany({
+      include: {
+        supplier: true,
+        vehicle: true,
+        serviceType: true,
+        route: {
+          include: {
+            fromPlace: true,
+            toPlace: true,
+          },
+        },
+        fromPlace: true,
+        toPlace: true,
+      },
+      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+    });
+    const decodedRateCardId = decodeURIComponent(rateCardId);
+    const rates = allRates.filter((rate) => getExportRateCardKey(rate) === decodedRateCardId);
+
+    if (rates.length === 0) {
+      throw new BadRequestException('Supplier rate card not found');
+    }
+
+    const supplier = rates[0].supplier;
+    const supplierName = getExportSupplierName(rates[0]);
+    const category = getExportRouteCategory(rates);
+    const currency = rates[0].currency;
+    const contractValidFrom = formatExportDate(rates[0].validFrom);
+    const contractValidTo = formatExportDate(rates[0].validTo);
+    const country = rates[0].route?.fromPlace?.country || rates[0].fromPlace?.country || rates[0].route?.toPlace?.country || rates[0].toPlace?.country || '';
+    const contractName = `${supplierName} - ${category} ${new Date(rates[0].validFrom).getFullYear()} Rates in ${currency}`;
+    const notes = supplier?.notes || '';
+
+    const toImportRow = (rate: (typeof rates)[number]) => {
+      const origin = rate.route?.fromPlace?.name || rate.fromPlace?.name || '';
+      const destination = rate.route?.toPlace?.name || rate.toPlace?.name || '';
+
+      return {
+        supplierName,
+        supplierContactName: '',
+        supplierEmail: supplier?.email || '',
+        supplierPhone: supplier?.phone || '',
+        supplierWebsite: '',
+        contractName,
+        contractValidFrom,
+        contractValidTo,
+        country: rate.route?.fromPlace?.country || rate.fromPlace?.country || country,
+        serviceName: rate.serviceType.name,
+        routeName: rate.route?.name || rate.routeName,
+        origin,
+        destination,
+        vehicleType: rate.vehicle.name,
+        maxPaxPerUnit: rate.maxPax,
+        pricingMode: 'PER_GROUP',
+        cost: rate.price,
+        currency: rate.currency,
+        active: rate.active ? 'TRUE' : 'FALSE',
+        notes,
+      };
+    };
+    const importRows = rates.map(toImportRow);
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet([
+        {
+          supplierName,
+          contractName,
+          contractValidFrom,
+          contractValidTo,
+          country,
+          currency,
+          notes,
+        },
+      ]),
+      'Contract Summary',
+    );
+
+    const rowWithClassification = (row: ReturnType<typeof toImportRow>, rate: (typeof rates)[number]) => ({
+      ...row,
+      classification: rate.serviceType.classification || 'ROUTE_TRANSFER',
+    });
+    const routeTransferRows = importRows
+      .map((row, index) => rowWithClassification(row, rates[index]))
+      .filter((row) => row.classification === 'ROUTE_TRANSFER');
+    const fullDayRows = importRows
+      .map((row, index) => ({
+        ...rowWithClassification(row, rates[index]),
+        minimumDays: rates[index].serviceType.classification === 'DAILY_PACKAGE' ? 3 : '',
+      }))
+      .filter((row) => row.classification === 'FULL_DAY' || row.classification === 'DAILY_PACKAGE');
+    const addOnRows = importRows
+      .map((row, index) => ({
+        ...rowWithClassification(row, rates[index]),
+        type: this.getTransportAddOnExportType(row.serviceName, row.routeName),
+      }))
+      .filter((row) => row.classification === 'ADD_ON');
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(routeTransferRows), 'Route Transfers');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fullDayRows), 'Full Day Packages');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(addOnRows), 'Add-ons');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(importRows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] }), 'Import Compatible');
+
+    return {
+      buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
+      fileName: `${sanitizeExportFileName(supplierName)}_${sanitizeExportFileName(contractName)}_transport.xlsx`,
+    };
+  }
+
   async previewTransportContractImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
     return this.processTransportContractImport(file, 'preview');
   }
@@ -746,6 +917,17 @@ export class VehicleRatesService {
       active: parseImportBoolean(row.active),
       notes: normalizeImportName(row.notes),
     };
+  }
+
+  private getTransportAddOnExportType(serviceName: string, routeName: string) {
+    const normalized = `${serviceName} ${routeName}`.toLowerCase();
+
+    if (normalized.includes('overnight')) return 'overnight';
+    if (normalized.includes('stationary')) return 'stationary';
+    if (normalized.includes('waiting')) return 'waiting';
+    if (normalized.includes('daily charge')) return 'daily charge';
+
+    return 'add-on';
   }
 
   private async findOrCreateTransportImportSupplier(row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>) {

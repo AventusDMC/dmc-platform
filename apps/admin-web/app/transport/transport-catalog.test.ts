@@ -115,6 +115,16 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
   });
 
+  it('lets operators export a supplier rate card as Excel', () => {
+    expectSourceContains(tableSource, [
+      'async function handleExportRateCard(rateCard: SupplierRateCard)',
+      "`${apiBaseUrl}/vehicle-rates/export?rateCardId=${encodeURIComponent(rateCard.id)}`",
+      'Export Excel',
+      'response.blob()',
+      'content-disposition',
+    ]);
+  });
+
   it('loads enough saved routes and keeps route selectors searchable', () => {
     expectSourceContains(sectionSource, [
       '`${API_BASE_URL}/routes?type=transfer&limit=200`',

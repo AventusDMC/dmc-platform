@@ -203,6 +203,7 @@ export function VehicleRatesTable({
   const [activeSupplierEdit, setActiveSupplierEdit] = useState<ActiveSupplierEdit | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingSupplierCardId, setSavingSupplierCardId] = useState<string | null>(null);
+  const [exportingRateCardId, setExportingRateCardId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);
   const supplierOptions = useMemo(() => Array.from(new Set(vehicleRates.map(getSupplierName))).sort(), [vehicleRates]);
@@ -239,6 +240,39 @@ export function VehicleRatesTable({
       setError(caughtError instanceof Error ? caughtError.message : 'Could not update supplier for this rate card.');
     } finally {
       setSavingSupplierCardId(null);
+    }
+  }
+
+  async function handleExportRateCard(rateCard: SupplierRateCard) {
+    setExportingRateCardId(rateCard.id);
+    setError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/vehicle-rates/export?rateCardId=${encodeURIComponent(rateCard.id)}`, {
+        method: 'GET',
+        headers: buildAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not export supplier rate card.'));
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const fileNameMatch = disposition.match(/filename="?([^"]+)"?/i);
+      const fileName = fileNameMatch?.[1] || `${rateCard.name.replace(/[^a-zA-Z0-9._-]+/g, '_')}_transport.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not export supplier rate card.');
+    } finally {
+      setExportingRateCardId(null);
     }
   }
 
@@ -300,6 +334,9 @@ export function VehicleRatesTable({
                 </div>
                 <div className="table-action-row">
                   <span className="transport-contract-count">{rateCard.rates.length} rate lines</span>
+                  <button type="button" className="compact-button" onClick={() => handleExportRateCard(rateCard)} disabled={exportingRateCardId === rateCard.id}>
+                    {exportingRateCardId === rateCard.id ? 'Exporting...' : 'Export Excel'}
+                  </button>
                   <button
                     type="button"
                     className="compact-button"

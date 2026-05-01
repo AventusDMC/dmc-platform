@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../auth/auth.decorators';
 import { VehicleRatesService } from './vehicle-rates.service';
@@ -43,6 +43,18 @@ export class VehicleRatesController {
     });
 
     return new StreamableFile(buffer);
+  }
+
+  @Get('export')
+  @Roles('admin', 'finance')
+  async exportRateCard(@Query('rateCardId') rateCardId: string, @Res({ passthrough: true }) response: any) {
+    const exported = await this.vehicleRatesService.exportTransportRateCard(rateCardId);
+    response.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${exported.fileName}"`,
+    });
+
+    return new StreamableFile(exported.buffer);
   }
 
   @Post('import-preview')
