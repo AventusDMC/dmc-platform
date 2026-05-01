@@ -910,7 +910,7 @@ export function QuoteItemsForm({
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
-  const hasTransportRouteSelection = Boolean(routeId || routeName.trim());
+  const hasTransportRouteSelection = Boolean(routeId);
   const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
 
   useEffect(() => {
@@ -1580,7 +1580,7 @@ export function QuoteItemsForm({
       setTransportServiceTypeId(transportServiceTypes[0].id);
     }
 
-    if (!transportServiceTypeId || !hasTransportRouteSelection) {
+    if (!transportServiceTypeId || !routeId) {
       setIsLoadingTransportCost(false);
       setBaseCost('');
       setResolvedTransportPricing(null);
@@ -1802,7 +1802,7 @@ export function QuoteItemsForm({
           throw new Error('Transport service type is required');
         }
 
-        if (!routeId && !routeName.trim()) {
+        if (!routeId) {
           throw new Error('Transport route is required');
         }
 
@@ -3148,8 +3148,9 @@ export function QuoteItemsForm({
                     routes={validTransportRoutes}
                     value={routeId}
                     onChange={(value) => {
+                      const nextRouteId = validTransportRoutes.some((route) => route.id === value) ? value : '';
                       setRouteSelectionManuallyChanged(true);
-                      setRouteId(value);
+                      setRouteId(nextRouteId);
                       setRouteName('');
                       setBaseCost('');
                       setResolvedTransportPricing(null);
