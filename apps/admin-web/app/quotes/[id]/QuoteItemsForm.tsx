@@ -785,7 +785,7 @@ export function QuoteItemsForm({
 
     const normalizedCandidates = candidates
       .filter((candidate) => {
-        const key = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}`;
+        const key = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}:${candidate.supplier?.id || ''}`;
 
         if (seen.has(key)) {
           return false;
