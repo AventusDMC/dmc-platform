@@ -685,6 +685,7 @@ export class VehicleRatesService {
     const importRows = rates.map(toImportRow);
     const workbook = XLSX.utils.book_new();
 
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(importRows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] }), 'Import Compatible');
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet([
@@ -724,7 +725,6 @@ export class VehicleRatesService {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(routeTransferRows), 'Route Transfers');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(fullDayRows), 'Full Day Packages');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(addOnRows), 'Add-ons');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(importRows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] }), 'Import Compatible');
 
     return {
       buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
@@ -944,7 +944,7 @@ export class VehicleRatesService {
     }
 
     const workbook = file.buffer ? XLSX.read(file.buffer, { type: 'buffer', cellDates: true }) : XLSX.readFile(file.path!, { cellDates: true });
-    const sheetName = workbook.SheetNames[0];
+    const sheetName = workbook.SheetNames.find((name) => normalizeImportKey(name) === normalizeImportKey('Import Compatible')) || workbook.SheetNames[0];
     if (!sheetName) {
       throw new BadRequestException('Workbook does not contain any sheets');
     }

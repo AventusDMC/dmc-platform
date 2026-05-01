@@ -34,6 +34,14 @@ function buildWorkbookBuffer(rows: Array<Record<string, unknown>>) {
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
+function buildExportStyleWorkbookBuffer(rows: Array<Record<string, unknown>>) {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ supplierName: 'Test Supplier', contractName: 'Summary only' }]), 'Contract Summary');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows, { header: COLUMNS }), 'Import Compatible');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([]), 'Route Transfers');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
 function equalsCI(left: unknown, right: unknown) {
   return String(left || '').toLowerCase() === String(right || '').toLowerCase();
 }
@@ -314,6 +322,19 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(stores.pricingRules.length, 1);
   assert.equal(stores.vehicleRates[0].price, 50);
   assert.equal(stores.pricingRules[0].baseCost, 50);
+});
+
+test('transport contract import prefers Import Compatible sheet when workbook has multiple sheets', async () => {
+  const { prisma } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const buffer = buildExportStyleWorkbookBuffer([activeImportRow]);
+
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'exported-transport.xlsx' });
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.previewRows.length, 1);
+  assert.equal(preview.previewRows[0].supplierName, 'Test Supplier');
+  assert.equal(preview.previewRows[0].pricingMode, 'PER_GROUP');
 });
 
 test('transport contract import preview warns and can merge split contract names', async () => {
