@@ -910,6 +910,8 @@ export function QuoteItemsForm({
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+  const hasTransportRouteSelection = Boolean(routeId || routeName.trim());
+  const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
 
   useEffect(() => {
     if (!isTransportService) {
@@ -1567,7 +1569,8 @@ export function QuoteItemsForm({
     if (
       transportSuggestionOverridden &&
       resolvedTransportMatchesCurrentSelection &&
-      resolvedTransportPricing?.candidates?.length
+      resolvedTransportPricing?.candidates?.length &&
+      selectedTransportVehicleId
     ) {
       setIsLoadingTransportCost(false);
       return;
@@ -1577,7 +1580,7 @@ export function QuoteItemsForm({
       setTransportServiceTypeId(transportServiceTypes[0].id);
     }
 
-    if (!transportServiceTypeId || (!routeId && !routeName.trim())) {
+    if (!transportServiceTypeId || !hasTransportRouteSelection) {
       setIsLoadingTransportCost(false);
       setBaseCost('');
       setResolvedTransportPricing(null);
@@ -1639,6 +1642,7 @@ export function QuoteItemsForm({
     isTransportService,
     paxCount,
     resolvedTransportMatchesCurrentSelection,
+    hasTransportRouteSelection,
     routeId,
     routeName,
     selectedTransportVehicleId,
@@ -3138,21 +3142,26 @@ export function QuoteItemsForm({
               </label>
 
               {hasTransportRoutes ? (
-                <RouteCombobox
-                  label="Route"
-                  routes={validTransportRoutes}
-                  value={routeId}
-                  onChange={(value) => {
-                    setRouteSelectionManuallyChanged(true);
-                    setRouteId(value);
-                    setRouteName('');
-                    setBaseCost('');
-                    setResolvedTransportPricing(null);
-                    setTransportSuggestionOverridden(false);
-                  }}
-                  placeholder="Select origin -> destination route"
-                  emptyText="No routes available for this service"
-                />
+                <div className={showTransportRouteRequired ? 'quote-transport-route-required' : undefined}>
+                  <RouteCombobox
+                    label="Route *"
+                    routes={validTransportRoutes}
+                    value={routeId}
+                    onChange={(value) => {
+                      setRouteSelectionManuallyChanged(true);
+                      setRouteId(value);
+                      setRouteName('');
+                      setBaseCost('');
+                      setResolvedTransportPricing(null);
+                      setTransportSuggestionOverridden(false);
+                    }}
+                    placeholder="Select origin -> destination route"
+                    emptyText="No routes available for this service"
+                  />
+                  {showTransportRouteRequired ? (
+                    <p className="form-error">Choose a route before transport pricing can be calculated.</p>
+                  ) : null}
+                </div>
               ) : (
                 <div className="quote-transport-route-empty">
                   <span>Route</span>
@@ -3440,6 +3449,7 @@ export function QuoteItemsForm({
                 isLoadingTransportCost ||
                 filteredServices.length === 0 ||
                 !selectedService ||
+                showTransportRouteRequired ||
                 (isHotelService && !selectedHotelRate && !manualHotelRateDraft)
               }
             >

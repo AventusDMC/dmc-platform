@@ -1029,6 +1029,15 @@ select option:checked {
   line-height: 1.4;
 }
 
+.quote-transport-route-required .search-combobox-shell input {
+  border-color: rgba(185, 28, 28, 0.45);
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.quote-transport-route-required .form-error {
+  margin-top: 0.45rem;
+}
+
 .convert-form {
   margin-bottom: 0;
 }
