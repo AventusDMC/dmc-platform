@@ -248,7 +248,7 @@ test('quote hotel pricing uses persisted PER_PERSON rate basis for pax-night uni
       unitType: 'per_room',
       serviceType: { name: 'Hotel', code: 'HOTEL' },
     },
-    quantity: 1,
+    quantity: 5,
     paxCount: 3,
     roomCount: 2,
     nightCount: 2,
@@ -293,6 +293,57 @@ test('quote hotel pricing uses persisted PER_ROOM rate basis for room-night unit
 
   assert.equal(pricing.supplierCostTotal, 160);
   assert.equal(pricing.totalCost, 160);
+});
+
+test('quote hotel pricing ignores quantity and stores unit hotel rate semantics for repricing', async () => {
+  const service = createQuotesService();
+  const hotelService = {
+    category: 'Hotel',
+    unitType: 'per_room',
+    serviceType: { name: 'Hotel', code: 'HOTEL' },
+  };
+
+  const pricing = (service as any).calculateCentralizedQuoteItemPricing({
+    service: hotelService,
+    quantity: 3,
+    paxCount: 4,
+    roomCount: 2,
+    nightCount: 2,
+    dayCount: 1,
+    unitCost: 40,
+    markupPercent: 20,
+    quoteCurrency: 'USD',
+    supplierPricing: {
+      costBaseAmount: 40,
+      costCurrency: 'USD',
+    },
+    hotelRatePricingBasis: 'PER_ROOM',
+  });
+  const repricedTotal = await (service as any).calculateQuoteItemsTotalCostForPax(
+    [
+      {
+        quantity: 3,
+        roomCount: 2,
+        nightCount: 2,
+        dayCount: 1,
+        paxCount: 4,
+        baseCost: 40,
+        currency: 'USD',
+        quoteCurrency: 'USD',
+        costCurrency: 'USD',
+        overrideCost: null,
+        useOverride: false,
+        markupPercent: 20,
+        service: hotelService,
+      },
+    ],
+    { roomCount: 1, nightCount: 1 },
+    4,
+  );
+
+  assert.equal(pricing.totalCost, 160);
+  assert.equal(pricing.totalSell, 192);
+  assert.equal(repricedTotal, 160);
 });
 
 test('Egypt-only EXTERNAL_PACKAGE quote calculates per-person cost and stores client-facing fields', async () => {

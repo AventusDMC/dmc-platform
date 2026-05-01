@@ -3398,7 +3398,7 @@ export class QuotesService {
         roomCount,
         nightCount,
         dayCount,
-        baseCost: basePricing.totalCost,
+        baseCost: this.isHotelService(effectiveService) ? baseCost : basePricing.totalCost,
         finalCost: pricing.totalCost,
         markupAmount,
         sellPrice: sellPriceOverride,
@@ -4613,21 +4613,42 @@ export class QuotesService {
   }
 
   private calculateHotelItemPricing(values: {
-    quantity: number;
+    paxCount: number;
     roomCount: number;
     nightCount: number;
     unitCost: number;
     markupPercent: number;
+    unitType: 'per_person' | 'per_room' | 'per_vehicle' | 'per_group' | 'per_night' | 'per_day';
+    hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
   }) {
-    const roomNights =
-      Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount);
-    const totalCost = Number((values.unitCost * roomNights).toFixed(2));
+    const hotelUnits = this.getHotelPricingUnits({
+      paxCount: values.paxCount,
+      roomCount: values.roomCount,
+      nightCount: values.nightCount,
+      unitType: values.unitType,
+      hotelRatePricingBasis: values.hotelRatePricingBasis,
+    });
+    const totalCost = Number((values.unitCost * hotelUnits).toFixed(2));
     const totalSell = Number((totalCost * (1 + values.markupPercent / 100)).toFixed(2));
 
     return {
       totalCost,
       totalSell,
     };
+  }
+
+  private getHotelPricingUnits(values: {
+    paxCount: number;
+    roomCount: number;
+    nightCount: number;
+    unitType: 'per_person' | 'per_room' | 'per_vehicle' | 'per_group' | 'per_night' | 'per_day';
+    hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
+  }) {
+    const nights = Math.max(1, values.nightCount);
+    const basis = String(values.hotelRatePricingBasis || '').trim().toUpperCase();
+    const isPerPerson = basis === 'PER_PERSON' || (!basis && values.unitType === ServiceUnitType.per_person);
+
+    return isPerPerson ? Math.max(1, values.paxCount) * nights : Math.max(1, values.roomCount) * nights;
   }
 
   private calculateTransportItemPricing(values: { totalCost: number; markupPercent: number }) {
@@ -4662,11 +4683,13 @@ export class QuotesService {
   }) {
     if (this.isHotelService(values.service)) {
       return this.calculateHotelItemPricing({
-        quantity: values.quantity,
+        paxCount: values.paxCount,
         roomCount: values.roomCount,
         nightCount: values.nightCount,
         unitCost: values.unitCost,
         markupPercent: values.markupPercent,
+        unitType: values.service.unitType,
+        hotelRatePricingBasis: values.hotelRatePricingBasis,
       });
     }
 
@@ -4750,9 +4773,13 @@ export class QuotesService {
         ? Math.ceil(Math.max(1, values.paxCount) / Math.floor(Number(values.capacityMaxPaxPerUnit)))
         : null;
     const pricingUnits = this.isHotelService(values.service)
-      ? values.hotelRatePricingBasis === 'PER_PERSON'
-        ? Math.max(1, values.paxCount) * Math.max(1, values.nightCount)
-        : Math.max(1, values.quantity) * Math.max(1, values.roomCount) * Math.max(1, values.nightCount)
+      ? this.getHotelPricingUnits({
+          paxCount: values.paxCount,
+          roomCount: values.roomCount,
+          nightCount: values.nightCount,
+          unitType: values.service.unitType,
+          hotelRatePricingBasis: values.hotelRatePricingBasis,
+        })
       : capacityUnits !== null
         ? capacityUnits
       : this.isExternalPackageService(values.service)
