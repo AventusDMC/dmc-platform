@@ -127,6 +127,21 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
   });
 
+  it('lets operators auto-fill missing transport add-ons for a supplier rate card', () => {
+    expectSourceContains(tableSource, [
+      'type AutoFillAddOnsSummary =',
+      'async function handleAutoFillAddOns(rateCard: SupplierRateCard)',
+      "`${apiBaseUrl}/vehicle-rates/auto-fill-addons`",
+      "body: JSON.stringify({ rateCardId: rateCard.id })",
+      'Auto-fill add-ons',
+      'Daily created:',
+      'Overnight created:',
+      'Stationary created:',
+      'Waiting created:',
+      'Skipped existing:',
+    ]);
+  });
+
   it('loads enough saved routes and keeps route selectors searchable', () => {
     expectSourceContains(sectionSource, [
       '`${API_BASE_URL}/routes?type=transfer&limit=200`',

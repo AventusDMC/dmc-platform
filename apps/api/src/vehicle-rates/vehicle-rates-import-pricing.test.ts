@@ -172,7 +172,7 @@ function createPrismaMock() {
             rate.vehicleId === where.vehicleId &&
             rate.maxPax === where.maxPax,
         ) || null,
-      findMany: async ({ where }: any) =>
+      findMany: async ({ where = {} }: any = {}) =>
         stores.vehicleRates
           .filter(
             (rate) =>
@@ -197,7 +197,13 @@ function createPrismaMock() {
       create: async ({ data }: any) => {
         const rate = { id: nextId('vehicle-rate'), ...data };
         stores.vehicleRates.push(rate);
-        return rate;
+        return {
+          ...rate,
+          vehicle: stores.vehicles.find((vehicle) => vehicle.id === rate.vehicleId),
+          supplier: stores.suppliers.find((supplier) => supplier.id === rate.supplierId),
+          serviceType: stores.transportServiceTypes.find((serviceType) => serviceType.id === rate.serviceTypeId),
+          route: stores.routes.find((route) => route.id === rate.routeId),
+        };
       },
       update: async ({ where, data }: any) => {
         const index = stores.vehicleRates.findIndex((rate) => rate.id === where.id);
@@ -379,6 +385,72 @@ test('transport contract import preview warns and can merge split contract names
 
   assert.deepEqual(mergedPreview.previewRows.map((row) => row.contractName), ['Almushtari Transport 2026 JOD', 'Almushtari Transport 2026 JOD']);
   assert.equal(mergedPreview.contractWarnings.length, 0);
+});
+
+test('auto-fills missing transport add-ons by vehicle capacity without duplicates', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const service = new VehicleRatesService(prisma as any);
+  const supplier = { id: 'supplier-1', name: 'Almushtari', type: 'transport' };
+  const validFrom = new Date('2026-01-01');
+  const validTo = new Date('2026-12-31');
+  stores.suppliers.push(supplier);
+  stores.vehicles.push(
+    { id: 'vehicle-car', supplierId: supplier.id, resolvedSupplierId: supplier.id, supplierName: supplier.name, name: 'Car', maxPax: 2 },
+    { id: 'vehicle-mini', supplierId: supplier.id, resolvedSupplierId: supplier.id, supplierName: supplier.name, name: 'Mini Van', maxPax: 6 },
+    { id: 'vehicle-bus', supplierId: supplier.id, resolvedSupplierId: supplier.id, supplierName: supplier.name, name: 'Bus', maxPax: 45 },
+  );
+  stores.transportServiceTypes.push(
+    { id: 'service-transfer', name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+    { id: 'service-daily', name: 'Daily FD rate minimum 3 full days', code: 'DAILY_FD', classification: 'DAILY_PACKAGE' },
+    { id: 'service-overnight', name: 'Driver Overnight outside Amman', code: 'DRIVER_OVERNIGHT', classification: 'ADD_ON' },
+    { id: 'service-stationary', name: 'Stationary charge Petra Wadi Rum Aqaba', code: 'STATIONARY', classification: 'ADD_ON' },
+    { id: 'service-waiting', name: 'Waiting charge outside Amman', code: 'WAITING', classification: 'ADD_ON' },
+  );
+  stores.routes.push({ id: 'route-transfer', fromPlaceId: 'from', toPlaceId: 'to', name: 'Airport -> Amman', normalizedKey: 'airport-amman' });
+  stores.routes.push({ id: 'route-addon', fromPlaceId: 'petra', toPlaceId: 'petra', name: 'Petra add-on', normalizedKey: 'petra-addon' });
+  const addRate = (overrides: any) => {
+    stores.vehicleRates.push({
+      id: `rate-${stores.vehicleRates.length + 1}`,
+      supplierId: supplier.id,
+      routeId: overrides.routeId || 'route-transfer',
+      fromPlaceId: 'from',
+      toPlaceId: 'to',
+      routeName: overrides.routeName || 'Airport -> Amman',
+      minPax: 1,
+      price: overrides.price || 10,
+      currency: 'JOD',
+      active: true,
+      validFrom,
+      validTo,
+      ...overrides,
+    });
+  };
+
+  addRate({ serviceTypeId: 'service-transfer', vehicleId: 'vehicle-car', maxPax: 2, price: 45 });
+  addRate({ serviceTypeId: 'service-transfer', vehicleId: 'vehicle-mini', maxPax: 6, price: 75 });
+  addRate({ serviceTypeId: 'service-transfer', vehicleId: 'vehicle-bus', maxPax: 45, price: 250 });
+  addRate({ serviceTypeId: 'service-daily', vehicleId: 'vehicle-car', maxPax: 2, price: 120, routeId: 'route-addon', routeName: 'Daily full day' });
+  addRate({ serviceTypeId: 'service-overnight', vehicleId: 'vehicle-bus', maxPax: 45, price: 20, routeId: 'route-addon', routeName: 'Driver overnight' });
+  addRate({ serviceTypeId: 'service-stationary', vehicleId: 'vehicle-mini', maxPax: 6, price: 30, routeId: 'route-addon', routeName: 'Stationary Petra' });
+  addRate({ serviceTypeId: 'service-waiting', vehicleId: 'vehicle-car', maxPax: 2, price: 15, routeId: 'route-addon', routeName: 'Waiting Petra' });
+
+  const rateCardId = ['almushtari', 'JOD', '2026-01-01', '2026-12-31'].join('|');
+  const summary = await service.autoFillTransportAddOns(rateCardId);
+
+  assert.deepEqual(summary, {
+    dailyCreated: 2,
+    overnightCreated: 2,
+    stationaryCreated: 2,
+    waitingCreated: 2,
+    skippedExisting: 4,
+  });
+  assert.equal(stores.vehicleRates.length, 15);
+  assert.equal(stores.pricingRules.length, 8);
+
+  const addOnKeys = stores.vehicleRates
+    .filter((rate) => rate.serviceTypeId !== 'service-transfer')
+    .map((rate) => `${rate.serviceTypeId}|${rate.vehicleId}|${rate.maxPax}`);
+  assert.equal(new Set(addOnKeys).size, addOnKeys.length);
 });
 
 test('inactive transport contract rows do not create active pricing rules', async () => {

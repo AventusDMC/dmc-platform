@@ -56,6 +56,7 @@ type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
 };
+type TransportAddOnType = 'DAILY' | 'OVERNIGHT' | 'STATIONARY' | 'WAITING';
 
 type TransportContractImportRow = {
   supplierName: string;
@@ -196,6 +197,17 @@ function classifyTransportServiceName(serviceName: string): TransportServiceClas
   if (/\b(airport\s+transfer|transfer|pick[-\s]?up|drop[-\s]?off)\b/.test(normalized)) return 'ROUTE_TRANSFER';
 
   return 'ROUTE_TRANSFER';
+}
+
+function detectTransportAddOnType(serviceName: string): TransportAddOnType | null {
+  const normalized = serviceName.trim().toLowerCase();
+
+  if (/\b(overnight)\b/.test(normalized)) return 'OVERNIGHT';
+  if (/\b(stationary)\b/.test(normalized)) return 'STATIONARY';
+  if (/\b(waiting)\b/.test(normalized)) return 'WAITING';
+  if (/\b(daily|full\s+day|fd)\b/.test(normalized)) return 'DAILY';
+
+  return null;
 }
 
 function formatExportDate(value: Date | string) {
@@ -755,6 +767,130 @@ export class VehicleRatesService {
       buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
       fileName: buildTransportExportFileName(supplierName, contractName, currency),
     };
+  }
+
+  async autoFillTransportAddOns(rateCardId: string) {
+    if (!rateCardId?.trim()) {
+      throw new BadRequestException('rateCardId is required');
+    }
+
+    const allRates = await this.prisma.vehicleRate.findMany({
+      include: {
+        supplier: true,
+        vehicle: true,
+        serviceType: true,
+        route: {
+          include: {
+            fromPlace: true,
+            toPlace: true,
+          },
+        },
+        fromPlace: true,
+        toPlace: true,
+      },
+      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+    });
+    const decodedRateCardId = decodeURIComponent(rateCardId);
+    const rates = allRates.filter((rate) => getExportRateCardKey(rate) === decodedRateCardId);
+
+    if (rates.length === 0) {
+      throw new BadRequestException('Supplier rate card not found');
+    }
+
+    const summary = {
+      dailyCreated: 0,
+      overnightCreated: 0,
+      stationaryCreated: 0,
+      waitingCreated: 0,
+      skippedExisting: 0,
+    };
+    const addOnTypes: TransportAddOnType[] = ['DAILY', 'OVERNIGHT', 'STATIONARY', 'WAITING'];
+    const routeVehicles = new Map<string, (typeof rates)[number]>();
+    const addOnRowsByType = new Map<TransportAddOnType, (typeof rates)>();
+
+    for (const type of addOnTypes) {
+      addOnRowsByType.set(type, rates.filter((rate) => rate.active && detectTransportAddOnType(rate.serviceType.name) === type));
+    }
+
+    for (const rate of rates) {
+      const addOnType = detectTransportAddOnType(rate.serviceType.name);
+      const classification = rate.serviceType.classification || classifyTransportServiceName(rate.serviceType.name);
+      if (!addOnType && classification === 'ROUTE_TRANSFER' && rate.active) {
+        routeVehicles.set(`${rate.vehicleId}|${rate.maxPax}`, rate);
+      }
+    }
+
+    const createdRates: Array<(typeof rates)[number]> = [];
+
+    for (const targetRate of routeVehicles.values()) {
+      for (const addOnType of addOnTypes) {
+        const hasExisting = [...rates, ...createdRates].some(
+          (rate) =>
+            detectTransportAddOnType(rate.serviceType.name) === addOnType &&
+            rate.vehicleId === targetRate.vehicleId &&
+            rate.maxPax === targetRate.maxPax,
+        );
+
+        if (hasExisting) {
+          summary.skippedExisting += 1;
+          continue;
+        }
+
+        const baseRows = addOnRowsByType.get(addOnType) || [];
+        if (baseRows.length === 0) {
+          continue;
+        }
+
+        const baseRow = [...baseRows].sort(
+          (left, right) =>
+            Math.abs(left.maxPax - targetRate.maxPax) - Math.abs(right.maxPax - targetRate.maxPax) ||
+            left.maxPax - right.maxPax ||
+            left.vehicle.name.localeCompare(right.vehicle.name),
+        )[0];
+
+        const createdRate = await this.prisma.vehicleRate.create({
+          data: {
+            supplierId: targetRate.supplierId,
+            serviceTypeId: baseRow.serviceTypeId,
+            vehicleId: targetRate.vehicleId,
+            routeId: baseRow.routeId,
+            fromPlaceId: baseRow.fromPlaceId,
+            toPlaceId: baseRow.toPlaceId,
+            routeName: baseRow.routeName,
+            minPax: 1,
+            maxPax: targetRate.maxPax,
+            price: baseRow.price,
+            currency: baseRow.currency,
+            active: baseRow.active,
+            validFrom: baseRow.validFrom,
+            validTo: baseRow.validTo,
+          },
+          include: {
+            supplier: true,
+            vehicle: true,
+            serviceType: true,
+            route: {
+              include: {
+                fromPlace: true,
+                toPlace: true,
+              },
+            },
+            fromPlace: true,
+            toPlace: true,
+          },
+        });
+
+        createdRates.push(createdRate);
+        await this.syncCapacityPricingRuleForVehicleRate(this.toVehicleRatePricingSyncData(createdRate));
+
+        if (addOnType === 'DAILY') summary.dailyCreated += 1;
+        if (addOnType === 'OVERNIGHT') summary.overnightCreated += 1;
+        if (addOnType === 'STATIONARY') summary.stationaryCreated += 1;
+        if (addOnType === 'WAITING') summary.waitingCreated += 1;
+      }
+    }
+
+    return summary;
   }
 
   async previewTransportContractImport(file: { buffer?: Buffer; path?: string; originalname?: string }, options: TransportContractImportOptions = {}) {

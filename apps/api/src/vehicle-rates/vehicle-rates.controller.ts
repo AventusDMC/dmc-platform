@@ -119,6 +119,12 @@ export class VehicleRatesController {
     return this.vehicleRatesService.duplicate(id);
   }
 
+  @Post('auto-fill-addons')
+  @Roles('admin', 'finance')
+  autoFillAddOns(@Body('rateCardId') rateCardId: string) {
+    return this.vehicleRatesService.autoFillTransportAddOns(rateCardId);
+  }
+
   @Patch(':id')
   @Roles('admin', 'finance')
   update(

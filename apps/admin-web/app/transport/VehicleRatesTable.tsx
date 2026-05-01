@@ -94,6 +94,13 @@ type VehicleRatesTableProps = {
 
 type ActiveRateForm = { mode: 'create-rate-card' } | { mode: 'edit-line'; rate: VehicleRate } | { mode: 'duplicate-line'; rate: VehicleRate } | null;
 type ActiveSupplierEdit = { rateCardId: string; supplierId: string };
+type AutoFillAddOnsSummary = {
+  dailyCreated: number;
+  overnightCreated: number;
+  stationaryCreated: number;
+  waitingCreated: number;
+  skippedExisting: number;
+};
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString();
@@ -207,6 +214,8 @@ export function VehicleRatesTable({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingSupplierCardId, setSavingSupplierCardId] = useState<string | null>(null);
   const [exportingRateCardId, setExportingRateCardId] = useState<string | null>(null);
+  const [autoFillingRateCardId, setAutoFillingRateCardId] = useState<string | null>(null);
+  const [autoFillSummary, setAutoFillSummary] = useState<AutoFillAddOnsSummary | null>(null);
   const [error, setError] = useState('');
   const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);
   const supplierOptions = useMemo(() => Array.from(new Set(vehicleRates.map(getSupplierName))).sort(), [vehicleRates]);
@@ -279,6 +288,32 @@ export function VehicleRatesTable({
     }
   }
 
+  async function handleAutoFillAddOns(rateCard: SupplierRateCard) {
+    setAutoFillingRateCardId(rateCard.id);
+    setAutoFillSummary(null);
+    setError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/vehicle-rates/auto-fill-addons`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ rateCardId: rateCard.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not auto-fill transport add-ons.'));
+      }
+
+      const summary = await response.json() as AutoFillAddOnsSummary;
+      setAutoFillSummary(summary);
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not auto-fill transport add-ons.');
+    } finally {
+      setAutoFillingRateCardId(null);
+    }
+  }
+
   async function handleDelete(rate: VehicleRate) {
     if (!window.confirm(`Delete ${formatRouteLabel(rate.routeName)}?`)) {
       return;
@@ -312,6 +347,20 @@ export function VehicleRatesTable({
   return (
     <div className="entity-list allotment-table-stack">
       {error ? <p className="form-error">{error}</p> : null}
+      {autoFillSummary ? (
+        <div className="quote-item-override-status quote-item-override-status-active">
+          <strong>Transport add-ons auto-filled</strong>
+          <span>
+            {[
+              `Daily created: ${autoFillSummary.dailyCreated}`,
+              `Overnight created: ${autoFillSummary.overnightCreated}`,
+              `Stationary created: ${autoFillSummary.stationaryCreated}`,
+              `Waiting created: ${autoFillSummary.waitingCreated}`,
+              `Skipped existing: ${autoFillSummary.skippedExisting}`,
+            ].join(' | ')}
+          </span>
+        </div>
+      ) : null}
 
       <div className="transport-rate-card-toolbar">
         <div>
@@ -339,6 +388,9 @@ export function VehicleRatesTable({
                   <span className="transport-contract-count">{rateCard.rates.length} rate lines</span>
                   <button type="button" className="compact-button" onClick={() => handleExportRateCard(rateCard)} disabled={exportingRateCardId === rateCard.id}>
                     {exportingRateCardId === rateCard.id ? 'Exporting...' : 'Export Excel'}
+                  </button>
+                  <button type="button" className="compact-button" onClick={() => handleAutoFillAddOns(rateCard)} disabled={autoFillingRateCardId === rateCard.id}>
+                    {autoFillingRateCardId === rateCard.id ? 'Auto-filling...' : 'Auto-fill add-ons'}
                   </button>
                   <button
                     type="button"
