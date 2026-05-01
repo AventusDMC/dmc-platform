@@ -99,7 +99,7 @@ async function getPlaces(): Promise<PlaceOption[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes`, 'Vehicle rates routes', {
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=transfer&limit=200`, 'Vehicle rates routes', {
     cache: 'no-store',
   });
 }

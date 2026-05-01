@@ -264,6 +264,7 @@ export function VehicleRatesForm({
           }
         }}
         placeholder="Search active routes"
+        maxResults={50}
       />
 
       <div className="form-row">

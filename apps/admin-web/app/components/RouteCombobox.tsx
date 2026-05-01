@@ -10,6 +10,7 @@ type RouteComboboxProps = {
   onChange: (value: string) => void;
   placeholder?: string;
   emptyText?: string;
+  maxResults?: number;
 };
 
 function formatRouteOptionTitle(route: RouteOption) {
@@ -20,7 +21,7 @@ function formatRouteOptionDetail(route: RouteOption) {
   return [route.name && route.name !== formatRouteOptionTitle(route) ? route.name : null, route.routeType, route.notes].filter(Boolean).join(' | ');
 }
 
-export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.' }: RouteComboboxProps) {
+export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.', maxResults = 50 }: RouteComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 
@@ -51,8 +52,8 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
           .filter(Boolean)
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
-      .slice(0, 8);
-  }, [query, routes]);
+      .slice(0, maxResults);
+  }, [maxResults, query, routes]);
 
   return (
     <label className="search-combobox">

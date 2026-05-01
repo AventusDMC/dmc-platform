@@ -6,6 +6,9 @@ const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.meta.url), 'utf8');
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
+const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
+const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.tsx', import.meta.url), 'utf8');
+const pricingRuleFormSource = readFileSync(new URL('../transport-pricing/TransportPricingRuleForm.tsx', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -109,6 +112,33 @@ describe('transport catalog supplier rate-card UX', () => {
       'Save supplier',
       "body: JSON.stringify({ supplierId: activeSupplierEdit.supplierId })",
       'Supplier must exist.',
+    ]);
+  });
+
+  it('loads enough saved routes and keeps route selectors searchable', () => {
+    expectSourceContains(sectionSource, [
+      '`${API_BASE_URL}/routes?type=transfer&limit=200`',
+    ]);
+
+    expectSourceContains(routeComboboxSource, [
+      'maxResults = 50',
+      'route.fromPlace.name',
+      'route.toPlace.name',
+      'route.fromPlace.city',
+      'route.toPlace.city',
+      '.slice(0, maxResults)',
+    ]);
+
+    expectSourceContains(vehicleRatesFormSource, [
+      '<RouteCombobox',
+      'placeholder="Search active routes"',
+      'maxResults={50}',
+    ]);
+
+    expectSourceContains(pricingRuleFormSource, [
+      '<RouteCombobox',
+      'placeholder={routes.length === 0 ? \'Create a route first\' : \'Search saved routes\'}',
+      'maxResults={50}',
     ]);
   });
 

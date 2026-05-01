@@ -42,7 +42,7 @@ export function CityCombobox({
           .filter(Boolean)
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
-      .slice(0, 8);
+      .slice(0, 50);
   }, [cities, query]);
 
   return (

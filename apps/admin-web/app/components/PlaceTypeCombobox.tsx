@@ -40,7 +40,7 @@ export function PlaceTypeCombobox({
 
         return placeType.name.toLowerCase().includes(normalizedQuery);
       })
-      .slice(0, 8);
+      .slice(0, 50);
   }, [placeTypes, query]);
 
   return (

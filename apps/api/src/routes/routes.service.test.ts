@@ -50,3 +50,21 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
   assert.equal(findManyArgs.where.clientCompanyId, undefined);
   assert.deepEqual(findUniqueArgs.where, { id: 'route-1' });
 });
+
+test('route catalog supports searchable larger route selector batches', async () => {
+  let findManyArgs: any;
+  const service = new RoutesService({
+    route: {
+      findMany: async (args: any) => {
+        findManyArgs = args;
+        return [];
+      },
+    },
+  } as any);
+
+  await service.findAll({ search: 'Amman', limit: 200 });
+
+  assert.equal(findManyArgs.take, 200);
+  assert.ok(findManyArgs.where.OR.some((entry: any) => entry.fromPlace?.is?.city?.contains === 'Amman'));
+  assert.ok(findManyArgs.where.OR.some((entry: any) => entry.toPlace?.is?.city?.contains === 'Amman'));
+});

@@ -45,7 +45,7 @@ export function ServiceTypeCombobox({
           .filter(Boolean)
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
-      .slice(0, 8);
+      .slice(0, 50);
   }, [query, serviceTypes]);
 
   return (
@@ -100,7 +100,7 @@ export function ServiceTypeCombobox({
                 }}
               >
                 <strong>{serviceType.name}</strong>
-                <span>{serviceType.code || (serviceType.isActive ? 'Active' : 'Inactive')}</span>
+                <span>{serviceType.isActive ? 'Active' : 'Inactive'}</span>
               </button>
             ))
           )}

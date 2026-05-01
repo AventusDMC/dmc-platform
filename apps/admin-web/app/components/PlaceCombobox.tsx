@@ -34,7 +34,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder }: P
           .filter(Boolean)
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
-      .slice(0, 8);
+      .slice(0, 50);
   }, [places, query]);
 
   return (

@@ -12,6 +12,7 @@ type FindRoutesInput = {
   search?: string;
   active?: boolean;
   type?: string;
+  limit?: number;
 };
 
 type CreateRouteInput = {
@@ -98,6 +99,11 @@ export class RoutesService {
       throw new BadRequestException('Unsupported route type filter');
     }
 
+    const limit =
+      filters.limit === undefined
+        ? undefined
+        : Math.min(Math.max(Math.trunc(ensureValidNumber(filters.limit, 'limit', { min: 1 })), 1), 500);
+
     const routes = await this.prisma.route.findMany({
       where: {
         ...(filters.active === undefined ? {} : { isActive: filters.active }),
@@ -109,6 +115,8 @@ export class RoutesService {
                 { notes: { contains: search, mode: 'insensitive' } },
                 { fromPlace: { is: { name: { contains: search, mode: 'insensitive' } } } },
                 { toPlace: { is: { name: { contains: search, mode: 'insensitive' } } } },
+                { fromPlace: { is: { city: { contains: search, mode: 'insensitive' } } } },
+                { toPlace: { is: { city: { contains: search, mode: 'insensitive' } } } },
               ],
             }
           : {}),
@@ -118,6 +126,7 @@ export class RoutesService {
         toPlace: true,
       },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      ...(limit === undefined ? {} : { take: limit }),
     });
 
     if (type === 'transfer') {

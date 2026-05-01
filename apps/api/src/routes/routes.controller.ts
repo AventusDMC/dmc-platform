@@ -19,11 +19,12 @@ export class RoutesController {
   constructor(private readonly routesService: RoutesService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('type') type?: string) {
+  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('type') type?: string, @Query('limit') limit?: string) {
     return this.routesService.findAll({
       search,
       active: active === undefined ? undefined : active !== 'false',
       type,
+      limit: limit === undefined ? undefined : Number(limit),
     });
   }
 

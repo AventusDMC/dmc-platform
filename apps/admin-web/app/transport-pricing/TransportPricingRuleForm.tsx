@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
 import { CurrencySelect } from '../components/CurrencySelect';
+import { RouteCombobox } from '../components/RouteCombobox';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 import { RouteOption } from '../lib/routes';
 
@@ -72,6 +73,10 @@ export function TransportPricingRuleForm({
     setError('');
 
     try {
+      if (!routeId) {
+        throw new Error('Select a route.');
+      }
+
       const response = await fetch(`${apiBaseUrl}/transport-pricing/rules${ruleId ? `/${ruleId}` : ''}`, {
         method: ruleId ? 'PATCH' : 'POST',
         headers: buildAuthHeaders({
@@ -119,20 +124,14 @@ export function TransportPricingRuleForm({
   return (
     <form className="entity-form compact-form" onSubmit={handleSubmit}>
       <div className="form-row form-row-3">
-        <label>
-          Route
-          <select value={routeId} onChange={(event) => setRouteId(event.target.value)} disabled={routes.length === 0} required>
-            {routes.length === 0 ? (
-              <option value="">Create a route first</option>
-            ) : (
-              routes.map((route) => (
-                <option key={route.id} value={route.id}>
-                  {route.name}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
+        <RouteCombobox
+          label="Route"
+          routes={routes.filter((route) => route.isActive || route.id === routeId)}
+          value={routeId}
+          onChange={setRouteId}
+          placeholder={routes.length === 0 ? 'Create a route first' : 'Search saved routes'}
+          maxResults={50}
+        />
 
         <label>
           Service type
