@@ -373,17 +373,25 @@ function getTransportCandidateCapacity(candidate: Pick<TransportPricingCandidate
 function compareTransportCandidates(left: TransportPricingCandidate, right: TransportPricingCandidate, pax: number) {
   const leftCapacity = getTransportCandidateCapacity(left);
   const rightCapacity = getTransportCandidateCapacity(right);
-  const leftCapacityGap = leftCapacity >= pax ? leftCapacity - pax : Number.MAX_SAFE_INTEGER;
-  const rightCapacityGap = rightCapacity >= pax ? rightCapacity - pax : Number.MAX_SAFE_INTEGER;
   const leftSupplier = formatSupplierName(left.supplier?.name, left.supplier?.id);
   const rightSupplier = formatSupplierName(right.supplier?.name, right.supplier?.id);
 
   return (
-    leftCapacityGap - rightCapacityGap ||
+    leftCapacity - rightCapacity ||
     left.price - right.price ||
     leftSupplier.localeCompare(rightSupplier) ||
     left.vehicle.name.localeCompare(right.vehicle.name)
   );
+}
+
+function getSmartTransportSuggestions<T extends TransportPricingCandidate>(candidates: T[], pax: number, maxSuggestions = 3) {
+  const fittingCandidates = candidates.filter((candidate) => getTransportCandidateCapacity(candidate) >= pax);
+  const sortedCandidates = [...fittingCandidates].sort((left, right) => compareTransportCandidates(left, right, pax));
+  const smallestFittingCapacity = sortedCandidates[0] ? getTransportCandidateCapacity(sortedCandidates[0]) : null;
+
+  return sortedCandidates
+    .filter((candidate) => smallestFittingCapacity === null || getTransportCandidateCapacity(candidate) === smallestFittingCapacity)
+    .slice(0, maxSuggestions);
 }
 
 const SERVICE_TYPE_BUTTONS = [
@@ -786,7 +794,7 @@ export function QuoteItemsForm({
         };
       });
 
-    const sortedCandidates = [...normalizedCandidates].sort((left, right) => compareTransportCandidates(left, right, currentPax));
+    const sortedCandidates = getSmartTransportSuggestions(normalizedCandidates, currentPax, 3);
     const bestValueCandidate = sortedCandidates[0] || null;
 
     return sortedCandidates

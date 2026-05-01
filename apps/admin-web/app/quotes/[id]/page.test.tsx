@@ -339,6 +339,20 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(calculationBlock, /AbortController|signal:|controller\.abort|AbortError/);
   });
 
+  it('keeps Smart Transport Picker suggestions to the smallest fitting capacity', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'function getSmartTransportSuggestions',
+      'const fittingCandidates = candidates.filter((candidate) => getTransportCandidateCapacity(candidate) >= pax);',
+      'const sortedCandidates = [...fittingCandidates].sort((left, right) => compareTransportCandidates(left, right, pax));',
+      'const smallestFittingCapacity = sortedCandidates[0] ? getTransportCandidateCapacity(sortedCandidates[0]) : null;',
+      'getTransportCandidateCapacity(candidate) === smallestFittingCapacity',
+      '.slice(0, maxSuggestions)',
+      'const sortedCandidates = getSmartTransportSuggestions(normalizedCandidates, currentPax, 3);',
+    ]);
+  });
+
   it('routes quote list and detail mutations through admin-web API proxies', () => {
     expectSourceContains(quotesListPageSource, [
       "const ACTION_API_BASE_URL = '/api';",
