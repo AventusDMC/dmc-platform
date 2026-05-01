@@ -43,6 +43,7 @@ type VehicleRate = {
   supplierId?: string | null;
   supplierName?: string | null;
   supplier?: {
+    id?: string;
     name: string;
   } | null;
   transportService?: {
@@ -60,6 +61,11 @@ type VehicleRate = {
   };
   serviceType: { name: string; code: string; classification?: string };
   route: RouteOption | null;
+};
+
+type Supplier = {
+  id: string;
+  name: string;
 };
 
 type SupplierRateCard = {
@@ -83,9 +89,11 @@ type VehicleRatesTableProps = {
   cities: CityOption[];
   placeTypes: PlaceTypeOption[];
   routes: RouteOption[];
+  suppliers: Supplier[];
 };
 
-type ActiveRateForm = { mode: 'create-rate-card' } | { mode: 'edit-line'; rate: VehicleRate } | null;
+type ActiveRateForm = { mode: 'create-rate-card' } | { mode: 'edit-line'; rate: VehicleRate } | { mode: 'duplicate-line'; rate: VehicleRate } | null;
+type ActiveSupplierEdit = { rateCardId: string; supplierId: string };
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString();
@@ -123,6 +131,10 @@ function getRateCardCategory(rates: VehicleRate[]) {
   }
 
   return 'Transport';
+}
+
+function getSupplierId(rate: VehicleRate) {
+  return rate.supplier?.id ?? rate.supplierId ?? '';
 }
 
 function getEffectiveFrom(rates: VehicleRate[]) {
@@ -184,13 +196,51 @@ export function VehicleRatesTable({
   cities,
   placeTypes,
   routes,
+  suppliers,
 }: VehicleRatesTableProps) {
   const router = useRouter();
   const [activeForm, setActiveForm] = useState<ActiveRateForm>(null);
+  const [activeSupplierEdit, setActiveSupplierEdit] = useState<ActiveSupplierEdit | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savingSupplierCardId, setSavingSupplierCardId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);
   const supplierOptions = useMemo(() => Array.from(new Set(vehicleRates.map(getSupplierName))).sort(), [vehicleRates]);
+
+  async function handleSaveRateCardSupplier(rateCard: SupplierRateCard) {
+    if (!activeSupplierEdit || activeSupplierEdit.rateCardId !== rateCard.id) {
+      return;
+    }
+
+    if (!suppliers.some((supplier) => supplier.id === activeSupplierEdit.supplierId)) {
+      setError('Supplier must exist.');
+      return;
+    }
+
+    setSavingSupplierCardId(rateCard.id);
+    setError('');
+
+    try {
+      for (const rate of rateCard.rates) {
+        const response = await fetch(`${apiBaseUrl}/vehicle-rates/${rate.id}`, {
+          method: 'PATCH',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ supplierId: activeSupplierEdit.supplierId }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not update supplier for this rate card.'));
+        }
+      }
+
+      setActiveSupplierEdit(null);
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not update supplier for this rate card.');
+    } finally {
+      setSavingSupplierCardId(null);
+    }
+  }
 
   async function handleDelete(rate: VehicleRate) {
     if (!window.confirm(`Delete ${formatRouteLabel(rate.routeName)}?`)) {
@@ -210,7 +260,7 @@ export function VehicleRatesTable({
         throw new Error(await getErrorMessage(response, 'Could not delete vehicle rate.'));
       }
 
-      if (activeForm?.mode === 'edit-line' && activeForm.rate.id === rate.id) {
+      if ((activeForm?.mode === 'edit-line' || activeForm?.mode === 'duplicate-line') && activeForm.rate.id === rate.id) {
         setActiveForm(null);
       }
 
@@ -248,8 +298,48 @@ export function VehicleRatesTable({
                   <h3>{rateCard.name}</h3>
                   <p className="transport-rate-card-supplier">Supplier: {rateCard.supplierName}</p>
                 </div>
-                <span className="transport-contract-count">{rateCard.rates.length} rate lines</span>
+                <div className="table-action-row">
+                  <span className="transport-contract-count">{rateCard.rates.length} rate lines</span>
+                  <button
+                    type="button"
+                    className="compact-button"
+                    onClick={() => setActiveSupplierEdit({ rateCardId: rateCard.id, supplierId: getSupplierId(rateCard.rates[0]) })}
+                  >
+                    Edit Supplier
+                  </button>
+                </div>
               </div>
+              {activeSupplierEdit?.rateCardId === rateCard.id ? (
+                <div className="transport-rate-card-supplier-edit">
+                  <label>
+                    Supplier
+                    <select
+                      value={activeSupplierEdit.supplierId}
+                      onChange={(event) => setActiveSupplierEdit({ rateCardId: rateCard.id, supplierId: event.target.value })}
+                    >
+                      <option value="">Select supplier</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="table-action-row">
+                    <button
+                      type="button"
+                      className="compact-button"
+                      onClick={() => handleSaveRateCardSupplier(rateCard)}
+                      disabled={savingSupplierCardId === rateCard.id || !activeSupplierEdit.supplierId}
+                    >
+                      {savingSupplierCardId === rateCard.id ? 'Saving...' : 'Save supplier'}
+                    </button>
+                    <button type="button" className="compact-button" onClick={() => setActiveSupplierEdit(null)} disabled={savingSupplierCardId === rateCard.id}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="transport-contract-divider" />
               <div className="transport-rate-card-summary">
                 <div>
@@ -307,7 +397,7 @@ export function VehicleRatesTable({
                               <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
                                 Edit
                               </button>
-                              <DuplicateVehicleRateButton apiBaseUrl={apiBaseUrl} rateId={rate.id} />
+                              <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />
                               <button
                                 type="button"
                                 className="compact-button compact-button-danger"
@@ -329,10 +419,16 @@ export function VehicleRatesTable({
         </div>
 
         {activeForm ? (
-          <aside className="transport-rate-card-form-panel" aria-label={activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : 'Edit rate line'}>
+          <aside className="transport-rate-card-form-panel" aria-label={activeForm.mode === 'create-rate-card' ? 'Create Rate Card' : activeForm.mode === 'duplicate-line' ? 'Duplicate rate line' : 'Edit rate line'}>
             <div className="transport-rate-card-form-head">
               <div>
-                <p className="transport-rate-card-label">{activeForm.mode === 'create-rate-card' ? 'Advanced / manual' : 'Advanced / manual edit'}</p>
+                <p className="transport-rate-card-label">
+                  {activeForm.mode === 'create-rate-card'
+                    ? 'Advanced / manual'
+                    : activeForm.mode === 'duplicate-line'
+                      ? 'Duplicate rate line'
+                      : 'Advanced / manual edit'}
+                </p>
                 <h3>{activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : formatRouteLabel(activeForm.rate.routeName)}</h3>
               </div>
               <button type="button" className="compact-button" onClick={() => setActiveForm(null)}>
@@ -382,8 +478,8 @@ export function VehicleRatesTable({
                 cities={cities}
                 placeTypes={placeTypes}
                 routes={routes}
-                rateId={activeForm.rate.id}
-                submitLabel="Save rate line"
+                rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}
+                submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}
                 initialValues={{
                   vehicleId: activeForm.rate.vehicleId,
                   serviceTypeId: activeForm.rate.serviceTypeId,

@@ -25,6 +25,11 @@ type TransportServiceType = {
   classification?: string;
 };
 
+type Supplier = {
+  id: string;
+  name: string;
+};
+
 type VehicleRate = {
   id: string;
   vehicleId: string;
@@ -43,6 +48,7 @@ type VehicleRate = {
   supplierId?: string | null;
   supplierName?: string | null;
   supplier?: {
+    id?: string;
     name: string;
   } | null;
   transportService?: {
@@ -110,8 +116,14 @@ async function getPlaceTypes(): Promise<PlaceTypeOption[]> {
   });
 }
 
+async function getSuppliers(): Promise<Supplier[]> {
+  return adminPageFetchJson<Supplier[]>(`${API_BASE_URL}/suppliers`, 'Transport suppliers', {
+    cache: 'no-store',
+  });
+}
+
 export async function VehicleRatesSection() {
-  const [vehicles, serviceTypes, vehicleRates, places, routes, cities, placeTypes] = await Promise.all([
+  const [vehicles, serviceTypes, vehicleRates, places, routes, cities, placeTypes, suppliers] = await Promise.all([
     getVehicles(),
     getTransportServiceTypes(),
     getVehicleRates(),
@@ -119,6 +131,7 @@ export async function VehicleRatesSection() {
     getRoutes(),
     getCities(),
     getPlaceTypes(),
+    getSuppliers(),
   ]);
 
   return (
@@ -159,6 +172,7 @@ export async function VehicleRatesSection() {
           cities={cities}
           placeTypes={placeTypes}
           routes={routes}
+          suppliers={suppliers}
         />
       </TableSectionShell>
     </div>

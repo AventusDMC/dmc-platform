@@ -236,7 +236,7 @@ export class VehicleRatesService {
       throw new BadRequestException('validFrom cannot be after validTo');
     }
 
-    const [vehicle, serviceType, route, fromPlace, toPlace] = await Promise.all([
+    const [vehicle, serviceType, route, fromPlace, toPlace, supplier] = await Promise.all([
       this.prisma.vehicle.findUnique({
         where: { id: data.vehicleId },
       }),
@@ -266,6 +266,11 @@ export class VehicleRatesService {
             where: { id: data.toPlaceId },
           })
         : Promise.resolve(null),
+      data.supplierId
+        ? this.prisma.supplier.findUnique({
+            where: { id: data.supplierId },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!vehicle) {
@@ -274,6 +279,10 @@ export class VehicleRatesService {
 
     if (!serviceType) {
       throw new BadRequestException('Transport service type not found');
+    }
+
+    if (data.supplierId && !supplier) {
+      throw new BadRequestException('Supplier not found');
     }
 
     const routeData = this.resolveRouteFields(
@@ -369,7 +378,7 @@ export class VehicleRatesService {
       throw new BadRequestException('validFrom cannot be after validTo');
     }
 
-    const [vehicle, serviceType, route, fromPlace, toPlace] = await Promise.all([
+    const [vehicle, serviceType, route, fromPlace, toPlace, supplier] = await Promise.all([
       this.prisma.vehicle.findUnique({
         where: { id: vehicleId },
       }),
@@ -399,6 +408,11 @@ export class VehicleRatesService {
             where: { id: toPlaceId },
           })
         : Promise.resolve(null),
+      supplierId
+        ? this.prisma.supplier.findUnique({
+            where: { id: supplierId },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!vehicle) {
@@ -407,6 +421,10 @@ export class VehicleRatesService {
 
     if (!serviceType) {
       throw new BadRequestException('Transport service type not found');
+    }
+
+    if (supplierId && !supplier) {
+      throw new BadRequestException('Supplier not found');
     }
 
     const routeData = this.resolveRouteFields(

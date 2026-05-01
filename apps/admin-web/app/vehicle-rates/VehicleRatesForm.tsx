@@ -52,6 +52,21 @@ type VehicleRatesFormProps = {
   };
 };
 
+function getVehicleRateSaveErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('unique') ||
+    normalized.includes('duplicate') ||
+    normalized.includes('already exists') ||
+    normalized.includes('vehicle_rates')
+  ) {
+    return 'This rate already exists. Change vehicle, capacity, route, or dates.';
+  }
+
+  return message;
+}
+
 export function VehicleRatesForm({
   apiBaseUrl,
   vehicles,
@@ -172,7 +187,7 @@ export function VehicleRatesForm({
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not save vehicle rate.'));
+        throw new Error(getVehicleRateSaveErrorMessage(await getErrorMessage(response, 'Could not save vehicle rate.')));
       }
 
       if (!isEditing) {

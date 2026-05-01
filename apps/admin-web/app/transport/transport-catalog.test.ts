@@ -87,11 +87,28 @@ describe('transport catalog supplier rate-card UX', () => {
   it('keeps existing edit duplicate and delete actions rendered', () => {
     expectSourceContains(tableSource, [
       "onClick={() => setActiveForm({ mode: 'edit-line', rate })}",
-      "<DuplicateVehicleRateButton apiBaseUrl={apiBaseUrl} rateId={rate.id} />",
+      "<DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />",
       'onClick={() => handleDelete(rate)}',
       '<VehicleRatesForm',
-      'rateId={activeForm.rate.id}',
-      'submitLabel="Save rate line"',
+      "rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}",
+      "submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}",
+    ]);
+  });
+
+  it('allows fixing the supplier assigned to a supplier rate card', () => {
+    expectSourceContains(sectionSource, [
+      'async function getSuppliers(): Promise<Supplier[]>',
+      'getSuppliers(),',
+      'suppliers={suppliers}',
+    ]);
+
+    expectSourceContains(tableSource, [
+      'type ActiveSupplierEdit = { rateCardId: string; supplierId: string };',
+      'Edit Supplier',
+      'setActiveSupplierEdit({ rateCardId: rateCard.id, supplierId: getSupplierId(rateCard.rates[0]) })',
+      'Save supplier',
+      "body: JSON.stringify({ supplierId: activeSupplierEdit.supplierId })",
+      'Supplier must exist.',
     ]);
   });
 
