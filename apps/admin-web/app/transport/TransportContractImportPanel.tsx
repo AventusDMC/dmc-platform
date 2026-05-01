@@ -13,6 +13,15 @@ type ImportSummary = {
   skippedRows: number;
   errors: Array<{ row: number; message: string }>;
   previewRows: Array<Record<string, unknown>>;
+  contractWarnings?: Array<{
+    supplierName: string;
+    currency: string;
+    contractValidFrom: string;
+    contractValidTo: string;
+    contractNames: string[];
+    suggestedContractName: string;
+    message: string;
+  }>;
 };
 
 type TransportContractImportPanelProps = {
@@ -28,9 +37,17 @@ async function readImportResponse(response: Response) {
   return payload as ImportSummary;
 }
 
-function buildUploadBody(file: File) {
+type ContractMergeChoice = 'keep' | 'merge';
+
+function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMergeChoice; contractNameOverride?: string }) {
   const formData = new FormData();
   formData.set('file', file);
+  if (options?.contractMergeMode) {
+    formData.set('contractMergeMode', options.contractMergeMode);
+  }
+  if (options?.contractNameOverride) {
+    formData.set('contractNameOverride', options.contractNameOverride);
+  }
   return formData;
 }
 
@@ -85,6 +102,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
   const [result, setResult] = useState<ImportSummary | null>(null);
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const [contractMergeChoice, setContractMergeChoice] = useState<ContractMergeChoice>('keep');
+  const [contractNameOverride, setContractNameOverride] = useState('');
 
   async function handlePreview() {
     if (!file) {
@@ -97,10 +116,13 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
     setResult(null);
 
     try {
-      setPreview(await readImportResponse(await fetch(`${apiBaseUrl}/vehicle-rates/import-preview`, {
+      const nextPreview = await readImportResponse(await fetch(`${apiBaseUrl}/vehicle-rates/import-preview`, {
         method: 'POST',
         body: buildUploadBody(file),
-      })));
+      }));
+      setPreview(nextPreview);
+      setContractMergeChoice('keep');
+      setContractNameOverride(nextPreview.contractWarnings?.[0]?.suggestedContractName || '');
     } catch (caughtError) {
       setPreview(null);
       setError(caughtError instanceof Error ? caughtError.message : 'Could not preview transport contract import.');
@@ -115,13 +137,22 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
       return;
     }
 
+    const contractWarnings = preview?.contractWarnings || [];
+    if (contractWarnings.length > 0 && contractMergeChoice === 'merge' && !contractNameOverride.trim()) {
+      setError('Choose a contract name before merging imported contract rows.');
+      return;
+    }
+
     setIsBusy(true);
     setError('');
 
     try {
       const nextResult = await readImportResponse(await fetch(`${apiBaseUrl}/vehicle-rates/import`, {
         method: 'POST',
-        body: buildUploadBody(file),
+        body: buildUploadBody(file, {
+          contractMergeMode: contractWarnings.length > 0 ? contractMergeChoice : undefined,
+          contractNameOverride: contractMergeChoice === 'merge' ? contractNameOverride : undefined,
+        }),
       }));
       setResult(nextResult);
       setPreview(nextResult);
@@ -151,6 +182,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
               setPreview(null);
               setResult(null);
               setError('');
+              setContractMergeChoice('keep');
+              setContractNameOverride('');
             }}
           />
         </label>
@@ -214,6 +247,74 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
         </div>
       ) : null}
 
+      {preview?.contractWarnings?.length ? (
+        <div className="transport-import-errors">
+          <div>
+            <strong>Possible split supplier contracts</strong>
+            <p>Multiple contract names detected for the same supplier and validity period. This will create separate rate cards.</p>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th>Validity</th>
+                  <th>Currency</th>
+                  <th>Contract names</th>
+                  <th>Suggested merge name</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.contractWarnings.map((warning) => (
+                  <tr key={`${warning.supplierName}-${warning.currency}-${warning.contractValidFrom}-${warning.contractValidTo}`}>
+                    <td>{formatSupplierName(warning.supplierName, null)}</td>
+                    <td>{warning.contractValidFrom} - {warning.contractValidTo}</td>
+                    <td>{warning.currency}</td>
+                    <td>{warning.contractNames.join(', ')}</td>
+                    <td>{warning.suggestedContractName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="form-row form-row-2">
+            <label className="checkbox-row">
+              <input
+                type="radio"
+                name="contractMergeChoice"
+                value="keep"
+                checked={contractMergeChoice === 'keep'}
+                onChange={() => setContractMergeChoice('keep')}
+              />
+              Keep separate contracts
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="radio"
+                name="contractMergeChoice"
+                value="merge"
+                checked={contractMergeChoice === 'merge'}
+                onChange={() => {
+                  setContractMergeChoice('merge');
+                  setContractNameOverride((current) => current || preview.contractWarnings?.[0]?.suggestedContractName || '');
+                }}
+              />
+              Merge into one contract name
+            </label>
+          </div>
+          {contractMergeChoice === 'merge' ? (
+            <label>
+              Contract name for merged rows
+              <input
+                value={contractNameOverride}
+                onChange={(event) => setContractNameOverride(event.target.value)}
+                placeholder={preview.contractWarnings[0]?.suggestedContractName || 'Supplier Transport 2026 JOD'}
+              />
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       {previewGroups.some((group) => group.rows.length > 0) ? (
         <div className="transport-import-preview-groups">
           {previewGroups.map((group) =>
@@ -232,6 +333,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                       <tr>
                         <th>Row</th>
                         <th>Supplier</th>
+                        <th>Contract</th>
                         <th>Service</th>
                         <th>Classification</th>
                         <th>Route</th>
@@ -244,6 +346,10 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                         <tr key={String(row.row)}>
                           <td>{String(row.row)}</td>
                           <td>{formatSupplierName(String(row.supplierName || ''), null)}</td>
+                          <td>
+                            <strong>{String(row.contractName || '')}</strong>
+                            <div className="table-subcopy">{String(row.contractValidFrom || '')} - {String(row.contractValidTo || '')}</div>
+                          </td>
                           <td>{formatServiceTypeLabel(String(row.serviceName || ''))}</td>
                           <td>
                             <span className="status-badge" title="detected service classification">{formatClassificationLabel(String(row.classification || 'ROUTE_TRANSFER'))}</span>

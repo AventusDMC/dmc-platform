@@ -316,6 +316,50 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(stores.pricingRules[0].baseCost, 50);
 });
 
+test('transport contract import preview warns and can merge split contract names', async () => {
+  const { prisma } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const buffer = buildWorkbookBuffer([
+    {
+      ...activeImportRow,
+      supplierName: '  Almushtari  ',
+      contractName: 'Transport   2026 Rates',
+      currency: 'JOD',
+      serviceName: 'Airport Transfer',
+      routeName: 'Airport to Amman',
+      origin: 'AMM Airport',
+      destination: 'Amman',
+    },
+    {
+      ...activeImportRow,
+      supplierName: 'almushtari',
+      contractName: 'Add-ons 2026 Rates',
+      currency: 'JOD',
+      serviceName: 'Driver Overnight outside Amman',
+      routeName: 'Petra Driver Overnight',
+      origin: 'Petra',
+      destination: 'Petra',
+      cost: 10,
+    },
+  ]);
+
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' });
+
+  assert.equal(preview.contractWarnings.length, 1);
+  assert.equal(preview.contractWarnings[0].message, 'Multiple contract names detected for the same supplier and validity period. This will create separate rate cards.');
+  assert.deepEqual(preview.contractWarnings[0].contractNames, ['Add-ons 2026 Rates', 'Transport 2026 Rates']);
+  assert.equal(preview.contractWarnings[0].suggestedContractName, 'Almushtari Transport 2026 JOD');
+  assert.equal(preview.previewRows[0].contractName, 'Transport 2026 Rates');
+
+  const mergedPreview = await importService.previewTransportContractImport(
+    { buffer, originalname: 'transport.xlsx' },
+    { contractMergeMode: 'merge', contractNameOverride: 'Almushtari Transport 2026 JOD' },
+  );
+
+  assert.deepEqual(mergedPreview.previewRows.map((row) => row.contractName), ['Almushtari Transport 2026 JOD', 'Almushtari Transport 2026 JOD']);
+  assert.equal(mergedPreview.contractWarnings.length, 0);
+});
+
 test('inactive transport contract rows do not create active pricing rules', async () => {
   const { prisma, stores } = createPrismaMock();
   const importService = new VehicleRatesService(prisma as any);

@@ -50,7 +50,12 @@ type VehicleRatePricingSyncData = {
 };
 
 type TransportContractImportMode = 'preview' | 'import';
+type TransportContractMergeMode = 'keep' | 'merge';
 type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
+type TransportContractImportOptions = {
+  contractMergeMode?: TransportContractMergeMode;
+  contractNameOverride?: string;
+};
 
 type TransportContractImportRow = {
   supplierName: string;
@@ -73,6 +78,34 @@ type TransportContractImportRow = {
   currency: string;
   active: string;
   notes: string;
+};
+
+type NormalizedTransportContractImportRow = {
+  supplierName: string;
+  supplierContactName: string;
+  supplierEmail: string;
+  supplierPhone: string;
+  supplierWebsite: string;
+  contractName: string;
+  contractValidFrom: Date;
+  contractValidTo: Date;
+  country: string;
+  serviceName: string;
+  routeName: string;
+  origin: string;
+  destination: string;
+  vehicleType: string;
+  maxPaxPerUnit: number;
+  pricingMode: 'PER_GROUP';
+  cost: number;
+  currency: string;
+  active: boolean;
+  notes: string;
+};
+
+type ParsedTransportImportRow = {
+  rowNumber: number;
+  normalized: NormalizedTransportContractImportRow;
 };
 
 const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
@@ -127,6 +160,10 @@ function normalizeImportName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
 }
 
+function formatImportDate(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
 function normalizeCode(value: string) {
   return normalizeImportName(value)
     .toUpperCase()
@@ -162,7 +199,7 @@ function classifyTransportServiceName(serviceName: string): TransportServiceClas
 }
 
 function formatExportDate(value: Date | string) {
-  return new Date(value).toISOString().slice(0, 10);
+  return formatImportDate(value);
 }
 
 function sanitizeExportFileName(value: string) {
@@ -181,6 +218,10 @@ function getExportSupplierName(rate: { supplier?: { name?: string | null } | nul
 
 function getExportRouteCategory(rates: Array<{ serviceType: { classification?: TransportServiceClassification | string | null }; vehicle: { name: string }; routeName: string }>) {
   const classifications = new Set(rates.map((rate) => rate.serviceType.classification || 'ROUTE_TRANSFER'));
+
+  if (classifications.size > 1) {
+    return 'Transport contract';
+  }
 
   if (classifications.size === 1 && classifications.has('ADD_ON')) {
     return 'Add-ons';
@@ -210,7 +251,6 @@ function getExportRateCardKey(rate: {
 }) {
   return [
     getExportSupplierName(rate).trim().toLowerCase() || 'unassigned supplier',
-    getExportRouteCategory([rate]).toLowerCase(),
     rate.currency,
     formatExportDate(rate.validFrom),
     formatExportDate(rate.validTo),
@@ -692,17 +732,18 @@ export class VehicleRatesService {
     };
   }
 
-  async previewTransportContractImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
-    return this.processTransportContractImport(file, 'preview');
+  async previewTransportContractImport(file: { buffer?: Buffer; path?: string; originalname?: string }, options: TransportContractImportOptions = {}) {
+    return this.processTransportContractImport(file, 'preview', options);
   }
 
-  async importTransportContract(file: { buffer?: Buffer; path?: string; originalname?: string }) {
-    return this.processTransportContractImport(file, 'import');
+  async importTransportContract(file: { buffer?: Buffer; path?: string; originalname?: string }, options: TransportContractImportOptions = {}) {
+    return this.processTransportContractImport(file, 'import', options);
   }
 
   private async processTransportContractImport(
     file: { buffer?: Buffer; path?: string; originalname?: string },
     mode: TransportContractImportMode,
+    options: TransportContractImportOptions = {},
   ) {
     const parsedRows = this.parseTransportContractWorkbook(file);
     const summary = {
@@ -716,8 +757,18 @@ export class VehicleRatesService {
       skippedRows: 0,
       errors: [] as Array<{ row: number; message: string }>,
       previewRows: [] as Array<Record<string, unknown>>,
+      contractWarnings: [] as Array<{
+        supplierName: string;
+        currency: string;
+        contractValidFrom: string;
+        contractValidTo: string;
+        contractNames: string[];
+        suggestedContractName: string;
+        message: string;
+      }>,
     };
     const seenRateKeys = new Set<string>();
+    const validRows: ParsedTransportImportRow[] = [];
 
     for (const parsed of parsedRows) {
       if (parsed.empty) {
@@ -750,9 +801,34 @@ export class VehicleRatesService {
       }
       seenRateKeys.add(rateKey);
 
+      validRows.push({ rowNumber: parsed.rowNumber, normalized });
+    }
+
+    summary.contractWarnings = this.detectTransportContractNameWarnings(validRows);
+
+    if (options.contractMergeMode === 'merge' && summary.contractWarnings.length > 0) {
+      const overrideName = normalizeImportName(options.contractNameOverride || '');
+      if (!overrideName) {
+        throw new BadRequestException('Choose a contract name before merging imported contract rows.');
+      }
+
+      const warningKeys = new Set(summary.contractWarnings.map((warning) => this.getContractPeriodKey(warning)));
+      for (const entry of validRows) {
+        if (warningKeys.has(this.getContractPeriodKey(entry.normalized))) {
+          entry.normalized.contractName = overrideName;
+        }
+      }
+      summary.contractWarnings = [];
+    }
+
+    for (const { rowNumber, normalized } of validRows) {
       summary.previewRows.push({
-        row: parsed.rowNumber,
+        row: rowNumber,
         supplierName: normalized.supplierName,
+        contractName: normalized.contractName,
+        contractValidFrom: formatImportDate(normalized.contractValidFrom),
+        contractValidTo: formatImportDate(normalized.contractValidTo),
+        country: normalized.country,
         serviceName: normalized.serviceName,
         classification: classifyTransportServiceName(normalized.serviceName),
         routeName: normalized.routeName,
@@ -816,6 +892,50 @@ export class VehicleRatesService {
     }
 
     return summary;
+  }
+
+  private detectTransportContractNameWarnings(rows: ParsedTransportImportRow[]) {
+    const groups = new Map<string, { sample: NormalizedTransportContractImportRow; contractNames: Map<string, string> }>();
+
+    for (const { normalized } of rows) {
+      const key = this.getContractPeriodKey(normalized);
+      const group = groups.get(key) || { sample: normalized, contractNames: new Map<string, string>() };
+      const contractName = normalizeImportName(normalized.contractName);
+      group.contractNames.set(contractName.toLowerCase(), contractName);
+      groups.set(key, group);
+    }
+
+    return Array.from(groups.values())
+      .filter((group) => group.contractNames.size > 1)
+      .map((group) => {
+        const supplierName = group.sample.supplierName;
+        const currency = group.sample.currency;
+        const contractValidFrom = formatImportDate(group.sample.contractValidFrom);
+        const contractValidTo = formatImportDate(group.sample.contractValidTo);
+
+        return {
+          supplierName,
+          currency,
+          contractValidFrom,
+          contractValidTo,
+          contractNames: Array.from(group.contractNames.values()).sort((left, right) => left.localeCompare(right)),
+          suggestedContractName: this.buildSuggestedTransportContractName(group.sample),
+          message: 'Multiple contract names detected for the same supplier and validity period. This will create separate rate cards.',
+        };
+      });
+  }
+
+  private getContractPeriodKey(row: { supplierName: string; currency: string; contractValidFrom: Date | string; contractValidTo: Date | string }) {
+    return [
+      normalizeImportKey(row.supplierName),
+      row.currency.trim().toUpperCase(),
+      formatImportDate(row.contractValidFrom),
+      formatImportDate(row.contractValidTo),
+    ].join('|');
+  }
+
+  private buildSuggestedTransportContractName(row: { supplierName: string; currency: string; contractValidFrom: Date | string }) {
+    return normalizeImportName(`${row.supplierName} Transport ${new Date(row.contractValidFrom).getFullYear()} ${row.currency.trim().toUpperCase()}`);
   }
 
   private parseTransportContractWorkbook(file: { buffer?: Buffer; path?: string; originalname?: string }) {
@@ -930,7 +1050,7 @@ export class VehicleRatesService {
     return 'add-on';
   }
 
-  private async findOrCreateTransportImportSupplier(row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>) {
+  private async findOrCreateTransportImportSupplier(row: NormalizedTransportContractImportRow) {
     const supplier = await this.prisma.supplier.findFirst({
       where: {
         name: { equals: row.supplierName, mode: 'insensitive' },
@@ -964,7 +1084,7 @@ export class VehicleRatesService {
 
   private async findOrCreateTransportImportService(
     supplier: { id: string; name: string },
-    row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>,
+    row: NormalizedTransportContractImportRow,
   ) {
     const existing = await this.prisma.supplierService.findFirst({
       where: {
@@ -1034,7 +1154,7 @@ export class VehicleRatesService {
 
   private async findOrCreateTransportImportVehicle(
     supplier: { id: string; name: string },
-    row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>,
+    row: NormalizedTransportContractImportRow,
   ) {
     const existing = await this.prisma.vehicle.findFirst({
       where: {
@@ -1060,7 +1180,7 @@ export class VehicleRatesService {
     });
   }
 
-  private async findOrCreateTransportImportRoute(row: ReturnType<VehicleRatesService['normalizeTransportContractImportRow']>) {
+  private async findOrCreateTransportImportRoute(row: NormalizedTransportContractImportRow) {
     const [fromPlace, toPlace] = await Promise.all([
       this.findOrCreateTransportImportPlace(row.origin, row.country),
       this.findOrCreateTransportImportPlace(row.destination, row.country),

@@ -60,23 +60,31 @@ export class VehicleRatesController {
   @Post('import-preview')
   @Roles('admin', 'finance')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
-  previewImport(@UploadedFile() file: any) {
+  previewImport(
+    @UploadedFile() file: any,
+    @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
+    @Body('contractNameOverride') contractNameOverride?: string,
+  ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
     }
 
-    return this.vehicleRatesService.previewTransportContractImport(file);
+    return this.vehicleRatesService.previewTransportContractImport(file, { contractMergeMode, contractNameOverride });
   }
 
   @Post('import')
   @Roles('admin', 'finance')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
-  importContract(@UploadedFile() file: any) {
+  importContract(
+    @UploadedFile() file: any,
+    @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
+    @Body('contractNameOverride') contractNameOverride?: string,
+  ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
     }
 
-    return this.vehicleRatesService.importTransportContract(file);
+    return this.vehicleRatesService.importTransportContract(file, { contractMergeMode, contractNameOverride });
   }
 
   @Get(':id')

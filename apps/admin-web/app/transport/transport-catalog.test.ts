@@ -43,6 +43,8 @@ describe('transport catalog supplier rate-card UX', () => {
       'null,',
       'function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[]',
       'const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);',
+      'const key = [supplierName.trim().toLowerCase() || \'unassigned supplier\', rate.currency, validFrom, validTo].join(\'|\');',
+      "return 'Transport contract';",
       'transport-contract-supplier-group',
       '{rateCard.rates.length} rate lines',
       'transport-contract-divider',
@@ -181,6 +183,19 @@ describe('transport catalog supplier rate-card UX', () => {
       'Confirm import',
       'detected service classification',
       'window.location.href = \'/transport?tab=rates&imported=1\'',
+    ]);
+  });
+
+  it('warns before split transport contract imports and lets operators merge names', () => {
+    expectSourceContains(importPanelSource, [
+      'contractWarnings?: Array<{',
+      'Multiple contract names detected for the same supplier and validity period. This will create separate rate cards.',
+      'Keep separate contracts',
+      'Merge into one contract name',
+      'Contract name for merged rows',
+      "formData.set('contractMergeMode', options.contractMergeMode);",
+      "formData.set('contractNameOverride', options.contractNameOverride);",
+      '<th>Contract</th>',
     ]);
   });
 });

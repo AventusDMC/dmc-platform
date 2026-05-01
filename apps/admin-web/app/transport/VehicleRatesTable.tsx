@@ -116,6 +116,10 @@ function getSupplierName(rate: VehicleRate) {
 function getRateCardCategory(rates: VehicleRate[]) {
   const classifications = new Set(rates.map((rate) => rate.serviceType.classification || 'ROUTE_TRANSFER'));
 
+  if (classifications.size > 1) {
+    return 'Transport contract';
+  }
+
   if (classifications.size === 1 && classifications.has('ADD_ON')) {
     return 'Add-ons';
   }
@@ -157,17 +161,16 @@ function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierR
 
   for (const rate of vehicleRates) {
     const supplierName = getSupplierName(rate);
-    const category = getRateCardCategory([rate]);
     const validFrom = rate.validFrom.slice(0, 10);
     const validTo = rate.validTo.slice(0, 10);
-    const key = [supplierName.trim().toLowerCase() || 'unassigned supplier', category.toLowerCase(), rate.currency, validFrom, validTo].join('|');
+    const key = [supplierName.trim().toLowerCase() || 'unassigned supplier', rate.currency, validFrom, validTo].join('|');
     const group =
       groups.get(key) ||
       ({
         id: key,
         supplierName,
         name: getRateCardTitle([rate]),
-        category,
+        category: getRateCardCategory([rate]),
         effectiveFrom: validFrom,
         currency: rate.currency,
         validFrom,
