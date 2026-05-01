@@ -149,6 +149,7 @@ type TransportPricingAddOn = {
 
 type ResolvedTransportPricing = {
   vehicleRateId?: string | null;
+  routeId?: string | null;
   routeName: string;
   currency: string;
   price: number;
@@ -817,6 +818,16 @@ export function QuoteItemsForm({
           (candidate.routeId || candidate.routeName) === (routeId || resolvedTransportPricing.routeName),
       ) || null
     : null;
+  const resolvedTransportMatchesCurrentSelection = Boolean(
+    resolvedTransportPricing &&
+      resolvedTransportPricing.serviceType.id === transportServiceTypeId &&
+      (routeId
+        ? resolvedTransportPricing.routeId === routeId
+        : resolvedTransportPricing.routeName === routeName.trim()),
+  );
+  const selectedTransportVehicleId = resolvedTransportMatchesCurrentSelection
+    ? resolvedTransportPricing?.vehicle.id
+    : undefined;
   const transportRecommendationReasons = selectedTransportCandidate
     ? [
         selectedTransportCandidate.isRecommended
@@ -1495,6 +1506,7 @@ export function QuoteItemsForm({
     setBaseCost(String(candidate.price));
     setResolvedTransportPricing({
       vehicleRateId: candidate.vehicleRateId,
+      routeId: candidate.routeId,
       routeName: candidate.routeName,
       currency: candidate.currency,
       price: candidate.price,
@@ -1539,6 +1551,15 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (
+      transportSuggestionOverridden &&
+      resolvedTransportMatchesCurrentSelection &&
+      resolvedTransportPricing?.candidates?.length
+    ) {
+      setIsLoadingTransportCost(false);
+      return;
+    }
+
     if (!transportServiceTypeId && transportServiceTypes[0]?.id) {
       setTransportServiceTypeId(transportServiceTypes[0].id);
     }
@@ -1558,11 +1579,12 @@ export function QuoteItemsForm({
       try {
         const response = await fetch(`${apiBaseUrl}/transport-pricing/calculate`, {
           method: 'POST',
-          headers: {
+          headers: buildAuthHeaders({
             'Content-Type': 'application/json',
-          },
+          }),
           body: JSON.stringify({
             serviceTypeId: transportServiceTypeId,
+            vehicleId: selectedTransportVehicleId || null,
             routeId: routeId || null,
             routeName: routeName.trim(),
             paxCount: Number(paxCount),
@@ -1571,8 +1593,10 @@ export function QuoteItemsForm({
         });
 
         if (!response.ok) {
-          setBaseCost('');
-          setResolvedTransportPricing(null);
+          const message = await getErrorMessage(response, 'Could not resolve transport pricing.');
+          if (!abortController.signal.aborted) {
+            setError(message);
+          }
           return;
         }
 
@@ -1580,9 +1604,12 @@ export function QuoteItemsForm({
         setBaseCost(String(result.price));
         setResolvedTransportPricing(result);
       } catch (caughtError) {
-        if (!(caughtError instanceof Error) || caughtError.name !== 'AbortError') {
-          setBaseCost('');
-          setResolvedTransportPricing(null);
+        if (caughtError instanceof Error && caughtError.name === 'AbortError') {
+          return;
+        }
+
+        if (!abortController.signal.aborted) {
+          setError(caughtError instanceof Error ? caughtError.message : 'Could not resolve transport pricing.');
         }
       } finally {
         if (!abortController.signal.aborted) {
@@ -1594,7 +1621,18 @@ export function QuoteItemsForm({
     void loadTransportCost();
 
     return () => abortController.abort();
-  }, [apiBaseUrl, isTransportService, paxCount, routeId, routeName, transportServiceTypeId, transportServiceTypes]);
+  }, [
+    apiBaseUrl,
+    isTransportService,
+    paxCount,
+    resolvedTransportMatchesCurrentSelection,
+    routeId,
+    routeName,
+    selectedTransportVehicleId,
+    transportServiceTypeId,
+    transportServiceTypes,
+    transportSuggestionOverridden,
+  ]);
 
   useEffect(() => {
     if (!isActivityService) {
@@ -1750,6 +1788,18 @@ export function QuoteItemsForm({
         if (!routeId && !routeName.trim()) {
           throw new Error('Transport route is required');
         }
+
+        if (!selectedTransportVehicleId) {
+          throw new Error('Choose a priced transport vehicle before saving.');
+        }
+
+        if (!Number.isFinite(Number(baseCost)) || Number(baseCost) <= 0) {
+          throw new Error('Transport cost must be resolved before saving.');
+        }
+
+        if (!resolvedTransportPricing || !resolvedTransportMatchesCurrentSelection) {
+          throw new Error('Transport pricing no longer matches the selected route or service type.');
+        }
       }
 
       if (isMealService) {
@@ -1858,7 +1908,7 @@ export function QuoteItemsForm({
           sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
           markupPercent: Number(markupPercent),
           transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
-          transportVehicleId: isTransportService ? resolvedTransportPricing?.vehicle.id : undefined,
+          transportVehicleId: isTransportService ? selectedTransportVehicleId : undefined,
           routeId: isTransportService ? routeId || undefined : undefined,
           routeName: isTransportService ? routeName.trim() : undefined,
           transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,
@@ -3276,7 +3326,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {hasPrimarySelection && isTransportService && transportCandidates.length > 0 ? (
+          {isTransportService && transportCandidates.length > 0 ? (
             <details className="quote-advanced-settings" open={transportSuggestionOverridden}>
               <summary>Advanced transport suggestions</summary>
 
@@ -3291,32 +3341,48 @@ export function QuoteItemsForm({
               </div>
 
               <div className="quote-preview-total-list">
-                {transportCandidates.map((candidate) => (
-                  <button
-                    key={`${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`}
-                    type="button"
-                    className="quote-transport-suggestion-option"
-                    onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
-                    style={
-                      candidate.isRecommended || candidate.isBestValue
-                        ? { borderColor: 'var(--color-accent)', background: 'var(--color-surface-muted)' }
-                        : undefined
-                    }
-                  >
-                    <span>
-                      {candidate.vehicle.name}
-                      {candidate.isRecommended ? <span className="status-badge" style={{ marginLeft: 8 }}>Recommended</span> : null}
-                      {candidate.isBestValue ? <span className="status-badge" style={{ marginLeft: 8 }}>Best Value</span> : null}
-                    </span>
-                    <strong>
-                      {candidate.currency} {candidate.price.toFixed(2)}
-                    </strong>
-                    <span>
-                      Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)} / {candidate.category} / {candidate.vehicle.maxPax} pax capacity / {formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}
-                      {candidate.unitCount ? ` / ${candidate.unitCount} unit${candidate.unitCount === 1 ? '' : 's'}` : ''}
-                    </span>
-                  </button>
-                ))}
+                {transportCandidates.map((candidate) => {
+                  const candidateKey = `${candidate.vehicle.id}:${candidate.routeId || candidate.routeName}`;
+                  const selectedCandidateKey = selectedTransportCandidate
+                    ? `${selectedTransportCandidate.vehicle.id}:${selectedTransportCandidate.routeId || selectedTransportCandidate.routeName}`
+                    : null;
+                  const isCurrentCandidate = candidateKey === selectedCandidateKey;
+
+                  return (
+                    <button
+                      key={candidateKey}
+                      type="button"
+                      className={
+                        isCurrentCandidate
+                          ? 'quote-transport-suggestion-option quote-transport-suggestion-option-selected'
+                          : 'quote-transport-suggestion-option'
+                      }
+                      onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
+                    >
+                      <span className="quote-transport-suggestion-main">
+                        <span>
+                          <strong>{candidate.vehicle.name}</strong>
+                          <span className="quote-transport-suggestion-badges">
+                            {isCurrentCandidate ? <span className="status-badge">Selected</span> : null}
+                            {candidate.isRecommended ? <span className="status-badge">Recommended</span> : null}
+                            {candidate.isBestValue ? <span className="status-badge">Best Value</span> : null}
+                          </span>
+                        </span>
+                        <strong className="quote-transport-suggestion-price">
+                          {candidate.currency} {candidate.price.toFixed(2)}
+                        </strong>
+                      </span>
+                      <span className="quote-transport-suggestion-details">
+                        <span>{candidate.vehicle.maxPax} pax capacity</span>
+                        <span>Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
+                        <span>{formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}</span>
+                        {candidate.unitCount ? (
+                          <span>{candidate.unitCount} unit{candidate.unitCount === 1 ? '' : 's'}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {!hasRecommendedTransportCandidate ? (
