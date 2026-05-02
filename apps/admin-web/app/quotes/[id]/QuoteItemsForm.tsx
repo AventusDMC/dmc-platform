@@ -3505,28 +3505,7 @@ export function QuoteItemsForm({
                 </div>
               ) : null}
 
-              <pre className="quote-transport-debug">
-                {JSON.stringify(
-                  {
-                    activeServiceType,
-                    serviceId,
-                    selectedServiceName: selectedService?.name,
-                    isTransportService,
-                    transportServiceTypeId,
-                    routeId,
-                    routeName,
-                    resolvedTransportPricingPrice: resolvedTransportPricing?.price,
-                    resolvedTransportPricingCandidatesLength: resolvedTransportPricing?.candidates?.length,
-                    transportCandidatesLength: transportCandidates.length,
-                    hasPrimarySelection,
-                    transportSuggestionOverridden,
-                    rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
-                    filteredTransportCandidates: transportCandidates,
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
+              
             </details>
           ) : null}
 
