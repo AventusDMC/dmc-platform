@@ -19263,6 +19263,105 @@ textarea:focus {
   box-shadow: 0 24px 60px rgba(11, 31, 42, 0.2);
 }
 
+.quote-day-narrative-panel {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #FFFFFF;
+}
+
+.quote-day-description-textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.quote-day-timeline-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.quote-day-timeline-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quote-day-timeline-head h4,
+.quote-day-timeline-head p {
+  margin: 0;
+}
+
+.quote-day-timeline-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quote-day-timeline-item {
+  display: grid;
+  grid-template-columns: minmax(4rem, auto) minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-day-timeline-item:hover,
+.quote-day-timeline-item:focus-visible {
+  border-color: rgba(31, 154, 207, 0.34);
+  background: #FFFFFF;
+}
+
+.quote-day-timeline-item span {
+  color: #1C7FB8;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.quote-day-timeline-item strong {
+  min-width: 0;
+  color: #0F172A;
+}
+
+.quote-day-timeline-item em {
+  grid-column: 2;
+  color: #475569;
+  font-size: 0.9rem;
+  font-style: normal;
+}
+
+.quote-timeline-drawer {
+  width: min(100%, 420px);
+}
+
+.quote-timeline-drawer-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-timeline-drawer-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: #475569;
+  font-weight: 700;
+}
+
+.quote-timeline-drawer-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 /* Sidebar logo must render directly on the Axis sidebar. */
 .admin-sidebar {
   background: #0B1F2A;
