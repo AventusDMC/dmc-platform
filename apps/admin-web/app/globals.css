@@ -1038,6 +1038,43 @@ select option:checked {
   margin-top: 0.45rem;
 }
 
+.quote-transport-step-panel {
+  display: grid;
+  gap: 1.1rem;
+  padding: 1.15rem;
+  border-radius: 8px;
+}
+
+.quote-transport-step-fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-transport-route-field,
+.quote-transport-route-field .search-combobox {
+  width: 100%;
+}
+
+.quote-transport-route-field .search-combobox {
+  min-width: 0;
+}
+
+.quote-transport-route-field .search-combobox-menu {
+  min-width: min(360px, calc(100vw - 2rem));
+  max-height: 320px;
+  padding: 0.45rem;
+}
+
+.quote-transport-route-field .search-combobox-option {
+  gap: 0.35rem;
+  padding: 0.85rem 0.95rem;
+}
+
+.quote-transport-route-field .search-combobox-option strong,
+.quote-transport-route-field .search-combobox-option span {
+  white-space: normal;
+}
+
 .convert-form {
   margin-bottom: 0;
 }
@@ -3093,12 +3130,12 @@ select option:checked {
 
 .quote-transport-suggestion-option {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.9rem;
   width: 100%;
-  padding: 1rem 1.1rem;
-  border: 1px solid rgba(30, 27, 24, 0.08);
-  border-radius: 0.85rem;
-  background: rgba(249, 250, 251, 0.72);
+  padding: 1.05rem 1.15rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -3110,27 +3147,15 @@ select option:checked {
 
 .quote-transport-suggestion-option:hover,
 .quote-transport-suggestion-option:focus-visible {
-  border-color: rgba(31, 163, 214, 0.28);
-  background: rgba(31, 163, 214, 0.06);
+  border-color: rgba(31, 163, 214, 0.34);
+  background: rgba(31, 163, 214, 0.04);
+  outline: none;
 }
 
 .quote-transport-suggestion-option-selected {
   border-color: var(--color-accent);
   background: rgba(31, 163, 214, 0.08);
-  box-shadow: 0 0 0 2px rgba(31, 163, 214, 0.1);
-}
-
-.quote-transport-debug {
-  max-height: 220px;
-  overflow: auto;
-  padding: 0.75rem;
-  border: 1px dashed rgba(185, 28, 28, 0.35);
-  border-radius: 0.6rem;
-  background: rgba(254, 242, 242, 0.72);
-  color: #7f1d1d;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
+  box-shadow: 0 0 0 2px rgba(31, 163, 214, 0.18);
 }
 
 .quote-transport-suggestion-main {
@@ -3159,6 +3184,16 @@ select option:checked {
   white-space: nowrap;
 }
 
+.quote-transport-price-stack {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: end;
+  color: rgba(30, 27, 24, 0.64);
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .quote-transport-suggestion-badges,
 .quote-transport-suggestion-details {
   display: flex;
@@ -3183,6 +3218,37 @@ select option:checked {
   gap: 0.75rem;
 }
 
+.quote-selected-transport-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.quote-selected-transport-summary div {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.quote-selected-transport-summary span {
+  color: var(--muted-text);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quote-selected-transport-summary strong {
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: 0.95rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
 .quote-selected-transport-explanation {
   display: grid;
   gap: 0.35rem;
@@ -3201,6 +3267,35 @@ select option:checked {
 .quote-selected-transport-explanation ul {
   padding-left: 1.1rem;
   color: rgba(30, 27, 24, 0.72);
+}
+
+.quote-transport-add-button {
+  justify-self: start;
+  min-width: 220px;
+  margin-top: 0.1rem;
+}
+
+@media (max-width: 720px) {
+  .quote-transport-suggestion-main,
+  .quote-selected-transport-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-transport-suggestion-main {
+    display: grid;
+  }
+
+  .quote-transport-price-stack {
+    justify-items: start;
+  }
+
+  .quote-selected-transport-summary {
+    display: grid;
+  }
+
+  .quote-transport-add-button {
+    width: 100%;
+  }
 }
 
 .quote-service-workflow-progress {

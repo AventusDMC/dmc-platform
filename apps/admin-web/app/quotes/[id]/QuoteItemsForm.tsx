@@ -1049,11 +1049,46 @@ export function QuoteItemsForm({
   const hotelPreviewNights = Math.max(1, Number(nightCount || 1));
   const hotelPreviewRooms = Math.max(1, Number(roomCount || 1));
   const hotelPreviewPax = Math.max(1, Number(paxCount || 1));
-  const hotelPreviewPricingBasis = selectedHotelRate?.pricingBasis || null;
+  const hotelPreviewPricingBasis = selectedHotelRate?.pricingBasis || 'PER_ROOM';
+  const hotelPreviewUnitRate = selectedHotelRate
+    ? Number(selectedHotelRate.cost || 0)
+    : manualHotelRateDraft
+      ? Number(manualHotelRateDraft.cost || 0)
+      : 0;
+  const hotelPreviewMultiplier = hotelPreviewPricingBasis === 'PER_PERSON' ? hotelPreviewPax : hotelPreviewRooms;
   const hotelPreviewMultiplierLabel =
     hotelPreviewPricingBasis === 'PER_PERSON'
       ? `${hotelPreviewPax} pax`
       : `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
+  const hotelCalculatedTotalCost = hotelCostCalculation
+    ? Number(hotelCostCalculation.totalCost || 0)
+    : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights).toFixed(2));
+  const hotelEffectiveTotalCost = useOverride && overrideCost.trim()
+    ? Number(overrideCost)
+    : hotelCalculatedTotalCost;
+  const hotelPreviewSellTotal = sellPrice.trim()
+    ? Number(sellPrice)
+    : markupAmount.trim()
+      ? Number((hotelEffectiveTotalCost + Number(markupAmount)).toFixed(2))
+      : Number((hotelEffectiveTotalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
+  const hotelPreviewMargin =
+    Number.isFinite(hotelEffectiveTotalCost) && Number.isFinite(hotelPreviewSellTotal)
+      ? Number((hotelPreviewSellTotal - hotelEffectiveTotalCost).toFixed(2))
+      : null;
+  const isHotelPricingReady = Boolean(
+    isHotelService &&
+      hotelId &&
+      contractId &&
+      effectiveSeasonName &&
+      roomCategoryId &&
+      occupancyType &&
+      mealPlan &&
+      hotelCheckInDate &&
+      hotelCheckOutDate &&
+      (selectedHotelRate || manualHotelRateDraft) &&
+      Number.isFinite(hotelPreviewUnitRate) &&
+      hotelPreviewUnitRate > 0,
+  );
   const displayCurrency = isExternalPackageService
     ? externalPackage.currency
     : isMealService
@@ -2329,10 +2364,10 @@ export function QuoteItemsForm({
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 1</p>
-                  <h3>Choose a hotel</h3>
-                  <p className="detail-copy">Start with the property. Room, contract, season, and pricing fields appear after selection.</p>
+                  <h3>Stay details</h3>
+                  <p className="detail-copy">Set the property, dates, rooms, and pax before choosing the contract rate.</p>
                 </div>
-                {selectedHotel ? <span className="page-tab-badge">Selected</span> : null}
+                {selectedHotel ? <span className="page-tab-badge">Stay started</span> : null}
               </div>
 
               {hotels.length === 0 ? (
@@ -2341,36 +2376,62 @@ export function QuoteItemsForm({
                   <p>Hotel services need a property before contract rates can be selected.</p>
                 </div>
               ) : (
-                <div className="quote-hotel-picker-grid" role="listbox" aria-label="Select hotel">
-                  {hotels.map((hotel) => {
-                    const preview = hotelRatePreviewByHotelId.get(hotel.id);
-                    const isSelected = hotel.id === hotelId;
+                <div className="form-row form-row-3">
+                  <label>
+                    Hotel
+                    <select
+                      value={hotelId}
+                      onChange={(event) => {
+                        setHotelId(event.target.value);
+                        setContractId('');
+                        setSeasonId('');
+                        setSeasonName('');
+                        setRoomCategoryId('');
+                        setOccupancyType('DBL');
+                        setMealPlan('BB');
+                        setManualHotelRateDraft(null);
+                        setHotelRateReference(null);
+                      }}
+                      required
+                    >
+                      <option value="">Select hotel</option>
+                      {hotels.map((hotel) => {
+                        const preview = hotelRatePreviewByHotelId.get(hotel.id);
 
-                    return (
-                      <button
-                        key={hotel.id}
-                        type="button"
-                        className={isSelected ? 'quote-hotel-choice-card quote-hotel-choice-card-active' : 'quote-hotel-choice-card'}
-                        onClick={() => {
-                          setHotelId(hotel.id);
-                          setContractId('');
-                          setSeasonId('');
-                          setSeasonName('');
-                          setRoomCategoryId('');
-                          setOccupancyType('DBL');
-                          setMealPlan('BB');
-                          setManualHotelRateDraft(null);
-                          setHotelRateReference(null);
-                        }}
-                        role="option"
-                        aria-selected={isSelected}
-                      >
-                        <strong>{hotel.name}</strong>
-                        <span>{[hotel.city, hotel.category].filter(Boolean).join(' - ') || 'Hotel property'}</span>
-                        <em>{preview ? `Rates from ${preview.currency} ${Number(preview.cost || 0).toFixed(2)}` : 'No rate preview'}</em>
-                      </button>
-                    );
-                  })}
+                        return (
+                          <option key={hotel.id} value={hotel.id}>
+                            {hotel.name}
+                            {preview ? ` - from ${preview.currency} ${Number(preview.cost || 0).toFixed(2)}` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+
+                  <label>
+                    Check-in date
+                    <input value={hotelCheckInDate} onChange={(event) => setServiceDate(event.target.value)} type="date" required />
+                  </label>
+
+                  <label>
+                    Nights
+                    <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
+                  </label>
+
+                  <label>
+                    Rooms
+                    <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
+                  </label>
+
+                  <label>
+                    Pax
+                    <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
+                  </label>
+
+                  <label>
+                    Checkout date
+                    <input value={hotelCheckOutDate} readOnly />
+                  </label>
                 </div>
               )}
             </section>
@@ -2379,11 +2440,10 @@ export function QuoteItemsForm({
           {isHotelService && !hotelId ? (
             <div className="quote-service-empty-state">
               <strong>Select a hotel to continue</strong>
-              <p>Contract, room, stay dates, and pricing controls will appear after this step.</p>
+              <p>Contract, room, season, and pricing controls will appear after this step.</p>
             </div>
           ) : null}
-
-          {hasPrimarySelection && !isTransportService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -2433,7 +2493,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -2527,7 +2587,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService ? (
           <div className="form-row form-row-3">
             <label>
               Pax count
@@ -3571,7 +3631,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService ? (
             <button
               type="submit"
               disabled={
