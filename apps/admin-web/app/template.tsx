@@ -64,7 +64,7 @@ export default async function RootTemplate({ children }: RootTemplateProps) {
         <aside className="admin-sidebar">
           <div className="admin-sidebar-brand">
             <div className="admin-brand-row">
-              <img src="/axis-logo-light.png" alt="AXIS" className="admin-brand-logo" />
+              <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
             </div>
             <p className="admin-sidebar-copy">Quotes, bookings, invoices, and shared proposals for your assigned business.</p>
           </div>
@@ -131,7 +131,7 @@ export default async function RootTemplate({ children }: RootTemplateProps) {
       <aside className="admin-sidebar">
         <div className="admin-sidebar-brand">
           <div className="admin-brand-row">
-            <img src="/axis-logo-light.png" alt="AXIS" className="admin-brand-logo" />
+            <img src="/axis-logo.png" alt="AXIS" className="admin-brand-logo" />
           </div>
           <p className="admin-sidebar-copy">Operational control, products, suppliers, and finance in one compact shell.</p>
         </div>

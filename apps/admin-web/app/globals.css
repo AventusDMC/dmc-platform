@@ -19295,3 +19295,137 @@ textarea:focus {
   box-shadow: none;
 }
 
+/* Visual clarity pass */
+:root {
+  --foreground: #0F172A;
+  --text: #0F172A;
+  --muted-foreground: #475569;
+  --axis-text: #0F172A;
+  --axis-text-soft: #475569;
+  --axis-border: #D5DCE6;
+  --border: #D5DCE6;
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 16px 36px rgba(15, 23, 42, 0.12);
+}
+
+body,
+.admin-main-shell,
+.admin-content-shell {
+  color: #0F172A;
+  background: #F8FAFC;
+}
+
+.admin-shell,
+.login-page {
+  background: #F8FAFC;
+}
+
+.admin-sidebar {
+  background: #0B1F2A;
+  color: #F8FAFC;
+  border-right-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 14px 0 34px rgba(11, 31, 42, 0.22);
+}
+
+.admin-sidebar .admin-brand-logo {
+  height: 32px;
+  max-width: 220px;
+  image-rendering: auto;
+  filter: contrast(1.08) brightness(1.08);
+}
+
+.admin-sidebar-copy,
+.admin-sidebar .eyebrow,
+.admin-sidebar .admin-account-copy span,
+.admin-sidebar-powered,
+.admin-top-nav-link span,
+.admin-top-nav-link {
+  color: rgba(248, 250, 252, 0.82);
+}
+
+.admin-sidebar .admin-account-copy strong,
+.admin-top-nav-link strong {
+  color: #FFFFFF;
+}
+
+.admin-top-nav-link {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.admin-top-nav-link:hover,
+.admin-top-nav-link:focus-visible {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.admin-top-nav-link-active {
+  border-color: rgba(31, 154, 207, 0.58);
+  background: rgba(31, 154, 207, 0.28);
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 0 #1F9ACF, 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.admin-top-nav-link-active span {
+  color: rgba(248, 250, 252, 0.88);
+}
+
+.page-header,
+.section-title,
+.admin-subnav-title,
+.detail-card h2,
+.lead-card h2,
+.entity-card h2,
+.workspace-day-card h3,
+.workspace-sidebar-card h3,
+.quote-item-row h4,
+.costing-card strong,
+.workspace-summary-card strong {
+  color: #0F172A;
+}
+
+.copy,
+.detail-copy,
+.admin-subnav-copy,
+.workspace-summary-card p,
+.costing-card p,
+.workspace-sidebar-card p,
+.quote-item-row p,
+.lead-card p,
+.entity-card p,
+.form-helper,
+.search-combobox-selected {
+  color: #475569;
+}
+
+.detail-card,
+.lead-card,
+.entity-card,
+.workspace-sidebar-card,
+.costing-card,
+.quote-item-row,
+.workspace-day-card,
+.gallery-card,
+.import-itinerary-day-card,
+.import-itinerary-item-card,
+.admin-topbar,
+.admin-subnav-shell,
+.dashboard-card,
+.quote-hotel-step-panel,
+.quote-transport-suggestion-option,
+.quote-selected-transport-summary div,
+.quote-selected-transport-explanation,
+.quote-live-pricing-panel {
+  border-color: rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+input,
+select,
+textarea,
+.search-combobox-shell input {
+  color: #0F172A;
+  border-color: rgba(15, 23, 42, 0.18);
+  background-color: #FFFFFF;
+}
+
