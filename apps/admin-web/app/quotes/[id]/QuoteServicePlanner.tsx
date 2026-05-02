@@ -1495,6 +1495,30 @@ function getLivePricingSummary(quote: Quote): LivePricingSummary {
   };
 }
 
+function getActiveServiceDrawerTitle(activeServicePanel: ActiveServicePanel | null) {
+  if (!activeServicePanel) {
+    return 'Service editor';
+  }
+
+  if (activeServicePanel.kind === 'add') {
+    return `${activeServicePanel.label} - Day ${activeServicePanel.day.dayNumber}`;
+  }
+
+  return `${activeServicePanel.item.service.name} - Day ${activeServicePanel.dayNumber || 'Unassigned'}`;
+}
+
+function getActiveServiceDrawerDescription(activeServicePanel: ActiveServicePanel | null) {
+  if (!activeServicePanel) {
+    return 'Focused editing panel';
+  }
+
+  if (activeServicePanel.kind === 'add') {
+    return `${SERVICE_PLANNER_TAB_LABELS[activeServicePanel.category]} setup for ${activeServicePanel.day.title || `Day ${activeServicePanel.day.dayNumber}`}.`;
+  }
+
+  return `${getServiceTypeLabel(activeServicePanel.item.service)} service details, supplier context, and pricing.`;
+}
+
 function ActiveServiceDrawerFinancials({
   activeServicePanel,
   currency,
@@ -1507,11 +1531,11 @@ function ActiveServiceDrawerFinancials({
       <div className="quote-drawer-financial-summary">
         <div>
           <span>Cost</span>
-          <strong>Calculated in form</strong>
+          <strong>Awaiting inputs</strong>
         </div>
         <div>
           <span>Sell</span>
-          <strong>Calculated in form</strong>
+          <strong>Awaiting inputs</strong>
         </div>
         <div>
           <span>Margin</span>
@@ -2360,14 +2384,8 @@ function ScopePlanner({
 
       <DrawerPanel
         open={Boolean(activeServicePanel)}
-        title={
-          activeServicePanel?.kind === 'add'
-            ? `${activeServicePanel.label} to Day ${activeServicePanel.day.dayNumber}`
-            : activeServicePanel?.kind === 'edit'
-              ? `Edit ${activeServicePanel.item.service.name}`
-              : 'Add/Edit Service'
-        }
-        description="Edit the full service details without expanding the active day workspace."
+        title={getActiveServiceDrawerTitle(activeServicePanel)}
+        description={getActiveServiceDrawerDescription(activeServicePanel)}
         onClose={() => setActiveServicePanel(null)}
         closeLabel="Cancel"
         className="quote-service-editor-drawer"
@@ -2379,99 +2397,116 @@ function ScopePlanner({
             tabIndex={-1}
             data-highlight={highlightedEditorPanelKey === activeServicePanel.key ? 'true' : undefined}
           >
-            <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
-            <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
+            <section className="quote-drawer-section quote-drawer-section-pricing">
+              <header className="quote-drawer-section-head">
+                <div>
+                  <p className="eyebrow">Pricing</p>
+                  <h3>Cost, sell, and margin</h3>
+                </div>
+              </header>
+              <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
+              <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
+            </section>
 
-            <div className="quote-service-editor-tabs" role="tablist" aria-label="Service categories">
-              {SERVICE_PLANNER_TABS.map((tabCategory) => {
-                const tabAction = DAY_WORKFLOW_ACTIONS.find((a) => a.category === tabCategory);
-                if (!tabAction) {
-                  return null;
-                }
+            <section className="quote-drawer-section quote-drawer-section-details">
+              <header className="quote-drawer-section-head">
+                <div>
+                  <p className="eyebrow">Details</p>
+                  <h3>Service fields</h3>
+                </div>
+              </header>
 
-                const activeCategory =
-                  activeServicePanel.kind === 'add'
-                    ? activeServicePanel.category
-                    : getQuoteServiceCategoryKey(activeServicePanel.item.service);
-                const active = activeCategory === tabCategory;
-                const tabDay =
-                  activeServicePanel.kind === 'add'
-                    ? activeServicePanel.day
-                    : plannerProps.quote.itineraries.find((day) => day.id === activeServicePanel.item.itineraryId) ||
-                      plannerProps.quote.itineraries[0];
+              <div className="quote-service-editor-tabs" role="tablist" aria-label="Service categories">
+                {SERVICE_PLANNER_TABS.map((tabCategory) => {
+                  const tabAction = DAY_WORKFLOW_ACTIONS.find((a) => a.category === tabCategory);
+                  if (!tabAction) {
+                    return null;
+                  }
 
-                return (
-                  <button
-                    key={tabCategory}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={active ? 'quote-service-editor-tab quote-service-editor-tab-active' : 'quote-service-editor-tab'}
-                    onClick={() => {
-                      if (!tabDay) {
-                        return;
-                      }
+                  const activeCategory =
+                    activeServicePanel.kind === 'add'
+                      ? activeServicePanel.category
+                      : getQuoteServiceCategoryKey(activeServicePanel.item.service);
+                  const active = activeCategory === tabCategory;
+                  const tabDay =
+                    activeServicePanel.kind === 'add'
+                      ? activeServicePanel.day
+                      : plannerProps.quote.itineraries.find((day) => day.id === activeServicePanel.item.itineraryId) ||
+                        plannerProps.quote.itineraries[0];
 
-                      setQuickAddPendingId(null);
-                      setReorderError('');
-                      plannerState.onActiveDayChange(tabDay.id);
-                      plannerState.onDayOpenChange(tabDay.id, true);
-                      const panelKey = `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:manual`;
-                      scrollToEditorPanelKeyRef.current = panelKey;
-                      setActiveServicePanel({
-                        kind: 'add',
-                        key: panelKey,
-                        optionId: scope.optionId,
-                        day: tabDay,
-                        category: tabCategory,
-                        label: tabAction.label,
-                        formReady: true,
-                      });
-                    }}
-                  >
-                    {SERVICE_PLANNER_TAB_LABELS[tabCategory]}
-                  </button>
-                );
-              })}
-            </div>
+                  return (
+                    <button
+                      key={tabCategory}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      className={active ? 'quote-service-editor-tab quote-service-editor-tab-active' : 'quote-service-editor-tab'}
+                      onClick={() => {
+                        if (!tabDay) {
+                          return;
+                        }
 
-            {activeServicePanel.kind === 'add' && !activeServicePanel.formReady ? (
-              <SmartSuggestionsPanel
-                key={activeServicePanel.key}
-                category={activeServicePanel.category}
-                day={activeServicePanel.day}
-                plannerProps={plannerProps}
-                onQuickAdd={quickAddSuggestion}
-                onConfigure={openAddFormFromSuggestion}
-                onManualSelect={openManualAddForm}
-                quickAddPendingId={quickAddPendingId}
-              />
-            ) : activeServicePanel.kind === 'add' ? (
-              <div key={activeServicePanel.key}>
-                <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
-                  Change selection
-                </button>
-                <AddServiceEditorPanel
+                        setQuickAddPendingId(null);
+                        setReorderError('');
+                        plannerState.onActiveDayChange(tabDay.id);
+                        plannerState.onDayOpenChange(tabDay.id, true);
+                        const panelKey = `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:manual`;
+                        scrollToEditorPanelKeyRef.current = panelKey;
+                        setActiveServicePanel({
+                          kind: 'add',
+                          key: panelKey,
+                          optionId: scope.optionId,
+                          day: tabDay,
+                          category: tabCategory,
+                          label: tabAction.label,
+                          formReady: true,
+                        });
+                      }}
+                    >
+                      {SERVICE_PLANNER_TAB_LABELS[tabCategory]}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeServicePanel.kind === 'add' && !activeServicePanel.formReady ? (
+                <SmartSuggestionsPanel
+                  key={activeServicePanel.key}
                   category={activeServicePanel.category}
-                  label={activeServicePanel.label}
+                  day={activeServicePanel.day}
+                  plannerProps={plannerProps}
+                  onQuickAdd={quickAddSuggestion}
+                  onConfigure={openAddFormFromSuggestion}
+                  onManualSelect={openManualAddForm}
+                  quickAddPendingId={quickAddPendingId}
+                />
+              ) : activeServicePanel.kind === 'add' ? (
+                <div key={activeServicePanel.key}>
+                  <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
+                    Change selection
+                  </button>
+                  <AddServiceEditorPanel
+                    category={activeServicePanel.category}
+                    label={activeServicePanel.label}
+                    plannerProps={plannerProps}
+                    optionId={activeServicePanel.optionId}
+                    day={activeServicePanel.day}
+                    selectedServiceId={activeServicePanel.selectedServiceId}
+                    selectedHotelId={activeServicePanel.selectedHotelId}
+                    selectedRouteId={activeServicePanel.selectedRouteId}
+                    onSaved={handleEditorItemSaved}
+                  />
+                </div>
+              ) : (
+                <EditServiceEditorPanel
+                  item={activeServicePanel.item}
                   plannerProps={plannerProps}
                   optionId={activeServicePanel.optionId}
-                  day={activeServicePanel.day}
-                  selectedServiceId={activeServicePanel.selectedServiceId}
-                  selectedHotelId={activeServicePanel.selectedHotelId}
-                  selectedRouteId={activeServicePanel.selectedRouteId}
+                  dayNumber={activeServicePanel.dayNumber}
                   onSaved={handleEditorItemSaved}
                 />
-              </div>
-            ) : (
-              <EditServiceEditorPanel
-                item={activeServicePanel.item}
-                plannerProps={plannerProps}
-                optionId={activeServicePanel.optionId}
-                dayNumber={activeServicePanel.dayNumber}
-                onSaved={handleEditorItemSaved}
-              />
-            )}
+              )}
+            </section>
           </div>
         ) : null}
       </DrawerPanel>

@@ -1,9 +1,9 @@
 :root {
   --background: #F9FAFB;
   --foreground: #111827;
-  --accent: #0F766E;
+  --accent: #1F9ACF;
   --surface: #FFFFFF;
-  --surface-muted: #F2FBFA;
+  --surface-muted: #F4FAFD;
   --border: #E5E7EB;
   --muted-foreground: #6B7280;
   --text: #111827;
@@ -39,7 +39,7 @@ a {
   min-height: 100vh;
   display: grid;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.1), transparent 30rem),
+    radial-gradient(circle at top left, rgba(31, 154, 207, 0.1), transparent 30rem),
     linear-gradient(180deg, #f8fafc 0%, #eef3f8 100%);
 }
 
@@ -220,10 +220,10 @@ a {
 }
 
 .admin-subnav-link-active {
-  background: rgba(15, 118, 110, 0.12);
-  border-color: rgba(15, 118, 110, 0.34);
+  background: rgba(31, 154, 207, 0.12);
+  border-color: rgba(31, 154, 207, 0.34);
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.1);
 }
 
 .admin-topbar {
@@ -392,7 +392,7 @@ h1 {
   padding: 1.5rem;
   margin-bottom: 2rem;
   background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(15, 118, 110, 0.2);
+  border: 1px solid rgba(31, 154, 207, 0.2);
   border-radius: 1rem;
 }
 
@@ -507,7 +507,7 @@ h1 {
   width: fit-content;
   min-height: 36px;
   padding: 0.62rem 0.92rem;
-  border: 1px solid rgba(15, 118, 110, 0.24);
+  border: 1px solid rgba(31, 154, 207, 0.24);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   color: var(--accent);
@@ -527,16 +527,16 @@ h1 {
   width: fit-content;
   min-height: 42px;
   padding: 0.78rem 1.15rem;
-  border: 1px solid rgba(15, 118, 110, 0.28);
+  border: 1px solid rgba(31, 154, 207, 0.28);
   border-radius: 999px;
-  background: linear-gradient(135deg, #0F766E, #0F766E);
+  background: linear-gradient(135deg, #1F9ACF, #1F9ACF);
   color: #FFFFFF;
   font: inherit;
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 14px 32px rgba(15, 118, 110, 0.22);
+  box-shadow: 0 14px 32px rgba(31, 154, 207, 0.22);
 }
 
 .invoice-portal-primary-button:disabled {
@@ -568,7 +568,7 @@ h1 {
   display: inline-block;
   margin-top: 1rem;
   padding: 0.65rem 1rem;
-  border: 1px solid rgba(15, 118, 110, 0.24);
+  border: 1px solid rgba(31, 154, 207, 0.24);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.75);
   color: var(--accent);
@@ -605,7 +605,7 @@ h1 {
 .lead-card:hover,
 .entity-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(31, 154, 207, 0.28);
   box-shadow: 0 12px 28px rgba(30, 27, 24, 0.08);
 }
 
@@ -654,7 +654,7 @@ h1 {
 .status-badge {
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
   font-size: 0.9rem;
 }
@@ -779,7 +779,7 @@ h1 {
   margin-bottom: 0;
   gap: 1.25rem;
   padding: 1.75rem;
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid rgba(31, 154, 207, 0.16);
   background: rgba(255, 255, 255, 0.82);
 }
 
@@ -869,7 +869,7 @@ h1 {
 
 .inline-create-panel {
   padding: 1rem;
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid rgba(31, 154, 207, 0.16);
   border-radius: 1rem;
   background: rgba(249, 250, 251, 0.9);
 }
@@ -967,7 +967,7 @@ h1 {
 
 .search-combobox-option-active {
   border-color: rgba(37, 99, 235, 0.18);
-  background: #E6F4F3;
+  background: #E8F6FB;
   box-shadow: inset 2px 0 0 rgba(37, 99, 235, 0.55);
 }
 
@@ -998,7 +998,7 @@ select option {
 select option:hover,
 select option:focus,
 select option:checked {
-  background: #E6F4F3;
+  background: #E8F6FB;
   color: var(--saas-text);
 }
 
@@ -1185,8 +1185,8 @@ select option:checked {
 }
 
 .reports-sort-links .active {
-  border-color: rgba(15, 118, 110, 0.28);
-  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.28);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
 }
 
@@ -1204,7 +1204,7 @@ select option:checked {
   overflow: hidden;
   height: 8px;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
 }
 
 .reports-mini-bar span {
@@ -1215,7 +1215,7 @@ select option:checked {
 }
 
 .admin-dashboard-selling-section {
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   background: #FFFFFF;
 }
 
@@ -1233,7 +1233,7 @@ select option:checked {
 }
 
 .admin-dashboard-trend-positive {
-  color: #047857;
+  color: #1C7FB8;
   font-weight: 700;
 }
 
@@ -1368,7 +1368,7 @@ select option:checked {
 .workspace-status {
   padding: 0.45rem 0.8rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
   text-transform: capitalize;
 }
@@ -1434,7 +1434,7 @@ select option:checked {
 .internal-costing-table th,
 .internal-costing-table td {
   padding: 0.8rem 0.85rem;
-  border-bottom: 1px solid rgba(15, 118, 110, 0.12);
+  border-bottom: 1px solid rgba(31, 154, 207, 0.12);
   text-align: left;
   white-space: nowrap;
 }
@@ -1453,8 +1453,8 @@ select option:checked {
 .workspace-summary-card {
   padding: 1rem 1.1rem;
   border-radius: 0.9rem;
-  background: rgba(15, 118, 110, 0.06);
-  border: 1px solid rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.06);
+  border: 1px solid rgba(31, 154, 207, 0.12);
 }
 
 .workspace-summary-card-expired {
@@ -1570,7 +1570,7 @@ select option:checked {
 .service-type-button {
   padding: 0.72rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.2);
+  border: 1px solid rgba(31, 154, 207, 0.2);
   background: rgba(255, 255, 255, 0.82);
   color: var(--foreground);
   font: inherit;
@@ -1578,9 +1578,9 @@ select option:checked {
 }
 
 .service-type-button-active {
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
-  border-color: rgba(15, 118, 110, 0.35);
+  border-color: rgba(31, 154, 207, 0.35);
 }
 
 .service-type-button:disabled {
@@ -1858,8 +1858,8 @@ select option:checked {
 .quote-item-suggestion-score {
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1F9ACF;
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -1995,7 +1995,7 @@ select option:checked {
   display: inline-block;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent) !important;
 }
 
@@ -2084,7 +2084,7 @@ select option:checked {
   gap: 0.25rem;
   padding: 0.8rem 0.9rem;
   border-radius: 0.85rem;
-  background: rgba(15, 118, 110, 0.08);
+  background: rgba(31, 154, 207, 0.08);
 }
 
 .import-itinerary-stat-grid span,
@@ -2106,8 +2106,8 @@ select option:checked {
   min-height: 2rem;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1C7FB8;
   font-weight: 600;
 }
 
@@ -2171,7 +2171,7 @@ select option:checked {
   min-height: 100vh;
   padding: clamp(1.25rem, 3vw, 2.5rem);
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28rem),
+    radial-gradient(circle at top left, rgba(31, 154, 207, 0.12), transparent 28rem),
     linear-gradient(180deg, #f7faf9 0%, #eef4f2 100%);
 }
 
@@ -2208,7 +2208,7 @@ select option:checked {
   margin: 0;
   font-size: clamp(1.8rem, 4vw, 2.5rem);
   line-height: 1.05;
-  color: #132321;
+  color: #111827;
 }
 
 .invoice-portal-hero-copy p {
@@ -2227,8 +2227,8 @@ select option:checked {
   min-height: 2rem;
   padding: 0.4rem 0.8rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1F9ACF;
   font-size: 0.82rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -2242,7 +2242,7 @@ select option:checked {
 
 .invoice-portal-status-badge-settled {
   background: rgba(22, 101, 52, 0.12);
-  color: #166534;
+  color: #1C7FB8;
 }
 
 .invoice-portal-amount-card {
@@ -2250,7 +2250,7 @@ select option:checked {
   display: grid;
   gap: 1rem;
   background:
-    linear-gradient(180deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.98)),
+    linear-gradient(180deg, rgba(31, 154, 207, 0.06), rgba(255, 255, 255, 0.98)),
     #FFFFFF;
 }
 
@@ -2267,7 +2267,7 @@ select option:checked {
   font-size: clamp(2.8rem, 8vw, 4.5rem);
   line-height: 0.95;
   font-weight: 800;
-  color: #132321;
+  color: #111827;
   letter-spacing: -0.04em;
 }
 
@@ -2293,7 +2293,7 @@ select option:checked {
 
 .invoice-portal-amount-meta strong {
   font-size: 1.05rem;
-  color: #132321;
+  color: #111827;
 }
 
 .invoice-portal-overdue-copy {
@@ -2348,15 +2348,15 @@ select option:checked {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
-  color: #0F766E;
+  color: #1F9ACF;
   word-break: break-word;
 }
 
 .quote-client-view {
-  --quote-brand-primary: #0F766E;
-  --quote-brand-accent: #c8efe7;
+  --quote-brand-primary: #1F9ACF;
+  --quote-brand-accent: #E8F6FB;
   --quote-brand-surface: #f6fbfa;
-  --quote-brand-text: #16302d;
+  --quote-brand-text: #111827;
   color: var(--quote-brand-text);
 }
 
@@ -2443,13 +2443,13 @@ select option:checked {
 }
 
 .quote-step-link-active {
-  border-color: rgba(15, 118, 110, 0.32);
-  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(31, 154, 207, 0.32);
+  background: rgba(31, 154, 207, 0.1);
   color: var(--accent);
 }
 
 .quote-step-link-complete {
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
 }
 
 .quote-step-index {
@@ -2532,7 +2532,7 @@ select option:checked {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(15, 118, 110, 0.72), var(--accent));
+  background: linear-gradient(90deg, rgba(31, 154, 207, 0.72), var(--accent));
 }
 
 .quote-health-status-copy {
@@ -2663,8 +2663,8 @@ select option:checked {
 }
 
 .quote-service-check-complete {
-  border-color: rgba(15, 118, 110, 0.18);
-  background: rgba(15, 118, 110, 0.06);
+  border-color: rgba(31, 154, 207, 0.18);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .quote-service-check-missing {
@@ -2679,8 +2679,8 @@ select option:checked {
 }
 
 .quote-service-day-card-focused {
-  border-color: rgba(15, 118, 110, 0.28);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.28);
+  box-shadow: 0 0 0 3px rgba(31, 154, 207, 0.08);
 }
 
 .quote-service-day-meta {
@@ -2768,8 +2768,8 @@ select option:checked {
 }
 
 .quote-service-day-workflow {
-  background: rgba(15, 118, 110, 0.04);
-  border-color: rgba(15, 118, 110, 0.14);
+  background: rgba(31, 154, 207, 0.04);
+  border-color: rgba(31, 154, 207, 0.14);
   padding: 0.65rem;
 }
 
@@ -2879,8 +2879,8 @@ select option:checked {
 .quote-guided-starter {
   display: grid;
   gap: 1rem;
-  border-color: rgba(15, 118, 110, 0.18);
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(249, 250, 251, 0.96));
+  border-color: rgba(31, 154, 207, 0.18);
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.08), rgba(249, 250, 251, 0.96));
 }
 
 .quote-guided-starter-actions {
@@ -2893,7 +2893,7 @@ select option:checked {
   display: grid;
   gap: 0.85rem;
   padding: 1rem;
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid rgba(31, 154, 207, 0.16);
   border-radius: 0.95rem;
   background: rgba(249, 250, 251, 0.88);
 }
@@ -2922,8 +2922,8 @@ select option:checked {
 }
 
 .quote-add-service-option-active {
-  border-color: rgba(15, 118, 110, 0.42);
-  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(31, 154, 207, 0.42);
+  background: rgba(31, 154, 207, 0.1);
 }
 
 .quote-add-service-form {
@@ -3018,8 +3018,8 @@ select option:checked {
 }
 
 .quote-auto-itinerary-option-active {
-  border-color: rgba(15, 118, 110, 0.24);
-  background: rgba(15, 118, 110, 0.06);
+  border-color: rgba(31, 154, 207, 0.24);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .quote-auto-itinerary-option div {
@@ -3076,8 +3076,8 @@ select option:checked {
 }
 
 .quote-auto-itinerary-ready-banner-ready {
-  border-color: rgba(15, 118, 110, 0.24);
-  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.24);
+  background: rgba(31, 154, 207, 0.08);
 }
 
 .quote-auto-itinerary-ready-banner-warnings {
@@ -3102,8 +3102,8 @@ select option:checked {
   width: fit-content;
   padding: 0.3rem 0.55rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.08);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.08);
+  color: #1F9ACF;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -3174,15 +3174,15 @@ select option:checked {
 
 .quote-transport-suggestion-option:hover,
 .quote-transport-suggestion-option:focus-visible {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: rgba(15, 118, 110, 0.04);
+  border-color: rgba(31, 154, 207, 0.34);
+  background: rgba(31, 154, 207, 0.04);
   outline: none;
 }
 
 .quote-transport-suggestion-option-selected {
   border-color: var(--color-accent);
-  background: rgba(15, 118, 110, 0.08);
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.18);
+  background: rgba(31, 154, 207, 0.08);
+  box-shadow: 0 0 0 2px rgba(31, 154, 207, 0.18);
 }
 
 .quote-transport-suggestion-main {
@@ -3241,7 +3241,7 @@ select option:checked {
 }
 
 .quote-selected-transport-card-active {
-  border-color: rgba(15, 118, 110, 0.42);
+  border-color: rgba(31, 154, 207, 0.42);
   border-left: 4px solid var(--color-accent);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
@@ -3278,9 +3278,9 @@ select option:checked {
   display: grid;
   gap: 0.35rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid rgba(31, 154, 207, 0.16);
   border-radius: 0.75rem;
-  background: rgba(15, 118, 110, 0.06);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .quote-selected-transport-explanation strong,
@@ -3378,8 +3378,8 @@ select option:checked {
 }
 
 .quote-live-pricing-status-active {
-  background: rgba(15, 118, 110, 0.1);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1F9ACF;
 }
 
 .quote-live-pricing-profit {
@@ -3419,7 +3419,7 @@ select option:checked {
 
 .quote-live-pricing-profit-good em,
 .quote-live-pricing-margin-good {
-  color: #15803d;
+  color: #1C7FB8;
 }
 
 .quote-live-pricing-profit-watch {
@@ -3485,14 +3485,14 @@ select option:checked {
 
 .quote-service-workflow-step:hover,
 .quote-service-workflow-step:focus-visible {
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
   background: rgba(249, 250, 251, 0.92);
   box-shadow: 0 10px 22px rgba(34, 28, 22, 0.08);
   transform: translateY(-1px);
 }
 
 .quote-service-workflow-step:focus-visible {
-  outline: 2px solid rgba(15, 118, 110, 0.34);
+  outline: 2px solid rgba(31, 154, 207, 0.34);
   outline-offset: 2px;
 }
 
@@ -3524,8 +3524,8 @@ select option:checked {
   height: 1.35rem;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.14);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.14);
+  color: #1F9ACF;
   font-size: 0.82rem;
   font-weight: 900;
   line-height: 1;
@@ -3538,8 +3538,8 @@ select option:checked {
 }
 
 .quote-service-workflow-step-complete {
-  border-color: rgba(15, 118, 110, 0.22);
-  background: rgba(15, 118, 110, 0.06);
+  border-color: rgba(31, 154, 207, 0.22);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .quote-service-workflow-step-current {
@@ -3551,8 +3551,8 @@ select option:checked {
 .quote-service-quick-add {
   padding: 1rem;
   border-radius: 0.9rem;
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  background: rgba(15, 118, 110, 0.04);
+  border: 1px solid rgba(31, 154, 207, 0.18);
+  background: rgba(31, 154, 207, 0.04);
 }
 
 .quote-service-suggestions {
@@ -3610,7 +3610,7 @@ select option:checked {
   min-height: 28px;
   padding: 0.35rem 0.65rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(31, 154, 207, 0.1);
   color: var(--accent);
   font-size: 0.82rem;
   font-weight: 700;
@@ -3677,7 +3677,7 @@ select option:checked {
 }
 
 .transport-contract-table tbody tr:hover {
-  background: rgba(15, 118, 110, 0.04);
+  background: rgba(31, 154, 207, 0.04);
 }
 
 .transport-contract-table tbody tr:nth-child(4n + 1) {
@@ -3703,9 +3703,9 @@ select option:checked {
   display: grid;
   gap: 1rem;
   padding: 1.2rem;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(31, 154, 207, 0.18);
   border-radius: 1rem;
-  background: rgba(15, 118, 110, 0.05);
+  background: rgba(31, 154, 207, 0.05);
 }
 
 .transport-contract-import-hero h3 {
@@ -3777,7 +3777,7 @@ select option:checked {
   min-height: 26px;
   padding: 0.3rem 0.6rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(31, 154, 207, 0.1);
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 750;
@@ -4000,8 +4000,8 @@ select option:checked {
   gap: 1rem;
   padding: 1rem 1.1rem;
   border-radius: 1rem;
-  border: 1px solid rgba(15, 118, 110, 0.16);
-  background: rgba(15, 118, 110, 0.06);
+  border: 1px solid rgba(31, 154, 207, 0.16);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .catalog-results-grid {
@@ -4170,8 +4170,8 @@ select option:checked {
 }
 
 .quote-pricing-slab-row-recommended {
-  border-color: rgba(15, 118, 110, 0.24);
-  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.24);
+  background: rgba(31, 154, 207, 0.08);
 }
 
 .quote-pricing-slab-values {
@@ -4220,8 +4220,8 @@ select option:checked {
 }
 
 .quote-bulk-notice-success {
-  border-color: rgba(15, 118, 110, 0.22);
-  background: rgba(15, 118, 110, 0.07);
+  border-color: rgba(31, 154, 207, 0.22);
+  background: rgba(31, 154, 207, 0.07);
 }
 
 .quote-bulk-notice-error {
@@ -4360,8 +4360,8 @@ select option:checked {
 
 .compact-filter-chip {
   appearance: none;
-  border: 1px solid rgba(15, 118, 110, 0.16);
-  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(31, 154, 207, 0.16);
+  background: rgba(31, 154, 207, 0.1);
   color: var(--accent);
   border-radius: 999px;
   padding: 0.55rem 0.8rem;
@@ -4373,7 +4373,7 @@ select option:checked {
 }
 
 .compact-filter-chip:hover {
-  background: rgba(15, 118, 110, 0.16);
+  background: rgba(31, 154, 207, 0.16);
 }
 
 .workspace-shell-header {
@@ -4424,14 +4424,14 @@ select option:checked {
 }
 
 .module-switcher-link-active {
-  border-color: rgba(15, 118, 110, 0.32);
-  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.32);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.12);
 }
 
 .module-switcher-link-active span {
-  color: rgba(15, 118, 110, 0.84);
+  color: rgba(31, 154, 207, 0.84);
 }
 
 .summary-strip {
@@ -4582,14 +4582,14 @@ select option:checked {
 }
 
 .commercial-subnav-link-active {
-  border-color: rgba(15, 118, 110, 0.32);
-  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.32);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.12);
 }
 
 .commercial-subnav-link-active span {
-  color: rgba(15, 118, 110, 0.84);
+  color: rgba(31, 154, 207, 0.84);
 }
 
 .commercial-context-card {
@@ -4693,7 +4693,7 @@ select option:checked {
   min-height: 38px;
   padding: 0.65rem 0.95rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(31, 154, 207, 0.18);
   background: rgba(255, 255, 255, 0.82);
   color: var(--accent);
   font-size: 0.9rem;
@@ -5152,10 +5152,10 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   --saas-text: #172033;
   --saas-muted: #667085;
   --saas-muted-soft: #8792a2;
-  --saas-accent: #0C5E58;
-  --saas-accent-strong: #0C5E58;
-  --saas-accent-soft: rgba(15, 118, 110, 0.12);
-  --saas-focus: rgba(15, 118, 110, 0.18);
+  --saas-accent: #1C7FB8;
+  --saas-accent-strong: #1C7FB8;
+  --saas-accent-soft: rgba(31, 154, 207, 0.12);
+  --saas-focus: rgba(31, 154, 207, 0.18);
   --saas-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 44px rgba(15, 23, 42, 0.055);
   --saas-shadow-subtle: 0 1px 2px rgba(15, 23, 42, 0.035), 0 10px 28px rgba(15, 23, 42, 0.045);
   --saas-radius: 16px;
@@ -5164,7 +5164,7 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   --foreground: var(--saas-muted);
   --text: var(--saas-text);
   --border: var(--saas-border);
-  --accent: #0F766E;
+  --accent: #1F9ACF;
   --admin-card-radius: var(--saas-radius);
   --admin-card-padding: 28px;
   --admin-field-height: 48px;
@@ -5177,7 +5177,7 @@ body,
 .admin-main-shell,
 .admin-content-shell {
   background:
-    radial-gradient(circle at 22% 0%, rgba(15, 118, 110, 0.08), transparent 34rem),
+    radial-gradient(circle at 22% 0%, rgba(31, 154, 207, 0.08), transparent 34rem),
     linear-gradient(180deg, #f8fbff 0%, var(--saas-bg) 42%, #eef3f9 100%);
   color: var(--saas-muted);
 }
@@ -5223,7 +5223,7 @@ body {
 }
 
 .admin-top-nav-link-active {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.22), rgba(255, 255, 255, 0.08));
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.22), rgba(255, 255, 255, 0.08));
   color: #FFFFFF;
 }
 
@@ -5232,7 +5232,7 @@ body {
   top: 12px;
   bottom: 12px;
   width: 4px;
-  background: #0F766E;
+  background: #1F9ACF;
   box-shadow: 0 0 24px rgba(56, 189, 248, 0.38);
 }
 
@@ -5287,9 +5287,9 @@ body {
 .quote-dashboard-tab-active,
 .booking-dashboard-tab-active,
 .reports-sort-links .active {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.14), rgba(255, 255, 255, 0.92));
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.14), rgba(255, 255, 255, 0.92));
   color: var(--saas-accent-strong);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.28);
 }
 
 .page,
@@ -5438,7 +5438,7 @@ body {
 .reports-alert-row:hover,
 .dashboard-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(15, 118, 110, 0.2);
+  border-color: rgba(31, 154, 207, 0.2);
   background: #FFFFFF;
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.085);
 }
@@ -5500,7 +5500,7 @@ textarea:focus,
 .entity-form select:focus,
 .entity-form textarea:focus,
 .lead-form textarea:focus {
-  border-color: rgba(15, 118, 110, 0.58);
+  border-color: rgba(31, 154, 207, 0.58);
   background: #FFFFFF;
   box-shadow: 0 0 0 4px var(--saas-focus);
 }
@@ -5512,16 +5512,16 @@ textarea:focus,
   min-height: 44px;
   border: 0;
   border-radius: 13px;
-  background: linear-gradient(135deg, #0F766E, #0C5E58);
-  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
+  box-shadow: 0 14px 28px rgba(31, 154, 207, 0.22);
 }
 
 .primary-button:hover,
 .lead-form button:hover,
 .entity-form button:hover,
 .invoice-portal-primary-button:hover {
-  background: linear-gradient(135deg, #0F766E, #0C5E58);
-  box-shadow: 0 16px 34px rgba(15, 118, 110, 0.28);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
+  box-shadow: 0 16px 34px rgba(31, 154, 207, 0.28);
   transform: translateY(-1px);
 }
 
@@ -5824,8 +5824,8 @@ th.money-cell {
 }
 
 .module-switcher-link-active {
-  border-color: rgba(15, 118, 110, 0.32);
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.14), rgba(255, 255, 255, 0.9));
+  border-color: rgba(31, 154, 207, 0.32);
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.14), rgba(255, 255, 255, 0.9));
 }
 
 @media (min-width: 1180px) {
@@ -5874,7 +5874,7 @@ th.money-cell {
   justify-content: center;
   min-height: 34px;
   padding: 0.48rem 0.72rem;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(31, 154, 207, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.82);
   color: var(--accent);
@@ -5935,10 +5935,10 @@ th.money-cell {
 
 .quote-client-hero {
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.14), transparent 35%),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.14), transparent 35%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(246, 251, 250, 0.96));
-  border-color: rgba(15, 118, 110, 0.12);
-  box-shadow: 0 20px 50px rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.12);
+  box-shadow: 0 20px 50px rgba(31, 154, 207, 0.08);
 }
 
 .quote-client-brand-block {
@@ -5958,7 +5958,7 @@ th.money-cell {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.18em;
-  box-shadow: 0 18px 32px rgba(15, 118, 110, 0.2);
+  box-shadow: 0 18px 32px rgba(31, 154, 207, 0.2);
 }
 
 .quote-preview-meta,
@@ -5984,8 +5984,8 @@ th.money-cell {
 .quote-client-price-card {
   padding: 1.2rem 1.2rem 1.3rem;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0.02));
-  border: 1px solid rgba(15, 118, 110, 0.12);
+  background: linear-gradient(180deg, rgba(31, 154, 207, 0.08), rgba(31, 154, 207, 0.02));
+  border: 1px solid rgba(31, 154, 207, 0.12);
 }
 
 .quote-client-price-card strong {
@@ -6019,7 +6019,7 @@ th.money-cell {
   padding: 0.9rem 1rem;
   border-radius: 0.9rem;
   background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(31, 154, 207, 0.1);
 }
 
 .quote-client-price-grid span {
@@ -6049,7 +6049,7 @@ th.money-cell {
 .quote-client-info-card,
 .quote-client-itinerary-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 252, 0.98));
-  border-color: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.08);
 }
 
 .quote-client-summary-section {
@@ -6057,7 +6057,7 @@ th.money-cell {
 }
 
 .quote-client-summary-focus-card {
-  box-shadow: 0 18px 36px rgba(15, 118, 110, 0.07);
+  box-shadow: 0 18px 36px rgba(31, 154, 207, 0.07);
 }
 
 .quote-client-section-title {
@@ -6079,7 +6079,7 @@ th.money-cell {
   min-height: 36px;
   padding: 0.55rem 0.85rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.08);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--quote-brand-primary);
   font-size: 0.92rem;
   font-weight: 600;
@@ -6098,8 +6098,8 @@ th.money-cell {
   padding: 1rem 1.1rem;
   border-radius: 1rem;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 251, 0.96));
-  border: 1px solid rgba(15, 118, 110, 0.08);
-  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.05);
+  border: 1px solid rgba(31, 154, 207, 0.08);
+  box-shadow: 0 14px 28px rgba(31, 154, 207, 0.05);
 }
 
 .quote-client-summary-card span {
@@ -6131,10 +6131,10 @@ th.money-cell {
   padding: 2rem;
   border-radius: 1.4rem;
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 32%),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.18), transparent 32%),
     radial-gradient(circle at bottom left, rgba(180, 138, 76, 0.12), transparent 26%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 248, 0.96));
-  box-shadow: 0 26px 56px rgba(15, 118, 110, 0.08);
+  box-shadow: 0 26px 56px rgba(31, 154, 207, 0.08);
 }
 
 .quote-client-editorial-copy {
@@ -6145,7 +6145,7 @@ th.money-cell {
   width: 84px;
   height: 84px;
   border-radius: 1.5rem;
-  box-shadow: 0 22px 40px rgba(15, 118, 110, 0.18);
+  box-shadow: 0 22px 40px rgba(31, 154, 207, 0.18);
 }
 
 .quote-client-hero-stack {
@@ -6186,7 +6186,7 @@ th.money-cell {
   padding: 0.5rem 0.85rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(31, 154, 207, 0.08);
   color: rgba(22, 48, 45, 0.74);
   font-size: 0.88rem;
   font-weight: 600;
@@ -6222,8 +6222,8 @@ th.money-cell {
   padding: 1.2rem;
   border-radius: 1rem;
   background: linear-gradient(180deg, #FFFFFF, #F9FAFB);
-  border: 1px solid rgba(15, 118, 110, 0.1);
-  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.06);
+  border: 1px solid rgba(31, 154, 207, 0.1);
+  box-shadow: 0 14px 28px rgba(31, 154, 207, 0.06);
 }
 
 .quote-client-editorial-day-list {
@@ -6238,8 +6238,8 @@ th.money-cell {
   border-radius: 1.2rem;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 251, 0.98));
-  border-color: rgba(15, 118, 110, 0.08);
-  box-shadow: 0 18px 34px rgba(15, 118, 110, 0.06);
+  border-color: rgba(31, 154, 207, 0.08);
+  box-shadow: 0 18px 34px rgba(31, 154, 207, 0.06);
   position: relative;
 }
 
@@ -6265,7 +6265,7 @@ th.money-cell {
   line-height: 0.82;
   color: var(--quote-brand-primary);
   font-weight: 700;
-  text-shadow: 0 12px 24px rgba(15, 118, 110, 0.12);
+  text-shadow: 0 12px 24px rgba(31, 154, 207, 0.12);
 }
 
 .quote-client-day-label {
@@ -6296,7 +6296,7 @@ th.money-cell {
   min-height: 72px;
   padding: 0.75rem;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.12), rgba(15, 118, 110, 0.04));
+  background: linear-gradient(180deg, rgba(31, 154, 207, 0.12), rgba(31, 154, 207, 0.04));
   color: var(--quote-brand-primary);
   font-weight: 700;
 }
@@ -6349,9 +6349,9 @@ th.money-cell {
   min-height: 152px;
   padding: 1rem;
   border-radius: 1rem;
-  border: 1px dashed rgba(15, 118, 110, 0.18);
+  border: 1px dashed rgba(31, 154, 207, 0.18);
   background:
-    linear-gradient(135deg, rgba(15, 118, 110, 0.05), rgba(180, 138, 76, 0.06)),
+    linear-gradient(135deg, rgba(31, 154, 207, 0.05), rgba(180, 138, 76, 0.06)),
     rgba(255, 255, 255, 0.72);
 }
 
@@ -6378,7 +6378,7 @@ th.money-cell {
 
 .quote-preview-service-row {
   padding: 1rem 0 0;
-  border-top: 1px solid rgba(15, 118, 110, 0.1);
+  border-top: 1px solid rgba(31, 154, 207, 0.1);
 }
 
 .quote-client-service-grid {
@@ -6392,7 +6392,7 @@ th.money-cell {
   padding: 1.1rem 1.1rem;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(31, 154, 207, 0.08);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
@@ -6401,7 +6401,7 @@ th.money-cell {
   place-items: center;
   min-height: 84px;
   border-radius: 1rem;
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.12), rgba(15, 118, 110, 0.04));
+  background: linear-gradient(180deg, rgba(31, 154, 207, 0.12), rgba(31, 154, 207, 0.04));
   color: var(--quote-brand-primary);
   font-size: 0.82rem;
   font-weight: 700;
@@ -6450,7 +6450,7 @@ th.money-cell {
   min-height: 28px;
   padding: 0.35rem 0.62rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.06);
+  background: rgba(31, 154, 207, 0.06);
   color: rgba(22, 48, 45, 0.56);
   font-size: 0.76rem;
 }
@@ -6479,8 +6479,8 @@ th.money-cell {
 
 .booking-service-highlight {
   border-radius: 0.9rem;
-  background: rgba(15, 118, 110, 0.08);
-  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.18);
+  background: rgba(31, 154, 207, 0.08);
+  box-shadow: 0 0 0 1px rgba(31, 154, 207, 0.18);
   transition: background 0.25s ease, box-shadow 0.25s ease;
 }
 
@@ -6500,7 +6500,7 @@ th.money-cell {
   min-height: 28px;
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.08);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--quote-brand-primary);
   font-size: 0.74rem;
   font-weight: 700;
@@ -6511,7 +6511,7 @@ th.money-cell {
   padding: 1rem 1.1rem;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(31, 154, 207, 0.1);
 }
 
 .quote-client-cta {
@@ -6523,18 +6523,18 @@ th.money-cell {
   background: var(--quote-brand-primary);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 16px 28px rgba(15, 118, 110, 0.18);
+  box-shadow: 0 16px 28px rgba(31, 154, 207, 0.18);
 }
 
 .quote-client-cta-primary:hover:not(:disabled) {
-  background: #0C5E58;
+  background: #1C7FB8;
 }
 
 .quote-client-confirmation {
   margin: 0;
   padding: 0.85rem 1rem;
   border-radius: 0.85rem;
-  background: rgba(15, 118, 110, 0.08);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--quote-brand-primary);
   font-weight: 600;
 }
@@ -6544,7 +6544,7 @@ th.money-cell {
   gap: 0.85rem;
   margin: 0.9rem 0;
   padding: 1rem;
-  border-color: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.12);
   background: rgba(248, 252, 251, 0.95);
 }
 
@@ -6584,7 +6584,7 @@ th.money-cell {
   width: min(100%, 34rem);
   display: grid;
   gap: 0.9rem;
-  border-color: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.12);
   box-shadow: 0 24px 48px rgba(20, 31, 29, 0.18);
 }
 
@@ -6623,8 +6623,8 @@ th.money-cell {
   gap: 0.8rem;
   padding: 1rem;
   border-radius: 0.95rem;
-  border: 1px solid rgba(15, 118, 110, 0.14);
-  background: rgba(15, 118, 110, 0.05);
+  border: 1px solid rgba(31, 154, 207, 0.14);
+  background: rgba(31, 154, 207, 0.05);
 }
 
 .quote-hotel-rate-preview h3 {
@@ -6713,8 +6713,8 @@ th.money-cell {
 }
 
 .quote-hotel-contract-card-active {
-  border-color: rgba(15, 118, 110, 0.22);
-  background: rgba(15, 118, 110, 0.08);
+  border-color: rgba(31, 154, 207, 0.22);
+  background: rgba(31, 154, 207, 0.08);
 }
 
 .quote-hotel-contract-card span {
@@ -6750,7 +6750,7 @@ th.money-cell {
 .quote-hotel-rate-option-card-clickable:focus-visible {
   transform: translateY(-2px);
   box-shadow: 0 18px 32px rgba(30, 27, 24, 0.08);
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   outline: none;
 }
 
@@ -6965,7 +6965,7 @@ th.money-cell {
   display: inline-block;
   padding: 0.25rem 0.6rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
   font-size: 0.88rem;
   font-weight: 600;
@@ -7056,7 +7056,7 @@ th.money-cell {
   min-height: 36px;
   padding: 0.58rem 0.88rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(31, 154, 207, 0.18);
   background: rgba(255, 255, 255, 0.9);
   color: var(--accent);
   font-size: 0.88rem;
@@ -7208,8 +7208,8 @@ th.money-cell {
   min-height: 32px;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(31, 154, 207, 0.18);
+  background: rgba(31, 154, 207, 0.08);
   color: var(--accent);
   font-size: 0.88rem;
   font-weight: 600;
@@ -7223,7 +7223,7 @@ th.money-cell {
   min-height: 1.9rem;
   padding: 0.1rem 0.68rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--accent);
   font-size: 0.84rem;
   font-weight: 700;
@@ -7250,7 +7250,7 @@ th.money-cell {
   border-radius: 2rem;
   border: 1px solid rgba(115, 99, 87, 0.08);
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.08), transparent 24%),
     linear-gradient(180deg, rgba(249, 250, 251, 0.98) 0%, rgba(249, 250, 251, 0.94) 100%);
   box-shadow: 0 28px 72px rgba(34, 28, 22, 0.08);
 }
@@ -7324,28 +7324,28 @@ th.money-cell {
 }
 
 .executive-dashboard-header-actions .primary-button {
-  border: 1px solid rgba(15, 118, 110, 0.22);
-  background: linear-gradient(135deg, #0F766E, #0C5E58);
+  border: 1px solid rgba(31, 154, 207, 0.22);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
   color: #f8fffd;
-  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.22);
+  box-shadow: 0 12px 24px rgba(31, 154, 207, 0.22);
 }
 
 .executive-dashboard-header-actions .primary-button:hover {
-  background: linear-gradient(135deg, #0C5E58, #0C5E58);
-  border-color: rgba(15, 118, 110, 0.28);
+  background: linear-gradient(135deg, #1C7FB8, #1C7FB8);
+  border-color: rgba(31, 154, 207, 0.28);
   color: #FFFFFF;
-  box-shadow: 0 16px 28px rgba(15, 118, 110, 0.26);
+  box-shadow: 0 16px 28px rgba(31, 154, 207, 0.26);
 }
 
 .executive-dashboard-header-actions .dashboard-toolbar-link {
   border-radius: 0.95rem;
   background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(15, 118, 110, 0.16);
+  border: 1px solid rgba(31, 154, 207, 0.16);
 }
 
 .executive-dashboard-header-actions .dashboard-toolbar-link:hover {
   background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
 }
 
 .executive-dashboard-stat-grid {
@@ -7373,7 +7373,7 @@ th.money-cell {
 
 .executive-dashboard-stat-card-link:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   box-shadow:
     0 22px 42px rgba(34, 28, 22, 0.09),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
@@ -7496,7 +7496,7 @@ th.money-cell {
 
 .executive-dashboard-finance-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   box-shadow:
     0 22px 40px rgba(34, 28, 22, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
@@ -7613,7 +7613,7 @@ th.money-cell {
 
 .executive-dashboard-finance-sparkline-line {
   fill: none;
-  stroke: rgba(15, 118, 110, 0.62);
+  stroke: rgba(31, 154, 207, 0.62);
   stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -7657,7 +7657,7 @@ th.money-cell {
 }
 
 .executive-dashboard-finance-trend-up {
-  color: #0F766E;
+  color: #1F9ACF;
 }
 
 .executive-dashboard-finance-trend-down {
@@ -7725,7 +7725,7 @@ th.money-cell {
 
 .executive-dashboard-finance-chart-line {
   fill: none;
-  stroke: #0F766E;
+  stroke: #1F9ACF;
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -7753,7 +7753,7 @@ th.money-cell {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #0F766E;
+  background: #1F9ACF;
 }
 
 .executive-dashboard-finance-chart-dot-secondary {
@@ -7813,7 +7813,7 @@ th.money-cell {
 }
 
 .executive-dashboard-finance-action-link {
-  color: #0F766E;
+  color: #1F9ACF;
   font-size: 0.84rem;
   font-weight: 700;
 }
@@ -7849,7 +7849,7 @@ th.money-cell {
 .executive-dashboard-alert:hover,
 .executive-dashboard-quick-action:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   box-shadow: 0 16px 30px rgba(34, 28, 22, 0.09);
 }
 
@@ -7912,8 +7912,8 @@ th.money-cell {
 }
 
 .executive-dashboard-inline-pill-accent {
-  background: rgba(15, 118, 110, 0.14);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.14);
+  color: #1F9ACF;
 }
 
 .executive-dashboard-inline-pill-warning {
@@ -7972,9 +7972,9 @@ th.money-cell {
 }
 
 .executive-dashboard-quote-status {
-  background: rgba(15, 118, 110, 0.12);
-  color: #0F766E;
-  border-color: rgba(15, 118, 110, 0.14);
+  background: rgba(31, 154, 207, 0.12);
+  color: #1F9ACF;
+  border-color: rgba(31, 154, 207, 0.14);
 }
 
 .executive-dashboard-quote-amount {
@@ -8001,7 +8001,7 @@ th.money-cell {
 
 .executive-dashboard-alert-info {
   background: linear-gradient(180deg, rgba(239, 247, 246, 0.98), rgba(255, 255, 255, 0.84));
-  border-color: rgba(15, 118, 110, 0.2);
+  border-color: rgba(31, 154, 207, 0.2);
 }
 
 .executive-dashboard-alert-badge-critical {
@@ -8017,9 +8017,9 @@ th.money-cell {
 }
 
 .executive-dashboard-alert-badge-info {
-  background: rgba(15, 118, 110, 0.14);
-  color: #0F766E;
-  border-color: rgba(15, 118, 110, 0.18);
+  background: rgba(31, 154, 207, 0.14);
+  color: #1F9ACF;
+  border-color: rgba(31, 154, 207, 0.18);
 }
 
 .executive-dashboard-empty-state {
@@ -8080,12 +8080,12 @@ th.money-cell {
 }
 
 .executive-dashboard-trend-bar {
-  fill: rgba(15, 118, 110, 0.2);
+  fill: rgba(31, 154, 207, 0.2);
 }
 
 .executive-dashboard-trend-line {
   fill: none;
-  stroke: #0F766E;
+  stroke: #1F9ACF;
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -8123,8 +8123,8 @@ th.money-cell {
 }
 
 .executive-dashboard-quick-action-primary {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.16), rgba(255, 255, 255, 0.88));
-  border-color: rgba(15, 118, 110, 0.2);
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.16), rgba(255, 255, 255, 0.88));
+  border-color: rgba(31, 154, 207, 0.2);
 }
 
 @media (max-width: 1280px) {
@@ -8456,7 +8456,7 @@ th.money-cell {
 .quote-ui-badge-success {
   border-color: rgba(2, 122, 72, 0.16);
   background: rgba(2, 122, 72, 0.1);
-  color: #027a48;
+  color: #1C7FB8;
 }
 
 .quote-ui-badge-warning {
@@ -8472,8 +8472,8 @@ th.money-cell {
 }
 
 .quote-ui-badge-info {
-  border-color: rgba(15, 118, 110, 0.16);
-  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(31, 154, 207, 0.16);
+  background: rgba(31, 154, 207, 0.1);
   color: var(--accent);
 }
 
@@ -8490,7 +8490,7 @@ th.money-cell {
 
 @keyframes quote-pricing-row-flash {
   0% {
-    background: rgba(15, 118, 110, 0.16);
+    background: rgba(31, 154, 207, 0.16);
   }
 
   100% {
@@ -8938,7 +8938,7 @@ th.money-cell {
   max-width: 1400px;
   margin: 0 auto;
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 26%),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.08), transparent 26%),
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 30%),
     linear-gradient(180deg, rgba(249, 250, 251, 0.98) 0%, rgba(249, 250, 251, 0.88) 100%);
   border-radius: 2rem;
@@ -9059,12 +9059,12 @@ th.money-cell {
 }
 
 .quote-builder-status-accent {
-  color: #0F766E;
-  background: rgba(15, 118, 110, 0.12);
+  color: #1F9ACF;
+  background: rgba(31, 154, 207, 0.12);
 }
 
 .quote-builder-status-success {
-  color: #166534;
+  color: #1C7FB8;
   background: rgba(22, 101, 52, 0.12);
 }
 
@@ -9112,7 +9112,7 @@ th.money-cell {
 }
 
 .quote-builder-stat-card-accent {
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.1), rgba(249, 250, 251, 0.94));
+  background: linear-gradient(180deg, rgba(31, 154, 207, 0.1), rgba(249, 250, 251, 0.94));
 }
 
 .quote-builder-step-shell,
@@ -9179,7 +9179,7 @@ th.money-cell {
 .quote-builder-main-content {
   padding: 0.125rem;
   border-radius: 1.5rem;
-  background: rgba(15, 118, 110, 0.05);
+  background: rgba(31, 154, 207, 0.05);
 }
 
 .quote-builder-main .split-layout {
@@ -9311,10 +9311,10 @@ th.money-cell {
 .quote-builder-sidebar .quote-send-actions > .secondary-button:first-of-type,
 .quote-builder-sidebar .quote-share-actions > .secondary-button:first-of-type,
 .quote-builder-header-actions .quote-version-actions > .secondary-button {
-  background: linear-gradient(135deg, #1F2937, #0F766E);
-  border-color: rgba(15, 118, 110, 0.36);
+  background: linear-gradient(135deg, #1F2937, #1F9ACF);
+  border-color: rgba(31, 154, 207, 0.36);
   color: #FFFFFF;
-  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.2);
+  box-shadow: 0 14px 28px rgba(31, 154, 207, 0.2);
 }
 
 .quote-builder-sidebar .quote-version-actions > .secondary-button:hover,
@@ -9343,7 +9343,7 @@ th.money-cell {
   border: 1px solid rgba(115, 99, 87, 0.08);
   overflow-wrap: anywhere;
   word-break: break-word;
-  color: #0F766E;
+  color: #1F9ACF;
   font-size: 0.88rem;
   line-height: 1.5;
 }
@@ -9399,8 +9399,8 @@ th.money-cell {
   width: fit-content;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.08);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.08);
+  color: #1F9ACF;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -9474,7 +9474,7 @@ th.money-cell {
 
 .quote-service-item-row:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: rgba(31, 154, 207, 0.16);
   box-shadow: 0 18px 34px rgba(34, 28, 22, 0.08);
 }
 
@@ -9530,19 +9530,19 @@ th.money-cell {
 .quote-builder-shell .page-tab-link:hover {
   transform: translateY(-1px);
   box-shadow: 0 14px 24px rgba(34, 28, 22, 0.08);
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
 }
 
 .quote-builder-shell .page-tab-link-active {
-  background: rgba(15, 118, 110, 0.1);
-  border-color: rgba(15, 118, 110, 0.28);
-  color: #0C5E58;
-  box-shadow: 0 16px 28px rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.1);
+  border-color: rgba(31, 154, 207, 0.28);
+  color: #1C7FB8;
+  box-shadow: 0 16px 28px rgba(31, 154, 207, 0.12);
 }
 
 .quote-builder-shell .page-tab-link-active .page-tab-badge {
-  background: rgba(15, 118, 110, 0.14);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.14);
+  color: #1C7FB8;
 }
 
 .quote-builder-shell input,
@@ -9750,7 +9750,7 @@ th.money-cell {
 }
 
 .quote-dashboard-workflow-step-active {
-  color: #0F766E;
+  color: #1F9ACF;
   background: #ecfdf5;
   border-radius: 6px;
 }
@@ -9778,9 +9778,9 @@ th.money-cell {
 }
 
 .quote-dashboard-tab-active {
-  color: #0F766E;
+  color: #1F9ACF;
   background: #ecfdf5;
-  border-color: #99f6e4;
+  border-color: #E8F6FB;
 }
 
 .quote-builder-layout {
@@ -9888,7 +9888,7 @@ th.money-cell {
   border-radius: 2rem;
   border: 1px solid rgba(115, 99, 87, 0.08);
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 22%),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.08), transparent 22%),
     linear-gradient(180deg, rgba(249, 250, 251, 0.98) 0%, rgba(249, 250, 251, 0.92) 100%);
   box-shadow: 0 28px 72px rgba(34, 28, 22, 0.08);
 }
@@ -10004,7 +10004,7 @@ th.money-cell {
 
 .booking-ops-status-success {
   background: rgba(22, 101, 52, 0.18);
-  color: #14532d;
+  color: #1C7FB8;
   border-color: rgba(22, 101, 52, 0.22);
 }
 
@@ -10021,9 +10021,9 @@ th.money-cell {
 }
 
 .booking-ops-status-info {
-  background: rgba(15, 118, 110, 0.14);
-  color: #0F766E;
-  border-color: rgba(15, 118, 110, 0.16);
+  background: rgba(31, 154, 207, 0.14);
+  color: #1F9ACF;
+  border-color: rgba(31, 154, 207, 0.16);
 }
 
 .booking-ops-stat-grid {
@@ -10090,20 +10090,20 @@ th.money-cell {
 
 .booking-ops-tab-shell .page-tab-link:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   box-shadow: 0 14px 24px rgba(34, 28, 22, 0.08);
 }
 
 .booking-ops-tab-shell .page-tab-link-active {
-  background: rgba(15, 118, 110, 0.1);
-  border-color: rgba(15, 118, 110, 0.28);
-  color: #0C5E58;
-  box-shadow: 0 16px 28px rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.1);
+  border-color: rgba(31, 154, 207, 0.28);
+  color: #1C7FB8;
+  box-shadow: 0 16px 28px rgba(31, 154, 207, 0.12);
 }
 
 .booking-ops-tab-shell .page-tab-link-active .page-tab-badge {
-  background: rgba(15, 118, 110, 0.14);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.14);
+  color: #1C7FB8;
 }
 
 .booking-ops-layout {
@@ -10254,16 +10254,16 @@ th.money-cell {
   min-height: 34px;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  border: 1px solid rgba(31, 154, 207, 0.14);
   background: rgba(255, 255, 255, 0.94);
-  color: #0F766E;
+  color: #1F9ACF;
   font-size: 0.82rem;
   font-weight: 700;
   text-decoration: none;
 }
 
 .booking-ops-alert-link:hover {
-  border-color: rgba(15, 118, 110, 0.26);
+  border-color: rgba(31, 154, 207, 0.26);
   background: #F8FAFC;
 }
 
@@ -10347,7 +10347,7 @@ th.money-cell {
 }
 
 .booking-ops-checklist-item-complete span {
-  color: #166534;
+  color: #1C7FB8;
 }
 
 .booking-ops-empty-state {
@@ -10403,11 +10403,11 @@ th.money-cell {
   min-height: 38px;
   padding: 0.52rem 0.9rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(15, 118, 110, 0.06));
-  color: #0F766E;
+  background: linear-gradient(135deg, rgba(31, 154, 207, 0.12), rgba(31, 154, 207, 0.06));
+  color: #1F9ACF;
   font-size: 0.84rem;
   font-weight: 700;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  border: 1px solid rgba(31, 154, 207, 0.14);
 }
 
 .booking-service-card {
@@ -10423,7 +10423,7 @@ th.money-cell {
 }
 
 .booking-service-card-highlight {
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.16);
+  box-shadow: 0 0 0 2px rgba(31, 154, 207, 0.16);
 }
 
 .finance-reconciliation-toolbar {
@@ -10433,7 +10433,7 @@ th.money-cell {
   align-items: flex-start;
   padding: 1rem 1.1rem;
   border-radius: 1.1rem;
-  border: 1px solid rgba(15, 118, 110, 0.12);
+  border: 1px solid rgba(31, 154, 207, 0.12);
   background: #FFFFFF;
 }
 
@@ -10464,11 +10464,11 @@ th.money-cell {
 }
 
 .finance-reconciliation-row-active {
-  box-shadow: inset 3px 0 0 #0F766E;
+  box-shadow: inset 3px 0 0 #1F9ACF;
 }
 
 .finance-reconciliation-success {
-  color: #166534;
+  color: #1C7FB8;
 }
 
 .finance-reconciliation-review-list {
@@ -10594,7 +10594,7 @@ th.money-cell {
 }
 
 .reconciliation-performance-insight-primary {
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   background: #FFFFFF;
 }
 
@@ -10610,7 +10610,7 @@ th.money-cell {
 }
 
 .reconciliation-performance-insight-icon-up {
-  color: #166534;
+  color: #1C7FB8;
   background: rgba(220, 252, 231, 0.92);
 }
 
@@ -10694,7 +10694,7 @@ th.money-cell {
 
 .reconciliation-performance-line {
   fill: none;
-  stroke: #0F766E;
+  stroke: #1F9ACF;
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -10723,7 +10723,7 @@ th.money-cell {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #0F766E;
+  background: #1F9ACF;
 }
 
 .reconciliation-performance-dot-secondary {
@@ -10895,7 +10895,7 @@ th.money-cell {
   min-width: min(100%, 22rem);
   max-width: 30rem;
   padding: 1rem 1.1rem;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  border: 1px solid rgba(31, 154, 207, 0.14);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.9);
   display: grid;
@@ -10935,7 +10935,7 @@ th.money-cell {
 }
 
 .finance-reconciliation-confidence-high {
-  color: #166534;
+  color: #1C7FB8;
 }
 
 .finance-reconciliation-actions {
@@ -10970,9 +10970,9 @@ th.money-cell {
 
 .booking-invoice-mode-field select:focus {
   outline: none;
-  border-color: rgba(15, 118, 110, 0.34);
+  border-color: rgba(31, 154, 207, 0.34);
   box-shadow:
-    0 0 0 4px rgba(15, 118, 110, 0.1),
+    0 0 0 4px rgba(31, 154, 207, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
@@ -11016,9 +11016,9 @@ th.money-cell {
 
 .booking-financial-card-profit {
   background: #FFFFFF;
-  border-color: rgba(15, 118, 110, 0.14);
+  border-color: rgba(31, 154, 207, 0.14);
   box-shadow:
-    0 20px 40px rgba(15, 118, 110, 0.08),
+    0 20px 40px rgba(31, 154, 207, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
@@ -11225,7 +11225,7 @@ th.money-cell {
 }
 
 .booking-payment-row-complete {
-  color: #166534;
+  color: #1C7FB8;
   font-weight: 700;
   font-size: 0.9rem;
 }
@@ -11245,7 +11245,7 @@ th.money-cell {
 .booking-payment-status-badge-paid {
   background: rgba(22, 101, 52, 0.2);
   border-color: rgba(22, 101, 52, 0.24);
-  color: #14532d;
+  color: #1C7FB8;
 }
 
 .booking-payment-status-badge-pending {
@@ -11278,7 +11278,7 @@ th.money-cell {
 }
 
 .booking-service-card-actions .operations-row-summary:hover {
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   color: rgba(30, 27, 24, 0.92);
   background: rgba(255, 255, 255, 0.92);
 }
@@ -11635,8 +11635,8 @@ th.money-cell {
 }
 
 .quote-dashboard-workflow-step-active {
-  border-color: #5eead4;
-  color: #0F766E;
+  border-color: #E8F6FB;
+  color: #1F9ACF;
   background: #ecfdf5;
 }
 
@@ -11666,8 +11666,8 @@ th.money-cell {
 }
 
 .quote-dashboard-tab-active {
-  border-color: #5eead4;
-  color: #0F766E;
+  border-color: #E8F6FB;
+  color: #1F9ACF;
   background: #ecfdf5;
 }
 
@@ -11805,7 +11805,7 @@ th.money-cell {
   width: 0.42rem;
   height: 0.42rem;
   border-radius: 999px;
-  background: #0F766E;
+  background: #1F9ACF;
 }
 
 .quote-featured-service-list {
@@ -11845,7 +11845,7 @@ th.money-cell {
 }
 
 .quote-primary-action-card {
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
   background: #FFFFFF;
 }
 
@@ -12047,8 +12047,8 @@ th.money-cell {
 }
 
 .booking-dashboard-workflow-step-active {
-  border-color: #5eead4;
-  color: #0F766E;
+  border-color: #E8F6FB;
+  color: #1F9ACF;
   background: #ecfdf5;
 }
 
@@ -12087,8 +12087,8 @@ th.money-cell {
 }
 
 .booking-dashboard-tab-active {
-  border-color: #5eead4;
-  color: #0F766E;
+  border-color: #E8F6FB;
+  color: #1F9ACF;
   background: #ecfdf5;
 }
 
@@ -12164,7 +12164,7 @@ th.money-cell {
 }
 
 .booking-dashboard-summary-card {
-  border-color: #99f6e4;
+  border-color: #E8F6FB;
 }
 
 .booking-dashboard-primary-action,
@@ -12260,7 +12260,7 @@ th.money-cell {
   min-height: 100vh;
   place-items: center;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 28rem),
+    radial-gradient(circle at top left, rgba(31, 154, 207, 0.14), transparent 28rem),
     linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
 }
 
@@ -12347,7 +12347,7 @@ h1,
 }
 
 .eyebrow {
-  color: #0F766E;
+  color: #1F9ACF;
   font-size: 0.76rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -12377,8 +12377,8 @@ h1,
 .entity-form select:focus,
 .entity-form textarea:focus,
 .lead-form textarea:focus {
-  border-color: rgba(15, 118, 110, 0.55);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.55);
+  box-shadow: 0 0 0 3px rgba(31, 154, 207, 0.12);
   outline: none;
 }
 
@@ -12391,14 +12391,14 @@ h1,
   justify-content: center;
   min-height: 40px;
   padding: 0.7rem 1rem;
-  border: 1px solid rgba(15, 118, 110, 0.85);
+  border: 1px solid rgba(31, 154, 207, 0.85);
   border-radius: 8px;
-  background: #0F766E;
+  background: #1F9ACF;
   color: #FFFFFF;
   font: inherit;
   font-weight: 760;
   line-height: 1;
-  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
+  box-shadow: 0 10px 24px rgba(31, 154, 207, 0.18);
   cursor: pointer;
 }
 
@@ -12429,10 +12429,10 @@ h1,
   align-items: center;
   justify-content: center;
   min-height: 28px;
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  border: 1px solid rgba(31, 154, 207, 0.18);
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0F766E;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1F9ACF;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -12573,10 +12573,10 @@ h1,
 
 /* AXIS dashboard and branding polish */
 :root {
-  --axis-blue: #0F766E;
-  --axis-blue-dark: #0C5E58;
-  --axis-blue-soft: rgba(15, 118, 110, 0.1);
-  --axis-blue-border: rgba(15, 118, 110, 0.22);
+  --axis-blue: #1F9ACF;
+  --axis-blue-dark: #1C7FB8;
+  --axis-blue-soft: rgba(31, 154, 207, 0.1);
+  --axis-blue-border: rgba(31, 154, 207, 0.22);
   --axis-gray: #1F2937;
   --axis-text-soft: #6B6B6B;
   --background: #FFFFFF;
@@ -12690,7 +12690,7 @@ a {
 .invoice-portal-primary-button {
   border-color: var(--axis-blue);
   background: var(--axis-blue);
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.14);
+  box-shadow: 0 8px 18px rgba(31, 154, 207, 0.14);
 }
 
 .primary-button:hover,
@@ -12702,8 +12702,8 @@ a {
 }
 
 .admin-top-nav-link-active {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.34);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--axis-blue-dark);
 }
 
@@ -12839,10 +12839,10 @@ a {
 
 /* AXIS platform-wide SaaS system */
 :root {
-  --axis-blue: #0F766E;
-  --axis-blue-dark: #0C5E58;
-  --axis-blue-soft: rgba(15, 118, 110, 0.1);
-  --axis-blue-border: rgba(15, 118, 110, 0.24);
+  --axis-blue: #1F9ACF;
+  --axis-blue-dark: #1C7FB8;
+  --axis-blue-soft: rgba(31, 154, 207, 0.1);
+  --axis-blue-border: rgba(31, 154, 207, 0.24);
   --axis-text-soft: #6B6B6B;
   --axis-navy: #111827;
   --axis-text: #1F2937;
@@ -12950,8 +12950,8 @@ a {
 }
 
 .admin-top-nav-link-active {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.34);
+  background: rgba(31, 154, 207, 0.12);
   color: var(--axis-blue-dark);
   box-shadow: none;
 }
@@ -13084,7 +13084,7 @@ a {
   border-color: var(--axis-blue);
   background: var(--axis-blue);
   color: #FFFFFF;
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.16);
+  box-shadow: 0 8px 18px rgba(31, 154, 207, 0.16);
 }
 
 .primary-button:hover,
@@ -13146,7 +13146,7 @@ textarea:focus,
 .entity-form textarea:focus,
 .lead-form textarea:focus {
   border-color: var(--axis-blue);
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  box-shadow: 0 0 0 3px rgba(31, 154, 207, 0.12);
   outline: none;
 }
 
@@ -13218,7 +13218,7 @@ textarea:focus,
 .invoice-portal-status-badge-paid {
   border-color: rgba(5, 150, 105, 0.22);
   background: rgba(5, 150, 105, 0.1);
-  color: #047857;
+  color: #1C7FB8;
 }
 
 .status-badge-draft,
@@ -13380,12 +13380,12 @@ textarea:focus,
 
 .public-proposal-page .eyebrow,
 .public-proposal-page a {
-  color: #0F766E;
+  color: #1F9ACF;
 }
 
 .public-proposal-page .primary-button {
-  background: #0F766E;
-  border-color: #0F766E;
+  background: #1F9ACF;
+  border-color: #1F9ACF;
 }
 
 @media (max-width: 720px) {
@@ -13497,14 +13497,14 @@ textarea:focus,
 
 .quote-service-editor-tab:hover,
 .quote-service-editor-tab:focus-visible {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: rgba(15, 118, 110, 0.06);
+  border-color: rgba(31, 154, 207, 0.34);
+  background: rgba(31, 154, 207, 0.06);
 }
 
 .quote-service-editor-tab-active {
-  border-color: rgba(15, 118, 110, 0.5);
-  background: rgba(15, 118, 110, 0.12);
-  color: #0C5E58;
+  border-color: rgba(31, 154, 207, 0.5);
+  background: rgba(31, 154, 207, 0.12);
+  color: #1C7FB8;
 }
 
 .quote-advanced-settings {
@@ -13556,13 +13556,13 @@ textarea:focus,
 .quote-service-day-action-button:hover,
 .quote-service-day-action-button-active,
 .quote-service-suggestion-button:hover {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: rgba(15, 118, 110, 0.08);
-  color: #0C5E58;
+  border-color: rgba(31, 154, 207, 0.34);
+  background: rgba(31, 154, 207, 0.08);
+  color: #1C7FB8;
 }
 
 .quote-service-day-action-button-recommended {
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
 }
 
 .quote-service-assigned-table-wrap {
@@ -13859,7 +13859,7 @@ textarea:focus,
 
 .catalog-result-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05), 0 18px 36px rgba(15, 23, 42, 0.065);
 }
 
@@ -13939,7 +13939,7 @@ textarea:focus,
 }
 
 .catalog-service-card .inline-actions .primary-button {
-  box-shadow: 0 10px 20px rgba(15, 118, 110, 0.18);
+  box-shadow: 0 10px 20px rgba(31, 154, 207, 0.18);
 }
 
 .catalog-service-card .inline-actions button:last-child {
@@ -13982,7 +13982,7 @@ textarea:focus,
 .catalog-service-card details.stacked-card .entity-form button {
   min-height: 42px;
   border-radius: 11px;
-  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.2);
+  box-shadow: 0 12px 24px rgba(31, 154, 207, 0.2);
 }
 
 .catalog-edit-drawer {
@@ -14059,7 +14059,7 @@ textarea:focus,
 .catalog-edit-drawer-body .entity-form button {
   min-height: 44px;
   border-radius: 12px;
-  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.22);
+  box-shadow: 0 12px 26px rgba(31, 154, 207, 0.22);
 }
 
 @media (max-width: 640px) {
@@ -14212,8 +14212,8 @@ textarea:focus,
 }
 
 .contract-workspace-tabs a:hover {
-  background: rgba(15, 118, 110, 0.09);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.09);
+  color: #1C7FB8;
 }
 
 .contract-section-grid {
@@ -14490,10 +14490,10 @@ textarea:focus,
 .quote-service-lane-add {
   min-height: 34px;
   padding: 0.46rem 0.72rem;
-  border: 1px solid rgba(15, 118, 110, 0.24);
+  border: 1px solid rgba(31, 154, 207, 0.24);
   border-radius: 10px;
-  background: rgba(15, 118, 110, 0.08);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.08);
+  color: #1C7FB8;
   font: inherit;
   font-size: 0.84rem;
   font-weight: 780;
@@ -14501,7 +14501,7 @@ textarea:focus,
 }
 
 .quote-service-lane-add:hover {
-  background: rgba(15, 118, 110, 0.14);
+  background: rgba(31, 154, 207, 0.14);
 }
 
 .quote-service-empty-add {
@@ -14512,10 +14512,10 @@ textarea:focus,
   min-height: 38px;
   width: fit-content;
   padding: 0.52rem 0.82rem;
-  border: 1px dashed rgba(15, 118, 110, 0.32);
+  border: 1px dashed rgba(31, 154, 207, 0.32);
   border-radius: 12px;
-  background: rgba(15, 118, 110, 0.05);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.05);
+  color: #1C7FB8;
   font: inherit;
   font-size: 0.88rem;
   font-weight: 800;
@@ -14529,13 +14529,13 @@ textarea:focus,
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   line-height: 1;
 }
 
 .quote-service-empty-add:hover {
   border-style: solid;
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(31, 154, 207, 0.1);
 }
 
 .quote-service-card-row {
@@ -14561,13 +14561,13 @@ textarea:focus,
 }
 
 .quote-service-mini-card-external-package {
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(31, 154, 207, 0.28);
   background: linear-gradient(180deg, rgba(240, 253, 250, 0.94), #FFFFFF);
-  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.09);
+  box-shadow: 0 14px 30px rgba(31, 154, 207, 0.09);
 }
 
 .quote-service-mini-card-external-package .quote-service-type-icon {
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: #0f766e;
 }
 
@@ -14577,7 +14577,7 @@ textarea:focus,
 
 .quote-service-sortable-card-dragging {
   z-index: 5;
-  border-color: rgba(15, 118, 110, 0.34);
+  border-color: rgba(31, 154, 207, 0.34);
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
   opacity: 0.96;
 }
@@ -14629,8 +14629,8 @@ textarea:focus,
   width: 26px;
   height: 26px;
   border-radius: 9px;
-  background: rgba(15, 118, 110, 0.1);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1C7FB8;
   font-size: 0.78rem;
   font-weight: 900;
 }
@@ -14651,7 +14651,7 @@ textarea:focus,
 }
 
 .quote-service-drag-handle:focus-visible {
-  outline: 2px solid rgba(15, 118, 110, 0.42);
+  outline: 2px solid rgba(31, 154, 207, 0.42);
   outline-offset: 3px;
   border-radius: 10px;
 }
@@ -14683,7 +14683,7 @@ textarea:focus,
   min-height: 24px;
   padding: 0.22rem 0.5rem;
   border-radius: 999px;
-  background: rgba(15, 118, 110, 0.12);
+  background: rgba(31, 154, 207, 0.12);
   color: #0f766e;
   font-size: 0.76rem;
   font-weight: 850;
@@ -14711,13 +14711,13 @@ textarea:focus,
 }
 
 .quote-service-external-package-meta span {
-  background: rgba(15, 118, 110, 0.1);
+  background: rgba(31, 154, 207, 0.1);
   color: #0f766e;
 }
 
 .quote-service-external-package-meta strong {
-  background: rgba(15, 118, 110, 0.1);
-  color: #0C5E58;
+  background: rgba(31, 154, 207, 0.1);
+  color: #1C7FB8;
 }
 
 .quote-service-external-package-meta em {
@@ -14802,7 +14802,7 @@ textarea:focus,
 }
 
 .quote-service-card-details summary:hover {
-  color: #0C5E58;
+  color: #1C7FB8;
 }
 
 .quote-service-card-details p {
@@ -14954,7 +14954,7 @@ textarea:focus,
 .quote-smart-suggestion-configure:hover,
 .quote-smart-suggestion-configure:focus-visible {
   border-color: rgba(37, 99, 235, 0.34);
-  color: #0C5E58;
+  color: #1C7FB8;
 }
 
 .quote-smart-back-button {
@@ -15120,7 +15120,7 @@ textarea:focus,
 .search-combobox-option-active:hover,
 .search-combobox-option-active:focus-visible {
   border-color: rgba(37, 99, 235, 0.18);
-  background: #E6F4F3;
+  background: #E8F6FB;
   color: var(--saas-text);
   box-shadow: inset 2px 0 0 rgba(37, 99, 235, 0.55);
 }
@@ -15135,7 +15135,7 @@ textarea:focus,
 }
 
 select option:checked {
-  background: linear-gradient(#E6F4F3, #E6F4F3);
+  background: linear-gradient(#E8F6FB, #E8F6FB);
   color: var(--saas-text);
 }
 
@@ -15145,13 +15145,13 @@ select option:checked {
   --foreground: #111827;
   --text: #111827;
   --surface: #FFFFFF;
-  --surface-muted: #F2FBFA;
+  --surface-muted: #F4FAFD;
   --border: #E5E7EB;
   --muted-foreground: #6B7280;
-  --accent: #0F766E;
-  --accent-strong: #0C5E58;
-  --accent-soft: #E6F4F3;
-  --success: #16A34A;
+  --accent: #1F9ACF;
+  --accent-strong: #1C7FB8;
+  --accent-soft: #E8F6FB;
+  --success: #1F9ACF;
   --warning: #D97706;
   --danger: #DC2626;
   --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06);
@@ -15165,8 +15165,8 @@ select option:checked {
 
 body {
   background:
-    radial-gradient(circle at 18% 0%, rgba(15, 118, 110, 0.08), transparent 34rem),
-    linear-gradient(180deg, #F2FBFA 0%, #F9FAFB 100%);
+    radial-gradient(circle at 18% 0%, rgba(31, 154, 207, 0.08), transparent 34rem),
+    linear-gradient(180deg, #F4FAFD 0%, #F9FAFB 100%);
   color: var(--text);
 }
 
@@ -15183,7 +15183,7 @@ body {
   min-height: 100vh;
   gap: 1.25rem;
   padding: 1.25rem;
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(12, 94, 88, 0.98) 56%, rgba(17, 24, 39, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(28, 127, 184, 0.98) 56%, rgba(17, 24, 39, 0.98) 100%);
   color: rgba(255, 255, 255, 0.9);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 18px 0 60px rgba(17, 24, 39, 0.16);
@@ -15295,9 +15295,9 @@ body {
 .app-tabs a[aria-current='page'],
 .app-tabs button[aria-selected='true'] {
   color: var(--accent-strong);
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
   background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.08);
 }
 
 .page {
@@ -15469,8 +15469,8 @@ body {
 .app-select:focus,
 .app-textarea:focus,
 .search-combobox-shell input:focus {
-  border-color: rgba(15, 118, 110, 0.62);
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.62);
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
   outline: none;
 }
 
@@ -15487,12 +15487,12 @@ body {
 .quote-transport-add-button,
 .dashboard-toolbar-link {
   min-height: 44px;
-  border: 1px solid rgba(12, 94, 88, 0.2);
+  border: 1px solid rgba(28, 127, 184, 0.2);
   border-radius: 0.95rem;
-  background: linear-gradient(135deg, #0F766E, #0C5E58);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
   color: #FFFFFF;
   font-weight: 800;
-  box-shadow: 0 16px 34px rgba(12, 94, 88, 0.24);
+  box-shadow: 0 16px 34px rgba(28, 127, 184, 0.24);
 }
 
 .primary-button:hover,
@@ -15500,8 +15500,8 @@ body {
 .entity-form button:not(.secondary-button):not(.compact-button):not(.ghost-button):hover,
 .quote-transport-add-button:hover,
 .dashboard-toolbar-link:hover {
-  background: linear-gradient(135deg, #0F766E, #0C5E58);
-  box-shadow: 0 20px 40px rgba(12, 94, 88, 0.3);
+  background: linear-gradient(135deg, #1F9ACF, #1C7FB8);
+  box-shadow: 0 20px 40px rgba(28, 127, 184, 0.3);
 }
 
 .secondary-button,
@@ -15521,7 +15521,7 @@ body {
 .app-button-secondary:hover,
 .compact-button:hover,
 .ghost-button:hover {
-  border-color: rgba(15, 118, 110, 0.34);
+  border-color: rgba(31, 154, 207, 0.34);
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
@@ -15558,7 +15558,7 @@ body {
 
 .data-table th,
 .app-table th {
-  background: #F2FBFA;
+  background: #F4FAFD;
   color: #6B7280;
   font-size: 0.75rem;
   font-weight: 800;
@@ -15575,7 +15575,7 @@ body {
 }
 
 .data-table tbody tr:hover td {
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .status-badge,
@@ -15629,7 +15629,7 @@ body {
 
 .app-badge-accent,
 .page-tab-badge-warning {
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
@@ -15640,7 +15640,7 @@ body {
 .app-empty-state {
   border: 1px dashed #E5E7EB;
   border-radius: var(--radius-lg);
-  background: #F2FBFA;
+  background: #F4FAFD;
   color: #6B7280;
 }
 
@@ -15657,7 +15657,7 @@ body {
 .quote-client-summary-card {
   border-radius: var(--radius-lg);
   border: 1px solid rgba(232, 229, 239, 0.9);
-  background: linear-gradient(180deg, #FFFFFF 0%, #F2FBFA 100%);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F4FAFD 100%);
   box-shadow: var(--shadow-sm);
 }
 
@@ -15696,9 +15696,9 @@ body {
 .quote-transport-suggestion-option-selected,
 .quote-hotel-choice-card-active,
 .app-service-card-selected {
-  border-color: rgba(15, 118, 110, 0.34);
-  background: linear-gradient(180deg, #FFFFFF 0%, #E6F4F3 100%);
-  box-shadow: 0 18px 45px rgba(12, 94, 88, 0.12);
+  border-color: rgba(31, 154, 207, 0.34);
+  background: linear-gradient(180deg, #FFFFFF 0%, #E8F6FB 100%);
+  box-shadow: 0 18px 45px rgba(28, 127, 184, 0.12);
 }
 
 .quote-transport-suggestion-price,
@@ -15714,7 +15714,7 @@ body {
 .quote-item-row-totals,
 .quote-selected-transport-summary span,
 .quote-preview-total-list div {
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-hotel-step-head h3,
@@ -15843,8 +15843,8 @@ body {
 }
 
 .app-financial-panel {
-  border-color: rgba(15, 118, 110, 0.28);
-  background: linear-gradient(180deg, #111827 0%, #0F766E 100%);
+  border-color: rgba(31, 154, 207, 0.28);
+  background: linear-gradient(180deg, #111827 0%, #1F9ACF 100%);
   color: #FFFFFF;
   box-shadow: 0 24px 62px rgba(17, 24, 39, 0.26);
 }
@@ -15950,8 +15950,8 @@ body {
 }
 
 .quote-service-day-card-focused {
-  border-color: rgba(15, 118, 110, 0.38);
-  box-shadow: 0 22px 54px rgba(12, 94, 88, 0.14);
+  border-color: rgba(31, 154, 207, 0.38);
+  box-shadow: 0 22px 54px rgba(28, 127, 184, 0.14);
 }
 
 .quote-service-editor-panel {
@@ -15960,20 +15960,20 @@ body {
   display: grid;
   gap: 1rem;
   padding: 1rem;
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: rgba(31, 154, 207, 0.16);
   background: rgba(255, 255, 255, 0.98);
 }
 
 .quote-service-editor-panel[data-highlight='true'] {
-  border-color: rgba(15, 118, 110, 0.44);
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1), var(--shadow-md);
+  border-color: rgba(31, 154, 207, 0.44);
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.1), var(--shadow-md);
 }
 
 .quote-live-pricing-panel {
-  border: 1px solid rgba(15, 118, 110, 0.2);
+  border: 1px solid rgba(31, 154, 207, 0.2);
   border-radius: var(--radius-xl);
   background:
-    linear-gradient(180deg, #111827 0%, #0F766E 100%);
+    linear-gradient(180deg, #111827 0%, #1F9ACF 100%);
   color: #FFFFFF;
   box-shadow: 0 22px 54px rgba(17, 24, 39, 0.22);
 }
@@ -15999,7 +15999,7 @@ body {
 .quote-service-lane {
   border-radius: var(--radius-lg);
   border: 1px solid #E5E7EB;
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-lane-head {
@@ -16009,7 +16009,7 @@ body {
 .quote-service-lane-add,
 .quote-service-empty-add {
   border-radius: 0.9rem;
-  border: 1px solid rgba(15, 118, 110, 0.22);
+  border: 1px solid rgba(31, 154, 207, 0.22);
   background: #FFFFFF;
   color: var(--accent-strong);
   font-weight: 800;
@@ -16025,7 +16025,7 @@ body {
 
 .quote-service-mini-card:hover,
 .quote-service-card:hover {
-  border-color: rgba(15, 118, 110, 0.24);
+  border-color: rgba(31, 154, 207, 0.24);
   box-shadow: var(--shadow-md);
 }
 
@@ -16068,7 +16068,7 @@ body {
 .quote-service-card-meta span {
   padding: 0.35rem 0.6rem;
   border-radius: 999px;
-  background: #F2FBFA;
+  background: #F4FAFD;
   color: #6B7280;
   font-size: 0.82rem;
   font-weight: 700;
@@ -16080,7 +16080,7 @@ body {
   gap: 0.25rem;
   padding: 0.9rem;
   border-radius: var(--radius-lg);
-  background: #F2FBFA;
+  background: #F4FAFD;
   text-align: right;
 }
 
@@ -16122,7 +16122,7 @@ body {
 
 .quote-service-card-pricing-summary {
   border-radius: var(--radius-md);
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-card-price {
@@ -16174,7 +16174,7 @@ body {
 
 .quote-service-card .audit-log-item {
   border-radius: var(--radius-md);
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-editor-panel .service-entry-form {
@@ -16450,9 +16450,9 @@ body {
 .quote-pricing-summary-card-dominant {
   position: relative;
   overflow: hidden;
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(31, 154, 207, 0.28);
   background:
-    linear-gradient(180deg, #111827 0%, #0F766E 100%);
+    linear-gradient(180deg, #111827 0%, #1F9ACF 100%);
   color: #FFFFFF;
   box-shadow: 0 24px 62px rgba(17, 24, 39, 0.26);
 }
@@ -16514,7 +16514,7 @@ body {
   min-height: 76px;
   padding: 1rem 1.1rem;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #FFFFFF, #F2FBFA);
+  background: linear-gradient(135deg, #FFFFFF, #F4FAFD);
 }
 
 .quote-service-planner .quote-service-day-card[open] > .row-details-summary {
@@ -16562,7 +16562,7 @@ body {
   padding: 0.35rem;
   border: 1px solid #E5E7EB;
   border-radius: var(--radius-lg);
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-editor-tab {
@@ -16631,7 +16631,7 @@ body {
   position: relative;
   overflow: hidden;
   padding: clamp(1.35rem, 2vw, 2rem);
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 244, 255, 0.96) 54%, rgba(238, 248, 255, 0.9) 100%);
   box-shadow: 0 22px 58px rgba(17, 24, 39, 0.1);
@@ -16654,7 +16654,7 @@ body {
 
 .quote-dashboard-meta-grid div {
   padding: 0.9rem 1rem;
-  border-color: rgba(15, 118, 110, 0.12);
+  border-color: rgba(31, 154, 207, 0.12);
   background: rgba(255, 255, 255, 0.86);
 }
 
@@ -16697,7 +16697,7 @@ body {
   border-color: rgba(255, 255, 255, 0.16);
   border-radius: 1.65rem;
   background:
-    linear-gradient(180deg, #111827 0%, #0C5E58 48%, #0F766E 100%);
+    linear-gradient(180deg, #111827 0%, #1C7FB8 48%, #1F9ACF 100%);
   box-shadow: 0 30px 80px rgba(17, 24, 39, 0.34);
 }
 
@@ -16744,9 +16744,9 @@ body {
 }
 
 .quote-pricing-summary-card-actions.quote-primary-action-card {
-  border-color: rgba(15, 118, 110, 0.22);
+  border-color: rgba(31, 154, 207, 0.22);
   background: #FFFFFF;
-  box-shadow: 0 18px 46px rgba(12, 94, 88, 0.1);
+  box-shadow: 0 18px 46px rgba(28, 127, 184, 0.1);
 }
 
 .quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
@@ -16810,7 +16810,7 @@ body {
 
 .quote-service-planner .quote-service-day-card[open] {
   opacity: 1;
-  border-color: rgba(15, 118, 110, 0.32);
+  border-color: rgba(31, 154, 207, 0.32);
   background: #FFFFFF;
   box-shadow: 0 24px 64px rgba(17, 24, 39, 0.12);
 }
@@ -16819,13 +16819,13 @@ body {
   min-height: 86px;
   padding: 1.15rem 1.25rem;
   background:
-    linear-gradient(135deg, #FFFFFF 0%, #E6F4F3 100%);
+    linear-gradient(135deg, #FFFFFF 0%, #E8F6FB 100%);
 }
 
 .quote-service-day-card-focused,
 .quote-service-planner .quote-service-day-card[open].quote-service-day-card-focused {
-  border-color: rgba(15, 118, 110, 0.5);
-  box-shadow: 0 30px 74px rgba(12, 94, 88, 0.18);
+  border-color: rgba(31, 154, 207, 0.5);
+  box-shadow: 0 30px 74px rgba(28, 127, 184, 0.18);
 }
 
 .quote-service-day-panel-body {
@@ -16855,7 +16855,7 @@ body {
 }
 
 .quote-service-lane:hover {
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -16890,7 +16890,7 @@ body {
 
 .quote-service-mini-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(31, 154, 207, 0.28);
   box-shadow: 0 22px 48px rgba(17, 24, 39, 0.12);
 }
 
@@ -16914,7 +16914,7 @@ body {
   padding: 0.85rem;
   border: 0;
   border-radius: 1rem;
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-card-pricing-summary .quote-service-card-price {
@@ -16977,7 +16977,7 @@ body {
 
 .quote-service-card-financials {
   border: 0;
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .quote-service-card-financials strong {
@@ -16992,7 +16992,7 @@ body {
 }
 
 .quote-service-editor-panel {
-  border-color: rgba(15, 118, 110, 0.2);
+  border-color: rgba(31, 154, 207, 0.2);
   box-shadow: 0 22px 54px rgba(17, 24, 39, 0.1);
 }
 
@@ -17003,13 +17003,13 @@ body {
 }
 
 .quote-service-editor-tabs {
-  background: #E6F4F3;
+  background: #E8F6FB;
 }
 
 .quote-service-editor-tab-active {
   background: var(--accent);
   color: #FFFFFF;
-  box-shadow: 0 12px 28px rgba(12, 94, 88, 0.2);
+  box-shadow: 0 12px 28px rgba(28, 127, 184, 0.2);
 }
 
 @media (max-width: 1280px) {
@@ -17056,7 +17056,7 @@ body {
 
 .quote-dashboard-header {
   padding: clamp(1.65rem, 2.4vw, 2.45rem);
-  border-color: rgba(15, 118, 110, 0.16);
+  border-color: rgba(31, 154, 207, 0.16);
   box-shadow: 0 26px 70px rgba(17, 24, 39, 0.11);
 }
 
@@ -17107,8 +17107,8 @@ body {
   padding: clamp(1.55rem, 2vw, 2rem);
   border-radius: 1.9rem;
   background:
-    radial-gradient(circle at 86% 0%, rgba(15, 118, 110, 0.32), transparent 13rem),
-    linear-gradient(180deg, #111827 0%, #0C5E58 46%, #0F766E 100%);
+    radial-gradient(circle at 86% 0%, rgba(31, 154, 207, 0.32), transparent 13rem),
+    linear-gradient(180deg, #111827 0%, #1C7FB8 46%, #1F9ACF 100%);
   box-shadow:
     0 34px 88px rgba(17, 24, 39, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);
@@ -17163,7 +17163,7 @@ body {
   border-radius: 1rem;
   font-size: 1rem;
   font-weight: 900;
-  box-shadow: 0 18px 38px rgba(12, 94, 88, 0.24);
+  box-shadow: 0 18px 38px rgba(28, 127, 184, 0.24);
 }
 
 .quote-service-planner {
@@ -17199,7 +17199,7 @@ body {
 .quote-service-planner .quote-service-day-card:not([open]):hover {
   opacity: 0.9;
   transform: translateY(-1px);
-  border-color: rgba(15, 118, 110, 0.18);
+  border-color: rgba(31, 154, 207, 0.18);
   box-shadow: 0 14px 34px rgba(17, 24, 39, 0.08);
 }
 
@@ -17210,10 +17210,10 @@ body {
 
 .quote-service-planner .quote-service-day-card[open] {
   transform: translateY(-2px);
-  border-color: rgba(15, 118, 110, 0.4);
+  border-color: rgba(31, 154, 207, 0.4);
   box-shadow:
     0 28px 74px rgba(17, 24, 39, 0.14),
-    0 0 0 1px rgba(15, 118, 110, 0.08);
+    0 0 0 1px rgba(31, 154, 207, 0.08);
 }
 
 .quote-service-planner .quote-service-day-card[open] > .row-details-summary {
@@ -17224,8 +17224,8 @@ body {
 .quote-service-day-card-focused,
 .quote-service-planner .quote-service-day-card[open].quote-service-day-card-focused {
   box-shadow:
-    0 34px 86px rgba(12, 94, 88, 0.2),
-    0 0 0 1px rgba(15, 118, 110, 0.12);
+    0 34px 86px rgba(28, 127, 184, 0.2),
+    0 0 0 1px rgba(31, 154, 207, 0.12);
 }
 
 .quote-service-day-panel-body {
@@ -17295,7 +17295,7 @@ body {
   padding: 0.95rem;
   border-radius: 1.05rem;
   background:
-    linear-gradient(135deg, #E6F4F3, #FFFFFF);
+    linear-gradient(135deg, #E8F6FB, #FFFFFF);
 }
 
 .quote-service-card-pricing-summary .quote-service-card-price {
@@ -17422,7 +17422,7 @@ body {
   transform: translateZ(0);
   box-shadow:
     0 42px 100px rgba(17, 24, 39, 0.44),
-    0 18px 44px rgba(12, 94, 88, 0.2),
+    0 18px 44px rgba(28, 127, 184, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
   transition:
     box-shadow 220ms ease,
@@ -17433,7 +17433,7 @@ body {
   transform: translateY(-2px);
   box-shadow:
     0 48px 112px rgba(17, 24, 39, 0.48),
-    0 22px 52px rgba(12, 94, 88, 0.24),
+    0 22px 52px rgba(28, 127, 184, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -17451,15 +17451,15 @@ body {
 
 .quote-pricing-summary-card-actions.quote-primary-action-card {
   border-width: 0;
-  box-shadow: 0 20px 54px rgba(12, 94, 88, 0.12);
+  box-shadow: 0 20px 54px rgba(28, 127, 184, 0.12);
 }
 
 .quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
 .quote-primary-action-card .quote-builder-sidebar-actions button[type='submit'] {
   min-height: 62px;
-  background: linear-gradient(135deg, #0C5E58, #0F766E);
+  background: linear-gradient(135deg, #1C7FB8, #1F9ACF);
   box-shadow:
-    0 20px 42px rgba(12, 94, 88, 0.28),
+    0 20px 42px rgba(28, 127, 184, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
   transition:
     box-shadow 180ms ease,
@@ -17472,7 +17472,7 @@ body {
   transform: translateY(-2px);
   filter: saturate(1.08);
   box-shadow:
-    0 26px 54px rgba(12, 94, 88, 0.34),
+    0 26px 54px rgba(28, 127, 184, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
 
@@ -17504,19 +17504,19 @@ body {
 .quote-service-planner .quote-service-day-card[open] {
   box-shadow:
     0 34px 86px rgba(17, 24, 39, 0.14),
-    0 12px 34px rgba(15, 118, 110, 0.1);
+    0 12px 34px rgba(31, 154, 207, 0.1);
 }
 
 .quote-service-planner .quote-service-day-card[open] > .row-details-summary {
   background:
-    radial-gradient(circle at 92% 0%, rgba(15, 118, 110, 0.18), transparent 13rem),
-    linear-gradient(135deg, #FFFFFF 0%, #F2FBFA 100%);
+    radial-gradient(circle at 92% 0%, rgba(31, 154, 207, 0.18), transparent 13rem),
+    linear-gradient(135deg, #FFFFFF 0%, #F4FAFD 100%);
 }
 
 .quote-service-day-card-focused,
 .quote-service-planner .quote-service-day-card[open].quote-service-day-card-focused {
   box-shadow:
-    0 40px 96px rgba(12, 94, 88, 0.18),
+    0 40px 96px rgba(28, 127, 184, 0.18),
     0 14px 38px rgba(17, 24, 39, 0.1);
 }
 
@@ -17556,13 +17556,13 @@ body {
   transform: translateY(-4px);
   box-shadow:
     0 28px 62px rgba(17, 24, 39, 0.13),
-    0 10px 24px rgba(15, 118, 110, 0.08);
+    0 10px 24px rgba(31, 154, 207, 0.08);
 }
 
 .quote-service-card-pricing-summary {
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 9rem),
-    linear-gradient(135deg, #F2FBFA, #FFFFFF);
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.18), transparent 9rem),
+    linear-gradient(135deg, #F4FAFD, #FFFFFF);
 }
 
 .quote-service-card-details {
@@ -17698,7 +17698,7 @@ body {
 }
 
 .quote-service-day-nav-card em {
-  color: #0F766E;
+  color: #1F9ACF;
   font-weight: 850;
 }
 
@@ -17721,11 +17721,11 @@ body {
 .quote-service-day-nav-card-active {
   color: #111827;
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.24), transparent 8rem),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.24), transparent 8rem),
     #FFFFFF;
   box-shadow:
-    0 20px 46px rgba(12, 94, 88, 0.14),
-    inset 4px 0 0 #0F766E;
+    0 20px 46px rgba(28, 127, 184, 0.14),
+    inset 4px 0 0 #1F9ACF;
 }
 
 .quote-service-day-column {
@@ -18040,7 +18040,7 @@ body {
 
 .data-table tbody tr:hover td,
 .app-table tbody tr:hover td {
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .app-filter-bar,
@@ -18079,8 +18079,8 @@ body {
   border-width: 0;
   border-radius: 1.55rem;
   background:
-    radial-gradient(circle at 90% 0%, rgba(15, 118, 110, 0.24), transparent 12rem),
-    linear-gradient(180deg, #111827 0%, #0C5E58 50%, #0F766E 100%);
+    radial-gradient(circle at 90% 0%, rgba(31, 154, 207, 0.24), transparent 12rem),
+    linear-gradient(180deg, #111827 0%, #1C7FB8 50%, #1F9ACF 100%);
   box-shadow: 0 30px 80px rgba(17, 24, 39, 0.32);
 }
 
@@ -18237,11 +18237,11 @@ body {
 
 .app-day-navigation-card-active {
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.24), transparent 8rem),
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.24), transparent 8rem),
     #FFFFFF;
   box-shadow:
-    0 20px 46px rgba(12, 94, 88, 0.14),
-    inset 4px 0 0 #0F766E;
+    0 20px 46px rgba(28, 127, 184, 0.14),
+    inset 4px 0 0 #1F9ACF;
 }
 
 .app-day-navigation-card span {
@@ -18358,7 +18358,7 @@ body {
 }
 
 .eyebrow {
-  color: #0F766E;
+  color: #1F9ACF;
   font-size: 0.74rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -18439,12 +18439,12 @@ body {
 .data-table th,
 .app-table th {
   color: #6B7280;
-  background: #F2FBFA;
+  background: #F4FAFD;
 }
 
 .data-table tbody tr:hover td,
 .app-table tbody tr:hover td {
-  background: #E6F4F3;
+  background: #E8F6FB;
 }
 
 .primary-button,
@@ -18457,9 +18457,9 @@ body {
   min-height: 48px;
   border-width: 0;
   background:
-    linear-gradient(135deg, #0F766E 0%, #0C5E58 48%, #0C5E58 100%);
+    linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 48%, #1C7FB8 100%);
   box-shadow:
-    0 18px 40px rgba(12, 94, 88, 0.28),
+    0 18px 40px rgba(28, 127, 184, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
   transition:
     transform 160ms ease,
@@ -18477,7 +18477,7 @@ body {
   transform: translateY(-2px);
   filter: saturate(1.08);
   box-shadow:
-    0 26px 58px rgba(12, 94, 88, 0.36),
+    0 26px 58px rgba(28, 127, 184, 0.36),
     inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
 
@@ -18498,18 +18498,18 @@ body {
 .compact-button:hover,
 .ghost-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(12, 94, 88, 0.09);
+  box-shadow: 0 12px 28px rgba(28, 127, 184, 0.09);
 }
 
 .app-financial-panel,
 .financial-panel,
 .quote-pricing-summary-card-dominant.app-financial-panel {
   background:
-    radial-gradient(circle at 88% 0%, rgba(15, 118, 110, 0.28), transparent 13rem),
-    linear-gradient(180deg, #111827 0%, #0C5E58 48%, #0F766E 100%);
+    radial-gradient(circle at 88% 0%, rgba(31, 154, 207, 0.28), transparent 13rem),
+    linear-gradient(180deg, #111827 0%, #1C7FB8 48%, #1F9ACF 100%);
   box-shadow:
     0 42px 110px rgba(17, 24, 39, 0.44),
-    0 18px 46px rgba(12, 94, 88, 0.2),
+    0 18px 46px rgba(28, 127, 184, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
@@ -18591,17 +18591,17 @@ body {
 .app-day-navigation-card-active,
 .quote-service-day-nav-card-active {
   background:
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.3), transparent 9rem),
-    linear-gradient(180deg, #FFFFFF, #E6F4F3);
+    radial-gradient(circle at top right, rgba(31, 154, 207, 0.3), transparent 9rem),
+    linear-gradient(180deg, #FFFFFF, #E8F6FB);
   box-shadow:
-    0 24px 56px rgba(12, 94, 88, 0.17),
-    inset 5px 0 0 #0F766E,
+    0 24px 56px rgba(28, 127, 184, 0.17),
+    inset 5px 0 0 #1F9ACF,
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
 .quote-service-day-card-active {
   box-shadow:
-    0 34px 86px rgba(12, 94, 88, 0.16),
+    0 34px 86px rgba(28, 127, 184, 0.16),
     0 12px 32px rgba(17, 24, 39, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
@@ -18634,8 +18634,8 @@ body {
 .quote-transport-suggestion-option-selected,
 .quote-hotel-choice-card-active {
   box-shadow:
-    0 22px 52px rgba(12, 94, 88, 0.16),
-    inset 0 0 0 1px rgba(15, 118, 110, 0.18);
+    0 22px 52px rgba(28, 127, 184, 0.16),
+    inset 0 0 0 1px rgba(31, 154, 207, 0.18);
 }
 
 @media (max-width: 760px) {
@@ -18679,36 +18679,161 @@ body {
 
 .quote-service-editor-drawer {
   width: min(100%, 720px);
+  overflow: hidden;
 }
 
 .quote-service-editor-panel-drawer {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
+.quote-service-editor-drawer .app-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  align-items: center;
+  padding: 1rem 1.15rem 0.9rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.94)),
+    #FFFFFF;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.05);
+}
+
+.quote-service-editor-drawer .app-drawer-header > div:first-child {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.quote-service-editor-drawer .app-drawer-header > div:first-child::before {
+  content: "S";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.85rem;
+  background: #E8F6FB;
+  color: #1C7FB8;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.quote-service-editor-drawer .app-drawer-header h2 {
+  font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+  line-height: 1.08;
+}
+
+.quote-service-editor-drawer .app-drawer-header p {
+  margin-top: 0.25rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.quote-service-editor-drawer .app-drawer-body {
+  padding: 0.95rem 1.05rem 5.75rem;
+}
+
+.quote-service-editor-drawer .app-drawer-actions {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 18;
+  padding: 0.55rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 44px rgba(17, 24, 39, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.quote-service-editor-drawer .app-drawer-actions .secondary-button {
+  min-height: 44px;
+  padding-inline: 1.05rem;
+}
+
+.quote-drawer-section {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 1.1rem;
+  background: #FFFFFF;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.045);
+}
+
+.quote-drawer-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quote-drawer-section-head h3 {
+  margin: 0.12rem 0 0;
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.quote-drawer-section-pricing {
+  background:
+    radial-gradient(circle at 95% 0%, rgba(31, 154, 207, 0.12), transparent 11rem),
+    #FFFFFF;
+}
+
 .quote-service-editor-panel-drawer .quote-live-pricing-panel {
   position: static;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 0;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  box-shadow: 0 20px 46px rgba(17, 24, 39, 0.16);
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel .eyebrow,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel .quote-live-pricing-row span,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel em {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel h3,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel strong {
+  color: #FFFFFF;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-list {
+  gap: 0.45rem;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-row {
+  padding-block: 0.42rem;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .quote-drawer-financial-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-  padding: 0.95rem;
+  gap: 0.6rem;
+  padding: 0;
   border-radius: 1.1rem;
-  background:
-    radial-gradient(circle at 90% 0%, rgba(15, 118, 110, 0.18), transparent 10rem),
-    #F2FBFA;
+  background: transparent;
 }
 
 .quote-drawer-financial-summary div {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(31, 154, 207, 0.14);
+  border-radius: 0.9rem;
+  background: #F4FAFD;
 }
 
 .quote-drawer-financial-summary span {
@@ -18726,6 +18851,126 @@ body {
   overflow-wrap: anywhere;
 }
 
+.quote-service-editor-panel-drawer .quote-service-editor-tabs {
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: #F9FAFB;
+}
+
+.quote-service-editor-panel-drawer .quote-service-editor-tab {
+  min-height: 32px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.quote-service-editor-panel-drawer .quote-service-editor-tab-active {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  box-shadow: 0 8px 18px rgba(28, 127, 184, 0.1);
+}
+
+.quote-service-editor-panel-drawer .quote-service-catalog-link {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.9rem;
+  background: #F9FAFB;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form-head {
+  min-height: auto;
+  padding: 0.15rem 0 0.35rem;
+  border: 0;
+}
+
+.quote-service-editor-panel-drawer .service-entry-form-head p {
+  margin-top: 0.1rem;
+  color: #6B7280;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-panel,
+.quote-service-editor-panel-drawer .quote-transport-step-panel,
+.quote-service-editor-panel-drawer .quote-advanced-settings {
+  padding: 0.85rem;
+  border-color: #E5E7EB;
+  border-radius: 1rem;
+  background: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.035);
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head {
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head h3 {
+  font-size: 1rem;
+}
+
+.quote-service-editor-panel-drawer .quote-hotel-step-head .detail-copy {
+  font-size: 0.84rem;
+}
+
+.quote-service-editor-panel-drawer .quote-transport-step-fields,
+.quote-service-editor-panel-drawer .form-row,
+.quote-service-editor-panel-drawer .form-row-2,
+.quote-service-editor-panel-drawer .form-row-3,
+.quote-service-editor-panel-drawer .form-row-4 {
+  gap: 0.65rem;
+}
+
+.quote-service-editor-panel-drawer label {
+  color: #6B7280;
+  font-size: 0.8rem;
+}
+
+.quote-service-editor-panel-drawer label input,
+.quote-service-editor-panel-drawer label select,
+.quote-service-editor-panel-drawer label textarea {
+  margin-top: 0.28rem;
+}
+
+.quote-service-editor-panel-drawer .quote-advanced-settings > summary {
+  padding: 0;
+  color: #111827;
+}
+
+.quote-service-editor-panel-drawer .quote-advanced-settings > summary::before {
+  content: "Notes, supplier, and overrides";
+  display: block;
+  margin-bottom: 0.18rem;
+  color: #1C7FB8;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quote-service-editor-panel-drawer .quote-transport-add-button,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+  position: sticky;
+  bottom: 0.95rem;
+  z-index: 16;
+  width: min(100%, calc(100% - 6.5rem));
+  min-height: 48px;
+  margin-top: 0.35rem;
+  border: 0;
+  border-radius: 0.95rem;
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  box-shadow: 0 18px 42px rgba(28, 127, 184, 0.24);
+}
+
+.quote-service-editor-panel-drawer .quote-transport-add-button:hover,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
+}
+
 .quote-service-day-card-active .quote-service-current-services {
   background: transparent;
   box-shadow: none;
@@ -18735,6 +18980,17 @@ body {
   .quote-drawer-financial-summary {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .quote-service-editor-drawer .app-drawer-actions {
+    left: 1rem;
+    right: 1rem;
+    justify-content: flex-end;
+  }
+
+  .quote-service-editor-panel-drawer .quote-transport-add-button,
+  .quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+    width: 100%;
+  }
 }
 /* AXIS brand identity overrides */
 :root {
@@ -18742,13 +18998,13 @@ body {
   --foreground: #111827;
   --text: #111827;
   --surface: #FFFFFF;
-  --surface-muted: #F2FBFA;
+  --surface-muted: #F4FAFD;
   --border: #E5E7EB;
   --muted-foreground: #6B7280;
-  --accent: #0F766E;
-  --accent-strong: #0C5E58;
-  --accent-soft: #E6F4F3;
-  --success: #16A34A;
+  --accent: #1F9ACF;
+  --accent-strong: #1C7FB8;
+  --accent-soft: #E8F6FB;
+  --success: #1F9ACF;
   --warning: #D97706;
   --danger: #DC2626;
 }
@@ -18759,7 +19015,7 @@ body {
 }
 
 .admin-sidebar {
-  background: linear-gradient(180deg, #111827 0%, #0C5E58 100%);
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
   color: rgba(255, 255, 255, 0.9);
   border-right-color: rgba(255, 255, 255, 0.1);
   box-shadow: 18px 0 60px rgba(17, 24, 39, 0.16);
@@ -18794,10 +19050,10 @@ body {
 }
 
 .admin-top-nav-link-active {
-  background: rgba(15, 118, 110, 0.22);
+  background: rgba(31, 154, 207, 0.22);
   border-color: rgba(230, 244, 243, 0.32);
   color: #FFFFFF;
-  box-shadow: inset 4px 0 0 #0F766E;
+  box-shadow: inset 4px 0 0 #1F9ACF;
 }
 
 .admin-top-nav-link-active span {
@@ -18811,10 +19067,10 @@ body {
 .booking-dashboard-actions .primary-button,
 .executive-dashboard-header-actions .primary-button,
 .quote-primary-action-card .quote-builder-sidebar-actions .primary-button {
-  background: linear-gradient(135deg, #0F766E 0%, #0C5E58 100%);
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
   color: #FFFFFF;
-  border-color: rgba(12, 94, 88, 0.2);
-  box-shadow: 0 18px 40px rgba(12, 94, 88, 0.24);
+  border-color: rgba(28, 127, 184, 0.2);
+  box-shadow: 0 18px 40px rgba(28, 127, 184, 0.24);
 }
 
 .primary-button:hover,
@@ -18824,33 +19080,33 @@ body {
 .booking-dashboard-actions .primary-button:hover,
 .executive-dashboard-header-actions .primary-button:hover,
 .quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover {
-  background: linear-gradient(135deg, #0C5E58 0%, #0F766E 100%);
-  box-shadow: 0 24px 54px rgba(12, 94, 88, 0.3);
+  background: linear-gradient(135deg, #1C7FB8 0%, #1F9ACF 100%);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
 }
 
 .secondary-button:hover,
 .app-button-secondary:hover,
 a:hover,
 .interactive-link:hover {
-  color: #0C5E58;
+  color: #1C7FB8;
 }
 
 .app-tabs button[aria-selected='true'],
 .app-tabs .active,
 .tab-active,
 .segmented-control-active {
-  background: #E6F4F3;
-  color: #0C5E58;
-  border-color: #0F766E;
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: #1F9ACF;
 }
 
 .app-badge-primary,
 .badge-primary,
 .status-badge-active,
 .margin-badge-positive {
-  background: #E6F4F3;
-  color: #0C5E58;
-  border-color: rgba(15, 118, 110, 0.24);
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: rgba(31, 154, 207, 0.24);
 }
 
 .app-card,
@@ -18868,19 +19124,142 @@ a:hover,
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #0F766E;
-  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+  border-color: #1F9ACF;
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
 }
 
 .app-financial-panel,
 .financial-panel,
 .quote-pricing-summary-card-dominant.app-financial-panel {
-  background: linear-gradient(180deg, #111827 0%, #0C5E58 100%);
+  background: linear-gradient(180deg, #111827 0%, #1C7FB8 100%);
   color: #FFFFFF;
   border-color: rgba(230, 244, 243, 0.18);
   box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
 }
+/* Correct Axis brand identity overrides */
+:root {
+  --background: #F9FAFB;
+  --foreground: #111827;
+  --text: #111827;
+  --surface: #FFFFFF;
+  --surface-muted: #F4FAFD;
+  --border: #E5E7EB;
+  --muted-foreground: #6B7280;
+  --accent: #1F9ACF;
+  --accent-strong: #1C7FB8;
+  --accent-soft: #E8F6FB;
+  --success: #1F9ACF;
+}
 
+body {
+  background: #F9FAFB;
+  color: #111827;
+}
 
+.admin-sidebar {
+  background: #0B1F2A;
+  color: rgba(255, 255, 255, 0.9);
+  border-right-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 18px 0 60px rgba(11, 31, 42, 0.18);
+}
 
+.admin-brand-logo-wrapper {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.admin-brand-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.admin-top-nav-link-active {
+  background: rgba(31, 154, 207, 0.2);
+  border-color: rgba(31, 154, 207, 0.38);
+  color: #FFFFFF;
+  box-shadow: inset 4px 0 0 #1F9ACF;
+}
+
+.primary-button,
+.app-button-primary,
+.invoice-portal-primary-button,
+.quote-dashboard-actions .primary-button,
+.booking-dashboard-actions .primary-button,
+.executive-dashboard-header-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
+.quote-service-editor-panel-drawer .quote-transport-add-button,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"] {
+  background: linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(28, 127, 184, 0.2);
+  box-shadow: 0 18px 40px rgba(28, 127, 184, 0.24);
+}
+
+.primary-button:hover,
+.app-button-primary:hover,
+.invoice-portal-primary-button:hover,
+.quote-dashboard-actions .primary-button:hover,
+.booking-dashboard-actions .primary-button:hover,
+.executive-dashboard-header-actions .primary-button:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover,
+.quote-service-editor-panel-drawer .quote-transport-add-button:hover,
+.quote-service-editor-panel-drawer .service-entry-form > button[type="submit"]:hover {
+  background: linear-gradient(135deg, #1C7FB8 0%, #1F9ACF 100%);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.3);
+}
+
+.secondary-button:hover,
+.app-button-secondary:hover,
+a:hover,
+.interactive-link:hover {
+  color: #1C7FB8;
+}
+
+.app-tabs button[aria-selected='true'],
+.app-tabs .active,
+.tab-active,
+.segmented-control-active,
+.quote-service-editor-panel-drawer .quote-service-editor-tab-active {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: #1F9ACF;
+}
+
+.app-badge-primary,
+.badge-primary,
+.status-badge-active,
+.margin-badge-positive {
+  background: #E8F6FB;
+  color: #1C7FB8;
+  border-color: rgba(31, 154, 207, 0.24);
+}
+
+.app-input:focus,
+.app-select:focus,
+.app-textarea:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #1F9ACF;
+  box-shadow: 0 0 0 4px rgba(31, 154, 207, 0.12);
+}
+
+.app-financial-panel,
+.financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel,
+.quote-service-editor-panel-drawer .quote-live-pricing-panel {
+  background: linear-gradient(180deg, #0B1F2A 0%, #1C7FB8 100%);
+  color: #FFFFFF;
+  border-color: rgba(232, 246, 251, 0.18);
+  box-shadow: 0 24px 60px rgba(11, 31, 42, 0.2);
+}
 
