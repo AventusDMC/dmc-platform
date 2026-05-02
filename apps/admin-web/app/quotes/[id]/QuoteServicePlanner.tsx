@@ -9,6 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import { DayNavigation } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
@@ -2158,43 +2159,31 @@ function ScopePlanner({
       ) : null}
 
       <div className="quote-service-planner-shell quote-service-planner-saas-grid">
-        <nav className="quote-service-day-nav" aria-label={`${scope.label} days`}>
-          <div className="quote-service-day-nav-head">
-            <p className="eyebrow">Days</p>
-            <strong>{daySummaries.length} planned</strong>
-          </div>
-          <div className="quote-service-day-nav-list">
-            {daySummaries.map((summary) => {
-              const dayHeading = formatDayHeading(summary.day, summary.inferredCity);
-              const dayTotalSell = summary.items.reduce((total, item) => total + Number(item.totalSell || 0), 0);
-              const isActive = activeDaySummary?.day.id === summary.day.id;
+        <DayNavigation
+          className="quote-service-day-nav"
+          title={`${scope.label} days`}
+          activeId={activeDaySummary?.day.id}
+          onSelect={plannerState.onActiveDayChange}
+          items={daySummaries.map((summary) => {
+            const dayTotalSell = summary.items.reduce((total, item) => total + Number(item.totalSell || 0), 0);
+            const warning =
+              summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
+                <>
+                  {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
+                  {summary.unpricedCount > 0 && summary.unresolvedCount > 0 ? ' / ' : null}
+                  {summary.unresolvedCount > 0 ? `${summary.unresolvedCount} unresolved` : null}
+                </>
+              ) : null;
 
-              return (
-                <button
-                  key={summary.day.id}
-                  type="button"
-                  className={`quote-service-day-nav-card${isActive ? ' quote-service-day-nav-card-active' : ''}`}
-                  onClick={() => plannerState.onActiveDayChange(summary.day.id)}
-                  aria-current={isActive ? 'true' : undefined}
-                >
-                  <span>{dayHeading}</span>
-                  <strong>
-                    {summary.items.length} service{summary.items.length === 1 ? '' : 's'}
-                  </strong>
-                  <em>{summary.completionPercent}% complete</em>
-                  {dayTotalSell > 0 ? <b>{formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency)}</b> : null}
-                  {summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
-                    <small>
-                      {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
-                      {summary.unpricedCount > 0 && summary.unresolvedCount > 0 ? ' / ' : null}
-                      {summary.unresolvedCount > 0 ? `${summary.unresolvedCount} unresolved` : null}
-                    </small>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        </nav>
+            return {
+              id: summary.day.id,
+              label: formatDayHeading(summary.day, summary.inferredCity),
+              helper: `${summary.items.length} service${summary.items.length === 1 ? '' : 's'} / ${summary.completionPercent}% complete`,
+              total: dayTotalSell > 0 ? formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency) : null,
+              warning,
+            };
+          })}
+        />
         <div className="quote-service-day-column">
           {reorderError ? <p className="form-error">{reorderError}</p> : null}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>

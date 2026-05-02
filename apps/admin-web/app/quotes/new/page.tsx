@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { EmptyState, FormSection } from '../../components/ui';
+import { WorkspaceShell } from '../../components/WorkspaceShell';
+import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
 import { QuotesForm } from '../QuotesForm';
 import { adminPageFetchJson } from '../../lib/admin-server';
 
@@ -53,28 +56,31 @@ export default async function NewQuotePage() {
 
   return (
     <main className="page">
-      <section className="panel workspace-panel">
-        <div className="section-stack">
-          <div className="workspace-section-head">
-            <div>
-              <p className="eyebrow">Sales</p>
-              <h1>Create Quote</h1>
-              <p className="detail-copy">
-                Start a new quote with the core commercial setup, then continue in the full quote builder after creation.
-              </p>
-            </div>
+      <section className="panel workspace-panel app-page-content">
+        <WorkspaceShell
+          eyebrow="Sales"
+          title="Create Quote"
+          description="Start with the core commercial setup, then continue in the full quote builder after creation."
+          switcher={
             <div className="table-action-row">
               <Link href="/quotes" className="secondary-button">
                 Back to quotes
               </Link>
             </div>
-          </div>
+          }
+        >
+          <section className="section-stack">
+            <WorkspaceSubheader
+              eyebrow="Quote Setup"
+              title="Initial quote details"
+              description="Use the same quote workspace pattern for setup, review, and builder handoff."
+            />
 
-          {companies.length === 0 ? (
-            <section className="detail-card">
-              <p className="eyebrow">Setup Required</p>
-              <h2>Create a company first</h2>
-              <p className="detail-copy">A quote needs a client company and contact before it can be created.</p>
+            {companies.length === 0 ? (
+              <EmptyState
+                title="Create a company first"
+                description="A quote needs a client company and contact before it can be created."
+                action={
               <div className="table-action-row">
                 <Link href="/companies" className="primary-button">
                   Open companies
@@ -83,11 +89,10 @@ export default async function NewQuotePage() {
                   Open contacts
                 </Link>
               </div>
-            </section>
-          ) : (
-            <section className="detail-card">
-              <p className="eyebrow">Quote Setup</p>
-              <h2>Initial quote details</h2>
+                }
+              />
+            ) : (
+              <FormSection title="Quote setup" description="Capture the commercial baseline before opening the day-by-day builder.">
               <QuotesForm
                 apiBaseUrl="/api"
                 companies={companies}
@@ -95,9 +100,10 @@ export default async function NewQuotePage() {
                 agents={agents}
                 submitLabel="Create quote"
               />
-            </section>
-          )}
-        </div>
+              </FormSection>
+            )}
+          </section>
+        </WorkspaceShell>
       </section>
     </main>
   );
