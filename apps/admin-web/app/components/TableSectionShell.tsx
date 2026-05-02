@@ -21,7 +21,7 @@ export function TableSectionShell({
   children,
 }: TableSectionShellProps) {
   return (
-    <section className="table-section-shell">
+    <section className="table-section-shell app-card">
       <SectionHeader title={title} description={description} context={context} actions={actions} />
       {createPanel ? <div className="table-section-create">{createPanel}</div> : null}
       {children ? <div className="table-section-body">{children}</div> : null}

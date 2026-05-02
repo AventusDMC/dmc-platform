@@ -18,7 +18,7 @@ export function DashboardSectionCard({
   className = '',
 }: DashboardSectionCardProps) {
   return (
-    <section className={`executive-dashboard-section-card ${className}`.trim()}>
+    <section className={`executive-dashboard-section-card app-card ${className}`.trim()}>
       <header className="executive-dashboard-section-head">
         <div>
           {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}

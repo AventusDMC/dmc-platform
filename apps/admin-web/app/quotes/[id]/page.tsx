@@ -1601,7 +1601,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
   return (
     <main className="page quote-builder-page">
-      <section className="panel quote-workspace-page">
+      <section className="panel quote-workspace-page app-page-content">
         <div className="quote-builder-shell">
           <AdminBreadcrumbs
             items={[
@@ -1958,7 +1958,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           ) : null}
 
           {activeTab === 'services' ? (
-            <div className="section-stack">
+            <div className="section-stack quote-services-page-panel">
+              <section className="workspace-section quote-services-hero app-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Quote Services</p>
+                    <h2>Build the operational plan</h2>
+                    <p className="detail-copy">Add hotel, transport, activity, meal, and package rows while keeping pricing, margin, and day coverage visible.</p>
+                  </div>
+                  <Link href={buildStepHref('pricing')} className="primary-button">
+                    Review pricing
+                  </Link>
+                </div>
+              </section>
               <SummaryStrip
                 items={[
                   { id: 'planner-completion', label: 'Completion', value: `${readiness.completionPercent}%`, helper: 'Quote details completed' },

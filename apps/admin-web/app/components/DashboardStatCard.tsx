@@ -18,10 +18,10 @@ export function DashboardStatCard({ label, value, helper, tone = 'neutral', href
   );
 
   return href ? (
-    <Link href={href} className={`executive-dashboard-stat-card executive-dashboard-stat-card-${tone} executive-dashboard-stat-card-link`}>
+    <Link href={href} className={`executive-dashboard-stat-card executive-dashboard-stat-card-${tone} executive-dashboard-stat-card-link app-metric-card`}>
       {content}
     </Link>
   ) : (
-    <article className={`executive-dashboard-stat-card executive-dashboard-stat-card-${tone}`}>{content}</article>
+    <article className={`executive-dashboard-stat-card executive-dashboard-stat-card-${tone} app-metric-card`}>{content}</article>
   );
 }

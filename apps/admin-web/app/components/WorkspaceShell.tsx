@@ -11,7 +11,7 @@ type WorkspaceShellProps = {
 
 export function WorkspaceShell({ eyebrow, title, description, switcher, summary, children }: WorkspaceShellProps) {
   return (
-    <section className="workspace-shell-card">
+    <section className="workspace-shell-card app-card app-page-content">
       <header className="workspace-shell-header">
         <div className="workspace-shell-copy">
           <p className="eyebrow">{eyebrow}</p>

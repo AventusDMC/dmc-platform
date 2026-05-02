@@ -47,8 +47,8 @@ export default async function CompaniesPage() {
   const contactCount = companies.reduce((total, company) => total + company._count.contacts, 0);
 
   return (
-    <main className="page">
-      <section className="panel workspace-panel">
+    <main className="page client-workspace-page">
+      <section className="panel workspace-panel app-page-content">
         <WorkspaceShell
           eyebrow="Sales Context"
           title="Companies"

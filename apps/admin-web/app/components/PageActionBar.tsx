@@ -8,7 +8,7 @@ type PageActionBarProps = {
 
 export function PageActionBar({ title, description, children }: PageActionBarProps) {
   return (
-    <section className="page-action-bar">
+    <section className="page-action-bar app-action-bar">
       {title || description ? (
         <div className="page-action-bar-copy">
           {title ? <h2 className="page-action-bar-title">{title}</h2> : null}

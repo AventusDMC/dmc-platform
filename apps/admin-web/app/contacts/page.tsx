@@ -47,8 +47,8 @@ export default async function ContactsPage() {
   const [contacts, companies] = await Promise.all([getContacts(), getCompanies()]);
 
   return (
-    <main className="page">
-      <section className="panel workspace-panel">
+    <main className="page client-workspace-page">
+      <section className="panel workspace-panel app-page-content">
         <WorkspaceShell
           eyebrow="Sales Context"
           title="Contacts"

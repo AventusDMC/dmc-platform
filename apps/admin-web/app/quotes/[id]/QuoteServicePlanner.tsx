@@ -2088,7 +2088,7 @@ function ScopePlanner({
 
   return (
     <div className="section-stack">
-      <section className="workspace-section quote-service-workflow-summary">
+      <section className="workspace-section quote-service-workflow-summary app-card">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">Workflow Summary</p>
@@ -2151,7 +2151,7 @@ function ScopePlanner({
         </article>
       ) : null}
 
-      <div className="quote-service-planner-shell">
+      <div className="quote-service-planner-shell quote-service-planner-saas-grid">
         <div className="quote-service-day-column">
           {reorderError ? <p className="form-error">{reorderError}</p> : null}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>
@@ -2176,7 +2176,7 @@ function ScopePlanner({
             description={daySubtitle}
             open={plannerState.openDayIds.has(summary.day.id)}
             onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}
-            className={`workspace-day-card quote-service-day-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
+            className={`workspace-day-card quote-service-day-card app-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
             bodyClassName="quote-service-day-panel-body"
           >
             <div className="workspace-day-header">
@@ -2274,7 +2274,7 @@ function ScopePlanner({
 
         <aside
           ref={editorPanelRef}
-          className="quote-service-editor-panel"
+          className="quote-service-editor-panel app-card"
           tabIndex={-1}
           data-highlight={highlightedEditorPanelKey === activeServicePanel?.key ? 'true' : undefined}
         >
@@ -2397,7 +2397,7 @@ function ScopePlanner({
       </div>
 
       {unassignedItems.length > 0 ? (
-        <article className="workspace-day-card quote-service-day-card">
+        <article className="workspace-day-card quote-service-day-card app-card">
           <div className="workspace-day-header">
             <div>
               <p className="workspace-day-kicker">Unassigned</p>

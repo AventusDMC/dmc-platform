@@ -57,8 +57,8 @@ export default async function SuppliersPage() {
   );
 
   return (
-    <main className="page">
-      <section className="panel workspace-panel">
+    <main className="page supplier-workspace-page">
+      <section className="panel workspace-panel app-page-content">
         <WorkspaceShell
           eyebrow="Suppliers"
           title="Manage suppliers"

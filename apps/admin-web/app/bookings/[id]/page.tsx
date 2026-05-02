@@ -1047,8 +1047,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const primaryAction = bookingReadOnly ? null : getBookingPrimaryAction(booking.status, allowedTransitions);
 
   return (
-    <main className="page booking-ops-page">
-      <section className="panel booking-ops-workspace-page">
+    <main className="page booking-ops-page bookings-workspace-page">
+      <section className="panel booking-ops-workspace-page app-page-content">
         <div className="booking-ops-shell">
           <AdminBreadcrumbs
             items={[

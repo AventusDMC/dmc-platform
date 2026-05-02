@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
 import { AdminHeaderActions } from '../../components/AdminHeaderActions';
+import { MetricCard } from '../../components/ui';
 import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { calculatePercentChange, formatPercentChange } from './dashboard-metrics';
 
@@ -475,34 +476,32 @@ function normalizeBookings(value: BookingListItem[]) {
 }
 
 function DashboardMetric({ label, value, helper }: { label: string; value: string; helper: string }) {
-  return (
-    <article className="dashboard-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{helper}</p>
-    </article>
-  );
+  return <MetricCard label={label} value={value} helper={helper} className="dashboard-card" />;
 }
 
 function TrendMetric({ label, value, change }: { label: string; value: string; change: number }) {
   const toneClass = change >= 0 ? 'admin-dashboard-trend-positive' : 'admin-dashboard-trend-negative';
 
   return (
-    <article className="dashboard-card admin-dashboard-trend-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p className={toneClass}>{formatPercentChange(change)} vs previous month</p>
-    </article>
+    <MetricCard
+      label={label}
+      value={value}
+      helper={<span className={toneClass}>{formatPercentChange(change)} vs previous month</span>}
+      tone={change >= 0 ? 'success' : 'danger'}
+      className="dashboard-card admin-dashboard-trend-card"
+    />
   );
 }
 
 function AlertPreview({ label, value }: { label: string; value: number }) {
   return (
-    <div className="dashboard-card">
-      <span>{label}</span>
-      <strong>{formatNumber(value)}</strong>
-      <p>{value > 0 ? 'Needs review' : 'Clear'}</p>
-    </div>
+    <MetricCard
+      label={label}
+      value={formatNumber(value)}
+      helper={value > 0 ? 'Needs review' : 'Clear'}
+      tone={value > 0 ? 'warning' : 'success'}
+      className="dashboard-card"
+    />
   );
 }
 

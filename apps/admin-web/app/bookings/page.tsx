@@ -65,8 +65,8 @@ export default async function BookingsPage() {
   const confirmedCount = bookings.filter((booking) => booking.status === 'confirmed' || booking.status === 'in_progress').length;
 
   return (
-    <main className="page">
-      <section className="panel workspace-panel">
+    <main className="page bookings-workspace-page">
+      <section className="panel workspace-panel app-page-content">
         <WorkspaceShell
           eyebrow="Operations"
           title="Bookings"

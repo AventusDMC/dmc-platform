@@ -322,14 +322,6 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
   };
 }
 
-function getFinalItemCost(item: Pick<QuoteItem, 'baseCost' | 'overrideCost' | 'useOverride'>) {
-  if (item.useOverride && item.overrideCost !== null) {
-    return item.overrideCost;
-  }
-
-  return item.baseCost;
-}
-
 function isUnmatchedImportedService(service: SupplierService) {
   return service.supplierId === 'import-itinerary-system';
 }
@@ -490,6 +482,8 @@ function QuoteServiceRow({
   const capacityPricingHelper = getCapacityPricingHelper(currentItem, services);
   const status = getServiceStatus(currentItem);
   const supplierStatus = hasMissingSupplier(currentItem) ? 'Missing supplier' : 'Supplier assigned';
+  const issueTone = getIssueTone(warnings);
+  const statusTone = getServiceStatusTone(status);
 
   useEffect(() => {
     let isCancelled = false;
@@ -576,44 +570,49 @@ function QuoteServiceRow({
   }
 
   return (
-    <tr>
-      <td>
-        <strong>{itineraryDay ? `Day ${itineraryDay.dayNumber}` : 'Unassigned'}</strong>
-        <div className="table-subcopy">{itineraryDay?.title || 'Not linked to itinerary day'}</div>
-      </td>
-      <td>
-        <strong>{hotelItemSummary || currentItem.service.name}</strong>
-        <div className="table-subcopy">
-          {currentItem.service.serviceType?.name || currentItem.service.category}
-          {currentItem.useOverride ? ' | Override active' : ''}
-          {isUnmatched ? ' | Unmatched import' : ''}
+    <article className="quote-service-card app-service-card">
+      <div className="quote-service-card-main">
+        <div className="quote-service-card-head">
+          <div>
+            <p className="eyebrow">{itineraryDay ? `Day ${itineraryDay.dayNumber}` : 'Unassigned'}</p>
+            <h3>{hotelItemSummary || currentItem.service.name}</h3>
+            <p className="detail-copy">
+              {itineraryDay?.title || 'Not linked to itinerary day'}
+              {' | '}
+              {currentItem.service.serviceType?.name || currentItem.service.category}
+              {currentItem.useOverride ? ' | Override active' : ''}
+              {isUnmatched ? ' | Unmatched import' : ''}
+            </p>
+          </div>
+          <div className="quote-service-card-badges">
+            <span className={`quote-ui-badge quote-ui-badge-${statusTone}`}>{status}</span>
+            <span className={`quote-ui-badge quote-ui-badge-${hasMissingSupplier(currentItem) ? 'error' : 'success'}`}>{supplierStatus}</span>
+            <span className={`quote-ui-badge quote-ui-badge-${issueTone}`}>
+              {warnings.length === 0 ? 'Ready state' : `${warnings.length} issue${warnings.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
         </div>
-      </td>
-      <td>
-        <span className={`quote-ui-badge quote-ui-badge-${hasMissingSupplier(currentItem) ? 'error' : 'success'}`}>{supplierStatus}</span>
-        <div className="table-subcopy">{hasMissingSupplier(currentItem) ? 'Assign supplier' : 'Catalog service linked'}</div>
-      </td>
-      <td>
-        <span className={`quote-ui-badge quote-ui-badge-${getServiceStatusTone(status)}`}>{status}</span>
-        <div className="table-subcopy">
-          {currentItem.serviceDate ? `Date ${currentItem.serviceDate.slice(0, 10)}` : 'Date pending'}
-          {(currentItem.startTime || currentItem.pickupTime) ? ` | ${currentItem.startTime ? `Start ${currentItem.startTime}` : `Pickup ${currentItem.pickupTime}`}` : ''}
+
+        <div className="quote-service-card-meta">
+          <span>{currentItem.serviceDate ? `Date ${currentItem.serviceDate.slice(0, 10)}` : 'Date pending'}</span>
+          {(currentItem.startTime || currentItem.pickupTime) ? (
+            <span>{currentItem.startTime ? `Start ${currentItem.startTime}` : `Pickup ${currentItem.pickupTime}`}</span>
+          ) : null}
+          <span>{warnings[0] || 'No pricing or operational warnings'}</span>
+          {capacityPricingHelper ? <span>{capacityPricingHelper}</span> : null}
         </div>
-      </td>
-      <td>
-        <span className={`quote-ui-badge quote-ui-badge-${getIssueTone(warnings)}`}>
-          {warnings.length === 0 ? 'Ready state' : `${warnings.length} issue${warnings.length === 1 ? '' : 's'}`}
-        </span>
-        <div className="table-subcopy">{warnings[0] || 'No pricing or operational warnings'}</div>
-      </td>
-      <td className="quote-table-number-cell">
+      </div>
+
+      <div className="quote-service-card-financials">
+        <span>Total sell</span>
         <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
-        {capacityPricingHelper ? <div className="table-subcopy">{capacityPricingHelper}</div> : null}
-        <div className="table-subcopy" style={{ color: getMarginColor(marginMetrics.tone) }}>
-          Cost {formatMoney(currentItem.totalCost, currentItem.currency)} | Margin {formatMoney(marginMetrics.margin, currentItem.currency)} ({marginMetrics.marginPercent.toFixed(2)}%)
-        </div>
-      </td>
-      <td>
+        <p>Cost {formatMoney(currentItem.totalCost, currentItem.currency)}</p>
+        <p style={{ color: getMarginColor(marginMetrics.tone) }}>
+          Margin {formatMoney(marginMetrics.margin, currentItem.currency)} ({marginMetrics.marginPercent.toFixed(2)}%)
+        </p>
+      </div>
+
+      <div className="quote-service-card-actions">
         <RowDetailsPanel
           summary="View details"
           description="Service edit, matching, pricing, itinerary assignment, and overrides"
@@ -786,8 +785,8 @@ function QuoteServiceRow({
             </InlineEntityActions>
           </div>
         </RowDetailsPanel>
-      </td>
-    </tr>
+      </div>
+    </article>
   );
 }
 
@@ -837,8 +836,8 @@ export function QuoteServicesTable({
   ];
 
   return (
-    <div className="section-stack">
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+    <div className="section-stack quote-services-card-stack">
+      <div className="quote-services-filter-bar">
         {filterOptions.map((filterOption) => (
           <button
             key={filterOption.id}
@@ -851,49 +850,30 @@ export function QuoteServicesTable({
         ))}
       </div>
 
-      <div className="table-wrap">
-        <table className="data-table quote-consistency-table">
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th>Service</th>
-              <th>Supplier</th>
-              <th>Status</th>
-              <th>Issues</th>
-              <th>Price summary</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="empty-state">
-                  No services match the current slice.
-                </td>
-              </tr>
-            ) : (
-              filteredItems.map((item) => (
-                <QuoteServiceRow
-                  key={item.id}
-                  apiBaseUrl={apiBaseUrl}
-                  quote={quote}
-                  item={item}
-                  quoteBlocks={quoteBlocks}
-                  services={services}
-                  transportServiceTypes={transportServiceTypes}
-                  routes={routes}
-                  hotels={hotels}
-                  hotelContracts={hotelContracts}
-                  hotelRates={hotelRates}
-                  seasons={seasons}
-                  totalPax={totalPax}
-                  optionId={optionId}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {filteredItems.length === 0 ? (
+        <p className="empty-state app-empty-state">No services match the current slice.</p>
+      ) : (
+        <div className="quote-services-card-list">
+          {filteredItems.map((item) => (
+            <QuoteServiceRow
+              key={item.id}
+              apiBaseUrl={apiBaseUrl}
+              quote={quote}
+              item={item}
+              quoteBlocks={quoteBlocks}
+              services={services}
+              transportServiceTypes={transportServiceTypes}
+              routes={routes}
+              hotels={hotels}
+              hotelContracts={hotelContracts}
+              hotelRates={hotelRates}
+              seasons={seasons}
+              totalPax={totalPax}
+              optionId={optionId}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
