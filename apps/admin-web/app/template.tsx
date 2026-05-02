@@ -99,6 +99,28 @@ export default async function RootTemplate({ children }: RootTemplateProps) {
 
         <div className="admin-main-shell">
           <header className="site-header admin-header">
+            <details className="admin-mobile-nav">
+              <summary className="secondary-button">Menu</summary>
+              <nav className="admin-sidebar-nav" aria-label="Agent mobile">
+                <Link href="/agent/dashboard" className={`admin-top-nav-link${pathname === '/agent/dashboard' ? ' admin-top-nav-link-active' : ''}`}>
+                  <strong>Dashboard</strong>
+                  <span>Business overview</span>
+                </Link>
+                <Link href="/agent/quotes" className={`admin-top-nav-link${pathname.startsWith('/agent/quotes') ? ' admin-top-nav-link-active' : ''}`}>
+                  <strong>Quotes</strong>
+                  <span>Active proposals</span>
+                </Link>
+                <Link href="/agent/bookings" className={`admin-top-nav-link${pathname.startsWith('/agent/bookings') ? ' admin-top-nav-link-active' : ''}`}>
+                  <strong>Bookings</strong>
+                  <span>Confirmed travel</span>
+                </Link>
+                <Link href="/agent/invoices" className={`admin-top-nav-link${pathname.startsWith('/agent/invoices') ? ' admin-top-nav-link-active' : ''}`}>
+                  <strong>Invoices</strong>
+                  <span>Open balances</span>
+                </Link>
+              </nav>
+            </details>
+
             <div className="admin-topbar">
               <div className="admin-topbar-copy">
                 <p className="eyebrow">Agent Portal</p>
