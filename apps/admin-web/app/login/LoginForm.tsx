@@ -10,7 +10,13 @@ type LoginFormProps = {
 };
 
 function getSafeNextPath(nextPath?: string) {
-  return nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/admin/dashboard';
+  if (!nextPath?.startsWith('/') || nextPath.startsWith('//')) {
+    return '/admin/dashboard';
+  }
+
+  const [pathname] = nextPath.split('?');
+
+  return pathname === '/login' || pathname === '/signup' || pathname === '/accept-invite' ? '/admin/dashboard' : nextPath;
 }
 
 export function LoginForm({ nextPath = '/admin/dashboard', initialMessage = '' }: LoginFormProps) {

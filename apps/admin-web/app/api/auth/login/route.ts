@@ -7,7 +7,13 @@ if (!API_BASE_URL) {
 }
 
 function getSafeNextPath(nextPath?: string) {
-  return nextPath?.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/admin/dashboard';
+  if (!nextPath?.startsWith('/') || nextPath.startsWith('//')) {
+    return '/admin/dashboard';
+  }
+
+  const [pathname] = nextPath.split('?');
+
+  return pathname === '/login' || pathname === '/signup' || pathname === '/accept-invite' ? '/admin/dashboard' : nextPath;
 }
 
 export async function POST(request: NextRequest) {
@@ -54,11 +60,11 @@ export async function POST(request: NextRequest) {
     actor: payload.actor,
     next: nextPath,
   });
-  const isSecure = request.nextUrl.protocol === 'https:' || process.env.NODE_ENV === 'production';
+  const isSecure = request.nextUrl.protocol === 'https:';
 
   result.cookies.set('dmc_session', payload.token, {
     httpOnly: true,
-    sameSite: isSecure ? 'none' : 'lax',
+    sameSite: 'lax',
     secure: isSecure,
     path: '/',
     maxAge: 60 * 60 * 12,

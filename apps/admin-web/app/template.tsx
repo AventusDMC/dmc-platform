@@ -47,7 +47,7 @@ export default async function RootTemplate({ children }: RootTemplateProps) {
   }
 
   if (pathname === '/login' && session) {
-    redirect(session.role === 'agent' ? '/agent/dashboard' : '/');
+    redirect(session.role === 'agent' ? '/agent/dashboard' : '/admin/dashboard');
   }
 
   if (session?.role === 'agent' && !isPublicRoute && !isAgentRoute) {

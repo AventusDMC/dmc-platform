@@ -20,7 +20,13 @@ function getLoginMessage(reason?: string) {
 }
 
 function getSafeNextPath(next?: string) {
-  return next?.startsWith('/') && !next.startsWith('//') ? next : '/admin/dashboard';
+  if (!next?.startsWith('/') || next.startsWith('//')) {
+    return '/admin/dashboard';
+  }
+
+  const [pathname] = next.split('?');
+
+  return pathname === '/login' || pathname === '/signup' || pathname === '/accept-invite' ? '/admin/dashboard' : next;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
