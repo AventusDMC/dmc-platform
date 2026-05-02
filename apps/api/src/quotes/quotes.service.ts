@@ -1053,7 +1053,7 @@ export class QuotesService {
           adults: 1,
           children: 0,
           roomCount: 1,
-          nightCount: Math.max(1, normalizedDays.length),
+          nightCount: Math.max(0, normalizedDays.length - 1),
           singleSupplement: null,
           status: QuoteStatus.DRAFT,
           totalPrice: 0,

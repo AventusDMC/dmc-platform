@@ -19278,6 +19278,34 @@ textarea:focus {
   resize: vertical;
 }
 
+.quote-day-description-copy {
+  margin: 0;
+  color: #0F172A;
+  font-size: 0.98rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.quote-day-empty-content {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px dashed rgba(15, 23, 42, 0.22);
+  border-radius: 8px;
+  background: #F8FAFC;
+  color: #475569;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-day-empty-content:hover,
+.quote-day-empty-content:focus-visible {
+  border-color: rgba(31, 154, 207, 0.38);
+  background: #FFFFFF;
+  color: #0F172A;
+}
+
 .quote-day-timeline-panel {
   display: grid;
   gap: 0.75rem;

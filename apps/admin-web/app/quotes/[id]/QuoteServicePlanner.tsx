@@ -1743,23 +1743,20 @@ function LivePricingPanel({
 function DayNarrativePanel({
   day,
   value,
-  isSaving,
   error,
-  onChange,
-  onSave,
+  onDescriptionEdit,
   onTimelineEdit,
   onTimelineAdd,
 }: {
   day: QuoteReadinessDay;
   value: string;
-  isSaving: boolean;
   error: string;
-  onChange: (value: string) => void;
-  onSave: () => void;
+  onDescriptionEdit: () => void;
   onTimelineEdit: (item: DayTimelineItem, index: number) => void;
   onTimelineAdd: () => void;
 }) {
   const parsed = parseDayContent(value);
+  const hasDescription = parsed.description.trim().length > 0;
 
   return (
     <section className="quote-day-narrative-panel">
@@ -1768,16 +1765,17 @@ function DayNarrativePanel({
           <p className="eyebrow">Day Description</p>
           <h4>Client-facing narrative</h4>
         </div>
-        <button type="button" className="secondary-button" onClick={onSave} disabled={isSaving}>
-          {isSaving ? 'Saving...' : 'Save day'}
+        <button type="button" className="secondary-button" onClick={onDescriptionEdit}>
+          Edit
         </button>
       </div>
-      <textarea
-        className="quote-day-description-textarea"
-        value={parsed.description}
-        onChange={(event) => onChange(serializeDayContent(event.target.value, parsed.timeline))}
-        placeholder={`Describe Day ${day.dayNumber} for the client proposal.`}
-      />
+      {hasDescription ? (
+        <p className="quote-day-description-copy">{parsed.description}</p>
+      ) : (
+        <button type="button" className="quote-day-empty-content" onClick={onDescriptionEdit}>
+          Add a client-facing description for Day {day.dayNumber}.
+        </button>
+      )}
       {error ? <p className="form-error">{error}</p> : null}
 
       <div className="quote-day-timeline-panel">
@@ -1808,13 +1806,55 @@ function DayNarrativePanel({
   );
 }
 
+function DayDescriptionDrawer({
+  item,
+  isSaving,
+  onChange,
+  onSave,
+}: {
+  item: { day: QuoteReadinessDay; draft: string } | null;
+  isSaving: boolean;
+  onChange: (draft: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <DrawerPanel
+      open={Boolean(item)}
+      title="Day description"
+      description="Edit the client-facing day narrative."
+      onClose={onSave}
+      closeLabel={isSaving ? 'Saving...' : 'Save'}
+      className="quote-timeline-drawer"
+    >
+      {item ? (
+        <div className="quote-timeline-drawer-form">
+          <label>
+            Description
+            <textarea
+              className="quote-day-description-textarea"
+              value={item.draft}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={`Describe Day ${item.day.dayNumber} for the client proposal.`}
+            />
+          </label>
+          <div className="quote-timeline-drawer-actions">
+            <button type="button" className="primary-button" onClick={onSave} disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save description'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </DrawerPanel>
+  );
+}
+
 function TimelineItemDrawer({
   item,
   onChange,
   onSave,
   onRemove,
 }: {
-  item: { dayId: string; index: number; draft: DayTimelineItem } | null;
+  item: { day: QuoteReadinessDay; index: number; draft: DayTimelineItem } | null;
   onChange: (draft: DayTimelineItem) => void;
   onSave: () => void;
   onRemove: () => void;
@@ -1885,7 +1925,8 @@ function ScopePlanner({
   const [dayContentDrafts, setDayContentDrafts] = useState<Record<string, string>>({});
   const [savingDayId, setSavingDayId] = useState<string | null>(null);
   const [dayContentError, setDayContentError] = useState('');
-  const [activeTimelineItem, setActiveTimelineItem] = useState<{ dayId: string; index: number; draft: DayTimelineItem } | null>(null);
+  const [activeDayDescription, setActiveDayDescription] = useState<{ day: QuoteReadinessDay; draft: string } | null>(null);
+  const [activeTimelineItem, setActiveTimelineItem] = useState<{ day: QuoteReadinessDay; index: number; draft: DayTimelineItem } | null>(null);
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
   const editorPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1931,6 +1972,7 @@ function ScopePlanner({
   useEffect(() => {
     setDayContentDrafts({});
     setDayContentError('');
+    setActiveDayDescription(null);
     setActiveTimelineItem(null);
   }, [plannerProps.quote.id, scope.optionId]);
 
@@ -2003,8 +2045,8 @@ function ScopePlanner({
     setLocalItems(applyPlannerDayAssignments(latestItems, latestItinerary));
   }
 
-  async function saveDayContent(day: QuoteReadinessDay) {
-    const nextContent = dayContentDrafts[day.id] ?? day.description ?? '';
+  async function saveDayContent(day: QuoteReadinessDay, contentOverride?: string) {
+    const nextContent = contentOverride ?? dayContentDrafts[day.id] ?? day.description ?? '';
 
     setSavingDayId(day.id);
     setDayContentError('');
@@ -2027,8 +2069,10 @@ function ScopePlanner({
       }
 
       router.refresh();
+      return true;
     } catch (caughtError) {
       setDayContentError(caughtError instanceof Error ? caughtError.message : 'Could not save day description.');
+      return false;
     } finally {
       setSavingDayId((current) => (current === day.id ? null : current));
     }
@@ -2041,9 +2085,12 @@ function ScopePlanner({
     }));
   }
 
-  function updateTimelineItem(dayId: string, index: number, draft: DayTimelineItem | null) {
-    const currentContent = dayContentDrafts[dayId] ?? daySummaries.find((summary) => summary.day.id === dayId)?.day.description ?? '';
-    const parsed = parseDayContent(currentContent);
+  function getDayContent(day: QuoteReadinessDay) {
+    return dayContentDrafts[day.id] ?? day.description ?? '';
+  }
+
+  function buildTimelineContent(day: QuoteReadinessDay, index: number, draft: DayTimelineItem | null) {
+    const parsed = parseDayContent(getDayContent(day));
     const nextTimeline = [...parsed.timeline];
 
     if (draft) {
@@ -2052,7 +2099,7 @@ function ScopePlanner({
       nextTimeline.splice(index, 1);
     }
 
-    setDayContent(dayId, serializeDayContent(parsed.description, nextTimeline));
+    return serializeDayContent(parsed.description, nextTimeline);
   }
 
   function handleEditorItemSaved(savedItem: QuoteItem) {
@@ -2569,19 +2616,18 @@ function ScopePlanner({
                 />
                 <DayNarrativePanel
                   day={summary.day}
-                  value={dayContentDrafts[summary.day.id] ?? summary.day.description ?? ''}
-                  isSaving={savingDayId === summary.day.id}
+                  value={getDayContent(summary.day)}
                   error={dayContentError}
-                  onChange={(value) => setDayContent(summary.day.id, value)}
-                  onSave={() => void saveDayContent(summary.day)}
-                  onTimelineAdd={() => {
-                    const currentContent = dayContentDrafts[summary.day.id] ?? summary.day.description ?? '';
-                    const parsed = parseDayContent(currentContent);
-                    const draft = { id: `timeline-${Date.now()}`, time: '', title: '', description: '' };
-                    setDayContent(summary.day.id, serializeDayContent(parsed.description, [...parsed.timeline, draft]));
-                    setActiveTimelineItem({ dayId: summary.day.id, index: parsed.timeline.length, draft });
+                  onDescriptionEdit={() => {
+                    const parsed = parseDayContent(getDayContent(summary.day));
+                    setActiveDayDescription({ day: summary.day, draft: parsed.description });
                   }}
-                  onTimelineEdit={(item, index) => setActiveTimelineItem({ dayId: summary.day.id, index, draft: item })}
+                  onTimelineAdd={() => {
+                    const parsed = parseDayContent(getDayContent(summary.day));
+                    const draft = { id: `timeline-${Date.now()}`, time: '', title: '', description: '' };
+                    setActiveTimelineItem({ day: summary.day, index: parsed.timeline.length, draft });
+                  }}
+                  onTimelineEdit={(item, index) => setActiveTimelineItem({ day: summary.day, index, draft: item })}
                 />
               </section>
 
@@ -2637,21 +2683,54 @@ function ScopePlanner({
         </div>
       </div>
 
+      <DayDescriptionDrawer
+        item={activeDayDescription}
+        isSaving={activeDayDescription ? savingDayId === activeDayDescription.day.id : false}
+        onChange={(draft) => setActiveDayDescription((current) => (current ? { ...current, draft } : current))}
+        onSave={() => {
+          if (!activeDayDescription) {
+            return;
+          }
+
+          const parsed = parseDayContent(getDayContent(activeDayDescription.day));
+          const nextContent = serializeDayContent(activeDayDescription.draft, parsed.timeline);
+          setDayContent(activeDayDescription.day.id, nextContent);
+          void saveDayContent(activeDayDescription.day, nextContent).then((saved) => {
+            if (saved) {
+              setActiveDayDescription(null);
+            }
+          });
+        }}
+      />
+
       <TimelineItemDrawer
         item={activeTimelineItem}
         onChange={(draft) => {
           setActiveTimelineItem((current) => (current ? { ...current, draft } : current));
-          if (activeTimelineItem) {
-            updateTimelineItem(activeTimelineItem.dayId, activeTimelineItem.index, draft);
-          }
         }}
-        onSave={() => setActiveTimelineItem(null)}
-        onRemove={() => {
-          if (activeTimelineItem) {
-            updateTimelineItem(activeTimelineItem.dayId, activeTimelineItem.index, null);
+        onSave={() => {
+          if (!activeTimelineItem) {
+            return;
           }
 
-          setActiveTimelineItem(null);
+          const nextContent = buildTimelineContent(activeTimelineItem.day, activeTimelineItem.index, activeTimelineItem.draft);
+          setDayContent(activeTimelineItem.day.id, nextContent);
+          void saveDayContent(activeTimelineItem.day, nextContent).then((saved) => {
+            if (saved) {
+              setActiveTimelineItem(null);
+            }
+          });
+        }}
+        onRemove={() => {
+          if (activeTimelineItem) {
+            const nextContent = buildTimelineContent(activeTimelineItem.day, activeTimelineItem.index, null);
+            setDayContent(activeTimelineItem.day.id, nextContent);
+            void saveDayContent(activeTimelineItem.day, nextContent).then((saved) => {
+              if (saved) {
+                setActiveTimelineItem(null);
+              }
+            });
+          }
         }}
       />
 

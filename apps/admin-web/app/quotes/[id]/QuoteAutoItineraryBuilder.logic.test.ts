@@ -8,6 +8,13 @@ import {
 } from './QuoteAutoItineraryBuilder.logic';
 
 describe('quote auto itinerary builder logic', () => {
+  it('generates one more day than the stored night count', () => {
+    assert.deepEqual(
+      [1, 2, 3, 4].map((nightCount) => generateItineraryDays('2026-05-10', nightCount).length),
+      [2, 3, 4, 5],
+    );
+  });
+
   it('4 nights creates 5 days via the draft generator', () => {
     const days = generateItineraryDays('2026-05-10', 4);
 

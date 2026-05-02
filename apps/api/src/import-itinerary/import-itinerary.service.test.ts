@@ -9,6 +9,7 @@ function createQuotesServiceForImportedDraft() {
   const quoteItems: any[] = [];
   const services: any[] = [];
   const dayItems: any[] = [];
+  const quotes: any[] = [];
   const tx = {
     company: {
       findFirst: async () => ({ id: 'company-1' }),
@@ -29,7 +30,10 @@ function createQuotesServiceForImportedDraft() {
     },
     quote: {
       findFirst: async () => null,
-      create: async () => ({ id: 'quote-1' }),
+      create: async ({ data }: any) => {
+        quotes.push(data);
+        return { id: 'quote-1', quoteCurrency: data.quoteCurrency };
+      },
     },
     itinerary: {
       create: async ({ data }: any) => ({ id: `itinerary-${data.dayNumber}`, dayNumber: data.dayNumber }),
@@ -62,7 +66,7 @@ function createQuotesServiceForImportedDraft() {
     {} as any,
   );
 
-  return { service, quoteItems, services, dayItems };
+  return { service, quoteItems, services, dayItems, quotes };
 }
 
 function externalPackageQuoteItem(overrides: Record<string, any> = {}) {
@@ -199,6 +203,24 @@ test('imported external package draft prices PER_PERSON and PER_GROUP without ho
   assert.equal(quoteItems[0].externalInternalNotes, 'Internal supplier note');
   assert.equal(quoteItems[1].externalPricingBasis, 'PER_GROUP');
   assert.equal(quoteItems[1].totalCost, 900);
+});
+
+test('imported draft stores nights as itinerary days minus one', async () => {
+  const { service, quotes } = createQuotesServiceForImportedDraft();
+
+  await service.createDraftFromImportedItinerary({
+    sourceType: 'text',
+    days: [
+      { dayNumber: 1, title: 'Arrival', summary: '' },
+      { dayNumber: 2, title: 'Day 2', summary: '' },
+      { dayNumber: 3, title: 'Day 3', summary: '' },
+      { dayNumber: 4, title: 'Departure', summary: '' },
+    ],
+    items: [],
+    unresolved: [],
+  });
+
+  assert.equal(quotes[0].nightCount, 3);
 });
 
 test('imported external package draft rejects invalid fields with row context', async () => {

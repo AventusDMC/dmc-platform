@@ -21,13 +21,13 @@ function addDays(dateText: string | null | undefined, offset: number) {
     return null;
   }
 
-  const date = new Date(`${dateText}T00:00:00`);
+  const date = new Date(`${dateText}T00:00:00.000Z`);
 
   if (Number.isNaN(date.getTime())) {
     return null;
   }
 
-  date.setDate(date.getDate() + offset);
+  date.setUTCDate(date.getUTCDate() + offset);
   return formatDateOnly(date);
 }
 
