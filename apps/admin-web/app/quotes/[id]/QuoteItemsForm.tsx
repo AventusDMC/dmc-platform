@@ -2360,7 +2360,7 @@ export function QuoteItemsForm({
           ) : null}
 
           {isHotelService ? (
-            <section className="quote-hotel-step-panel quote-hotel-step-panel-primary">
+            <section className="quote-hotel-step-panel quote-hotel-step-panel-primary quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 1</p>
@@ -2376,7 +2376,7 @@ export function QuoteItemsForm({
                   <p>Hotel services need a property before contract rates can be selected.</p>
                 </div>
               ) : (
-                <div className="form-row form-row-3">
+                <div className="quote-transport-step-fields">
                   <label>
                     Hotel
                     <select
@@ -2428,10 +2428,6 @@ export function QuoteItemsForm({
                     <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
                   </label>
 
-                  <label>
-                    Checkout date
-                    <input value={hotelCheckOutDate} readOnly />
-                  </label>
                 </div>
               )}
             </section>
@@ -2941,7 +2937,7 @@ export function QuoteItemsForm({
           ) : null}
 
           {isHotelService && hotelId ? (
-            <section className="quote-hotel-step-panel">
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 2</p>
@@ -2951,7 +2947,7 @@ export function QuoteItemsForm({
                 {selectedHotelRate ? <span className="page-tab-badge">Rate selected</span> : null}
               </div>
 
-              <div className="form-row form-row-3">
+              <div className="quote-transport-step-fields">
                 <label>
                   Contract
                   <select value={contractId} onChange={(event) => setContractId(event.target.value)} required disabled={filteredHotelContracts.length === 0}>
@@ -3076,7 +3072,7 @@ export function QuoteItemsForm({
                 </div>
                 <div>
                   <span>Nights</span>
-                  <strong>{hotelCostCalculation?.nights || hotelPreviewNights}</strong>
+                  <strong>{hotelPreviewNights}</strong>
                 </div>
                 <div>
                   <span>Multiplier</span>
@@ -3084,9 +3080,7 @@ export function QuoteItemsForm({
                 </div>
                 <div>
                   <span>Total cost</span>
-                  <strong>
-                    {isLoadingHotelCost ? 'Loading...' : `${displayCurrency} ${hotelCalculatedTotalCost.toFixed(2)}`}
-                  </strong>
+                  <strong>{displayCurrency} {hotelCalculatedTotalCost.toFixed(2)}</strong>
                 </div>
                 <div>
                   <span>Sell total</span>
@@ -3097,7 +3091,7 @@ export function QuoteItemsForm({
           ) : null}
 
           {isHotelService && hotelId ? (
-            <section className="quote-hotel-step-panel">
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 3</p>
@@ -3106,41 +3100,47 @@ export function QuoteItemsForm({
                 </div>
               </div>
 
-              <div className="quote-preview-total-list quote-hotel-source-summary">
-                <div>
-                  <span>Hotel</span>
-                  <strong>{selectedHotel?.name || 'Select hotel'}</strong>
-                </div>
-                <div>
-                  <span>Dates</span>
-                  <strong>{hotelCheckInDate && hotelCheckOutDate ? `${hotelCheckInDate} to ${hotelCheckOutDate}` : 'Select dates'}</strong>
-                </div>
-                <div>
-                  <span>Rooms / pax</span>
-                  <strong>{hotelPreviewRooms} room{hotelPreviewRooms === 1 ? '' : 's'} / {hotelPreviewPax} pax</strong>
-                </div>
-                <div>
-                  <span>Unit rate</span>
-                  <strong>{displayCurrency} {hotelPreviewUnitRate.toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Total cost</span>
-                  <strong>{displayCurrency} {hotelEffectiveTotalCost.toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Total sell</span>
-                  <strong>{displayCurrency} {hotelPreviewSellTotal.toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span>Margin</span>
-                  <strong>{displayCurrency} {hotelPreviewMargin !== null ? hotelPreviewMargin.toFixed(2) : '0.00'}</strong>
+              <div className="quote-selected-transport-card quote-selected-transport-card-active">
+                <div className="quote-selected-transport-summary">
+                  <div>
+                    <span>Hotel</span>
+                    <strong>{selectedHotel?.name || 'Select hotel'}</strong>
+                  </div>
+                  <div>
+                    <span>Dates</span>
+                    <strong>{hotelCheckInDate && hotelCheckOutDate ? `${hotelCheckInDate} to ${hotelCheckOutDate}` : 'Select dates'}</strong>
+                  </div>
+                  <div>
+                    <span>Rooms / pax</span>
+                    <strong>{hotelPreviewRooms} room{hotelPreviewRooms === 1 ? '' : 's'} / {hotelPreviewPax} pax</strong>
+                  </div>
+                  <div>
+                    <span>Unit rate</span>
+                    <strong>{displayCurrency} {hotelPreviewUnitRate.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span>Multiplier</span>
+                    <strong>{hotelPreviewMultiplierLabel}</strong>
+                  </div>
+                  <div>
+                    <span>Total cost</span>
+                    <strong>{displayCurrency} {hotelEffectiveTotalCost.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span>Sell</span>
+                    <strong>{displayCurrency} {hotelPreviewSellTotal.toFixed(2)}</strong>
+                  </div>
+                  <div>
+                    <span>Margin</span>
+                    <strong>{displayCurrency} {hotelPreviewMargin !== null ? hotelPreviewMargin.toFixed(2) : '0.00'}</strong>
+                  </div>
                 </div>
               </div>
 
               <details className="quote-advanced-settings" open={useOverride || Boolean(manualHotelRateDraft)}>
                 <summary>More options</summary>
 
-                <div className="form-row form-row-3">
+                <div className="quote-transport-step-fields">
                   <label>
                     Markup %
                     <input
@@ -3243,7 +3243,7 @@ export function QuoteItemsForm({
                 ) : null}
               </details>
 
-              <button type="submit" disabled={isSubmitting || isLoadingHotelCost || !isHotelPricingReady}>
+              <button className="quote-transport-add-button" type="submit" disabled={isSubmitting || isLoadingHotelCost || !isHotelPricingReady}>
                 {isSubmitting ? 'Saving...' : 'Add Hotel'}
               </button>
             </section>
