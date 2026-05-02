@@ -17039,3 +17039,330 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Quote builder premium refinement */
+.quote-builder-page {
+  width: 100%;
+  max-width: 1780px;
+}
+
+.quote-workspace-page.app-page-content {
+  padding-inline: clamp(1.25rem, 2vw, 2.75rem);
+}
+
+.quote-builder-shell {
+  gap: clamp(2rem, 2.5vw, 3rem);
+}
+
+.quote-dashboard-header {
+  padding: clamp(1.65rem, 2.4vw, 2.45rem);
+  border-color: rgba(109, 40, 217, 0.16);
+  box-shadow: 0 26px 70px rgba(32, 20, 54, 0.11);
+}
+
+.quote-dashboard-title-row h1 {
+  max-width: 980px;
+  font-size: clamp(2.25rem, 3.8vw, 4.25rem);
+}
+
+.quote-dashboard-meta-grid {
+  margin-top: 1.25rem;
+}
+
+.quote-dashboard-meta-grid div {
+  border-radius: 1.1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.quote-step-shell,
+.quote-services-hero,
+.quote-service-workflow-summary {
+  padding: clamp(1.25rem, 1.7vw, 1.75rem);
+}
+
+.quote-builder-layout {
+  grid-template-columns: minmax(0, 1.62fr) minmax(420px, 500px);
+  gap: clamp(1.75rem, 2.6vw, 2.8rem);
+  align-items: start;
+}
+
+.quote-builder-main-content,
+.quote-builder-main-content > .section-stack {
+  gap: clamp(1.7rem, 2.2vw, 2.45rem);
+}
+
+.quote-builder-main .workspace-section,
+.quote-builder-main .detail-card,
+.quote-builder-main .tab-panel-card {
+  border-color: rgba(232, 229, 239, 0.68);
+}
+
+.quote-builder-sidebar {
+  top: 1.35rem;
+  max-width: 500px;
+  gap: 1.15rem;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  padding: clamp(1.55rem, 2vw, 2rem);
+  border-radius: 1.9rem;
+  background:
+    radial-gradient(circle at 86% 0%, rgba(167, 139, 250, 0.32), transparent 13rem),
+    linear-gradient(180deg, #130720 0%, #241044 46%, #3d167a 100%);
+  box-shadow:
+    0 34px 88px rgba(32, 20, 54, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-head {
+  padding-bottom: 1.15rem;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-head h3 {
+  font-size: clamp(1.32rem, 1.5vw, 1.62rem);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-list {
+  gap: 0.85rem;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row {
+  padding: 1rem 1.05rem;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.105);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child {
+  padding: 1.35rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.11));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(2.6rem, 4.4vw, 3.85rem);
+  letter-spacing: 0;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row strong {
+  font-size: clamp(1.38rem, 2.15vw, 1.95rem);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row p {
+  margin-top: 0.15rem;
+}
+
+.quote-pricing-summary-card-actions.quote-primary-action-card {
+  padding: 1.2rem;
+  border-radius: 1.45rem;
+}
+
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions button[type='submit'] {
+  min-height: 58px;
+  border-radius: 1rem;
+  font-size: 1rem;
+  font-weight: 900;
+  box-shadow: 0 18px 38px rgba(76, 29, 149, 0.24);
+}
+
+.quote-service-planner {
+  gap: 1.55rem;
+}
+
+.quote-service-planner > .workspace-tab-header {
+  padding: 1.35rem 1.45rem;
+  border-radius: 1.45rem;
+}
+
+.quote-service-planner .workspace-tab-panels {
+  gap: 1.45rem;
+}
+
+.quote-service-planner .quote-service-day-card {
+  border-radius: 1.5rem;
+  transition:
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    transform 220ms ease,
+    opacity 220ms ease,
+    background 220ms ease;
+}
+
+.quote-service-planner .quote-service-day-card:not([open]) {
+  opacity: 0.68;
+  transform: scale(0.995);
+  border-color: rgba(232, 229, 239, 0.58);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.quote-service-planner .quote-service-day-card:not([open]):hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  border-color: rgba(109, 40, 217, 0.18);
+  box-shadow: 0 14px 34px rgba(32, 20, 54, 0.08);
+}
+
+.quote-service-planner .quote-service-day-card:not([open]) > .row-details-summary {
+  min-height: 54px;
+  padding: 0.7rem 1rem;
+}
+
+.quote-service-planner .quote-service-day-card[open] {
+  transform: translateY(-2px);
+  border-color: rgba(109, 40, 217, 0.4);
+  box-shadow:
+    0 28px 74px rgba(32, 20, 54, 0.14),
+    0 0 0 1px rgba(109, 40, 217, 0.08);
+}
+
+.quote-service-planner .quote-service-day-card[open] > .row-details-summary {
+  min-height: 92px;
+  padding: 1.25rem 1.45rem;
+}
+
+.quote-service-day-card-focused,
+.quote-service-planner .quote-service-day-card[open].quote-service-day-card-focused {
+  box-shadow:
+    0 34px 86px rgba(76, 29, 149, 0.2),
+    0 0 0 1px rgba(109, 40, 217, 0.12);
+}
+
+.quote-service-day-panel-body {
+  padding: clamp(1.25rem, 1.9vw, 1.75rem);
+}
+
+.quote-service-day-layout-visual {
+  gap: 1.45rem;
+}
+
+.quote-service-current-services,
+.quote-service-side-section {
+  padding: 1.05rem;
+  border: 0;
+  background: rgba(250, 248, 253, 0.72);
+}
+
+.quote-service-lane {
+  padding: 1rem;
+  border: 1px solid rgba(232, 229, 239, 0.62);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.quote-service-lane:hover {
+  box-shadow: 0 14px 32px rgba(32, 20, 54, 0.07);
+}
+
+.quote-service-lane-head {
+  padding-bottom: 0.9rem;
+}
+
+.quote-service-card-row {
+  gap: 1.15rem;
+}
+
+.quote-service-mini-card {
+  min-height: 224px;
+  padding: 1.08rem;
+  border-radius: 1.18rem;
+  border-color: rgba(232, 229, 239, 0.72);
+  background:
+    linear-gradient(180deg, #ffffff 0%, #fdfcff 100%);
+}
+
+.quote-service-mini-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 24px 52px rgba(32, 20, 54, 0.13);
+}
+
+.quote-service-mini-card-head {
+  gap: 0.65rem;
+}
+
+.quote-service-mini-card h5 {
+  margin-top: 0.45rem;
+  font-size: 1.1rem;
+  line-height: 1.14;
+}
+
+.quote-service-card-supplier {
+  margin-top: 0.2rem;
+}
+
+.quote-service-card-pricing-summary {
+  margin-top: 0.25rem;
+  padding: 0.95rem;
+  border-radius: 1.05rem;
+  background:
+    linear-gradient(135deg, #f7f3ff, #ffffff);
+}
+
+.quote-service-card-pricing-summary .quote-service-card-price {
+  font-size: 1.38rem;
+}
+
+.quote-service-card-pricing-summary .quote-ui-badge,
+.margin-badge {
+  border-radius: 999px;
+  letter-spacing: 0;
+}
+
+.quote-service-card-details {
+  margin-top: 0.15rem;
+}
+
+.quote-service-mini-card-actions {
+  gap: 0.65rem;
+  padding-top: 0.2rem;
+}
+
+.quote-service-mini-card-actions .secondary-button {
+  border-radius: 0.85rem;
+}
+
+.quote-service-editor-panel {
+  border-radius: 1.5rem;
+}
+
+@media (min-width: 1600px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1.75fr) minmax(460px, 520px);
+  }
+
+  .quote-builder-sidebar {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-builder-sidebar {
+    max-width: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .quote-workspace-page.app-page-content {
+    padding-inline: 0.9rem;
+  }
+
+  .quote-dashboard-header,
+  .quote-step-shell,
+  .quote-services-hero,
+  .quote-service-workflow-summary {
+    padding: 1rem;
+  }
+
+  .quote-service-planner .quote-service-day-card[open] {
+    transform: none;
+  }
+
+  .quote-service-current-services,
+  .quote-service-side-section {
+    padding: 0.75rem;
+  }
+}
