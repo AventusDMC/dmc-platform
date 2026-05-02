@@ -7,7 +7,7 @@ import { RouteCombobox } from '../../components/RouteCombobox';
 import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
-import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
+import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
 import {
   buildExternalPackagePayload,
@@ -3354,18 +3354,13 @@ export function QuoteItemsForm({
                   <p>Checking active rates for {Number(paxCount) || defaultPaxCount || 1} pax.</p>
                 </div>
               ) : transportCandidates.length > 0 ? (
-                <div className="quote-preview-total-list">
+                <div className="quote-transport-candidate-list">
                   {transportCandidates.map((candidate) => {
                     const candidateKey = `${candidate.vehicle.id}:${candidate.serviceType.id}:${candidate.routeId || candidate.routeName}:${candidate.supplier?.id || ''}`;
                     const selectedCandidateKey = selectedTransportCandidate
                       ? `${selectedTransportCandidate.vehicle.id}:${selectedTransportCandidate.serviceType.id}:${selectedTransportCandidate.routeId || selectedTransportCandidate.routeName}:${selectedTransportCandidate.supplier?.id || ''}`
                       : null;
                     const isCurrentCandidate = candidateKey === selectedCandidateKey;
-                    const candidateSellPreview = sellPrice.trim()
-                      ? Number(sellPrice)
-                      : markupAmount.trim()
-                        ? Number((candidate.price + Number(markupAmount)).toFixed(2))
-                        : Number((candidate.price * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
 
                     return (
                       <button
@@ -3379,28 +3374,16 @@ export function QuoteItemsForm({
                         onClick={() => applyTransportCandidate(candidate, { userInitiated: true })}
                       >
                         <span className="quote-transport-suggestion-main">
-                          <span>
+                          <span className="quote-transport-candidate-copy">
                             <strong>{candidate.vehicle.name}</strong>
-                            <span className="quote-transport-suggestion-badges">
-                              {isCurrentCandidate ? <span className="status-badge">Selected</span> : null}
-                              {candidate.isRecommended ? <span className="status-badge">Recommended</span> : null}
-                              {candidate.isBestValue ? <span className="status-badge">Cheapest</span> : null}
-                            </span>
+                            <span>{formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
+                            <em>{candidate.vehicle.maxPax} pax capacity</em>
                           </span>
                           <span className="quote-transport-price-stack">
-                            <span>Cost {candidate.currency} {candidate.price.toFixed(2)}</span>
                             <strong className="quote-transport-suggestion-price">
-                              Sell {candidate.currency} {candidateSellPreview.toFixed(2)}
+                              {candidate.currency} {candidate.price.toFixed(2)}
                             </strong>
                           </span>
-                        </span>
-                        <span className="quote-transport-suggestion-details">
-                          <span>{candidate.vehicle.maxPax} pax capacity</span>
-                          <span>Supplier: {formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
-                          <span>{formatClassificationLabel(candidate.serviceType.classification || candidate.classification)}</span>
-                          {candidate.unitCount ? (
-                            <span>{candidate.unitCount} unit{candidate.unitCount === 1 ? '' : 's'}</span>
-                          ) : null}
                         </span>
                       </button>
                     );
@@ -3427,12 +3410,8 @@ export function QuoteItemsForm({
               </div>
 
               {resolvedTransportPricing ? (
-                <div className="quote-selected-transport-card">
+                <div className="quote-selected-transport-card quote-selected-transport-card-active">
                   <div className="quote-selected-transport-summary">
-                    <div>
-                      <span>Route</span>
-                      <strong>{formatRouteLabel(resolvedTransportPricing.routeName)}</strong>
-                    </div>
                     <div>
                       <span>Vehicle</span>
                       <strong>{resolvedTransportPricing.vehicle.name}</strong>
@@ -3440,6 +3419,10 @@ export function QuoteItemsForm({
                     <div>
                       <span>Supplier</span>
                       <strong>{formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)}</strong>
+                    </div>
+                    <div>
+                      <span>Route</span>
+                      <strong>{formatRouteLabel(resolvedTransportPricing.routeName)}</strong>
                     </div>
                     <div>
                       <span>Cost</span>

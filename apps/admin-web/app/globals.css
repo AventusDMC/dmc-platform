@@ -1040,8 +1040,8 @@ select option:checked {
 
 .quote-transport-step-panel {
   display: grid;
-  gap: 1.1rem;
-  padding: 1.15rem;
+  gap: 1.35rem;
+  padding: 1.3rem;
   border-radius: 8px;
 }
 
@@ -3128,11 +3128,16 @@ select option:checked {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.quote-transport-candidate-list {
+  display: grid;
+  gap: 1rem;
+}
+
 .quote-transport-suggestion-option {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.85rem;
   width: 100%;
-  padding: 1.05rem 1.15rem;
+  padding: 1.1rem 1.25rem;
   border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 8px;
   background: #ffffff;
@@ -3160,62 +3165,62 @@ select option:checked {
 
 .quote-transport-suggestion-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
-.quote-transport-suggestion-main > span {
+.quote-transport-candidate-copy {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.28rem;
   min-width: 0;
 }
 
-.quote-transport-suggestion-main strong {
+.quote-transport-candidate-copy strong {
   color: var(--text-strong);
-  font-size: 1rem;
+  font-size: 1.08rem;
   line-height: 1.25;
+}
+
+.quote-transport-candidate-copy span {
+  color: rgba(30, 27, 24, 0.66);
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.quote-transport-candidate-copy em {
+  color: var(--muted-text);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 750;
 }
 
 .quote-transport-suggestion-price {
   flex: 0 0 auto;
   color: var(--color-accent) !important;
-  font-size: 1.05rem !important;
+  font-size: 1.32rem !important;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
 .quote-transport-price-stack {
   display: grid;
-  gap: 0.25rem;
   justify-items: end;
-  color: rgba(30, 27, 24, 0.64);
-  font-size: 0.86rem;
-  font-weight: 700;
   white-space: nowrap;
-}
-
-.quote-transport-suggestion-badges,
-.quote-transport-suggestion-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.quote-preview-total-list .quote-transport-suggestion-details span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0.32rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: rgba(30, 27, 24, 0.72);
-  font-size: 0.84rem;
-  font-weight: 600;
 }
 
 .quote-selected-transport-card {
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.quote-selected-transport-card-active {
+  border-color: rgba(31, 163, 214, 0.42);
+  box-shadow: 0 0 0 2px rgba(31, 163, 214, 0.14);
 }
 
 .quote-selected-transport-summary {
@@ -3228,10 +3233,7 @@ select option:checked {
   display: grid;
   gap: 0.28rem;
   min-width: 0;
-  padding: 0.85rem 0.9rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: #ffffff;
+  padding: 0.25rem 0;
 }
 
 .quote-selected-transport-summary span {
@@ -3244,7 +3246,7 @@ select option:checked {
 .quote-selected-transport-summary strong {
   min-width: 0;
   color: var(--text-strong);
-  font-size: 0.95rem;
+  font-size: 1rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -3270,9 +3272,15 @@ select option:checked {
 }
 
 .quote-transport-add-button {
-  justify-self: start;
-  min-width: 220px;
-  margin-top: 0.1rem;
+  justify-self: stretch;
+  min-height: 48px;
+  min-width: 240px;
+  margin-top: 0.25rem;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 850;
 }
 
 @media (max-width: 720px) {
