@@ -92,7 +92,11 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
       </div>
       {selectedRoute ? (
         <p className="search-combobox-selected">
-          Selected: <strong>{formatRouteOptionTitle(selectedRoute)}</strong>
+          Selected:{' '}
+          <strong className="search-combobox-route-title">
+            <span>{selectedRoute.fromPlace.name}</span>
+            <span>{selectedRoute.toPlace.name}</span>
+          </strong>
         </p>
       ) : null}
       {isOpen ? (
@@ -111,7 +115,10 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
                   setIsOpen(false);
                 }}
               >
-                <strong>{formatRouteOptionTitle(route)}</strong>
+                <strong className="search-combobox-route-title">
+                  <span>{route.fromPlace.name}</span>
+                  <span>{route.toPlace.name}</span>
+                </strong>
                 <span>{formatRouteOptionDetail(route) || 'Route'}</span>
               </button>
             ))

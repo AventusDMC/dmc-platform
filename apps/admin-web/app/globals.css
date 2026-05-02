@@ -1043,11 +1043,13 @@ select option:checked {
   gap: 1.35rem;
   padding: 1.3rem;
   border-radius: 8px;
+  margin-top: 0.35rem;
 }
 
 .quote-transport-step-fields {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: 1fr;
+  gap: 1.15rem;
 }
 
 .quote-transport-route-field,
@@ -1056,18 +1058,37 @@ select option:checked {
 }
 
 .quote-transport-route-field .search-combobox {
+  display: grid;
+  gap: 0.45rem;
   min-width: 0;
 }
 
+.quote-transport-route-field .search-combobox-shell input {
+  min-height: 46px;
+}
+
 .quote-transport-route-field .search-combobox-menu {
-  min-width: min(360px, calc(100vw - 2rem));
+  width: 100%;
+  min-width: min(460px, calc(100vw - 2rem));
   max-height: 320px;
-  padding: 0.45rem;
+  padding: 0.55rem;
 }
 
 .quote-transport-route-field .search-combobox-option {
-  gap: 0.35rem;
-  padding: 0.85rem 0.95rem;
+  gap: 0.5rem;
+  padding: 1rem 1.05rem;
+  align-items: start;
+}
+
+.search-combobox-route-title {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.search-combobox-route-title span + span::before {
+  content: "to ";
+  color: var(--muted-text);
+  font-weight: 700;
 }
 
 .quote-transport-route-field .search-combobox-option strong,
@@ -3130,14 +3151,14 @@ select option:checked {
 
 .quote-transport-candidate-list {
   display: grid;
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 .quote-transport-suggestion-option {
   display: grid;
   gap: 0.85rem;
   width: 100%;
-  padding: 1.1rem 1.25rem;
+  padding: 1.2rem 1.35rem;
   border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 8px;
   background: #ffffff;
@@ -3211,8 +3232,8 @@ select option:checked {
 
 .quote-selected-transport-card {
   display: grid;
-  gap: 1rem;
-  padding: 1.1rem;
+  gap: 1.15rem;
+  padding: 1.25rem;
   border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 8px;
   background: #ffffff;
@@ -3226,7 +3247,7 @@ select option:checked {
 .quote-selected-transport-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.9rem 1rem;
 }
 
 .quote-selected-transport-summary div {
@@ -3246,7 +3267,7 @@ select option:checked {
 .quote-selected-transport-summary strong {
   min-width: 0;
   color: var(--text-strong);
-  font-size: 1rem;
+  font-size: 1.04rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -3273,9 +3294,9 @@ select option:checked {
 
 .quote-transport-add-button {
   justify-self: stretch;
-  min-height: 48px;
+  min-height: 52px;
   min-width: 240px;
-  margin-top: 0.25rem;
+  margin-top: 0.35rem;
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #ffffff;
@@ -3291,6 +3312,7 @@ select option:checked {
 
   .quote-transport-suggestion-main {
     display: grid;
+    gap: 0.85rem;
   }
 
   .quote-transport-price-stack {
