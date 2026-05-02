@@ -1113,8 +1113,32 @@ export function QuoteItemsForm({
       return Number(overrideCost);
     }
 
+    if (isActivityService) {
+      const unitCost = Number(baseCost || 0);
+      const participants = Math.max(
+        1,
+        Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
+      );
+      return Number.isFinite(unitCost) ? Number((unitCost * participants).toFixed(2)) : null;
+    }
+
     return baseCost ? Number(baseCost) : null;
-  }, [baseCost, defaultPaxCount, externalPackage, isExternalPackageService, isMealService, mealCost, overrideCost, paxCount, useOverride]);
+  }, [
+    adultCount,
+    baseCost,
+    childCount,
+    defaultPaxCount,
+    externalPackage,
+    isActivityService,
+    isExternalPackageService,
+    isMealService,
+    mealCost,
+    overrideCost,
+    participantCount,
+    paxCount,
+    selectedService?.baseCost,
+    useOverride,
+  ]);
   const finalSellPrice = useMemo(() => {
     if (sellPrice.trim()) {
       return Number(sellPrice);
@@ -1130,6 +1154,12 @@ export function QuoteItemsForm({
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
       : null;
+  const activityParticipantTotal = Math.max(
+    1,
+    Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
+  );
+  const activityUnitRate = Number(baseCost || 0);
+  const isActivitySelected = Boolean(isActivityService && serviceId && selectedService);
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const activityIssues =
@@ -1993,7 +2023,7 @@ export function QuoteItemsForm({
           pickupTime: isActivityService ? pickupTime || null : undefined,
           pickupLocation: isActivityService ? pickupLocation.trim() || null : undefined,
           meetingPoint: isActivityService ? meetingPoint.trim() || null : undefined,
-          participantCount: isActivityService ? Number(participantCount || 0) : undefined,
+          participantCount: isActivityService ? activityParticipantTotal : undefined,
           adultCount: isActivityService ? Number(adultCount || 0) : undefined,
           childCount: isActivityService ? Number(childCount || 0) : undefined,
           reconfirmationRequired: isActivityService ? reconfirmationRequired : undefined,
@@ -2015,7 +2045,7 @@ export function QuoteItemsForm({
           pricingBasis: isMealService ? 'PER_PERSON' : isExternalPackageService ? externalPackage.pricingBasis : undefined,
           ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
           quantity: Number(quantity),
-          paxCount: Number(paxCount),
+          paxCount: isActivityService ? activityParticipantTotal : Number(paxCount),
           roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
           nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
           dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
@@ -2213,7 +2243,7 @@ export function QuoteItemsForm({
             </label>
           ) : null}
 
-          {!isEditing && activeServiceType && activeServiceType !== 'hotel' ? (
+          {!isEditing && activeServiceType && activeServiceType !== 'hotel' && activeServiceType !== 'activity' ? (
             <section className="quote-hotel-step-panel quote-hotel-step-panel-primary">
               <div className="quote-hotel-step-head">
                 <div>
@@ -2439,7 +2469,7 @@ export function QuoteItemsForm({
               <p>Contract, room, season, and pricing controls will appear after this step.</p>
             </div>
           ) : null}
-          {hasPrimarySelection && !isTransportService && !isHotelService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -2489,7 +2519,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -2531,7 +2561,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isHotelService && !isMealService && !isTransportService ? (
+          {hasPrimarySelection && !isHotelService && !isMealService && !isTransportService && !isActivityService ? (
             <details className="quote-advanced-settings" open={useOverride}>
               <summary>Advanced cost settings</summary>
 
@@ -2583,7 +2613,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
           <div className="form-row form-row-3">
             <label>
               Pax count
@@ -2845,84 +2875,238 @@ export function QuoteItemsForm({
             </>
           ) : null}
 
-          {hasPrimarySelection && isActivityService ? (
+          {activeServiceType === 'activity' ? (
             <>
-              <div className="form-row form-row-3">
-                <label>
-                  Service date
-                  <input value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} type="date" />
-                </label>
+              <section className="quote-hotel-step-panel quote-hotel-step-panel-primary quote-transport-step-panel">
+                <div className="quote-hotel-step-head">
+                  <div>
+                    <p className="eyebrow">Step 1</p>
+                    <h3>Select activity</h3>
+                    <p className="detail-copy">Choose the activity, date, and participant count before confirming the quote item.</p>
+                  </div>
+                  {selectedService ? <span className="page-tab-badge">Activity selected</span> : null}
+                </div>
 
-                <label>
-                  Start time
-                  <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" />
-                </label>
+                {filteredServices.length === 0 ? (
+                  <div className="quote-service-empty-state">
+                    <strong>No activities available</strong>
+                    <p>Create an activity catalog service before adding it to the quote.</p>
+                  </div>
+                ) : (
+                  <div className="quote-transport-step-fields">
+                    <label>
+                      Activity
+                      <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
+                        <option value="">Select activity</option>
+                        {filteredServices.map((service) => (
+                          <option key={service.id} value={service.id}>
+                            {service.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                <label>
-                  Pickup time
-                  <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" />
-                </label>
-              </div>
+                    <label>
+                      Date
+                      <input value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} type="date" />
+                    </label>
 
-              <div className="form-row form-row-3">
-                <label>
-                  Resolved service date
-                  <input value={serviceDate || resolvedActivityServiceDate || ''} readOnly placeholder="Needs service date or travel start date + itinerary day" />
-                </label>
-              </div>
+                    <label>
+                      Participant count
+                      <input value={participantCount} onChange={(event) => setParticipantCount(event.target.value)} type="number" min="1" required />
+                    </label>
+                  </div>
+                )}
+              </section>
 
-              <div className="form-row form-row-3">
-                <label>
-                  Pickup location
-                  <input value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} placeholder="Hotel lobby" />
-                </label>
+              <section className="quote-hotel-step-panel quote-transport-step-panel">
+                <div className="quote-hotel-step-head">
+                  <div>
+                    <p className="eyebrow">Step 2</p>
+                    <h3>Review & confirm</h3>
+                    <p className="detail-copy">Review participant pricing before adding this activity to the quote.</p>
+                  </div>
+                </div>
 
-                <label>
-                  Meeting point
-                  <input value={meetingPoint} onChange={(event) => setMeetingPoint(event.target.value)} placeholder="Visitor center" />
-                </label>
+                {isActivitySelected ? (
+                  <div className="quote-selected-transport-card quote-selected-transport-card-active">
+                    <div className="quote-selected-transport-summary">
+                      <span>
+                        Activity
+                        <strong>{selectedService?.name || 'Selected activity'}</strong>
+                      </span>
+                      <span>
+                        Participants
+                        <strong>{activityParticipantTotal}</strong>
+                      </span>
+                      <span>
+                        Unit rate
+                        <strong>{displayCurrency} {Number.isFinite(activityUnitRate) ? activityUnitRate.toFixed(2) : '0.00'}</strong>
+                      </span>
+                      <span>
+                        Total cost
+                        <strong>{displayCurrency} {finalCost !== null && Number.isFinite(finalCost) ? finalCost.toFixed(2) : '0.00'}</strong>
+                      </span>
+                      <span>
+                        Total sell
+                        <strong>{displayCurrency} {finalSellPrice !== null && Number.isFinite(finalSellPrice) ? finalSellPrice.toFixed(2) : '0.00'}</strong>
+                      </span>
+                      <span>
+                        Margin
+                        <strong>{displayCurrency} {finalMargin !== null && Number.isFinite(finalMargin) ? finalMargin.toFixed(2) : '0.00'}</strong>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="quote-service-empty-state">
+                    <strong>Choose an activity</strong>
+                    <p>The Add Activity button is enabled after an activity is selected.</p>
+                  </div>
+                )}
 
-                <label className="quote-item-override-toggle">
-                  <span>Reconfirmation required</span>
-                  <input
-                    checked={reconfirmationRequired}
-                    onChange={(event) => setReconfirmationRequired(event.target.checked)}
-                    type="checkbox"
-                  />
-                </label>
-              </div>
+                <button
+                  type="submit"
+                  className="quote-transport-add-button"
+                  disabled={isSubmitting || filteredServices.length === 0 || !isActivitySelected}
+                >
+                  {isSubmitting ? 'Saving...' : 'Add Activity'}
+                </button>
+              </section>
 
-              <div className="form-row form-row-4">
-                <label>
-                  Participant count
-                  <input
-                    value={participantCount}
-                    onChange={(event) => setParticipantCount(event.target.value)}
-                    type="number"
-                    min="0"
-                  />
-                </label>
+              <details className="quote-advanced-settings" open={useOverride}>
+                <summary>More options</summary>
 
-                <label>
-                  Adult count
-                  <input value={adultCount} onChange={(event) => setAdultCount(event.target.value)} type="number" min="0" />
-                </label>
+                <div className="form-row form-row-3">
+                  <label>
+                    Markup %
+                    <input
+                      value={markupPercent}
+                      onChange={(event) => setMarkupPercent(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </label>
 
-                <label>
-                  Child count
-                  <input value={childCount} onChange={(event) => setChildCount(event.target.value)} type="number" min="0" />
-                </label>
+                  <label>
+                    Markup amount
+                    <input
+                      value={markupAmount}
+                      onChange={(event) => setMarkupAmount(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Overrides percent"
+                    />
+                  </label>
 
-                <label>
-                  Reconfirmation due
-                  <input
-                    value={reconfirmationDueAt}
-                    onChange={(event) => setReconfirmationDueAt(event.target.value)}
-                    type="datetime-local"
-                    disabled={!reconfirmationRequired}
-                  />
-                </label>
-              </div>
+                  <label>
+                    Sell price override
+                    <input
+                      value={sellPrice}
+                      onChange={(event) => setSellPrice(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Optional"
+                    />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-2">
+                  <label className={useOverride ? 'quote-item-override quote-item-override-active' : 'quote-item-override'}>
+                    <span>Override cost</span>
+                    <input
+                      value={overrideCost}
+                      onChange={(event) => setOverrideCost(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      disabled={!useOverride}
+                      placeholder="Leave blank to use rate x participants"
+                    />
+                  </label>
+
+                  <label className="quote-item-override-toggle">
+                    <span>Use override</span>
+                    <input checked={useOverride} onChange={(event) => setUseOverride(event.target.checked)} type="checkbox" />
+                  </label>
+                </div>
+
+                {useOverride ? (
+                  <div className="form-row">
+                    <label>
+                      Override reason
+                      <input
+                        value={overrideReason}
+                        onChange={(event) => setOverrideReason(event.target.value)}
+                        placeholder="Reason for this quote-only rate"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                <div className="form-row form-row-3">
+                  <label>
+                    Resolved service date
+                    <input value={serviceDate || resolvedActivityServiceDate || ''} readOnly placeholder="Needs service date or travel start date + itinerary day" />
+                  </label>
+
+                  <label>
+                    Start time
+                    <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" />
+                  </label>
+
+                  <label>
+                    Pickup time
+                    <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    Pickup location
+                    <input value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} placeholder="Hotel lobby" />
+                  </label>
+
+                  <label>
+                    Meeting point
+                    <input value={meetingPoint} onChange={(event) => setMeetingPoint(event.target.value)} placeholder="Visitor center" />
+                  </label>
+
+                  <label>
+                    Adult count
+                    <input value={adultCount} onChange={(event) => setAdultCount(event.target.value)} type="number" min="0" />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    Child count
+                    <input value={childCount} onChange={(event) => setChildCount(event.target.value)} type="number" min="0" />
+                  </label>
+
+                  <label className="quote-item-override-toggle">
+                    <span>Reconfirmation required</span>
+                    <input
+                      checked={reconfirmationRequired}
+                      onChange={(event) => setReconfirmationRequired(event.target.checked)}
+                      type="checkbox"
+                    />
+                  </label>
+
+                  <label>
+                    Reconfirmation due
+                    <input
+                      value={reconfirmationDueAt}
+                      onChange={(event) => setReconfirmationDueAt(event.target.value)}
+                      type="datetime-local"
+                      disabled={!reconfirmationRequired}
+                    />
+                  </label>
+                </div>
+              </details>
 
               {itineraryId ? <p className="form-helper">Leave service date blank to use the assigned itinerary day.</p> : null}
               {resolvedActivityServiceDate && !serviceDate ? (
@@ -2933,6 +3117,7 @@ export function QuoteItemsForm({
                   {issue}
                 </p>
               ))}
+
             </>
           ) : null}
 
@@ -3612,7 +3797,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
             <button
               type="submit"
               disabled={
