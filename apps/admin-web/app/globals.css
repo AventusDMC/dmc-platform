@@ -17670,6 +17670,7 @@ body {
 .quote-service-day-nav-card span,
 .quote-service-day-nav-card strong,
 .quote-service-day-nav-card em,
+.quote-service-day-nav-card b,
 .quote-service-day-nav-card small {
   min-width: 0;
   overflow: hidden;
@@ -17685,6 +17686,7 @@ body {
 
 .quote-service-day-nav-card strong,
 .quote-service-day-nav-card em,
+.quote-service-day-nav-card b,
 .quote-service-day-nav-card small {
   font-size: 0.78rem;
   font-style: normal;
@@ -17698,6 +17700,11 @@ body {
 .quote-service-day-nav-card em {
   color: #6d28d9;
   font-weight: 850;
+}
+
+.quote-service-day-nav-card b {
+  color: #24153d;
+  font-weight: 900;
 }
 
 .quote-service-day-nav-card small {

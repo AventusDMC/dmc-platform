@@ -2166,6 +2166,7 @@ function ScopePlanner({
           <div className="quote-service-day-nav-list">
             {daySummaries.map((summary) => {
               const dayHeading = formatDayHeading(summary.day, summary.inferredCity);
+              const dayTotalSell = summary.items.reduce((total, item) => total + Number(item.totalSell || 0), 0);
               const isActive = activeDaySummary?.day.id === summary.day.id;
 
               return (
@@ -2181,6 +2182,7 @@ function ScopePlanner({
                     {summary.items.length} service{summary.items.length === 1 ? '' : 's'}
                   </strong>
                   <em>{summary.completionPercent}% complete</em>
+                  {dayTotalSell > 0 ? <b>{formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency)}</b> : null}
                   {summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
                     <small>
                       {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
@@ -2211,16 +2213,12 @@ function ScopePlanner({
             : 'Build the day by adding the core services on the right.');
 
         return (
-          <RowDetailsPanel
+          <article
             key={summary.day.id}
             id={`planner-day-${summary.day.id}`}
-            summary={dayHeading}
-            description={daySubtitle}
-            open
-            onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}
             className={`workspace-day-card quote-service-day-card quote-service-day-card-active app-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
-            bodyClassName="quote-service-day-panel-body"
           >
+            <div className="quote-service-day-panel-body">
             <div className="workspace-day-header">
               <div>
                 <p className="workspace-day-kicker">Build the day step by step</p>
@@ -2308,7 +2306,8 @@ function ScopePlanner({
                   </section>
                 ) : null}
             </div>
-          </RowDetailsPanel>
+            </div>
+          </article>
         );
       })() : null}
           </DndContext>
