@@ -17799,3 +17799,88 @@ body {
     transform: none;
   }
 }
+
+/* Quote builder workspace proportions */
+.quote-builder-page {
+  width: 100%;
+  max-width: none;
+}
+
+.quote-workspace-page.app-page-content,
+.panel.quote-workspace-page {
+  width: 100%;
+  max-width: none;
+}
+
+.quote-builder-shell {
+  width: min(100%, 1600px);
+  margin-inline: auto;
+}
+
+.quote-builder-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: clamp(1.25rem, 1.8vw, 2rem);
+}
+
+.quote-builder-main,
+.quote-builder-main-content {
+  min-width: 0;
+  width: 100%;
+}
+
+.quote-builder-sidebar {
+  width: 100%;
+  max-width: 380px;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  width: 100%;
+}
+
+.quote-service-planner-shell.quote-service-planner-saas-grid {
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: clamp(1rem, 1.4vw, 1.5rem);
+}
+
+.quote-service-day-nav {
+  width: 100%;
+}
+
+.quote-service-day-column {
+  width: 100%;
+  min-width: 0;
+}
+
+.quote-service-day-card-active {
+  width: 100%;
+}
+
+@media (min-width: 1700px) {
+  .quote-builder-shell {
+    width: min(100%, 1640px);
+  }
+
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+  }
+
+  .quote-builder-sidebar {
+    max-width: 380px;
+  }
+}
+
+@media (max-width: 1320px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-builder-sidebar {
+    max-width: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
