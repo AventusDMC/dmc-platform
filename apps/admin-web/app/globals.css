@@ -15935,6 +15935,7 @@ body {
   gap: 1rem;
   align-items: stretch;
   padding: 1rem;
+  justify-content: stretch;
 }
 
 .quote-service-card-main {
@@ -16003,7 +16004,11 @@ body {
 
 .quote-service-card-actions .operations-row-details > summary,
 .quote-service-card-actions summary {
+  width: 100%;
   min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 0.9rem;
   background: var(--accent-soft);
   color: var(--accent-strong);
@@ -16036,11 +16041,88 @@ body {
 
 .quote-services-filter-bar .secondary-button {
   border-radius: 999px;
+  box-shadow: none;
 }
 
 .quote-services-card-list {
   display: grid;
   gap: 0.85rem;
+}
+
+.quote-service-card.app-service-card {
+  display: grid;
+}
+
+.quote-service-card .operations-row-details {
+  width: 100%;
+  min-width: 0;
+}
+
+.quote-service-card .operations-row-details-body {
+  margin-top: 0.8rem;
+  border-radius: var(--radius-lg);
+}
+
+.quote-service-card .quote-preview-total-list {
+  background: transparent;
+  box-shadow: none;
+}
+
+.quote-service-card .quote-preview-total-list div {
+  min-height: 78px;
+}
+
+.quote-service-card .audit-log-item {
+  border-radius: var(--radius-md);
+  background: #fbfaff;
+}
+
+.quote-service-editor-panel .service-entry-form {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quote-service-editor-panel .quote-hotel-step-panel,
+.quote-service-editor-panel .quote-transport-step-panel {
+  padding: 1rem;
+}
+
+.quote-service-editor-panel .quote-hotel-step-head,
+.quote-service-editor-panel .workspace-section-head {
+  gap: 0.75rem;
+}
+
+.quote-service-editor-panel .quote-transport-add-button {
+  width: 100%;
+}
+
+.quote-selected-transport-summary {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.quote-selected-transport-summary span {
+  min-height: 82px;
+  padding: 0.85rem;
+}
+
+.quote-selected-transport-summary strong {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.quote-preview-total-list {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.quote-preview-total-list div {
+  min-width: 0;
+  padding: 0.85rem;
+}
+
+.quote-preview-total-list strong {
+  overflow-wrap: anywhere;
 }
 
 .admin-dashboard-page {
@@ -16064,11 +16146,21 @@ body {
 .admin-dashboard-page .dashboard-card,
 .admin-dashboard-page .app-metric-card {
   padding: 1.1rem;
+  min-height: 126px;
+  align-content: start;
 }
 
 .admin-dashboard-page .dashboard-card strong,
 .admin-dashboard-page .app-metric-card strong {
   color: var(--accent-strong);
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.05;
+}
+
+.admin-dashboard-page .dashboard-card p,
+.admin-dashboard-page .app-metric-card p {
+  margin: 0;
+  color: var(--muted-foreground);
 }
 
 .client-workspace-page .workspace-shell-card,
@@ -16108,6 +16200,7 @@ body {
   border-radius: var(--radius-lg);
   background: #ffffff;
   box-shadow: var(--shadow-sm);
+  min-width: 0;
 }
 
 .booking-dashboard-meta-grid span,
@@ -16119,6 +16212,28 @@ body {
 .booking-dashboard-meta-grid strong,
 .quote-dashboard-meta-grid strong {
   color: #21172f;
+  overflow-wrap: anywhere;
+}
+
+.client-workspace-page .summary-strip,
+.supplier-workspace-page .summary-strip,
+.bookings-workspace-page .summary-strip {
+  align-items: stretch;
+}
+
+.client-workspace-page .summary-strip-card,
+.supplier-workspace-page .summary-strip-card,
+.bookings-workspace-page .summary-strip-card {
+  min-height: 96px;
+}
+
+.client-workspace-page .data-table th,
+.client-workspace-page .data-table td,
+.supplier-workspace-page .data-table th,
+.supplier-workspace-page .data-table td,
+.bookings-workspace-page .data-table th,
+.bookings-workspace-page .data-table td {
+  vertical-align: middle;
 }
 
 @media (max-width: 1180px) {
@@ -16136,5 +16251,32 @@ body {
 
   .quote-service-editor-panel {
     position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .quote-services-filter-bar {
+    border-radius: var(--radius-lg);
+  }
+
+  .quote-services-filter-bar .secondary-button,
+  .quote-service-card-actions .operations-row-details > summary,
+  .quote-service-card-actions summary {
+    width: 100%;
+  }
+
+  .quote-service-card-badges {
+    align-items: stretch;
+  }
+
+  .quote-service-card-badges .quote-ui-badge {
+    justify-content: center;
+    flex: 1 1 140px;
+  }
+
+  .quote-services-hero .workspace-section-head,
+  .booking-dashboard-header,
+  .quote-dashboard-header {
+    display: grid;
   }
 }
