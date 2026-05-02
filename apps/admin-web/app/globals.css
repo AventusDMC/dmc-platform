@@ -17366,3 +17366,429 @@ body {
     padding: 0.75rem;
   }
 }
+
+/* Final quote builder premium lift */
+.quote-builder-page {
+  max-width: 1880px;
+}
+
+.quote-workspace-page.app-page-content {
+  padding-inline: clamp(1rem, 1.55vw, 2.25rem);
+}
+
+.quote-builder-shell {
+  gap: clamp(2.25rem, 2.8vw, 3.4rem);
+}
+
+.quote-dashboard-header {
+  border-width: 0;
+  box-shadow:
+    0 30px 80px rgba(32, 20, 54, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.quote-dashboard-meta-grid div,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-step-nav {
+  border-width: 0;
+}
+
+.quote-builder-layout {
+  grid-template-columns: minmax(0, 1.9fr) minmax(430px, 500px);
+  gap: clamp(1.75rem, 2.2vw, 2.5rem);
+}
+
+.quote-builder-main-content,
+.quote-builder-main-content > .section-stack {
+  gap: clamp(1.9rem, 2.35vw, 2.75rem);
+}
+
+.quote-builder-main .workspace-section,
+.quote-builder-main .detail-card,
+.quote-builder-main .tab-panel-card,
+.quote-step-shell,
+.quote-services-hero,
+.quote-service-workflow-summary {
+  border-width: 0;
+  box-shadow: 0 16px 42px rgba(32, 20, 54, 0.045);
+}
+
+.quote-builder-sidebar {
+  max-width: 500px;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  transform: translateZ(0);
+  box-shadow:
+    0 42px 100px rgba(32, 20, 54, 0.44),
+    0 18px 44px rgba(76, 29, 149, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition:
+    box-shadow 220ms ease,
+    transform 220ms ease;
+}
+
+.quote-pricing-summary-card-dominant.app-financial-panel:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 48px 112px rgba(32, 20, 54, 0.48),
+    0 22px 52px rgba(76, 29, 149, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row {
+  border-width: 0;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(2.85rem, 4.8vw, 4.2rem);
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row > span {
+  opacity: 0.9;
+}
+
+.quote-pricing-summary-card-actions.quote-primary-action-card {
+  border-width: 0;
+  box-shadow: 0 20px 54px rgba(76, 29, 149, 0.12);
+}
+
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button,
+.quote-primary-action-card .quote-builder-sidebar-actions button[type='submit'] {
+  min-height: 62px;
+  background: linear-gradient(135deg, #5b21b6, #7c3aed);
+  box-shadow:
+    0 20px 42px rgba(91, 33, 182, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover,
+.quote-primary-action-card .quote-builder-sidebar-actions button[type='submit']:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08);
+  box-shadow:
+    0 26px 54px rgba(91, 33, 182, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+.quote-service-planner > .workspace-tab-header {
+  border-width: 0;
+  box-shadow: 0 14px 36px rgba(32, 20, 54, 0.05);
+}
+
+.quote-service-planner .quote-service-day-card {
+  border-width: 0;
+  box-shadow: 0 12px 32px rgba(32, 20, 54, 0.04);
+}
+
+.quote-service-planner .quote-service-day-card:not([open]) {
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: 0 8px 22px rgba(32, 20, 54, 0.028);
+}
+
+.quote-service-planner .quote-service-day-card:not([open]) > .row-details-summary {
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.quote-service-planner .quote-service-day-card:not([open]):hover {
+  opacity: 0.86;
+  box-shadow: 0 18px 42px rgba(32, 20, 54, 0.075);
+}
+
+.quote-service-planner .quote-service-day-card[open] {
+  box-shadow:
+    0 34px 86px rgba(32, 20, 54, 0.14),
+    0 12px 34px rgba(109, 40, 217, 0.1);
+}
+
+.quote-service-planner .quote-service-day-card[open] > .row-details-summary {
+  background:
+    radial-gradient(circle at 92% 0%, rgba(167, 139, 250, 0.18), transparent 13rem),
+    linear-gradient(135deg, #ffffff 0%, #faf7ff 100%);
+}
+
+.quote-service-day-card-focused,
+.quote-service-planner .quote-service-day-card[open].quote-service-day-card-focused {
+  box-shadow:
+    0 40px 96px rgba(76, 29, 149, 0.18),
+    0 14px 38px rgba(32, 20, 54, 0.1);
+}
+
+.quote-service-day-panel-body {
+  background:
+    linear-gradient(180deg, rgba(251, 250, 255, 0.54), rgba(255, 255, 255, 0.92));
+}
+
+.quote-service-current-services,
+.quote-service-side-section,
+.quote-service-lane,
+.quote-service-mini-card,
+.quote-service-card,
+.quote-service-editor-panel {
+  border-width: 0;
+}
+
+.quote-service-lane {
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.quote-service-lane:hover {
+  background: #ffffff;
+  box-shadow:
+    0 16px 38px rgba(32, 20, 54, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.quote-service-mini-card {
+  box-shadow:
+    0 12px 30px rgba(32, 20, 54, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.quote-service-mini-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 28px 62px rgba(32, 20, 54, 0.13),
+    0 10px 24px rgba(109, 40, 217, 0.08);
+}
+
+.quote-service-card-pricing-summary {
+  background:
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.18), transparent 9rem),
+    linear-gradient(135deg, #f8f5ff, #ffffff);
+}
+
+.quote-service-card-details {
+  border-top-color: rgba(232, 229, 239, 0.62);
+}
+
+.quote-service-mini-card-actions .secondary-button:hover,
+.quote-service-editor-tab:hover,
+.quote-dashboard-actions a:hover,
+.quote-dashboard-actions button:hover {
+  transform: translateY(-1px);
+}
+
+@media (min-width: 1700px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(470px, 540px);
+  }
+
+  .quote-builder-sidebar {
+    max-width: 540px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-builder-sidebar {
+    max-width: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .quote-pricing-summary-card-dominant.app-financial-panel:hover,
+  .quote-primary-action-card .quote-builder-sidebar-actions .primary-button:hover,
+  .quote-primary-action-card .quote-builder-sidebar-actions button[type='submit']:hover,
+  .quote-service-mini-card:hover {
+    transform: none;
+  }
+}
+
+/* Quote builder 3-column workspace */
+.quote-service-planner-shell.quote-service-planner-saas-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: clamp(1.1rem, 1.6vw, 1.65rem);
+  align-items: start;
+}
+
+.quote-service-day-nav {
+  position: sticky;
+  top: 1.35rem;
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  max-height: calc(100vh - 2.7rem);
+}
+
+.quote-service-day-nav-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-inline: 0.15rem;
+}
+
+.quote-service-day-nav-head p,
+.quote-service-day-nav-head strong {
+  margin: 0;
+}
+
+.quote-service-day-nav-head strong {
+  color: #24153d;
+  font-size: 0.9rem;
+}
+
+.quote-service-day-nav-list {
+  display: grid;
+  gap: 0.65rem;
+  overflow: auto;
+  padding: 0.1rem 0.15rem 0.35rem;
+}
+
+.quote-service-day-nav-card {
+  display: grid;
+  gap: 0.28rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 0;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.62);
+  color: #5f5870;
+  text-align: left;
+  box-shadow: 0 8px 22px rgba(32, 20, 54, 0.035);
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.quote-service-day-nav-card span,
+.quote-service-day-nav-card strong,
+.quote-service-day-nav-card em,
+.quote-service-day-nav-card small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-service-day-nav-card span {
+  color: #231a33;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.quote-service-day-nav-card strong,
+.quote-service-day-nav-card em,
+.quote-service-day-nav-card small {
+  font-size: 0.78rem;
+  font-style: normal;
+}
+
+.quote-service-day-nav-card strong {
+  color: #756f82;
+  font-weight: 800;
+}
+
+.quote-service-day-nav-card em {
+  color: #6d28d9;
+  font-weight: 850;
+}
+
+.quote-service-day-nav-card small {
+  color: #b45309;
+  font-weight: 850;
+}
+
+.quote-service-day-nav-card:hover {
+  transform: translateY(-1px);
+  background: #ffffff;
+  box-shadow: 0 16px 34px rgba(32, 20, 54, 0.075);
+}
+
+.quote-service-day-nav-card-active {
+  color: #24153d;
+  background:
+    radial-gradient(circle at top right, rgba(167, 139, 250, 0.24), transparent 8rem),
+    #ffffff;
+  box-shadow:
+    0 20px 46px rgba(76, 29, 149, 0.14),
+    inset 4px 0 0 #6d28d9;
+}
+
+.quote-service-day-column {
+  gap: clamp(1.2rem, 1.7vw, 1.8rem);
+}
+
+.quote-service-day-card-active {
+  opacity: 1;
+}
+
+.quote-service-day-card-active > .row-details-summary {
+  cursor: default;
+}
+
+.quote-service-day-card-active > .row-details-summary::marker {
+  display: none;
+}
+
+.quote-service-day-card-active .row-details-summary {
+  pointer-events: none;
+}
+
+.quote-service-day-card-active .quote-service-day-panel-body,
+.quote-service-day-card-active .quote-service-day-panel-body * {
+  pointer-events: auto;
+}
+
+.quote-service-day-column > .quote-service-editor-panel {
+  position: relative;
+  top: auto;
+  max-height: none;
+}
+
+@media (min-width: 1281px) {
+  .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(440px, 520px);
+  }
+
+  .quote-builder-main-content {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-day-nav {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+
+  .quote-service-day-nav-list {
+    grid-auto-columns: minmax(180px, 230px);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.5rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .quote-service-day-nav-list {
+    grid-auto-columns: minmax(160px, 210px);
+  }
+
+  .quote-service-day-nav-card:hover {
+    transform: none;
+  }
+}

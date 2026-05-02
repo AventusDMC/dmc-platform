@@ -9,7 +9,6 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
-import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
@@ -316,7 +315,9 @@ type PlannerScope = {
 
 type ScopePlannerState = {
   openDayIds: Set<string>;
+  activeDayId: string | null;
   onDayOpenChange: (dayId: string, open: boolean) => void;
+  onActiveDayChange: (dayId: string) => void;
 };
 
 type ServiceWorkflowStep = {
@@ -1662,6 +1663,10 @@ function ScopePlanner({
       ).length
     );
   }, 0);
+  const activeDaySummary =
+    daySummaries.find((summary) => summary.day.id === plannerState.activeDayId) ||
+    daySummaries[0] ||
+    null;
 
   useEffect(() => {
     setLocalItems(scope.items);
@@ -1891,6 +1896,7 @@ function ScopePlanner({
 
     setQuickAddPendingId(null);
     setReorderError('');
+    plannerState.onActiveDayChange(day.id);
     plannerState.onDayOpenChange(day.id, true);
     scrollToEditorPanelKeyRef.current = panelKey;
     setActiveServicePanel({
@@ -2152,10 +2158,46 @@ function ScopePlanner({
       ) : null}
 
       <div className="quote-service-planner-shell quote-service-planner-saas-grid">
+        <nav className="quote-service-day-nav" aria-label={`${scope.label} days`}>
+          <div className="quote-service-day-nav-head">
+            <p className="eyebrow">Days</p>
+            <strong>{daySummaries.length} planned</strong>
+          </div>
+          <div className="quote-service-day-nav-list">
+            {daySummaries.map((summary) => {
+              const dayHeading = formatDayHeading(summary.day, summary.inferredCity);
+              const isActive = activeDaySummary?.day.id === summary.day.id;
+
+              return (
+                <button
+                  key={summary.day.id}
+                  type="button"
+                  className={`quote-service-day-nav-card${isActive ? ' quote-service-day-nav-card-active' : ''}`}
+                  onClick={() => plannerState.onActiveDayChange(summary.day.id)}
+                  aria-current={isActive ? 'true' : undefined}
+                >
+                  <span>{dayHeading}</span>
+                  <strong>
+                    {summary.items.length} service{summary.items.length === 1 ? '' : 's'}
+                  </strong>
+                  <em>{summary.completionPercent}% complete</em>
+                  {summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
+                    <small>
+                      {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
+                      {summary.unpricedCount > 0 && summary.unresolvedCount > 0 ? ' / ' : null}
+                      {summary.unresolvedCount > 0 ? `${summary.unresolvedCount} unresolved` : null}
+                    </small>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
         <div className="quote-service-day-column">
           {reorderError ? <p className="form-error">{reorderError}</p> : null}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>
-      {daySummaries.map((summary) => {
+      {activeDaySummary ? (() => {
+        const summary = activeDaySummary;
         const completeness = dayCompletenessRules.map((rule) => ({
           ...rule,
           complete: summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
@@ -2174,9 +2216,9 @@ function ScopePlanner({
             id={`planner-day-${summary.day.id}`}
             summary={dayHeading}
             description={daySubtitle}
-            open={plannerState.openDayIds.has(summary.day.id)}
+            open
             onOpenChange={(isOpen) => plannerState.onDayOpenChange(summary.day.id, isOpen)}
-            className={`workspace-day-card quote-service-day-card app-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
+            className={`workspace-day-card quote-service-day-card quote-service-day-card-active app-card${plannerProps.focusedDayId === summary.day.id ? ' quote-service-day-card-focused' : ''}`}
             bodyClassName="quote-service-day-panel-body"
           >
             <div className="workspace-day-header">
@@ -2268,9 +2310,8 @@ function ScopePlanner({
             </div>
           </RowDetailsPanel>
         );
-      })}
+      })() : null}
           </DndContext>
-        </div>
 
         <aside
           ref={editorPanelRef}
@@ -2330,6 +2371,7 @@ function ScopePlanner({
 
                       setQuickAddPendingId(null);
                       setReorderError('');
+                      plannerState.onActiveDayChange(tabDay.id);
                       plannerState.onDayOpenChange(tabDay.id, true);
                       const panelKey = `${scope.optionId || 'base'}:${tabDay.id}:${tabDay.dayNumber}:${tabCategory}:manual`;
                       scrollToEditorPanelKeyRef.current = panelKey;
@@ -2394,6 +2436,7 @@ function ScopePlanner({
             </div>
           )}
         </aside>
+        </div>
       </div>
 
       {unassignedItems.length > 0 ? (
@@ -2442,6 +2485,10 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
     const defaultDay = focusedDay || incomingPlannerDays[0] || null;
     return new Set(defaultDay ? [defaultDay.id] : []);
   });
+  const [activeDayId, setActiveDayId] = useState<string | null>(() => {
+    const focusedDay = props.focusedDayId ? incomingPlannerDays.find((day) => day.id === props.focusedDayId) : null;
+    return (focusedDay || incomingPlannerDays[0] || null)?.id || null;
+  });
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const itineraryDays = localItineraries;
   const plannerQuote = {
@@ -2466,6 +2513,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
       return new Set([...current, props.focusedDayId as string]);
     });
+    setActiveDayId(props.focusedDayId);
   }, [props.focusedDayId]);
   const quoteIdRef = useRef(props.quote.id);
   const scopes: PlannerScope[] = [
@@ -2505,14 +2553,27 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
 
     setOpenDayIds((currentOpenDayIds) => {
       if (quoteChanged) {
-        return new Set(savedDayIds);
+        return new Set(savedDayIds[0] ? [props.focusedDayId || savedDayIds[0]] : []);
       }
 
       const nextOpenDayIds = new Set(currentOpenDayIds);
-      savedDayIds.forEach((dayId) => nextOpenDayIds.add(dayId));
+      if (props.focusedDayId || savedDayIds[0]) {
+        nextOpenDayIds.add(props.focusedDayId || savedDayIds[0]);
+      }
       return nextOpenDayIds;
     });
-  }, [props.quote, props.quoteItinerary]);
+    setActiveDayId((currentActiveDayId) => {
+      if (props.focusedDayId && savedDayIds.includes(props.focusedDayId)) {
+        return props.focusedDayId;
+      }
+
+      if (currentActiveDayId && savedDayIds.includes(currentActiveDayId)) {
+        return currentActiveDayId;
+      }
+
+      return savedDayIds[0] || null;
+    });
+  }, [props.focusedDayId, props.quote, props.quoteItinerary]);
 
   useEffect(() => {
     function handleDaysReady(event: Event) {
@@ -2523,7 +2584,8 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       }
 
       setLocalItineraries(detail.days);
-      setOpenDayIds(new Set(detail.days.map((day) => day.id)));
+      setOpenDayIds(new Set(detail.days[0] ? [detail.days[0].id] : []));
+      setActiveDayId(detail.days[0]?.id || null);
       setSelectedScopeId('shared');
     }
 
@@ -2545,9 +2607,16 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
     });
   }
 
+  function handleActiveDayChange(dayId: string) {
+    setActiveDayId(dayId);
+    setOpenDayIds(new Set([dayId]));
+  }
+
   const plannerState: ScopePlannerState = {
     openDayIds,
+    activeDayId,
     onDayOpenChange: handleDayOpenChange,
+    onActiveDayChange: handleActiveDayChange,
   };
 
   const tabStyles = scopes
