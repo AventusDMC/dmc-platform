@@ -18669,3 +18669,70 @@ body {
     transform: none;
   }
 }
+
+/* Quote service drawer editing model */
+.quote-service-add-primary {
+  min-height: 40px;
+  padding-inline: 0.95rem;
+  white-space: nowrap;
+}
+
+.quote-service-editor-drawer {
+  width: min(100%, 720px);
+}
+
+.quote-service-editor-panel-drawer {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.quote-service-editor-panel-drawer .quote-live-pricing-panel {
+  position: static;
+}
+
+.quote-drawer-financial-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border-radius: 1.1rem;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(167, 139, 250, 0.18), transparent 10rem),
+    #f8f5ff;
+}
+
+.quote-drawer-financial-summary div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.quote-drawer-financial-summary span {
+  color: #776f86;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.quote-drawer-financial-summary strong {
+  min-width: 0;
+  color: #21143a;
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+  font-weight: 920;
+  overflow-wrap: anywhere;
+}
+
+.quote-service-day-card-active .quote-service-current-services {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .quote-drawer-financial-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

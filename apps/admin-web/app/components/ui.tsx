@@ -239,9 +239,10 @@ type DrawerPanelProps = ComponentPropsWithoutRef<'aside'> & {
   description?: string;
   actions?: ReactNode;
   onClose?: () => void;
+  closeLabel?: string;
 };
 
-export function DrawerPanel({ open = true, title, description, actions, onClose, className, children, ...props }: DrawerPanelProps) {
+export function DrawerPanel({ open = true, title, description, actions, onClose, closeLabel = 'Close', className, children, ...props }: DrawerPanelProps) {
   if (!open) {
     return null;
   }
@@ -260,7 +261,7 @@ export function DrawerPanel({ open = true, title, description, actions, onClose,
               {actions}
               {onClose ? (
                 <button type="button" className="secondary-button" onClick={onClose}>
-                  Close
+                  {closeLabel}
                 </button>
               ) : null}
             </div>

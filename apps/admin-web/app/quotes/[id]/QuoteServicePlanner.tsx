@@ -9,7 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
-import { DayNavigation } from '../../components/ui';
+import { DayNavigation, DrawerPanel } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
@@ -1495,6 +1495,57 @@ function getLivePricingSummary(quote: Quote): LivePricingSummary {
   };
 }
 
+function ActiveServiceDrawerFinancials({
+  activeServicePanel,
+  currency,
+}: {
+  activeServicePanel: ActiveServicePanel;
+  currency: Quote['quoteCurrency'];
+}) {
+  if (activeServicePanel.kind !== 'edit') {
+    return (
+      <div className="quote-drawer-financial-summary">
+        <div>
+          <span>Cost</span>
+          <strong>Calculated in form</strong>
+        </div>
+        <div>
+          <span>Sell</span>
+          <strong>Calculated in form</strong>
+        </div>
+        <div>
+          <span>Margin</span>
+          <strong>Pending save</strong>
+        </div>
+      </div>
+    );
+  }
+
+  const item = activeServicePanel.item;
+  const itemCurrency = (item.currency as Quote['quoteCurrency']) || currency;
+  const marginAmount = calculateProfit(item.totalSell, item.totalCost);
+  const marginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
+
+  return (
+    <div className="quote-drawer-financial-summary">
+      <div>
+        <span>Cost</span>
+        <strong>{formatLiveMoney(item.totalCost, itemCurrency)}</strong>
+      </div>
+      <div>
+        <span>Sell</span>
+        <strong>{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
+      </div>
+      <div>
+        <span>Margin</span>
+        <strong>
+          {formatLiveMoney(marginAmount, itemCurrency)} / {formatMarginPercent(marginPercent)}
+        </strong>
+      </div>
+    </div>
+  );
+}
+
 function LivePricingPanel({
   apiBaseUrl,
   quote,
@@ -1637,7 +1688,7 @@ function ScopePlanner({
   const [reorderError, setReorderError] = useState('');
   const [quickAddPendingId, setQuickAddPendingId] = useState<string | null>(null);
   const [recentlyAddedItemId, setRecentlyAddedItemId] = useState<string | null>(null);
-  const editorPanelRef = useRef<HTMLElement | null>(null);
+  const editorPanelRef = useRef<HTMLDivElement | null>(null);
   const scrollToEditorPanelKeyRef = useRef<string | null>(null);
   const readiness = buildQuoteReadinessModel(plannerProps.quote, buildStepHref);
   const daySummaries = readiness.daySummaries.map((summary) => ({
@@ -2219,6 +2270,9 @@ function ScopePlanner({
                 <span className="page-tab-badge">Complete {summary.completionPercent}%</span>
                 {summary.unpricedCount > 0 ? <span className="page-tab-badge page-tab-badge-warning">Unpriced {summary.unpricedCount}</span> : null}
                 {summary.unresolvedCount > 0 ? <span className="page-tab-badge">Unresolved {summary.unresolvedCount}</span> : null}
+                <button type="button" className="primary-button quote-service-add-primary" onClick={() => openAddPanel(summary.day, dayCompletenessRules[0]?.key || 'activity')}>
+                  + Add Service
+                </button>
               </div>
             </div>
 
@@ -2301,32 +2355,33 @@ function ScopePlanner({
       })() : null}
           </DndContext>
 
-        <aside
-          ref={editorPanelRef}
-          className="quote-service-editor-panel app-card app-sticky-panel"
-          tabIndex={-1}
-          data-highlight={highlightedEditorPanelKey === activeServicePanel?.key ? 'true' : undefined}
-        >
-          <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
-          <div className="quote-service-editor-panel-head">
-            <div>
-              <p className="eyebrow">Add/Edit Service</p>
-              <h3>
-                {activeServicePanel?.kind === 'add'
-                  ? `${activeServicePanel.label} to Day ${activeServicePanel.day.dayNumber}`
-                  : activeServicePanel?.kind === 'edit'
-                    ? `Edit ${activeServicePanel.item.service.name}`
-                    : 'Select a day action'}
-              </h3>
-            </div>
-            {activeServicePanel ? (
-              <button type="button" className="secondary-button" onClick={() => setActiveServicePanel(null)}>
-                Close
-              </button>
-            ) : null}
-          </div>
+        </div>
+      </div>
 
-          {activeServicePanel ? (
+      <DrawerPanel
+        open={Boolean(activeServicePanel)}
+        title={
+          activeServicePanel?.kind === 'add'
+            ? `${activeServicePanel.label} to Day ${activeServicePanel.day.dayNumber}`
+            : activeServicePanel?.kind === 'edit'
+              ? `Edit ${activeServicePanel.item.service.name}`
+              : 'Add/Edit Service'
+        }
+        description="Edit the full service details without expanding the active day workspace."
+        onClose={() => setActiveServicePanel(null)}
+        closeLabel="Cancel"
+        className="quote-service-editor-drawer"
+      >
+        {activeServicePanel ? (
+          <div
+            ref={editorPanelRef}
+            className="quote-service-editor-panel quote-service-editor-panel-drawer"
+            tabIndex={-1}
+            data-highlight={highlightedEditorPanelKey === activeServicePanel.key ? 'true' : undefined}
+          >
+            <LivePricingPanel apiBaseUrl={plannerProps.apiBaseUrl} quote={plannerProps.quote} showAdminMetrics={plannerProps.sessionRole === 'admin'} />
+            <ActiveServiceDrawerFinancials activeServicePanel={activeServicePanel} currency={plannerProps.quote.quoteCurrency} />
+
             <div className="quote-service-editor-tabs" role="tablist" aria-label="Service categories">
               {SERVICE_PLANNER_TABS.map((tabCategory) => {
                 const tabAction = DAY_WORKFLOW_ACTIONS.find((a) => a.category === tabCategory);
@@ -2379,53 +2434,47 @@ function ScopePlanner({
                 );
               })}
             </div>
-          ) : null}
 
-          {activeServicePanel?.kind === 'add' && !activeServicePanel.formReady ? (
-            <SmartSuggestionsPanel
-              key={activeServicePanel.key}
-              category={activeServicePanel.category}
-              day={activeServicePanel.day}
-              plannerProps={plannerProps}
-              onQuickAdd={quickAddSuggestion}
-              onConfigure={openAddFormFromSuggestion}
-              onManualSelect={openManualAddForm}
-              quickAddPendingId={quickAddPendingId}
-            />
-          ) : activeServicePanel?.kind === 'add' ? (
-            <div key={activeServicePanel.key}>
-              <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
-                Change selection
-              </button>
-              <AddServiceEditorPanel
+            {activeServicePanel.kind === 'add' && !activeServicePanel.formReady ? (
+              <SmartSuggestionsPanel
+                key={activeServicePanel.key}
                 category={activeServicePanel.category}
-                label={activeServicePanel.label}
+                day={activeServicePanel.day}
+                plannerProps={plannerProps}
+                onQuickAdd={quickAddSuggestion}
+                onConfigure={openAddFormFromSuggestion}
+                onManualSelect={openManualAddForm}
+                quickAddPendingId={quickAddPendingId}
+              />
+            ) : activeServicePanel.kind === 'add' ? (
+              <div key={activeServicePanel.key}>
+                <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
+                  Change selection
+                </button>
+                <AddServiceEditorPanel
+                  category={activeServicePanel.category}
+                  label={activeServicePanel.label}
+                  plannerProps={plannerProps}
+                  optionId={activeServicePanel.optionId}
+                  day={activeServicePanel.day}
+                  selectedServiceId={activeServicePanel.selectedServiceId}
+                  selectedHotelId={activeServicePanel.selectedHotelId}
+                  selectedRouteId={activeServicePanel.selectedRouteId}
+                  onSaved={handleEditorItemSaved}
+                />
+              </div>
+            ) : (
+              <EditServiceEditorPanel
+                item={activeServicePanel.item}
                 plannerProps={plannerProps}
                 optionId={activeServicePanel.optionId}
-                day={activeServicePanel.day}
-                selectedServiceId={activeServicePanel.selectedServiceId}
-                selectedHotelId={activeServicePanel.selectedHotelId}
-                selectedRouteId={activeServicePanel.selectedRouteId}
+                dayNumber={activeServicePanel.dayNumber}
                 onSaved={handleEditorItemSaved}
               />
-            </div>
-          ) : activeServicePanel?.kind === 'edit' ? (
-            <EditServiceEditorPanel
-              item={activeServicePanel.item}
-              plannerProps={plannerProps}
-              optionId={activeServicePanel.optionId}
-              dayNumber={activeServicePanel.dayNumber}
-              onSaved={handleEditorItemSaved}
-            />
-          ) : (
-            <div className="quote-service-empty-state">
-              <strong>Select a service type to begin</strong>
-              <p>Choose Add Hotel, Transport, Activity, Meal, or External Package from a day card.</p>
-            </div>
-          )}
-        </aside>
-        </div>
-      </div>
+            )}
+          </div>
+        ) : null}
+      </DrawerPanel>
 
       {unassignedItems.length > 0 ? (
         <article className="workspace-day-card quote-service-day-card app-card">
