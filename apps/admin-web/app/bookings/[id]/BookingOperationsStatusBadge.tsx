@@ -74,28 +74,28 @@ type BookingOperationsStatusBadgeProps =
 
 export function BookingOperationsStatusBadge(props: BookingOperationsStatusBadgeProps) {
   if (props.kind === 'custom') {
-    return <span className={`booking-ops-status booking-ops-status-${props.tone}`}>{props.label}</span>;
+    return <span className={`booking-ops-status app-badge booking-ops-status-${props.tone}`}>{props.label}</span>;
   }
 
   if (props.kind === 'booking') {
-    return <span className={`booking-ops-status booking-ops-status-${getBookingTone(props.status)}`}>{formatLabel(props.status)}</span>;
+    return <span className={`booking-ops-status app-badge booking-ops-status-${getBookingTone(props.status)}`}>{formatLabel(props.status)}</span>;
   }
 
   if (props.kind === 'invoice') {
-    return <span className={`booking-ops-status booking-ops-status-${getInvoiceTone(props.status)}`}>{formatLabel(props.status)}</span>;
+    return <span className={`booking-ops-status app-badge booking-ops-status-${getInvoiceTone(props.status)}`}>{formatLabel(props.status)}</span>;
   }
 
   if (props.kind === 'supplier-payment') {
     return (
-      <span className={`booking-ops-status booking-ops-status-${getSupplierPaymentTone(props.status)}`}>{formatLabel(props.status)}</span>
+      <span className={`booking-ops-status app-badge booking-ops-status-${getSupplierPaymentTone(props.status)}`}>{formatLabel(props.status)}</span>
     );
   }
 
   if (props.kind === 'lifecycle') {
-    return <span className={`booking-ops-status booking-ops-status-${getLifecycleTone(props.status)}`}>{formatLabel(props.status)}</span>;
+    return <span className={`booking-ops-status app-badge booking-ops-status-${getLifecycleTone(props.status)}`}>{formatLabel(props.status)}</span>;
   }
 
   return (
-    <span className={`booking-ops-status booking-ops-status-${getConfirmationTone(props.status)}`}>{formatLabel(props.status)}</span>
+    <span className={`booking-ops-status app-badge booking-ops-status-${getConfirmationTone(props.status)}`}>{formatLabel(props.status)}</span>
   );
 }

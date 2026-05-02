@@ -17,7 +17,7 @@ export function BookingOperationsStatCard({
 }: BookingOperationsStatCardProps) {
   return (
     <article
-      className={`booking-ops-stat-card${tone === 'accent' ? ' booking-ops-stat-card-accent' : ''}${
+      className={`booking-ops-stat-card app-metric-card${tone === 'accent' ? ' booking-ops-stat-card-accent' : ''}${
         className ? ` ${className}` : ''
       }`}
     >

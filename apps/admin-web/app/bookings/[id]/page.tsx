@@ -1204,7 +1204,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             })}
           </nav>
 
-          <div className="booking-ops-layout">
+          {/* TODO(ui): Split booking tab bodies into shared detail panels once operations forms are separated from this server page. */}
+          <div className="booking-ops-layout app-detail-layout">
             <div className="section-stack booking-ops-main">
               {activeTab === 'overview' ? (
                 <div className="section-stack">
@@ -2366,8 +2367,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               ) : null}
             </div>
 
-            <aside className="booking-ops-sidebar">
-              <article className="workspace-section booking-ops-sidebar-card booking-dashboard-summary-card">
+            <aside className="booking-ops-sidebar app-sticky-panel">
+              <article className="workspace-section booking-ops-sidebar-card booking-dashboard-summary-card app-financial-panel">
                 <div className="workspace-section-head">
                   <div>
                     <p className="eyebrow">Summary</p>

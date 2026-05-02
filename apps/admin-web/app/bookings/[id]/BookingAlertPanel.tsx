@@ -23,7 +23,7 @@ export function BookingAlertPanel({
   emptyLabel,
 }: BookingAlertPanelProps) {
   return (
-    <article className={`booking-ops-alert-panel booking-ops-alert-panel-${tone}`}>
+    <article className={`booking-ops-alert-panel app-card booking-ops-alert-panel-${tone}`}>
       <div>
         <p className="eyebrow">{eyebrow}</p>
         <h3>{title}</h3>

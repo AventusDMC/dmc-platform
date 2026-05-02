@@ -10,7 +10,7 @@ type DashboardKpiCardProps = {
 
 export function DashboardKpiCard({ label, value, description, action, tone = 'default' }: DashboardKpiCardProps) {
   return (
-    <article className={`dashboard-kpi-card${tone === 'alert' ? ' dashboard-kpi-card-alert' : ''}`}>
+    <article className={`dashboard-kpi-card app-metric-card${tone === 'alert' ? ' dashboard-kpi-card-alert' : ''}`}>
       <div className="dashboard-kpi-head">
         <span>{label}</span>
         {action ? <div className="dashboard-kpi-action">{action}</div> : null}

@@ -18,7 +18,7 @@ export function AdvancedFiltersPanel({
   children,
 }: AdvancedFiltersPanelProps) {
   return (
-    <details className={`advanced-filters-panel operations-collapsible-panel ${className}`.trim()} open={defaultOpen}>
+    <details className={`advanced-filters-panel operations-collapsible-panel app-disclosure ${className}`.trim()} open={defaultOpen}>
       <summary className="advanced-filters-summary operations-collapsible-summary">
         <span>{title}</span>
         {description ? <span className="table-subcopy">{description}</span> : null}

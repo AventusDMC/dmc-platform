@@ -2274,7 +2274,7 @@ function ScopePlanner({
 
         <aside
           ref={editorPanelRef}
-          className="quote-service-editor-panel app-card"
+          className="quote-service-editor-panel app-card app-sticky-panel"
           tabIndex={-1}
           data-highlight={highlightedEditorPanelKey === activeServicePanel?.key ? 'true' : undefined}
         >
@@ -2437,7 +2437,11 @@ function ScopePlanner({
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const incomingPlannerDays = getPlannerDays(props.quote, props.quoteItinerary);
   const [localItineraries, setLocalItineraries] = useState(incomingPlannerDays);
-  const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(incomingPlannerDays.map((day) => day.id)));
+  const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => {
+    const focusedDay = props.focusedDayId ? incomingPlannerDays.find((day) => day.id === props.focusedDayId) : null;
+    const defaultDay = focusedDay || incomingPlannerDays[0] || null;
+    return new Set(defaultDay ? [defaultDay.id] : []);
+  });
   const [selectedScopeId, setSelectedScopeId] = useState('shared');
   const itineraryDays = localItineraries;
   const plannerQuote = {
@@ -2449,6 +2453,20 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
       quoteItems: applyPlannerDayAssignments(option.quoteItems, props.quoteItinerary),
     })),
   };
+
+  useEffect(() => {
+    if (!props.focusedDayId) {
+      return;
+    }
+
+    setOpenDayIds((current) => {
+      if (current.has(props.focusedDayId as string)) {
+        return current;
+      }
+
+      return new Set([...current, props.focusedDayId as string]);
+    });
+  }, [props.focusedDayId]);
   const quoteIdRef = useRef(props.quote.id);
   const scopes: PlannerScope[] = [
     {

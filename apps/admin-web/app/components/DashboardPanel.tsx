@@ -9,8 +9,8 @@ type DashboardPanelProps = {
 
 export function DashboardPanel({ eyebrow, title, action, children }: DashboardPanelProps) {
   return (
-    <section className="dashboard-panel">
-      <header className="dashboard-panel-header">
+    <section className="dashboard-panel app-card app-section">
+      <header className="dashboard-panel-header app-section-header">
         <div>
           {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
           <h2>{title}</h2>

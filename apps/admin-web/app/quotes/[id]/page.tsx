@@ -1744,7 +1744,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
             })}
           </nav>
 
-          <div className="quote-builder-layout">
+          {/* TODO(ui): Split the remaining quote tab bodies into shared presentational sections after the server data assembly is isolated. */}
+          <div className="quote-builder-layout app-detail-layout">
             <div className="section-stack quote-builder-main quote-builder-main-content">
 
           {activeTab === 'overview' ? (
@@ -2514,7 +2515,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           ) : null}
             </div>
 
-            <aside className="quote-builder-sidebar">
+            <aside className="quote-builder-sidebar app-sticky-panel">
+              <QuotePricingSummaryCard
+                className="quote-pricing-summary-card-dominant app-financial-panel"
+                eyebrow="Internal"
+                title="Financial summary"
+                items={[
+                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
+                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
+                  { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Internal only' },
+                  { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Internal only' },
+                ]}
+              />
+
               <QuotePricingSummaryCard
                 eyebrow="Status"
                 title="Quote status"
@@ -2552,17 +2565,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     )}
                   </div>
                 }
-              />
-
-              <QuotePricingSummaryCard
-                eyebrow="Internal"
-                title="Financial summary"
-                items={[
-                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
-                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
-                  { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Internal only' },
-                  { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Internal only' },
-                ]}
               />
 
               <QuotePricingSummaryCard
