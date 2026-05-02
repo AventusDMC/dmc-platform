@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { QuotesService } from './quotes.service';
@@ -250,7 +251,14 @@ export class ProposalV3Service {
   }
 
   private resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
-    const resolvedPath = resolve(__dirname, fileName);
+    const candidatePaths = [
+      resolve(process.cwd(), 'dist', 'quotes', fileName),
+      resolve(process.cwd(), 'apps', 'api', 'dist', 'quotes', fileName),
+      resolve(process.cwd(), 'src', 'quotes', fileName),
+      resolve(process.cwd(), 'apps', 'api', 'src', 'quotes', fileName),
+    ];
+    const resolvedPath = candidatePaths.find((candidatePath) => existsSync(candidatePath)) ?? candidatePaths[0];
+
     if (fileName === 'proposal-v3.hbs') {
       console.log('TEMPLATE PATH:', resolvedPath);
     } else {
