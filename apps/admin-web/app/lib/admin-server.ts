@@ -70,7 +70,7 @@ function normalizeAdminApiInput(input: string | URL, requestHeaders: Headers) {
 export async function adminPageFetch(input: string | URL, init: AdminPageFetchInit = {}) {
   const cookieStore = await cookies();
   const requestHeaders = await headers();
-  const pathname = requestHeaders.get('x-dmc-pathname') || '/';
+  const pathname = requestHeaders.get('x-dmc-pathname') || requestHeaders.get('next-url') || '/';
   const sessionToken = cookieStore.get('dmc_session')?.value || '';
 
   if (!sessionToken && !init.allowAnonymous) {
