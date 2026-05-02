@@ -967,17 +967,6 @@ export function QuoteItemsForm({
     return () => abortController.abort();
   }, [isTransportService]);
 
-  useEffect(() => {
-    if (!isTransportService) {
-      return;
-    }
-
-    console.log('QuoteItemsForm transport candidates debug', {
-      rawCandidatesFromBackend: resolvedTransportPricing?.candidates || [],
-      filteredTransportCandidates: transportCandidates,
-    });
-  }, [isTransportService, resolvedTransportPricing?.candidates, transportCandidates]);
-
   const hasPrimarySelection = isEditing || isExternalPackageService || (isHotelService ? Boolean(hotelId) : Boolean(serviceId));
   const needsServiceSelection = !isEditing && Boolean(activeServiceType) && activeServiceType !== 'hotel' && activeServiceType !== 'externalPackage' && !serviceId;
   const selectionStepTitle =
@@ -1057,6 +1046,14 @@ export function QuoteItemsForm({
     ) || null;
   const hotelCheckInDate = isHotelService ? serviceDate || travelStartDate?.slice(0, 10) || '' : '';
   const hotelCheckOutDate = hotelCheckInDate ? addDaysToDateString(hotelCheckInDate, Math.max(1, Number(nightCount || 1))) : '';
+  const hotelPreviewNights = Math.max(1, Number(nightCount || 1));
+  const hotelPreviewRooms = Math.max(1, Number(roomCount || 1));
+  const hotelPreviewPax = Math.max(1, Number(paxCount || 1));
+  const hotelPreviewPricingBasis = selectedHotelRate?.pricingBasis || null;
+  const hotelPreviewMultiplierLabel =
+    hotelPreviewPricingBasis === 'PER_PERSON'
+      ? `${hotelPreviewPax} pax`
+      : `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
   const displayCurrency = isExternalPackageService
     ? externalPackage.currency
     : isMealService
@@ -1094,6 +1091,10 @@ export function QuoteItemsForm({
 
     return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
   }, [finalCost, markupAmount, markupPercent, sellPrice]);
+  const finalMargin =
+    finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
+      ? Number((finalSellPrice - finalCost).toFixed(2))
+      : null;
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const activityIssues =
@@ -1190,7 +1191,7 @@ export function QuoteItemsForm({
     }
 
     if (isHotelService) {
-      setBaseCost(hotelCostCalculation ? String(hotelCostCalculation.totalCost) : selectedHotelRate ? String(selectedHotelRate.cost) : '');
+      setBaseCost(selectedHotelRate ? String(selectedHotelRate.cost) : '');
       return;
     }
 
@@ -1256,7 +1257,6 @@ export function QuoteItemsForm({
     isTransportService,
     externalPackage.netCost,
     externalPackage.pricingBasis,
-    hotelCostCalculation,
     paxCount,
     mealCost,
     mealCurrency,
@@ -1279,7 +1279,16 @@ export function QuoteItemsForm({
       return;
     }
 
-    if (!hotelId || !hotelCheckInDate || !hotelCheckOutDate || !occupancyType || !mealPlan || !(Number(paxCount) > 0)) {
+    if (
+      !hotelId ||
+      !contractId ||
+      !roomCategoryId ||
+      !hotelCheckInDate ||
+      !hotelCheckOutDate ||
+      !occupancyType ||
+      !mealPlan ||
+      !(Number(paxCount) > 0)
+    ) {
       setHotelCostCalculation(null);
       setIsLoadingHotelCost(false);
       if (hotelCostDebounceRef.current) {
@@ -1291,11 +1300,15 @@ export function QuoteItemsForm({
 
     const params = new URLSearchParams({
       hotelId,
+      contractId,
+      roomCategoryId,
       checkInDate: hotelCheckInDate,
       checkOutDate: hotelCheckOutDate,
+      nightCount: String(Number(nightCount) || 1),
       occupancy: occupancyType,
       mealPlan,
       pax: String(Number(paxCount) || 1),
+      roomCount: String(Number(roomCount) || 1),
     });
     const requestKey = params.toString();
 
@@ -1327,7 +1340,6 @@ export function QuoteItemsForm({
           }
 
           setHotelCostCalculation(result);
-          setBaseCost(String(result.totalCost));
         })
         .catch((caughtError) => {
           if (hotelCostLastRequestedKeyRef.current !== requestKey) {
@@ -1351,7 +1363,7 @@ export function QuoteItemsForm({
         hotelCostDebounceRef.current = null;
       }
     };
-  }, [hotelCheckInDate, hotelCheckOutDate, hotelId, isHotelService, mealPlan, occupancyType, paxCount]);
+  }, [contractId, hotelCheckInDate, hotelCheckOutDate, hotelId, isHotelService, mealPlan, nightCount, occupancyType, paxCount, roomCategoryId, roomCount]);
 
   useEffect(() => {
     if (!isHotelService) {
@@ -2996,19 +3008,17 @@ export function QuoteItemsForm({
               </label>
 
               <label>
-                Contract pricing
+                Selected unit rate
                 <input
                   value={
-                    hotelCostCalculation
-                      ? `${displayCurrency} ${Number(hotelCostCalculation.totalCost || 0).toFixed(2)}`
+                    activeHotelSourceRate
+                      ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
                       : isLoadingHotelCost
                         ? 'Loading contract pricing...'
-                        : activeHotelSourceRate
-                          ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
                         : ''
                   }
                   readOnly
-                  placeholder="Select hotel dates and rate inputs"
+                  placeholder="Select hotel rate inputs"
                 />
               </label>
             </div>
@@ -3027,12 +3037,20 @@ export function QuoteItemsForm({
               </div>
               <div className="quote-preview-total-list quote-hotel-source-summary">
                 <div>
-                  <span>Source cost</span>
+                  <span>Selected unit rate</span>
                   <strong>
                     {activeHotelSourceRate
                       ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
                       : 'Pricing to be confirmed'}
                   </strong>
+                </div>
+                <div>
+                  <span>Nights</span>
+                  <strong>{hotelCostCalculation?.nights || hotelPreviewNights}</strong>
+                </div>
+                <div>
+                  <span>Multiplier</span>
+                  <strong>{hotelPreviewMultiplierLabel}</strong>
                 </div>
                 <div>
                   <span>Context</span>
@@ -3042,7 +3060,7 @@ export function QuoteItemsForm({
               {hotelCostCalculation ? (
                 <div className="quote-preview-total-list quote-hotel-nightly-breakdown">
                   <div>
-                    <span>Total contract cost</span>
+                    <span>Calculated total</span>
                     <strong>
                       {displayCurrency} {Number(hotelCostCalculation.totalCost || 0).toFixed(2)}
                     </strong>
@@ -3184,7 +3202,7 @@ export function QuoteItemsForm({
                 {routeId ? <span className="page-tab-badge">Route selected</span> : null}
               </div>
 
-              <div className="form-row form-row-3">
+              <div className="quote-transport-step-fields">
                 <label>
                   Transport type
                   <select
@@ -3217,7 +3235,13 @@ export function QuoteItemsForm({
                     <p>Routes will appear after active pricing rules are loaded.</p>
                   </div>
                 ) : hasTransportRoutes ? (
-                  <div className={showTransportRouteRequired ? 'quote-transport-route-required' : undefined}>
+                  <div
+                    className={
+                      showTransportRouteRequired
+                        ? 'quote-transport-route-field quote-transport-route-required'
+                        : 'quote-transport-route-field'
+                    }
+                  >
                     <RouteCombobox
                       label="Route *"
                       routes={validTransportRoutes}
@@ -3237,6 +3261,7 @@ export function QuoteItemsForm({
                     {showTransportRouteRequired ? (
                       <p className="form-error">Choose a route before transport pricing can be calculated.</p>
                     ) : null}
+                    <p className="form-helper">Only routes with active pricing are shown.</p>
                   </div>
                 ) : (
                   <div className="quote-transport-route-empty">
@@ -3278,6 +3303,11 @@ export function QuoteItemsForm({
                       ? `${selectedTransportCandidate.vehicle.id}:${selectedTransportCandidate.serviceType.id}:${selectedTransportCandidate.routeId || selectedTransportCandidate.routeName}:${selectedTransportCandidate.supplier?.id || ''}`
                       : null;
                     const isCurrentCandidate = candidateKey === selectedCandidateKey;
+                    const candidateSellPreview = sellPrice.trim()
+                      ? Number(sellPrice)
+                      : markupAmount.trim()
+                        ? Number((candidate.price + Number(markupAmount)).toFixed(2))
+                        : Number((candidate.price * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
 
                     return (
                       <button
@@ -3299,9 +3329,12 @@ export function QuoteItemsForm({
                               {candidate.isBestValue ? <span className="status-badge">Cheapest</span> : null}
                             </span>
                           </span>
-                          <strong className="quote-transport-suggestion-price">
-                            {candidate.currency} {candidate.price.toFixed(2)}
-                          </strong>
+                          <span className="quote-transport-price-stack">
+                            <span>Cost {candidate.currency} {candidate.price.toFixed(2)}</span>
+                            <strong className="quote-transport-suggestion-price">
+                              Sell {candidate.currency} {candidateSellPreview.toFixed(2)}
+                            </strong>
+                          </span>
                         </span>
                         <span className="quote-transport-suggestion-details">
                           <span>{candidate.vehicle.maxPax} pax capacity</span>
@@ -3337,25 +3370,47 @@ export function QuoteItemsForm({
 
               {resolvedTransportPricing ? (
                 <div className="quote-selected-transport-card">
-                  <div className="quote-selected-transport-explanation">
-                    <strong>{resolvedTransportPricing.vehicle.name}</strong>
-                    <p>
-                      Supplier: {formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)} | Pax {Number(paxCount) || defaultPaxCount || 1}
-                      {resolvedTransportPricing.unitCount && resolvedTransportPricing.unitCapacity
-                        ? ` -> ${resolvedTransportPricing.unitCount} unit${resolvedTransportPricing.unitCount === 1 ? '' : 's'} (${resolvedTransportPricing.unitCapacity} pax each)`
-                        : ''}
-                    </p>
-                    <p>
-                      {resolvedTransportPricing.currency} {resolvedTransportPricing.price.toFixed(2)} | {formatServiceTypeLabel(resolvedTransportPricing.serviceType.name)} | {formatRouteLabel(resolvedTransportPricing.routeName)}
-                    </p>
-                    {transportRecommendationReasons.length > 0 ? (
+                  <div className="quote-selected-transport-summary">
+                    <div>
+                      <span>Route</span>
+                      <strong>{formatRouteLabel(resolvedTransportPricing.routeName)}</strong>
+                    </div>
+                    <div>
+                      <span>Vehicle</span>
+                      <strong>{resolvedTransportPricing.vehicle.name}</strong>
+                    </div>
+                    <div>
+                      <span>Supplier</span>
+                      <strong>{formatSupplierName(resolvedTransportPricing.supplier?.name, resolvedTransportPricing.supplier?.id)}</strong>
+                    </div>
+                    <div>
+                      <span>Cost</span>
+                      <strong>
+                        {resolvedTransportPricing.currency} {finalCost !== null ? finalCost.toFixed(2) : resolvedTransportPricing.price.toFixed(2)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Sell</span>
+                      <strong>
+                        {displayCurrency} {finalSellPrice !== null && Number.isFinite(finalSellPrice) ? finalSellPrice.toFixed(2) : '0.00'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Margin</span>
+                      <strong>
+                        {displayCurrency} {finalMargin !== null ? finalMargin.toFixed(2) : '0.00'}
+                      </strong>
+                    </div>
+                  </div>
+                  {transportRecommendationReasons.length > 0 ? (
+                    <div className="quote-selected-transport-explanation">
                       <ul>
                         {transportRecommendationReasons.map((reason) => (
                           <li key={reason}>{reason}</li>
                         ))}
                       </ul>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="quote-service-empty-state">
@@ -3363,6 +3418,21 @@ export function QuoteItemsForm({
                   <p>The Add Transport button is enabled after a priced vehicle and supplier option is selected.</p>
                 </div>
               )}
+
+              <button
+                type="submit"
+                className="quote-transport-add-button"
+                disabled={
+                  isSubmitting ||
+                  isLoadingTransportCost ||
+                  filteredServices.length === 0 ||
+                  !selectedService ||
+                  showTransportRouteRequired ||
+                  !isTransportVehicleSelected
+                }
+              >
+                {isSubmitting ? 'Saving...' : 'Add Transport'}
+              </button>
             </section>
           ) : null}
 
@@ -3433,14 +3503,6 @@ export function QuoteItemsForm({
                 </label>
               </div>
 
-              {resolvedTransportPricing?.pricingMode === 'capacity_unit' &&
-              resolvedTransportPricing.unitCount &&
-              resolvedTransportPricing.discountedBaseCost !== undefined ? (
-                <p className="form-helper">
-                  {`${resolvedTransportPricing.currency} ${resolvedTransportPricing.discountedBaseCost.toFixed(2)} per unit -> ${resolvedTransportPricing.unitCount} units -> ${resolvedTransportPricing.currency} ${resolvedTransportPricing.price.toFixed(2)} total`}
-                </p>
-              ) : null}
-
               {transportAddOnRows.length > 0 ? (
                 <div className="quote-selected-transport-card">
                   <div className="panel-header" style={{ marginBottom: 12 }}>
@@ -3509,7 +3571,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection ? (
+          {hasPrimarySelection && !isTransportService ? (
             <button
               type="submit"
               disabled={
