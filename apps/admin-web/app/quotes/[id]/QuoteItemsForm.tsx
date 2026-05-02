@@ -2945,9 +2945,10 @@ export function QuoteItemsForm({
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 2</p>
-                  <h3>Choose contract and room</h3>
-                  <p className="detail-copy">{selectedHotel?.name || 'Selected hotel'} is selected. Now choose the rate source.</p>
+                  <h3>Choose contract/rate</h3>
+                  <p className="detail-copy">Select the contracted room rate. Preview totals use the selected rate as a unit rate.</p>
                 </div>
+                {selectedHotelRate ? <span className="page-tab-badge">Rate selected</span> : null}
               </div>
 
               <div className="form-row form-row-3">
@@ -3012,97 +3013,66 @@ export function QuoteItemsForm({
                     ))}
                   </select>
                 </label>
-              </div>
-            </section>
-          ) : null}
 
-          {isHotelService && hotelId ? (
-            <div className="form-row form-row-4">
-              <label>
-                Occupancy
-                <select
-                  value={occupancyType}
-                  onChange={(event) => setOccupancyType(event.target.value as 'SGL' | 'DBL' | 'TPL')}
-                  required
-                  disabled={occupancyOptions.length === 0}
-                >
-                  {occupancyOptions.length === 0 ? <option value="">No occupancies in hotel rates</option> : null}
-                  {occupancyOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label>
+                    Occupancy
+                    <select
+                      value={occupancyType}
+                      onChange={(event) => setOccupancyType(event.target.value as 'SGL' | 'DBL' | 'TPL')}
+                      required
+                      disabled={occupancyOptions.length === 0}
+                    >
+                      {occupancyOptions.length === 0 ? <option value="">No occupancies in hotel rates</option> : null}
+                      {occupancyOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Meal plan
-                <select
-                  value={mealPlan}
-                  onChange={(event) => setMealPlan(event.target.value as 'BB' | 'HB' | 'FB')}
-                  required
-                  disabled={mealPlanOptions.length === 0}
-                >
-                  {mealPlanOptions.length === 0 ? <option value="">No meal plans in hotel rates</option> : null}
-                  {mealPlanOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label>
+                    Meal plan
+                    <select
+                      value={mealPlan}
+                      onChange={(event) => setMealPlan(event.target.value as 'BB' | 'HB' | 'FB')}
+                      required
+                      disabled={mealPlanOptions.length === 0}
+                    >
+                      {mealPlanOptions.length === 0 ? <option value="">No meal plans in hotel rates</option> : null}
+                      {mealPlanOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-              <label>
-                Check-in date
-                <input value={hotelCheckInDate} onChange={(event) => setServiceDate(event.target.value)} type="date" required />
-              </label>
+                  <label>
+                    Selected unit rate
+                    <input
+                      value={
+                        activeHotelSourceRate
+                          ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
+                          : isLoadingHotelCost
+                            ? 'Loading rate...'
+                            : ''
+                      }
+                      readOnly
+                      placeholder="Select rate inputs"
+                    />
+                  </label>
 
-              <label>
-                Check-out date
-                <input value={hotelCheckOutDate} readOnly />
-              </label>
+                  <label>
+                    Pricing basis
+                    <input value={hotelPreviewPricingBasis} readOnly />
+                  </label>
+                </div>
 
-              <label>
-                Room count
-                <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
-              </label>
-
-              <label>
-                Selected unit rate
-                <input
-                  value={
-                    activeHotelSourceRate
-                      ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
-                      : isLoadingHotelCost
-                        ? 'Loading contract pricing...'
-                        : ''
-                  }
-                  readOnly
-                  placeholder="Select hotel rate inputs"
-                />
-              </label>
-            </div>
-          ) : null}
-
-          {isHotelService && hotelId ? (
-            <div className="quote-hotel-source-panel">
-              <div>
-                <p className="eyebrow">Source Contract Rate</p>
-                <h4>{activeHotelSourceRate ? activeHotelSourceRate.roomCategoryLabel : 'No source rate selected yet'}</h4>
-                <p className="detail-copy">
-                  {activeHotelSourceRate
-                    ? `${activeHotelSourceRate.mealPlan} board - ${activeHotelSourceRate.occupancyType} occupancy`
-                    : 'Use the hotel workflow modal to inspect contract rates and choose one as the source reference.'}
-                </p>
-              </div>
               <div className="quote-preview-total-list quote-hotel-source-summary">
                 <div>
-                  <span>Selected unit rate</span>
-                  <strong>
-                    {activeHotelSourceRate
-                      ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)}`
-                      : 'Pricing to be confirmed'}
-                  </strong>
+                  <span>Unit rate</span>
+                  <strong>{displayCurrency} {hotelPreviewUnitRate.toFixed(2)}</strong>
                 </div>
                 <div>
                   <span>Nights</span>
@@ -3113,66 +3083,115 @@ export function QuoteItemsForm({
                   <strong>{hotelPreviewMultiplierLabel}</strong>
                 </div>
                 <div>
-                  <span>Context</span>
-                  <strong>{activeHotelSourceRate?.note || 'Select a contract rate'}</strong>
+                  <span>Total cost</span>
+                  <strong>
+                    {isLoadingHotelCost ? 'Loading...' : `${displayCurrency} ${hotelCalculatedTotalCost.toFixed(2)}`}
+                  </strong>
+                </div>
+                <div>
+                  <span>Sell total</span>
+                  <strong>{displayCurrency} {hotelPreviewSellTotal.toFixed(2)}</strong>
                 </div>
               </div>
-              {hotelCostCalculation ? (
-                <div className="quote-preview-total-list quote-hotel-nightly-breakdown">
-                  <div>
-                    <span>Calculated total</span>
-                    <strong>
-                      {displayCurrency} {Number(hotelCostCalculation.totalCost || 0).toFixed(2)}
-                    </strong>
-                  </div>
-                  {hotelCostCalculation.breakdown.map((night) => (
-                    <div key={night.date}>
-                      <span>{night.date}</span>
-                      <strong>
-                        {displayCurrency} {Number(night.cost || 0).toFixed(2)}
-                      </strong>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {selectedHotelContract?.ratePolicies?.length ? (
-                <div className="quote-preview-total-list">
-                  {selectedHotelContract.ratePolicies.map((policy, index) => (
-                    <div key={`${policy.policyType}-${index}`}>
-                      <span>{policy.policyType.replace(/_/g, ' ')}</span>
-                      <strong>{formatRatePolicy(policy, selectedHotelContract.currency || displayCurrency)}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            </section>
           ) : null}
 
           {isHotelService && hotelId ? (
-            <div className="quote-hotel-override-panel">
-              <div className="quote-hotel-override-panel-head">
+            <section className="quote-hotel-step-panel">
+              <div className="quote-hotel-step-head">
                 <div>
-                  <p className="eyebrow">Quote-only Override</p>
-                  <h4>Override contract rate for this quote</h4>
-                  <p className="detail-copy">This affects this quote only.</p>
+                  <p className="eyebrow">Step 3</p>
+                  <h3>Confirm hotel</h3>
+                  <p className="detail-copy">Review the stay totals before adding this hotel to the quote.</p>
                 </div>
-                <label className="quote-item-override-toggle">
-                  <span>Override contract rate for this quote</span>
-                  <input checked={useOverride} onChange={(event) => setUseOverride(event.target.checked)} type="checkbox" />
-                </label>
               </div>
 
-              {useOverride ? (
-                <div className="quote-hotel-override-grid">
-                  <label className="quote-item-override quote-item-override-active">
-                    <span>Quote-only override cost</span>
+              <div className="quote-preview-total-list quote-hotel-source-summary">
+                <div>
+                  <span>Hotel</span>
+                  <strong>{selectedHotel?.name || 'Select hotel'}</strong>
+                </div>
+                <div>
+                  <span>Dates</span>
+                  <strong>{hotelCheckInDate && hotelCheckOutDate ? `${hotelCheckInDate} to ${hotelCheckOutDate}` : 'Select dates'}</strong>
+                </div>
+                <div>
+                  <span>Rooms / pax</span>
+                  <strong>{hotelPreviewRooms} room{hotelPreviewRooms === 1 ? '' : 's'} / {hotelPreviewPax} pax</strong>
+                </div>
+                <div>
+                  <span>Unit rate</span>
+                  <strong>{displayCurrency} {hotelPreviewUnitRate.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Total cost</span>
+                  <strong>{displayCurrency} {hotelEffectiveTotalCost.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Total sell</span>
+                  <strong>{displayCurrency} {hotelPreviewSellTotal.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span>Margin</span>
+                  <strong>{displayCurrency} {hotelPreviewMargin !== null ? hotelPreviewMargin.toFixed(2) : '0.00'}</strong>
+                </div>
+              </div>
+
+              <details className="quote-advanced-settings" open={useOverride || Boolean(manualHotelRateDraft)}>
+                <summary>More options</summary>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    Markup %
+                    <input
+                      value={markupPercent}
+                      onChange={(event) => setMarkupPercent(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Markup amount
+                    <input
+                      value={markupAmount}
+                      onChange={(event) => setMarkupAmount(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Overrides percent"
+                    />
+                  </label>
+
+                  <label>
+                    Sell total override
+                    <input
+                      value={sellPrice}
+                      onChange={(event) => setSellPrice(event.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Optional"
+                    />
+                  </label>
+
+                  <label className="quote-item-override-toggle">
+                    <span>Use cost override</span>
+                    <input checked={useOverride} onChange={(event) => setUseOverride(event.target.checked)} type="checkbox" />
+                  </label>
+
+                  <label className={useOverride ? 'quote-item-override quote-item-override-active' : 'quote-item-override'}>
+                    <span>Override total cost</span>
                     <input
                       value={overrideCost}
                       onChange={(event) => setOverrideCost(event.target.value)}
                       type="number"
                       min="0"
                       step="0.01"
-                      placeholder="Enter quote-only hotel cost"
+                      disabled={!useOverride}
+                      placeholder="Quote-only total"
                     />
                   </label>
 
@@ -3181,74 +3200,53 @@ export function QuoteItemsForm({
                     <input
                       value={overrideReason}
                       onChange={(event) => setOverrideReason(event.target.value)}
-                      placeholder="Reason for this quote-only rate"
+                      disabled={!useOverride}
+                      placeholder="Reason for this quote-only total"
                     />
                   </label>
+                </div>
 
-                  <div className="quote-item-override-status quote-item-override-status-active">
-                    <strong>Manual override applied</strong>
-                    <span>
-                      {finalCost !== null && Number.isFinite(finalCost)
-                        ? `Final cost ${displayCurrency} ${finalCost.toFixed(2)}`
-                        : 'Enter a quote-only override or use the popup below.'}
-                    </span>
+                <div className="quote-hotel-rate-helper">
+                  <div>
+                    <strong>Quote-only hotel rate</strong>
+                    <p>Use the popup only when this quote needs a manual hotel override.</p>
                   </div>
+                  <button type="button" className="secondary-button" onClick={() => setShowHotelRateModal(true)}>
+                    Open Override Popup
+                  </button>
                 </div>
-              ) : (
-                <div className="quote-item-override-status">
-                  <strong>Using source contract rate</strong>
-                  <span>
-                    {baseCost
-                      ? `Final cost ${displayCurrency} ${Number(baseCost).toFixed(2)}`
-                      : activeHotelSourceRate
-                        ? `${activeHotelSourceRate.currency} ${Number(activeHotelSourceRate.cost || 0).toFixed(2)} from the selected contract reference`
-                        : 'Choose a source rate first, or enable quote-only override.'}
-                  </span>
-                </div>
-              )}
-            </div>
-          ) : null}
 
-          {isHotelService && hotelId ? (
-            <div className="quote-hotel-rate-helper">
-              <div>
-                <strong>Need a quote-only hotel price input?</strong>
-                <p>
-                  Open the hotel rate popup to enter or copy quote-only override rows without changing hotel master data.
-                </p>
-              </div>
-              <button type="button" className="secondary-button" onClick={() => setShowHotelRateModal(true)}>
-                Open Quote Override Popup
+                {manualHotelRateDraft ? (
+                  <div className="quote-preview-total-list quote-hotel-rate-inline-summary">
+                    <div>
+                      <span>Override room type</span>
+                      <strong>
+                        {roomCategoryOptions.find((category) => category.id === manualHotelRateDraft.roomCategoryId)?.name || 'Selected room'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Override basis</span>
+                      <strong>{manualHotelRateDraft.mealPlan} / {manualHotelRateDraft.occupancyType}</strong>
+                    </div>
+                    <div>
+                      <span>Override cost / sell</span>
+                      <strong>
+                        {displayCurrency} {Number(manualHotelRateDraft.cost || 0).toFixed(2)} / {displayCurrency}{' '}
+                        {Number(manualHotelRateDraft.sell || 0).toFixed(2)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Override note</span>
+                      <strong>{manualHotelRateDraft.notes || 'No notes'}</strong>
+                    </div>
+                  </div>
+                ) : null}
+              </details>
+
+              <button type="submit" disabled={isSubmitting || isLoadingHotelCost || !isHotelPricingReady}>
+                {isSubmitting ? 'Saving...' : 'Add Hotel'}
               </button>
-            </div>
-          ) : null}
-
-          {isHotelService && manualHotelRateDraft ? (
-            <div className="quote-preview-total-list quote-hotel-rate-inline-summary">
-              <div>
-                <span>Override room type</span>
-                <strong>
-                  {roomCategoryOptions.find((category) => category.id === manualHotelRateDraft.roomCategoryId)?.name || 'Selected room'}
-                </strong>
-              </div>
-              <div>
-                <span>Override basis</span>
-                <strong>
-                  {manualHotelRateDraft.mealPlan} / {manualHotelRateDraft.occupancyType}
-                </strong>
-              </div>
-              <div>
-                <span>Quote-only cost / sell</span>
-                <strong>
-                  {displayCurrency} {Number(manualHotelRateDraft.cost || 0).toFixed(2)} / {displayCurrency}{' '}
-                  {Number(manualHotelRateDraft.sell || 0).toFixed(2)}
-                </strong>
-              </div>
-              <div>
-                <span>Override note</span>
-                <strong>{manualHotelRateDraft.notes || 'No notes'}</strong>
-              </div>
-            </div>
+            </section>
           ) : null}
 
           {isTransportService ? (
