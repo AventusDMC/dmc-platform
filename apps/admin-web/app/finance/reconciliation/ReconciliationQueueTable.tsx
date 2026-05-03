@@ -57,12 +57,19 @@ type ReconciliationQueueTableProps = {
   };
 };
 
-function formatMoney(amount: number, currency = 'USD') {
+function formatMoney(amount: number | null | undefined, currency = 'USD') {
+  const numericAmount = Number(amount);
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency,
+    currency: currency || 'USD',
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
+}
+
+function formatMatchPercent(value: number | null | undefined) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? `${numericValue.toFixed(1)}%` : 'Unavailable';
 }
 
 function formatDateTime(value: string | null) {
@@ -581,7 +588,7 @@ export function ReconciliationQueueTable({ items, dailySummary }: Reconciliation
                       <div className="table-subcopy">Submitted amount {formatMoney(item.submittedProofAmount)}</div>
                     ) : null}
                     <div className="table-subcopy">
-                      Match {item.matchPct !== null ? `${item.matchPct.toFixed(1)}%` : 'Unavailable'} | {item.confidence}
+                      Match {formatMatchPercent(item.matchPct)} | {item.confidence}
                     </div>
                     {receiptHref ? (
                       <div className="table-subcopy">
@@ -691,7 +698,7 @@ export function ReconciliationQueueTable({ items, dailySummary }: Reconciliation
                   </div>
                   <div className="finance-reconciliation-review-meta">
                     <span>{formatMoney(item.paymentAmount)}</span>
-                    <span>{item.matchPct !== null ? `${item.matchPct.toFixed(1)}% match` : 'Match unavailable'}</span>
+                    <span>{item.matchPct !== null ? `${formatMatchPercent(item.matchPct)} match` : 'Match unavailable'}</span>
                   </div>
                 </div>
               ))}

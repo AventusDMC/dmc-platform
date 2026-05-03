@@ -43,8 +43,19 @@ type FinanceBookingsTableProps = {
   bookings: FinanceBooking[];
 };
 
-function formatMoney(amount: number, currency = 'USD') {
-  return `${currency} ${amount.toFixed(2)}`;
+function formatMoney(amount: number | null | undefined, currency = 'USD') {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
+
+  return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatPercent(value: number | null | undefined) {
+  const numericValue = Number(value);
+  return `${(Number.isFinite(numericValue) ? numericValue : 0).toFixed(2)}%`;
 }
 
 function formatBookingStatus(status: string) {
@@ -92,14 +103,14 @@ export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
                   <strong>{formatMoney(booking.finance.quotedTotalSell)}</strong>
                   <div className="table-subcopy">Cost {formatMoney(booking.finance.quotedTotalCost)}</div>
                   <div className="table-subcopy" style={{ color: getMarginColor(booking.finance.quotedMarginPercent < 0 ? 'negative' : booking.finance.hasLowMargin ? 'low' : 'positive') }}>
-                    Margin {booking.finance.quotedMarginPercent.toFixed(2)}%
+                    Margin {formatPercent(booking.finance.quotedMarginPercent)}
                   </div>
                 </td>
                 <td>
                   <strong>{formatMoney(booking.finance.realizedTotalSell)}</strong>
                   <div className="table-subcopy">Cost {formatMoney(booking.finance.realizedTotalCost)}</div>
                   <div className="table-subcopy" style={{ color: getMarginColor(booking.finance.realizedMarginPercent < 0 ? 'negative' : booking.finance.hasLowMargin ? 'low' : 'positive') }}>
-                    Margin {booking.finance.realizedMarginPercent.toFixed(2)}%
+                    Margin {formatPercent(booking.finance.realizedMarginPercent)}
                   </div>
                 </td>
                 <td>

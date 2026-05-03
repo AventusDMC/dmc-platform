@@ -69,18 +69,22 @@ function normalizeMarginRows(value: unknown): MarginReportRow[] {
   });
 }
 
-function formatMoney(value: number) {
+function formatMoney(value: number | null | undefined) {
+  const numericValue = Number(value);
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 2,
-  }).format(value || 0);
+  }).format(Number.isFinite(numericValue) ? numericValue : 0);
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null | undefined) {
+  const numericValue = Number(value);
+
   return `${new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 2,
-  }).format(value || 0)}%`;
+  }).format(Number.isFinite(numericValue) ? numericValue : 0)}%`;
 }
 
 export default async function MarginReportPage({ searchParams }: MarginReportPageProps) {

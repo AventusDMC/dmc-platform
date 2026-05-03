@@ -69,15 +69,19 @@ type FinanceDashboardSectionProps = {
   summary: FinanceDashboardSummary;
 };
 
-function formatMoney(amount: number, currency = 'USD') {
-  return `${currency || 'USD'} ${(amount || 0).toLocaleString('en-US', {
+function formatMoney(amount: number | null | undefined, currency = 'USD') {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
+
+  return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function formatPercent(value: number) {
-  return `${value.toFixed(1)}%`;
+function formatPercent(value: number | null | undefined) {
+  const numericValue = Number(value);
+  return `${(Number.isFinite(numericValue) ? numericValue : 0).toFixed(1)}%`;
 }
 
 function formatDate(value: string | null) {
@@ -104,11 +108,13 @@ function getTrendArrow(direction: FinanceTrend['direction']) {
 
 function formatTrend(trend: FinanceTrend) {
   if (trend.unit === 'pp') {
-    const delta = Number.isInteger(Math.abs(trend.delta)) ? Math.abs(trend.delta).toFixed(0) : Math.abs(trend.delta).toFixed(1);
+    const safeDelta = Number.isFinite(Number(trend.delta)) ? Math.abs(Number(trend.delta)) : 0;
+    const delta = Number.isInteger(safeDelta) ? safeDelta.toFixed(0) : safeDelta.toFixed(1);
     return `${getTrendArrow(trend.direction)} ${delta}pp`;
   }
 
-  const percent = Number.isInteger(trend.changePercent) ? trend.changePercent.toFixed(0) : trend.changePercent.toFixed(1);
+  const safePercent = Number.isFinite(Number(trend.changePercent)) ? Number(trend.changePercent) : 0;
+  const percent = Number.isInteger(safePercent) ? safePercent.toFixed(0) : safePercent.toFixed(1);
   return `${getTrendArrow(trend.direction)} ${percent}%`;
 }
 

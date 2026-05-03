@@ -111,7 +111,7 @@ export function LeadsTable({ apiBaseUrl, leads }: LeadsTableProps) {
                       {convertDisabled ? (
                         <span className="compact-button leads-crm-action-disabled">{statusTone === 'converted' ? 'Converted' : 'Closed'}</span>
                       ) : (
-                        <Link href={`/quotes/new?leadId=${lead.id}`} className="compact-button">
+                        <Link href={`/quotes/new?leadId=${lead.id}`} className="compact-button leads-crm-convert-action">
                           Convert to Quote
                         </Link>
                       )}

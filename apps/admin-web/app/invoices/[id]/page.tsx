@@ -77,8 +77,14 @@ async function getInvoice(id: string): Promise<InvoiceDetail | null> {
   });
 }
 
-function formatMoney(amount: number, currency = 'USD') {
-  return `${currency} ${amount.toFixed(2)}`;
+function formatMoney(amount: number | null | undefined, currency = 'USD') {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
+
+  return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatDate(value: string | null) {
