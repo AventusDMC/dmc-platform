@@ -2,9 +2,7 @@ import { AdvancedFiltersPanel } from '../components/AdvancedFiltersPanel';
 import Link from 'next/link';
 import { LeadsForm } from './LeadsForm';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
-import { CompactFilterBar } from '../components/CompactFilterBar';
 import { ModuleSwitcher } from '../components/ModuleSwitcher';
-import { PageActionBar } from '../components/PageActionBar';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
@@ -22,6 +20,12 @@ type Lead = {
   source: string | null;
   status: string;
   createdAt: string;
+  clientName: string | null;
+  tripRequest: string | null;
+  travelStartDate: string | null;
+  travelEndDate: string | null;
+  pax: number | null;
+  assignedAgentName: string | null;
 };
 
 function normalizeLead(value: unknown): Lead | null {
@@ -42,7 +46,47 @@ function normalizeLead(value: unknown): Lead | null {
     source: typeof lead.source === 'string' ? lead.source : null,
     status: typeof lead.status === 'string' && lead.status.trim() ? lead.status : 'new',
     createdAt: typeof lead.createdAt === 'string' ? lead.createdAt : '',
+    clientName: getOptionalString(lead.clientName) || getOptionalString(lead.companyName) || getOptionalString(lead.client),
+    tripRequest: getOptionalString(lead.tripRequest) || getOptionalString(lead.requestTitle) || null,
+    travelStartDate: getOptionalString(lead.travelStartDate) || getOptionalString(lead.startDate),
+    travelEndDate: getOptionalString(lead.travelEndDate) || getOptionalString(lead.endDate),
+    pax: getOptionalNumber(lead.pax) ?? getOptionalNumber(lead.guestCount) ?? null,
+    assignedAgentName: getOptionalString(lead.assignedAgentName) || getNestedName(lead.assignedAgent) || getNestedName(lead.agent),
   };
+}
+
+function getOptionalString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function getOptionalNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+
+  return null;
+}
+
+function getNestedName(value: unknown) {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  return getOptionalString(record.name) || getOptionalString(record.email);
+}
+
+function normalizeStatus(status: string) {
+  return status.trim().toLowerCase().replaceAll(' ', '_').replaceAll('-', '_');
+}
+
+function countLeadsByStatus(leads: Lead[], statuses: string[]) {
+  const normalizedStatuses = new Set(statuses.map(normalizeStatus));
+  return leads.filter((lead) => normalizedStatuses.has(normalizeStatus(lead.status || 'new'))).length;
 }
 
 function isNextRenderControlError(error: unknown) {
@@ -82,16 +126,19 @@ async function getLeads(): Promise<Lead[]> {
 
 export default async function LeadsPage() {
   const leads = await getLeads();
-  const newLeads = leads.filter((lead) => lead.status.toLowerCase() === 'new').length;
-  const activeLeads = leads.filter((lead) => lead.status.toLowerCase() !== 'closed').length;
+  const newLeads = countLeadsByStatus(leads, ['new']);
+  const contactedLeads = countLeadsByStatus(leads, ['contacted']);
+  const qualifiedLeads = countLeadsByStatus(leads, ['qualified']);
+  const convertedLeads = countLeadsByStatus(leads, ['converted']);
+  const lostLeads = countLeadsByStatus(leads, ['lost', 'closed']);
 
   return (
-    <main className="page">
+    <main className="page leads-crm-page">
       <section className="panel workspace-panel">
         <WorkspaceShell
           eyebrow="Sales"
           title="Leads"
-          description="Manage incoming inquiries from the same polished sales workspace as quotes and intake surfaces."
+          description="Triage incoming inquiries, qualify trips, and move ready opportunities into quote creation."
           switcher={
             <ModuleSwitcher
               ariaLabel="Sales modules"
@@ -107,65 +154,66 @@ export default async function LeadsPage() {
           summary={
             <SummaryStrip
               items={[
-                { id: 'leads', label: 'Leads', value: String(leads.length), helper: `${activeLeads} active` },
                 { id: 'new', label: 'New', value: String(newLeads), helper: 'Needs triage' },
+                { id: 'contacted', label: 'Contacted', value: String(contactedLeads), helper: 'Conversation started' },
+                { id: 'qualified', label: 'Qualified', value: String(qualifiedLeads), helper: 'Ready to price' },
+                { id: 'converted', label: 'Converted', value: String(convertedLeads), helper: 'Moved forward' },
+                { id: 'lost', label: 'Lost', value: String(lostLeads), helper: 'Closed out' },
               ]}
             />
           }
         >
-          <section className="section-stack">
+          <section className="section-stack leads-crm-stack">
             <WorkspaceSubheader
               eyebrow="Sales"
-              title="Lead inbox"
-              description="Triage incoming inquiries from a compact list-first surface before they move into quotes."
+              title="CRM lead dashboard"
+              description={`${leads.length} lead${leads.length === 1 ? '' : 's'} in the sales inbox.`}
               actions={
-                <Link href="/quotes" className="dashboard-toolbar-link">
-                  View quotes
-                </Link>
+                <div className="table-action-row">
+                  <Link href="#new-lead" className="primary-button">
+                    New Lead
+                  </Link>
+                  <Link href="/quotes" className="secondary-button">
+                    Quotes
+                  </Link>
+                </div>
               }
             />
 
-            <PageActionBar title="Lead shortcuts" description="Move quickly between lead intake and proposal creation.">
-              <Link href="/quotes" className="dashboard-toolbar-link">
-                Quotes
-              </Link>
-            </PageActionBar>
-
-            <CompactFilterBar
-              eyebrow="Sales Controls"
-              title="Lead inbox controls"
-              description="Keep intake focused while adjacent sales surfaces stay close."
-            >
-              <div className="operations-filter-row">
-                <Link href="/leads" className="secondary-button">
-                  Leads
-                </Link>
-                <Link href="/quotes" className="secondary-button">
-                  Quotes
-                </Link>
-              </div>
-              <AdvancedFiltersPanel title="More sales tools" description="Reusable content and intake helpers">
-                <div className="operations-filter-row">
-                  <Link href="/quote-blocks" className="secondary-button">
-                    Quote blocks
-                  </Link>
-                  <Link href="/import-itinerary" className="secondary-button">
-                    Import itinerary
-                  </Link>
-                </div>
-              </AdvancedFiltersPanel>
-            </CompactFilterBar>
-
             <TableSectionShell
-              title="Leads"
-              description="Manage incoming inquiries without leaving the lead inbox."
-              context={<p>{leads.length} leads in scope</p>}
+              title="Lead pipeline"
+              description="Review client interest, trip request, ownership, and next action in one scan."
+              context={<p>{leads.length} total</p>}
+              actions={
+                <AdvancedFiltersPanel title="Sales tools" description="Adjacent proposal surfaces">
+                  <div className="operations-filter-row">
+                    <Link href="/quote-blocks" className="secondary-button">
+                      Quote blocks
+                    </Link>
+                    <Link href="/import-itinerary" className="secondary-button">
+                      Import itinerary
+                    </Link>
+                  </div>
+                </AdvancedFiltersPanel>
+              }
               createPanel={
+                <div id="new-lead">
                 <CollapsibleCreatePanel title="Create lead" description="Capture new inquiries while keeping the inbox visible." triggerLabelOpen="Add lead">
                   <LeadsForm apiBaseUrl={ACTION_API_BASE_URL} />
                 </CollapsibleCreatePanel>
+                </div>
               }
-              emptyState={leads.length === 0 ? <p className="empty-state">No leads yet.</p> : undefined}
+              emptyState={
+                leads.length === 0 ? (
+                  <div className="leads-crm-empty-state">
+                    <h3>No leads yet</h3>
+                    <p>Capture the first inquiry to start tracking status, ownership, and quote handoff from this dashboard.</p>
+                    <Link href="#new-lead" className="primary-button">
+                      New Lead
+                    </Link>
+                  </div>
+                ) : undefined
+              }
             >
               {leads.length > 0 ? <LeadsTable apiBaseUrl={ACTION_API_BASE_URL} leads={leads} /> : null}
             </TableSectionShell>
