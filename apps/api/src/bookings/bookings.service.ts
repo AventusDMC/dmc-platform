@@ -150,6 +150,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    if (process.env.VERCEL === '1') {
+      return;
+    }
+
     if (String(process.env.BOOKING_PAYMENT_REMINDER_AUTOMATION_DISABLED || '').toLowerCase() === 'true') {
       return;
     }

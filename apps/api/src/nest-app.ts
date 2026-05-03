@@ -7,6 +7,15 @@ import { AppModule } from './app.module';
 
 const { json, urlencoded } = require('express');
 
+function logBootstrapError(phase: string, error: unknown) {
+  console.error('[serverless-bootstrap] error', {
+    phase,
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    name: error instanceof Error ? error.name : undefined,
+  });
+}
+
 export function getCorsOrigins() {
   const configured = (process.env.CORS_ORIGINS || process.env.ADMIN_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || '')
     .split(',')
@@ -17,16 +26,37 @@ export function getCorsOrigins() {
 }
 
 export async function createNestApp() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.use(json({ limit: '25mb' }));
-  app.use(urlencoded({ extended: true, limit: '25mb' }));
-  app.enableCors({
-    origin: getCorsOrigins(),
-    credentials: true,
+  console.info('[serverless-bootstrap] before NestFactory.create', {
+    nodeEnv: process.env.NODE_ENV,
+    vercel: process.env.VERCEL,
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
   });
-  app.useStaticAssets(join(process.cwd(), 'apps', 'api', 'uploads'), {
-    prefix: '/uploads/',
-  });
+
+  let app: NestExpressApplication;
+
+  try {
+    app = await NestFactory.create<NestExpressApplication>(AppModule);
+  } catch (error) {
+    logBootstrapError('NestFactory.create', error);
+    throw error;
+  }
+
+  console.info('[serverless-bootstrap] after NestFactory.create');
+
+  try {
+    app.use(json({ limit: '25mb' }));
+    app.use(urlencoded({ extended: true, limit: '25mb' }));
+    app.enableCors({
+      origin: getCorsOrigins(),
+      credentials: true,
+    });
+    app.useStaticAssets(join(process.cwd(), 'apps', 'api', 'uploads'), {
+      prefix: '/uploads/',
+    });
+  } catch (error) {
+    logBootstrapError('configure app', error);
+    throw error;
+  }
 
   return app;
 }
