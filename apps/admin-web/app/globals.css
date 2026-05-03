@@ -21127,9 +21127,36 @@ video {
 }
 
 .quote-service-workflow-summary .quote-preview-total-list > div {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  align-items: start;
+  justify-content: stretch;
+  gap: 0.45rem;
+  min-height: 92px;
+  min-width: 0;
   padding: 0.85rem 0.95rem;
   border-color: rgba(203, 213, 225, 0.84);
   background: rgba(255, 255, 255, 0.82);
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > span,
+.quote-service-workflow-summary .quote-preview-total-list > div > strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > span {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div > strong {
+  align-self: end;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
 .quote-service-planner-shell.quote-service-planner-saas-grid {
