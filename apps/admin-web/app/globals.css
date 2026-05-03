@@ -21815,6 +21815,229 @@ video {
   margin-top: -0.1rem;
 }
 
+/* Global numeric/value overflow safeguards. */
+.admin-shell,
+.admin-shell *,
+.admin-shell *::before,
+.admin-shell *::after {
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .page,
+  .panel,
+  .workspace-panel,
+  .workspace-shell,
+  .workspace-content,
+  .section-stack,
+  .detail-grid,
+  .detail-card,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .dashboard-card,
+  .dashboard-summary-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .app-financial-panel,
+  .financial-panel,
+  .summary-strip,
+  .summary-strip-card,
+  .workspace-summary-card,
+  .quote-dashboard-header,
+  .quote-dashboard-workflow,
+  .quote-dashboard-tabs,
+  .quote-pricing-summary-card,
+  .quote-pricing-summary-row,
+  .quote-service-mini-card,
+  .quote-service-card-pricing-summary,
+  .booking-ops-sidebar-list,
+  .table-section-shell,
+  .table-section-body,
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .summary-strip,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .dashboard-grid,
+  .executive-dashboard-stat-grid,
+  .executive-dashboard-finance-tier-grid,
+  .executive-dashboard-finance-tier-grid-primary,
+  .executive-dashboard-finance-tier-grid-secondary,
+  .quote-dashboard-meta-grid,
+  .quote-service-card-pricing-summary
+) {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.admin-shell :where(
+  .money-value,
+  .metric-value,
+  .financial-value,
+  .stat-value,
+  .summary-strip-value,
+  .workspace-summary-card strong,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .executive-dashboard-finance-card b,
+  .executive-dashboard-row-value,
+  .app-financial-panel strong,
+  .financial-panel strong,
+  .quote-money,
+  .quote-preview-total-list strong,
+  .quote-pricing-summary-row strong,
+  .quote-pricing-summary-row p,
+  .quote-drawer-financial-summary strong,
+  .quote-service-card-price,
+  .quote-service-card-financials strong,
+  .quote-service-card-financials .quote-money,
+  .quote-service-card-pricing-summary .quote-money,
+  .quote-live-pricing-profit strong,
+  .quote-live-pricing-row strong,
+  .quote-pricing-money-cell strong,
+  .money-cell
+) {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(
+  .money-value,
+  .financial-value,
+  .quote-money,
+  .money-cell,
+  .quote-pricing-money-cell strong
+) {
+  text-align: right;
+}
+
+.admin-shell :where(
+  .summary-strip-value,
+  .workspace-summary-card strong,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .app-metric-card strong,
+  .metric-card strong,
+  .metric-value,
+  .stat-value
+) {
+  font-size: clamp(1.1rem, 1.6vw, 1.65rem);
+  line-height: 1.15;
+  text-align: left;
+}
+
+.admin-shell :where(
+  .app-financial-panel strong,
+  .financial-panel strong,
+  .quote-pricing-summary-row strong,
+  .quote-service-card-price,
+  .executive-dashboard-finance-card b,
+  .financial-value
+) {
+  font-size: clamp(1rem, 1.35vw, 1.45rem);
+}
+
+.admin-shell :where(
+  .quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+  .app-financial-panel .quote-pricing-summary-row:first-child strong,
+  .quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row:first-child .financial-value,
+  .quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row:first-child .financial-value,
+  .executive-dashboard-finance-card-primary b
+) {
+  font-size: clamp(1.35rem, 2.4vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.admin-shell :where(
+  .quote-pricing-summary-row,
+  .quote-service-card-pricing-summary,
+  .executive-dashboard-finance-card-head,
+  .dashboard-list-item,
+  .dashboard-inline-item,
+  .executive-dashboard-finance-row
+) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-shell :where(.data-table th, .data-table td) {
+  max-width: min(24rem, 48vw);
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.data-table th.money-cell, .data-table td.money-cell) {
+  min-width: 7.5rem;
+  max-width: 12rem;
+  white-space: normal;
+}
+
+@media (max-width: 640px) {
+  .admin-shell :where(
+    .summary-strip,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .dashboard-grid,
+    .executive-dashboard-stat-grid,
+    .executive-dashboard-finance-tier-grid,
+    .quote-dashboard-meta-grid,
+    .quote-service-card-pricing-summary
+  ) {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .admin-shell :where(
+    .summary-strip-card,
+    .dashboard-summary-card,
+    .dashboard-kpi-card,
+    .dashboard-stat-card,
+    .executive-dashboard-stat-card,
+    .executive-dashboard-finance-card,
+    .workspace-summary-card
+  ) {
+    padding: 0.9rem;
+  }
+
+  .admin-shell :where(
+    .summary-strip-value,
+    .workspace-summary-card strong,
+    .dashboard-summary-card strong,
+    .dashboard-kpi-card strong,
+    .dashboard-stat-card strong,
+    .executive-dashboard-stat-card strong,
+    .executive-dashboard-finance-card b,
+    .app-financial-panel strong,
+    .financial-panel strong,
+    .financial-value,
+    .quote-pricing-summary-row strong,
+    .quote-service-card-price
+  ) {
+    font-size: clamp(0.95rem, 5vw, 1.25rem);
+  }
+}
+
 @media (max-width: 720px) {
   .quote-service-planner .quote-service-visual-board {
     padding-left: 1rem;
