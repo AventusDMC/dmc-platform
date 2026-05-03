@@ -21438,3 +21438,57 @@ video {
   }
 }
 
+/* Day Description contextual drawer integration. */
+.quote-timeline-drawer {
+  width: min(100%, 390px);
+  border-left: 1px solid rgba(28, 127, 184, 0.16);
+  background: linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 34%);
+  box-shadow:
+    -18px 0 46px rgba(17, 24, 39, 0.16),
+    -1px 0 0 rgba(28, 127, 184, 0.08);
+}
+
+.quote-timeline-drawer .app-drawer-header {
+  position: relative;
+  border-bottom-color: rgba(203, 213, 225, 0.84);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6F8FB 100%);
+}
+
+.quote-timeline-drawer .app-drawer-header::before {
+  content: "";
+  position: absolute;
+  left: 1.1rem;
+  top: 1rem;
+  width: 0.28rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  background: #1C7FB8;
+}
+
+.quote-timeline-drawer .app-drawer-header > div:first-child {
+  min-width: 0;
+  padding-left: 0.7rem;
+}
+
+.quote-timeline-drawer .app-drawer-header h2 {
+  color: #111827;
+  font-size: 1.16rem;
+  font-weight: 900;
+}
+
+.quote-timeline-drawer .app-drawer-header p {
+  color: #475467;
+  font-weight: 650;
+}
+
+.quote-timeline-drawer .app-drawer-body {
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.68) 0%, rgba(255, 255, 255, 0) 9rem);
+}
+
+@media (max-width: 520px) {
+  .quote-timeline-drawer {
+    width: min(100%, 100vw);
+  }
+}
+

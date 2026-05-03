@@ -1826,11 +1826,13 @@ function DayDescriptionDrawer({
   onChange: (draft: string) => void;
   onSave: () => void;
 }) {
+  const drawerDayLabel = item ? formatDayHeading(item.day) : 'Day description';
+
   return (
     <DrawerPanel
       open={Boolean(item)}
-      title="Day description"
-      description="Client-facing day narrative"
+      title={drawerDayLabel}
+      description="Day description - client-facing day narrative"
       onClose={onSave}
       closeLabel={isSaving ? 'Saving...' : 'Save'}
       className="quote-timeline-drawer"
