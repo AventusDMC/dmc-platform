@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
+import { getLeadStatusLabel, LEAD_STATUS_OPTIONS } from './leadStatusOptions';
 
 type LeadsFormProps = {
   apiBaseUrl: string;
@@ -24,6 +25,7 @@ export function LeadsForm({ apiBaseUrl, leadId, submitLabel, initialValues }: Le
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(leadId);
+  const hasKnownStatus = LEAD_STATUS_OPTIONS.some((option) => option.value === status);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,11 +85,15 @@ export function LeadsForm({ apiBaseUrl, leadId, submitLabel, initialValues }: Le
 
       <label>
         Status
-        <input
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          placeholder="new"
-        />
+        <select value={status} onChange={(event) => setStatus(event.target.value)} required>
+          <option value="">Select status</option>
+          {!hasKnownStatus && status ? <option value={status}>{getLeadStatusLabel(status)}</option> : null}
+          {LEAD_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <button type="submit" disabled={isSubmitting}>
