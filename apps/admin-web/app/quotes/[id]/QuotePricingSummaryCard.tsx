@@ -25,8 +25,8 @@ export function QuotePricingSummaryCard({ className = '', eyebrow, title, items,
         {items.map((item) => (
           <div key={item.label} className="quote-pricing-summary-row">
             <span className="min-w-0">{item.label}</span>
-            <div className="financial-value-shell min-w-0 break-words">
-              <strong className="financial-value min-w-0 break-words tabular-nums">{item.value}</strong>
+            <div className="financial-value-shell min-w-0">
+              <strong className="financial-value min-w-0 tabular-nums">{item.value}</strong>
               {item.helper ? <p>{item.helper}</p> : null}
             </div>
           </div>

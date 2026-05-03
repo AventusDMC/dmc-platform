@@ -850,8 +850,9 @@ function normalizeQuoteDetail(quote: Quote): Quote {
   };
 }
 
-function formatMoney(amount: number, currency = 'USD') {
-  const safeAmount = Number.isFinite(amount) ? amount : 0;
+function formatMoney(amount: number | null | undefined, currency = 'USD') {
+  const numericAmount = Number(amount);
+  const safeAmount = Number.isFinite(numericAmount) ? numericAmount : 0;
 
   return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
     minimumFractionDigits: 2,

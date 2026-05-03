@@ -20572,3 +20572,312 @@ video {
   }
 }
 
+/* Itinerary Builder visual hierarchy and finance value safeguards. */
+.quote-service-planner .quote-service-day-column {
+  gap: 1.5rem;
+}
+
+.quote-service-planner .quote-service-day-card-active {
+  width: 100%;
+  padding: 1.5rem;
+  border: 1px solid rgba(207, 216, 227, 0.95);
+  border-radius: 1.1rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.07);
+}
+
+.quote-service-planner .quote-service-day-panel-body {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.quote-service-planner .workspace-day-header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.quote-service-day-kicker {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.quote-service-day-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.28rem 0.58rem;
+  border-radius: 0.6rem;
+  background: #111827;
+  color: #FFFFFF;
+  font-size: 0.76rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  margin-top: 0.45rem;
+  color: #111827;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.15;
+}
+
+.quote-service-planner .workspace-day-copy {
+  max-width: 62rem;
+  margin-top: 0.45rem;
+  color: #5B6472;
+  line-height: 1.55;
+}
+
+.quote-service-planner .quote-service-day-meta {
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 15rem;
+}
+
+.quote-service-planner .quote-service-add-primary {
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.7rem;
+  font-size: 0.82rem;
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-day-layout-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.28fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.quote-service-planner .quote-service-current-services,
+.quote-service-planner .quote-service-side-section {
+  min-width: 0;
+  border-radius: 1rem;
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-current-services {
+  display: grid;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.quote-service-planner .quote-service-visual-board {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.quote-service-planner .quote-service-lane {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.9rem;
+  border-color: rgba(226, 232, 240, 0.95);
+  border-radius: 0.9rem;
+  background: #FFFFFF;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.04);
+}
+
+.quote-service-planner .quote-service-lane:hover {
+  transform: none;
+  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.06);
+}
+
+.quote-service-planner .quote-service-lane-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.quote-service-planner .quote-service-lane-head span {
+  color: #5B6472;
+  font-size: 0.75rem;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+}
+
+.quote-service-planner .quote-service-lane-head strong {
+  min-width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 999px;
+  background: #EEF6FA;
+  color: #1C7FB8;
+  font-size: 0.78rem;
+  line-height: 1.65rem;
+  text-align: center;
+}
+
+.quote-service-planner .quote-service-lane-add,
+.quote-service-planner .quote-service-empty-add {
+  min-height: 2.15rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-card-row {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-service-planner .quote-service-mini-card {
+  min-width: 0;
+  padding: 0.95rem;
+  border-radius: 0.85rem;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.045);
+}
+
+.quote-service-planner .quote-service-mini-card-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy,
+.quote-service-planner .quote-service-mini-card-main,
+.quote-service-planner .quote-service-card-supplier {
+  min-width: 0;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy h5 {
+  font-weight: 750;
+}
+
+.quote-service-planner .quote-service-card-price,
+.quote-service-planner .quote-money,
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.financial-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-service-planner .quote-service-card-price {
+  min-width: 8.75rem;
+  color: #111827;
+  font-size: 1.05rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.quote-service-planner .quote-service-card-pricing-summary > span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  color: #6B7280;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary .quote-money {
+  color: #111827;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-pricing-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9.5rem, max-content);
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+
+.quote-pricing-summary-row > span,
+.quote-pricing-summary-row > div,
+.financial-value-shell {
+  min-width: 0;
+}
+
+.financial-value-shell {
+  justify-self: end;
+  max-width: 100%;
+  text-align: right;
+}
+
+.quote-pricing-summary-row strong,
+.financial-value {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  color: #111827;
+  font-weight: 850;
+  line-height: 1.16;
+  text-align: right;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row,
+.quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row {
+  grid-template-columns: minmax(0, 1fr) minmax(10.5rem, max-content);
+}
+
+.quote-pricing-context-panel.app-financial-panel .financial-value,
+.quote-pricing-summary-card-dominant.app-financial-panel .financial-value {
+  font-size: clamp(1rem, 1.3vw, 1.28rem);
+}
+
+@media (max-width: 980px) {
+  .quote-service-planner .workspace-day-header,
+  .quote-service-planner .quote-service-day-layout-visual {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-planner .workspace-day-header {
+    display: grid;
+  }
+
+  .quote-service-planner .quote-service-day-meta {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-day-card-active {
+    padding: 1rem;
+  }
+
+  .quote-service-planner .quote-service-mini-card-title-row,
+  .quote-service-planner .quote-service-card-pricing-summary,
+  .quote-pricing-summary-row,
+  .quote-pricing-context-panel.app-financial-panel .quote-pricing-summary-row,
+  .quote-pricing-summary-card-dominant.app-financial-panel .quote-pricing-summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-planner .quote-service-card-price,
+  .financial-value-shell,
+  .quote-pricing-summary-row strong,
+  .financial-value {
+    justify-self: start;
+    text-align: left;
+  }
+}
+

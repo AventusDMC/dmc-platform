@@ -441,7 +441,7 @@ function getDayCompletenessRules(quoteType: Quote['quoteType']) {
 function formatDayHeading(day: QuoteReadinessDay, inferredCity?: string | null) {
   const dayLabel = `Day ${String(day.dayNumber).padStart(2, '0')}`;
   const locationLabel = inferredCity || day.title || `Day ${day.dayNumber}`;
-  return `${dayLabel} — ${locationLabel}`;
+  return `${dayLabel} - ${locationLabel}`;
 }
 
 function parseGuideInitialValues(pricingDescription: string | null) {
@@ -1413,8 +1413,9 @@ function ServiceLane({
   );
 }
 
-function formatLiveMoney(value: number, currency: string) {
-  const safeValue = Number.isFinite(value) ? value : 0;
+function formatLiveMoney(value: number | null | undefined, currency: string) {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
 
   return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -2577,7 +2578,10 @@ function ScopePlanner({
             <div className="quote-service-day-panel-body">
             <div className="workspace-day-header">
               <div>
-                <p className="workspace-day-kicker">Build the day step by step</p>
+                <p className="workspace-day-kicker quote-service-day-kicker">
+                  <span className="quote-service-day-label">Day {String(summary.day.dayNumber).padStart(2, '0')}</span>
+                  <span>Itinerary Builder</span>
+                </p>
                 <h3>{dayHeading}</h3>
                 <p className="workspace-day-copy">{daySubtitle}</p>
               </div>

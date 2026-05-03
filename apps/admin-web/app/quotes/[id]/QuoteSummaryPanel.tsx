@@ -18,8 +18,9 @@ type QuoteSummaryPanelProps = {
   currency?: string | null;
 };
 
-function formatMoney(value: number, currency = 'USD') {
-  const safeValue = Number.isFinite(value) ? value : 0;
+function formatMoney(value: number | null | undefined, currency = 'USD') {
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? numericValue : 0;
 
   return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -27,12 +28,14 @@ function formatMoney(value: number, currency = 'USD') {
   })}`;
 }
 
-function formatPercent(value: number) {
-  if (!Number.isFinite(value)) {
+function formatPercent(value: number | null | undefined) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
     return '0.00%';
   }
 
-  return `${value.toFixed(2)}%`;
+  return `${numericValue.toFixed(2)}%`;
 }
 
 function formatDayLabel(key: string, fallbackIndex: number) {
@@ -89,9 +92,9 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
     );
   }
 
-  const safeTotalCost = Number(totalCost || 0);
-  const safeTotalSell = Number(totalSell || 0);
-  const safePax = Math.max(0, Number(pax || 0));
+  const safeTotalCost = Number.isFinite(Number(totalCost)) ? Number(totalCost) : 0;
+  const safeTotalSell = Number.isFinite(Number(totalSell)) ? Number(totalSell) : 0;
+  const safePax = Math.max(0, Number.isFinite(Number(pax)) ? Number(pax) : 0);
   const marginPercent = safeTotalCost > 0 ? ((safeTotalSell - safeTotalCost) / safeTotalCost) * 100 : 0;
   const pricePerPax = safePax > 0 ? safeTotalSell / safePax : 0;
   const groupedItems = groupItemsByDay(items);
