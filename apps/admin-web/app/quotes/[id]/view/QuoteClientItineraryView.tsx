@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { getItineraryDayDisplay } from '../../../lib/itineraryDayDisplay';
+import { getAutoItineraryDayCount } from '../QuoteAutoItineraryBuilder.logic';
 
 export type ClientQuoteSummary = {
   title: string;
@@ -773,8 +774,10 @@ function QuoteDayCard({
 }
 
 export function QuoteClientItineraryView({ quote, itinerary, interactionPanel }: QuoteClientItineraryViewProps) {
+  const safeNightCount = Number.isFinite(quote.nightCount) && quote.nightCount > 0 ? quote.nightCount : 0;
+  const expectedDayCount = getAutoItineraryDayCount(safeNightCount);
   const sortedDays = [...itinerary.days]
-    .filter((day) => day.isActive)
+    .filter((day) => day.isActive && day.dayNumber <= expectedDayCount)
     .sort((left, right) => left.sortOrder - right.sortOrder || left.dayNumber - right.dayNumber);
   const destinationsSummary = getDestinationsSummary(sortedDays);
   const priceSummary = getPriceSummary(quote);
@@ -785,8 +788,7 @@ export function QuoteClientItineraryView({ quote, itinerary, interactionPanel }:
       .map((item) => item.quoteService?.serviceDate as string),
   );
   const dateRangeLabel = formatDateRangeLabel(allServiceDates);
-  const safeNightCount = Number.isFinite(quote.nightCount) && quote.nightCount > 0 ? quote.nightCount : 0;
-  const derivedDayCount = safeNightCount > 0 ? safeNightCount + 1 : Math.max(sortedDays.length, 1);
+  const derivedDayCount = expectedDayCount;
   const durationLabel = `${derivedDayCount} day${derivedDayCount === 1 ? '' : 's'} / ${safeNightCount} night${safeNightCount === 1 ? '' : 's'}`;
   const paxLabel = `${Math.max(quote.adults + quote.children, 0)} travelers`;
   const pricingNotes = getGlobalPricingNotes(sortedDays);

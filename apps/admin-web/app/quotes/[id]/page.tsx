@@ -24,6 +24,7 @@ import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import { QuoteStatusForm } from './QuoteStatusForm';
 import { SupportTextForm } from './SupportTextForm';
+import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteGroupPricing } from './QuoteGroupPricing';
 import { QuotesForm } from '../QuotesForm';
 import { ConvertToBookingButton } from './ConvertToBookingButton';
@@ -1409,7 +1410,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteMarkupPercent = quote.totalCost > 0 ? Number(((quoteProfit / quote.totalCost) * 100).toFixed(2)) : 0;
   const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);
   const authoringSummary = collectQuoteAuthoringSummary(quote);
-  const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
+  const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
+  const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
+  const visibleQuoteItineraryDays = quoteItinerary.days.filter((day) => day.isActive && day.dayNumber <= expectedDayCount);
   const sharedUnassignedItems = quote.quoteItems.filter((item) => !item.itineraryId);
   const tripSummary = getValidatedTripSummary({
     quoteTitle: quote.title,
@@ -1418,7 +1421,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     totalPax,
     nightCount: quote.nightCount,
   });
-  const destination = sortedDays[0]?.title || quoteItinerary.days[0]?.title || 'Destination pending';
+  const destination = sortedDays[0]?.title || visibleQuoteItineraryDays[0]?.title || 'Destination pending';
   const travelDates = quote.travelStartDate
     ? `${formatDate(quote.travelStartDate)}${quote.nightCount > 0 ? ` - ${formatNightCountLabel(quote.nightCount)}` : ''}`
     : 'Dates pending';

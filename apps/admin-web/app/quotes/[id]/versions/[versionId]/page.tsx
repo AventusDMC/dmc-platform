@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { formatNightCountLabel } from '../../../../lib/formatters';
 import { getItineraryDayDisplay } from '../../../../lib/itineraryDayDisplay';
 import { getValidatedTripSummary } from '../../../../lib/tripSummary';
+import { getAutoItineraryDayCount } from '../../QuoteAutoItineraryBuilder.logic';
 
 import { adminPageFetchJson } from '../../../../lib/admin-server';
 
@@ -483,7 +484,8 @@ export default async function QuoteVersionPage({ params }: QuoteVersionPageProps
   }
 
   const totalPax = quote.adults + quote.children;
-  const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
+  const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
+  const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
   const unassignedItems = quote.quoteItems.filter((item) => !item.itineraryId);
   const priceSummary = getPriceSummary(quote);
   const hasItineraryDays = sortedDays.length > 0;

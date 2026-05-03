@@ -25,6 +25,18 @@ type User = {
   status: 'active';
 };
 
+type Lead = {
+  id: string;
+  inquiry: string;
+  source: string | null;
+};
+
+type NewQuotePageProps = {
+  searchParams?: Promise<{
+    leadId?: string;
+  }>;
+};
+
 async function getCompanies(): Promise<Company[]> {
   return adminPageFetchJson<Company[]>('/api/companies', 'New quote companies', {
     cache: 'no-store',
@@ -43,8 +55,37 @@ async function getUsers(): Promise<User[]> {
   });
 }
 
-export default async function NewQuotePage() {
-  const [companies, contacts, users] = await Promise.all([getCompanies(), getContacts(), getUsers()]);
+async function getLeadForQuotePrefill(leadId?: string): Promise<Lead | null> {
+  if (!leadId) {
+    return null;
+  }
+
+  try {
+    return await adminPageFetchJson<Lead | null>(`/api/leads/${leadId}`, 'Lead quote prefill', {
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('[NewQuotePage] Could not load lead prefill.', error);
+    return null;
+  }
+}
+
+function buildLeadQuoteTitle(lead: Lead | null) {
+  if (!lead?.inquiry?.trim()) {
+    return '';
+  }
+
+  return lead.inquiry.trim().slice(0, 96);
+}
+
+export default async function NewQuotePage({ searchParams }: NewQuotePageProps) {
+  const resolvedSearchParams = await searchParams;
+  const [companies, contacts, users, leadPrefill] = await Promise.all([
+    getCompanies(),
+    getContacts(),
+    getUsers(),
+    getLeadForQuotePrefill(resolvedSearchParams?.leadId),
+  ]);
   const agents = users
     .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
     .map((user) => ({
@@ -53,6 +94,9 @@ export default async function NewQuotePage() {
       email: user.email,
       role: user.role,
     }));
+  const defaultCompanyId = companies[0]?.id || '';
+  const defaultContactId = contacts.find((contact) => contact.companyId === defaultCompanyId)?.id || contacts[0]?.id || '';
+  const leadQuoteTitle = buildLeadQuoteTitle(leadPrefill);
 
   return (
     <main className="page">
@@ -99,6 +143,36 @@ export default async function NewQuotePage() {
                 contacts={contacts}
                 agents={agents}
                 submitLabel="Create quote"
+                initialValues={
+                  leadPrefill
+                    ? {
+                        clientCompanyId: defaultCompanyId,
+                        brandCompanyId: defaultCompanyId,
+                        contactId: defaultContactId,
+                        agentId: '',
+                        quoteType: 'FIT',
+                        jordanPassType: 'NONE',
+                        bookingType: 'FIT',
+                        title: leadQuoteTitle || 'Lead inquiry',
+                        description: leadPrefill.inquiry || '',
+                        quoteCurrency: 'USD',
+                        pricingMode: 'FIXED',
+                        pricingSlabs: [],
+                        fixedPricePerPerson: '',
+                        focType: 'none',
+                        focRatio: '',
+                        focCount: '',
+                        focRoomType: '',
+                        adults: '2',
+                        children: '0',
+                        roomCount: '1',
+                        nightCount: '1',
+                        singleSupplement: '',
+                        travelStartDate: '',
+                        validUntil: '',
+                      }
+                    : undefined
+                }
               />
               </FormSection>
             )}
