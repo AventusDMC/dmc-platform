@@ -11,6 +11,7 @@ import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMa
 import { RouteOption } from '../../lib/routes';
 import { DayNavigation, DrawerPanel } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
+import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
@@ -695,8 +696,9 @@ function serializeDayContent(description: string, timeline: DayTimelineItem[]) {
 }
 
 function getPlannerDays(quote: Quote, quoteItinerary?: PlannerItineraryResponse): QuoteReadinessDay[] {
+  const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const quoteItineraryDays = (quoteItinerary?.days || [])
-    .filter((day) => day.isActive)
+    .filter((day) => day.isActive && day.dayNumber <= expectedDayCount)
     .sort((left, right) => left.dayNumber - right.dayNumber)
     .map((day) => ({
       id: day.id,
@@ -705,7 +707,9 @@ function getPlannerDays(quote: Quote, quoteItinerary?: PlannerItineraryResponse)
       description: day.description || day.notes || null,
     }));
 
-  return quoteItineraryDays.length > 0 ? quoteItineraryDays : quote.itineraries;
+  return quoteItineraryDays.length > 0
+    ? quoteItineraryDays
+    : quote.itineraries.filter((day) => day.dayNumber <= expectedDayCount);
 }
 
 function getPlannerDayAssignmentMap(quoteItinerary?: PlannerItineraryResponse) {

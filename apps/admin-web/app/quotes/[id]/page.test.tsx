@@ -249,8 +249,9 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
-      'const [localItineraries, setLocalItineraries] = useState(props.quote.itineraries);',
-      'const [openDayIds, setOpenDayIds] = useState<Set<string>>(() => new Set(props.quote.itineraries.map((day) => day.id)));',
+      'const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);',
+      '.filter((day) => day.isActive && day.dayNumber <= expectedDayCount)',
+      'const [localItineraries, setLocalItineraries] = useState(incomingPlannerDays);',
       "const [selectedScopeId, setSelectedScopeId] = useState('shared');",
       'const itineraryDays = localItineraries;',
       'return currentItineraries;',
@@ -272,7 +273,10 @@ describe('quote detail page regression', () => {
       "Generating & Saving...",
       "window.dispatchEvent(new CustomEvent('dmc:quote-itinerary-days-ready', { detail: { quoteId: quote.id, days } }));",
       "document.querySelector('#quote-base-program-days, .quote-service-day-card')?.scrollIntoView",
-      'setMessage(buildItineraryApplyMessage(draft.days.length, createdDayCount));',
+      'const expectedDays = draft.days.slice(0, expectedGeneratedDayCount);',
+      'await deactivateExtraGeneratedDays(expectedDays.length);',
+      'buildItineraryDayPayload(day)',
+      'setMessage(buildItineraryApplyMessage(expectedDays.length, createdDayCount));',
       'router.refresh();',
     ]);
   });

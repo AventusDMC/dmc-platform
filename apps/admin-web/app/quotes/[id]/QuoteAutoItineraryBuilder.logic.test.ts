@@ -16,6 +16,28 @@ describe('quote auto itinerary builder logic', () => {
     );
   });
 
+  it('generates exactly four days for three nights', () => {
+    const days = generateItineraryDays('2026-05-10', 3);
+
+    assert.equal(days.length, 4);
+    assert.deepEqual(
+      days.map((day) => day.dayNumber),
+      [1, 2, 3, 4],
+    );
+    assert.deepEqual(
+      days.map((day) => day.date),
+      ['2026-05-10', '2026-05-11', '2026-05-12', '2026-05-13'],
+    );
+  });
+
+  it('generates one day for zero nights', () => {
+    const days = generateItineraryDays('2026-05-10', 0);
+
+    assert.equal(days.length, 1);
+    assert.equal(days[0].dayNumber, 1);
+    assert.equal(days[0].date, '2026-05-10');
+  });
+
   it('does not append unprovided destinations when assigning generated day cities', () => {
     const days = generateItineraryDays('2026-05-10', 3);
     const assignedDays = assignGeneratedItineraryCities(days, ['Amman', 'Petra', 'Wadi Rum']);

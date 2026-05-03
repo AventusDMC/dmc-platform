@@ -47,9 +47,12 @@ export function getAutoItineraryDayTitle(dayNumber: number, totalDays: number) {
   return `Day ${dayNumber}`;
 }
 
+export function getAutoItineraryDayCount(nights: number | null | undefined) {
+  return Math.max(0, Math.floor(Number(nights) || 0)) + 1;
+}
+
 export function generateItineraryDays(startDate: string | null | undefined, nights: number) {
-  const nightCount = Math.max(0, Math.floor(Number(nights) || 0));
-  const totalDays = nightCount + 1;
+  const totalDays = getAutoItineraryDayCount(nights);
 
   return Array.from({ length: totalDays }, (_, index): GeneratedItineraryDay => {
     const dayNumber = index + 1;
