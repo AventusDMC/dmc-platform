@@ -20881,3 +20881,208 @@ video {
   }
 }
 
+/* Final Itinerary Builder hierarchy pass. */
+.quote-service-planner {
+  gap: 1.5rem;
+}
+
+.quote-service-planner > .workspace-tab-header {
+  padding: 1.5rem;
+  border: 1px solid rgba(207, 216, 227, 0.95);
+  border-radius: 1.15rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6F8FB 100%);
+  box-shadow: 0 16px 38px rgba(17, 24, 39, 0.055);
+}
+
+.quote-service-planner > .workspace-tab-header .workspace-section-head h2 {
+  color: #111827;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  font-weight: 850;
+  line-height: 1.16;
+}
+
+.quote-service-planner > .workspace-tab-header > .detail-copy {
+  max-width: 66rem;
+  margin-top: 0.55rem;
+  color: #5B6472;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.quote-service-planner .quote-base-program-panel-open,
+.quote-service-planner .workspace-tab-panels {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.quote-service-planner .section-stack {
+  gap: 1.35rem;
+}
+
+.quote-service-workflow-summary {
+  padding: 1.5rem;
+  border: 1px solid rgba(28, 127, 184, 0.22);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(180deg, rgba(239, 248, 252, 0.88) 0%, rgba(255, 255, 255, 0.96) 100%);
+  box-shadow: 0 16px 36px rgba(17, 24, 39, 0.055);
+}
+
+.quote-service-workflow-summary .workspace-section-head h3 {
+  color: #0F172A;
+  font-size: clamp(1.25rem, 1.75vw, 1.65rem);
+  font-weight: 850;
+  line-height: 1.18;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list {
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.quote-service-workflow-summary .quote-preview-total-list > div {
+  padding: 0.85rem 0.95rem;
+  border-color: rgba(203, 213, 225, 0.84);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.quote-service-planner-shell.quote-service-planner-saas-grid {
+  grid-template-columns: minmax(13rem, 0.24fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-top: 0.25rem;
+}
+
+.quote-service-day-nav {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+  padding: 0.9rem;
+  border-color: rgba(226, 232, 240, 0.95);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.04);
+}
+
+.quote-service-day-nav-head {
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.quote-service-day-nav-card {
+  padding: 0.75rem;
+  border-color: rgba(226, 232, 240, 0.88);
+  background: rgba(248, 250, 252, 0.72);
+  box-shadow: none;
+}
+
+.quote-service-day-nav-card-active {
+  border-color: rgba(28, 127, 184, 0.42);
+  background: #FFFFFF;
+  box-shadow: 0 8px 20px rgba(28, 127, 184, 0.08);
+}
+
+.quote-service-planner .quote-service-day-column {
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+.quote-service-planner .quote-service-day-card-active {
+  padding: 1.75rem;
+  border-color: rgba(148, 163, 184, 0.58);
+  border-radius: 1.2rem;
+  background:
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: 0 22px 48px rgba(17, 24, 39, 0.08);
+}
+
+.quote-service-planner .quote-service-day-card-focused,
+.quote-service-planner .quote-service-day-card-active.quote-service-day-card-focused {
+  border-color: rgba(28, 127, 184, 0.48);
+  box-shadow: 0 24px 54px rgba(28, 127, 184, 0.11);
+}
+
+.quote-service-planner .quote-service-day-panel-body {
+  gap: 1.35rem;
+}
+
+.quote-service-planner .workspace-day-header {
+  gap: 1.25rem;
+  padding-bottom: 1.2rem;
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  font-size: clamp(1.55rem, 2.25vw, 2.05rem);
+  font-weight: 900;
+  line-height: 1.12;
+}
+
+.quote-service-day-label {
+  min-height: 2rem;
+  padding: 0.35rem 0.68rem;
+  border-radius: 0.68rem;
+  font-size: 0.8rem;
+}
+
+.quote-service-planner .quote-service-day-meta .page-tab-badge {
+  border-color: rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.86);
+  color: #475467;
+}
+
+.quote-service-planner .quote-service-add-primary {
+  background: #1C7FB8;
+}
+
+.quote-service-planner .quote-service-current-services,
+.quote-service-planner .quote-service-side-section {
+  padding: 1.1rem;
+}
+
+.quote-service-planner .quote-service-side-section {
+  border-color: rgba(226, 232, 240, 0.88);
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.quote-service-planner .quote-service-side-section .workspace-section-head h4 {
+  font-size: 0.95rem;
+}
+
+.quote-service-planner input,
+.quote-service-planner select,
+.quote-service-planner textarea {
+  min-height: 2.45rem;
+}
+
+.quote-service-planner textarea {
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(11rem, 0.28fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-service-day-nav {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner > .workspace-tab-header,
+  .quote-service-workflow-summary,
+  .quote-service-planner .quote-service-day-card-active {
+    padding: 1rem;
+  }
+
+  .quote-service-planner .workspace-day-header h3 {
+    font-size: 1.35rem;
+  }
+}
+
