@@ -20163,6 +20163,113 @@ video {
   white-space: nowrap;
 }
 
+.quote-pricing-component-row td {
+  border-bottom-color: rgba(229, 231, 235, 0.86);
+}
+
+.quote-pricing-component-row:hover td {
+  background: rgba(244, 250, 253, 0.62);
+}
+
+.quote-pricing-component-cell {
+  min-width: 16rem;
+}
+
+.quote-pricing-component-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.quote-pricing-component-title strong {
+  color: #111827;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.quote-pricing-money-cell {
+  min-width: 9.5rem;
+  padding-inline: 0.9rem;
+}
+
+.quote-pricing-money-cell span {
+  display: none;
+}
+
+.quote-pricing-money-cell strong {
+  font-size: 0.98rem;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.quote-pricing-money-cell-cost strong {
+  color: #6B7280;
+  font-weight: 750;
+}
+
+.quote-pricing-money-cell-sell {
+  background: rgba(31, 154, 207, 0.045);
+}
+
+.quote-pricing-money-cell-sell strong {
+  color: #1C7FB8;
+  font-size: 1.04rem;
+}
+
+.quote-pricing-money-cell-margin {
+  background: rgba(2, 122, 72, 0.045);
+}
+
+.quote-pricing-money-cell-margin strong {
+  font-size: 1.04rem;
+}
+
+.quote-pricing-margin-percent {
+  margin-top: 0.18rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.quote-pricing-issue-cell {
+  min-width: 10rem;
+}
+
+.quote-pricing-issue-cell .quote-ui-badge {
+  max-width: 12rem;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quote-pricing-details-cell {
+  width: 1%;
+}
+
+.quote-pricing-details-cell .operations-row-details {
+  min-width: 10rem;
+}
+
+@media (max-width: 920px) {
+  .quote-pricing-component-cell,
+  .quote-pricing-money-cell,
+  .quote-pricing-issue-cell {
+    min-width: 0;
+  }
+
+  .quote-pricing-money-cell span {
+    display: block;
+    margin-bottom: 0.18rem;
+    color: #6B7280;
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
+
 @media (max-width: 1180px) {
   .quote-pricing-review-layout {
     grid-template-columns: minmax(0, 1fr);

@@ -1104,31 +1104,38 @@ export function QuotePricingTable({
                   const marginPercentDisplay = rowHasPendingPricing ? 'Pending' : `${marginMetrics.marginPercent.toFixed(2)}%`;
 
                   return (
-                    <tr key={row.id} className={isHighlighted ? 'quote-pricing-row-highlight' : undefined}>
-                      <td>
-                        <strong>{row.label}</strong>
-                        {row.hasPromotions ? (
-                          <span className="quote-ui-badge quote-ui-badge-success" style={{ marginLeft: 8 }}>
-                            Promotions
-                          </span>
-                        ) : null}
+                    <tr key={row.id} className={`quote-pricing-component-row${isHighlighted ? ' quote-pricing-row-highlight' : ''}`}>
+                      <td className="quote-pricing-component-cell">
+                        <div className="quote-pricing-component-title">
+                          <strong>{row.label}</strong>
+                          {row.hasPromotions ? (
+                            <span className="quote-ui-badge quote-ui-badge-success">Promotions</span>
+                          ) : null}
+                        </div>
                         <div className="table-subcopy">{row.description}</div>
                       </td>
-                      <td className="quote-table-number-cell">{costDisplay}</td>
-                      <td className="quote-table-number-cell">{sellDisplay}</td>
-                      <td className="quote-table-number-cell">
+                      <td className="quote-table-number-cell quote-pricing-money-cell quote-pricing-money-cell-cost">
+                        <span>Cost</span>
+                        <strong>{costDisplay}</strong>
+                      </td>
+                      <td className="quote-table-number-cell quote-pricing-money-cell quote-pricing-money-cell-sell">
+                        <span>Sell</span>
+                        <strong>{sellDisplay}</strong>
+                      </td>
+                      <td className="quote-table-number-cell quote-pricing-money-cell quote-pricing-money-cell-margin">
+                        <span>Margin</span>
                         <strong style={{ color: getMarginColor(marginMetrics.tone) }}>{marginDisplay}</strong>
-                        <div className="table-subcopy" style={{ color: getMarginColor(marginMetrics.tone) }}>
+                        <div className="quote-pricing-margin-percent" style={{ color: getMarginColor(marginMetrics.tone) }}>
                           {marginPercentDisplay}
                         </div>
                       </td>
-                      <td>
+                      <td className="quote-pricing-issue-cell">
                         <span className={`quote-ui-badge quote-ui-badge-${getIssueTone(row.issueMessages)}`}>
                           {row.issueMessages.length === 0 ? 'Ready state' : row.issueMessages[0]}
                         </span>
                         <div className="table-subcopy">{row.issueMessages.length === 0 ? 'No pricing warnings' : `${row.issueMessages.length} issue${row.issueMessages.length === 1 ? '' : 's'}`}</div>
                       </td>
-                      <td>
+                      <td className="quote-pricing-details-cell">
                         <RowDetailsPanel
                           summary="View details"
                           description="Cost breakdown, controls, overrides, adjustments, and notes"
