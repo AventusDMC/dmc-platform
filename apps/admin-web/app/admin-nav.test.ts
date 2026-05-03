@@ -152,11 +152,10 @@ test('dashboard shortcut routes consistently from page headers', () => {
 });
 
 test('auth middleware and server fetch preserve protected-route redirects', () => {
-  assert.match(middlewareSource, /try \{/);
-  assert.match(middlewareSource, /catch \(error\)/);
+  assert.match(middlewareSource, /import type \{ NextRequest \} from 'next\/server'/);
   assert.match(middlewareSource, /requestHeaders\.set\('x-dmc-pathname', pathname\)/);
-  assert.match(middlewareSource, /PUBLIC_PATH_PREFIXES = \['\/invoice'\]/);
-  assert.match(middlewareSource, /pathname\.startsWith\(prefix\)/);
+  assert.match(middlewareSource, /request\.nextUrl\.pathname/);
+  assert.doesNotMatch(middlewareSource, /__dirname|from ['"]fs['"]|from ['"]path['"]|process\.cwd\(\)/);
   assert.doesNotMatch(middlewareSource, /NextResponse\.redirect/);
   assert.match(adminServerSource, /\/login\?reason=session-expired&next=\$\{encodeURIComponent\(pathname \|\| '\/'\)\}/);
   assert.match(adminServerSource, /if \(!sessionToken && !init\.allowAnonymous\)/);

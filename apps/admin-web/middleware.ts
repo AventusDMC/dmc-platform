@@ -1,28 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-const PUBLIC_PATH_PREFIXES = ['/invoice'];
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  try {
-    const pathname = request.nextUrl.pathname || '/';
-    const requestHeaders = new Headers(request.headers);
+  const pathname = request.nextUrl.pathname || '/';
+  const requestHeaders = new Headers(request.headers);
 
-    requestHeaders.set('x-dmc-pathname', pathname);
+  requestHeaders.set('x-dmc-pathname', pathname);
 
-    for (const prefix of PUBLIC_PATH_PREFIXES) {
-      if (pathname.startsWith(prefix)) {
-        break;
-      }
-    }
-
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
-  } catch (error) {
-    return NextResponse.next();
-  }
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 export const config = {
