@@ -340,157 +340,149 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         ? 'Select a contact before creating a quote'
         : '';
   const canSubmit = !submitDisabledReason;
+  const pricingModeLabel = pricingMode === 'SLAB' ? 'Group slabs' : 'Fixed package';
+  const pricingTypeLabel = pricingMode === 'SLAB' ? 'Group pricing' : 'Simple pricing';
+  const markupSummaryLabel = pricingMode === 'SLAB' ? 'Per slab/service' : 'Service-level';
+  const taxSummaryLabel = 'Rate-level';
 
   return (
-    <form className="entity-form" onSubmit={handleSubmit}>
-      <div className="form-row">
-        <label>
-          Client Company
-          <select
-            value={clientCompanyId}
-            onChange={(event) => handleClientCompanyChange(event.target.value)}
-            required
-            disabled={companies.length === 0}
-          >
-            {companies.length === 0 ? (
-              <option value="">Create a company first</option>
-            ) : (
-              companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
+    <form className="entity-form quote-setup-guided-form" onSubmit={handleSubmit}>
+      <section className="quote-setup-pricing-summary" aria-label="Pricing summary">
+        <div>
+          <span>Currency</span>
+          <strong>{quoteCurrency}</strong>
+        </div>
+        <div>
+          <span>Pricing type</span>
+          <strong>{pricingTypeLabel}</strong>
+        </div>
+        <div>
+          <span>Markup</span>
+          <strong>{markupSummaryLabel}</strong>
+        </div>
+        <div>
+          <span>Tax</span>
+          <strong>{taxSummaryLabel}</strong>
+        </div>
+      </section>
 
-        <label>
-          Branding Company
-          <select
-            value={brandCompanyId}
-            onChange={(event) => setBrandCompanyId(event.target.value)}
-            required
-            disabled={companies.length === 0}
-          >
-            {companies.length === 0 ? (
-              <option value="">Create a company first</option>
-            ) : (
-              companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))
-            )}
-          </select>
-        </label>
-      </div>
+      <section className="quote-setup-guided-section">
+        <div className="quote-setup-section-head">
+          <p className="eyebrow">Pricing Basics</p>
+          <h3>Core quote setup</h3>
+        </div>
 
-      <div className="form-row">
-        <div className="form-field-stack">
-          <label className={missingContactForSelectedCompany || missingContactSelection ? 'form-field-missing' : undefined}>
-            Contact
+        <div className="quote-setup-form-grid">
+          <label>
+            Client Company
             <select
-              value={contactId}
-              onChange={(event) => setContactId(event.target.value)}
+              value={clientCompanyId}
+              onChange={(event) => handleClientCompanyChange(event.target.value)}
               required
-              disabled={availableContacts.length === 0}
+              disabled={companies.length === 0}
             >
-              {availableContacts.length === 0 ? (
-                <option value="">Create a contact for this company first</option>
+              {companies.length === 0 ? (
+                <option value="">Create a company first</option>
               ) : (
-                availableContacts.map((contact) => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.firstName} {contact.lastName}
+                companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
                   </option>
                 ))
               )}
             </select>
           </label>
 
-          {missingContactForSelectedCompany ? (
-            <div className="form-field-alert" role="alert">
-              <p>Create a contact for this company before creating a quote</p>
-              <Link className="secondary-button" href="/contacts/new">
-                Create contact
-              </Link>
-            </div>
-          ) : null}
+          <div className="form-field-stack">
+            <label className={missingContactForSelectedCompany || missingContactSelection ? 'form-field-missing' : undefined}>
+              Contact
+              <select
+                value={contactId}
+                onChange={(event) => setContactId(event.target.value)}
+                required
+                disabled={availableContacts.length === 0}
+              >
+                {availableContacts.length === 0 ? (
+                  <option value="">Create a contact for this company first</option>
+                ) : (
+                  availableContacts.map((contact) => (
+                    <option key={contact.id} value={contact.id}>
+                      {contact.firstName} {contact.lastName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            {missingContactForSelectedCompany ? (
+              <div className="form-field-alert" role="alert">
+                <p>Create a contact for this company before creating a quote</p>
+                <Link className="secondary-button" href="/contacts/new">
+                  Create contact
+                </Link>
+              </div>
+            ) : null}
+          </div>
+
+          <label>
+            Assigned Agent
+            <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+              <option value="">Unassigned</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name} ({agent.email})
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Quote Type
+            <select value={quoteType} onChange={(event) => setQuoteType(event.target.value as 'FIT' | 'GROUP')}>
+              <option value="FIT">FIT</option>
+              <option value="GROUP">GROUP</option>
+            </select>
+          </label>
+
+          <label>
+            Booking Type
+            <select value={bookingType} onChange={(event) => setBookingType(event.target.value as 'FIT' | 'GROUP' | 'SERIES')}>
+              <option value="FIT">FIT</option>
+              <option value="GROUP">GROUP</option>
+              <option value="SERIES">SERIES</option>
+            </select>
+          </label>
+
+          <label>
+            Quote Currency
+            <CurrencySelect value={quoteCurrency} onChange={(value) => setQuoteCurrency((value || 'USD') as SupportedCurrency)} required />
+          </label>
+
+          <label>
+            Pricing Mode
+            <select value={pricingMode} onChange={(event) => handlePricingModeChange(event.target.value as 'SLAB' | 'FIXED')}>
+              <option value="SLAB">Slab Pricing</option>
+              <option value="FIXED">Fixed Price</option>
+            </select>
+          </label>
+
+          <label className="quote-setup-field-wide">
+            Title
+            <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+          </label>
+
+          <label className="quote-setup-field-wide">
+            Description
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
+          </label>
         </div>
-
-        <label>
-          Assigned Agent
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-            <option value="">Unassigned</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name} ({agent.email})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
-          Quote Type
-          <select value={quoteType} onChange={(event) => setQuoteType(event.target.value as 'FIT' | 'GROUP')}>
-            <option value="FIT">FIT</option>
-            <option value="GROUP">GROUP</option>
-          </select>
-        </label>
-
-        <label>
-          Booking Type
-          <select value={bookingType} onChange={(event) => setBookingType(event.target.value as 'FIT' | 'GROUP' | 'SERIES')}>
-            <option value="FIT">FIT</option>
-            <option value="GROUP">GROUP</option>
-            <option value="SERIES">SERIES</option>
-          </select>
-        </label>
-
-        <label>
-          Jordan Pass
-          <select value={jordanPassType} onChange={(event) => setJordanPassType(event.target.value as 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT')}>
-            <option value="NONE">None</option>
-            <option value="WANDERER">Wanderer</option>
-            <option value="EXPLORER">Explorer</option>
-            <option value="EXPERT">Expert</option>
-          </select>
-        </label>
-      </div>
-
-      <label>
-        Title
-        <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-      </label>
-
-      <label>
-        Description
-        <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
-      </label>
-
-      <div className="form-row">
-        <label>
-          Quote Currency
-          <CurrencySelect value={quoteCurrency} onChange={(value) => setQuoteCurrency((value || 'USD') as SupportedCurrency)} required />
-        </label>
-
-        <label>
-          Pricing Mode
-          <select value={pricingMode} onChange={(event) => handlePricingModeChange(event.target.value as 'SLAB' | 'FIXED')}>
-            <option value="SLAB">Slab Pricing</option>
-            <option value="FIXED">Fixed Price</option>
-          </select>
-        </label>
-      </div>
+      </section>
 
       {pricingMode === 'SLAB' ? (
-        <div className="stacked-card">
-          <div className="panel-header" style={{ marginBottom: 12 }}>
-            <div>
-              <p className="eyebrow">Group Pricing</p>
-              <h3 className="section-title" style={{ fontSize: '1rem' }}>Pricing slabs</h3>
-            </div>
+        <section className="quote-setup-guided-section">
+          <div className="quote-setup-section-head">
+            <p className="eyebrow">Pricing Basis</p>
+            <h3>{pricingModeLabel}</h3>
           </div>
 
           <div className="table-wrap">
@@ -545,14 +537,12 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
           <button type="button" className="secondary-button" onClick={addPricingSlab}>
             Add row
           </button>
-        </div>
+        </section>
       ) : (
-        <div className="stacked-card">
-          <div className="panel-header" style={{ marginBottom: 12 }}>
-            <div>
-              <p className="eyebrow">Fixed Pricing</p>
-              <h3 className="section-title" style={{ fontSize: '1rem' }}>Package sell price can be set later</h3>
-            </div>
+        <section className="quote-setup-guided-section">
+          <div className="quote-setup-section-head">
+            <p className="eyebrow">Pricing Basis</p>
+            <h3>{pricingModeLabel}</h3>
           </div>
           <p className="detail-copy">
             The guided workflow does not require package sell pricing during setup. You can leave this blank now and set the package sell price per person in the Pricing step.
@@ -568,18 +558,54 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
               placeholder="Optional during setup"
             />
           </label>
-        </div>
+        </section>
       )}
 
-      <div className="stacked-card">
-        <div className="panel-header" style={{ marginBottom: 12 }}>
-          <div>
-            <p className="eyebrow">FOC Configuration</p>
-            <h3 className="section-title" style={{ fontSize: '1rem' }}>Free of charge policy</h3>
-          </div>
+      <section className="quote-setup-guided-section">
+        <div className="quote-setup-section-head">
+          <p className="eyebrow">Commercial Rules</p>
+          <h3>Guests, nights, and supplements</h3>
         </div>
 
-        <div className="form-row">
+        <div className="quote-setup-form-grid">
+          <label>
+            Adults
+            <input value={adults} onChange={(event) => setAdults(event.target.value)} type="number" min="0" required />
+          </label>
+
+          <label>
+            Children
+            <input value={children} onChange={(event) => setChildren(event.target.value)} type="number" min="0" required />
+          </label>
+
+          <label>
+            Rooms
+            <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
+          </label>
+
+          <label>
+            Nights
+            <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
+          </label>
+
+          <label>
+            Single Supplement
+            <input
+              value={singleSupplement}
+              onChange={(event) => setSingleSupplement(event.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
+            />
+          </label>
+        </div>
+
+        <div className="quote-setup-foc-panel">
+          <div>
+            <p className="eyebrow">FOC Configuration</p>
+            <h4>Free of charge policy</h4>
+          </div>
+        <div className="quote-setup-radio-grid">
           <label>
             <input
               type="radio"
@@ -613,7 +639,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         </div>
 
         {focType === 'ratio' ? (
-          <div className="form-row">
+          <div className="quote-setup-form-grid">
             <label>
               Ratio
               <input value={focRatio} onChange={(event) => setFocRatio(event.target.value)} type="number" min="1" step="1" />
@@ -631,7 +657,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         ) : null}
 
         {focType === 'fixed' ? (
-          <div className="form-row">
+          <div className="quote-setup-form-grid">
             <label>
               FOC Count
               <input value={focCount} onChange={(event) => setFocCount(event.target.value)} type="number" min="0" step="1" />
@@ -647,52 +673,57 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
             </label>
           </div>
         ) : null}
-      </div>
+        </div>
+      </section>
 
-      <div className="form-row">
-        <label>
-          Adults
-          <input value={adults} onChange={(event) => setAdults(event.target.value)} type="number" min="0" required />
-        </label>
+      <details className="quote-setup-guided-section quote-setup-advanced">
+        <summary>
+          <span>Advanced Settings</span>
+          <small>Branding, Jordan Pass, and validity dates</small>
+        </summary>
 
-        <label>
-          Children
-          <input value={children} onChange={(event) => setChildren(event.target.value)} type="number" min="0" required />
-        </label>
-      </div>
+        <div className="quote-setup-form-grid">
+          <label>
+            Branding Company
+            <select
+              value={brandCompanyId}
+              onChange={(event) => setBrandCompanyId(event.target.value)}
+              required
+              disabled={companies.length === 0}
+            >
+              {companies.length === 0 ? (
+                <option value="">Create a company first</option>
+              ) : (
+                companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
 
-      <div className="form-row">
-        <label>
-          Rooms
-          <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
-        </label>
+          <label>
+            Jordan Pass
+            <select value={jordanPassType} onChange={(event) => setJordanPassType(event.target.value as 'NONE' | 'WANDERER' | 'EXPLORER' | 'EXPERT')}>
+              <option value="NONE">None</option>
+              <option value="WANDERER">Wanderer</option>
+              <option value="EXPLORER">Explorer</option>
+              <option value="EXPERT">Expert</option>
+            </select>
+          </label>
 
-        <label>
-          Nights
-          <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
-        </label>
-      </div>
+          <label>
+            Travel Start Date
+            <input value={travelStartDate} onChange={(event) => setTravelStartDate(event.target.value)} type="date" />
+          </label>
 
-      <label>
-        Single Supplement
-        <input
-          value={singleSupplement}
-          onChange={(event) => setSingleSupplement(event.target.value)}
-          type="number"
-          min="0"
-          step="0.01"
-        />
-      </label>
-
-      <label>
-        Travel Start Date
-        <input value={travelStartDate} onChange={(event) => setTravelStartDate(event.target.value)} type="date" />
-      </label>
-
-      <label>
-        Valid Until
-        <input value={validUntil} onChange={(event) => setValidUntil(event.target.value)} type="date" />
-      </label>
+          <label>
+            Valid Until
+            <input value={validUntil} onChange={(event) => setValidUntil(event.target.value)} type="date" />
+          </label>
+        </div>
+      </details>
 
       <button type="submit" disabled={isSubmitting || !canSubmit} title={submitDisabledReason || undefined}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save changes' : 'Create quote')}
