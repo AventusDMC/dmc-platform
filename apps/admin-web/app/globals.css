@@ -19980,6 +19980,42 @@ video {
   border-radius: 0.8rem;
 }
 
+.quote-pricing-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.quote-pricing-review-main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quote-pricing-review-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quote-pricing-context-panel.app-financial-panel {
+  box-shadow:
+    0 24px 60px rgba(17, 24, 39, 0.24),
+    0 10px 30px rgba(28, 127, 184, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.quote-pricing-context-panel .quote-pricing-summary-row {
+  grid-template-columns: minmax(0, 1fr) minmax(8.5rem, auto);
+}
+
+.quote-pricing-context-panel .quote-pricing-summary-row:first-child strong {
+  font-size: clamp(2rem, 3vw, 2.55rem);
+}
+
 .quote-builder-main-content {
   background: rgba(31, 154, 207, 0.035);
 }
@@ -20125,5 +20161,33 @@ video {
   display: block;
   min-width: 0;
   white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .quote-pricing-review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-pricing-review-sidebar {
+    position: static;
+    order: -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-pricing-hero .workspace-section-head,
+  .quote-pricing-hero-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .quote-pricing-hero-actions .primary-button,
+  .quote-pricing-hero-actions .secondary-button {
+    width: 100%;
+  }
+
+  .quote-pricing-context-panel .quote-pricing-summary-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 

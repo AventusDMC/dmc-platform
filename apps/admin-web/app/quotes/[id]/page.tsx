@@ -1405,6 +1405,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteExpired = isQuoteExpired(quote);
   const quoteProfit = calculateProfit(quote.totalSell, quote.totalCost);
   const quoteMarginPercent = calculateMarginPercent(quote.totalSell, quote.totalCost);
+  const quoteMarkupPercent = quote.totalCost > 0 ? Number(((quoteProfit / quote.totalCost) * 100).toFixed(2)) : 0;
   const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);
   const authoringSummary = collectQuoteAuthoringSummary(quote);
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
@@ -2071,48 +2072,67 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   />
                 </>
               ) : (
-                <>
-                  <SummaryStrip
-                    items={[
-                      { id: 'pricing-priced', label: 'Priced', value: String(pricedServicesCount), helper: 'Service rows with cost, sell, and pax' },
-                      { id: 'pricing-unpriced', label: 'Unpriced', value: String(readiness.unpricedServices), helper: readiness.unpricedServices > 0 ? 'Complete missing commercial inputs' : 'No unpriced service rows' },
-                      { id: 'pricing-blockers', label: 'Blockers', value: String(quotePricingBlockerCount), helper: quotePricingBlockerCount > 0 ? 'Resolve service pricing blockers first' : 'No pricing blockers in scope' },
-                    ]}
-                  />
+                <div className="quote-pricing-review-layout">
+                  <div className="quote-pricing-review-main">
+                    <SummaryStrip
+                      items={[
+                        { id: 'pricing-priced', label: 'Priced', value: String(pricedServicesCount), helper: 'Service rows with cost, sell, and pax' },
+                        { id: 'pricing-unpriced', label: 'Unpriced', value: String(readiness.unpricedServices), helper: readiness.unpricedServices > 0 ? 'Complete missing commercial inputs' : 'No unpriced service rows' },
+                        { id: 'pricing-blockers', label: 'Blockers', value: String(quotePricingBlockerCount), helper: quotePricingBlockerCount > 0 ? 'Resolve service pricing blockers first' : 'No pricing blockers in scope' },
+                      ]}
+                    />
 
-                  <QuoteSummaryPanel
-                    items={allQuotePricingItems}
-                    totalCost={quote.totalCost}
-                    totalSell={quote.totalSell}
-                    pax={totalPax}
-                    currency={quote.quoteCurrency}
-                  />
+                    <QuoteSummaryPanel
+                      items={allQuotePricingItems}
+                      totalCost={quote.totalCost}
+                      totalSell={quote.totalSell}
+                      pax={totalPax}
+                      currency={quote.quoteCurrency}
+                    />
 
-                  <QuotePricingTable
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    hotelCategories={hotelCategories}
-                    totalPax={totalPax}
-                    initialFocus={resolvedSearchParams?.pricingFocus}
-                    groupPricingHref={buildStepHref('group-pricing')}
-                    servicesHref={buildStepHref('services')}
-                    previewHref={buildStepHref('preview')}
-                    quote={{
-                      pricingMode: quote.pricingMode,
-                      pricingType: quote.pricingType,
-                      fixedPricePerPerson: quote.fixedPricePerPerson,
-                      totalCost: quote.totalCost,
-                      totalSell: quote.totalSell,
-                      pricePerPax: quote.pricePerPax,
-                      quoteItems: quote.quoteItems,
-                      quoteOptions: quote.quoteOptions,
-                      pricingSlabs: quote.pricingSlabs,
-                      scenarios: quote.scenarios,
-                    }}
-                    focImpactLabel={getFocImpactLabel(quote)}
-                    supplementsImpactLabel={getSupplementImpactLabel(quote)}
-                  />
-                </>
+                    <QuotePricingTable
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      hotelCategories={hotelCategories}
+                      totalPax={totalPax}
+                      initialFocus={resolvedSearchParams?.pricingFocus}
+                      groupPricingHref={buildStepHref('group-pricing')}
+                      servicesHref={buildStepHref('services')}
+                      previewHref={buildStepHref('preview')}
+                      quote={{
+                        pricingMode: quote.pricingMode,
+                        pricingType: quote.pricingType,
+                        fixedPricePerPerson: quote.fixedPricePerPerson,
+                        totalCost: quote.totalCost,
+                        totalSell: quote.totalSell,
+                        pricePerPax: quote.pricePerPax,
+                        quoteItems: quote.quoteItems,
+                        quoteOptions: quote.quoteOptions,
+                        pricingSlabs: quote.pricingSlabs,
+                        scenarios: quote.scenarios,
+                      }}
+                      focImpactLabel={getFocImpactLabel(quote)}
+                      supplementsImpactLabel={getSupplementImpactLabel(quote)}
+                    />
+                  </div>
+
+                  <aside className="quote-pricing-review-sidebar">
+                    <QuotePricingSummaryCard
+                      className="quote-pricing-context-panel app-financial-panel"
+                      eyebrow="Pricing Check"
+                      title="Commercial totals"
+                      items={[
+                        { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client-facing total' },
+                        { label: 'Service subtotal', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
+                        { label: 'Gross profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Sell less subtotal' },
+                        { label: 'Margin', value: formatMarginPercent(quoteMarginPercent), helper: 'Profit / sell' },
+                        { label: 'Markup', value: formatMarginPercent(quoteMarkupPercent), helper: 'Profit / cost' },
+                        { label: 'Price per pax', value: formatMoney(quote.pricePerPax, quote.quoteCurrency), helper: `${totalPax} traveler${totalPax === 1 ? '' : 's'}` },
+                        { label: 'Pricing status', value: quoteProgressLabel, helper: readiness.unpricedServices > 0 ? `${readiness.unpricedServices} unpriced` : 'Pricing rows ready' },
+                      ]}
+                    />
+                  </aside>
+                </div>
               )}
               {guidedStepFooter}
             </div>
