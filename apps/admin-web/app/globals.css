@@ -21348,3 +21348,93 @@ video {
   }
 }
 
+/* Day Description drawer polish. */
+.quote-timeline-drawer .app-drawer-header {
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 0.85rem;
+}
+
+.quote-timeline-drawer .app-drawer-header h2 {
+  font-size: 1.22rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.quote-timeline-drawer .app-drawer-header p {
+  margin-top: 0.25rem;
+  color: #667085;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.quote-timeline-drawer .app-drawer-actions .secondary-button {
+  min-height: 2.2rem;
+  padding: 0.42rem 0.7rem;
+  border-radius: 0.65rem;
+  font-size: 0.82rem;
+}
+
+.quote-timeline-drawer .app-drawer-body {
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.quote-timeline-drawer-form {
+  gap: 0.7rem;
+}
+
+.quote-timeline-drawer-form label {
+  gap: 0.38rem;
+  color: #344054;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.quote-day-description-textarea {
+  min-height: 210px;
+  padding: 0.95rem 1rem;
+  border: 1.5px solid rgba(28, 127, 184, 0.34);
+  border-radius: 0.85rem;
+  background: #FFFFFF;
+  color: #111827;
+  font: inherit;
+  font-size: 0.96rem;
+  line-height: 1.55;
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.045);
+}
+
+.quote-day-description-textarea:focus {
+  border-color: #1C7FB8;
+  box-shadow:
+    0 0 0 3px rgba(28, 127, 184, 0.12),
+    0 12px 28px rgba(17, 24, 39, 0.06);
+  outline: none;
+}
+
+.quote-timeline-drawer-actions {
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: -0.15rem;
+}
+
+.quote-timeline-drawer-actions .primary-button {
+  min-height: 2.3rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 0.68rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+@media (max-width: 520px) {
+  .quote-day-description-textarea {
+    min-height: 180px;
+  }
+
+  .quote-timeline-drawer-actions {
+    justify-content: stretch;
+  }
+
+  .quote-timeline-drawer-actions .primary-button {
+    width: 100%;
+  }
+}
+

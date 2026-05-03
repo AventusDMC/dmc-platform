@@ -1830,7 +1830,7 @@ function DayDescriptionDrawer({
     <DrawerPanel
       open={Boolean(item)}
       title="Day description"
-      description="Edit the client-facing day narrative."
+      description="Client-facing day narrative"
       onClose={onSave}
       closeLabel={isSaving ? 'Saving...' : 'Save'}
       className="quote-timeline-drawer"
