@@ -68,11 +68,12 @@ function sortRows(rows: SlabRow[]) {
 }
 
 function formatMoney(value: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  })}`;
 }
 
 function buildSlabLabel(minPax: number, maxPax: number | null, focPax: number) {

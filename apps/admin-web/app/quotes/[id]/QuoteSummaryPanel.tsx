@@ -19,15 +19,12 @@ type QuoteSummaryPanelProps = {
 };
 
 function formatMoney(value: number, currency = 'USD') {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${currency || 'USD'} ${value.toFixed(2)}`;
-  }
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatPercent(value: number) {

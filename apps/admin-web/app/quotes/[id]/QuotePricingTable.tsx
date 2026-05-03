@@ -148,19 +148,12 @@ type PricingRow =
     };
 
 function formatMoney(value: number, currency = 'USD') {
-  try {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency && currency.trim() ? currency : 'USD',
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 2,
-    }).format(value);
-  }
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency && currency.trim() ? currency : 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatMoneyOrPending(value: number | null | undefined, currency = 'USD') {

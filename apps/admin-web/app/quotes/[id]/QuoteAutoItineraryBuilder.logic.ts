@@ -12,6 +12,10 @@ export type GeneratedItineraryDay = {
   date: string | null;
 };
 
+export type GeneratedItineraryDayWithCity = GeneratedItineraryDay & {
+  city: string;
+};
+
 function formatDateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
@@ -56,6 +60,15 @@ export function generateItineraryDays(startDate: string | null | undefined, nigh
       date: addDays(startDate, index),
     };
   });
+}
+
+export function assignGeneratedItineraryCities(generatedDays: GeneratedItineraryDay[], cities: string[]): GeneratedItineraryDayWithCity[] {
+  const providedCities = cities.map((city) => city.trim()).filter(Boolean);
+
+  return generatedDays.map((day, index) => ({
+    ...day,
+    city: providedCities.length > 0 ? providedCities[Math.min(index, providedCities.length - 1)] : '',
+  }));
 }
 
 export function mergeExistingItineraryDays(...dayGroups: AutoItineraryExistingDay[][]) {

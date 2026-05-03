@@ -9,6 +9,7 @@ import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 import {
+  assignGeneratedItineraryCities,
   buildItineraryApplyMessage,
   generateItineraryDays,
   mergeExistingItineraryDays,
@@ -224,7 +225,6 @@ type QuoteAutoItineraryBuilderProps = {
 };
 
 const INVALID_ROUTE_PATTERNS = [/extra\s*km/i, /stationary/i, /per\s*hour/i, /hourly/i];
-const KEY_JORDAN_LANDMARKS = ['Petra', 'Wadi Rum', 'Dead Sea'];
 const ITINERARY_PRESETS = [
   {
     id: 'jordan-classic',
@@ -641,33 +641,16 @@ function buildItineraryWarnings(values: {
     });
   }
 
-  if (values.nightCount >= 3) {
-    const itineraryText = normalizeText(
-      [
-        ...values.days.flatMap((day) => [day.city, day.title]),
-        ...values.transports.flatMap((transport) => [transport.fromCity, transport.toCity, transport.route?.name || '']),
-      ].join(' '),
-    );
-    const missingLandmarks = KEY_JORDAN_LANDMARKS.filter((landmark) => !itineraryText.includes(normalizeText(landmark)));
-
-    if (missingLandmarks.length > 0) {
-      warnings.push({
-        id: 'missing-jordan-landmarks',
-        title: 'Key Jordan landmarks may be missing',
-        description: `Consider adding ${missingLandmarks.join(', ')} for a fuller Jordan itinerary, unless this quote intentionally excludes them.`,
-      });
-    }
-  }
-
   return warnings;
 }
 
 function formatEstimateMoney(value: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value || 0);
+  })}`;
 }
 
 function buildSendReadinessState(values: {
@@ -770,14 +753,7 @@ async function buildPreviewDraft(values: {
   const optimized = optimizeCitySequence(parseRouteText(values.routeText), values.routes, values.optimizationMode);
   const cities = optimized.cities;
   const generatedDays = generateItineraryDays(values.travelStartDate, values.nightCount);
-  const dayCount = generatedDays.length;
-  const days: PreviewDay[] = generatedDays.map((generatedDay, index) => {
-    const city = cities[Math.min(index, Math.max(cities.length - 1, 0))] || `Day ${index + 1}`;
-    return {
-      ...generatedDay,
-      city,
-    };
-  });
+  const days: PreviewDay[] = assignGeneratedItineraryCities(generatedDays, cities);
 
   const itineraryCities = days.map((day) => day.city);
   const transports = await Promise.all(
@@ -862,7 +838,7 @@ export function QuoteAutoItineraryBuilder({
   const router = useRouter();
   const [travelStartDate, setTravelStartDate] = useState(quote.travelStartDate?.slice(0, 10) || '');
   const [nightCount, setNightCount] = useState(String(Math.max(quote.nightCount || 1, 1)));
-  const [routeText, setRouteText] = useState('Amman -> Petra -> Wadi Rum');
+  const [routeText, setRouteText] = useState('');
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [pax, setPax] = useState(String(Math.max(totalPax || quote.adults + quote.children || 1, 1)));
   const [quoteType, setQuoteType] = useState<'FIT' | 'GROUP'>(quote.quoteType || 'FIT');
@@ -1301,10 +1277,7 @@ export function QuoteAutoItineraryBuilder({
 
   function buildDaysOnlyPreview(): PreviewDraft {
     const cities = parseRouteText(routeText);
-    const days = generateItineraryDays(travelStartDate, numericNightCount).map((day, index) => ({
-      ...day,
-      city: cities[Math.min(index, Math.max(cities.length - 1, 0))] || `Day ${index + 1}`,
-    }));
+    const days = assignGeneratedItineraryCities(generateItineraryDays(travelStartDate, numericNightCount), cities);
 
     return {
       days,

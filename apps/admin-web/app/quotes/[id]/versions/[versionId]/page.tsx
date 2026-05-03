@@ -241,7 +241,12 @@ async function getQuoteVersion(id: string, versionId: string): Promise<QuoteVers
 }
 
 function formatMoney(amount: number, currency = 'USD') {
-  return `${currency} ${amount.toFixed(2)}`;
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+
+  return `${currency || 'USD'} ${safeAmount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function parseSupportText(text: string | null | undefined) {

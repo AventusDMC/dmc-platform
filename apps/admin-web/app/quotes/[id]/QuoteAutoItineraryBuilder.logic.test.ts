@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  assignGeneratedItineraryCities,
   buildItineraryApplyMessage,
   generateItineraryDays,
   getAutoItineraryDayTitle,
@@ -12,6 +13,27 @@ describe('quote auto itinerary builder logic', () => {
     assert.deepEqual(
       [1, 2, 3, 4].map((nightCount) => generateItineraryDays('2026-05-10', nightCount).length),
       [2, 3, 4, 5],
+    );
+  });
+
+  it('does not append unprovided destinations when assigning generated day cities', () => {
+    const days = generateItineraryDays('2026-05-10', 3);
+    const assignedDays = assignGeneratedItineraryCities(days, ['Amman', 'Petra', 'Wadi Rum']);
+
+    assert.equal(assignedDays.length, 4);
+    assert.deepEqual(
+      assignedDays.map((day) => day.city),
+      ['Amman', 'Petra', 'Wadi Rum', 'Wadi Rum'],
+    );
+    assert.equal(assignedDays.some((day) => day.city === 'Dead Sea'), false);
+  });
+
+  it('leaves generated day cities blank when no destinations are provided', () => {
+    const days = assignGeneratedItineraryCities(generateItineraryDays('2026-05-10', 3), []);
+
+    assert.deepEqual(
+      days.map((day) => day.city),
+      ['', '', '', ''],
     );
   });
 

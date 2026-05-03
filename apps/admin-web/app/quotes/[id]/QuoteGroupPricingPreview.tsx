@@ -9,11 +9,12 @@ type QuoteGroupPricingPreviewProps = {
 };
 
 function formatMoney(value: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  })}`;
 }
 
 export function QuoteGroupPricingPreview({

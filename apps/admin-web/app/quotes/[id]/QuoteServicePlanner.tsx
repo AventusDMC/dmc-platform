@@ -1414,11 +1414,12 @@ function ServiceLane({
 }
 
 function formatLiveMoney(value: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value || 0);
+  })}`;
 }
 
 function buildSortableTransform(transform: ReturnType<typeof useSortable>['transform']) {
@@ -1507,10 +1508,12 @@ function SortableServiceCard({
       <div className="quote-service-card-pricing-summary">
         <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
         <span>
-          Sell {formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)} | Cost {formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}
+          Sell <span className="quote-money">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</span> | Cost{' '}
+          <span className="quote-money">{formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}</span>
         </span>
         <span>
-          Profit {formatLiveMoney(itemProfit, (item.currency as Quote['quoteCurrency']) || currency)} | Margin {formatMarginPercent(itemMarginPercent)}
+          Profit <span className="quote-money">{formatLiveMoney(itemProfit, (item.currency as Quote['quoteCurrency']) || currency)}</span> | Margin{' '}
+          <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span>
         </span>
         {isExternalPackage ? (
           <span>{item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'}</span>

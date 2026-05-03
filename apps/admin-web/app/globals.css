@@ -19824,3 +19824,52 @@ video {
   }
 }
 
+.quote-money,
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.quote-pricing-summary-row p,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-service-card-financials .quote-money,
+.quote-service-card-pricing-summary .quote-money,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong,
+.money-cell {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-preview-total-list strong,
+.quote-pricing-summary-row > div,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-service-card-financials p,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong {
+  text-align: right;
+}
+
+.quote-preview-total-list strong,
+.quote-pricing-summary-row strong,
+.quote-drawer-financial-summary strong,
+.quote-service-card-price,
+.quote-service-card-financials strong,
+.quote-live-pricing-profit strong,
+.quote-live-pricing-row strong,
+.workspace-summary-card strong,
+.app-financial-panel strong,
+.financial-panel strong {
+  font-weight: 850;
+  line-height: 1.15;
+}
+

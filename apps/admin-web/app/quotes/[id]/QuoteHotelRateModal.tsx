@@ -75,11 +75,11 @@ function formatMoney(value: string) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return 'Pricing to be confirmed';
   }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+
+  return `USD ${amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  })}`;
 }
 
 export function QuoteHotelRateModal({

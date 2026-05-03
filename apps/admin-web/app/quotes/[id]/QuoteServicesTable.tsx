@@ -247,11 +247,12 @@ type QuoteServicesTableProps = {
 type ServiceSliceFilter = 'all' | 'issues' | 'missing-supplier' | 'missing-price';
 
 function formatMoney(value: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${currency || 'USD'} ${safeValue.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(value);
+  })}`;
 }
 
 function getCapacityPricingHelper(item: QuoteItem, services: SupplierService[]) {
@@ -606,9 +607,11 @@ function QuoteServiceRow({
       <div className="quote-service-card-financials">
         <span>Total sell</span>
         <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
-        <p>Cost {formatMoney(currentItem.totalCost, currentItem.currency)}</p>
+        <p>
+          Cost <span className="quote-money">{formatMoney(currentItem.totalCost, currentItem.currency)}</span>
+        </p>
         <p style={{ color: getMarginColor(marginMetrics.tone) }}>
-          Margin {formatMoney(marginMetrics.margin, currentItem.currency)} ({marginMetrics.marginPercent.toFixed(2)}%)
+          Margin <span className="quote-money">{formatMoney(marginMetrics.margin, currentItem.currency)}</span> ({marginMetrics.marginPercent.toFixed(2)}%)
         </p>
       </div>
 
