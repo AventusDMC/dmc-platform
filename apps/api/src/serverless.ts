@@ -57,7 +57,22 @@ export default async function handler(request: IncomingMessage, response: Server
 
   try {
     const expressApp = await getServer();
-    return expressApp(request, response);
+    return await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        request.off('error', reject);
+        response.off('error', reject);
+        response.off('finish', onFinish);
+      };
+      const onFinish = () => {
+        cleanup();
+        resolve();
+      };
+
+      request.once('error', reject);
+      response.once('error', reject);
+      response.once('finish', onFinish);
+      expressApp(request, response);
+    });
   } catch (error) {
     logHandlerError(error);
     logServerlessError('handler', error);
