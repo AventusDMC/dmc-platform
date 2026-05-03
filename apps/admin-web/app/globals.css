@@ -21086,3 +21086,151 @@ video {
   }
 }
 
+/* Itinerary Builder main-content service layout. */
+.quote-service-planner .quote-service-day-layout-visual {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.quote-service-planner .quote-service-current-services {
+  width: 100%;
+  padding: 1.25rem;
+  border-color: rgba(203, 213, 225, 0.9);
+  background: #FFFFFF;
+}
+
+.quote-service-planner .quote-service-current-services > .workspace-section-head {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+}
+
+.quote-service-planner .quote-service-current-services > .workspace-section-head h4 {
+  color: #111827;
+  font-size: 1.08rem;
+  font-weight: 850;
+}
+
+.quote-service-planner .quote-service-visual-board {
+  gap: 1rem;
+}
+
+.quote-service-planner .quote-service-lane {
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 0.95rem;
+  background: rgba(248, 250, 252, 0.62);
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-lane:hover {
+  box-shadow: none;
+}
+
+.quote-service-planner .quote-service-lane-head {
+  margin: 0;
+  padding-bottom: 0.7rem;
+}
+
+.quote-service-planner .quote-service-lane-head div {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.quote-service-planner .quote-service-lane-head span {
+  color: #111827;
+  font-size: 0.88rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.quote-service-planner .quote-service-card-row {
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-columns: unset;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  overflow: visible;
+  padding-bottom: 0;
+  scroll-snap-type: none;
+}
+
+.quote-service-planner .quote-service-mini-card {
+  width: 100%;
+  padding: 1rem;
+  border-color: rgba(203, 213, 225, 0.82);
+  background: #FFFFFF;
+}
+
+.quote-service-planner .quote-service-mini-card-head {
+  align-self: start;
+}
+
+.quote-service-planner .quote-service-mini-card-main {
+  gap: 0.35rem;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary {
+  grid-template-columns: repeat(3, minmax(8rem, 1fr));
+  align-items: stretch;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary > span {
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.quote-service-planner .quote-service-lane-add-bottom {
+  justify-self: start;
+  margin-top: 0.1rem;
+  background: transparent;
+}
+
+.quote-service-planner .quote-service-empty-add {
+  width: 100%;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.quote-service-planner .quote-service-side-section {
+  padding: 0.95rem 1rem;
+  border-style: dashed;
+  background: rgba(248, 250, 252, 0.58);
+}
+
+.quote-service-planner .quote-service-day-checklist {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+@media (min-width: 1120px) {
+  .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(13rem, 0.22fr) minmax(0, 1fr);
+  }
+
+  .quote-service-planner .quote-service-mini-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .quote-service-planner .quote-service-mini-card-head,
+  .quote-service-planner .quote-service-mini-card-main,
+  .quote-service-planner .quote-service-external-package-meta,
+  .quote-service-planner .quote-service-card-pricing-summary,
+  .quote-service-planner .quote-service-card-details,
+  .quote-service-planner .quote-service-mini-card-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-current-services,
+  .quote-service-planner .quote-service-lane {
+    padding: 0.85rem;
+  }
+
+  .quote-service-planner .quote-service-card-pricing-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+

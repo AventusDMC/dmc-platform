@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
-import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
@@ -1379,9 +1379,6 @@ function ServiceLane({
           <span>{label}</span>
           <strong>{orderedItems.length}</strong>
         </div>
-        <button type="button" className="quote-service-lane-add" onClick={() => onAdd(category)}>
-          Add {label}
-        </button>
       </div>
 
       {orderedItems.length === 0 ? (
@@ -1390,7 +1387,7 @@ function ServiceLane({
           Add {label}
         </button>
       ) : (
-        <SortableContext items={orderedItems.map((item) => item.id)} strategy={horizontalListSortingStrategy}>
+        <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <div className="quote-service-card-row">
             {orderedItems.map((item) => (
               <SortableServiceCard
@@ -1409,6 +1406,11 @@ function ServiceLane({
           </div>
         </SortableContext>
       )}
+      {orderedItems.length > 0 ? (
+        <button type="button" className="quote-service-lane-add quote-service-lane-add-bottom" onClick={() => onAdd(category)}>
+          Add {label}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -2567,7 +2569,7 @@ function ScopePlanner({
           dayNarrative ||
           (summary.inferredCity && summary.day.title && summary.day.title !== summary.inferredCity
             ? summary.day.title
-            : 'Build the day by adding the core services on the right.');
+            : 'Build the day by adding the core services below.');
 
         return (
           <article
