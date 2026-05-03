@@ -1457,6 +1457,7 @@ function SortableServiceCard({
   const itemProfit = calculateProfit(item.totalSell, item.totalCost);
   const itemMarginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
   const itemMarginWarning = getItemMarginWarning(item.totalSell, item.totalCost);
+  const itemCurrency = (item.currency as Quote['quoteCurrency']) || currency;
 
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -1494,7 +1495,18 @@ function SortableServiceCard({
         {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
         {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
       </div>
-      <h5>{displayName}</h5>
+      <div className="quote-service-mini-card-main">
+        <div className="quote-service-mini-card-title-row">
+          <div className="quote-service-mini-card-title-copy">
+            <span>{SERVICE_PLANNER_TAB_LABELS[category]}</span>
+            <h5>{displayName}</h5>
+          </div>
+          <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
+        </div>
+        <p className="quote-service-card-supplier">
+          {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
+        </p>
+      </div>
       {isExternalPackage ? (
         <div className="quote-service-external-package-meta">
           <span>Multi-day partner package</span>
@@ -1502,19 +1514,10 @@ function SortableServiceCard({
           <em>{item.externalPackageCountry || 'Country pending'}</em>
         </div>
       ) : null}
-      <p className="quote-service-card-supplier">
-        {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
-      </p>
       <div className="quote-service-card-pricing-summary">
-        <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
-        <span>
-          Cost{' '}
-          <span className="quote-money">{formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}</span>
-        </span>
-        <span>
-          Profit <span className="quote-money">{formatLiveMoney(itemProfit, (item.currency as Quote['quoteCurrency']) || currency)}</span> | Margin{' '}
-          <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span>
-        </span>
+        <span>Cost <span className="quote-money">{formatLiveMoney(item.totalCost, itemCurrency)}</span></span>
+        <span>Profit <span className="quote-money">{formatLiveMoney(itemProfit, itemCurrency)}</span></span>
+        <span>Margin <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span></span>
         {isExternalPackage ? (
           <span>{item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'}</span>
         ) : null}
