@@ -1508,7 +1508,7 @@ function SortableServiceCard({
       <div className="quote-service-card-pricing-summary">
         <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</strong>
         <span>
-          Sell <span className="quote-money">{formatLiveMoney(item.totalSell, (item.currency as Quote['quoteCurrency']) || currency)}</span> | Cost{' '}
+          Cost{' '}
           <span className="quote-money">{formatLiveMoney(item.totalCost, (item.currency as Quote['quoteCurrency']) || currency)}</span>
         </span>
         <span>

@@ -2025,7 +2025,31 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           ) : null}
 
           {activeTab === 'pricing' ? (
-            <div className="section-stack">
+            <div className="section-stack quote-pricing-workspace">
+              <section className="workspace-section quote-pricing-hero app-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Pricing Workspace</p>
+                    <h2>{activeStep === 'group-pricing' ? 'Configure group pricing' : 'Review service pricing'}</h2>
+                    <p className="detail-copy">
+                      {activeStep === 'group-pricing'
+                        ? 'Keep package and slab pricing separate from service costs so the commercial basis is clear.'
+                        : 'Compare service cost, sell, and margin in one place before moving to client review.'}
+                    </p>
+                  </div>
+                  <div className="quote-pricing-hero-actions">
+                    <Link href={buildStepHref('services')} className="secondary-button">
+                      Services
+                    </Link>
+                    <Link href={buildStepHref('group-pricing')} className="secondary-button">
+                      Group pricing
+                    </Link>
+                    <Link href={buildStepHref('preview')} className="primary-button">
+                      Preview
+                    </Link>
+                  </div>
+                </div>
+              </section>
               {activeStep === 'group-pricing' ? (
                 <>
                   <SummaryStrip
