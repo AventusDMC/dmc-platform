@@ -22226,3 +22226,114 @@ video {
   color: var(--muted-foreground);
 }
 
+.quote-builder-main .detail-card .quote-preview-total-list {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.8rem;
+  width: 100%;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list > div {
+  display: grid;
+  min-width: 0;
+  height: auto;
+  align-content: start;
+  gap: 0.35rem;
+  padding: 0.85rem;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list span,
+.quote-builder-main .detail-card .quote-preview-total-list strong,
+.quote-builder-main .detail-card .quote-preview-total-list em {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list strong {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: normal;
+}
+
+.quote-builder-main .detail-card .quote-preview-total-list em {
+  justify-self: start;
+}
+
+/* Quote overview metric tile grid safeguards. */
+.quote-builder-main .detail-card > .quote-preview-total-list,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list,
+.quote-dashboard-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 0.85rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list > div,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list > div,
+.quote-dashboard-meta-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 0.9rem 0.95rem;
+  overflow: visible;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list span,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list span,
+.quote-dashboard-meta-grid span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list strong,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list strong,
+.quote-dashboard-meta-grid strong {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: visible;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.18;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.quote-builder-main .detail-card > .quote-preview-total-list em,
+.quote-builder-main .tab-panel-card > .quote-preview-total-list em {
+  width: fit-content;
+  max-width: 100%;
+}
+
+@media (max-width: 1080px) {
+  .quote-builder-main .detail-card > .quote-preview-total-list,
+  .quote-builder-main .tab-panel-card > .quote-preview-total-list,
+  .quote-dashboard-meta-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .quote-builder-main .detail-card > .quote-preview-total-list,
+  .quote-builder-main .tab-panel-card > .quote-preview-total-list,
+  .quote-dashboard-meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
