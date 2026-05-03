@@ -42,6 +42,8 @@ async function getServer() {
     }
 
     console.info('[serverless-bootstrap] after app.init');
+    await new Promise((resolve) => setImmediate(resolve));
+    console.info('[serverless-bootstrap] after app.init settled');
     cachedServer = serverless(expressServer) as unknown as ServerlessHandler;
     console.info('[serverless-bootstrap] handler cached');
   }
@@ -58,7 +60,7 @@ export default async function handler(request: IncomingMessage, response: Server
 
   try {
     const serverlessHandler = await getServer();
-    return serverlessHandler(request, response);
+    return await serverlessHandler(request, response);
   } catch (error) {
     logHandlerError(error);
     logServerlessError('handler', error);
