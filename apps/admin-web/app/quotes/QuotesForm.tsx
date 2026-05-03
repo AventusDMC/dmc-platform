@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ApiValidationError, getApiError } from '../lib/api';
@@ -83,6 +83,30 @@ function createPricingSlabValue(values?: Partial<PricingSlabFormValue>): Pricing
     maxPax: values?.maxPax || '',
     price: values?.price || '',
   };
+}
+
+function parseOptionalNumber(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoney(value: number | null, currency: SupportedCurrency) {
+  if (value === null) {
+    return 'Pending';
+  }
+
+  return `${currency} ${value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatCount(value: number, singular: string, plural = `${singular}s`) {
+  return `${value} ${value === 1 ? singular : plural}`;
 }
 
 export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quoteId, submitLabel, initialValues }: QuotesFormProps) {
@@ -341,29 +365,81 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
         : '';
   const canSubmit = !submitDisabledReason;
   const pricingModeLabel = pricingMode === 'SLAB' ? 'Group slabs' : 'Fixed package';
-  const pricingTypeLabel = pricingMode === 'SLAB' ? 'Group pricing' : 'Simple pricing';
-  const markupSummaryLabel = pricingMode === 'SLAB' ? 'Per slab/service' : 'Service-level';
-  const taxSummaryLabel = 'Rate-level';
+  const pricingSummaryItems = useMemo(() => {
+    const completeSlabs = pricingSlabs
+      .map((slab) => ({
+        minPax: parseOptionalNumber(slab.minPax),
+        maxPax: parseOptionalNumber(slab.maxPax),
+        price: parseOptionalNumber(slab.price),
+      }))
+      .filter((slab) => slab.minPax !== null && slab.maxPax !== null && slab.price !== null);
+    const fixedPrice = parseOptionalNumber(fixedPricePerPerson);
+    const slabPrices = completeSlabs
+      .map((slab) => slab.price)
+      .filter((price): price is number => price !== null);
+    const lowestSlabPrice = slabPrices.length > 0 ? Math.min(...slabPrices) : null;
+    const highestSlabPrice = slabPrices.length > 0 ? Math.max(...slabPrices) : null;
+    const normalizedFocType = focType === 'ratio' ? 'Ratio FOC' : focType === 'fixed' ? 'Fixed FOC' : 'No FOC';
+    const focHelper =
+      focType === 'ratio' && focRatio.trim()
+        ? `1 free per ${focRatio.trim()} paying guests`
+        : focType === 'fixed' && focCount.trim()
+          ? `${focCount.trim()} free ${focRoomType || 'room'} guest${focCount.trim() === '1' ? '' : 's'}`
+          : 'No free-of-charge reduction';
+    const slabPriceRange =
+      lowestSlabPrice === null
+        ? 'Pending'
+        : lowestSlabPrice === highestSlabPrice
+          ? formatMoney(lowestSlabPrice, quoteCurrency)
+          : `${formatMoney(lowestSlabPrice, quoteCurrency)} to ${formatMoney(highestSlabPrice, quoteCurrency)}`;
+
+    return [
+      {
+        label: 'Currency',
+        value: quoteCurrency,
+        helper: 'Applies to setup prices',
+      },
+      {
+        label: 'Pricing type',
+        value: pricingMode === 'SLAB' ? 'Group pricing' : 'Simple pricing',
+        helper:
+          pricingMode === 'SLAB'
+            ? `${formatCount(completeSlabs.length, 'complete slab')} configured`
+            : 'Fixed package basis',
+      },
+      {
+        label: pricingMode === 'SLAB' ? 'Slab sell range' : 'Package sell',
+        value: pricingMode === 'SLAB' ? slabPriceRange : formatMoney(fixedPrice, quoteCurrency),
+        helper: pricingMode === 'SLAB' ? 'Per paying guest' : 'Per person',
+      },
+      {
+        label: 'Markup',
+        value: pricingMode === 'SLAB' ? 'Included in slabs' : 'Service-level',
+        helper: pricingMode === 'SLAB' ? 'Slab prices are client sell values' : 'Calculated per service in pricing',
+      },
+      {
+        label: 'Tax',
+        value: 'Rate-level',
+        helper: 'Uses service and supplier rate tax rules',
+      },
+      {
+        label: 'FOC',
+        value: normalizedFocType,
+        helper: focHelper,
+      },
+    ];
+  }, [fixedPricePerPerson, focCount, focRatio, focRoomType, focType, pricingMode, pricingSlabs, quoteCurrency]);
 
   return (
     <form className="entity-form quote-setup-guided-form" onSubmit={handleSubmit}>
       <section className="quote-setup-pricing-summary" aria-label="Pricing summary">
-        <div>
-          <span>Currency</span>
-          <strong>{quoteCurrency}</strong>
-        </div>
-        <div>
-          <span>Pricing type</span>
-          <strong>{pricingTypeLabel}</strong>
-        </div>
-        <div>
-          <span>Markup</span>
-          <strong>{markupSummaryLabel}</strong>
-        </div>
-        <div>
-          <span>Tax</span>
-          <strong>{taxSummaryLabel}</strong>
-        </div>
+        {pricingSummaryItems.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.helper}</small>
+          </div>
+        ))}
       </section>
 
       <section className="quote-setup-guided-section">
