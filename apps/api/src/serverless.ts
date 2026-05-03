@@ -1,6 +1,8 @@
-import { createNestApp } from './nest-app';
+import type { IncomingMessage, ServerResponse } from 'http';
+import serverless = require('serverless-http');
+import { createExpressServer, createNestApp } from './nest-app';
 
-type ServerlessHandler = (request: unknown, response: unknown) => void;
+type ServerlessHandler = (request: IncomingMessage, response: ServerResponse) => Promise<unknown>;
 
 let cachedServer: ServerlessHandler | null = null;
 
@@ -16,7 +18,8 @@ function logServerlessError(phase: string, error: unknown) {
 async function getServer() {
   if (!cachedServer) {
     console.info('[serverless-bootstrap] cache miss: creating Nest app');
-    const app = await createNestApp();
+    const expressServer = createExpressServer();
+    const app = await createNestApp(expressServer);
 
     console.info('[serverless-bootstrap] before app.init', {
       hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
@@ -31,19 +34,19 @@ async function getServer() {
     }
 
     console.info('[serverless-bootstrap] after app.init');
-    cachedServer = app.getHttpAdapter().getInstance() as ServerlessHandler;
+    cachedServer = serverless(expressServer) as unknown as ServerlessHandler;
     console.info('[serverless-bootstrap] handler cached');
   }
 
   return cachedServer;
 }
 
-export default async function handler(request: unknown, response: unknown) {
+export default async function handler(request: IncomingMessage, response: ServerResponse) {
   console.info('[serverless-bootstrap] before handler returns');
 
   try {
-    const server = await getServer();
-    return server(request, response);
+    const serverlessHandler = await getServer();
+    return serverlessHandler(request, response);
   } catch (error) {
     logServerlessError('handler', error);
     throw error;

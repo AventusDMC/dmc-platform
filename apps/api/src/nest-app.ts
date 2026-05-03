@@ -1,11 +1,17 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 import { NestFactory } from '@nestjs/core';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { ExpressAdapter, NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 
-const { json, urlencoded } = require('express');
+const express = require('express');
+
+export type ExpressServer = ReturnType<typeof express>;
+
+export function createExpressServer(): ExpressServer {
+  return express();
+}
 
 function logBootstrapError(phase: string, error: unknown) {
   console.error('[serverless-bootstrap] error', {
@@ -25,17 +31,20 @@ export function getCorsOrigins() {
   return Array.from(new Set(['http://localhost:3000', 'https://dmc-platform-admin-web.vercel.app', ...configured]));
 }
 
-export async function createNestApp() {
+export async function createNestApp(expressServer?: ExpressServer) {
   console.info('[serverless-bootstrap] before NestFactory.create', {
     nodeEnv: process.env.NODE_ENV,
     vercel: process.env.VERCEL,
     hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    expressAdapter: Boolean(expressServer),
   });
 
   let app: NestExpressApplication;
 
   try {
-    app = await NestFactory.create<NestExpressApplication>(AppModule);
+    app = expressServer
+      ? await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(expressServer))
+      : await NestFactory.create<NestExpressApplication>(AppModule);
   } catch (error) {
     logBootstrapError('NestFactory.create', error);
     throw error;
@@ -44,8 +53,8 @@ export async function createNestApp() {
   console.info('[serverless-bootstrap] after NestFactory.create');
 
   try {
-    app.use(json({ limit: '25mb' }));
-    app.use(urlencoded({ extended: true, limit: '25mb' }));
+    app.use(express.json({ limit: '25mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '25mb' }));
     app.enableCors({
       origin: getCorsOrigins(),
       credentials: true,
