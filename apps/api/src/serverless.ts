@@ -15,6 +15,14 @@ function logServerlessError(phase: string, error: unknown) {
   });
 }
 
+function logHandlerError(error: unknown) {
+  console.error('[serverless-handler-error]', {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    name: error instanceof Error ? error.name : undefined,
+  });
+}
+
 async function getServer() {
   if (!cachedServer) {
     console.info('[serverless-bootstrap] cache miss: creating Nest app');
@@ -44,11 +52,19 @@ async function getServer() {
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
   console.info('[serverless-bootstrap] before handler returns');
 
+  const logRequestError = (error: Error) => logHandlerError(error);
+  request.once('error', logRequestError);
+  response.once('error', logRequestError);
+
   try {
     const serverlessHandler = await getServer();
     return serverlessHandler(request, response);
   } catch (error) {
+    logHandlerError(error);
     logServerlessError('handler', error);
     throw error;
+  } finally {
+    request.off('error', logRequestError);
+    response.off('error', logRequestError);
   }
 }
