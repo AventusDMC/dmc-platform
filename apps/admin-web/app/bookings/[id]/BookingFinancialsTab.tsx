@@ -48,11 +48,10 @@ type BookingInvoiceSummary = {
 };
 
 function formatMoney(amount: number, currency: string) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
+  return `${currency || 'USD'} ${(amount || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  })}`;
 }
 
 function formatPercent(value: number) {

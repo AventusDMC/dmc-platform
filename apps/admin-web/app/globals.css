@@ -4437,12 +4437,15 @@ select option:checked {
 .summary-strip {
   display: grid;
   gap: 0.85rem;
+  min-width: 0;
 }
 
 .summary-strip-card {
   display: grid;
   gap: 0.2rem;
   align-content: flex-start;
+  min-width: 0;
+  width: 100%;
   min-height: 108px;
   padding: 0.9rem 1rem;
   border-radius: 0.95rem;
@@ -4457,9 +4460,15 @@ select option:checked {
 
 .summary-strip-value {
   display: block;
+  min-width: 0;
   margin: 0.1rem 0;
+  overflow: hidden;
   font-size: 1.32rem;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .summary-strip-helper {
@@ -7270,7 +7279,6 @@ th.money-cell {
 }
 
 .executive-dashboard-header,
-.executive-dashboard-stat-card,
 .executive-dashboard-section-card {
   border-radius: 1.45rem;
   border: 1px solid rgba(115, 99, 87, 0.1);
@@ -7352,14 +7360,19 @@ th.money-cell {
   display: grid;
   gap: 1.18rem;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .executive-dashboard-stat-card {
   display: grid;
   align-content: flex-start;
   gap: 0.68rem;
+  min-width: 0;
+  width: 100%;
   padding: 1.5rem 1.5rem 1.42rem;
-  border-color: rgba(115, 99, 87, 0.12);
+  border: 1px solid rgba(115, 99, 87, 0.12);
+  border-radius: 1.45rem;
+  background: rgba(249, 250, 251, 0.94);
   box-shadow:
     0 18px 38px rgba(34, 28, 22, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
@@ -7388,10 +7401,12 @@ th.money-cell {
 }
 
 .executive-dashboard-stat-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   font-size: 2.18rem;
-  line-height: 0.94;
-  letter-spacing: -0.04em;
-  color: rgba(30, 27, 24, 0.97);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .executive-dashboard-stat-card p {
@@ -7433,6 +7448,8 @@ th.money-cell {
 
 .executive-dashboard-section-card {
   gap: 1rem;
+  min-width: 0;
+  width: 100%;
   padding: 1.52rem;
 }
 
@@ -7459,15 +7476,19 @@ th.money-cell {
 .executive-dashboard-section-body {
   display: grid;
   gap: 1.08rem;
+  min-width: 0;
 }
 
 .executive-dashboard-finance-section {
   gap: 1.2rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .executive-dashboard-finance-tier-grid {
   display: grid;
   gap: 1rem;
+  min-width: 0;
 }
 
 .executive-dashboard-finance-tier-grid-primary {
@@ -7482,6 +7503,7 @@ th.money-cell {
   display: grid;
   gap: 0.52rem;
   min-width: 0;
+  width: 100%;
   padding: 1.28rem 1.32rem;
   border-radius: 1.15rem;
   border: 1px solid rgba(115, 99, 87, 0.11);
@@ -7534,6 +7556,7 @@ th.money-cell {
 .executive-dashboard-finance-card-head div {
   display: grid;
   gap: 0.28rem;
+  min-width: 0;
 }
 
 .executive-dashboard-finance-card-head span {
@@ -7560,11 +7583,17 @@ th.money-cell {
 }
 
 .executive-dashboard-finance-card b {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: rgba(30, 27, 24, 0.97);
   font-size: 2rem;
   line-height: 0.95;
   letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .executive-dashboard-finance-value-block {
@@ -7695,11 +7724,14 @@ th.money-cell {
   gap: 1rem;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
   align-items: flex-start;
+  min-width: 0;
 }
 
 .executive-dashboard-finance-chart-card {
   display: grid;
   gap: 0.9rem;
+  min-width: 0;
+  width: 100%;
   padding: 1rem;
   border-radius: 1rem;
   border: 1px solid rgba(115, 99, 87, 0.1);
@@ -10036,6 +10068,7 @@ th.money-cell {
   display: grid;
   align-content: flex-start;
   gap: 0.56rem;
+  width: 100%;
   padding: 1.34rem 1.4rem;
   border-color: rgba(115, 99, 87, 0.12);
   min-width: 0;
@@ -10050,11 +10083,17 @@ th.money-cell {
 }
 
 .booking-ops-stat-card strong {
+  display: block;
   font-size: 1.48rem;
   line-height: 1.08;
   color: rgba(30, 27, 24, 0.96);
   letter-spacing: -0.03em;
   min-width: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .booking-ops-stat-card p {
@@ -10979,21 +11018,27 @@ th.money-cell {
 .booking-financial-summary {
   display: grid;
   gap: 1rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .booking-financial-summary-primary {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .booking-financial-summary-secondary {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .booking-financial-card-primary {
+  min-width: 0;
+  width: 100%;
   min-height: 10.5rem;
   padding: 1.6rem 1.65rem;
   gap: 0.72rem;
@@ -11028,6 +11073,8 @@ th.money-cell {
 }
 
 .booking-financial-card-secondary {
+  min-width: 0;
+  width: 100%;
   padding: 1.2rem 1.3rem;
   gap: 0.48rem;
   min-height: 8.4rem;
@@ -12749,6 +12796,7 @@ a {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  min-width: 0;
   width: 100%;
 }
 
@@ -12765,6 +12813,7 @@ a {
 
 .admin-dashboard-page .dashboard-card {
   gap: 0.75rem;
+  width: 100%;
   padding: 1.15rem;
   border: 1px solid var(--border);
   border-top: 3px solid var(--axis-blue-border);
@@ -15320,7 +15369,6 @@ body {
 .dashboard-stat-card,
 .dashboard-card,
 .executive-dashboard-section-card,
-.executive-dashboard-stat-card,
 .app-card,
 .summary-panel,
 .app-summary-panel,
@@ -15653,7 +15701,6 @@ body {
 .summary-strip-card,
 .dashboard-summary-card,
 .dashboard-kpi-card,
-.executive-dashboard-stat-card,
 .quote-client-summary-card {
   border-radius: var(--radius-lg);
   border: 1px solid rgba(232, 229, 239, 0.9);
@@ -15665,8 +15712,7 @@ body {
 .app-metric-card strong,
 .summary-strip-value,
 .dashboard-summary-card strong,
-.dashboard-kpi-card strong,
-.executive-dashboard-stat-card strong {
+.dashboard-kpi-card strong {
   color: #111827;
   font-weight: 850;
 }
@@ -16245,6 +16291,8 @@ body {
 
 .admin-dashboard-page .dashboard-card,
 .admin-dashboard-page .app-metric-card {
+  min-width: 0;
+  width: 100%;
   padding: 1.1rem;
   min-height: 126px;
   align-content: start;
@@ -16252,9 +16300,16 @@ body {
 
 .admin-dashboard-page .dashboard-card strong,
 .admin-dashboard-page .app-metric-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: var(--accent-strong);
   font-size: clamp(1.35rem, 2vw, 1.85rem);
   line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-dashboard-page .dashboard-card p,
@@ -18537,6 +18592,8 @@ body {
 .summary-strip-card,
 .app-metric-card,
 .metric-card {
+  min-width: 0;
+  width: 100%;
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -18553,9 +18610,16 @@ body {
 .summary-strip-value,
 .app-metric-card strong,
 .metric-card strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   font-size: clamp(1.45rem, 2vw, 2.1rem);
   line-height: 1;
   font-weight: 920;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-badge,
@@ -18821,6 +18885,8 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
+  min-width: 0;
+  width: 100%;
   padding: 0;
   border-radius: 1.1rem;
   background: transparent;
@@ -18830,6 +18896,7 @@ body {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
+  width: 100%;
   padding: 0.75rem;
   border: 1px solid rgba(31, 154, 207, 0.14);
   border-radius: 0.9rem;
@@ -18844,11 +18911,16 @@ body {
 }
 
 .quote-drawer-financial-summary strong {
+  display: block;
   min-width: 0;
   color: #111827;
   font-size: clamp(0.95rem, 1.4vw, 1.2rem);
   font-weight: 920;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quote-service-editor-panel-drawer .quote-service-editor-tabs {

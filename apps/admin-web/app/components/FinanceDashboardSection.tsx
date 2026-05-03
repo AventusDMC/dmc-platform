@@ -70,11 +70,10 @@ type FinanceDashboardSectionProps = {
 };
 
 function formatMoney(amount: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return `${currency || 'USD'} ${(amount || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatPercent(value: number) {

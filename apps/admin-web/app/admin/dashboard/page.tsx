@@ -567,11 +567,10 @@ function getBarWidth(value: number, maxValue: number) {
 }
 
 function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(value || 0);
+  return `USD ${(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatPercent(value: number) {
