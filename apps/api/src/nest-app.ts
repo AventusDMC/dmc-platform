@@ -32,13 +32,6 @@ export function getCorsOrigins() {
 }
 
 export async function createNestApp(expressServer?: ExpressServer) {
-  console.info('[serverless-bootstrap] before NestFactory.create', {
-    nodeEnv: process.env.NODE_ENV,
-    vercel: process.env.VERCEL,
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    expressAdapter: Boolean(expressServer),
-  });
-
   let app: NestExpressApplication;
 
   try {
@@ -49,8 +42,6 @@ export async function createNestApp(expressServer?: ExpressServer) {
     logBootstrapError('NestFactory.create', error);
     throw error;
   }
-
-  console.info('[serverless-bootstrap] after NestFactory.create');
 
   try {
     app.use(express.json({ limit: '25mb' }));

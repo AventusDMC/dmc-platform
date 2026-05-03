@@ -22,14 +22,8 @@ function logHandlerError(error: unknown) {
 
 async function getServer() {
   if (!cachedServer) {
-    console.info('[serverless-bootstrap] cache miss: creating Nest app');
     const expressServer = createExpressServer();
     const app = await createNestApp(expressServer);
-
-    console.info('[serverless-bootstrap] before app.init', {
-      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-      vercel: process.env.VERCEL,
-    });
 
     try {
       await app.init();
@@ -38,19 +32,14 @@ async function getServer() {
       throw error;
     }
 
-    console.info('[serverless-bootstrap] after app.init');
     await new Promise((resolve) => setImmediate(resolve));
-    console.info('[serverless-bootstrap] after app.init settled');
     cachedServer = createServer(expressServer);
-    console.info('[serverless-bootstrap] handler cached');
   }
 
   return cachedServer;
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
-  console.info('[serverless-bootstrap] before handler returns');
-
   const logRequestError = (error: Error) => logHandlerError(error);
   request.once('error', logRequestError);
   response.once('error', logRequestError);
