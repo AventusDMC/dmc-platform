@@ -5,17 +5,14 @@
       "src": "api/main.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": [
-          "src/**",
-          "prisma/**"
-        ]
+        "includeFiles": "{src,prisma}/**"
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/main"
+      "dest": "/api/main.ts"
     }
   ]
 }

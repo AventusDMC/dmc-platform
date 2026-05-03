@@ -1,1 +1,3 @@
-export { default } from '../src/serverless';
+import handler from '../src/serverless';
+
+export default handler;
