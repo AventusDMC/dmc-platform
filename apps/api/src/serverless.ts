@@ -1,10 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import serverless = require('serverless-http');
-import { createExpressServer, createNestApp } from './nest-app';
+import { createExpressServer, createNestApp, type ExpressServer } from './nest-app';
 
-type ServerlessHandler = (request: IncomingMessage, response: ServerResponse) => Promise<unknown>;
-
-let cachedServer: ServerlessHandler | null = null;
+let cachedServer: ExpressServer | null = null;
 
 function logServerlessError(phase: string, error: unknown) {
   console.error('[serverless-bootstrap] error', {
@@ -44,7 +41,7 @@ async function getServer() {
     console.info('[serverless-bootstrap] after app.init');
     await new Promise((resolve) => setImmediate(resolve));
     console.info('[serverless-bootstrap] after app.init settled');
-    cachedServer = serverless(expressServer) as unknown as ServerlessHandler;
+    cachedServer = expressServer;
     console.info('[serverless-bootstrap] handler cached');
   }
 
@@ -59,8 +56,8 @@ export default async function handler(request: IncomingMessage, response: Server
   response.once('error', logRequestError);
 
   try {
-    const serverlessHandler = await getServer();
-    return await serverlessHandler(request, response);
+    const expressApp = await getServer();
+    return expressApp(request, response);
   } catch (error) {
     logHandlerError(error);
     logServerlessError('handler', error);
