@@ -22261,6 +22261,37 @@ video {
   justify-self: start;
 }
 
+/* Quote overview sidebar should read as part of the layout, not an overlay. */
+.quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
+  position: relative;
+  top: auto;
+  z-index: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-self: start;
+  justify-self: stretch;
+  margin: 0;
+}
+
+.quote-builder-page .quote-builder-sidebar.app-sticky-panel > * {
+  position: relative;
+  z-index: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-page .quote-builder-sidebar .quote-pricing-summary-card-dominant.app-financial-panel {
+  box-shadow: var(--shadow-md);
+}
+
+@media (max-width: 1280px) {
+  .quote-builder-page .quote-builder-sidebar.app-sticky-panel {
+    position: static;
+  }
+}
+
 /* Quote overview metric tile grid safeguards. */
 .quote-builder-main .detail-card > .quote-preview-total-list,
 .quote-builder-main .tab-panel-card > .quote-preview-total-list,
@@ -22333,6 +22364,234 @@ video {
   .quote-builder-main .detail-card > .quote-preview-total-list,
   .quote-builder-main .tab-panel-card > .quote-preview-total-list,
   .quote-dashboard-meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Pre-audit layout containment sweep. */
+.admin-shell :where(
+  .workspace-shell-card,
+  .workspace-shell-content,
+  .workspace-panel,
+  .section-stack,
+  .detail-grid,
+  .detail-card,
+  .table-section-shell,
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .dashboard-kpi-card,
+  .executive-dashboard-page,
+  .executive-dashboard-shell,
+  .executive-dashboard-main-column,
+  .executive-dashboard-sidebar,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .booking-ops-workspace-page,
+  .booking-ops-shell,
+  .booking-ops-main,
+  .booking-ops-sidebar,
+  .booking-ops-panel-card,
+  .booking-ops-sidebar-card,
+  .app-workspace-layout,
+  .app-workspace-main,
+  .app-workspace-sidebar,
+  .app-workspace-summary,
+  .app-financial-panel,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-main-content,
+  .quote-builder-sidebar,
+  .quote-pricing-review-layout,
+  .quote-pricing-review-main,
+  .quote-pricing-review-sidebar,
+  .quote-service-planner,
+  .quote-service-planner-shell,
+  .quote-service-day-column,
+  .quote-service-current-services,
+  .quote-service-lane,
+  .quote-service-mini-card,
+  .leads-crm-table-shell
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid,
+  .executive-dashboard-finance-grid,
+  .quote-service-planner-shell.quote-service-planner-saas-grid
+) {
+  align-items: start;
+}
+
+.admin-shell :where(
+  .app-sticky-panel,
+  .quote-builder-sidebar,
+  .quote-pricing-review-sidebar,
+  .booking-ops-sidebar,
+  .executive-dashboard-sidebar,
+  .quote-service-day-nav
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .quote-builder-sidebar .quote-pricing-summary-card,
+  .quote-pricing-review-sidebar .quote-pricing-summary-card,
+  .app-financial-panel,
+  .booking-ops-sidebar-card,
+  .executive-dashboard-section-card
+) {
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .summary-strip,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .executive-dashboard-stat-grid,
+  .executive-dashboard-finance-tier-grid,
+  .executive-dashboard-finance-tier-grid-primary,
+  .executive-dashboard-finance-tier-grid-secondary,
+  .booking-ops-stat-grid,
+  .quote-service-card-pricing-summary,
+  .quote-client-summary-strip
+) {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.admin-shell :where(
+  .summary-strip-card,
+  .dashboard-summary-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card,
+  .booking-ops-stat-card,
+  .quote-client-summary-card,
+  .workspace-summary-card
+) {
+  min-width: 0;
+  height: auto;
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .summary-strip-card strong,
+  .summary-strip-value,
+  .dashboard-summary-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-stat-card strong,
+  .executive-dashboard-stat-card strong,
+  .executive-dashboard-finance-card b,
+  .executive-dashboard-row-value,
+  .booking-ops-stat-card strong,
+  .booking-ops-sidebar-list strong,
+  .quote-client-summary-card strong,
+  .workspace-summary-card strong,
+  .money-cell,
+  .money-value,
+  .financial-value,
+  .metric-value,
+  .stat-value
+) {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell
+) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .leads-crm-table
+) {
+  width: 100%;
+  max-width: 100%;
+}
+
+.leads-crm-table {
+  min-width: min(980px, 100%);
+}
+
+.leads-crm-primary-cell strong,
+.leads-crm-request-cell strong,
+.leads-crm-primary-cell span,
+.leads-crm-request-cell span {
+  max-width: 100%;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+@media (max-width: 1180px) {
+  .admin-shell :where(
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid,
+    .executive-dashboard-finance-grid,
+    .quote-service-planner-shell.quote-service-planner-saas-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .app-sticky-panel,
+    .quote-builder-sidebar,
+    .quote-pricing-review-sidebar,
+    .booking-ops-sidebar,
+    .executive-dashboard-sidebar,
+    .quote-service-day-nav
+  ) {
+    position: static;
+    top: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-shell :where(
+    .summary-strip,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .executive-dashboard-stat-grid,
+    .executive-dashboard-finance-tier-grid,
+    .executive-dashboard-finance-tier-grid-primary,
+    .executive-dashboard-finance-tier-grid-secondary,
+    .booking-ops-stat-grid,
+    .quote-service-card-pricing-summary,
+    .quote-client-summary-strip
+  ) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
