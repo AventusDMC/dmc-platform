@@ -21492,3 +21492,164 @@ video {
   }
 }
 
+/* Itinerary Builder timeline layout. */
+.quote-service-planner .quote-service-day-card-active {
+  border-color: rgba(148, 163, 184, 0.68);
+}
+
+.quote-service-planner .workspace-day-header {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.quote-service-planner .workspace-day-header h3 {
+  color: #0F172A;
+  font-size: clamp(1.75rem, 2.65vw, 2.35rem);
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.quote-service-planner .quote-service-current-services {
+  background:
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+}
+
+.quote-service-planner .quote-service-visual-board {
+  position: relative;
+  gap: 1.15rem;
+  padding-left: 1.55rem;
+}
+
+.quote-service-planner .quote-service-visual-board::before {
+  content: "";
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  left: 0.47rem;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(28, 127, 184, 0.38), rgba(148, 163, 184, 0.12));
+}
+
+.quote-service-planner .quote-service-lane {
+  position: relative;
+  padding: 1rem 1rem 1rem 1.05rem;
+  border-color: rgba(203, 213, 225, 0.84);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.quote-service-planner .quote-service-lane::before {
+  content: "";
+  position: absolute;
+  top: 1.18rem;
+  left: -1.48rem;
+  width: 0.78rem;
+  height: 0.78rem;
+  border: 3px solid #FFFFFF;
+  border-radius: 999px;
+  background: #1C7FB8;
+  box-shadow: 0 0 0 1px rgba(28, 127, 184, 0.34);
+}
+
+.quote-service-planner .quote-service-lane-head {
+  border-bottom: 0;
+  padding-bottom: 0.15rem;
+}
+
+.quote-service-planner .quote-service-lane-head span {
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.quote-service-planner .quote-service-card-row {
+  gap: 0.85rem;
+}
+
+.quote-service-planner .quote-service-mini-card {
+  position: relative;
+  gap: 0.85rem;
+  padding: 1.1rem;
+  border-color: rgba(203, 213, 225, 0.95);
+  border-radius: 0.95rem;
+  background: #FFFFFF;
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.06);
+}
+
+.quote-service-planner .quote-service-mini-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 0.95rem 0 0 0.95rem;
+  background: rgba(28, 127, 184, 0.56);
+}
+
+.quote-service-planner .quote-service-mini-card-title-row {
+  align-items: center;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy span {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quote-service-planner .quote-service-mini-card-title-copy h5 {
+  color: #111827;
+  font-size: 1.02rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.quote-service-time-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.22rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(28, 127, 184, 0.09);
+  color: #1C7FB8;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.quote-service-planner .quote-service-card-price {
+  color: #0F172A;
+  font-size: 1.08rem;
+}
+
+.quote-service-planner .quote-service-card-supplier {
+  margin-top: -0.1rem;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.quote-service-planner .quote-service-card-details {
+  margin-top: -0.1rem;
+}
+
+@media (max-width: 720px) {
+  .quote-service-planner .quote-service-visual-board {
+    padding-left: 1rem;
+  }
+
+  .quote-service-planner .quote-service-lane::before {
+    left: -0.92rem;
+  }
+
+  .quote-service-planner .workspace-day-header h3 {
+    font-size: 1.45rem;
+  }
+}
+

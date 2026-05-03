@@ -1461,6 +1461,7 @@ function SortableServiceCard({
   const itemMarginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
   const itemMarginWarning = getItemMarginWarning(item.totalSell, item.totalCost);
   const itemCurrency = (item.currency as Quote['quoteCurrency']) || currency;
+  const serviceTimeLabel = item.pickupTime || item.startTime;
 
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -1503,6 +1504,7 @@ function SortableServiceCard({
           <div className="quote-service-mini-card-title-copy">
             <span>{SERVICE_PLANNER_TAB_LABELS[category]}</span>
             <h5>{displayName}</h5>
+            {serviceTimeLabel ? <em className="quote-service-time-badge">{serviceTimeLabel}</em> : null}
           </div>
           <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
         </div>
