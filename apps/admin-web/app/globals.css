@@ -20428,3 +20428,147 @@ video {
   }
 }
 
+/* Quote Builder spacing system: p-4 cards, p-6 page-level panels, consistent headings. */
+.quote-builder-page {
+  --quote-card-padding: 1rem;
+  --quote-panel-padding: 1.5rem;
+  --quote-card-radius: 1rem;
+  --quote-card-border: rgba(229, 231, 235, 0.9);
+  --quote-card-shadow: 0 14px 34px rgba(17, 24, 39, 0.055);
+}
+
+.quote-builder-shell {
+  gap: 1.25rem;
+}
+
+.quote-dashboard-header,
+.quote-step-shell,
+.quote-dashboard-workflow,
+.quote-dashboard-tabs,
+.quote-builder-main-content,
+.quote-builder-sidebar,
+.quote-pricing-review-layout {
+  align-items: start;
+}
+
+.quote-dashboard-header,
+.quote-builder-step-shell {
+  padding: var(--quote-panel-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: var(--quote-card-shadow);
+}
+
+.quote-dashboard-workflow,
+.quote-dashboard-tabs {
+  padding: var(--quote-card-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
+}
+
+.quote-builder-main-content {
+  padding: 0;
+  background: transparent;
+}
+
+.quote-builder-main,
+.quote-builder-main .section-stack,
+.quote-pricing-review-main,
+.quote-builder-sidebar,
+.quote-pricing-review-sidebar {
+  gap: 1rem;
+}
+
+.quote-builder-main .workspace-section,
+.quote-builder-main .detail-card,
+.quote-builder-main .tab-panel-card,
+.quote-pricing-hero,
+.quote-pricing-summary-card,
+.quote-service-mini-card,
+.quote-service-lane,
+.quote-service-current-services,
+.quote-service-side-section {
+  padding: var(--quote-card-padding);
+  border: 1px solid var(--quote-card-border);
+  border-radius: var(--quote-card-radius);
+  background: #FFFFFF;
+  box-shadow: var(--quote-card-shadow);
+}
+
+.quote-pricing-summary-card,
+.quote-pricing-context-panel.app-financial-panel {
+  padding: var(--quote-card-padding);
+}
+
+.quote-pricing-context-panel.app-financial-panel,
+.quote-pricing-summary-card-dominant.app-financial-panel {
+  border-radius: var(--quote-card-radius);
+}
+
+.quote-dashboard-title-row h1,
+.quote-builder-main .workspace-section-head h2,
+.quote-builder-main .workspace-section-head h3,
+.quote-pricing-summary-head h3,
+.quote-service-mini-card h5 {
+  letter-spacing: 0;
+}
+
+.quote-dashboard-title-row h1 {
+  font-size: clamp(1.85rem, 2.4vw, 2.55rem);
+  line-height: 1.08;
+}
+
+.quote-builder-main .workspace-section-head h2 {
+  margin: 0.12rem 0 0;
+  font-size: 1.18rem;
+  line-height: 1.2;
+}
+
+.quote-builder-main .workspace-section-head h3,
+.quote-pricing-summary-head h3 {
+  margin: 0.12rem 0 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.quote-builder-main .detail-copy,
+.quote-builder-main .table-subcopy,
+.quote-pricing-summary-row p,
+.quote-service-card-supplier {
+  color: #6B7280;
+}
+
+.quote-dashboard-meta-grid div,
+.summary-strip-card,
+.quote-preview-total-list > div,
+.quote-pricing-summary-row,
+.quote-service-card-pricing-summary {
+  border-radius: 0.75rem;
+}
+
+.quote-builder-sidebar {
+  align-content: start;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-card {
+  width: 100%;
+}
+
+.quote-builder-sidebar .quote-pricing-summary-card:not(.app-financial-panel) {
+  background: #FFFFFF;
+}
+
+.quote-pricing-summary-row {
+  min-height: 3.25rem;
+}
+
+@media (max-width: 720px) {
+  .quote-dashboard-header,
+  .quote-builder-step-shell {
+    padding: var(--quote-card-padding);
+  }
+}
+
