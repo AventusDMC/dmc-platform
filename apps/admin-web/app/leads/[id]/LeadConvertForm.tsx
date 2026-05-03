@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '../../lib/api';
+import { buildAuthHeaders } from '../../lib/auth-client';
 
 type LeadConvertFormProps = {
   apiBaseUrl: string;
@@ -26,9 +28,9 @@ export function LeadConvertForm({ apiBaseUrl, leadId, disabled = false }: LeadCo
     try {
       const response = await fetch(`${apiBaseUrl}/leads/${leadId}/convert`, {
         method: 'POST',
-        headers: {
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           companyName,
           contactName,
@@ -37,13 +39,13 @@ export function LeadConvertForm({ apiBaseUrl, leadId, disabled = false }: LeadCo
       });
 
       if (!response.ok) {
-        throw new Error('Request failed');
+        throw new Error(await getErrorMessage(response, 'Could not convert lead.'));
       }
 
       router.push('/contacts');
       router.refresh();
-    } catch {
-      setError('Could not convert lead.');
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not convert lead.');
     } finally {
       setIsSubmitting(false);
     }

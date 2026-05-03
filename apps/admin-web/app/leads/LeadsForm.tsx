@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage } from '../lib/api';
+import { buildAuthHeaders } from '../lib/auth-client';
 
 type LeadsFormProps = {
   apiBaseUrl: string;
@@ -32,9 +33,9 @@ export function LeadsForm({ apiBaseUrl, leadId, submitLabel, initialValues }: Le
     try {
       const response = await fetch(`${apiBaseUrl}/leads${leadId ? `/${leadId}` : ''}`, {
         method: leadId ? 'PATCH' : 'POST',
-        headers: {
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           inquiry,
           source,

@@ -23,6 +23,7 @@ type LeadsTableProps = {
 
 export function LeadsTable({ apiBaseUrl, leads }: LeadsTableProps) {
   const router = useRouter();
+  const safeLeads = Array.isArray(leads) ? leads : [];
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -66,15 +67,18 @@ export function LeadsTable({ apiBaseUrl, leads }: LeadsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {leads.map((lead) => {
+            {safeLeads.map((lead) => {
+              const createdLabel = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : 'Unknown date';
+              const status = lead.status || 'new';
+
               return (
                 <tr key={lead.id}>
-                  <td>{new Date(lead.createdAt).toLocaleDateString()}</td>
+                  <td>{createdLabel}</td>
                   <td>
-                    <strong>{lead.inquiry}</strong>
+                    <strong>{lead.inquiry || 'Untitled inquiry'}</strong>
                   </td>
                   <td>{lead.source || 'No source provided'}</td>
-                  <td>{lead.status}</td>
+                  <td>{status}</td>
                   <td>
                     <RowDetailsPanel summary="Open details" className="operations-row-details" bodyClassName="operations-row-details-body">
                       <div className="table-action-row">
@@ -88,14 +92,14 @@ export function LeadsTable({ apiBaseUrl, leads }: LeadsTableProps) {
                         </button>
                       </div>
                       <p className="detail-copy">
-                        {`Created ${new Date(lead.createdAt).toLocaleDateString()} | Source: ${lead.source || 'No source provided'}`}
+                        {`Created ${createdLabel} | Source: ${lead.source || 'No source provided'}`}
                       </p>
                       <InlineRowEditorShell>
                         <LeadsForm
                           apiBaseUrl={apiBaseUrl}
                           leadId={lead.id}
                           submitLabel="Save lead"
-                          initialValues={{ inquiry: lead.inquiry, source: lead.source || '', status: lead.status }}
+                          initialValues={{ inquiry: lead.inquiry || '', source: lead.source || '', status }}
                         />
                       </InlineRowEditorShell>
                     </RowDetailsPanel>

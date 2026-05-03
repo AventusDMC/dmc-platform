@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '../../lib/api';
+import { buildAuthHeaders } from '../../lib/auth-client';
 
 type LeadEditFormProps = {
   apiBaseUrl: string;
@@ -33,9 +35,9 @@ export function LeadEditForm({
     try {
       const response = await fetch(`${apiBaseUrl}/leads/${leadId}`, {
         method: 'PATCH',
-        headers: {
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({
           inquiry,
           source,
@@ -44,12 +46,12 @@ export function LeadEditForm({
       });
 
       if (!response.ok) {
-        throw new Error('Request failed');
+        throw new Error(await getErrorMessage(response, 'Could not update lead.'));
       }
 
       router.refresh();
-    } catch {
-      setError('Could not update lead.');
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not update lead.');
     } finally {
       setIsSubmitting(false);
     }

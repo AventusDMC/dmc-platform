@@ -11,7 +11,7 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { LeadsTable } from './LeadsTable';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -24,10 +24,60 @@ type Lead = {
   createdAt: string;
 };
 
+function normalizeLead(value: unknown): Lead | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const lead = value as Record<string, unknown>;
+  const id = typeof lead.id === 'string' ? lead.id : '';
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    inquiry: typeof lead.inquiry === 'string' ? lead.inquiry : '',
+    source: typeof lead.source === 'string' ? lead.source : null,
+    status: typeof lead.status === 'string' && lead.status.trim() ? lead.status : 'new',
+    createdAt: typeof lead.createdAt === 'string' ? lead.createdAt : '',
+  };
+}
+
+function isNextRenderControlError(error: unknown) {
+  if (!error || typeof error !== 'object' || !('digest' in error)) {
+    return false;
+  }
+
+  const digest = String((error as { digest?: unknown }).digest || '');
+  return digest === 'DYNAMIC_SERVER_USAGE' || digest.startsWith('NEXT_HTTP_ERROR_FALLBACK');
+}
+
 async function getLeads(): Promise<Lead[]> {
-  return adminPageFetchJson<Lead[]>(`${API_BASE_URL}/leads`, 'Leads list', {
-    cache: 'no-store',
-  });
+  let leads: unknown;
+
+  try {
+    leads = await adminPageFetchJson<unknown>(`${API_BASE_URL}/leads`, 'Leads list', {
+      cache: 'no-store',
+    });
+  } catch (error) {
+    if (isNextRedirectError(error) || isNextRenderControlError(error)) {
+      throw error;
+    }
+
+    console.error('[LeadsPage] Could not load leads list.', error);
+    return [];
+  }
+
+  if (!Array.isArray(leads)) {
+    console.error('[LeadsPage] Expected leads list to be an array.');
+    return [];
+  }
+
+  return leads
+    .map(normalizeLead)
+    .filter((lead): lead is Lead => Boolean(lead));
 }
 
 export default async function LeadsPage() {
