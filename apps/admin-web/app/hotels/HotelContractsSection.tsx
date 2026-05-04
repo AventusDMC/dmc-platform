@@ -130,14 +130,16 @@ export async function HotelContractsSection({ contractId, hotelId }: HotelContra
       ) : null}
 
       <TableSectionShell
-        title="Contract Calendar"
+        title="Contracts"
         description="Manage supplier agreements and jump directly into the related contract workspace, rate setup, and downstream commercial modules."
         context={<p>{visibleContracts.length} contracts in scope</p>}
+        className="hotel-contracts-workspace-section"
         createPanel={
           <CollapsibleCreatePanel
             title="Create contract"
             description="Add a supplier agreement before configuring rates or allotments."
-            triggerLabelOpen="Add contract"
+            triggerLabelOpen="Create contract"
+            triggerClassName="primary-button"
           >
             <HotelContractsForm apiBaseUrl="/api" hotels={visibleHotels} />
           </CollapsibleCreatePanel>

@@ -22,6 +22,7 @@ type ContractOption = {
   name: string;
   currency?: string | null;
   hotel: {
+    id: string;
     name: string;
   };
   ratePolicies?: unknown;
@@ -66,18 +67,24 @@ async function getCancellationPolicy(contractId: string): Promise<CancellationPo
 
 type HotelPoliciesSectionProps = {
   contractId?: string;
+  hotelId?: string;
 };
 
-export async function HotelPoliciesSection({ contractId }: HotelPoliciesSectionProps) {
+export async function HotelPoliciesSection({ contractId, hotelId }: HotelPoliciesSectionProps) {
   const contracts = await getHotelContracts();
-  const currentContract = contractId ? contracts.find((contract) => contract.id === contractId) || null : null;
+  const visibleContracts = hotelId ? contracts.filter((contract) => contract.hotel.id === hotelId) : contracts;
+  const currentContract = contractId
+    ? visibleContracts.find((contract) => contract.id === contractId) || null
+    : hotelId
+      ? visibleContracts[0] || null
+      : null;
 
   if (!currentContract) {
     return (
       <TableSectionShell
         title="Policies"
         description="Select a contract first, then configure cancellation policy summary, no-show behavior, and sliding penalty windows."
-        context={<p>Contract-scoped policy configuration</p>}
+        context={<p>{visibleContracts.length} contract scopes visible</p>}
       >
         <p className="empty-state">Choose a contract from the Contracts tab, then open this module with a selected contract.</p>
       </TableSectionShell>

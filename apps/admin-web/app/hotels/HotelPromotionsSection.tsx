@@ -78,11 +78,25 @@ async function getPromotions(): Promise<Promotion[]> {
 
 type HotelPromotionsSectionProps = {
   contractId?: string;
+  hotelId?: string;
 };
 
-export async function HotelPromotionsSection({ contractId }: HotelPromotionsSectionProps) {
+export async function HotelPromotionsSection({ contractId, hotelId }: HotelPromotionsSectionProps) {
   const [contracts, promotions] = await Promise.all([getHotelContracts(), getPromotions()]);
-  const visiblePromotions = contractId ? promotions.filter((promotion) => promotion.hotelContractId === contractId) : promotions;
+  const visibleContracts = contracts.filter((contract) => {
+    if (contractId && contract.id !== contractId) {
+      return false;
+    }
+
+    if (hotelId && contract.hotel.id !== hotelId) {
+      return false;
+    }
+
+    return true;
+  });
+  const visibleContractIds = new Set(visibleContracts.map((contract) => contract.id));
+  const visiblePromotions =
+    contractId || hotelId ? promotions.filter((promotion) => visibleContractIds.has(promotion.hotelContractId)) : promotions;
   const activeCount = visiblePromotions.filter((promotion) => promotion.isActive).length;
   const combinableCount = visiblePromotions.filter((promotion) => promotion.combinable).length;
   const ruleCount = visiblePromotions.reduce((sum, promotion) => sum + promotion.rules.length, 0);
@@ -98,7 +112,7 @@ export async function HotelPromotionsSection({ contractId }: HotelPromotionsSect
           description="Add a promotion rule set on top of existing contract pricing."
           triggerLabelOpen="Add promotion"
         >
-          <HotelPromotionsForm apiBaseUrl="/api" contracts={contracts} />
+          <HotelPromotionsForm apiBaseUrl="/api" contracts={visibleContracts} />
         </CollapsibleCreatePanel>
       }
       emptyState={
@@ -140,7 +154,7 @@ export async function HotelPromotionsSection({ contractId }: HotelPromotionsSect
         />
 
         {visiblePromotions.length > 0 ? (
-          <HotelPromotionsTable apiBaseUrl="/api" contracts={contracts} promotions={visiblePromotions} />
+          <HotelPromotionsTable apiBaseUrl="/api" contracts={visibleContracts} promotions={visiblePromotions} />
         ) : null}
       </>
     </TableSectionShell>

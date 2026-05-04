@@ -63,11 +63,22 @@ async function getHotelContracts(): Promise<HotelContract[]> {
 
 type HotelAllotmentsSectionProps = {
   contractId?: string;
+  hotelId?: string;
 };
 
-export async function HotelAllotmentsSection({ contractId }: HotelAllotmentsSectionProps) {
+export async function HotelAllotmentsSection({ contractId, hotelId }: HotelAllotmentsSectionProps) {
   const contracts = await getHotelContracts();
-  const visibleContracts = contractId ? contracts.filter((contract) => contract.id === contractId) : contracts;
+  const visibleContracts = contracts.filter((contract) => {
+    if (contractId && contract.id !== contractId) {
+      return false;
+    }
+
+    if (hotelId && contract.hotel.id !== hotelId) {
+      return false;
+    }
+
+    return true;
+  });
 
   return (
     <TableSectionShell
@@ -80,7 +91,7 @@ export async function HotelAllotmentsSection({ contractId }: HotelAllotmentsSect
           description="Add inventory controls to the current contract scope."
           triggerLabelOpen="Add allotment"
         >
-          <HotelAllotmentsForm apiBaseUrl="/api" contracts={contracts} contractId={contractId} />
+          <HotelAllotmentsForm apiBaseUrl="/api" contracts={hotelId ? visibleContracts : contracts} contractId={contractId} />
         </CollapsibleCreatePanel>
       }
       emptyState={
@@ -113,7 +124,7 @@ export async function HotelAllotmentsSection({ contractId }: HotelAllotmentsSect
               {contract.allotments.length === 0 ? (
                 <p className="empty-state">No allotments for this contract yet.</p>
               ) : (
-                <HotelAllotmentsTable apiBaseUrl="/api" contracts={contracts} contract={contract} />
+                <HotelAllotmentsTable apiBaseUrl="/api" contracts={hotelId ? visibleContracts : contracts} contract={contract} />
               )}
             </article>
           ))}

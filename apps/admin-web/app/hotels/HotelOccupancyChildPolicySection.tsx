@@ -14,6 +14,7 @@ type ContractOption = {
   id: string;
   name: string;
   hotel: {
+    id: string;
     name: string;
     roomCategories: Array<{
       id: string;
@@ -82,18 +83,24 @@ async function getChildPolicy(contractId: string): Promise<ChildPolicy> {
 
 type HotelOccupancyChildPolicySectionProps = {
   contractId?: string;
+  hotelId?: string;
 };
 
-export async function HotelOccupancyChildPolicySection({ contractId }: HotelOccupancyChildPolicySectionProps) {
+export async function HotelOccupancyChildPolicySection({ contractId, hotelId }: HotelOccupancyChildPolicySectionProps) {
   const contracts = await getHotelContracts();
-  const currentContract = contractId ? contracts.find((contract) => contract.id === contractId) || null : null;
+  const visibleContracts = hotelId ? contracts.filter((contract) => contract.hotel.id === hotelId) : contracts;
+  const currentContract = contractId
+    ? visibleContracts.find((contract) => contract.id === contractId) || null
+    : hotelId
+      ? visibleContracts[0] || null
+      : null;
 
   if (!currentContract) {
     return (
       <TableSectionShell
         title="Occupancy & Child Policy"
         description="Select a contract first, then configure adult occupancy limits and child age-band charging rules."
-        context={<p>Contract-scoped configuration</p>}
+        context={<p>{visibleContracts.length} contract scopes visible</p>}
       >
         <p className="empty-state">Choose a contract from the Contracts tab, then open this module with a selected contract.</p>
       </TableSectionShell>

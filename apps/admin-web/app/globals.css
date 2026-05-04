@@ -2418,6 +2418,29 @@ select option:checked {
   color: white;
 }
 
+.hotel-detail-workspace .workspace-shell-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.hotel-detail-workspace .workspace-shell-switcher,
+.hotel-detail-workspace .page-tabs {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.hotel-detail-workspace .page-tabs {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.hotel-detail-workspace .page-tab-link {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+
 .quote-step-shell {
   display: grid;
   gap: 1rem;
@@ -4668,6 +4691,33 @@ select option:checked {
 .table-section-empty {
   display: grid;
   gap: 0.9rem;
+}
+
+.hotel-contracts-workspace-section {
+  gap: 0.65rem;
+}
+
+.hotel-contracts-workspace-section .table-section-create {
+  gap: 0.55rem;
+}
+
+.hotel-contracts-workspace-section .collapsible-create-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.hotel-contracts-workspace-section .collapsible-create-panel-head {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.hotel-contracts-workspace-section .collapsible-create-panel-head > div {
+  display: none;
+}
+
+.hotel-contracts-workspace-section .table-section-body {
+  margin-top: 0;
 }
 
 .inline-row-editor-shell {

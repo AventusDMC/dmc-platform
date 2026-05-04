@@ -7,6 +7,7 @@ type CollapsibleCreatePanelProps = {
   description?: string;
   triggerLabelOpen?: string;
   triggerLabelClose?: string;
+  triggerClassName?: string;
   defaultOpen?: boolean;
   children: ReactNode;
 };
@@ -16,6 +17,7 @@ export function CollapsibleCreatePanel({
   description,
   triggerLabelOpen = 'Add new',
   triggerLabelClose = 'Hide form',
+  triggerClassName = 'compact-button',
   defaultOpen = false,
   children,
 }: CollapsibleCreatePanelProps) {
@@ -28,7 +30,7 @@ export function CollapsibleCreatePanel({
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
-        <button type="button" className="compact-button" onClick={() => setIsOpen((current) => !current)}>
+        <button type="button" className={triggerClassName} onClick={() => setIsOpen((current) => !current)}>
           {isOpen ? triggerLabelClose : triggerLabelOpen}
         </button>
       </div>
