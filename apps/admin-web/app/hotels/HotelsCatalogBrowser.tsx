@@ -232,7 +232,12 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
                   <p className="eyebrow">{hotel.city}</p>
                   <h3>{hotel.name}</h3>
                 </div>
-                <span className="page-tab-badge">{hotel.category}</span>
+                <div className="inline-actions">
+                  <Link href={`/hotels/${hotel.id}`} className="primary-button">
+                    Open hotel
+                  </Link>
+                  <span className="page-tab-badge">{hotel.category}</span>
+                </div>
               </div>
 
               <div className="catalog-result-meta">
@@ -250,7 +255,7 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
               <div className="inline-actions">
                 <button
                   type="button"
-                  className="primary-button"
+                  className="secondary-button"
                   onClick={() => {
                     setActiveHotelId(hotel.id);
                     setActiveContractId(hotel.contracts[0]?.id || null);

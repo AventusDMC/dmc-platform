@@ -26,9 +26,14 @@ async function getHotels(): Promise<Hotel[]> {
   });
 }
 
-export async function RoomCategoriesSection() {
+type RoomCategoriesSectionProps = {
+  hotelId?: string;
+};
+
+export async function RoomCategoriesSection({ hotelId }: RoomCategoriesSectionProps = {}) {
   const hotels = await getHotels();
-  const roomCategoryCount = hotels.reduce((total, hotel) => total + hotel.roomCategories.length, 0);
+  const visibleHotels = hotelId ? hotels.filter((hotel) => hotel.id === hotelId) : hotels;
+  const roomCategoryCount = visibleHotels.reduce((total, hotel) => total + hotel.roomCategories.length, 0);
 
   return (
     <TableSectionShell
@@ -36,7 +41,7 @@ export async function RoomCategoriesSection() {
       description="Define sellable room categories per hotel so contracts and rates can reference structured room inventory."
       context={<p>{roomCategoryCount} room categories in scope</p>}
     >
-      <RoomCategoriesManager apiBaseUrl="/api" hotels={hotels} />
+      <RoomCategoriesManager apiBaseUrl="/api" hotels={visibleHotels} />
     </TableSectionShell>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { HotelsForm } from './HotelsForm';
@@ -187,6 +188,9 @@ export function HotelsTable({ apiBaseUrl, hotels, cities, hotelCategories, suppl
                     </td>
                     <td>
                       <div className="table-action-row">
+                        <Link href={`/hotels/${hotel.id}`} className="compact-button">
+                          Open workspace
+                        </Link>
                         <button
                           type="button"
                           className="compact-button"

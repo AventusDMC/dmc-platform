@@ -23148,3 +23148,271 @@ video {
   }
 }
 
+/* Admin visual hierarchy and spacing refinement. */
+.admin-shell :where(.workspace-shell-content, .section-stack, .app-section-stack) {
+  gap: clamp(1.5rem, 2vw, 2rem);
+}
+
+.admin-shell :where(
+  .app-workspace-layout,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .split-layout,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  gap: clamp(1.35rem, 2vw, 2.25rem);
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .app-card,
+  .detail-card,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section
+) {
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 253, 0.96)),
+    #FFFFFF;
+}
+
+.admin-shell :where(
+  .workspace-section .workspace-section,
+  .workspace-section .app-card,
+  .workspace-section .detail-card,
+  .detail-card .workspace-section,
+  .detail-card .app-card,
+  .detail-card .detail-card,
+  .app-card .workspace-section,
+  .app-card .app-card,
+  .app-card .detail-card,
+  .inline-row-editor-shell,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  border-color: rgba(226, 232, 240, 0.78);
+  background:
+    linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 250, 253, 0.92)),
+    #F9FAFB;
+  box-shadow:
+    0 8px 22px rgba(17, 24, 39, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .panel-header,
+  .app-page-header,
+  .workspace-shell-header,
+  .dashboard-panel-header,
+  .executive-dashboard-section-head,
+  .app-form-section-head
+) {
+  padding-bottom: 0.35rem;
+}
+
+.admin-shell :where(
+  .workspace-section-head h2,
+  .workspace-section-head h3,
+  .panel-header h2,
+  .dashboard-panel-header h2,
+  .detail-card h2,
+  .detail-card h3,
+  .app-card h2,
+  .app-card h3,
+  .app-form-section-head h3
+) {
+  margin: 0;
+  color: #0F172A;
+  line-height: 1.14;
+  font-weight: 880;
+}
+
+.admin-shell :where(.workspace-section-head p, .panel-header p, .dashboard-panel-header p, .detail-copy, .section-copy) {
+  line-height: 1.55;
+}
+
+.admin-shell :where(.eyebrow) {
+  margin-bottom: 0.22rem;
+  color: #1C7FB8;
+  font-weight: 850;
+}
+
+.admin-shell :where(.table-section-shell, .app-table-section) {
+  gap: 1.25rem;
+}
+
+.admin-shell :where(.table-wrap, .data-table-wrapper, .dashboard-table-wrapper, .table-scroll) {
+  background: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.admin-shell :where(.data-table th, .app-table th) {
+  background: #F1F7FB;
+  color: #475569;
+}
+
+.admin-shell :where(.primary-button, .app-button-primary) {
+  font-weight: 850;
+  box-shadow:
+    0 16px 34px rgba(28, 127, 184, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.admin-shell :where(.secondary-button, .app-button-secondary, .compact-button, .ghost-button) {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(203, 213, 225, 0.95);
+  color: #334155;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.035);
+}
+
+.admin-shell :where(.secondary-button:hover, .app-button-secondary:hover, .compact-button:hover, .ghost-button:hover) {
+  background: #F4FAFD;
+  color: #1C7FB8;
+}
+
+.admin-shell :where(.status-badge, .status-pill, .page-tab-badge, .app-badge, .quote-ui-badge, .margin-badge) {
+  border-color: rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.admin-shell :where(.form-section, .app-form-section, .entity-form, .compact-form) {
+  gap: 1.15rem;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(.workspace-shell-content, .section-stack, .app-section-stack) {
+    gap: 1.2rem;
+  }
+}
+
+/* Admin scan rhythm refinement: stronger primary sections, quieter nested cards. */
+.admin-shell :where(
+  .workspace-shell-content,
+  .app-workspace-main,
+  .quote-builder-main,
+  .quote-pricing-review-main,
+  .booking-ops-main,
+  .executive-dashboard-main-column
+) {
+  gap: clamp(1.75rem, 2.4vw, 2.5rem);
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .dashboard-panel,
+  .dashboard-section-card,
+  .table-section-shell,
+  .quote-builder-step-shell,
+  .quote-builder-tab-shell
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 252, 0.98)),
+    #FFFFFF;
+  border-color: rgba(203, 213, 225, 0.92);
+  box-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.admin-shell :where(
+  .detail-card,
+  .app-card,
+  .summary-panel,
+  .app-summary-panel,
+  .form-section,
+  .app-form-section
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 252, 253, 0.94)),
+    #FFFFFF;
+  border-color: rgba(226, 232, 240, 0.88);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.admin-shell :where(
+  .workspace-section .detail-card,
+  .workspace-section .app-card,
+  .workspace-section .summary-strip-card,
+  .workspace-section .app-metric-card,
+  .workspace-section .metric-card,
+  .detail-card .detail-card,
+  .detail-card .app-card,
+  .app-card .detail-card,
+  .app-card .app-card,
+  .inline-row-editor-shell
+) {
+  background: rgba(248, 250, 252, 0.88);
+  border-color: rgba(226, 232, 240, 0.78);
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .dashboard-panel-header,
+  .executive-dashboard-section-head,
+  .app-form-section-head,
+  .panel-header
+) {
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.78);
+  padding-bottom: 0.8rem;
+}
+
+.admin-shell :where(
+  .workspace-section-head h2,
+  .workspace-section-head h3,
+  .dashboard-panel-header h2,
+  .executive-dashboard-section-head h2,
+  .detail-card h2,
+  .detail-card h3,
+  .app-card h2,
+  .app-card h3,
+  .app-form-section-head h3
+) {
+  color: #0B1220;
+  font-size: clamp(1.08rem, 1.25vw, 1.35rem);
+  letter-spacing: 0;
+}
+
+.admin-shell :where(
+  .workspace-section-head p,
+  .dashboard-panel-header p,
+  .executive-dashboard-section-head p,
+  .detail-copy,
+  .section-copy,
+  .table-subcopy
+) {
+  color: #64748B;
+}
+
+.admin-shell :where(.summary-strip, .dashboard-summary-grid, .dashboard-kpi-grid) {
+  gap: clamp(0.9rem, 1.2vw, 1.25rem);
+}
+
+.admin-shell :where(.summary-strip-card, .app-metric-card, .metric-card) {
+  border-left: 3px solid rgba(31, 154, 207, 0.18);
+}
+
+.admin-shell :where(.table-section-shell .table-wrap, .table-section-shell .data-table-wrapper) {
+  margin-top: 0.15rem;
+}
+
+.admin-shell :where(.primary-button, .app-button-primary) {
+  background:
+    linear-gradient(135deg, #1F9ACF 0%, #1C7FB8 58%, #176C9E 100%);
+}
+
+.admin-shell :where(.secondary-button, .app-button-secondary, .compact-button, .ghost-button) {
+  background: rgba(255, 255, 255, 0.78);
+}
+

@@ -20,6 +20,7 @@ type HotelContract = {
   validTo: string;
   currency: string;
   hotel: {
+    id: string;
     name: string;
     city: string;
   };
@@ -49,15 +50,18 @@ async function getHotelContracts(): Promise<HotelContract[]> {
 
 type HotelContractsSectionProps = {
   contractId?: string;
+  hotelId?: string;
 };
 
 function formatDateRange(from: string, to: string) {
   return `${new Date(from).toLocaleDateString()} - ${new Date(to).toLocaleDateString()}`;
 }
 
-export async function HotelContractsSection({ contractId }: HotelContractsSectionProps) {
+export async function HotelContractsSection({ contractId, hotelId }: HotelContractsSectionProps) {
   const [hotels, hotelContracts] = await Promise.all([getHotels(), getHotelContracts()]);
-  const currentContract = contractId ? hotelContracts.find((contract) => contract.id === contractId) || null : null;
+  const visibleHotels = hotelId ? hotels.filter((hotel) => hotel.id === hotelId) : hotels;
+  const visibleContracts = hotelId ? hotelContracts.filter((contract) => contract.hotel.id === hotelId) : hotelContracts;
+  const currentContract = contractId ? visibleContracts.find((contract) => contract.id === contractId) || null : null;
   const currentContractLinks = currentContract
     ? [
         { href: `/hotels/contracts/${currentContract.id}`, label: 'Overview', helper: 'Contract summary and validity' },
@@ -128,20 +132,20 @@ export async function HotelContractsSection({ contractId }: HotelContractsSectio
       <TableSectionShell
         title="Contract Calendar"
         description="Manage supplier agreements and jump directly into the related contract workspace, rate setup, and downstream commercial modules."
-        context={<p>{hotelContracts.length} contracts in scope</p>}
+        context={<p>{visibleContracts.length} contracts in scope</p>}
         createPanel={
           <CollapsibleCreatePanel
             title="Create contract"
             description="Add a supplier agreement before configuring rates or allotments."
             triggerLabelOpen="Add contract"
           >
-            <HotelContractsForm apiBaseUrl="/api" hotels={hotels} />
+            <HotelContractsForm apiBaseUrl="/api" hotels={visibleHotels} />
           </CollapsibleCreatePanel>
         }
-        emptyState={hotelContracts.length === 0 ? <p className="empty-state">No hotel contracts yet.</p> : undefined}
+        emptyState={visibleContracts.length === 0 ? <p className="empty-state">No hotel contracts yet.</p> : undefined}
       >
-        {hotelContracts.length > 0 ? (
-          <HotelContractsTable apiBaseUrl="/api" hotels={hotels} hotelContracts={hotelContracts} />
+        {visibleContracts.length > 0 ? (
+          <HotelContractsTable apiBaseUrl="/api" hotels={visibleHotels} hotelContracts={visibleContracts} />
         ) : null}
       </TableSectionShell>
     </div>

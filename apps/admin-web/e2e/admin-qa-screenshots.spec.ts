@@ -8,14 +8,45 @@ const credentials = {
 };
 
 const routes = ['/leads', '/quotes', '/bookings', '/hotels', '/suppliers', '/contacts', '/companies', '/transport', '/users'];
+const loginSuccessPathPattern = /^\/(?:admin\/dashboard|dashboard)$/;
 
 async function login(page: Page) {
+  const screenshotsDir = path.join(process.cwd(), 'screenshots');
+  await mkdir(screenshotsDir, { recursive: true });
+
+  console.log('[qa-login] Opening /login');
   await page.goto('/login');
+  await page.waitForLoadState('networkidle');
+
+  console.log(`[qa-login] Filling credentials for ${credentials.email}`);
   await page.getByLabel('Email').fill(credentials.email);
   await page.getByLabel('Password').fill(credentials.password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
 
-  await expect(page).toHaveURL(/\/admin\/dashboard/);
+  console.log('[qa-login] Submitting login form');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+
+  const reachedDashboard = await page
+    .waitForURL((url) => loginSuccessPathPattern.test(url.pathname), { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+
+  const currentUrl = page.url();
+  console.log(`[qa-login] Final URL after login: ${currentUrl}`);
+
+  if (reachedDashboard) {
+    console.log('[qa-login] Login succeeded');
+    return;
+  }
+
+  const currentPathname = new URL(currentUrl).pathname;
+  if (currentPathname === '/login') {
+    const debugPath = path.join(screenshotsDir, 'login-failed.png');
+    await page.screenshot({ path: debugPath, fullPage: true });
+    console.log(`[qa-login] Login remained on /login. Debug screenshot saved to ${debugPath}`);
+  }
+
+  throw new Error(`Login failed: expected /admin/dashboard or /dashboard, received ${currentUrl}`);
 }
 
 async function captureFullPage(page: Page, screenshotsDir: string, name: string) {
