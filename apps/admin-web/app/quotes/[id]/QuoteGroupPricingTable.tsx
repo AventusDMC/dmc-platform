@@ -39,91 +39,88 @@ export function QuoteGroupPricingTable({
         </button>
       </div>
 
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>From Pax</th>
-              <th>To Pax</th>
-              <th>FOC</th>
-              <th>Per Guest Price</th>
-              <th>Notes</th>
-              <th>Label Preview</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const minPax = row.minPax.trim() ? Number(row.minPax) : 0;
-              const maxPax = row.maxPax.trim() ? Number(row.maxPax) : null;
-              const focPax = row.focPax.trim() ? Number(row.focPax) : 0;
+      <div className="quote-group-pricing-slab-list" aria-label="Group pricing tiers">
+        {rows.map((row, index) => {
+          const minPax = row.minPax.trim() ? Number(row.minPax) : 0;
+          const maxPax = row.maxPax.trim() ? Number(row.maxPax) : null;
+          const focPax = row.focPax.trim() ? Number(row.focPax) : 0;
+          const labelPreview =
+            minPax > 0
+              ? formatSlabLabel(minPax, Number.isFinite(maxPax as number) ? maxPax : null, Math.max(0, focPax || 0))
+              : 'Awaiting range';
 
-              return (
-                <tr key={row.clientId}>
-                  <td>
-                    <input
-                      value={row.minPax}
-                      onChange={(event) => onUpdateRow(row.clientId, 'minPax', event.target.value)}
-                      type="number"
-                      min="1"
-                      step="1"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.maxPax}
-                      onChange={(event) => onUpdateRow(row.clientId, 'maxPax', event.target.value)}
-                      type="number"
-                      min={row.minPax || '1'}
-                      step="1"
-                      placeholder="Open ended"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.focPax}
-                      onChange={(event) => onUpdateRow(row.clientId, 'focPax', event.target.value)}
-                      type="number"
-                      min="0"
-                      step="1"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.price}
-                      onChange={(event) => onUpdateRow(row.clientId, 'price', event.target.value)}
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.notes}
-                      onChange={(event) => onUpdateRow(row.clientId, 'notes', event.target.value)}
-                      placeholder="Optional note"
-                    />
-                  </td>
-                  <td>
-                    {minPax > 0
-                      ? formatSlabLabel(minPax, Number.isFinite(maxPax as number) ? maxPax : null, Math.max(0, focPax || 0))
-                      : 'Awaiting range'}
-                  </td>
-                  <td>
-                    <div className="inline-actions">
-                      <button type="button" className="secondary-button" onClick={() => onDuplicateRow(row.clientId)}>
-                        Duplicate
-                      </button>
-                      <button type="button" className="secondary-button" onClick={() => onDeleteRow(row.clientId)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+          return (
+            <article className="quote-group-pricing-slab-card" key={row.clientId}>
+              <div className="quote-group-pricing-slab-head">
+                <div className="quote-group-pricing-slab-title">
+                  <h4>Slab {index + 1}</h4>
+                  <span className="quote-group-pricing-slab-badge">{labelPreview}</span>
+                </div>
+                <div className="quote-group-pricing-actions" aria-label={`Actions for ${labelPreview}`}>
+                  <button type="button" className="secondary-button" onClick={() => onDuplicateRow(row.clientId)}>
+                    Duplicate
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => onDeleteRow(row.clientId)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <div className="quote-group-pricing-input-grid">
+                <label className="quote-group-pricing-field">
+                  <span>From pax</span>
+                  <input
+                    value={row.minPax}
+                    onChange={(event) => onUpdateRow(row.clientId, 'minPax', event.target.value)}
+                    type="number"
+                    min="1"
+                    step="1"
+                  />
+                </label>
+                <label className="quote-group-pricing-field">
+                  <span>To pax</span>
+                  <input
+                    value={row.maxPax}
+                    onChange={(event) => onUpdateRow(row.clientId, 'maxPax', event.target.value)}
+                    type="number"
+                    min={row.minPax || '1'}
+                    step="1"
+                    placeholder="Open ended"
+                  />
+                </label>
+                <label className="quote-group-pricing-field">
+                  <span>FOC</span>
+                  <input
+                    value={row.focPax}
+                    onChange={(event) => onUpdateRow(row.clientId, 'focPax', event.target.value)}
+                    type="number"
+                    min="0"
+                    step="1"
+                  />
+                </label>
+                <label className="quote-group-pricing-field">
+                  <span>Per guest price</span>
+                  <input
+                    value={row.price}
+                    onChange={(event) => onUpdateRow(row.clientId, 'price', event.target.value)}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                  />
+                </label>
+              </div>
+
+              <label className="quote-group-pricing-field quote-group-pricing-notes-field">
+                <span>Notes</span>
+                <input
+                  value={row.notes}
+                  onChange={(event) => onUpdateRow(row.clientId, 'notes', event.target.value)}
+                  placeholder="Optional note"
+                />
+              </label>
+            </article>
+          );
+        })}
       </div>
 
       {validationErrors.length > 0 ? (

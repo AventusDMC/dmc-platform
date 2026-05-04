@@ -238,7 +238,7 @@ export function QuoteGroupPricing({
       )}
 
       <div className="inline-actions">
-        <button type="button" onClick={savePricingModel} disabled={isSaving}>
+        <button type="button" className="primary-button" onClick={savePricingModel} disabled={isSaving}>
           {isSaving ? 'Saving...' : 'Save group pricing'}
         </button>
       </div>

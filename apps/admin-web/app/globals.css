@@ -4184,6 +4184,147 @@ select option:checked {
   white-space: nowrap;
 }
 
+.quote-pricing-workspace,
+.quote-pricing-workspace > *,
+.quote-pricing-workspace .section-stack,
+.quote-pricing-workspace .inline-row-editor-shell,
+.quote-group-pricing-slab-list,
+.quote-group-pricing-slab-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.quote-pricing-workspace .summary-strip-value {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.12;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.quote-group-pricing-slab-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.quote-group-pricing-slab-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.quote-group-pricing-slab-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.quote-group-pricing-slab-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.quote-group-pricing-slab-title h4 {
+  margin: 0;
+  font-size: 1.14rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.quote-group-pricing-slab-badge {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(31, 154, 207, 0.1);
+  color: rgba(18, 96, 130, 0.92);
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.quote-group-pricing-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.quote-group-pricing-actions .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.quote-group-pricing-input-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.quote-group-pricing-field {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.quote-group-pricing-field span {
+  color: rgba(30, 27, 24, 0.64);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.quote-group-pricing-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.quote-group-pricing-notes-field {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 980px) {
+  .quote-group-pricing-input-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .quote-group-pricing-slab-head {
+    display: grid;
+  }
+
+  .quote-group-pricing-actions {
+    justify-content: flex-start;
+  }
+
+  .quote-group-pricing-input-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .disabled-link {
   pointer-events: none;
   opacity: 0.55;
@@ -22709,6 +22850,301 @@ video {
   .leads-crm-page .workspace-section-head,
   .leads-crm-page .workspace-subheader {
     display: grid;
+  }
+}
+
+/* System-wide admin layout containment audit. */
+.admin-shell :where(
+  .page,
+  .panel,
+  .workspace-panel,
+  .workspace-shell-card,
+  .workspace-section,
+  .detail-card,
+  .app-card,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .dashboard-kpi-card,
+  .dashboard-stat-card,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section,
+  .entity-form,
+  .compact-form,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-sidebar,
+  .quote-pricing-review-layout,
+  .quote-pricing-review-main,
+  .quote-pricing-review-sidebar,
+  .booking-ops-main,
+  .booking-ops-sidebar,
+  .executive-dashboard-section-card,
+  .executive-dashboard-stat-card,
+  .executive-dashboard-finance-card
+) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .workspace-section,
+  .detail-card,
+  .app-card,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .table-section-shell,
+  .form-section,
+  .app-form-section,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  padding: clamp(1rem, 1.35vw, 1.35rem);
+  overflow: visible;
+}
+
+.admin-shell :where(
+  .section-stack,
+  .workspace-shell-content,
+  .app-section-stack,
+  .entity-list,
+  .allotment-table-stack,
+  .quote-pricing-workspace,
+  .quote-pricing-review-layout,
+  .quote-builder-layout,
+  .split-layout,
+  .summary-strip,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid
+) {
+  gap: clamp(1rem, 1.35vw, 1.5rem);
+}
+
+.admin-shell :where(
+  .workspace-section-head,
+  .panel-header,
+  .app-page-header,
+  .workspace-shell-header,
+  .quote-dashboard-header,
+  .quote-dashboard-title-row
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .workspace-section-head > *,
+  .panel-header > *,
+  .app-page-header > *,
+  .workspace-shell-header > *,
+  .quote-dashboard-header > *,
+  .quote-dashboard-title-row > *,
+  .split-layout > *,
+  .summary-strip > *,
+  .dashboard-grid > *,
+  .dashboard-summary-grid > *,
+  .dashboard-kpi-grid > *,
+  .quote-builder-layout > *,
+  .quote-pricing-review-layout > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .detail-copy,
+  .table-subcopy,
+  .section-copy,
+  .copy,
+  .empty-state,
+  .workspace-section p,
+  .detail-card p,
+  .app-card p,
+  .summary-strip-helper,
+  .summary-strip-label,
+  .summary-strip-value,
+  .app-metric-card strong,
+  .metric-card strong,
+  .dashboard-stat-card strong,
+  .dashboard-kpi-card strong,
+  .dashboard-summary-card strong,
+  .quote-dashboard-meta-grid span,
+  .quote-dashboard-meta-grid strong
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.summary-strip-value, .app-metric-card strong, .metric-card strong) {
+  text-align: left;
+}
+
+.admin-shell :where(.data-table th, .data-table td, .app-table th, .app-table td) {
+  height: auto;
+  min-width: 0;
+  max-width: min(28rem, 52vw);
+  padding: 0.95rem 1rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.admin-shell :where(.data-table th, .app-table th) {
+  line-height: 1.25;
+}
+
+.admin-shell :where(.table-wrap, .data-table-wrapper, .dashboard-table-wrapper, .table-scroll) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.admin-shell :where(
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  button,
+  a
+) {
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge
+) {
+  min-width: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.admin-shell :where(
+  .table-action-row,
+  .inline-actions,
+  .leads-crm-row-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions,
+  .app-drawer-actions,
+  .app-action-bar,
+  .page-action-bar,
+  .action-bar
+) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .table-action-row > *,
+  .inline-actions > *,
+  .leads-crm-row-actions > *,
+  .quote-dashboard-actions > *,
+  .booking-dashboard-actions > *,
+  .app-drawer-actions > *,
+  .app-action-bar > *,
+  .page-action-bar > *,
+  .action-bar > *
+) {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  input,
+  select,
+  textarea,
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .search-combobox-shell
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(input, select, textarea, .app-input, .app-select, .app-textarea) {
+  width: 100%;
+}
+
+.admin-shell :where(
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge,
+  .margin-badge
+) {
+  max-width: 100%;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .compact-button,
+  .primary-button,
+  .secondary-button,
+  .app-button-primary,
+  .app-button-secondary
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding-inline: 0.9rem;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(
+    .workspace-section,
+    .detail-card,
+    .app-card,
+    .dashboard-panel,
+    .dashboard-card,
+    .dashboard-section-card,
+    .table-section-shell,
+    .form-section,
+    .app-form-section,
+    .summary-strip-card,
+    .app-metric-card,
+    .metric-card
+  ) {
+    padding: 1rem;
+  }
+
+  .admin-shell :where(.data-table th, .data-table td, .app-table th, .app-table td) {
+    max-width: 72vw;
+    padding: 0.85rem;
   }
 }
 
