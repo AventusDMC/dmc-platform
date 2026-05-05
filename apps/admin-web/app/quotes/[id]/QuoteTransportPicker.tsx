@@ -285,7 +285,7 @@ export function QuoteTransportPicker({
   const [error, setError] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
-  const [selectedPricingMode, setSelectedPricingMode] = useState<PricingMode>('Point-to-Point');
+  const [selectedPricingMode, setSelectedPricingMode] = useState<PricingMode | ''>('');
   const [selectedRateId, setSelectedRateId] = useState('');
   const [paxInput, setPaxInput] = useState(String(Math.max(1, totalPax || 1)));
   const [markupPercent, setMarkupPercent] = useState('30');
@@ -395,12 +395,28 @@ export function QuoteTransportPicker({
 
     const selectedRankedVehicle = rankedVehicles.find((entry) => entry.vehicle.id === selectedVehicleId);
 
-    if (selectedRankedVehicle && !selectedRankedVehicle.isTooSmall) {
-      return;
+    if (selectedVehicleId && (!selectedRankedVehicle || selectedRankedVehicle.isTooSmall)) {
+      setSelectedVehicleId('');
     }
-
-    setSelectedVehicleId(rankedVehicles.find((entry) => !entry.isTooSmall)?.vehicle.id || '');
   }, [rankedVehicles, selectedRoute, selectedVehicleId]);
+
+  function handleRouteChange(routeId: string) {
+    setSelectedRouteId(routeId);
+    setSelectedVehicleId('');
+    setSelectedPricingMode('');
+    setSelectedRateId('');
+  }
+
+  function handleVehicleChange(vehicleId: string) {
+    setSelectedVehicleId(vehicleId);
+    setSelectedPricingMode('');
+    setSelectedRateId('');
+  }
+
+  function handlePricingModeChange(pricingMode: PricingMode | '') {
+    setSelectedPricingMode(pricingMode);
+    setSelectedRateId('');
+  }
 
   const supplierRateMatches = useMemo(() => {
     if (!selectedRoute || !selectedVehicle || !selectedPricingMode) {
@@ -503,7 +519,7 @@ export function QuoteTransportPicker({
       return;
     }
 
-    setSelectedRateId(supplierRateMatches[0]?.rate.id || '');
+    setSelectedRateId('');
   }, [selectedRateId, supplierRateMatches]);
 
   const selectedRate = selectedRateMatch?.rate || null;
@@ -514,7 +530,7 @@ export function QuoteTransportPicker({
   const profit = calculateProfit(sellingPrice, costPrice);
   const marginPercent = calculateMarginPercent(sellingPrice, costPrice);
   const pricingCurrency = selectedRate?.currency || quoteCurrency;
-  const pricingReady = Boolean(selectedRoute && selectedVehicle && selectedRate && selectedRateHasCost);
+  const pricingReady = Boolean(selectedRoute && selectedVehicle && selectedPricingMode && selectedRate && selectedRateHasCost);
   const drawerTitle = dayNumber ? `Add Transport - Day ${dayNumber}` : 'Add Transport';
   const debugRate = selectedRate || supplierRateMatches[0]?.rate || null;
   const debugRateVehicleType = debugRate ? getRateVehicleTypeForMatch(debugRate, vehicleTypes) : '';
@@ -528,6 +544,66 @@ export function QuoteTransportPicker({
   const routeListIsConfirmedEmpty = !routesLoadFailed && routes.length === 0;
   const vehicleListIsConfirmedEmpty = !vehiclesLoadFailed && allVehicles.length === 0;
   const supplierRateListIsConfirmedEmpty = !supplierRatesLoadFailed && loadedSupplierRates.length === 0;
+  const availableVehicleOptions = rankedVehicles.filter((entry) => !entry.isTooSmall);
+  const vehicleListForRouteIsEmpty = Boolean(selectedRoute && !vehiclesLoadFailed && availableVehicleOptions.length === 0);
+  const pricingModesForVehicle = useMemo(() => {
+    if (!selectedRoute || !selectedVehicle || !selectedVehicleTypeForMatch) {
+      return [] as PricingMode[];
+    }
+
+    const matchedRoute = selectedRoute;
+    const selectedRouteNames = [
+      matchedRoute.name,
+      formatRoute(matchedRoute),
+      `${matchedRoute.fromPlace.name} â†’ ${matchedRoute.toPlace.name}`,
+    ].map(normalizeRouteText);
+    const selectedType = normalizeType(selectedVehicleTypeForMatch);
+
+    function rateMatchesRoute(rate: VehicleRate) {
+      if (rate.routeId === matchedRoute.id || rate.route?.id === matchedRoute.id) {
+        return true;
+      }
+
+      if (rate.fromPlaceId && rate.toPlaceId) {
+        return rate.fromPlaceId === matchedRoute.fromPlaceId && rate.toPlaceId === matchedRoute.toPlaceId;
+      }
+
+      if (rate.routeId || rate.route?.id) {
+        return false;
+      }
+
+      const rateRouteNames = [
+        rate.routeName,
+        rate.route?.name,
+        rate.route ? `${rate.route.fromPlace.name} â†’ ${rate.route.toPlace.name}` : '',
+      ].map(normalizeRouteText);
+
+      return rateRouteNames.some((rateName) => Boolean(rateName) && selectedRouteNames.includes(rateName));
+    }
+
+    function isGeneralRouteRate(rate: VehicleRate) {
+      if (rate.routeId || rate.route?.id) {
+        return false;
+      }
+
+      const routeName = normalizeRouteText(rate.routeName || rate.route?.name || '');
+      return !routeName || routeName.includes('general') || routeName.includes('all routes') || routeName.includes('any route');
+    }
+
+    const activeRates = loadedSupplierRates.filter((rate) => rate.active !== false);
+    const exactRouteRates = activeRates.filter(rateMatchesRoute);
+    const routeCandidateRates = exactRouteRates.length > 0 ? exactRouteRates : activeRates.filter(isGeneralRouteRate);
+
+    return Array.from(
+      new Set(
+        routeCandidateRates
+          .filter((rate) => normalizeType(getRateVehicleTypeForMatch(rate, vehicleTypes)) === selectedType)
+          .map(getNormalizedPricingModeForRate)
+          .filter((mode): mode is PricingMode => Boolean(mode)),
+      ),
+    );
+  }, [loadedSupplierRates, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, vehicleTypes]);
+  const pricingModesForVehicleIsEmpty = Boolean(selectedRoute && selectedVehicle && !supplierRatesLoadFailed && pricingModesForVehicle.length === 0);
   const noSupplierRateForSelection = Boolean(selectedRoute && selectedVehicle && selectedPricingMode && supplierRateMatches.length === 0 && !supplierRatesLoadFailed);
 
   function handleAddTransport() {
@@ -544,7 +620,7 @@ export function QuoteTransportPicker({
         vehicleLabel: selectedVehicle.name,
         vehicleType: selectedVehicleType,
         pax: requestedPax,
-        pricingMode: selectedPricingMode,
+        pricingMode: selectedPricingMode || 'Point-to-Point',
         currency: selectedRate.currency || quoteCurrency,
         costPrice,
         markupPercent: markup,
@@ -652,7 +728,7 @@ export function QuoteTransportPicker({
             <header className="quote-drawer-section-head">
               <div>
                 <p className="eyebrow">Details</p>
-                <h3>Route, vehicle, pricing mode, and supplier</h3>
+                <h3>Route, vehicle type, pricing mode, and supplier</h3>
               </div>
             </header>
 
@@ -664,7 +740,7 @@ export function QuoteTransportPicker({
                   <p className="detail-copy">Pick the route first. Vehicle and supplier pricing follow from this route.</p>
                 </div>
               </div>
-              <select value={selectedRouteId} onChange={(event) => setSelectedRouteId(event.target.value)} disabled={routes.length === 0}>
+              <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routes.length === 0}>
                 {routes.length > 0 ? <option value="">Select route</option> : null}
                 {routesLoadFailed ? <option value="">Routes failed to load</option> : null}
                 {routeListIsConfirmedEmpty ? <option value="">No routes available</option> : null}
@@ -685,7 +761,7 @@ export function QuoteTransportPicker({
               <section className="quote-hotel-step-panel quote-transport-step-panel">
                 <div className="quote-hotel-step-head">
                   <div>
-                    <p className="eyebrow">Vehicle</p>
+                    <p className="eyebrow">Vehicle Type</p>
                     <h3>Match capacity and type</h3>
                     <p className="detail-copy">Pax ranks vehicles by closest fitting capacity. Larger vehicles remain available for manual override.</p>
                   </div>
@@ -695,6 +771,8 @@ export function QuoteTransportPicker({
               ) : null}
               {vehicleListIsConfirmedEmpty ? (
                 <p className="empty-state">No vehicles found. Add vehicles in Product Catalog {'->'} Transport {'->'} Vehicle Fleet.</p>
+              ) : vehicleListForRouteIsEmpty ? (
+                <p className="empty-state">No vehicles for route.</p>
               ) : !vehiclesLoadFailed ? (
                 <div className="section-stack">
                   <label>
@@ -709,8 +787,9 @@ export function QuoteTransportPicker({
                     />
                   </label>
                   <label>
-                    Vehicle
-                    <select value={selectedVehicleId} onChange={(event) => setSelectedVehicleId(event.target.value)}>
+                    Vehicle Type
+                    <select value={selectedVehicleId} onChange={(event) => handleVehicleChange(event.target.value)} disabled={!selectedRoute || vehicleListForRouteIsEmpty}>
+                      <option value="">Select vehicle type</option>
                       {rankedVehicles.map((entry) => (
                         <option key={entry.vehicle.id} value={entry.vehicle.id} disabled={entry.isTooSmall}>
                           {formatVehicleOptionLabel(entry, vehicleTypes)}
@@ -729,10 +808,16 @@ export function QuoteTransportPicker({
                 <div className="quote-hotel-step-head">
                   <div>
                     <p className="eyebrow">Pricing Mode</p>
-                    <h3>Select rate logic</h3>
+                    <h3>Select pricing mode</h3>
                   </div>
                 </div>
-                <select value={selectedPricingMode} onChange={(event) => setSelectedPricingMode(event.target.value as PricingMode)}>
+                {pricingModesForVehicleIsEmpty ? <p className="empty-state">No pricing modes for vehicle.</p> : null}
+                <select
+                  value={selectedPricingMode}
+                  onChange={(event) => handlePricingModeChange(event.target.value as PricingMode)}
+                  disabled={!selectedRoute || !selectedVehicle || pricingModesForVehicleIsEmpty}
+                >
+                  <option value="">Select pricing mode</option>
                   {TRANSPORT_PRICING_MODES.map((mode) => (
                     <option key={mode} value={mode}>
                       {mode}
@@ -747,7 +832,7 @@ export function QuoteTransportPicker({
               <section className="quote-hotel-step-panel quote-transport-step-panel">
                 <div className="quote-hotel-step-head">
                   <div>
-                    <p className="eyebrow">Supplier Rate Card</p>
+                    <p className="eyebrow">Supplier</p>
                     <h3>Choose supplier</h3>
                     <p className="detail-copy">Cost uses net supplier cost when a contract discount exists.</p>
                     <p className="detail-copy">{SUPPLIER_STANDARDIZATION_HELPER_TEXT}</p>
@@ -760,12 +845,19 @@ export function QuoteTransportPicker({
                     </p>
                   ) : null}
                   {supplierRateListIsConfirmedEmpty ? <p className="empty-state">No active supplier rate cards available yet.</p> : null}
+                  {noSupplierRateForSelection ? <p className="empty-state">No suppliers for combination.</p> : null}
+                  {noSupplierRateForSelection ? <p className="form-error">No rate found.</p> : null}
                   {noSupplierRateForSelection ? (
                     <p className="form-error">No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.</p>
                   ) : null}
                   <label>
-                    Supplier Rate
-                    <select value={selectedRateId} onChange={(event) => setSelectedRateId(event.target.value)} disabled={supplierRateMatches.length === 0}>
+                    Supplier
+                    <select
+                      value={selectedRateId}
+                      onChange={(event) => setSelectedRateId(event.target.value)}
+                      disabled={!selectedRoute || !selectedVehicle || !selectedPricingMode || supplierRateMatches.length === 0}
+                    >
+                      {supplierRateMatches.length > 0 ? <option value="">Select supplier</option> : null}
                       {supplierRateMatches.length === 0 ? <option value="">No supplier rate available</option> : null}
                       {supplierRateMatches.map((match) => (
                         <option key={match.rate.id} value={match.rate.id}>
@@ -774,6 +866,18 @@ export function QuoteTransportPicker({
                       ))}
                     </select>
                   </label>
+                  {selectedRate ? (
+                    <div className="quote-live-pricing-panel quote-transport-live-pricing-panel">
+                      <div className="quote-live-pricing-row">
+                        <span>Selected price</span>
+                        <strong>{formatMoney(costPrice, pricingCurrency)}</strong>
+                      </div>
+                      <div className="quote-live-pricing-row">
+                        <span>Selling price</span>
+                        <strong>{formatMoney(sellingPrice, pricingCurrency)}</strong>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </section>
             ) : null}
