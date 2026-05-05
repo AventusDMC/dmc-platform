@@ -11,6 +11,7 @@ import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
+import { isBackendUuid } from '../lib/backend-uuid';
 import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
 import { getCanonicalRouteLabel } from '../lib/transport-routes';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
@@ -1079,6 +1080,29 @@ export function VehicleRatesTable({
     }));
   }
 
+  function removePreparedRateLine(rateId: string) {
+    setPreparedRateCards((currentCards) =>
+      currentCards.map((card) => {
+        if (!card.rates.some((cardRate) => cardRate.id === rateId)) {
+          return card;
+        }
+
+        const rates = card.rates.filter((cardRate) => cardRate.id !== rateId);
+        const vehicleTypes = Array.from(new Set(groupRateLinesByVehicleType(rates).map((section) => section.vehicleType)));
+
+        return {
+          ...card,
+          rates,
+          vehicleTypes,
+          vehicleType: vehicleTypes.length === 1 ? vehicleTypes[0] : vehicleTypes.length > 1 ? 'Multiple vehicle types' : '-',
+          rateLineCount: rates.length,
+          status: rates.length > 0 ? getCardStatus(rates) : card.status,
+          category: rates.length > 0 ? getRateCardServiceCategory(rates) : card.category,
+        };
+      }),
+    );
+  }
+
   function mapVehicleRateToManualRateLine(rate: VehicleRate): ManualSupplierRateLine {
     const pricingMode = getPricingModeForRate(rate);
 
@@ -1520,6 +1544,10 @@ export function VehicleRatesTable({
 
     try {
       for (const rate of rateCard.rates) {
+        if (!isBackendUuid(rate.id)) {
+          continue;
+        }
+
         const response = await fetch(`${apiBaseUrl}/vehicle-rates/${rate.id}`, {
           method: 'PATCH',
           headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -1631,6 +1659,12 @@ export function VehicleRatesTable({
       return;
     }
 
+    if (!isBackendUuid(rate.id)) {
+      removePreparedRateLine(rate.id);
+      setSuccessMessage('Local rate removed');
+      return;
+    }
+
     setDeletingId(rate.id);
     setError('');
     setSuccessMessage('');
@@ -1705,7 +1739,7 @@ export function VehicleRatesTable({
     setDeletingId(rateCard.id);
 
     try {
-      const backendRates = rateCard.rates.filter((rate) => !isLocalSupplierRateLine(rate));
+      const backendRates = rateCard.rates.filter((rate) => !isLocalSupplierRateLine(rate) && isBackendUuid(rate.id));
 
       for (const rate of backendRates) {
         const response = await fetch(`${apiBaseUrl}/vehicle-rates/${rate.id}`, {
