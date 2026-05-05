@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { getVehicleTypeCatalogLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
@@ -481,6 +481,10 @@ function normalizeCardSearch(value?: string) {
   return value?.trim().toLowerCase() || '';
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function getRatePricingMode(rate: { routeName: string; serviceType: { name: string; code?: string | null; classification?: string | null } }) {
   return normalizeTransportPricingMode(rate.serviceType.name) || normalizeTransportPricingMode(rate.serviceType.code) || 'Point-to-Point';
 }
@@ -503,6 +507,8 @@ function groupRatesByVehicleType(rates: any[]) {
 
 @Injectable()
 export class VehicleRatesService {
+  private readonly logger = new Logger(VehicleRatesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   findAll() {
@@ -563,11 +569,18 @@ export class VehicleRatesService {
     const search = normalizeCardSearch(query.search);
 
     if (query.supplierId?.trim()) {
-      where.supplierId = query.supplierId.trim();
+      const supplierId = query.supplierId.trim();
+      if (!isUuid(supplierId)) {
+        throw new BadRequestException('supplierId must be a UUID');
+      }
+      where.supplierId = supplierId;
     }
 
     if (query.routeId?.trim()) {
       const routeId = query.routeId.trim();
+      if (!isUuid(routeId)) {
+        throw new BadRequestException('routeId must be a UUID');
+      }
       where.routeId = routeId;
     }
 
@@ -575,7 +588,6 @@ export class VehicleRatesService {
       const vehicleType = normalizeVehicleTypeLabel(query.vehicleType) || query.vehicleType.trim();
       and.push({
         OR: [
-          { vehicle: { vehicleType: { equals: vehicleType, mode: 'insensitive' } } },
           { vehicle: { name: { equals: vehicleType, mode: 'insensitive' } } },
         ],
       });
@@ -608,7 +620,6 @@ export class VehicleRatesService {
           { currency: { contains: search, mode: 'insensitive' } },
           { supplier: { name: { contains: search, mode: 'insensitive' } } },
           { vehicle: { name: { contains: search, mode: 'insensitive' } } },
-          { vehicle: { vehicleType: { contains: search, mode: 'insensitive' } } },
           { serviceType: { name: { contains: search, mode: 'insensitive' } } },
           { route: { name: { contains: search, mode: 'insensitive' } } },
         ],
@@ -669,25 +680,83 @@ export class VehicleRatesService {
       });
   }
 
+  private logRateCardError(operation: string, error: unknown, context: Record<string, unknown>) {
+    const prismaError = error as { code?: unknown; meta?: unknown; message?: unknown; name?: unknown };
+    const payload = {
+      context,
+      error: {
+        name: prismaError?.name,
+        code: prismaError?.code,
+        message: prismaError?.message,
+        meta: prismaError?.meta,
+      },
+    };
+
+    console.error(`[VehicleRatesService] ${operation} failed`, payload);
+    this.logger.error(`${operation} failed`, JSON.stringify(payload));
+  }
+
   async findRateCards(query: SupplierRateCardQuery) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 25));
-    const rates = await this.prisma.vehicleRate.findMany({
-      where: this.buildRateCardWhere(query),
-      include: this.getRateCardInclude(),
-      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
-    });
-    const cards = this.groupRateCards(rates);
-    const start = (page - 1) * limit;
-    const items = cards.slice(start, start + limit);
 
-    return {
-      items,
-      total: cards.length,
-      page,
-      limit,
-      hasMore: start + items.length < cards.length,
-    };
+    try {
+      const rates = await this.prisma.vehicleRate.findMany({
+        where: this.buildRateCardWhere(query),
+        include: {
+          vehicle: {
+            select: {
+              id: true,
+              name: true,
+              maxPax: true,
+            },
+          },
+          serviceType: true,
+          route: {
+            include: {
+              fromPlace: true,
+              toPlace: true,
+            },
+          },
+          fromPlace: true,
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          toPlace: true,
+        },
+        orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+      });
+      const cards = this.groupRateCards(rates);
+      const start = (page - 1) * limit;
+      const items = cards.slice(start, start + limit);
+
+      return {
+        items,
+        total: cards.length,
+        page,
+        limit,
+        hasMore: start + items.length < cards.length,
+      };
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) {
+        this.logRateCardError('findRateCards', error, {
+          page,
+          limit,
+          filters: {
+            hasSupplierId: Boolean(query.supplierId?.trim()),
+            hasRouteId: Boolean(query.routeId?.trim()),
+            hasVehicleType: Boolean(query.vehicleType?.trim()),
+            hasPricingMode: Boolean(query.pricingMode?.trim()),
+            status: query.status?.trim() || undefined,
+            hasSearch: Boolean(query.search?.trim()),
+          },
+        });
+      }
+      throw error;
+    }
   }
 
   async findRateCardDetail(cardId: string) {
@@ -696,62 +765,72 @@ export class VehicleRatesService {
     }
 
     const decodedCardId = decodeURIComponent(cardId);
-    const rates = await this.prisma.vehicleRate.findMany({
-      include: this.getRateCardInclude(),
-      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
-    });
-    const cardRates = rates.filter(
-      (rate) =>
-        getSupplierRateCardKey(rate) === decodedCardId ||
-        getLegacySupplierRateCardKey(rate) === decodedCardId ||
-        getExportRateCardKey(rate) === decodedCardId,
-    );
 
-    if (cardRates.length === 0) {
-      throw new BadRequestException('Supplier rate card not found');
+    try {
+      const rates = await this.prisma.vehicleRate.findMany({
+        include: this.getRateCardInclude(),
+        orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+      });
+      const cardRates = rates.filter(
+        (rate) =>
+          getSupplierRateCardKey(rate) === decodedCardId ||
+          getLegacySupplierRateCardKey(rate) === decodedCardId ||
+          getExportRateCardKey(rate) === decodedCardId,
+      );
+
+      if (cardRates.length === 0) {
+        throw new BadRequestException('Supplier rate card not found');
+      }
+
+      const summary = this.summarizeRateCard(cardRates);
+
+      return {
+        ...summary,
+        baseRates: {
+          airportTransfer: cardRates.find((rate) => getRatePricingMode(rate) === 'Airport Transfer')?.price ?? null,
+          pointToPoint: cardRates.find((rate) => getRatePricingMode(rate) === 'Point-to-Point')?.price ?? cardRates[0]?.price ?? null,
+          halfDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Half Day')?.price ?? null,
+          fullDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Full Day')?.price ?? null,
+          stationaryWaitingHourly: cardRates.find((rate) => getRatePricingMode(rate) === 'Stationary / Waiting')?.price ?? null,
+        },
+        includedLimits: {
+          halfDayIncludedHours: null,
+          halfDayIncludedKm: null,
+          fullDayIncludedHours: null,
+          fullDayIncludedKm: null,
+        },
+        extraCharges: {
+          extraHourRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra Hour')?.price ?? null,
+          extraKmRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra KM')?.price ?? null,
+          nightSupplement: cardRates.find((rate) => /night/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+          weekendHolidaySupplement: cardRates.find((rate) => /weekend|holiday/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        },
+        busCoachSpecific: {
+          driverAccommodation: cardRates.find((rate) => /driver accommodation/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+          driverMealAllowance: cardRates.find((rate) => /driver meal/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+          parkingFee: cardRates.find((rate) => /parking/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+          borderPermitFee: cardRates.find((rate) => /border|permit/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+          guideSeatPolicy: null,
+          minimumCharge: cardRates.find((rate) => /minimum/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        },
+        contractTerms: {
+          contractDiscountPercent: 0,
+          discountAppliesTo: 'point-to-point',
+          grossRate: null,
+          netSupplierCost: null,
+          discountNotes: '',
+        },
+        vehicleSections: groupRatesByVehicleType(cardRates),
+        rates: cardRates,
+      };
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) {
+        this.logRateCardError('findRateCardDetail', error, {
+          cardIdParts: decodedCardId.split('|').length,
+        });
+      }
+      throw error;
     }
-
-    const summary = this.summarizeRateCard(cardRates);
-
-    return {
-      ...summary,
-      baseRates: {
-        airportTransfer: cardRates.find((rate) => getRatePricingMode(rate) === 'Airport Transfer')?.price ?? null,
-        pointToPoint: cardRates.find((rate) => getRatePricingMode(rate) === 'Point-to-Point')?.price ?? cardRates[0]?.price ?? null,
-        halfDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Half Day')?.price ?? null,
-        fullDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Full Day')?.price ?? null,
-        stationaryWaitingHourly: cardRates.find((rate) => getRatePricingMode(rate) === 'Stationary / Waiting')?.price ?? null,
-      },
-      includedLimits: {
-        halfDayIncludedHours: null,
-        halfDayIncludedKm: null,
-        fullDayIncludedHours: null,
-        fullDayIncludedKm: null,
-      },
-      extraCharges: {
-        extraHourRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra Hour')?.price ?? null,
-        extraKmRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra KM')?.price ?? null,
-        nightSupplement: cardRates.find((rate) => /night/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-        weekendHolidaySupplement: cardRates.find((rate) => /weekend|holiday/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-      },
-      busCoachSpecific: {
-        driverAccommodation: cardRates.find((rate) => /driver accommodation/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-        driverMealAllowance: cardRates.find((rate) => /driver meal/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-        parkingFee: cardRates.find((rate) => /parking/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-        borderPermitFee: cardRates.find((rate) => /border|permit/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-        guideSeatPolicy: null,
-        minimumCharge: cardRates.find((rate) => /minimum/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
-      },
-      contractTerms: {
-        contractDiscountPercent: 0,
-        discountAppliesTo: 'point-to-point',
-        grossRate: null,
-        netSupplierCost: null,
-        discountNotes: '',
-      },
-      vehicleSections: groupRatesByVehicleType(cardRates),
-      rates: cardRates,
-    };
   }
 
   async findOne(id: string) {
