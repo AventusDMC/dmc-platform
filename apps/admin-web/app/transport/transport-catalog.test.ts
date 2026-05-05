@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.meta.url), 'utf8');
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
+const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
 const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.tsx', import.meta.url), 'utf8');
@@ -42,16 +43,22 @@ describe('transport catalog supplier rate-card UX', () => {
       'rate.service?.supplier?.name',
       'null,',
       'function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierRateCard[]',
-      'const rateCards = groupRatesIntoSupplierRateCards(vehicleRates);',
-      'const key = [supplierName.trim().toLowerCase() || \'unassigned supplier\', rate.currency, validFrom, validTo].join(\'|\');',
-      "return 'Transport contract';",
+      'const [preparedRateCardTarget, setPreparedRateCardTarget] = useState(RATE_CARD_PAGE_SIZE);',
+      'async function prepareRateCards()',
+      "fetch(`${apiBaseUrl}/vehicle-rates/cards?${params.toString()}`",
+      "fetch(`${apiBaseUrl}/vehicle-rates/cards/${encodeURIComponent(rateCardId)}`",
+      'const key = [getSupplierIdentityKey(rate), routeOrServiceArea, rate.currency, validFrom, validTo].join(\'|\');',
+      'function groupRateLinesByVehicleType(rates: VehicleRate[])',
+      'function getRateCardServiceCategory(rates: VehicleRate[]): ServiceCategory',
+      "type ServiceCategory = 'Transfers' | 'Disposal' | 'Add-ons';",
+      "const SERVICE_CATEGORIES: ServiceCategory[] = ['Transfers', 'Disposal', 'Add-ons'];",
       'transport-contract-supplier-group',
       '{rateCard.rates.length} rate lines',
       'transport-contract-divider',
       'aria-label={`Rate lines for ${rateCard.name}`}',
       'Supplier Rate Card',
       'Effective from',
-      'Category',
+      'ServiceCategory',
       'Rate lines',
     ]);
   });
@@ -76,12 +83,12 @@ describe('transport catalog supplier rate-card UX', () => {
 
   it('keeps creation and edit forms in a single side panel instead of inline rows', () => {
     expectSourceContains(tableSource, [
-      'const [activeForm, setActiveForm] = useState<ActiveRateForm>(null);',
+      "const [activeForm, setActiveForm] = useState<ActiveRateForm>(initialCreateOpen ? { mode: 'create-rate-card' } : null);",
       'transport-rate-card-toolbar',
-      'Advanced / manual rate card',
+      '+ Add Rate Card',
       "onClick={() => setActiveForm({ mode: 'create-rate-card' })}",
       'transport-rate-card-form-panel',
-      "activeForm.mode === 'create-rate-card' ? 'Manual Rate Card' : formatRouteLabel(activeForm.rate.routeName)",
+      "activeForm.mode === 'create-rate-card' ? 'Create Rate Card (Manual)' : formatRouteLabel(activeForm.rate.routeName)",
     ]);
 
     assert.equal(sectionSource.includes("import { VehicleRatesForm }"), false);
@@ -97,6 +104,23 @@ describe('transport catalog supplier rate-card UX', () => {
       '<VehicleRatesForm',
       "rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}",
       "submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}",
+    ]);
+  });
+
+  it('adds safe supplier rate-card deletion from the grouped card', () => {
+    expectSourceContains(tableSource, [
+      'type PendingRateCardDelete = { rateCard: SupplierRateCard };',
+      'const [pendingRateCardDelete, setPendingRateCardDelete] = useState<PendingRateCardDelete | null>(null);',
+      'const [deletedRateIds, setDeletedRateIds] = useState<string[]>([]);',
+      'deletedRateIdSet.has(rate.id)',
+      'async function handleConfirmDeleteRateCard()',
+      "method: 'DELETE'",
+      'setDeletedRateIds((current) => Array.from(new Set([...current, ...deletedIds])));',
+      "setSuccessMessage('Rate card deleted');",
+      'Delete Supplier Rate Card',
+      'Confirm delete',
+      'quote transport selection',
+      'Locked or system rate cards cannot be deleted.',
     ]);
   });
 
@@ -174,13 +198,95 @@ describe('transport catalog supplier rate-card UX', () => {
       '<form className="transport-rate-card-metadata-form"',
       'Supplier',
       'Rate Card Name',
-      'Category',
+      'Service Category',
+      'SERVICE_CATEGORIES.map((category)',
       'Effective From',
       'Currency',
+      'Create one supplier and route card, then save vehicle type pricing modes inside it.',
+      'Pricing Mode',
+      'Route or Service Area',
+      'Status',
       'Notes',
-      'Alpha Bus and Limo Co',
+      'Select supplier',
       'Buses 2026 Rates in USD',
-      'Use Excel contract upload for normal supplier rates.',
+      'Create Rate Card (Manual)',
+      'Save Rate Card',
+    ]);
+  });
+
+  it('saves manual supplier rate cards locally with a clear primary action', () => {
+    expectSourceContains(tableSource, [
+      'readManualSupplierRateCards',
+      'upsertManualSupplierRateCard',
+      'type ManualRateCardFormState =',
+      'const [manualRateCards, setManualRateCards] = useState<ManualSupplierRateCard[]>([]);',
+      'const [manualRateCardForm, setManualRateCardForm] = useState<ManualRateCardFormState>',
+      'const manualRateCardCanSave = Boolean(',
+      'function handleSaveManualRateCard()',
+      "setSuccessMessage('Rate card saved');",
+      'setExpandedRateCardId(card.id);',
+      'Save Rate Card creates card info.',
+      '<button type="button" className="primary-button" onClick={handleSaveManualRateCard} disabled={!manualRateCardCanSave}>',
+      'Save Rate Card',
+    ]);
+
+    assert.equal(tableSource.includes("fetch(`${apiBaseUrl}/vehicle-rates`, {"), false);
+  });
+
+  it('uses catalog dropdowns for supplier rate-card vehicle type and route fields', () => {
+    expectSourceContains(tableSource, [
+      'readStoredVehicleTypeOptions',
+      'const [vehicleTypeOptions, setVehicleTypeOptions] = useState<VehicleTypeOption[]>(getDefaultVehicleTypeOptions());',
+      "const [manualVehicleType, setManualVehicleType] = useState(getDefaultVehicleTypeOptions()[0]?.label || '');",
+      "const [manualRouteOrServiceArea, setManualRouteOrServiceArea] = useState('General / All Routes');",
+      '<select name="vehicleType" value={manualVehicleType} onChange={(event) => setManualVehicleType(event.target.value)} required>',
+      '<option key={vehicleType.id} value={vehicleType.label}>',
+      '<select',
+      'name="routeOrServiceArea"',
+      '<option value="General / All Routes">General / All Routes</option>',
+      '<option key={route.id} value={route.id}>',
+      '{formatRouteLabel(route.name)}',
+    ]);
+
+    assert.equal(tableSource.includes('<input name="vehicleType"'), false);
+    assert.equal(tableSource.includes('<input name="routeOrServiceArea"'), false);
+    assert.equal(tableSource.includes('list="transport-rate-card-routes"'), false);
+    assert.equal(tableSource.includes('<datalist id="transport-rate-card-routes">'), false);
+  });
+
+  it('lets operators add vehicle type sections inside an existing supplier route card', () => {
+    expectSourceContains(tableSource, [
+      'type VehicleSectionDraft =',
+      'const [activeVehicleSectionCardId, setActiveVehicleSectionCardId] = useState<string | null>(null);',
+      'function handleStartAddVehicleSection(rateCard: SupplierRateCard)',
+      'function handleSaveVehicleSection(rateCard: SupplierRateCard)',
+      '+ Add Vehicle Type',
+      'name="vehicleSectionVehicleType"',
+      'This vehicle type already exists inside this supplier rate card.',
+      'Enter at least one pricing mode rate for this vehicle type.',
+      'setPreparedRateCards((currentCards) =>',
+      'const rates = [...card.rates, ...newRates];',
+      'Save Vehicle Type',
+      'function isLocalVehicleSectionRate(rate: VehicleRate)',
+    ]);
+  });
+
+  it('lets operators duplicate grouped supplier rate cards locally', () => {
+    expectSourceContains(tableSource, [
+      'type PendingRateCardDuplicate = { rateCard: SupplierRateCard };',
+      'type RateCardDuplicateDraft =',
+      'const [pendingRateCardDuplicate, setPendingRateCardDuplicate] = useState<PendingRateCardDuplicate | null>(null);',
+      'function getRateCardDuplicateKey(data:',
+      'async function handleStartDuplicateRateCard(rateCard: SupplierRateCard)',
+      'function handleConfirmDuplicateRateCard()',
+      'Duplicate',
+      'Duplicate Supplier Rate Card',
+      'Reuse contract structure',
+      'Copies all vehicle type sections, pricing modes, and rates into one grouped supplier and route card.',
+      'A supplier rate card already exists for this supplier, route, currency, and validity.',
+      'setPreparedRateCards((currentCards) => [duplicatedCard, ...currentCards]);',
+      "setSuccessMessage('Rate card duplicated');",
+      'Duplicate Rate Card',
     ]);
   });
 
@@ -189,6 +295,20 @@ describe('transport catalog supplier rate-card UX', () => {
       'transport-contract-import-hero',
       'Upload Contract',
       '<TransportContractImportPanel apiBaseUrl={ACTION_API_BASE_URL} />',
+      '<SupplierRateCardsSafeLoader',
+    ]);
+
+    expectSourceContains(safeLoaderSource, [
+      'Click Load Rate Cards to view supplier rates.',
+      'Load Rate Cards',
+      'Large rate-card lists may take time. Use filters for faster loading.',
+      'supplierFilter',
+      'vehicleTypeFilter',
+      'routeFilter',
+      'hasRequestedLoad',
+      '<VehicleRatesTable',
+      'initialListEnabled={hasRequestedLoad}',
+      'showToolbar={false}',
     ]);
 
     expectSourceContains(importPanelSource, [
@@ -201,7 +321,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'function getSafeRows',
       'group.rows?.length',
       'Confirm import',
-      'detected service classification',
+      'controlled supplier rate-card category',
       'window.location.href = \'/transport?tab=rates&imported=1\'',
     ]);
   });
@@ -215,7 +335,8 @@ describe('transport catalog supplier rate-card UX', () => {
       'Contract name for merged rows',
       "formData.set('contractMergeMode', options.contractMergeMode);",
       "formData.set('contractNameOverride', options.contractNameOverride);",
-      '<th>Contract</th>',
+      '<th>Service Category</th>',
+      '<th>Pricing Mode</th>',
     ]);
   });
 });

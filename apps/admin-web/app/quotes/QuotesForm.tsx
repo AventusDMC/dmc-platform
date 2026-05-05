@@ -314,7 +314,7 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
 
       const payload = (await response.json().catch(() => null)) as { id?: string } | null;
 
-      if (!isEditing && payload?.id) {
+      if (!isEditing && payload?.id && payload.id !== '[id]') {
         router.push(`/quotes/${payload.id}?tab=services`);
         router.refresh();
         return;

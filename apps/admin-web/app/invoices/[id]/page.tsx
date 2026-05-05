@@ -25,7 +25,7 @@ type InvoiceDetail = {
   effectiveStatus: string;
   dueDate: string;
   quote: {
-    id: string;
+    id: string | null;
     quoteNumber: string | null;
     title: string;
     status: string;
@@ -63,6 +63,10 @@ type InvoiceDetail = {
     status: string;
   }>;
 };
+
+function hasNavigableQuoteId(quoteId: string | null | undefined): quoteId is string {
+  return Boolean(quoteId && quoteId !== '[id]');
+}
 
 type InvoiceDetailPageProps = {
   params: Promise<{
@@ -117,6 +121,8 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
   if (!invoice) {
     notFound();
   }
+
+  const quoteId = hasNavigableQuoteId(invoice.quote.id) ? invoice.quote.id : null;
 
   return (
     <main className="page">
@@ -197,9 +203,11 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
               description="Update invoice lifecycle with strict transitions and a visible audit trail."
               actions={
                 <>
-                  <Link href={`/quotes/${invoice.quote.id}`} className="dashboard-toolbar-link">
-                    Open quote
-                  </Link>
+                  {quoteId ? (
+                    <Link href={`/quotes/${quoteId}`} className="dashboard-toolbar-link">
+                      Open quote
+                    </Link>
+                  ) : null}
                   <a href={`/api/invoices/${invoice.id}/pdf`} className="dashboard-toolbar-link">
                     Download PDF
                   </a>
@@ -244,9 +252,11 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                     <p className="detail-copy">Quote status: {formatStatus(invoice.quote.status)}</p>
                     {invoice.quote.booking ? <p className="detail-copy">Booking status: {formatStatus(invoice.quote.booking.status)}</p> : <p className="detail-copy">No booking linked yet.</p>}
                     <div className="table-action-row">
-                      <Link href={`/quotes/${invoice.quote.id}`} className="secondary-button">
-                        Open quote
-                      </Link>
+                      {quoteId ? (
+                        <Link href={`/quotes/${quoteId}`} className="secondary-button">
+                          Open quote
+                        </Link>
+                      ) : null}
                       {invoice.quote.booking ? (
                         <Link href={`/bookings/${invoice.quote.booking.id}`} className="secondary-button">
                           Open booking

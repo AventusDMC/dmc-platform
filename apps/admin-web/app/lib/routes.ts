@@ -1,4 +1,5 @@
 import { PlaceOption } from './places';
+import { getCanonicalRouteLabel } from './transport-routes';
 
 export type RouteOption = {
   id: string;
@@ -16,7 +17,7 @@ export type RouteOption = {
 };
 
 export function formatRouteLabel(route: Pick<RouteOption, 'name' | 'routeType' | 'fromPlace' | 'toPlace'>) {
-  const base = route.name || `${route.fromPlace.name} - ${route.toPlace.name}`;
+  const base = route.fromPlace && route.toPlace ? getCanonicalRouteLabel(route.fromPlace.name, route.toPlace.name) : route.name;
 
   return route.routeType ? `${base} (${route.routeType})` : base;
 }

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { AdminBackButton } from '../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
@@ -140,6 +140,75 @@ type TransportServiceType = {
   name: string;
   code: string;
 };
+
+type TransportVehicle = {
+  id: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  name: string;
+  vehicleType?: string | null;
+  maxPax: number;
+  luggageCapacity?: number | null;
+  active?: boolean | null;
+  isActive?: boolean | null;
+};
+
+type TransportSupplierRateCard = {
+  id: string;
+  vehicleId: string;
+  routeId: string | null;
+  routeName: string;
+  price: number;
+  currency: string;
+  active: boolean;
+  validFrom: string;
+  validTo: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplier?: {
+    id?: string;
+    name?: string | null;
+  } | null;
+  vehicle?: {
+    name?: string | null;
+  } | null;
+  serviceType?: {
+    name: string;
+    code: string;
+    classification?: string | null;
+  } | null;
+  contractDiscountPercent?: number | null;
+  grossRate?: number | null;
+};
+
+function normalizeTransportSupplierRateRows(payload: unknown): TransportSupplierRateCard[] {
+  if (Array.isArray(payload)) {
+    return payload.flatMap((entry) => {
+      if (entry && typeof entry === 'object' && Array.isArray((entry as { rates?: unknown }).rates)) {
+        return normalizeTransportSupplierRateRows((entry as { rates: unknown }).rates);
+      }
+
+      return [entry as TransportSupplierRateCard];
+    });
+  }
+
+  if (payload && typeof payload === 'object') {
+    const record = payload as {
+      supplierRateCards?: unknown;
+      vehicleRates?: unknown;
+      rateLines?: unknown;
+      transportRates?: unknown;
+      data?: unknown;
+      items?: unknown;
+    };
+
+    return normalizeTransportSupplierRateRows(
+      record.supplierRateCards ?? record.vehicleRates ?? record.rateLines ?? record.transportRates ?? record.data ?? record.items ?? [],
+    );
+  }
+
+  return [];
+}
 
 type HotelRate = {
   id: string;
@@ -508,13 +577,19 @@ type ServiceCostBreakdown = {
 };
 
 const QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS = 8000;
+const QUOTE_DETAIL_TRANSPORT_FETCH_TIMEOUT_MS = 20000;
 
-function withQuoteDetailTimeout<T>(label: string, promise: Promise<T>): Promise<T> {
+type SafeQuoteDetailFetchOptions = {
+  timeoutMs?: number;
+  retries?: number;
+};
+
+function withQuoteDetailTimeout<T>(label: string, promise: Promise<T>, timeoutMs = QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`${label} did not respond within ${QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS / 1000}s`));
-    }, QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS);
+      reject(new Error(`${label} did not respond within ${timeoutMs / 1000}s`));
+    }, timeoutMs);
   });
 
   return Promise.race([promise, timeout]).finally(() => {
@@ -524,30 +599,63 @@ function withQuoteDetailTimeout<T>(label: string, promise: Promise<T>): Promise<
   });
 }
 
-async function safeQuoteDetailFetch<T>(label: string, fallback: T, load: () => Promise<T | null | undefined>): Promise<OptionalQuoteDetailFetchResult<T>> {
-  try {
-    const data = await withQuoteDetailTimeout(label, load());
+async function safeQuoteDetailFetch<T>(
+  label: string,
+  fallback: T,
+  load: () => Promise<T | null | undefined>,
+  options: SafeQuoteDetailFetchOptions = {},
+): Promise<OptionalQuoteDetailFetchResult<T>> {
+  const timeoutMs = options.timeoutMs ?? QUOTE_DETAIL_OPTIONAL_FETCH_TIMEOUT_MS;
+  const retries = options.retries ?? 0;
+  let lastError: unknown;
 
-    return {
-      status: 'ok',
-      label,
-      data: data ?? fallback,
-    };
-  } catch (error) {
-    if (isNextRedirectError(error)) {
-      throw error;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const data = await withQuoteDetailTimeout(label, load(), timeoutMs);
+
+      if (attempt > 0) {
+        console.warn(`[QuoteDetailsPage] Optional ${label} fetch succeeded on retry ${attempt}.`);
+      }
+
+      return {
+        status: 'ok',
+        label,
+        data: data ?? fallback,
+      };
+    } catch (error) {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      lastError = error;
+
+      if (attempt < retries) {
+        const message = error instanceof Error ? error.message : `Unknown ${label} fetch failure`;
+        console.warn(`[QuoteDetailsPage] Optional ${label} fetch attempt ${attempt + 1} failed: ${message}. Retrying...`);
+      }
     }
-
-    const message = error instanceof Error ? error.message : `Unknown ${label} fetch failure`;
-    console.warn(`[QuoteDetailsPage] Optional ${label} fetch failed: ${message}`);
-
-    return {
-      status: 'error',
-      label,
-      message,
-      data: fallback,
-    };
   }
+
+  const message = lastError instanceof Error ? lastError.message : `Unknown ${label} fetch failure`;
+  console.warn(`[QuoteDetailsPage] Optional ${label} fetch failed: ${message}`);
+
+  return {
+    status: 'error',
+    label,
+    message,
+    data: fallback,
+  };
+}
+
+async function safeQuoteDetailTransportFetch<T>(
+  label: string,
+  fallback: T,
+  load: () => Promise<T | null | undefined>,
+): Promise<OptionalQuoteDetailFetchResult<T>> {
+  return safeQuoteDetailFetch(label, fallback, load, {
+    timeoutMs: QUOTE_DETAIL_TRANSPORT_FETCH_TIMEOUT_MS,
+    retries: 1,
+  });
 }
 
 function unwrapSettledQuoteDetail<T>(result: PromiseSettledResult<T>, fallback: T, label: string): T {
@@ -595,9 +703,22 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${DATA_API_BASE_URL}/routes?type=transfer`, 'Quote detail routes', {
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?limit=200`, 'Quote detail routes', {
     cache: 'no-store',
   });
+}
+
+async function getVehicles(): Promise<TransportVehicle[]> {
+  return adminPageFetchJson<TransportVehicle[]>(`${DATA_API_BASE_URL}/vehicles`, 'Quote detail vehicles', {
+    cache: 'no-store',
+  });
+}
+
+async function getSupplierRateCards(): Promise<TransportSupplierRateCard[]> {
+  const payload = await adminPageFetchJson<unknown>(`${API_BASE_URL}/vehicle-rates`, 'Quote detail supplier rate cards', {
+    cache: 'no-store',
+  });
+  return normalizeTransportSupplierRateRows(payload);
 }
 
 async function getHotels(): Promise<Hotel[]> {
@@ -1266,6 +1387,11 @@ function renderInternalCostingPanel({
 export default async function QuoteDetailsPage({ params, searchParams }: QuoteDetailsPageProps) {
   const { id } = await params;
 
+  if (!id || id === '[id]') {
+    redirect('/quotes');
+    return null;
+  }
+
   if (id === 'new') {
     notFound();
   }
@@ -1279,6 +1405,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     servicesSettled,
     transportServiceTypesSettled,
     routesSettled,
+    vehiclesSettled,
+    supplierRateCardsSettled,
     hotelsSettled,
     hotelContractsSettled,
     hotelRatesSettled,
@@ -1295,7 +1423,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     getQuote(id),
     safeQuoteDetailFetch('services', [] as SupplierService[], getServices),
     safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
-    safeQuoteDetailFetch('routes', [] as RouteOption[], getRoutes),
+    safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
+    safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
+    safeQuoteDetailTransportFetch('supplier rate cards', [] as TransportSupplierRateCard[], getSupplierRateCards),
     safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels),
     safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts),
     safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates),
@@ -1313,6 +1443,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
   const transportServiceTypesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportServiceType[]>>(transportServiceTypesSettled, { status: 'error', label: 'transport service types', data: [], message: 'Transport service types unavailable' }, 'transport service types');
   const routesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteOption[]>>(routesSettled, { status: 'error', label: 'routes', data: [], message: 'Routes unavailable' }, 'routes');
+  const vehiclesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportVehicle[]>>(vehiclesSettled, { status: 'error', label: 'vehicles', data: [], message: 'Vehicles unavailable' }, 'vehicles');
+  const supplierRateCardsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportSupplierRateCard[]>>(supplierRateCardsSettled, { status: 'error', label: 'supplier rate cards', data: [], message: 'Supplier rate cards unavailable' }, 'supplier rate cards');
   const hotelsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Hotel[]>>(hotelsSettled, { status: 'error', label: 'hotels', data: [], message: 'Hotels unavailable' }, 'hotels');
   const hotelContractsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelContract[]>>(hotelContractsSettled, { status: 'error', label: 'hotel contracts', data: [], message: 'Hotel contracts unavailable' }, 'hotel contracts');
   const hotelRatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelRate[]>>(hotelRatesSettled, { status: 'error', label: 'hotel rates', data: [], message: 'Hotel rates unavailable' }, 'hotel rates');
@@ -1328,6 +1460,15 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const services = servicesResult.data;
   const transportServiceTypes = transportServiceTypesResult.data;
   const routes = routesResult.data;
+  console.log('[QuoteDetailsPage] routes loaded', routes.length);
+  const vehicles = vehiclesResult.data;
+  const supplierRateCards = supplierRateCardsResult.data;
+  console.log('[QuoteDetailsPage] supplier rate cards loaded', supplierRateCards.length);
+  const transportDataStatus = {
+    routes: { status: routesResult.status, message: routesResult.message },
+    vehicles: { status: vehiclesResult.status, message: vehiclesResult.message },
+    supplierRateCards: { status: supplierRateCardsResult.status, message: supplierRateCardsResult.message },
+  };
   const hotels = hotelsResult.data;
   const hotelContracts = hotelContractsResult.data;
   const hotelRates = hotelRatesResult.data;
@@ -1432,7 +1573,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const overviewWarnings = [
     quoteItineraryResult.status === 'error' ? 'Itinerary details could not be loaded. Showing quote detail without itinerary data.' : null,
     servicesResult.status === 'error' ? 'Service catalog could not be loaded. Existing quote services are still visible.' : null,
-    routesResult.status === 'error' || transportServiceTypesResult.status === 'error' ? 'Transport setup data could not be loaded. Transport editing may be limited.' : null,
+    routesResult.status === 'error' || vehiclesResult.status === 'error' || supplierRateCardsResult.status === 'error' || transportServiceTypesResult.status === 'error'
+      ? 'Transport setup data could not be loaded. Transport editing may be limited.'
+      : null,
     hotelsResult.status === 'error' || hotelContractsResult.status === 'error' || hotelRatesResult.status === 'error' || hotelCategoriesResult.status === 'error'
       ? 'Hotel setup data could not be loaded. Hotel editing may be limited.'
       : null,
@@ -1865,9 +2008,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               </article>
 
               <div className="section-stack">
-                <article className="detail-card">
+                <article className="detail-card quote-admin-profit-card">
                   <p className="eyebrow">Internal / Admin Profit</p>
-                  <div className="quote-preview-total-list">
+                  <div className="quote-preview-total-list quote-admin-profit-grid">
                     <div>
                       <span>Total sell</span>
                       <strong>{formatMoney(quote.totalSell, quote.quoteCurrency)}</strong>
@@ -1944,6 +2087,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 services={services}
                 transportServiceTypes={transportServiceTypes}
                 routes={routes}
+                vehicles={vehicles}
+                supplierRateCards={supplierRateCards}
+                transportDataStatus={transportDataStatus}
                 hotels={hotels}
                 hotelContracts={hotelContracts}
                 hotelRates={hotelRates}
@@ -2005,6 +2151,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 services={services}
                 transportServiceTypes={transportServiceTypes}
                 routes={routes}
+                vehicles={vehicles}
+                supplierRateCards={supplierRateCards}
+                transportDataStatus={transportDataStatus}
                 hotels={hotels}
                 hotelContracts={hotelContracts}
                 hotelRates={hotelRates}

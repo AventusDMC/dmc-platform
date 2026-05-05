@@ -9,6 +9,7 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
@@ -354,6 +355,49 @@ describe('quote detail page regression', () => {
       'getTransportCandidateCapacity(candidate) === smallestFittingCapacity',
       '.slice(0, maxSuggestions)',
       'const sortedCandidates = getSmartTransportSuggestions(normalizedCandidates, currentPax, 3);',
+    ]);
+  });
+
+  it('ranks QuoteTransportPicker vehicles by pax without hiding manual overrides', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      "type VehicleRecommendationGroup = 'Recommended' | 'Available' | 'Too small';",
+      'function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[]',
+      'const fittingVehicles = vehicles.filter((vehicle) => vehicle.maxPax >= requestedPax);',
+      'const recommendedCapacity = fittingVehicles.reduce<number | null>',
+      "group: isTooSmall ? 'Too small' : isRecommended ? 'Recommended' : 'Available'",
+      'const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;',
+      'const [paxInput, setPaxInput] = useState',
+      'function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[])',
+      'Pax',
+      '<select value={selectedVehicleId} onChange={(event) => setSelectedVehicleId(event.target.value)}>',
+      '{formatVehicleOptionLabel(entry, vehicleTypes)}',
+      'disabled={isTooSmall}',
+      'Not enough capacity',
+      'Larger vehicles remain available for manual override.',
+    ]);
+  });
+
+  it('uses a route vehicle type and pricing mode dependent supplier rate dropdown', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null)',
+      'function isGeneralRouteRate(rate: VehicleRate)',
+      'const exactRouteRates = availableRates.filter(rateMatchesRoute);',
+      'const routeCandidateRates = exactRouteRates.length > 0 ? exactRouteRates : availableRates.filter(isGeneralRouteRate);',
+      'const routeScopedRates = routeCandidateRates.filter(',
+      'No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.',
+      '<select value={selectedRateId} onChange={(event) => setSelectedRateId(event.target.value)} disabled={supplierRateMatches.length === 0}>',
+      '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute)}',
+    ]);
+  });
+
+  it('includes locally saved manual supplier rate cards in QuoteTransportPicker matching', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'readManualSupplierRateCards',
+      'MANUAL_SUPPLIER_RATE_CARDS_CHANGED_EVENT',
+      'const [manualSupplierRateCards, setManualSupplierRateCards] = useState<VehicleRate[]>([]);',
+      'setManualSupplierRateCards(normalizeSupplierRateRows(readManualSupplierRateCards()));',
+      'window.addEventListener(MANUAL_SUPPLIER_RATE_CARDS_CHANGED_EVENT, loadManualSupplierRateCards);',
+      '() => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards)]',
     ]);
   });
 

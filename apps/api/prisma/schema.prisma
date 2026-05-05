@@ -1502,6 +1502,7 @@ model Vehicle {
   resolvedSupplierId String?             @db.Uuid
   supplierName    String?
   name            String
+  vehicleType     String?                @map("vehicle_type")
   maxPax          Int
   luggageCapacity Int
   createdAt       DateTime               @default(now())

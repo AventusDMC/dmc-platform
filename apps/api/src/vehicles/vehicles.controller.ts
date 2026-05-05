@@ -4,6 +4,7 @@ import { VehiclesService } from './vehicles.service';
 type CreateVehicleBody = {
   supplierId: string;
   name: string;
+  vehicleType?: string | null;
   maxPax: number;
   luggageCapacity: number;
 };
@@ -29,6 +30,7 @@ export class VehiclesController {
     return this.vehiclesService.create({
       supplierId: body.supplierId,
       name: body.name,
+      vehicleType: body.vehicleType,
       maxPax: Number(body.maxPax),
       luggageCapacity: Number(body.luggageCapacity),
     });
@@ -39,6 +41,7 @@ export class VehiclesController {
     return this.vehiclesService.update(id, {
       supplierId: body.supplierId,
       name: body.name,
+      vehicleType: body.vehicleType,
       maxPax: body.maxPax === undefined ? undefined : Number(body.maxPax),
       luggageCapacity: body.luggageCapacity === undefined ? undefined : Number(body.luggageCapacity),
     });

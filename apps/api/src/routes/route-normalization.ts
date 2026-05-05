@@ -3,7 +3,7 @@ export function normalizeRouteName(name: string) {
     .trim()
     .toLowerCase()
     .replace(/&/g, ' and ')
-    .replace(/\s*(?:↔|<->|-->|->|=>|→)\s*/g, '_')
+    .replace(/\s*(?:↔|<->|-->|->|=>|→|—|–|-)\s*/g, '_')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .replace(/_+/g, '_');
@@ -21,8 +21,25 @@ export function normalizeRouteDisplayName(name: string | null | undefined, fromP
   const raw = name?.trim() || formatRouteName(fromPlaceName, toPlaceName);
 
   return raw
-    .replace(/\s*(?:↔|<->|-->|->|=>|→)\s*/g, ' → ')
-    .replace(/\s+-\s+/g, ' → ')
+    .replace(/\s*(?:↔|<->|-->|->|=>|→|—|–|-)\s*/g, ' → ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function normalizeRoutePair(fromPlaceName: string, toPlaceName: string) {
+  return {
+    from: normalizeRouteName(fromPlaceName),
+    to: normalizeRouteName(toPlaceName),
+    key: buildRouteNormalizedKey(fromPlaceName, toPlaceName),
+  };
+}
+
+export function routePairsMatch(
+  left: { fromPlaceName: string; toPlaceName: string },
+  right: { fromPlaceName: string; toPlaceName: string },
+) {
+  const leftPair = normalizeRoutePair(left.fromPlaceName, left.toPlaceName);
+  const rightPair = normalizeRoutePair(right.fromPlaceName, right.toPlaceName);
+
+  return leftPair.from === rightPair.from && leftPair.to === rightPair.to;
 }

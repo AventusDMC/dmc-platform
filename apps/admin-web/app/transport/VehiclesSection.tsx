@@ -13,6 +13,7 @@ type Vehicle = {
   supplierName?: string | null;
   supplierStatus?: 'resolved' | 'unresolved' | null;
   name: string;
+  vehicleType?: string | null;
   maxPax: number;
   luggageCapacity: number;
 };
@@ -34,17 +35,25 @@ async function getSuppliers(): Promise<Supplier[]> {
   });
 }
 
-export async function VehiclesSection() {
+type VehiclesSectionProps = {
+  title?: string;
+  description?: string;
+};
+
+export async function VehiclesSection({
+  title = 'Vehicle Fleet',
+  description = 'Maintain the transport inventory used across route planning, pricing rules, and vehicle slab setup.',
+}: VehiclesSectionProps = {}) {
   const [vehicles, suppliers] = await Promise.all([getVehicles(), getSuppliers()]);
 
   return (
     <TableSectionShell
-      title="Vehicle Fleet"
-      description="Maintain the transport inventory used across route planning, pricing rules, and vehicle slab setup."
+      title={title}
+      description={description}
       context={<p>{vehicles.length} vehicles in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create vehicle" description="Add fleet inventory without leaving the Transport workspace." triggerLabelOpen="Add vehicle">
-          <VehiclesForm apiBaseUrl={ACTION_API_BASE_URL} />
+          <VehiclesForm apiBaseUrl={ACTION_API_BASE_URL} suppliers={suppliers} />
         </CollapsibleCreatePanel>
       }
       emptyState={vehicles.length === 0 ? <p className="empty-state">No vehicles yet.</p> : undefined}

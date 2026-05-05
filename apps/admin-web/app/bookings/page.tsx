@@ -13,7 +13,7 @@ type BookingStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'canc
 type Booking = {
   id: string;
   bookingRef?: string | null;
-  sourceQuoteId: string;
+  sourceQuoteId: string | null;
   status: BookingStatus;
   createdAt: string;
   snapshotJson: {
@@ -24,6 +24,10 @@ type Booking = {
     } | null;
   };
 };
+
+function hasNavigableQuoteId(quoteId: string | null | undefined): quoteId is string {
+  return Boolean(quoteId && quoteId !== '[id]');
+}
 
 async function getBookings(): Promise<Booking[]> {
   return adminPageFetchJson<Booking[]>('/api/bookings', 'Bookings', {
@@ -132,16 +136,23 @@ export default async function BookingsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {bookings.map((booking) => (
+                      {bookings.map((booking) => {
+                        const quoteId = hasNavigableQuoteId(booking.sourceQuoteId) ? booking.sourceQuoteId : null;
+
+                        return (
                         <tr key={booking.id}>
                           <td>
                             <strong>{booking.snapshotJson.title || booking.bookingRef || `Booking ${booking.id}`}</strong>
                             <div className="table-subcopy">{booking.bookingRef || `Booking ${booking.id}`}</div>
                           </td>
                           <td>
-                            <Link href={`/quotes/${booking.sourceQuoteId}`} className="compact-button">
-                              Quote {booking.sourceQuoteId}
-                            </Link>
+                            {quoteId ? (
+                              <Link href={`/quotes/${quoteId}`} className="compact-button">
+                                Quote {quoteId}
+                              </Link>
+                            ) : (
+                              <span className="table-subcopy">Quote unavailable</span>
+                            )}
                           </td>
                           <td>{formatDate(booking.snapshotJson.travelStartDate)}</td>
                           <td>
@@ -155,7 +166,8 @@ export default async function BookingsPage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

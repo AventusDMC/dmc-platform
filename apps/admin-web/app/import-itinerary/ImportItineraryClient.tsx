@@ -356,7 +356,10 @@ export function ImportItineraryClient({ apiBaseUrl }: ImportItineraryClientProps
         throw new Error(await getErrorMessage(response, 'Could not create quote draft.'));
       }
 
-      const result = await readJsonResponse<{ id: string }>(response, 'Could not create quote draft.');
+      const result = await readJsonResponse<{ id: string | null }>(response, 'Could not create quote draft.');
+      if (!result.id || result.id === '[id]') {
+        throw new Error('Could not create quote draft because the quote ID is missing.');
+      }
       router.push(`/quotes/${result.id}`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not create quote draft.');

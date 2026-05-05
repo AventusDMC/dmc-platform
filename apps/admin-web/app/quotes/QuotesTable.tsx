@@ -23,7 +23,7 @@ type Contact = {
 };
 
 type Quote = {
-  id: string;
+  id: string | null;
   quoteNumber: string | null;
   bookingType: 'FIT' | 'GROUP' | 'SERIES';
   title: string;
@@ -97,6 +97,10 @@ function matchesDateFilter(travelStartDate: string | null, dateFrom: string) {
   return travelStartDate.slice(0, 10) >= dateFrom;
 }
 
+function hasNavigableQuoteId(quoteId: string | null | undefined): quoteId is string {
+  return Boolean(quoteId && quoteId !== '[id]');
+}
+
 export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps) {
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -134,6 +138,11 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
   ].filter(Boolean) as string[];
 
   async function handleDelete(quote: Quote) {
+    if (!hasNavigableQuoteId(quote.id)) {
+      setError('Could not delete quote because the quote ID is missing.');
+      return;
+    }
+
     if (!window.confirm(`Delete ${quote.title}?`)) {
       return;
     }
@@ -251,9 +260,10 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
             <tbody>
               {filteredQuotes.map((quote) => {
                 const expired = isQuoteExpired(quote);
+                const quoteId = hasNavigableQuoteId(quote.id) ? quote.id : null;
 
                 return (
-                  <tr key={quote.id} className={expired ? 'quote-card-expired' : undefined}>
+                  <tr key={quoteId || quote.quoteNumber || quote.title} className={expired ? 'quote-card-expired' : undefined}>
                     <td>
                       <strong>{quote.title}</strong>
                       <div className="table-subcopy">{quote.quoteNumber || 'Quote number pending'}</div>
@@ -281,19 +291,23 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                     </td>
                     <td>
                       <div className="table-action-row">
-                        <Link href={`/quotes/${quote.id}`} className="compact-button">
-                          View
-                        </Link>
-                        <Link href={`/quotes/${quote.id}?tab=overview`} className="compact-button">
-                          Edit
-                        </Link>
+                        {quoteId ? (
+                          <>
+                            <Link href={`/quotes/${quoteId}`} className="compact-button">
+                              View
+                            </Link>
+                            <Link href={`/quotes/${quoteId}?tab=overview`} className="compact-button">
+                              Edit
+                            </Link>
+                          </>
+                        ) : null}
                         <button
                           type="button"
                           className="compact-button compact-button-danger"
                           onClick={() => handleDelete(quote)}
-                          disabled={deletingId === quote.id}
+                          disabled={!quoteId || deletingId === quoteId}
                         >
-                          {deletingId === quote.id ? 'Deleting...' : 'Delete'}
+                          {deletingId === quoteId ? 'Deleting...' : 'Delete'}
                         </button>
                         {quote.invoice ? (
                           <Link href={`/invoices/${quote.invoice.id}`} className="compact-button">
@@ -306,8 +320,8 @@ export function QuotesTable({ apiBaseUrl, quotes, companies }: QuotesTableProps)
                           <Link href={`/bookings/${quote.booking.id}`} className="compact-button">
                             Booking
                           </Link>
-                        ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                          <ConvertToBookingButton quoteId={quote.id} label="Create Booking" />
+                        ) : quoteId && (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') ? (
+                          <ConvertToBookingButton quoteId={quoteId} label="Create Booking" />
                         ) : null}
                       </div>
                     </td>

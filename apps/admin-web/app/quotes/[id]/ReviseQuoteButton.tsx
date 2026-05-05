@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 
 type RevisedQuote = {
-  id: string;
+  id: string | null;
 };
 
 export function ReviseQuoteButton({ quoteId, disabled = false }: { quoteId: string; disabled?: boolean }) {
@@ -31,6 +31,10 @@ export function ReviseQuoteButton({ quoteId, disabled = false }: { quoteId: stri
       }
 
       const quote = await readJsonResponse<RevisedQuote>(response, 'Could not revise quote.');
+      if (!quote.id || quote.id === '[id]') {
+        throw new Error('Could not revise quote because the revised quote ID is missing.');
+      }
+
       router.push(`/quotes/${quote.id}?revised=1`);
       router.refresh();
     } catch (caughtError) {

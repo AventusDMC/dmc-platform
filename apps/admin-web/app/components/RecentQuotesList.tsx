@@ -3,7 +3,7 @@ import { DashboardEmptyState } from './DashboardEmptyState';
 import { DashboardSectionCard } from './DashboardSectionCard';
 
 export type DashboardQuoteListItem = {
-  id: string;
+  id: string | null;
   href: string;
   title: string;
   reference: string;
@@ -12,6 +12,10 @@ export type DashboardQuoteListItem = {
   statusLabel: string;
   amountLabel: string;
 };
+
+function hasNavigableQuoteHref(href: string | null | undefined) {
+  return Boolean(href && !href.includes('/quotes/[id]'));
+}
 
 type RecentQuotesListProps = {
   quotes: DashboardQuoteListItem[];
@@ -41,22 +45,24 @@ export function RecentQuotesList({ quotes }: RecentQuotesListProps) {
         />
       ) : (
         <div className="executive-dashboard-list">
-          {quotes.map((quote) => (
-            <Link key={quote.id} href={quote.href} className="executive-dashboard-list-row executive-dashboard-list-row-quote">
-              <div className="executive-dashboard-list-row-copy executive-dashboard-quote-row-copy">
-                <strong>{quote.title}</strong>
-                <p className="executive-dashboard-quote-company">{quote.company}</p>
-                <div className="executive-dashboard-quote-meta">
-                  <span>{quote.reference}</span>
-                  <span>{quote.travelLabel}</span>
+          {quotes.map((quote) =>
+            hasNavigableQuoteHref(quote.href) ? (
+              <Link key={quote.id || quote.reference} href={quote.href} className="executive-dashboard-list-row executive-dashboard-list-row-quote">
+                <div className="executive-dashboard-list-row-copy executive-dashboard-quote-row-copy">
+                  <strong>{quote.title}</strong>
+                  <p className="executive-dashboard-quote-company">{quote.company}</p>
+                  <div className="executive-dashboard-quote-meta">
+                    <span>{quote.reference}</span>
+                    <span>{quote.travelLabel}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="executive-dashboard-list-row-aside executive-dashboard-quote-row-aside">
-                <span className="executive-dashboard-inline-pill executive-dashboard-quote-status">{quote.statusLabel}</span>
-                <span className="executive-dashboard-row-value executive-dashboard-quote-amount">{quote.amountLabel}</span>
-              </div>
-            </Link>
-          ))}
+                <div className="executive-dashboard-list-row-aside executive-dashboard-quote-row-aside">
+                  <span className="executive-dashboard-inline-pill executive-dashboard-quote-status">{quote.statusLabel}</span>
+                  <span className="executive-dashboard-row-value executive-dashboard-quote-amount">{quote.amountLabel}</span>
+                </div>
+              </Link>
+            ) : null,
+          )}
         </div>
       )}
     </DashboardSectionCard>

@@ -3439,7 +3439,7 @@ export function QuoteItemsForm({
               <div className="quote-hotel-step-head">
                 <div>
                   <p className="eyebrow">Step 1</p>
-                  <h3>Transport type, route, and pax</h3>
+                  <h3>Pricing Mode, route, and pax</h3>
                   <p className="detail-copy">Choose a priced route first. Vehicle and supplier options appear immediately after pricing resolves.</p>
                 </div>
                 {routeId ? <span className="page-tab-badge">Route selected</span> : null}
@@ -3447,7 +3447,7 @@ export function QuoteItemsForm({
 
               <div className="quote-transport-step-fields">
                 <label>
-                  Transport type
+                  Pricing Mode
                   <select
                     value={transportServiceTypeId}
                     onChange={(event) => {
@@ -3457,7 +3457,7 @@ export function QuoteItemsForm({
                     }}
                     required
                   >
-                    <option value="">Select service type</option>
+                    <option value="">Select pricing mode</option>
                     {transportServiceTypes.map((serviceType) => (
                       <option key={serviceType.id} value={serviceType.id}>
                         {formatServiceTypeLabel(serviceType.name)}
@@ -3509,8 +3509,8 @@ export function QuoteItemsForm({
                 ) : (
                   <div className="quote-transport-route-empty">
                     <span>Route</span>
-                    <strong>No priced routes for this service type</strong>
-                    <p>Add active transport pricing rules for this service type before saving this quote service.</p>
+                    <strong>Select a route to continue</strong>
+                    <p>Use the route-first Add Transport picker for new transport lines.</p>
                   </div>
                 )}
               </div>

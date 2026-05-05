@@ -3,12 +3,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PlaceComboboxWithCreate } from '../components/PlaceComboboxWithCreate';
-import { TypeSelect } from '../components/TypeSelect';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
-import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
+import { fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
-import { routeTypes } from '../lib/reference-data';
+import { buildMovementRouteName, containsPricingRouteTerm, isFixedMovementRouteType, MOVEMENT_ROUTE_TYPES } from '../lib/transport-routes';
 
 type RoutesFormProps = {
   apiBaseUrl: string;
@@ -35,7 +34,9 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   const [fromPlaceId, setFromPlaceId] = useState(initialValues?.fromPlaceId || '');
   const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
   const [name, setName] = useState(initialValues?.name || '');
-  const [routeType, setRouteType] = useState(initialValues?.routeType || '');
+  const initialRouteType = initialValues?.routeType || '';
+  const [routeType, setRouteType] = useState(initialRouteType && !isFixedMovementRouteType(initialRouteType) ? 'Other' : initialRouteType);
+  const [otherRouteType, setOtherRouteType] = useState(initialRouteType && !isFixedMovementRouteType(initialRouteType) ? initialRouteType : '');
   const [durationMinutes, setDurationMinutes] = useState(initialValues?.durationMinutes || '');
   const [distanceKm, setDistanceKm] = useState(initialValues?.distanceKm || '');
   const [notes, setNotes] = useState(initialValues?.notes || '');
@@ -43,6 +44,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(routeId);
+  const hasPricingConcept = containsPricingRouteTerm([name, routeType, otherRouteType, notes].join(' '));
 
   useEffect(() => {
     setAvailablePlaces(places);
@@ -55,7 +57,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
 
     const fromPlace = availablePlaces.find((place) => place.id === fromPlaceId) || null;
     const toPlace = availablePlaces.find((place) => place.id === toPlaceId) || null;
-    const derivedRouteName = buildRouteName(fromPlace, toPlace);
+    const derivedRouteName = buildMovementRouteName(fromPlace, toPlace);
 
     if (derivedRouteName) {
       setName(derivedRouteName);
@@ -115,6 +117,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
         setToPlaceId('');
         setName('');
         setRouteType('');
+        setOtherRouteType('');
         setDurationMinutes('');
         setDistanceKm('');
         setNotes('');
@@ -131,63 +134,109 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
-      <div className="form-row">
-        <PlaceComboboxWithCreate
-          apiBaseUrl={apiBaseUrl}
-          cities={cities}
-          placeTypes={placeTypes}
-          label="From place"
-          places={availablePlaces.filter((place) => place.isActive || place.id === fromPlaceId)}
-          value={fromPlaceId}
-          onChange={setFromPlaceId}
-          onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
-          placeholder="Search a place"
-        />
-        <PlaceComboboxWithCreate
-          apiBaseUrl={apiBaseUrl}
-          cities={cities}
-          placeTypes={placeTypes}
-          label="To place"
-          places={availablePlaces.filter((place) => place.isActive || place.id === toPlaceId)}
-          value={toPlaceId}
-          onChange={setToPlaceId}
-          onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}
-          placeholder="Search a place"
-        />
-      </div>
+      <p className="form-helper">
+        Routes define movement only. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards.
+      </p>
+      {hasPricingConcept ? (
+        <p className="form-helper">
+          Pricing item? Extra KM, Extra Hour, Waiting, Stationary, Driver Accommodation, and Parking Fee should be captured in supplier rate cards.
+        </p>
+      ) : null}
 
-      <label>
-        Custom route name
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Optional, otherwise derived from from -> to"
-        />
-      </label>
+      <section className="app-form-section">
+        <div className="app-form-section-head">
+          <h3>Places</h3>
+          <p>Standardized places keep routes, supplier rates, and quotes aligned.</p>
+        </div>
+        <div className="form-row">
+          <PlaceComboboxWithCreate
+            apiBaseUrl={apiBaseUrl}
+            cities={cities}
+            placeTypes={placeTypes}
+            label="From place"
+            places={availablePlaces.filter((place) => place.isActive || place.id === fromPlaceId)}
+            value={fromPlaceId}
+            onChange={setFromPlaceId}
+            onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
+            placeholder="Search a place"
+          />
+          <PlaceComboboxWithCreate
+            apiBaseUrl={apiBaseUrl}
+            cities={cities}
+            placeTypes={placeTypes}
+            label="To place"
+            places={availablePlaces.filter((place) => place.isActive || place.id === toPlaceId)}
+            value={toPlaceId}
+            onChange={setToPlaceId}
+            onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}
+            placeholder="Search a place"
+          />
+        </div>
+      </section>
 
-      <div className="form-row form-row-3">
-        <TypeSelect label="Route type" value={routeType} onChange={setRouteType} options={routeTypes} placeholder="Optional" />
-
+      <section className="app-form-section">
+        <div className="app-form-section-head">
+          <h3>Route Details</h3>
+        </div>
         <label>
-          Duration (minutes)
-          <input value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} type="number" min="0" />
+          Route Name
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="From → To" />
         </label>
 
-        <label>
-          Distance (km)
-          <input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} type="number" min="0" step="0.1" />
+        <div className="form-row form-row-3">
+          <label>
+            Route type
+            <select
+              value={routeType}
+              onChange={(event) => {
+                setRouteType(event.target.value);
+                if (event.target.value !== 'Other') {
+                  setOtherRouteType('');
+                }
+              }}
+            >
+              <option value="">Select route type</option>
+              {MOVEMENT_ROUTE_TYPES.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Duration minutes
+            <input value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} type="number" min="0" />
+          </label>
+
+          <label>
+            Distance km
+            <input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} type="number" min="0" step="0.1" />
+          </label>
+        </div>
+
+        {routeType === 'Other' ? (
+          <label>
+            Other route type
+            <input value={otherRouteType} onChange={(event) => setOtherRouteType(event.target.value)} placeholder="Internal note only" />
+          </label>
+        ) : null}
+
+        <label className="checkbox-field">
+          <input checked={isActive} onChange={(event) => setIsActive(event.target.checked)} type="checkbox" />
+          Active
         </label>
-      </div>
+      </section>
 
-      <label>
-        Notes
-        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Optional" />
-      </label>
-
-      <label className="checkbox-field">
-        <input checked={isActive} onChange={(event) => setIsActive(event.target.checked)} type="checkbox" />
-        Active
-      </label>
+      <section className="app-form-section">
+        <div className="app-form-section-head">
+          <h3>Operational Notes</h3>
+        </div>
+        <label>
+          Notes
+          <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Operational movement notes only" />
+        </label>
+      </section>
 
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save route' : 'Add route')}

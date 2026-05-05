@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
+import { getVehicleTypeCatalogLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
-import { buildRouteNormalizedKey, formatRouteName } from '../routes/route-normalization';
+import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, routePairsMatch } from '../routes/route-normalization';
 import * as XLSX from 'xlsx';
 
 type CreateVehicleRateInput = {
@@ -49,12 +50,33 @@ type VehicleRatePricingSyncData = {
   active: boolean;
 };
 
+type SupplierRateCardQuery = {
+  page?: number;
+  limit?: number;
+  supplierId?: string;
+  routeId?: string;
+  vehicleType?: string;
+  pricingMode?: string;
+  status?: string;
+  search?: string;
+};
+
 type TransportContractImportMode = 'preview' | 'import';
 type TransportContractMergeMode = 'keep' | 'merge';
 type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
+type CanonicalTransportPricingMode =
+  | 'Point-to-Point'
+  | 'Airport Transfer'
+  | 'Half Day'
+  | 'Full Day'
+  | 'Extra Hour'
+  | 'Extra KM'
+  | 'Stationary / Waiting'
+  | 'Add-on / Supplement';
 type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
+  allowCreateSuppliers?: boolean;
 };
 type TransportAddOnType = 'DAILY' | 'OVERNIGHT' | 'STATIONARY' | 'WAITING';
 
@@ -68,6 +90,7 @@ type TransportContractImportRow = {
   contractValidFrom: string;
   contractValidTo: string;
   country: string;
+  serviceCategory: string;
   serviceName: string;
   routeName: string;
   origin: string;
@@ -82,6 +105,7 @@ type TransportContractImportRow = {
 };
 
 type NormalizedTransportContractImportRow = {
+  supplierId?: string;
   supplierName: string;
   supplierContactName: string;
   supplierEmail: string;
@@ -91,11 +115,13 @@ type NormalizedTransportContractImportRow = {
   contractValidFrom: Date;
   contractValidTo: Date;
   country: string;
+  serviceCategory: string;
   serviceName: string;
   routeName: string;
   origin: string;
   destination: string;
   vehicleType: string;
+  vehicleTypeWarning?: string;
   maxPaxPerUnit: number;
   pricingMode: 'PER_GROUP';
   cost: number;
@@ -110,6 +136,43 @@ type ParsedTransportImportRow = {
 };
 
 const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
+  'Supplier',
+  'Vehicle Type',
+  'Route / Service Area',
+  'Service Category',
+  'Pricing Mode',
+  'Currency',
+  'Rate Amount',
+  'Valid From',
+  'Valid To',
+  'Status',
+] as const;
+
+const TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES = {
+  supplierName: ['Supplier', 'supplierName'],
+  vehicleType: ['Vehicle Type', 'vehicleType'],
+  routeName: ['Route / Service Area', 'routeName'],
+  serviceCategory: ['Service Category', 'serviceCategory', 'classification'],
+  serviceName: ['serviceName', 'Pricing Mode'],
+  pricingMode: ['Pricing Mode', 'pricing mode', 'Rate Type', 'Service Mode', 'Price Mode', 'pricingMode'],
+  currency: ['Currency', 'currency'],
+  cost: ['Rate Amount', 'cost'],
+  contractValidFrom: ['Valid From', 'contractValidFrom'],
+  contractValidTo: ['Valid To', 'contractValidTo'],
+  active: ['Status', 'active'],
+  supplierContactName: ['supplierContactName'],
+  supplierEmail: ['supplierEmail'],
+  supplierPhone: ['supplierPhone'],
+  supplierWebsite: ['supplierWebsite'],
+  contractName: ['contractName'],
+  country: ['country'],
+  origin: ['origin'],
+  destination: ['destination'],
+  maxPaxPerUnit: ['maxPaxPerUnit'],
+  notes: ['notes'],
+} satisfies Record<keyof TransportContractImportRow, string[]>;
+
+const LEGACY_TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
   'supplierName',
   'supplierContactName',
   'supplierEmail',
@@ -134,23 +197,52 @@ const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
 
 const REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
   'supplierName',
-  'contractName',
   'contractValidFrom',
   'contractValidTo',
-  'country',
   'serviceName',
-  'origin',
-  'destination',
+  'routeName',
   'vehicleType',
-  'maxPaxPerUnit',
-  'pricingMode',
   'cost',
   'currency',
   'active',
 ] as const;
 
+const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] = [
+  'Point-to-Point',
+  'Airport Transfer',
+  'Half Day',
+  'Full Day',
+  'Extra Hour',
+  'Extra KM',
+  'Stationary / Waiting',
+  'Add-on / Supplement',
+];
+
+const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMode> = {
+  pointtopoint: 'Point-to-Point',
+  airporttransfer: 'Airport Transfer',
+  halfday: 'Half Day',
+  fullday: 'Full Day',
+  extrahour: 'Extra Hour',
+  extrakm: 'Extra KM',
+  extrakilometer: 'Extra KM',
+  stationarywaiting: 'Stationary / Waiting',
+  addonsupplement: 'Add-on / Supplement',
+  addon: 'Add-on / Supplement',
+  supplement: 'Add-on / Supplement',
+  transfer: 'Point-to-Point',
+  airport: 'Airport Transfer',
+  perhour: 'Extra Hour',
+  perkm: 'Extra KM',
+};
+
 function normalizeImportKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeTransportPricingMode(value?: string | null): CanonicalTransportPricingMode | null {
+  const normalized = normalizeImportKey(value || '');
+  return normalized ? TRANSPORT_PRICING_MODE_ALIASES[normalized] || null : null;
 }
 
 function normalizeImportText(value: unknown) {
@@ -159,6 +251,18 @@ function normalizeImportText(value: unknown) {
 
 function normalizeImportName(value: string) {
   return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeSupplierName(value?: string | null) {
+  return normalizeImportName(String(value || ''));
+}
+
+function normalizeSupplierKey(value?: string | null) {
+  return normalizeSupplierName(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function formatImportDate(value: Date | string) {
@@ -180,7 +284,37 @@ function parseImportBoolean(value: string) {
 }
 
 function isEmptyImportRow(row: Record<string, unknown>) {
-  return TRANSPORT_CONTRACT_IMPORT_COLUMNS.every((column) => !normalizeImportText(row[column]));
+  return (Object.keys(TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES) as Array<keyof TransportContractImportRow>).every((column) => !normalizeImportText(row[column]));
+}
+
+function formatSupplierRateCardStatus(value: boolean | string) {
+  if (typeof value === 'boolean') {
+    return value ? 'Active' : 'Inactive';
+  }
+
+  return parseImportBoolean(value) ? 'Active' : 'Inactive';
+}
+
+function splitRouteServiceArea(value: string) {
+  const normalized = normalizeImportName(value);
+  const parts = normalized.split(/\s*(?:->|→|-)\s*/).filter(Boolean);
+
+  return {
+    origin: parts[0] || normalized,
+    destination: parts.length > 1 ? parts.slice(1).join(' - ') : normalized,
+  };
+}
+
+function getServiceCategoryClassification(serviceCategory: string, pricingMode: string): TransportServiceClassification {
+  const canonicalPricingMode = normalizeTransportPricingMode(pricingMode);
+  const normalized = `${serviceCategory} ${canonicalPricingMode || pricingMode}`.trim().toLowerCase();
+
+  if (normalized.includes('add')) return 'ADD_ON';
+  if (canonicalPricingMode === 'Half Day' || normalized.includes('half')) return 'HALF_DAY';
+  if (canonicalPricingMode === 'Full Day' || normalized.includes('full') || normalized.includes('disposal')) return 'FULL_DAY';
+  if (normalized.includes('daily')) return 'DAILY_PACKAGE';
+
+  return classifyTransportServiceName(canonicalPricingMode || pricingMode);
 }
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
@@ -249,8 +383,8 @@ function buildTransportExportFileName(supplierName: string, contractName: string
   return `${supplierPart}_${contractPart || 'Transport'}_${sanitizeExportFileName(normalizedCurrency)}.xlsx`;
 }
 
-function getExportSupplierName(rate: { supplier?: { name?: string | null } | null }) {
-  return rate.supplier?.name?.trim() || 'Unknown supplier';
+function getExportSupplierName(rate: { supplierId?: string | null; supplier?: { name?: string | null } | null; supplierName?: string | null }) {
+  return normalizeSupplierName(rate.supplier?.name || rate.supplierName) || 'Unknown supplier';
 }
 
 function getExportRouteCategory(rates: Array<{ serviceType: { classification?: TransportServiceClassification | string | null }; vehicle: { name: string }; routeName: string }>) {
@@ -268,7 +402,7 @@ function getExportRouteCategory(rates: Array<{ serviceType: { classification?: T
     return 'Full-day packages';
   }
 
-  const joinedText = rates.map((rate) => `${rate.vehicle.name} ${rate.routeName}`).join(' ').toLowerCase();
+  const joinedText = rates.map((rate) => `${getRateVehicleType(rate)} ${rate.routeName}`).join(' ').toLowerCase();
 
   if (joinedText.includes('bus') || joinedText.includes('coach')) {
     return 'Buses';
@@ -278,20 +412,93 @@ function getExportRouteCategory(rates: Array<{ serviceType: { classification?: T
 }
 
 function getExportRateCardKey(rate: {
+  supplierId?: string | null;
+  supplierName?: string | null;
   supplier?: { name?: string | null } | null;
   serviceType: { classification?: TransportServiceClassification | string | null };
-  vehicle: { name: string };
+  vehicle: { name: string; vehicleType?: string | null };
   routeName: string;
   currency: string;
   validFrom: Date;
   validTo: Date;
 }) {
   return [
-    getExportSupplierName(rate).trim().toLowerCase() || 'unassigned supplier',
+    rate.supplierId || normalizeSupplierKey(getExportSupplierName(rate)) || 'unassigned supplier',
     rate.currency,
     formatExportDate(rate.validFrom),
     formatExportDate(rate.validTo),
   ].join('|');
+}
+
+function getRateVehicleType(rate: { vehicle?: { name?: string | null; vehicleType?: string | null } | null; vehicleType?: string | null }) {
+  return normalizeVehicleTypeLabel(rate.vehicleType || rate.vehicle?.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle?.name) || rate.vehicle?.name || '';
+}
+
+function getSupplierRateCardKey(rate: {
+  supplierId?: string | null;
+  supplier?: { name?: string | null } | null;
+  vehicle: { name: string; vehicleType?: string | null };
+  route?: { id?: string | null; name?: string | null } | null;
+  routeId?: string | null;
+  routeName: string;
+  currency: string;
+  validFrom: Date;
+  validTo: Date;
+}) {
+  const supplierKey = rate.supplierId || normalizeSupplierKey(getExportSupplierName(rate)) || 'unassigned supplier';
+  const routeKey = rate.routeId || rate.route?.id || (rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+
+  return [supplierKey, routeKey, rate.currency, formatExportDate(rate.validFrom), formatExportDate(rate.validTo)].join('|');
+}
+
+function getLegacySupplierRateCardKey(rate: {
+  supplierId?: string | null;
+  supplier?: { name?: string | null } | null;
+  vehicle: { name: string; vehicleType?: string | null };
+  route?: { id?: string | null; name?: string | null } | null;
+  routeId?: string | null;
+  routeName: string;
+  currency: string;
+  validFrom: Date;
+  validTo: Date;
+}) {
+  const supplierKey = rate.supplierId || normalizeSupplierKey(getExportSupplierName(rate)) || 'unassigned supplier';
+  const vehicleKey = getRateVehicleType(rate).trim().toLowerCase() || 'unassigned vehicle';
+  const routeKey = rate.routeId || rate.route?.id || (rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+
+  return [supplierKey, vehicleKey, routeKey, rate.currency, formatExportDate(rate.validFrom), formatExportDate(rate.validTo)].join('|');
+}
+
+function getCanonicalRateRouteLabel(rate: { route?: { fromPlace?: { name?: string | null } | null; toPlace?: { name?: string | null } | null; name?: string | null } | null; routeName?: string | null }) {
+  if (rate.route?.fromPlace?.name && rate.route?.toPlace?.name) {
+    return formatRouteName(rate.route.fromPlace.name, rate.route.toPlace.name);
+  }
+
+  return normalizeRouteDisplayName(rate.route?.name || rate.routeName || 'General / All Routes', '', '');
+}
+
+function normalizeCardSearch(value?: string) {
+  return value?.trim().toLowerCase() || '';
+}
+
+function getRatePricingMode(rate: { routeName: string; serviceType: { name: string; code?: string | null; classification?: string | null } }) {
+  return normalizeTransportPricingMode(rate.serviceType.name) || normalizeTransportPricingMode(rate.serviceType.code) || 'Point-to-Point';
+}
+
+function groupRatesByVehicleType(rates: any[]) {
+  const groups = new Map<string, any[]>();
+
+  for (const rate of rates) {
+    const vehicleType = getRateVehicleType(rate) || 'Unassigned vehicle';
+    groups.set(vehicleType, [...(groups.get(vehicleType) || []), rate]);
+  }
+
+  return Array.from(groups.entries()).map(([vehicleType, vehicleRates]) => ({
+    vehicleType,
+    pricingModes: Array.from(new Set(vehicleRates.map(getRatePricingMode))),
+    rateLineCount: vehicleRates.length,
+    rates: vehicleRates,
+  }));
 }
 
 @Injectable()
@@ -327,6 +534,224 @@ export class VehicleRatesService {
         },
       ],
     });
+  }
+
+  private getRateCardInclude() {
+    return {
+      vehicle: true,
+      serviceType: true,
+      route: {
+        include: {
+          fromPlace: true,
+          toPlace: true,
+        },
+      },
+      fromPlace: true,
+      supplier: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      toPlace: true,
+    };
+  }
+
+  private buildRateCardWhere(query: SupplierRateCardQuery) {
+    const where: Record<string, unknown> = {};
+    const and: Array<Record<string, unknown>> = [];
+    const search = normalizeCardSearch(query.search);
+
+    if (query.supplierId?.trim()) {
+      where.supplierId = query.supplierId.trim();
+    }
+
+    if (query.routeId?.trim()) {
+      const routeId = query.routeId.trim();
+      where.routeId = routeId;
+    }
+
+    if (query.vehicleType?.trim()) {
+      const vehicleType = normalizeVehicleTypeLabel(query.vehicleType) || query.vehicleType.trim();
+      and.push({
+        OR: [
+          { vehicle: { vehicleType: { equals: vehicleType, mode: 'insensitive' } } },
+          { vehicle: { name: { equals: vehicleType, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    if (query.status?.trim()) {
+      const normalizedStatus = query.status.trim().toLowerCase();
+      if (normalizedStatus === 'active') where.active = true;
+      if (normalizedStatus === 'inactive') where.active = false;
+    }
+
+    if (query.pricingMode?.trim()) {
+      const pricingMode = normalizeTransportPricingMode(query.pricingMode);
+      if (pricingMode) {
+        and.push({
+          OR: [
+            { serviceType: { name: { equals: pricingMode, mode: 'insensitive' } } },
+            { serviceType: { code: { equals: normalizeCode(pricingMode), mode: 'insensitive' } } },
+          ],
+        });
+      } else {
+        and.push({ id: '__pricing_mode_not_recognized__' });
+      }
+    }
+
+    if (search) {
+      and.push({
+        OR: [
+          { routeName: { contains: search, mode: 'insensitive' } },
+          { currency: { contains: search, mode: 'insensitive' } },
+          { supplier: { name: { contains: search, mode: 'insensitive' } } },
+          { vehicle: { name: { contains: search, mode: 'insensitive' } } },
+          { vehicle: { vehicleType: { contains: search, mode: 'insensitive' } } },
+          { serviceType: { name: { contains: search, mode: 'insensitive' } } },
+          { route: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    if (and.length > 0) {
+      where.AND = and;
+    }
+
+    return where;
+  }
+
+  private summarizeRateCard(rates: any[]) {
+    const first = rates[0];
+    const pricingModes = Array.from(new Set(rates.map(getRatePricingMode)));
+    const vehicleTypes = Array.from(new Set(rates.map(getRateVehicleType).filter(Boolean)));
+    const activeCount = rates.filter((rate) => rate.active).length;
+    const keyRatesSummary = pricingModes.reduce<Record<string, number | null>>((summary, mode) => {
+      summary[mode] = rates.find((rate) => getRatePricingMode(rate) === mode)?.price ?? null;
+      return summary;
+    }, {});
+
+    return {
+      id: getSupplierRateCardKey(first),
+      supplierId: first.supplierId || first.supplier?.id || null,
+      supplierName: getExportSupplierName(first),
+      name: `${getExportSupplierName(first)} - ${getCanonicalRateRouteLabel(first)} ${new Date(first.validFrom).getFullYear()} Rates in ${first.currency}`,
+      category: getExportRouteCategory(rates),
+      vehicleType: vehicleTypes.length === 1 ? vehicleTypes[0] : vehicleTypes.length > 1 ? 'Multiple vehicle types' : getRateVehicleType(first),
+      vehicleTypes,
+      routeOrServiceArea: getCanonicalRateRouteLabel(first),
+      routeId: first.routeId || first.route?.id || null,
+      currency: first.currency,
+      validFrom: formatExportDate(first.validFrom),
+      validTo: formatExportDate(first.validTo),
+      effectiveFrom: formatExportDate(first.validFrom),
+      status: activeCount === rates.length ? 'Active' : activeCount === 0 ? 'Inactive' : 'Mixed',
+      availablePricingModes: pricingModes,
+      keyRatesSummary,
+      rateLineCount: rates.length,
+    };
+  }
+
+  private groupRateCards(rates: any[]) {
+    const groups = new Map<string, any[]>();
+
+    for (const rate of rates) {
+      const key = getSupplierRateCardKey(rate);
+      groups.set(key, [...(groups.get(key) || []), rate]);
+    }
+
+    return Array.from(groups.values())
+      .map((groupRates) => this.summarizeRateCard(groupRates))
+      .sort((left, right) => {
+        const supplierSort = left.supplierName.localeCompare(right.supplierName);
+        return supplierSort || left.name.localeCompare(right.name);
+      });
+  }
+
+  async findRateCards(query: SupplierRateCardQuery) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 25));
+    const rates = await this.prisma.vehicleRate.findMany({
+      where: this.buildRateCardWhere(query),
+      include: this.getRateCardInclude(),
+      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+    });
+    const cards = this.groupRateCards(rates);
+    const start = (page - 1) * limit;
+    const items = cards.slice(start, start + limit);
+
+    return {
+      items,
+      total: cards.length,
+      page,
+      limit,
+      hasMore: start + items.length < cards.length,
+    };
+  }
+
+  async findRateCardDetail(cardId: string) {
+    if (!cardId?.trim()) {
+      throw new BadRequestException('cardId is required');
+    }
+
+    const decodedCardId = decodeURIComponent(cardId);
+    const rates = await this.prisma.vehicleRate.findMany({
+      include: this.getRateCardInclude(),
+      orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
+    });
+    const cardRates = rates.filter(
+      (rate) =>
+        getSupplierRateCardKey(rate) === decodedCardId ||
+        getLegacySupplierRateCardKey(rate) === decodedCardId ||
+        getExportRateCardKey(rate) === decodedCardId,
+    );
+
+    if (cardRates.length === 0) {
+      throw new BadRequestException('Supplier rate card not found');
+    }
+
+    const summary = this.summarizeRateCard(cardRates);
+
+    return {
+      ...summary,
+      baseRates: {
+        airportTransfer: cardRates.find((rate) => getRatePricingMode(rate) === 'Airport Transfer')?.price ?? null,
+        pointToPoint: cardRates.find((rate) => getRatePricingMode(rate) === 'Point-to-Point')?.price ?? cardRates[0]?.price ?? null,
+        halfDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Half Day')?.price ?? null,
+        fullDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Full Day')?.price ?? null,
+        stationaryWaitingHourly: cardRates.find((rate) => getRatePricingMode(rate) === 'Stationary / Waiting')?.price ?? null,
+      },
+      includedLimits: {
+        halfDayIncludedHours: null,
+        halfDayIncludedKm: null,
+        fullDayIncludedHours: null,
+        fullDayIncludedKm: null,
+      },
+      extraCharges: {
+        extraHourRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra Hour')?.price ?? null,
+        extraKmRate: cardRates.find((rate) => getRatePricingMode(rate) === 'Extra KM')?.price ?? null,
+        nightSupplement: cardRates.find((rate) => /night/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        weekendHolidaySupplement: cardRates.find((rate) => /weekend|holiday/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+      },
+      busCoachSpecific: {
+        driverAccommodation: cardRates.find((rate) => /driver accommodation/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        driverMealAllowance: cardRates.find((rate) => /driver meal/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        parkingFee: cardRates.find((rate) => /parking/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        borderPermitFee: cardRates.find((rate) => /border|permit/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+        guideSeatPolicy: null,
+        minimumCharge: cardRates.find((rate) => /minimum/i.test(`${rate.serviceType.name} ${rate.routeName}`))?.price ?? null,
+      },
+      contractTerms: {
+        contractDiscountPercent: 0,
+        discountAppliesTo: 'point-to-point',
+        grossRate: null,
+        netSupplierCost: null,
+        discountNotes: '',
+      },
+      vehicleSections: groupRatesByVehicleType(cardRates),
+      rates: cardRates,
+    };
   }
 
   async findOne(id: string) {
@@ -418,6 +843,11 @@ export class VehicleRatesService {
       throw new BadRequestException('Supplier not found');
     }
 
+    const canonicalServiceType = await this.resolveCanonicalTransportPricingModeServiceType(serviceType);
+    if (!canonicalServiceType) {
+      throw new BadRequestException('Pricing mode not recognized');
+    }
+
     const routeData = this.resolveRouteFields(
       {
         routeId: data.routeId,
@@ -433,7 +863,7 @@ export class VehicleRatesService {
     const vehicleRate = await this.prisma.vehicleRate.create({
       data: {
         vehicleId: data.vehicleId,
-        serviceTypeId: data.serviceTypeId,
+        serviceTypeId: canonicalServiceType.id,
         supplierId: data.supplierId ?? null,
         routeId: routeData.routeId,
         fromPlaceId: routeData.fromPlaceId,
@@ -560,6 +990,11 @@ export class VehicleRatesService {
       throw new BadRequestException('Supplier not found');
     }
 
+    const canonicalServiceType = await this.resolveCanonicalTransportPricingModeServiceType(serviceType);
+    if (!canonicalServiceType) {
+      throw new BadRequestException('Pricing mode not recognized');
+    }
+
     const routeData = this.resolveRouteFields(
       {
         routeId,
@@ -576,7 +1011,7 @@ export class VehicleRatesService {
       where: { id },
       data: {
         vehicleId,
-        serviceTypeId,
+        serviceTypeId: canonicalServiceType.id,
         supplierId,
         routeId: routeData.routeId,
         fromPlaceId: routeData.fromPlaceId,
@@ -622,34 +1057,57 @@ export class VehicleRatesService {
     });
   }
 
-  getTransportContractImportTemplate() {
+  async getTransportContractImportTemplate() {
+    const [suppliers, vehicles, routes] = await Promise.all([
+      this.prisma.supplier.findMany({ where: { type: { equals: 'transport', mode: 'insensitive' } }, orderBy: { name: 'asc' } }),
+      this.prisma.vehicle.findMany({ orderBy: { name: 'asc' } }),
+      this.prisma.route.findMany({ where: { routeType: 'transfer' }, orderBy: { name: 'asc' } }),
+    ]);
+    const vehicleTypeLabels = getVehicleTypeCatalogLabels(vehicles.map((vehicle) => (vehicle as any).vehicleType));
     const rows = [
       {
-        supplierName: 'AlphaBus',
-        supplierContactName: 'Operations Team',
-        supplierEmail: 'ops@alphabus.example',
-        supplierPhone: '+962000000000',
-        supplierWebsite: 'https://alphabus.example',
-        contractName: 'AlphaBus 2026 Transport Contract',
-        contractValidFrom: '2026-01-01',
-        contractValidTo: '2026-12-31',
-        country: 'Jordan',
-        serviceName: 'Intercity Transfer',
-        routeName: 'Amman City Center -> Petra Visitor Center',
-        origin: 'Amman City Center',
-        destination: 'Petra Visitor Center',
-        vehicleType: 'Coach',
-        maxPaxPerUnit: 45,
-        pricingMode: 'PER_GROUP',
-        cost: 350,
-        currency: 'USD',
-        active: 'TRUE',
-        notes: 'One row per route and vehicle capacity.',
+        Supplier: suppliers[0]?.name || 'AlphaBus',
+        'Vehicle Type': vehicleTypeLabels[0] || 'Coach',
+        'Route / Service Area': routes[0]?.name || 'Amman City Center -> Petra Visitor Center',
+        'Service Category': 'Transfers',
+        'Pricing Mode': CANONICAL_TRANSPORT_PRICING_MODES[0],
+        Currency: 'USD',
+        'Rate Amount': 350,
+        'Valid From': '2026-01-01',
+        'Valid To': '2026-12-31',
+        Status: 'Active',
       },
     ];
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] });
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Transport Rates');
+    const dropdownValues = {
+      Supplier: suppliers.map((supplier) => supplier.name),
+      'Vehicle Type': vehicleTypeLabels,
+      'Route / Service Area': routes.map((route) => route.name),
+      'Service Category': ['Transfers', 'Disposal', 'Add-ons'],
+      'Pricing Mode': CANONICAL_TRANSPORT_PRICING_MODES,
+      Currency: ['USD', 'EUR', 'JOD'],
+      Status: ['Active', 'Inactive'],
+    };
+    const dropdownRowCount = Math.max(...Object.values(dropdownValues).map((values) => values.length), 1);
+    const dropdownRows = Array.from({ length: dropdownRowCount }, (_, index) => ({
+      Supplier: dropdownValues.Supplier[index] || '',
+      'Vehicle Type': dropdownValues['Vehicle Type'][index] || '',
+      'Route / Service Area': dropdownValues['Route / Service Area'][index] || '',
+      'Service Category': dropdownValues['Service Category'][index] || '',
+      'Pricing Mode': dropdownValues['Pricing Mode'][index] || '',
+      Currency: dropdownValues.Currency[index] || '',
+      'Rate Amount': '',
+      'Valid From': '',
+      'Valid To': '',
+      Status: dropdownValues.Status[index] || '',
+    }));
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(dropdownRows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] }),
+      'Dropdown Values',
+    );
 
     return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
   }
@@ -676,7 +1134,12 @@ export class VehicleRatesService {
       orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
     });
     const decodedRateCardId = decodeURIComponent(rateCardId);
-    const rates = allRates.filter((rate) => getExportRateCardKey(rate) === decodedRateCardId);
+    const rates = allRates.filter(
+      (rate) =>
+        getExportRateCardKey(rate) === decodedRateCardId ||
+        getSupplierRateCardKey(rate) === decodedRateCardId ||
+        getLegacySupplierRateCardKey(rate) === decodedRateCardId,
+    );
 
     if (rates.length === 0) {
       throw new BadRequestException('Supplier rate card not found');
@@ -688,37 +1151,21 @@ export class VehicleRatesService {
     const currency = rates[0].currency;
     const contractValidFrom = formatExportDate(rates[0].validFrom);
     const contractValidTo = formatExportDate(rates[0].validTo);
-    const country = rates[0].route?.fromPlace?.country || rates[0].fromPlace?.country || rates[0].route?.toPlace?.country || rates[0].toPlace?.country || '';
     const contractName = `${supplierName} - ${category} ${new Date(rates[0].validFrom).getFullYear()} Rates in ${currency}`;
     const notes = supplier?.notes || '';
 
-    const toImportRow = (rate: (typeof rates)[number]) => {
-      const origin = rate.route?.fromPlace?.name || rate.fromPlace?.name || '';
-      const destination = rate.route?.toPlace?.name || rate.toPlace?.name || '';
-
-      return {
-        supplierName,
-        supplierContactName: '',
-        supplierEmail: supplier?.email || '',
-        supplierPhone: supplier?.phone || '',
-        supplierWebsite: '',
-        contractName,
-        contractValidFrom,
-        contractValidTo,
-        country: rate.route?.fromPlace?.country || rate.fromPlace?.country || country,
-        serviceName: rate.serviceType.name,
-        routeName: rate.route?.name || rate.routeName,
-        origin,
-        destination,
-        vehicleType: rate.vehicle.name,
-        maxPaxPerUnit: rate.maxPax,
-        pricingMode: 'PER_GROUP',
-        cost: rate.price,
-        currency: rate.currency,
-        active: rate.active ? 'TRUE' : 'FALSE',
-        notes,
-      };
-    };
+    const toImportRow = (rate: (typeof rates)[number]) => ({
+      Supplier: supplierName,
+      'Vehicle Type': getRateVehicleType(rate),
+      'Route / Service Area': rate.route?.name || rate.routeName,
+      'Service Category': getExportRouteCategory([rate]),
+      'Pricing Mode': getRatePricingMode(rate),
+      Currency: rate.currency,
+      'Rate Amount': rate.price,
+      'Valid From': contractValidFrom,
+      'Valid To': contractValidTo,
+      Status: rate.active ? 'Active' : 'Inactive',
+    });
     const importRows = rates.map(toImportRow);
     const workbook = XLSX.utils.book_new();
 
@@ -726,15 +1173,7 @@ export class VehicleRatesService {
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet([
-        {
-          supplierName,
-          contractName,
-          contractValidFrom,
-          contractValidTo,
-          country,
-          currency,
-          notes,
-        },
+        { Supplier: supplierName, 'Valid From': contractValidFrom, 'Valid To': contractValidTo, Currency: currency, Notes: notes },
       ]),
       'Contract Summary',
     );
@@ -755,7 +1194,7 @@ export class VehicleRatesService {
     const addOnRows = importRows
       .map((row, index) => ({
         ...rowWithClassification(row, rates[index]),
-        type: this.getTransportAddOnExportType(row.serviceName, row.routeName),
+        type: this.getTransportAddOnExportType(row['Pricing Mode'], row['Route / Service Area']),
       }))
       .filter((row) => row.classification === 'ADD_ON');
 
@@ -791,7 +1230,12 @@ export class VehicleRatesService {
       orderBy: [{ routeName: 'asc' }, { maxPax: 'asc' }],
     });
     const decodedRateCardId = decodeURIComponent(rateCardId);
-    const rates = allRates.filter((rate) => getExportRateCardKey(rate) === decodedRateCardId);
+    const rates = allRates.filter(
+      (rate) =>
+        getExportRateCardKey(rate) === decodedRateCardId ||
+        getSupplierRateCardKey(rate) === decodedRateCardId ||
+        getLegacySupplierRateCardKey(rate) === decodedRateCardId,
+    );
 
     if (rates.length === 0) {
       throw new BadRequestException('Supplier rate card not found');
@@ -933,9 +1377,16 @@ export class VehicleRatesService {
     };
     const seenRateKeys = new Set<string>();
     const validRows: ParsedTransportImportRow[] = [];
+    const vehicleTypeCatalog = await this.getExistingVehicleTypeCatalog();
 
     for (const parsed of parsedRows) {
       if (parsed.empty) {
+        summary.skippedRows += 1;
+        continue;
+      }
+
+      if ((parsed.row.serviceName || parsed.row.pricingMode) && !normalizeTransportPricingMode(parsed.row.serviceName || parsed.row.pricingMode)) {
+        summary.errors.push({ row: parsed.rowNumber, message: 'Pricing mode not recognized' });
         summary.skippedRows += 1;
         continue;
       }
@@ -947,7 +1398,22 @@ export class VehicleRatesService {
         continue;
       }
 
-      const normalized = this.normalizeTransportContractImportRow(parsed.row);
+      const normalized = this.normalizeTransportContractImportRow(parsed.row, vehicleTypeCatalog);
+      const supplier = await this.findTransportImportSupplierMatch(normalized.supplierName);
+      if (!supplier && !options.allowCreateSuppliers) {
+        summary.errors.push({ row: parsed.rowNumber, message: 'Supplier not found' });
+        summary.skippedRows += 1;
+        continue;
+      }
+      if (supplier) {
+        normalized.supplierId = supplier.id;
+        normalized.supplierName = supplier.name;
+      }
+      if (normalized.vehicleTypeWarning && mode === 'import') {
+        summary.errors.push({ row: parsed.rowNumber, message: normalized.vehicleTypeWarning });
+        summary.skippedRows += 1;
+        continue;
+      }
       const rateKey = [
         normalizeImportKey(normalized.supplierName),
         normalizeImportKey(normalized.serviceName),
@@ -986,7 +1452,16 @@ export class VehicleRatesService {
     }
 
     for (const { rowNumber, normalized } of validRows) {
-      const classification = classifyTransportServiceName(normalized.serviceName);
+      const classification = getServiceCategoryClassification(normalized.serviceCategory, normalized.serviceName);
+      const existingRoute = await this.findTransportImportRouteMatch(normalized);
+      const fromPlaceMatch = await this.findTransportImportPlaceMatch(normalized.origin, normalized.country);
+      const toPlaceMatch = await this.findTransportImportPlaceMatch(normalized.destination, normalized.country);
+      const routeWarnings = [
+        fromPlaceMatch ? null : 'From Place not found, will be created',
+        toPlaceMatch ? null : 'To Place not found, will be created',
+        existingRoute ? null : 'Route not found, will be created',
+      ].filter(Boolean);
+      const routeWarning = routeWarnings.join(' | ');
       const previewRow = {
         row: rowNumber,
         supplierName: normalized.supplierName,
@@ -994,10 +1469,18 @@ export class VehicleRatesService {
         contractValidFrom: formatImportDate(normalized.contractValidFrom),
         contractValidTo: formatImportDate(normalized.contractValidTo),
         country: normalized.country,
+        serviceCategory: normalized.serviceCategory,
         serviceName: normalized.serviceName,
         classification,
+        rateCardGroup: `${normalized.supplierName} | ${normalized.routeName}`,
+        vehicleTypeSection: normalized.vehicleType,
         routeName: normalized.routeName,
+        routeId: existingRoute?.id || null,
+        fromPlaceId: fromPlaceMatch?.id || null,
+        toPlaceId: toPlaceMatch?.id || null,
+        routeWarning,
         vehicleType: normalized.vehicleType,
+        vehicleTypeWarning: normalized.vehicleTypeWarning || '',
         maxPaxPerUnit: normalized.maxPaxPerUnit,
         pricingMode: 'PER_GROUP',
         cost: normalized.cost,
@@ -1032,8 +1515,9 @@ export class VehicleRatesService {
       const routeResult = await this.findOrCreateTransportImportRoute(normalized);
       if (routeResult.created) summary.createdRoutes += 1;
 
-      const serviceType = await this.findOrCreateTransportImportServiceType(normalized.serviceName);
+      const serviceType = await this.findOrCreateTransportImportServiceType(normalized.serviceName, normalized.serviceCategory);
       const vehicle = await this.findOrCreateTransportImportVehicle(supplierResult.supplier, normalized);
+      const resolvedMaxPaxPerUnit = normalized.maxPaxPerUnit > 1 ? normalized.maxPaxPerUnit : vehicle.maxPax;
       const rateResult = await this.upsertTransportImportVehicleRate({
         supplierId: supplierResult.supplier.id,
         serviceTypeId: serviceType.id,
@@ -1042,7 +1526,7 @@ export class VehicleRatesService {
         fromPlaceId: routeResult.route.fromPlaceId,
         toPlaceId: routeResult.route.toPlaceId,
         routeName: normalized.routeName,
-        maxPaxPerUnit: normalized.maxPaxPerUnit,
+        maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
         currency: normalized.currency,
         validFrom: normalized.contractValidFrom,
@@ -1053,7 +1537,7 @@ export class VehicleRatesService {
         serviceTypeId: serviceType.id,
         vehicleId: vehicle.id,
         routeId: routeResult.route.id,
-        maxPaxPerUnit: normalized.maxPaxPerUnit,
+        maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
         currency: normalized.currency,
       });
@@ -1129,15 +1613,19 @@ export class VehicleRatesService {
       headerMap.set(normalizeImportKey(sourceHeader), sourceHeader);
     }
 
-    const missingColumns = TRANSPORT_CONTRACT_IMPORT_COLUMNS.filter((column) => !headerMap.has(normalizeImportKey(column)));
+    const missingColumns = REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS.filter((field) =>
+      !TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES[field].some((header) => headerMap.has(normalizeImportKey(header))),
+    );
     if (missingColumns.length > 0) {
       throw new BadRequestException(`Missing import columns: ${missingColumns.join(', ')}`);
     }
 
     return rawRows.map((rawRow, index) => {
-      const row = TRANSPORT_CONTRACT_IMPORT_COLUMNS.reduce((accumulator, column) => {
-        const sourceHeader = headerMap.get(normalizeImportKey(column));
-        accumulator[column] = normalizeImportText(sourceHeader ? rawRow[sourceHeader] : '');
+      const row = (Object.keys(TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES) as Array<keyof TransportContractImportRow>).reduce((accumulator, field) => {
+        const sourceHeader = TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES[field]
+          .map((header: string) => headerMap.get(normalizeImportKey(header)))
+          .find(Boolean);
+        accumulator[field] = normalizeImportText(sourceHeader ? rawRow[sourceHeader] : '');
         return accumulator;
       }, {} as TransportContractImportRow);
 
@@ -1158,10 +1646,12 @@ export class VehicleRatesService {
       }
     }
 
-    const maxPaxPerUnit = Number(row.maxPaxPerUnit);
+    const maxPaxPerUnit = Number(row.maxPaxPerUnit || 1);
     const cost = Number(row.cost);
     const validFrom = new Date(row.contractValidFrom);
     const validTo = new Date(row.contractValidTo);
+    const normalizedCategory = normalizeImportName(row.serviceCategory).toLowerCase();
+    const normalizedStatus = normalizeImportName(row.active).toLowerCase();
 
     if (row.maxPaxPerUnit && (!Number.isInteger(maxPaxPerUnit) || maxPaxPerUnit < 1)) {
       errors.push('maxPaxPerUnit must be a positive whole number.');
@@ -1181,13 +1671,29 @@ export class VehicleRatesService {
     if (row.currency && !['USD', 'EUR', 'JOD'].includes(row.currency.trim().toUpperCase())) {
       errors.push('currency must be one of USD, EUR, or JOD.');
     }
+    if (row.serviceCategory && !['transfers', 'disposal', 'add-ons', 'add ons'].includes(normalizedCategory)) {
+      errors.push('serviceCategory must be one of Transfers, Disposal, or Add-ons.');
+    }
+    if (row.active && !['active', 'inactive', 'true', 'false', 'yes', 'no', '1', '0'].includes(normalizedStatus)) {
+      errors.push('status must be Active or Inactive.');
+    }
 
     return errors.map((error) => `Row ${rowNumber}: ${error}`);
   }
 
-  private normalizeTransportContractImportRow(row: TransportContractImportRow) {
-    const origin = normalizeImportName(row.origin);
-    const destination = normalizeImportName(row.destination);
+  private normalizeTransportContractImportRow(row: TransportContractImportRow, vehicleTypeCatalog: string[]): NormalizedTransportContractImportRow {
+    const routeServiceArea = normalizeImportName(row.routeName);
+    const splitRoute = splitRouteServiceArea(routeServiceArea);
+    const origin = normalizeImportName(row.origin) || splitRoute.origin;
+    const destination = normalizeImportName(row.destination) || splitRoute.destination;
+    const serviceCategory = normalizeImportName(row.serviceCategory) || 'Transfers';
+    const pricingMode = normalizeTransportPricingMode(row.serviceName || row.pricingMode);
+    if (!pricingMode) {
+      throw new BadRequestException('Pricing mode not recognized');
+    }
+    const rawVehicleType = normalizeImportName(row.vehicleType);
+    const normalizedVehicleType = normalizeVehicleTypeLabel(rawVehicleType, vehicleTypeCatalog);
+    const vehicleTypeWarning = vehicleTypeCatalog.length > 0 && !normalizedVehicleType ? 'Vehicle type not found' : '';
 
     return {
       supplierName: normalizeImportName(row.supplierName),
@@ -1195,21 +1701,25 @@ export class VehicleRatesService {
       supplierEmail: normalizeImportName(row.supplierEmail),
       supplierPhone: normalizeImportName(row.supplierPhone),
       supplierWebsite: normalizeImportName(row.supplierWebsite),
-      contractName: normalizeImportName(row.contractName),
+      contractName:
+        normalizeImportName(row.contractName) ||
+        normalizeImportName(`${row.supplierName} ${routeServiceArea} ${row.currency} ${row.contractValidFrom}`),
       contractValidFrom: new Date(row.contractValidFrom),
       contractValidTo: new Date(row.contractValidTo),
-      country: normalizeImportName(row.country),
-      serviceName: normalizeImportName(row.serviceName),
-      routeName: normalizeImportName(row.routeName) || formatRouteName(origin, destination),
+      country: normalizeImportName(row.country) || 'Jordan',
+      serviceName: pricingMode,
+      routeName: routeServiceArea || formatRouteName(origin, destination),
       origin,
       destination,
-      vehicleType: normalizeImportName(row.vehicleType),
-      maxPaxPerUnit: Number(row.maxPaxPerUnit),
+      vehicleType: normalizedVehicleType || rawVehicleType,
+      vehicleTypeWarning,
+      maxPaxPerUnit: Number(row.maxPaxPerUnit || 1),
       pricingMode: 'PER_GROUP' as const,
       cost: Number(row.cost),
       currency: row.currency.trim().toUpperCase(),
       active: parseImportBoolean(row.active),
       notes: normalizeImportName(row.notes),
+      serviceCategory,
     };
   }
 
@@ -1225,11 +1735,7 @@ export class VehicleRatesService {
   }
 
   private async findOrCreateTransportImportSupplier(row: NormalizedTransportContractImportRow) {
-    const supplier = await this.prisma.supplier.findFirst({
-      where: {
-        name: { equals: row.supplierName, mode: 'insensitive' },
-      },
-    });
+    const supplier = await this.findTransportImportSupplierMatch(row.supplierName);
 
     if (supplier) {
       return { supplier, created: false };
@@ -1245,7 +1751,7 @@ export class VehicleRatesService {
     return {
       supplier: await this.prisma.supplier.create({
         data: {
-          name: row.supplierName,
+          name: normalizeSupplierName(row.supplierName),
           type: 'transport',
           email: row.supplierEmail || null,
           phone: row.supplierPhone || null,
@@ -1254,6 +1760,31 @@ export class VehicleRatesService {
       }),
       created: true,
     };
+  }
+
+  private async findTransportImportSupplierMatch(supplierName: string) {
+    const normalizedName = normalizeSupplierName(supplierName);
+    const normalizedKey = normalizeSupplierKey(normalizedName);
+
+    if (!normalizedKey) {
+      return null;
+    }
+
+    if (typeof this.prisma.supplier.findMany === 'function') {
+      const suppliers = await this.prisma.supplier.findMany({
+        where: {
+          type: { equals: 'transport', mode: 'insensitive' },
+        },
+      });
+
+      return suppliers.find((supplier: { name?: string | null }) => normalizeSupplierKey(supplier.name) === normalizedKey) || null;
+    }
+
+    return this.prisma.supplier.findFirst({
+      where: {
+        name: { equals: normalizedName, mode: 'insensitive' },
+      },
+    });
   }
 
   private async findOrCreateTransportImportService(
@@ -1304,9 +1835,33 @@ export class VehicleRatesService {
     return existing || this.prisma.serviceType.create({ data: { name: 'Transport', code: 'TRANSPORT', isActive: true } });
   }
 
-  private async findOrCreateTransportImportServiceType(serviceName: string) {
+  private async resolveCanonicalTransportPricingModeServiceType(serviceType: { id: string; name: string; code?: string | null }) {
+    const pricingMode = normalizeTransportPricingMode(serviceType.name) || normalizeTransportPricingMode(serviceType.code);
+    if (!pricingMode) {
+      return null;
+    }
+
+    const code = normalizeCode(pricingMode);
+    const classification = getServiceCategoryClassification('', pricingMode);
+    const existing = await this.prisma.transportServiceType.findFirst({
+      where: {
+        OR: [
+          { name: { equals: pricingMode, mode: 'insensitive' } },
+          { code: { equals: code, mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.transportServiceType.create({ data: { name: pricingMode, code, classification } as any });
+  }
+
+  private async findOrCreateTransportImportServiceType(serviceName: string, serviceCategory = '') {
     const code = normalizeCode(serviceName);
-    const classification = classifyTransportServiceName(serviceName);
+    const classification = getServiceCategoryClassification(serviceCategory, serviceName);
     const existing = await this.prisma.transportServiceType.findFirst({
       where: {
         OR: [
@@ -1335,7 +1890,7 @@ export class VehicleRatesService {
         name: { equals: row.vehicleType, mode: 'insensitive' },
         maxPax: row.maxPaxPerUnit,
         OR: [{ supplierId: supplier.id }, { resolvedSupplierId: supplier.id }, { supplierName: { equals: supplier.name, mode: 'insensitive' } }],
-      },
+      } as any,
     });
 
     if (existing) {
@@ -1348,18 +1903,40 @@ export class VehicleRatesService {
         resolvedSupplierId: supplier.id,
         supplierName: supplier.name,
         name: row.vehicleType,
+        vehicleType: row.vehicleType,
         maxPax: row.maxPaxPerUnit,
         luggageCapacity: 0,
-      },
+      } as any,
     });
   }
 
+  private async getExistingVehicleTypeCatalog() {
+    if (typeof this.prisma.vehicle.findMany !== 'function') {
+      return [];
+    }
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      select: {
+        name: true,
+        vehicleType: true,
+      } as any,
+    });
+
+    return getVehicleTypeCatalogLabels(vehicles.flatMap((vehicle: any) => [vehicle.vehicleType, normalizeVehicleTypeLabel(vehicle.name)]));
+  }
+
   private async findOrCreateTransportImportRoute(row: NormalizedTransportContractImportRow) {
+    const existingRoute = await this.findTransportImportRouteMatch(row);
+
+    if (existingRoute) {
+      return { route: existingRoute, created: false };
+    }
+
     const [fromPlace, toPlace] = await Promise.all([
       this.findOrCreateTransportImportPlace(row.origin, row.country),
       this.findOrCreateTransportImportPlace(row.destination, row.country),
     ]);
-    const existing = await this.prisma.route.findFirst({
+    const existingByPlaces = await this.prisma.route.findFirst({
       where: {
         fromPlaceId: fromPlace.id,
         toPlaceId: toPlace.id,
@@ -1370,15 +1947,15 @@ export class VehicleRatesService {
       },
     });
 
-    if (existing) {
-      return { route: existing, created: false };
+    if (existingByPlaces) {
+      return { route: existingByPlaces, created: false };
     }
 
     const route = await this.prisma.route.create({
       data: {
         fromPlaceId: fromPlace.id,
         toPlaceId: toPlace.id,
-        name: row.routeName,
+        name: formatRouteName(fromPlace.name, toPlace.name),
         normalizedKey: buildRouteNormalizedKey(`${row.country} ${row.origin}`, `${row.country} ${row.destination}`),
         routeType: 'transfer',
         notes: row.notes || null,
@@ -1393,20 +1970,65 @@ export class VehicleRatesService {
     return { route, created: true };
   }
 
-  private async findOrCreateTransportImportPlace(name: string, country: string) {
-    const existing = await this.prisma.place.findFirst({
+  private async findTransportImportRouteMatch(row: NormalizedTransportContractImportRow) {
+    const existingByName = await this.prisma.route.findFirst({
       where: {
-        name: { equals: name, mode: 'insensitive' },
-        country: { equals: country, mode: 'insensitive' },
+        name: { equals: row.routeName, mode: 'insensitive' },
+      },
+      include: {
+        fromPlace: true,
+        toPlace: true,
       },
     });
 
+    if (existingByName) {
+      return existingByName;
+    }
+
+    if (typeof this.prisma.route.findMany !== 'function') {
+      return null;
+    }
+
+    const candidates = await this.prisma.route.findMany({
+      include: {
+        fromPlace: true,
+        toPlace: true,
+      },
+    });
+
+    return candidates.find((route) =>
+      routePairsMatch(
+        { fromPlaceName: route.fromPlace.name, toPlaceName: route.toPlace.name },
+        { fromPlaceName: row.origin, toPlaceName: row.destination },
+      ),
+    ) || null;
+  }
+
+  private async findOrCreateTransportImportPlace(name: string, country: string) {
+    const existing = await this.findTransportImportPlaceMatch(name, country);
+
     return existing || this.prisma.place.create({
       data: {
-        name,
+        name: normalizeImportName(name),
         type: 'Transport hub',
-        country,
+        country: normalizeImportName(country),
         isActive: true,
+      },
+    });
+  }
+
+  private async findTransportImportPlaceMatch(name: string, country: string) {
+    const normalizedName = normalizeImportName(name);
+    const normalizedCountry = normalizeImportName(country);
+
+    if (!normalizedName) {
+      return null;
+    }
+
+    return this.prisma.place.findFirst({
+      where: {
+        name: { equals: normalizedName, mode: 'insensitive' },
+        ...(normalizedCountry ? { country: { equals: normalizedCountry, mode: 'insensitive' } } : {}),
       },
     });
   }

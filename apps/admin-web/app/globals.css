@@ -3254,6 +3254,155 @@ select option:checked {
   white-space: nowrap;
 }
 
+.quote-transport-editor-drawer .app-drawer-body,
+.quote-transport-editor-panel,
+.quote-transport-editor-panel *,
+.quote-service-empty-state .section-stack {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-transport-editor-panel {
+  overflow-x: hidden;
+}
+
+.quote-transport-editor-panel .quote-drawer-section,
+.quote-transport-editor-panel .quote-hotel-step-panel,
+.quote-transport-editor-panel select,
+.quote-transport-editor-panel .quote-live-pricing-panel,
+.quote-transport-editor-panel .quote-transport-candidate-list,
+.quote-transport-editor-panel .quote-transport-suggestion-option,
+.quote-transport-editor-panel .quote-transport-add-button {
+  width: 100%;
+}
+
+.quote-transport-vehicle-card {
+  min-height: 104px;
+}
+
+.quote-transport-vehicle-card .quote-transport-suggestion-main {
+  align-items: stretch;
+}
+
+.quote-transport-vehicle-groups {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.quote-transport-vehicle-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quote-transport-vehicle-group h4 {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.72);
+  font-size: 0.86rem;
+}
+
+.quote-transport-vehicle-option {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #FFFFFF;
+  cursor: pointer;
+}
+
+.quote-transport-vehicle-option > span {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.quote-transport-vehicle-option strong {
+  color: var(--text-strong);
+}
+
+.quote-transport-vehicle-option em {
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.86rem;
+  font-style: normal;
+}
+
+.quote-transport-vehicle-option-selected {
+  border-color: var(--color-accent);
+  background: rgba(31, 154, 207, 0.06);
+  box-shadow: 0 0 0 2px rgba(31, 154, 207, 0.14);
+}
+
+.quote-transport-vehicle-option-recommended {
+  border-color: rgba(22, 163, 74, 0.36);
+  background: rgba(22, 163, 74, 0.06);
+}
+
+.quote-transport-vehicle-option-disabled {
+  opacity: 0.64;
+  cursor: not-allowed;
+}
+
+.quote-transport-vehicle-option-disabled input {
+  cursor: not-allowed;
+}
+
+.quote-transport-live-pricing-panel {
+  top: 0;
+}
+
+.quote-transport-markup-row {
+  cursor: default;
+}
+
+.quote-transport-markup-row input {
+  width: 96px;
+  min-height: 36px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  text-align: right;
+  font-weight: 850;
+}
+
+.quote-transport-editor-panel .quote-transport-candidate-list {
+  grid-template-columns: 1fr;
+}
+
+.quote-transport-editor-panel .quote-transport-suggestion-option {
+  min-height: 96px;
+}
+
+.quote-transport-editor-panel .quote-transport-suggestion-main {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.quote-transport-editor-panel .quote-transport-candidate-copy,
+.quote-transport-editor-panel .quote-transport-price-stack,
+.quote-transport-editor-panel .quote-live-pricing-head,
+.quote-transport-editor-panel .quote-live-pricing-row,
+.quote-transport-editor-panel .quote-selected-transport-explanation {
+  min-width: 0;
+}
+
+.quote-transport-editor-panel .quote-live-pricing-head,
+.quote-transport-editor-panel .quote-live-pricing-row {
+  flex-wrap: wrap;
+}
+
+.quote-transport-editor-panel .quote-transport-candidate-copy strong,
+.quote-transport-editor-panel .quote-transport-candidate-copy span,
+.quote-transport-editor-panel .quote-transport-candidate-copy em,
+.quote-transport-editor-panel .quote-transport-price-stack strong,
+.quote-transport-editor-panel .quote-transport-price-stack span,
+.quote-transport-editor-panel .quote-live-pricing-head h3,
+.quote-transport-editor-panel .quote-live-pricing-row strong,
+.quote-transport-editor-panel .quote-selected-transport-explanation strong,
+.quote-transport-editor-panel .quote-selected-transport-explanation p {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .quote-selected-transport-card {
   display: grid;
   gap: 1.25rem;
@@ -3330,6 +3479,10 @@ select option:checked {
 }
 
 @media (max-width: 720px) {
+  .quote-transport-live-pricing-panel {
+    position: static;
+  }
+
   .quote-transport-suggestion-main,
   .quote-selected-transport-summary {
     grid-template-columns: 1fr;
@@ -3711,6 +3864,53 @@ select option:checked {
   min-height: 40px;
 }
 
+.transport-rate-card-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  color: rgba(30, 27, 24, 0.62);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.supplier-rate-card-safe-loader,
+.supplier-rate-card-safe-filters,
+.transport-rate-card-safe-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.supplier-rate-card-safe-filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.supplier-rate-card-safe-filters label {
+  display: grid;
+  gap: 0.35rem;
+  color: rgba(30, 27, 24, 0.72);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.supplier-rate-card-safe-filters select {
+  width: 100%;
+  border: 1px solid rgba(30, 27, 24, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.7rem 0.8rem;
+  color: var(--text-strong);
+}
+
+.transport-rate-card-safe-shell {
+  justify-items: start;
+  padding: 1rem;
+  border: 1px dashed rgba(30, 27, 24, 0.16);
+  border-radius: 0.85rem;
+  background: rgba(249, 250, 251, 0.72);
+}
+
 .transport-rate-card-toolbar {
   display: flex;
   align-items: center;
@@ -3864,6 +4064,7 @@ select option:checked {
 }
 
 .transport-rate-card-metadata-form input,
+.transport-rate-card-metadata-form select,
 .transport-rate-card-metadata-form textarea {
   width: 100%;
   border: 1px solid rgba(30, 27, 24, 0.12);
@@ -3873,6 +4074,27 @@ select option:checked {
   color: rgba(30, 27, 24, 0.92);
   font: inherit;
   font-weight: 500;
+}
+
+.transport-rate-card-metadata-section {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.85rem;
+  background: rgba(249, 250, 251, 0.55);
+}
+
+.transport-rate-card-metadata-section h4 {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.86);
+  font-size: 0.92rem;
+}
+
+.transport-rate-card-detail-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .transport-contracts-page .workspace-panel-wide {
@@ -3892,6 +4114,10 @@ select option:checked {
 
 @media (max-width: 860px) {
   .transport-rate-card-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-rate-card-safe-filters {
     grid-template-columns: 1fr;
   }
 }
@@ -22479,6 +22705,43 @@ video {
   justify-self: start;
 }
 
+.quote-builder-main .quote-admin-profit-card,
+.quote-builder-main .quote-admin-profit-card * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-builder-main .quote-admin-profit-card {
+  container-type: inline-size;
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid {
+  grid-template-columns: minmax(0, 1fr);
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid > div {
+  min-width: 0;
+  max-width: 100%;
+  overflow: clip;
+}
+
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid span,
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid strong,
+.quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid em {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@container (min-width: 380px) {
+  .quote-builder-main .quote-admin-profit-card .quote-admin-profit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Quote overview sidebar should read as part of the layout, not an overlay. */
 .quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
   position: relative;
@@ -23464,5 +23727,516 @@ video {
 
 .admin-shell :where(.secondary-button, .app-button-secondary, .compact-button, .ghost-button) {
   background: rgba(255, 255, 255, 0.78);
+}
+
+/* Global UI overflow containment utilities and admin-wide safe defaults. */
+.ui-contain,
+.ui-wrap,
+.ui-safe-grid,
+.ui-safe-table,
+.ui-safe-cell {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-contain {
+  overflow-x: clip;
+}
+
+.ui-wrap,
+.ui-safe-cell {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ui-safe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  align-items: start;
+}
+
+.ui-safe-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-safe-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.ui-safe-table :where(th, td),
+.ui-safe-cell {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.admin-shell,
+.admin-shell *,
+.admin-shell *::before,
+.admin-shell *::after {
+  box-sizing: border-box;
+}
+
+.admin-shell :where(
+  .page,
+  .panel,
+  .admin-main-shell,
+  .admin-content-shell,
+  .workspace-shell-card,
+  .workspace-shell-content,
+  .workspace-panel,
+  .workspace-section,
+  .workspace-section-head,
+  .app-workspace-layout,
+  .app-workspace-main,
+  .app-workspace-sidebar,
+  .app-card,
+  .detail-card,
+  .detail-grid,
+  .section-stack,
+  .entity-list,
+  .entity-card,
+  .entity-form,
+  .lead-form,
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4,
+  .table-section-shell,
+  .table-section-body,
+  .quote-builder-page,
+  .quote-builder-layout,
+  .quote-builder-main,
+  .quote-builder-main-content,
+  .quote-builder-sidebar,
+  .quote-service-planner,
+  .quote-service-planner-shell,
+  .quote-service-day-card,
+  .quote-service-day-layout,
+  .quote-service-day-main,
+  .quote-service-day-side,
+  .quote-service-current-services,
+  .quote-service-editor-panel,
+  .quote-service-editor-panel-drawer,
+  .quote-hotel-step-panel,
+  .quote-transport-step-panel,
+  .quote-live-pricing-panel,
+  .quote-drawer-section,
+  .quote-drawer-financial-summary,
+  .quote-preview-total-list,
+  .hotel-detail-workspace,
+  .hotel-contract-workspace,
+  .transport-rate-card-workspace,
+  .transport-rate-card-list,
+  .transport-contract-supplier-group,
+  .transport-contract-supplier-head,
+  .transport-rate-card-summary,
+  .transport-rate-card-detail-grid,
+  .transport-rate-card-form-panel,
+  .transport-rate-card-metadata-form,
+  .routes-workspace,
+  .route-workspace,
+  .vehicle-fleet-workspace,
+  .vehicles-workspace,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .summary-strip,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-shell :where(
+  .detail-card,
+  .app-card,
+  .entity-card,
+  .workspace-section,
+  .workspace-panel,
+  .table-section-shell,
+  .dashboard-panel,
+  .dashboard-card,
+  .dashboard-section-card,
+  .summary-strip-card,
+  .app-metric-card,
+  .metric-card,
+  .quote-service-day-card,
+  .quote-hotel-step-panel,
+  .quote-transport-step-panel,
+  .quote-live-pricing-panel,
+  .quote-drawer-section,
+  .transport-contract-supplier-group,
+  .transport-rate-card-form-panel,
+  .quote-client-modal-card
+) {
+  overflow-x: clip;
+}
+
+.admin-shell :where(
+  .workspace-summary-grid,
+  .costing-grid,
+  .internal-costing-grid,
+  .support-text-grid,
+  .summary-strip,
+  .dashboard-grid,
+  .dashboard-summary-grid,
+  .dashboard-kpi-grid,
+  .reports-list-grid,
+  .quote-dashboard-meta-grid,
+  .quote-preview-total-list,
+  .quote-drawer-financial-summary,
+  .quote-service-category-grid,
+  .quote-service-day-layout,
+  .quote-service-day-checklist,
+  .quote-service-card-pricing-summary,
+  .quote-auto-itinerary-grid,
+  .quote-auto-itinerary-status-grid,
+  .quote-transport-vehicle-groups,
+  .quote-selected-transport-summary,
+  .transport-rate-card-summary,
+  .transport-rate-card-detail-grid,
+  .transport-pricing-rule-grid,
+  .route-detail-grid,
+  .vehicle-detail-grid,
+  .form-row,
+  .form-row-2,
+  .form-row-3,
+  .form-row-4
+) {
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
+.admin-shell :where(
+  .quote-service-day-layout,
+  .transport-rate-card-workspace,
+  .quote-builder-layout,
+  .quote-pricing-review-layout,
+  .app-workspace-layout,
+  .app-workspace-layout-summary,
+  .app-workspace-layout-three-column,
+  .booking-ops-layout,
+  .executive-dashboard-main-grid
+) {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .admin-shell :where(
+    .quote-service-day-layout,
+    .transport-rate-card-workspace,
+    .quote-builder-layout,
+    .quote-pricing-review-layout,
+    .app-workspace-layout,
+    .app-workspace-layout-summary,
+    .app-workspace-layout-three-column,
+    .booking-ops-layout,
+    .executive-dashboard-main-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-shell :where(
+  .table-wrap,
+  .data-table-wrapper,
+  .dashboard-table-wrapper,
+  .internal-costing-table-wrap,
+  .transport-contract-table-wrap,
+  .quote-service-assigned-table-wrap,
+  .leads-crm-table-shell
+) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+}
+
+.admin-shell :where(
+  .data-table,
+  .app-table,
+  .internal-costing-table,
+  .transport-contract-table,
+  .quote-service-assigned-table,
+  .reports-visual-table,
+  .allotment-table,
+  .finance-dashboard-table,
+  .finance-bookings-table,
+  .invoice-table,
+  .leads-crm-table
+) {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .data-table td,
+  .app-table th,
+  .app-table td,
+  .internal-costing-table th,
+  .internal-costing-table td,
+  .transport-contract-table th,
+  .transport-contract-table td,
+  .quote-service-assigned-table th,
+  .quote-service-assigned-table td,
+  .reports-visual-table th,
+  .reports-visual-table td,
+  .allotment-table th,
+  .allotment-table td,
+  .finance-dashboard-table th,
+  .finance-dashboard-table td,
+  .finance-bookings-table th,
+  .finance-bookings-table td,
+  .invoice-table th,
+  .invoice-table td,
+  .leads-crm-table th,
+  .leads-crm-table td
+) {
+  min-width: 0;
+  max-width: min(30rem, 64vw);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  text-overflow: clip;
+  vertical-align: top;
+}
+
+.admin-shell :where(
+  .data-table th,
+  .app-table th,
+  .internal-costing-table th,
+  .transport-contract-table th,
+  .quote-service-assigned-table th,
+  .reports-visual-table th,
+  .allotment-table th,
+  .finance-dashboard-table th,
+  .finance-bookings-table th,
+  .invoice-table th,
+  .leads-crm-table th
+) {
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.admin-shell :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  span,
+  strong,
+  em,
+  small,
+  label,
+  legend,
+  dt,
+  dd,
+  li,
+  code,
+  pre,
+  .detail-copy,
+  .table-subcopy,
+  .section-copy,
+  .empty-state,
+  .form-helper,
+  .form-error,
+  .form-success,
+  .money-cell,
+  .money-value,
+  .financial-value,
+  .metric-value,
+  .stat-value,
+  .summary-strip-value,
+  .quote-service-card-price,
+  .quote-transport-suggestion-price,
+  .transport-rate-card-supplier,
+  .transport-rate-card-label
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.admin-shell :where(
+  input,
+  select,
+  textarea,
+  .app-input,
+  .app-select,
+  .app-textarea,
+  .search-combobox,
+  .search-combobox-shell,
+  .search-combobox-shell input
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  .app-drawer-panel,
+  .catalog-edit-drawer-panel,
+  .contract-drawer,
+  .quote-service-editor-drawer,
+  .quote-timeline-drawer,
+  .transport-rate-card-form-panel
+) {
+  min-width: 0;
+  max-width: min(100%, 100vw);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-shell :where(
+  .app-drawer-body,
+  .catalog-edit-drawer-body,
+  .contract-drawer-body,
+  .quote-service-editor-drawer .app-drawer-body,
+  .quote-timeline-drawer .app-drawer-body,
+  .transport-rate-card-form-panel
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.admin-shell :where(
+  .app-drawer-body > *,
+  .catalog-edit-drawer-body > *,
+  .contract-drawer-body > *,
+  .quote-service-editor-panel-drawer > *,
+  .transport-rate-card-form-panel > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-shell :where(
+  button,
+  .primary-button,
+  .secondary-button,
+  .compact-button,
+  .ghost-button,
+  .app-button-primary,
+  .app-button-secondary,
+  .button,
+  .status-badge,
+  .status-pill,
+  .page-tab-badge,
+  .app-badge,
+  .quote-ui-badge,
+  .margin-badge
+) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.admin-shell :where(
+  .table-action-row,
+  .inline-actions,
+  .admin-header-actions,
+  .quote-dashboard-actions,
+  .booking-dashboard-actions,
+  .app-drawer-actions,
+  .quote-client-modal-actions,
+  .transport-rate-card-toolbar,
+  .transport-contract-supplier-head,
+  .quote-service-day-actions,
+  .quote-timeline-drawer-actions
+) {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.admin-shell :where(
+  .table-action-row > *,
+  .inline-actions > *,
+  .admin-header-actions > *,
+  .quote-dashboard-actions > *,
+  .booking-dashboard-actions > *,
+  .app-drawer-actions > *,
+  .quote-client-modal-actions > *,
+  .transport-rate-card-toolbar > *,
+  .transport-contract-supplier-head > *,
+  .quote-service-day-actions > *,
+  .quote-timeline-drawer-actions > *
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
+  .admin-shell :where(
+    .workspace-summary-grid,
+    .costing-grid,
+    .internal-costing-grid,
+    .support-text-grid,
+    .summary-strip,
+    .dashboard-grid,
+    .dashboard-summary-grid,
+    .dashboard-kpi-grid,
+    .reports-list-grid,
+    .quote-dashboard-meta-grid,
+    .quote-preview-total-list,
+    .quote-drawer-financial-summary,
+    .quote-service-category-grid,
+    .quote-service-day-layout,
+    .quote-service-day-checklist,
+    .quote-service-card-pricing-summary,
+    .quote-auto-itinerary-grid,
+    .quote-auto-itinerary-status-grid,
+    .quote-transport-vehicle-groups,
+    .quote-selected-transport-summary,
+    .transport-rate-card-summary,
+    .transport-rate-card-detail-grid,
+    .transport-pricing-rule-grid,
+    .route-detail-grid,
+    .vehicle-detail-grid,
+    .form-row,
+    .form-row-2,
+    .form-row-3,
+    .form-row-4
+  ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-shell :where(
+    .data-table th,
+    .data-table td,
+    .app-table th,
+    .app-table td,
+    .internal-costing-table th,
+    .internal-costing-table td,
+    .transport-contract-table th,
+    .transport-contract-table td,
+    .quote-service-assigned-table th,
+    .quote-service-assigned-table td,
+    .allotment-table th,
+    .allotment-table td
+  ) {
+    max-width: 78vw;
+  }
 }
 

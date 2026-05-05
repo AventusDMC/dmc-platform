@@ -8,7 +8,7 @@ type InvoiceRow = {
   status: 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
   dueDate: string;
   quote: {
-    id: string;
+    id: string | null;
     quoteNumber: string | null;
     title: string;
     status: string;
@@ -21,6 +21,10 @@ type InvoiceRow = {
     } | null;
   };
 };
+
+function hasNavigableQuoteId(quoteId: string | null | undefined): quoteId is string {
+  return Boolean(quoteId && quoteId !== '[id]');
+}
 
 type InvoicesTableProps = {
   invoices: InvoiceRow[];
@@ -68,7 +72,10 @@ export function InvoicesTable({ invoices }: InvoicesTableProps) {
             </tr>
           </thead>
           <tbody>
-            {invoices.map((invoice) => (
+            {invoices.map((invoice) => {
+              const quoteId = hasNavigableQuoteId(invoice.quote.id) ? invoice.quote.id : null;
+
+              return (
               <tr key={invoice.id}>
                 <td>
                   <strong>{formatMoney(invoice.totalAmount, invoice.currency)}</strong>
@@ -96,9 +103,11 @@ export function InvoicesTable({ invoices }: InvoicesTableProps) {
                       <Link href={`/invoices/${invoice.id}`} className="compact-button">
                         View invoice
                       </Link>
-                      <Link href={`/quotes/${invoice.quote.id}`} className="compact-button">
-                        Open quote
-                      </Link>
+                      {quoteId ? (
+                        <Link href={`/quotes/${quoteId}`} className="compact-button">
+                          Open quote
+                        </Link>
+                      ) : null}
                     </div>
                     <p className="detail-copy">
                       {`Invoice ${formatStatus(invoice.status)} | Due ${formatDate(invoice.dueDate)} | Total ${formatMoney(invoice.totalAmount, invoice.currency)}`}
@@ -107,7 +116,8 @@ export function InvoicesTable({ invoices }: InvoicesTableProps) {
                   </RowDetailsPanel>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

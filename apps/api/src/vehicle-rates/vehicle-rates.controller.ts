@@ -23,6 +23,16 @@ type CreateVehicleRateBody = {
 };
 
 type UpdateVehicleRateBody = Partial<CreateVehicleRateBody>;
+type SupplierRateCardQuery = {
+  page?: string;
+  limit?: string;
+  supplierId?: string;
+  routeId?: string;
+  vehicleType?: string;
+  pricingMode?: string;
+  status?: string;
+  search?: string;
+};
 
 @Controller('vehicle-rates')
 export class VehicleRatesController {
@@ -33,10 +43,29 @@ export class VehicleRatesController {
     return this.vehicleRatesService.findAll();
   }
 
+  @Get('cards')
+  findCards(@Query() query: SupplierRateCardQuery) {
+    return this.vehicleRatesService.findRateCards({
+      page: query.page === undefined ? undefined : Number(query.page),
+      limit: query.limit === undefined ? undefined : Number(query.limit),
+      supplierId: query.supplierId,
+      routeId: query.routeId,
+      vehicleType: query.vehicleType,
+      pricingMode: query.pricingMode,
+      status: query.status,
+      search: query.search,
+    });
+  }
+
+  @Get('cards/:cardId')
+  findCardDetail(@Param('cardId') cardId: string) {
+    return this.vehicleRatesService.findRateCardDetail(cardId);
+  }
+
   @Get('import-template')
   @Roles('admin', 'finance')
-  getImportTemplate(@Res({ passthrough: true }) response: any) {
-    const buffer = this.vehicleRatesService.getTransportContractImportTemplate();
+  async getImportTemplate(@Res({ passthrough: true }) response: any) {
+    const buffer = await this.vehicleRatesService.getTransportContractImportTemplate();
     response.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': 'attachment; filename="transport-contract-import-template.xlsx"',
@@ -64,12 +93,17 @@ export class VehicleRatesController {
     @UploadedFile() file: any,
     @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
     @Body('contractNameOverride') contractNameOverride?: string,
+    @Body('allowCreateSuppliers') allowCreateSuppliers?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
     }
 
-    return this.vehicleRatesService.previewTransportContractImport(file, { contractMergeMode, contractNameOverride });
+    return this.vehicleRatesService.previewTransportContractImport(file, {
+      contractMergeMode,
+      contractNameOverride,
+      allowCreateSuppliers: allowCreateSuppliers === 'true',
+    });
   }
 
   @Post('import')
@@ -79,12 +113,17 @@ export class VehicleRatesController {
     @UploadedFile() file: any,
     @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
     @Body('contractNameOverride') contractNameOverride?: string,
+    @Body('allowCreateSuppliers') allowCreateSuppliers?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
     }
 
-    return this.vehicleRatesService.importTransportContract(file, { contractMergeMode, contractNameOverride });
+    return this.vehicleRatesService.importTransportContract(file, {
+      contractMergeMode,
+      contractNameOverride,
+      allowCreateSuppliers: allowCreateSuppliers === 'true',
+    });
   }
 
   @Get(':id')

@@ -16,8 +16,6 @@ export type ResolvedOperationalSupplier = {
   supplierStatus?: 'resolved' | 'unresolved';
 };
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 function normalizeOptionalText(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : null;
@@ -31,7 +29,7 @@ export async function resolveOperationalSupplier({
   const normalizedSupplierId = normalizeOptionalText(supplierId);
   const normalizedSupplierName = normalizeOptionalText(supplierName);
 
-  if (normalizedSupplierId && UUID_PATTERN.test(normalizedSupplierId)) {
+  if (normalizedSupplierId) {
     try {
       const supplier = await prisma.supplier.findUnique({
         where: { id: normalizedSupplierId },
@@ -53,7 +51,7 @@ export async function resolveOperationalSupplier({
   if (normalizedSupplierId || normalizedSupplierName) {
     return {
       supplierId: null,
-      supplierName: normalizedSupplierName ?? normalizedSupplierId,
+      supplierName: normalizedSupplierName,
       supplierStatus: 'unresolved',
     };
   }

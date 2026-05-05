@@ -6,10 +6,11 @@ import { RoutesSection } from './RoutesSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
 import { VehiclesSection } from './VehiclesSection';
+import { VehicleTypesSection } from './VehicleTypesSection';
 
 export const dynamic = 'force-dynamic';
 
-type TransportTab = 'vehicles' | 'routes' | 'pricing-rules' | 'rates';
+type TransportTab = 'routes' | 'vehicles' | 'vehicle-types' | 'pricing-rules' | 'rates';
 const API_BASE_URL = '/api';
 
 type TransportPageProps = {
@@ -19,8 +20,9 @@ type TransportPageProps = {
 };
 
 const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
-  { id: 'vehicles', label: 'Vehicles' },
   { id: 'routes', label: 'Routes' },
+  { id: 'vehicles', label: 'Vehicle Fleet' },
+  { id: 'vehicle-types', label: 'Vehicle Types' },
   { id: 'pricing-rules', label: 'Pricing Rules' },
   { id: 'rates', label: 'Supplier Rate Cards' },
 ];
@@ -57,7 +59,7 @@ async function getTransportSummary() {
 }
 
 function resolveActiveTab(tab?: string): TransportTab {
-  return TRANSPORT_TABS.some((entry) => entry.id === tab) ? (tab as TransportTab) : 'vehicles';
+  return TRANSPORT_TABS.some((entry) => entry.id === tab) ? (tab as TransportTab) : 'routes';
 }
 
 export default async function TransportPage({ searchParams }: TransportPageProps) {
@@ -94,10 +96,12 @@ export default async function TransportPage({ searchParams }: TransportPageProps
                 label: tab.label,
                 href: `/transport?tab=${tab.id}`,
                 helper:
-                  tab.id === 'vehicles'
-                    ? 'Fleet'
-                    : tab.id === 'routes'
+                  tab.id === 'routes'
                       ? 'Transfer library'
+                      : tab.id === 'vehicles'
+                        ? 'Fleet'
+                      : tab.id === 'vehicle-types'
+                        ? 'Fleet taxonomy'
                       : tab.id === 'pricing-rules'
                         ? 'Commercial logic'
                         : 'Supplier rate cards',
@@ -117,6 +121,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
         >
           <section className="section-stack">
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}
+            {activeTab === 'vehicle-types' ? <VehicleTypesSection /> : null}
             {activeTab === 'routes' ? <RoutesSection /> : null}
             {activeTab === 'pricing-rules' ? <TransportPricingRulesSection /> : null}
             {activeTab === 'rates' ? <VehicleRatesSection /> : null}

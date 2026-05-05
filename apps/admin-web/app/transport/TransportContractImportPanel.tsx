@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
+import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
+import { normalizeTransportPricingMode } from '../lib/transport-pricing-modes';
+import { SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../lib/transport-suppliers';
 
 type ImportSummary = {
   rows: number;
@@ -42,7 +44,7 @@ async function readImportResponse(response: Response) {
 
 type ContractMergeChoice = 'keep' | 'merge';
 
-function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMergeChoice; contractNameOverride?: string }) {
+function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMergeChoice; contractNameOverride?: string; allowCreateSuppliers?: boolean }) {
   const formData = new FormData();
   formData.set('file', file);
   if (options?.contractMergeMode) {
@@ -51,18 +53,21 @@ function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMer
   if (options?.contractNameOverride) {
     formData.set('contractNameOverride', options.contractNameOverride);
   }
+  if (options?.allowCreateSuppliers) {
+    formData.set('allowCreateSuppliers', 'true');
+  }
   return formData;
 }
 
 function getPreviewGroup(row: Record<string, unknown>) {
   const classification = String(row.classification || '').toUpperCase();
-  const serviceName = String(row.serviceName || '').toLowerCase();
+  const pricingMode = normalizeTransportPricingMode(String(row.serviceName || ''));
 
-  if (classification === 'ADD_ON' || /overnight|stationary|waiting|daily charge/.test(serviceName)) {
+  if (classification === 'ADD_ON' || pricingMode === 'Stationary / Waiting' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Add-on / Supplement') {
     return 'addOns';
   }
 
-  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || /full day|daily fd|\bfd\b/.test(serviceName)) {
+  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day') {
     return 'fullDay';
   }
 
@@ -113,13 +118,6 @@ function getPreviewGroups(summary: ImportSummary | null) {
   ];
 }
 
-function formatPricingModeLabel(value?: string | null) {
-  const normalized = String(value || 'PER_GROUP').trim().toUpperCase();
-  if (normalized === 'PER_GROUP') return 'Per group';
-  if (normalized === 'CAPACITY_UNIT') return 'Capacity unit';
-  return formatServiceTypeLabel(normalized);
-}
-
 export function TransportContractImportPanel({ apiBaseUrl }: TransportContractImportPanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportSummary | null>(null);
@@ -128,6 +126,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
   const [isBusy, setIsBusy] = useState(false);
   const [contractMergeChoice, setContractMergeChoice] = useState<ContractMergeChoice>('keep');
   const [contractNameOverride, setContractNameOverride] = useState('');
+  const [allowCreateSuppliers, setAllowCreateSuppliers] = useState(false);
 
   async function handlePreview() {
     if (!file) {
@@ -142,7 +141,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
     try {
       const nextPreview = await readImportResponse(await fetch(`${apiBaseUrl}/vehicle-rates/import-preview`, {
         method: 'POST',
-        body: buildUploadBody(file),
+        body: buildUploadBody(file, { allowCreateSuppliers }),
       }));
       setPreview(nextPreview);
       setContractMergeChoice('keep');
@@ -176,6 +175,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
         body: buildUploadBody(file, {
           contractMergeMode: contractWarnings.length > 0 ? contractMergeChoice : undefined,
           contractNameOverride: contractMergeChoice === 'merge' ? contractNameOverride : undefined,
+          allowCreateSuppliers,
         }),
       }));
       setResult(nextResult);
@@ -212,6 +212,15 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
           />
         </label>
 
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={allowCreateSuppliers}
+            onChange={(event) => setAllowCreateSuppliers(event.target.checked)}
+          />
+          Allow new suppliers from import
+        </label>
+
         <div className="button-row">
           <a className="button button-secondary" href={`${apiBaseUrl}/vehicle-rates/import-template`}>
             Download template
@@ -224,6 +233,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
           </button>
         </div>
       </div>
+      <p className="form-helper">{SUPPLIER_STANDARDIZATION_HELPER_TEXT}</p>
 
       {error ? <p className="form-error">{error}</p> : null}
 
@@ -356,36 +366,39 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                     <thead>
                       <tr>
                         <th>Row</th>
-                        <th>Supplier</th>
-                        <th>Contract</th>
-                        <th>Service</th>
-                        <th>Classification</th>
-                        <th>Route</th>
-                        <th>Vehicle / Capacity</th>
-                        <th>Pricing</th>
+                        <th>Card (Supplier + Route)</th>
+                        <th>Vehicle Type Section</th>
+                        <th>Route / Service Area</th>
+                        <th>Service Category</th>
+                        <th>Pricing Mode</th>
+                        <th>Currency</th>
+                        <th>Rate Amount</th>
+                        <th>Validity</th>
+                        <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.rows.map((row) => (
                         <tr key={String(row.row)}>
                           <td>{String(row.row)}</td>
-                          <td>{formatSupplierName(String(row.supplierName || ''), null)}</td>
+                          <td>{String(row.rateCardGroup || `${formatSupplierName(String(row.supplierName || ''), null)} | ${formatRouteLabel(String(row.routeName || ''))}`)}</td>
                           <td>
-                            <strong>{String(row.contractName || '')}</strong>
-                            <div className="table-subcopy">{String(row.contractValidFrom || '')} - {String(row.contractValidTo || '')}</div>
+                            {String(row.vehicleType || '')}
+                            {row.vehicleTypeWarning ? <div className="table-subcopy">{String(row.vehicleTypeWarning)}</div> : null}
+                          </td>
+                          <td>
+                            {formatRouteLabel(String(row.routeName || ''))}
+                            {row.routeWarning ? <div className="table-subcopy">{String(row.routeWarning)}</div> : null}
+                          </td>
+                          <td>
+                            <span className="status-badge" title="controlled supplier rate-card category">{String(row.serviceCategory || '')}</span>
                           </td>
                           <td>{formatServiceTypeLabel(String(row.serviceName || ''))}</td>
+                          <td>{String(row.currency || '')}</td>
+                          <td>{String(row.cost || '')}</td>
+                          <td>{String(row.contractValidFrom || '')} - {String(row.contractValidTo || '')}</td>
                           <td>
-                            <span className="status-badge" title="detected service classification">{formatClassificationLabel(String(row.classification || 'ROUTE_TRANSFER'))}</span>
-                          </td>
-                          <td>{formatRouteLabel(String(row.routeName || ''))}</td>
-                          <td>
-                            <strong>{String(row.vehicleType || '')}</strong>
-                            <div className="table-subcopy">{String(row.maxPaxPerUnit || '')} pax per unit</div>
-                          </td>
-                          <td>
-                            <strong>{String(row.currency || '')} {String(row.cost || '')}</strong>
-                            <div className="table-subcopy">{formatPricingModeLabel(String(row.pricingMode || 'PER_GROUP'))}</div>
+                            <span className="status-badge">{row.active ? 'Active' : 'Inactive'}</span>
                           </td>
                         </tr>
                       ))}

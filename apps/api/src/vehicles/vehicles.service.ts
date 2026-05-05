@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, throwIfNotFound } from '../common/crud.helpers';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
+import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateVehicleInput = {
   supplierId: string;
   name: string;
+  vehicleType?: string | null;
   maxPax: number;
   luggageCapacity: number;
 };
@@ -44,14 +46,17 @@ export class VehiclesService {
   async create(data: CreateVehicleInput) {
     await this.warnUnresolvedSupplierId(data.supplierId, 'create');
 
-    return this.prisma.vehicle.create({
+    const vehicle = await this.prisma.vehicle.create({
       data: {
         supplierId: data.supplierId.trim(),
         name: data.name.trim(),
+        vehicleType: this.normalizeVehicleType(data.vehicleType),
         maxPax: ensureValidNumber(data.maxPax, 'maxPax', { min: 1 }),
         luggageCapacity: ensureValidNumber(data.luggageCapacity, 'luggageCapacity', { min: 0 }),
-      },
+      } as any,
     });
+
+    return this.serializeVehicle(vehicle);
   }
 
   async update(id: string, data: UpdateVehicleInput) {
@@ -60,18 +65,21 @@ export class VehiclesService {
       await this.warnUnresolvedSupplierId(data.supplierId, 'update');
     }
 
-    return this.prisma.vehicle.update({
+    const vehicle = await this.prisma.vehicle.update({
       where: { id },
       data: {
         supplierId: data.supplierId === undefined ? undefined : data.supplierId.trim(),
         name: data.name === undefined ? undefined : data.name.trim(),
+        vehicleType: data.vehicleType === undefined ? undefined : this.normalizeVehicleType(data.vehicleType),
         maxPax: data.maxPax === undefined ? undefined : ensureValidNumber(data.maxPax, 'maxPax', { min: 1 }),
         luggageCapacity:
           data.luggageCapacity === undefined
             ? undefined
             : ensureValidNumber(data.luggageCapacity, 'luggageCapacity', { min: 0 }),
-      },
+      } as any,
     });
+
+    return this.serializeVehicle(vehicle);
   }
 
   async remove(id: string) {
@@ -87,7 +95,7 @@ export class VehiclesService {
   private async serializeVehicle<T extends { supplierId: string; supplierName?: string | null; resolvedSupplierId?: string | null }>(vehicle: T) {
     const supplier = await resolveOperationalSupplier({
       supplierId: vehicle.resolvedSupplierId ?? vehicle.supplierId,
-      supplierName: vehicle.supplierName ?? vehicle.supplierId,
+      supplierName: vehicle.supplierName,
       prisma: this.prisma,
     });
 
@@ -110,5 +118,10 @@ export class VehiclesService {
         supplierId,
       });
     }
+  }
+
+  private normalizeVehicleType(value: string | null | undefined) {
+    const rawValue = String(value || '').trim();
+    return normalizeVehicleTypeLabel(rawValue) || rawValue || null;
   }
 }

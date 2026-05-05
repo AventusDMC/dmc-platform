@@ -70,6 +70,8 @@ function createPrismaMock() {
 
   const prisma = {
     supplier: {
+      findMany: async ({ where }: any = {}) =>
+        stores.suppliers.filter((supplier) => !where?.type?.equals || equalsCI(supplier.type, where.type.equals)),
       findFirst: async ({ where }: any) => stores.suppliers.find((supplier) => equalsCI(supplier.name, where.name.equals)) || null,
       create: async ({ data }: any) => {
         const supplier = { id: nextId('supplier'), ...data };
@@ -292,14 +294,14 @@ test('transport contract import creates capacity pricing and re-import updates w
   const pricingService = new TransportPricingService(prisma as any);
   const buffer = buildWorkbookBuffer([activeImportRow]);
 
-  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' });
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
   assert.deepEqual(preview.errors, []);
   assert.equal(preview.previewRows[0].pricingMode, 'PER_GROUP');
   assert.equal(preview.routeTransfers.length, 1);
   assert.deepEqual(preview.fullDay, []);
   assert.deepEqual(preview.addOns, []);
 
-  const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' });
+  const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(imported.createdSuppliers, 1);
   assert.equal(imported.createdRoutes, 1);
   assert.equal(imported.createdServices, 1);
@@ -321,7 +323,7 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(priced.price, 90);
 
   const updatedBuffer = buildWorkbookBuffer([{ ...activeImportRow, cost: 50 }]);
-  const reimported = await importService.importTransportContract({ buffer: updatedBuffer, originalname: 'transport.xlsx' });
+  const reimported = await importService.importTransportContract({ buffer: updatedBuffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(reimported.createdSuppliers, 0);
   assert.equal(reimported.createdRoutes, 0);
   assert.equal(reimported.createdServices, 0);
@@ -338,7 +340,7 @@ test('transport contract import prefers Import Compatible sheet when workbook ha
   const importService = new VehicleRatesService(prisma as any);
   const buffer = buildExportStyleWorkbookBuffer([activeImportRow]);
 
-  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'exported-transport.xlsx' });
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'exported-transport.xlsx' }, { allowCreateSuppliers: true });
 
   assert.deepEqual(preview.errors, []);
   assert.equal(preview.previewRows.length, 1);
@@ -368,7 +370,7 @@ test('transport contract import preview warns and can merge split contract names
       supplierName: 'almushtari',
       contractName: 'Add-ons 2026 Rates',
       currency: 'JOD',
-      serviceName: 'Driver Overnight outside Amman',
+      serviceName: 'Add-on / Supplement',
       routeName: 'Petra Driver Overnight',
       origin: 'Petra',
       destination: 'Petra',
@@ -376,7 +378,7 @@ test('transport contract import preview warns and can merge split contract names
     },
   ]);
 
-  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' });
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
 
   assert.equal(preview.contractWarnings.length, 1);
   assert.equal(preview.contractWarnings[0].message, 'Multiple contract names detected for the same supplier and validity period. This will create separate rate cards.');
@@ -386,7 +388,7 @@ test('transport contract import preview warns and can merge split contract names
 
   const mergedPreview = await importService.previewTransportContractImport(
     { buffer, originalname: 'transport.xlsx' },
-    { contractMergeMode: 'merge', contractNameOverride: 'Almushtari Transport 2026 JOD' },
+    { contractMergeMode: 'merge', contractNameOverride: 'Almushtari Transport 2026 JOD', allowCreateSuppliers: true },
   );
 
   assert.deepEqual(mergedPreview.previewRows.map((row) => row.contractName), ['Almushtari Transport 2026 JOD', 'Almushtari Transport 2026 JOD']);
@@ -440,7 +442,7 @@ test('auto-fills missing transport add-ons by vehicle capacity without duplicate
   addRate({ serviceTypeId: 'service-stationary', vehicleId: 'vehicle-mini', maxPax: 6, price: 30, routeId: 'route-addon', routeName: 'Stationary Petra' });
   addRate({ serviceTypeId: 'service-waiting', vehicleId: 'vehicle-car', maxPax: 2, price: 15, routeId: 'route-addon', routeName: 'Waiting Petra' });
 
-  const rateCardId = ['almushtari', 'JOD', '2026-01-01', '2026-12-31'].join('|');
+  const rateCardId = [supplier.id, 'JOD', '2026-01-01', '2026-12-31'].join('|');
   const summary = await service.autoFillTransportAddOns(rateCardId);
 
   assert.deepEqual(summary, {
@@ -464,7 +466,7 @@ test('inactive transport contract rows do not create active pricing rules', asyn
   const importService = new VehicleRatesService(prisma as any);
   const buffer = buildWorkbookBuffer([{ ...activeImportRow, active: false }]);
 
-  const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' });
+  const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
 
   assert.equal(imported.skippedRows, 1);
   assert.equal(imported.createdRates, 0);
@@ -550,7 +552,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
     {
       ...activeImportRow,
       supplierName: 'Almushtari',
-      serviceName: 'Daily FD rate minimum 3 full days',
+      serviceName: 'Full Day',
       routeName: 'Petra full day transport',
       origin: 'Petra',
       destination: 'Petra',
@@ -560,7 +562,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
     {
       ...activeImportRow,
       supplierName: 'Almushtari',
-      serviceName: 'Driver Overnight outside Amman',
+      serviceName: 'Add-on / Supplement',
       routeName: 'Petra driver overnight',
       origin: 'Petra',
       destination: 'Petra',
@@ -570,7 +572,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
     {
       ...activeImportRow,
       supplierName: 'Almushtari',
-      serviceName: 'Stationary charge Petra Wadi Rum Aqaba',
+      serviceName: 'Stationary / Waiting',
       routeName: 'Petra stationary charge',
       origin: 'Petra',
       destination: 'Petra',
@@ -579,14 +581,14 @@ test('Almushtari-style transport rows classify services and expose smart picker 
     },
   ];
 
-  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'almushtari.xlsx' });
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'almushtari.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(imported.createdRates, 4);
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer')?.classification, 'ROUTE_TRANSFER');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Daily FD rate minimum 3 full days')?.classification, 'DAILY_PACKAGE');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Driver Overnight outside Amman')?.classification, 'ADD_ON');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary charge Petra Wadi Rum Aqaba')?.classification, 'ADD_ON');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Full Day')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Add-on / Supplement')?.classification, 'ADD_ON');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 
-  const route = stores.routes.find((entry) => entry.name === 'Amman Airport to Petra');
+  const route = stores.routes.find((entry) => entry.name === 'Amman Airport → Petra');
   const transferType = stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer');
   const priced = await pricingService.calculate({
     serviceTypeId: transferType.id,
@@ -608,4 +610,48 @@ test('Almushtari-style transport rows classify services and expose smart picker 
   assert.ok(stationary);
   assert.equal(2 * overnight.unitCost * 2, 40);
   assert.equal(2 * stationary.unitCost * 1, 60);
+});
+
+test('transport contract import skips unrecognized pricing modes', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const buffer = buildWorkbookBuffer([
+    {
+      ...activeImportRow,
+      serviceName: 'Driver Overnight outside Amman',
+      routeName: 'Petra driver overnight',
+    },
+  ]);
+
+  const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' });
+
+  assert.equal(preview.skippedRows, 1);
+  assert.deepEqual(preview.errors, [{ row: 2, message: 'Pricing mode not recognized' }]);
+  assert.equal(preview.previewRows.length, 0);
+
+  const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' });
+  assert.equal(imported.skippedRows, 1);
+  assert.deepEqual(imported.errors, [{ row: 2, message: 'Pricing mode not recognized' }]);
+  assert.equal(stores.vehicleRates.length, 0);
+});
+
+test('transport contract import skips unknown suppliers by default and matches normalized names', async () => {
+  const { prisma, stores } = createPrismaMock();
+  stores.suppliers.push({ id: 'supplier-existing', name: 'Alpha Bus Transport', type: 'transport' });
+  const importService = new VehicleRatesService(prisma as any);
+
+  const unknownBuffer = buildWorkbookBuffer([{ ...activeImportRow, supplierName: 'New Supplier' }]);
+  const unknownPreview = await importService.previewTransportContractImport({ buffer: unknownBuffer, originalname: 'transport.xlsx' });
+
+  assert.equal(unknownPreview.skippedRows, 1);
+  assert.deepEqual(unknownPreview.errors, [{ row: 2, message: 'Supplier not found' }]);
+  assert.equal(stores.suppliers.length, 1);
+
+  const matchedBuffer = buildWorkbookBuffer([{ ...activeImportRow, supplierName: ' alpha-bus   transport ' }]);
+  const matchedImport = await importService.importTransportContract({ buffer: matchedBuffer, originalname: 'transport.xlsx' });
+
+  assert.deepEqual(matchedImport.errors, []);
+  assert.equal(matchedImport.createdSuppliers, 0);
+  assert.equal(stores.suppliers.length, 1);
+  assert.equal(stores.vehicleRates[0].supplierId, 'supplier-existing');
 });

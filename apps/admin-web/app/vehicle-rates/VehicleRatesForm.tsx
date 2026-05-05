@@ -13,6 +13,7 @@ import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
 import { formatServiceTypeLabel } from '../lib/transport-formatters';
+import { normalizeTransportPricingMode, TRANSPORT_PRICING_MODE_HELPER_TEXT } from '../lib/transport-pricing-modes';
 
 type VehicleOption = {
   id: string;
@@ -80,9 +81,10 @@ export function VehicleRatesForm({
   initialValues,
 }: VehicleRatesFormProps) {
   const router = useRouter();
+  const canonicalServiceTypes = serviceTypes.filter((serviceType) => normalizeTransportPricingMode(serviceType.name) || normalizeTransportPricingMode(serviceType.code));
   const [availablePlaces, setAvailablePlaces] = useState(places);
   const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || vehicles[0]?.id || '');
-  const [serviceTypeId, setServiceTypeId] = useState(initialValues?.serviceTypeId || serviceTypes[0]?.id || '');
+  const [serviceTypeId, setServiceTypeId] = useState(initialValues?.serviceTypeId || canonicalServiceTypes[0]?.id || '');
   const [routeId, setRouteId] = useState(initialValues?.routeId || '');
   const [fromPlaceId, setFromPlaceId] = useState(initialValues?.fromPlaceId || '');
   const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
@@ -211,7 +213,7 @@ export function VehicleRatesForm({
     }
   }
 
-  const canSubmit = vehicles.length > 0 && serviceTypes.length > 0;
+  const canSubmit = vehicles.length > 0 && canonicalServiceTypes.length > 0;
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
@@ -232,23 +234,24 @@ export function VehicleRatesForm({
         </label>
 
         <label>
-          Service type
+          Pricing Mode
           <select
             value={serviceTypeId}
             onChange={(event) => setServiceTypeId(event.target.value)}
-            disabled={serviceTypes.length === 0}
+            disabled={canonicalServiceTypes.length === 0}
             required
           >
-            {serviceTypes.length === 0 ? (
-              <option value="">Create a service type first</option>
+            {canonicalServiceTypes.length === 0 ? (
+              <option value="">Create a pricing mode first</option>
             ) : (
-              serviceTypes.map((serviceType) => (
+              canonicalServiceTypes.map((serviceType) => (
                 <option key={serviceType.id} value={serviceType.id}>
-                  {formatServiceTypeLabel(serviceType.name)}
+                  {formatServiceTypeLabel(normalizeTransportPricingMode(serviceType.name) || normalizeTransportPricingMode(serviceType.code) || serviceType.name)}
                 </option>
               ))
             )}
           </select>
+          <p className="form-helper">{TRANSPORT_PRICING_MODE_HELPER_TEXT}</p>
         </label>
       </div>
 

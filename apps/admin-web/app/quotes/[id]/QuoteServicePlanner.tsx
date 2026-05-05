@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
@@ -14,6 +14,7 @@ import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
+import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
 import { getExternalPackagePricingBasisForService, type ExternalPackageFormState } from './external-package-ui';
 import {
@@ -76,6 +77,46 @@ type TransportServiceType = {
   id: string;
   name: string;
   code: string;
+};
+
+type TransportVehicle = {
+  id: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  name: string;
+  vehicleType?: string | null;
+  maxPax: number;
+  luggageCapacity?: number | null;
+  active?: boolean | null;
+  isActive?: boolean | null;
+};
+
+type TransportSupplierRateCard = {
+  id: string;
+  vehicleId: string;
+  routeId: string | null;
+  routeName: string;
+  price: number;
+  currency: string;
+  active: boolean;
+  validFrom: string;
+  validTo: string;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  supplier?: {
+    id?: string;
+    name?: string | null;
+  } | null;
+  vehicle?: {
+    name?: string | null;
+  } | null;
+  serviceType?: {
+    name: string;
+    code: string;
+    classification?: string | null;
+  } | null;
+  contractDiscountPercent?: number | null;
+  grossRate?: number | null;
 };
 
 type QuoteBlock = {
@@ -237,6 +278,9 @@ type QuoteServicePlannerProps = {
   services: SupplierService[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
+  vehicles: TransportVehicle[];
+  supplierRateCards: TransportSupplierRateCard[];
+  transportDataStatus: TransportDataStatus;
   hotels: Hotel[];
   hotelContracts: HotelContract[];
   hotelRates: HotelRate[];
@@ -261,6 +305,21 @@ type QuoteServicePlannerProps = {
   preferredCatalogRateNote?: string;
   preferredCatalogRouteId?: string;
   sessionRole?: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
+};
+
+type TransportDataStatus = {
+  routes: {
+    status: 'ok' | 'error';
+    message?: string;
+  };
+  vehicles: {
+    status: 'ok' | 'error';
+    message?: string;
+  };
+  supplierRateCards: {
+    status: 'ok' | 'error';
+    message?: string;
+  };
 };
 
 type LivePricingSummary = {
@@ -1290,6 +1349,7 @@ function AssignedServicesTable({
   onEdit,
   onRemove,
   onAdd,
+  transportPicker,
   deletingItemId,
   recentlyAddedItemId,
 }: {
@@ -1301,6 +1361,7 @@ function AssignedServicesTable({
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
   onAdd: (category: ServicePlannerCategory) => void;
+  transportPicker?: ReactNode;
   deletingItemId?: string;
   recentlyAddedItemId?: string;
 }) {
@@ -1329,6 +1390,7 @@ function AssignedServicesTable({
             deletingItemId={deletingItemId}
             recentlyAddedItemId={recentlyAddedItemId}
             onAdd={onAdd}
+            transportPicker={group.category === 'transport' ? transportPicker : undefined}
             onEdit={onEdit}
             onRemove={onRemove}
           />
@@ -1348,6 +1410,7 @@ function ServiceLane({
   deletingItemId,
   recentlyAddedItemId,
   onAdd,
+  transportPicker,
   onEdit,
   onRemove,
 }: {
@@ -1360,6 +1423,7 @@ function ServiceLane({
   deletingItemId?: string;
   recentlyAddedItemId?: string;
   onAdd: (category: ServicePlannerCategory) => void;
+  transportPicker?: ReactNode;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
 }) {
@@ -1386,10 +1450,17 @@ function ServiceLane({
       </div>
 
       {orderedItems.length === 0 ? (
-        <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
-          <span aria-hidden="true">+</span>
-          Add {label}
-        </button>
+        category === 'transport' ? (
+          <div className="quote-service-empty-state">
+            <p>No transport added yet. Add route-based transport using Route → Vehicle → Pricing Mode → Supplier Rate → Price.</p>
+            {transportPicker}
+          </div>
+        ) : (
+          <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
+            <span aria-hidden="true">+</span>
+            Add {label}
+          </button>
+        )
       ) : (
         <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <div className="quote-service-card-row">
@@ -1410,11 +1481,12 @@ function ServiceLane({
           </div>
         </SortableContext>
       )}
-      {orderedItems.length > 0 ? (
+      {orderedItems.length > 0 && category !== 'transport' ? (
         <button type="button" className="quote-service-lane-add quote-service-lane-add-bottom" onClick={() => onAdd(category)}>
           Add {label}
         </button>
       ) : null}
+      {orderedItems.length > 0 && category === 'transport' ? transportPicker : null}
     </section>
   );
 }
@@ -2623,6 +2695,18 @@ function ScopePlanner({
                   deletingItemId={deletingItemId || undefined}
                   recentlyAddedItemId={recentlyAddedItemId || undefined}
                   onAdd={(category) => openAddPanel(summary.day, category)}
+                  transportPicker={
+                    <QuoteTransportPicker
+                      apiBaseUrl={plannerProps.apiBaseUrl}
+                      routes={plannerProps.routes}
+                      vehicles={plannerProps.vehicles}
+                      supplierRateCards={plannerProps.supplierRateCards}
+                      transportDataStatus={plannerProps.transportDataStatus}
+                      totalPax={plannerProps.totalPax}
+                      quoteCurrency={plannerProps.quote.quoteCurrency}
+                      dayNumber={summary.day.dayNumber}
+                    />
+                  }
                   onEdit={(item) =>
                     setActiveServicePanel({
                       kind: 'edit',

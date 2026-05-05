@@ -80,16 +80,28 @@ function getFinalCost(rule: Pick<TransportPricingRule, 'baseCost' | 'discountPer
   return rule.baseCost * (1 - rule.discountPercent / 100);
 }
 
-export async function TransportPricingRulesSection() {
+type TransportPricingRulesSectionProps = {
+  routeId?: string;
+  title?: string;
+  description?: string;
+};
+
+export async function TransportPricingRulesSection({
+  routeId,
+  title = 'Pricing Rules',
+  description = 'Commercial setup grouped by route and service type using dedicated transport pricing rules.',
+}: TransportPricingRulesSectionProps = {}) {
   const [vehicles, serviceTypes, routes, transportPricingRules] = await Promise.all([
     getVehicles(),
     getTransportServiceTypes(),
     getRoutes(),
     getTransportPricingRules(),
   ]);
+  const visiblePricingRules = routeId ? transportPricingRules.filter((rule) => rule.routeId === routeId) : transportPricingRules;
+  const initialRouteId = routeId || routes[0]?.id || '';
 
   const routeEntries = Array.from(
-    transportPricingRules.reduce((map, rule) => {
+    visiblePricingRules.reduce((map, rule) => {
       const existing = map.get(rule.routeId);
 
       if (existing) {
@@ -108,9 +120,9 @@ export async function TransportPricingRulesSection() {
 
   return (
     <TableSectionShell
-      title="Pricing Rules"
-      description="Commercial setup grouped by route and service type using dedicated transport pricing rules."
-      context={<p>{transportPricingRules.length} pricing rules in scope</p>}
+      title={title}
+      description={description}
+      context={<p>{visiblePricingRules.length} pricing rules in scope</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create pricing rule" description="Add a rule without leaving the grouped pricing view." triggerLabelOpen="Add pricing rule">
           <TransportPricingRuleForm
@@ -120,7 +132,7 @@ export async function TransportPricingRulesSection() {
             serviceTypes={serviceTypes}
             submitLabel="Add pricing rule"
             initialValues={{
-              routeId: routes[0]?.id || '',
+              routeId: initialRouteId,
               transportServiceTypeId: serviceTypes[0]?.id || '',
               vehicleId: vehicles[0]?.id || '',
               pricingMode: 'per_vehicle',

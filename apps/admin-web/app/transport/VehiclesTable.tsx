@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import { InlineRowEditorShell } from '../components/InlineRowEditorShell';
 import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
+import { formatLuggageCapacity, resolveVehicleTypeLabel } from '../lib/transport-vehicles';
 import { formatSupplierName } from '../lib/transport-formatters';
+import { resolveSupplierNameById, SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../lib/transport-suppliers';
+import { readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import { VehiclesForm } from '../vehicles/VehiclesForm';
 
 type Vehicle = {
@@ -14,6 +17,7 @@ type Vehicle = {
   supplierName?: string | null;
   supplierStatus?: 'resolved' | 'unresolved' | null;
   name: string;
+  vehicleType?: string | null;
   maxPax: number;
   luggageCapacity: number;
 };
@@ -32,6 +36,7 @@ type VehiclesTableProps = {
 export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTableProps) {
   const router = useRouter();
   const [localVehicles, setLocalVehicles] = useState(vehicles);
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
@@ -41,6 +46,21 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
   useEffect(() => {
     setLocalVehicles(vehicles);
   }, [vehicles]);
+
+  useEffect(() => {
+    function loadVehicleTypes() {
+      setVehicleTypes(readStoredVehicleTypeOptions());
+    }
+
+    loadVehicleTypes();
+    window.addEventListener('dmc:vehicle-types-changed', loadVehicleTypes);
+    window.addEventListener('storage', loadVehicleTypes);
+
+    return () => {
+      window.removeEventListener('dmc:vehicle-types-changed', loadVehicleTypes);
+      window.removeEventListener('storage', loadVehicleTypes);
+    };
+  }, []);
 
   async function handleAssignSupplier(vehicle: Vehicle, supplierId: string) {
     if (!supplierId) {
@@ -119,15 +139,21 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
     }
   }
 
+  function getReadableSupplierName(vehicle: Vehicle) {
+    return formatSupplierName(resolveSupplierNameById(vehicle.supplierId, suppliers) || vehicle.supplierName, null);
+  }
+
   return (
     <div className="entity-list allotment-table-stack">
       {error ? <p className="form-error">{error}</p> : null}
+      <p className="form-helper">{SUPPLIER_STANDARDIZATION_HELPER_TEXT}</p>
 
       <div className="table-wrap">
         <table className="data-table allotment-table">
           <thead>
             <tr>
               <th>Vehicle</th>
+              <th>Vehicle Type</th>
               <th>Supplier</th>
               <th>Max pax</th>
               <th>Luggage</th>
@@ -137,6 +163,7 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
           <tbody>
             {localVehicles.map((vehicle) => {
               const isEditing = editingId === vehicle.id;
+              const vehicleType = resolveVehicleTypeLabel(vehicle, vehicleTypes);
 
               return (
                 <Fragment key={vehicle.id}>
@@ -144,8 +171,9 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
                     <td>
                       <strong>{vehicle.name}</strong>
                     </td>
+                    <td>{vehicleType}</td>
                     <td>
-                      {formatSupplierName(vehicle.supplierName, vehicle.supplierId)}
+                      {getReadableSupplierName(vehicle)}
                       {vehicle.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
                       {vehicle.supplierStatus === 'unresolved' ? (
                         <select
@@ -168,7 +196,7 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
                       ) : null}
                     </td>
                     <td>{vehicle.maxPax}</td>
-                    <td>{vehicle.luggageCapacity}</td>
+                    <td>{formatLuggageCapacity(vehicle.luggageCapacity)}</td>
                     <td>
                       <div className="table-action-row">
                         <button
@@ -191,15 +219,19 @@ export function VehiclesTable({ apiBaseUrl, vehicles, suppliers }: VehiclesTable
                   </tr>
                   {isEditing ? (
                     <tr>
-                      <td colSpan={5}>
+                      <td colSpan={6}>
                         <InlineRowEditorShell>
                           <VehiclesForm
                             apiBaseUrl={apiBaseUrl}
                             vehicleId={vehicle.id}
+                            suppliers={suppliers}
+                            vehicleTypes={vehicleTypes}
                             submitLabel="Save vehicle"
                             initialValues={{
                               supplierId: vehicle.supplierId,
+                              supplierName: getReadableSupplierName(vehicle),
                               name: vehicle.name,
+                              vehicleType,
                               maxPax: String(vehicle.maxPax),
                               luggageCapacity: String(vehicle.luggageCapacity),
                             }}

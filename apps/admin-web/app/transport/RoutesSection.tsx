@@ -6,7 +6,7 @@ import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { RoutesForm } from '../routes/RoutesForm';
-import { RoutesCatalogBrowser } from './RoutesCatalogBrowser';
+import { RoutesTable } from './RoutesTable';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -41,8 +41,8 @@ export async function RoutesSection() {
   return (
     <TableSectionShell
       title="Route Library"
-      description="Central route records let transport pricing and quote workflows reuse the same transfer definitions instead of repeating from and to combinations by hand."
-      context={<p>{routes.length} routes in scope</p>}
+      description="Central route records define movement from one place to another. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards."
+      context={<p>{routes.length} routes in scope - Standardized places keep routes, supplier rates, and quotes aligned.</p>}
       createPanel={
         <CollapsibleCreatePanel title="Create route" description="Add reusable transport routes with saved place pairs." triggerLabelOpen="Add route">
           <RoutesForm apiBaseUrl={ACTION_API_BASE_URL} places={places} cities={cities} placeTypes={placeTypes} />
@@ -50,7 +50,7 @@ export async function RoutesSection() {
       }
       emptyState={routes.length === 0 ? <p className="empty-state">No routes yet.</p> : undefined}
     >
-      {routes.length > 0 ? <RoutesCatalogBrowser routes={routes} /> : null}
+      {routes.length > 0 ? <RoutesTable apiBaseUrl={ACTION_API_BASE_URL} routes={routes} places={places} cities={cities} placeTypes={placeTypes} /> : null}
     </TableSectionShell>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DuplicateRouteButton } from '../routes/DuplicateRouteButton';
 import { RoutesForm } from '../routes/RoutesForm';
 import { CityOption } from '../lib/cities';
@@ -11,6 +12,7 @@ import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
+import { getCanonicalRouteLabel, isSuspiciousPricingRoute } from '../lib/transport-routes';
 
 type RoutesTableProps = {
   apiBaseUrl: string;
@@ -21,15 +23,23 @@ type RoutesTableProps = {
 };
 
 function formatDuration(value: number | null) {
-  return value === null ? 'Not set' : `${value} min`;
+  return value === null ? '—' : `${value} min`;
 }
 
 function formatDistance(value: number | null) {
-  return value === null ? 'Not set' : `${value} km`;
+  return value === null ? '—' : `${value} km`;
+}
+
+function buildSelectHref(returnTo: string, routeId: string) {
+  const url = new URL(returnTo, 'https://dmc.local');
+  url.searchParams.set('catalogRouteId', routeId);
+  return `${url.pathname}${url.search}`;
 }
 
 export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: RoutesTableProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get('returnTo');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -73,7 +83,8 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
           <thead>
             <tr>
               <th>Route</th>
-              <th>Places</th>
+              <th>From</th>
+              <th>To</th>
               <th>Type</th>
               <th>Duration</th>
               <th>Distance</th>
@@ -84,23 +95,40 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
           <tbody>
             {routes.map((route) => {
               const isEditing = editingId === route.id;
+              const suspiciousPricingRoute = isSuspiciousPricingRoute(route);
+              const canonicalRouteLabel = getCanonicalRouteLabel(route.fromPlace.name, route.toPlace.name);
 
               return (
                 <Fragment key={route.id}>
                   <tr>
                     <td>
-                      <strong>{route.name}</strong>
+                      <strong>{canonicalRouteLabel}</strong>
+                      {route.name && route.name !== canonicalRouteLabel ? <div className="table-subcopy">{route.name}</div> : null}
+                      {suspiciousPricingRoute ? <span className="page-tab-badge page-tab-badge-warning">Pricing item?</span> : null}
                       {route.notes ? <div className="table-subcopy">{route.notes}</div> : null}
                     </td>
                     <td>
-                      {route.fromPlace.name} - {route.toPlace.name}
+                      {route.fromPlace.name}
+                      {route.fromPlace.city ? <div className="table-subcopy">{route.fromPlace.city}</div> : null}
                     </td>
-                    <td>{route.routeType || 'Not set'}</td>
+                    <td>
+                      {route.toPlace.name}
+                      {route.toPlace.city ? <div className="table-subcopy">{route.toPlace.city}</div> : null}
+                    </td>
+                    <td>{route.routeType || '—'}</td>
                     <td>{formatDuration(route.durationMinutes)}</td>
                     <td>{formatDistance(route.distanceKm)}</td>
                     <td>{route.isActive ? 'Active' : 'Inactive'}</td>
                     <td>
                       <div className="table-action-row">
+                        {returnTo ? (
+                          <Link href={buildSelectHref(returnTo, route.id)} className="compact-button">
+                            Select
+                          </Link>
+                        ) : null}
+                        <Link href={`/transport/routes/${route.id}`} className="compact-button">
+                          Open route
+                        </Link>
                         <button
                           type="button"
                           className="compact-button"
@@ -122,7 +150,7 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
                   </tr>
                   {isEditing ? (
                     <tr>
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         <InlineRowEditorShell>
                           <RoutesForm
                             apiBaseUrl={apiBaseUrl}
