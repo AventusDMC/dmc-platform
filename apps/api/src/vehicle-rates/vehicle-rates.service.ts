@@ -151,12 +151,12 @@ const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
 const TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES = {
   supplierName: ['Supplier', 'supplierName'],
   vehicleType: ['Vehicle Type', 'vehicleType'],
-  routeName: ['Route / Service Area', 'routeName'],
+  routeName: ['Route', 'Route / Service Area', 'routeName'],
   serviceCategory: ['Service Category', 'serviceCategory', 'classification'],
   serviceName: ['serviceName', 'Pricing Mode'],
   pricingMode: ['Pricing Mode', 'pricing mode', 'Rate Type', 'Service Mode', 'Price Mode', 'pricingMode'],
   currency: ['Currency', 'currency'],
-  cost: ['Rate Amount', 'cost'],
+  cost: ['Rate', 'Rate Amount', 'cost'],
   contractValidFrom: ['Valid From', 'contractValidFrom'],
   contractValidTo: ['Valid To', 'contractValidTo'],
   active: ['Status', 'active'],
@@ -204,7 +204,6 @@ const REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
   'vehicleType',
   'cost',
   'currency',
-  'active',
 ] as const;
 
 const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] = [
@@ -1500,6 +1499,9 @@ export class VehicleRatesService {
         normalizeImportKey(normalized.origin),
         normalizeImportKey(normalized.destination),
         normalizeImportKey(normalized.vehicleType),
+        normalized.currency,
+        formatImportDate(normalized.contractValidFrom),
+        formatImportDate(normalized.contractValidTo),
         normalized.maxPaxPerUnit,
       ].join('|');
 
@@ -1536,9 +1538,9 @@ export class VehicleRatesService {
       const fromPlaceMatch = await this.findTransportImportPlaceMatch(normalized.origin, normalized.country);
       const toPlaceMatch = await this.findTransportImportPlaceMatch(normalized.destination, normalized.country);
       const routeWarnings = [
-        fromPlaceMatch ? null : 'From Place not found, will be created',
-        toPlaceMatch ? null : 'To Place not found, will be created',
-        existingRoute ? null : 'Route not found, will be created',
+        fromPlaceMatch ? null : 'From Place not found',
+        toPlaceMatch ? null : 'To Place not found',
+        existingRoute ? null : 'Route not found',
       ].filter(Boolean);
       const routeWarning = routeWarnings.join(' | ');
       const previewRow = {
@@ -1585,14 +1587,17 @@ export class VehicleRatesService {
         continue;
       }
 
+      if (!existingRoute) {
+        summary.errors.push({ row: rowNumber, message: 'Route not found' });
+        summary.skippedRows += 1;
+        continue;
+      }
+
       const supplierResult = await this.findOrCreateTransportImportSupplier(normalized);
       if (supplierResult.created) summary.createdSuppliers += 1;
 
       const serviceResult = await this.findOrCreateTransportImportService(supplierResult.supplier, normalized);
       if (serviceResult.created) summary.createdServices += 1;
-
-      const routeResult = await this.findOrCreateTransportImportRoute(normalized);
-      if (routeResult.created) summary.createdRoutes += 1;
 
       const serviceType = await this.findOrCreateTransportImportServiceType(normalized.serviceName, normalized.serviceCategory);
       const vehicle = await this.findOrCreateTransportImportVehicle(supplierResult.supplier, normalized);
@@ -1601,9 +1606,9 @@ export class VehicleRatesService {
         supplierId: supplierResult.supplier.id,
         serviceTypeId: serviceType.id,
         vehicleId: vehicle.id,
-        routeId: routeResult.route.id,
-        fromPlaceId: routeResult.route.fromPlaceId,
-        toPlaceId: routeResult.route.toPlaceId,
+        routeId: existingRoute.id,
+        fromPlaceId: existingRoute.fromPlaceId,
+        toPlaceId: existingRoute.toPlaceId,
         routeName: normalized.routeName,
         maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
@@ -1615,7 +1620,7 @@ export class VehicleRatesService {
         supplierId: supplierResult.supplier.id,
         serviceTypeId: serviceType.id,
         vehicleId: vehicle.id,
-        routeId: routeResult.route.id,
+        routeId: existingRoute.id,
         maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
         currency: normalized.currency,
@@ -2133,6 +2138,9 @@ export class VehicleRatesService {
         routeId: data.routeId,
         vehicleId: data.vehicleId,
         maxPax: data.maxPaxPerUnit,
+        currency: data.currency,
+        validFrom: data.validFrom,
+        validTo: data.validTo,
       },
     });
 

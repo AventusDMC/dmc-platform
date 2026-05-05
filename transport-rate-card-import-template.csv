@@ -1,0 +1,11 @@
+Supplier,Route,Vehicle Type,Pricing Mode,Currency,Rate,Valid From,Valid To
+Desert Compass Transport,Queen Alia International Airport - Amman City Center,Sedan,Airport Transfer,USD,55,2026-01-01,2026-12-31
+Desert Compass Transport,Queen Alia International Airport - Amman City Center,Mini Van,Airport Transfer,USD,85,2026-01-01,2026-12-31
+Desert Compass Transport,Queen Alia International Airport - Amman City Center,Coach,Airport Transfer,USD,130,2026-01-01,2026-12-31
+Desert Compass Transport,Amman City Center - Petra Visitor Center,Sedan,Point-to-Point,USD,180,2026-01-01,2026-12-31
+Desert Compass Transport,Amman City Center - Petra Visitor Center,Mini Van,Point-to-Point,USD,230,2026-01-01,2026-12-31
+Desert Compass Transport,Amman City Center - Petra Visitor Center,Coach,Point-to-Point,USD,340,2026-01-01,2026-12-31
+Desert Compass Transport,Petra Visitor Center - Wadi Rum Camp Area,Mini Van,Point-to-Point,USD,170,2026-01-01,2026-12-31
+Desert Compass Transport,Petra Visitor Center - Wadi Rum Camp Area,Coach,Point-to-Point,USD,245,2026-01-01,2026-12-31
+Desert Compass Transport,Wadi Rum Camp Area - Aqaba City Center,Mini Van,Point-to-Point,USD,125,2026-01-01,2026-12-31
+Desert Compass Transport,Aqaba City Center - Dead Sea Resort Area,Mini Van,Point-to-Point,USD,285,2026-01-01,2026-12-31

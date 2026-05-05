@@ -42,6 +42,15 @@ function buildExportStyleWorkbookBuffer(rows: Array<Record<string, unknown>>) {
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
+function buildCleanTemplateWorkbookBuffer(rows: Array<Record<string, unknown>>) {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: ['Supplier', 'Route', 'Vehicle Type', 'Pricing Mode', 'Currency', 'Rate', 'Valid From', 'Valid To'],
+  });
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Transport Rates');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
 function equalsCI(left: unknown, right: unknown) {
   return String(left || '').toLowerCase() === String(right || '').toLowerCase();
 }
@@ -139,8 +148,24 @@ function createPrismaMock() {
       },
     },
     route: {
-      findFirst: async ({ where }: any) =>
-        stores.routes.find((route) => route.fromPlaceId === where.fromPlaceId && route.toPlaceId === where.toPlaceId) || null,
+      findFirst: async ({ where }: any) => {
+        const route = where.name?.equals
+          ? stores.routes.find((entry) => equalsCI(entry.name, where.name.equals))
+          : stores.routes.find((entry) => entry.fromPlaceId === where.fromPlaceId && entry.toPlaceId === where.toPlaceId);
+        return route
+          ? {
+              ...route,
+              fromPlace: stores.places.find((place) => place.id === route.fromPlaceId),
+              toPlace: stores.places.find((place) => place.id === route.toPlaceId),
+            }
+          : null;
+      },
+      findMany: async () =>
+        stores.routes.map((route) => ({
+          ...route,
+          fromPlace: stores.places.find((place) => place.id === route.fromPlaceId),
+          toPlace: stores.places.find((place) => place.id === route.toPlaceId),
+        })),
       findUnique: async ({ where }: any) => {
         const route = where.id
           ? stores.routes.find((entry) => entry.id === where.id)
@@ -172,7 +197,10 @@ function createPrismaMock() {
             rate.serviceTypeId === where.serviceTypeId &&
             rate.routeId === where.routeId &&
             rate.vehicleId === where.vehicleId &&
-            rate.maxPax === where.maxPax,
+            rate.maxPax === where.maxPax &&
+            rate.currency === where.currency &&
+            new Date(rate.validFrom).getTime() === new Date(where.validFrom).getTime() &&
+            new Date(rate.validTo).getTime() === new Date(where.validTo).getTime(),
         ) || null,
       findMany: async ({ where = {} }: any = {}) =>
         stores.vehicleRates
@@ -288,10 +316,32 @@ const activeImportRow = {
   notes: '',
 };
 
+function seedImportRoute(stores: ReturnType<typeof createPrismaMock>['stores'], row: typeof activeImportRow | Record<string, unknown>) {
+  const fromPlace = {
+    id: `place-from-${stores.places.length + 1}`,
+    name: String(row.origin || 'Origin'),
+    country: String(row.country || 'Jordan'),
+  };
+  const toPlace = {
+    id: `place-to-${stores.places.length + 1}`,
+    name: String(row.destination || 'Destination'),
+    country: String(row.country || 'Jordan'),
+  };
+  stores.places.push(fromPlace, toPlace);
+  stores.routes.push({
+    id: `route-${stores.routes.length + 1}`,
+    fromPlaceId: fromPlace.id,
+    toPlaceId: toPlace.id,
+    name: String(row.routeName || (row as any).Route || 'Route'),
+    normalizedKey: `route-${stores.routes.length + 1}`,
+  });
+}
+
 test('transport contract import creates capacity pricing and re-import updates without duplicates', async () => {
   const { prisma, stores } = createPrismaMock();
   const importService = new VehicleRatesService(prisma as any);
   const pricingService = new TransportPricingService(prisma as any);
+  seedImportRoute(stores, activeImportRow);
   const buffer = buildWorkbookBuffer([activeImportRow]);
 
   const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
@@ -303,7 +353,7 @@ test('transport contract import creates capacity pricing and re-import updates w
 
   const imported = await importService.importTransportContract({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(imported.createdSuppliers, 1);
-  assert.equal(imported.createdRoutes, 1);
+  assert.equal(imported.createdRoutes, 0);
   assert.equal(imported.createdServices, 1);
   assert.equal(imported.createdRates, 1);
   assert.equal(imported.updatedRates, 0);
@@ -314,7 +364,7 @@ test('transport contract import creates capacity pricing and re-import updates w
   const serviceType = stores.transportServiceTypes[0];
   const priced = await pricingService.calculate({
     serviceTypeId: serviceType.id,
-    routeId: route.id,
+    routeId: route?.id || stores.routes[0].id,
     paxCount: 4,
   });
   assert.equal(priced.pricingMode, 'capacity_unit');
@@ -333,6 +383,64 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(stores.pricingRules.length, 1);
   assert.equal(stores.vehicleRates[0].price, 50);
   assert.equal(stores.pricingRules[0].baseCost, 50);
+});
+
+test('transport contract import accepts clean Route and Rate column aliases', async () => {
+  const { prisma, stores } = createPrismaMock();
+  stores.suppliers.push({ id: 'supplier-existing', name: 'Test Supplier', type: 'transport' });
+  seedImportRoute(stores, activeImportRow);
+  const importService = new VehicleRatesService(prisma as any);
+  const buffer = buildCleanTemplateWorkbookBuffer([
+    {
+      Supplier: 'Test Supplier',
+      Route: activeImportRow.routeName,
+      'Vehicle Type': activeImportRow.vehicleType,
+      'Pricing Mode': activeImportRow.serviceName,
+      Currency: activeImportRow.currency,
+      Rate: activeImportRow.cost,
+      'Valid From': activeImportRow.contractValidFrom,
+      'Valid To': activeImportRow.contractValidTo,
+    },
+  ]);
+
+  const imported = await importService.importTransportContract({ buffer, originalname: 'clean-template.xlsx' });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRates, 1);
+  assert.equal(stores.vehicleRates[0].routeId, stores.routes[0].id);
+  assert.equal(stores.vehicleRates[0].currency, 'USD');
+  assert.equal(stores.vehicleRates[0].price, 45);
+});
+
+test('transport contract import treats currency and validity as distinct duplicate and upsert keys', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  seedImportRoute(stores, activeImportRow);
+  const rows = [
+    activeImportRow,
+    {
+      ...activeImportRow,
+      contractValidFrom: '2027-01-01',
+      contractValidTo: '2027-12-31',
+      cost: 55,
+    },
+    {
+      ...activeImportRow,
+      currency: 'JOD',
+      cost: 35,
+    },
+  ];
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRates, 3);
+  assert.equal(imported.updatedRates, 0);
+  assert.equal(stores.vehicleRates.length, 3);
+  assert.deepEqual(
+    stores.vehicleRates.map((rate) => `${rate.currency}:${new Date(rate.validFrom).toISOString().slice(0, 10)}:${rate.price}`).sort(),
+    ['JOD:2026-01-01:35', 'USD:2026-01-01:45', 'USD:2027-01-01:55'],
+  );
 });
 
 test('transport contract import prefers Import Compatible sheet when workbook has multiple sheets', async () => {
@@ -580,6 +688,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
       currency: 'JOD',
     },
   ];
+  rows.forEach((row) => seedImportRoute(stores, row));
 
   const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'almushtari.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(imported.createdRates, 4);
@@ -592,7 +701,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
   const transferType = stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer');
   const priced = await pricingService.calculate({
     serviceTypeId: transferType.id,
-    routeId: route.id,
+    routeId: route?.id || stores.routes[0].id,
     paxCount: 4,
   });
 
@@ -638,6 +747,7 @@ test('transport contract import skips unrecognized pricing modes', async () => {
 test('transport contract import skips unknown suppliers by default and matches normalized names', async () => {
   const { prisma, stores } = createPrismaMock();
   stores.suppliers.push({ id: 'supplier-existing', name: 'Alpha Bus Transport', type: 'transport' });
+  seedImportRoute(stores, activeImportRow);
   const importService = new VehicleRatesService(prisma as any);
 
   const unknownBuffer = buildWorkbookBuffer([{ ...activeImportRow, supplierName: 'New Supplier' }]);
