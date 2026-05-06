@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const quotePageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./[id]/QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quotePlannerSource = readFileSync(new URL('./[id]/QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteReadinessSource = readFileSync(new URL('./[id]/quote-readiness.ts', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./[id]/QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const quoteItineraryTabSource = readFileSync(new URL('./[id]/QuoteItineraryTab.tsx', import.meta.url), 'utf8');
 const quoteVersionPageSource = readFileSync(new URL('./[id]/versions/[versionId]/page.tsx', import.meta.url), 'utf8');
@@ -69,6 +70,7 @@ describe('activities quote and booking UI integration regression', () => {
     expectSourceContains(quotePlannerSource, [
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'externalPackage', label: 'Add External Country Package' }",
+      "preferredActivityId={category === 'activity' ? selectedActivityId : undefined}",
       'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}',
       '<QuoteItemsForm',
       '<QuoteItemCard',
@@ -79,6 +81,42 @@ describe('activities quote and booking UI integration regression', () => {
       'handleAssign(serviceId: string)',
       'fetch(`${apiBaseUrl}/quotes/${quote.id}/items/${item.id}/assign-service`,',
       "method: 'PATCH'",
+    ]);
+  });
+
+  it('loads Activity catalog into services tab and submits paired activityId with serviceId', () => {
+    expectSourceContains(quotePageSource, [
+      'async function getActivities()',
+      "activeTab === 'services' || resolvedSearchParams?.addCategory === 'activity'",
+      "safeQuoteDetailFetch('activities', [] as ActivityCatalogItem[], getActivities)",
+      'activities={activities}',
+    ]);
+
+    expectSourceContains(quotePlannerSource, [
+      'activities: ActivityCatalogItem[];',
+      "source: 'service' | 'hotel' | 'route' | 'activity';",
+      'function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[])',
+      "id: `activity:${activity.id}`",
+      'activityId: activity.id',
+      "activityId: category === 'activity' ? item.activityId : undefined",
+      'selectedActivityId: item.activityId',
+    ]);
+
+    const quoteItemsFormSource = readFileSync(new URL('./[id]/QuoteItemsForm.tsx', import.meta.url), 'utf8');
+    expectSourceContains(quoteItemsFormSource, [
+      'activities?: ActivityCatalogItem[];',
+      'preferredActivityId?: string;',
+      'const [activityId, setActivityId]',
+      'function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[])',
+      'Pricing service',
+      'activityId: isActivityService && activityId ? activityId : undefined',
+    ]);
+  });
+
+  it('classifies entrance consistently as an activity experience', () => {
+    expectSourceContains(quoteReadinessSource, [
+      "normalized.includes('entrance')",
+      "return 'activity';",
     ]);
   });
 

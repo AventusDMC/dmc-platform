@@ -16,6 +16,7 @@ import {
   isExternalPackageCategory,
   normalizeExternalPackagePricingMatrixRows,
 } from './external-package-ui';
+import { buildPricingDiagnostics } from './pricing-diagnostics';
 
 type SupplierService = {
   id: string;
@@ -32,6 +33,13 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  serviceRates?: Array<{
+    id?: string | null;
+    pricingMode?: string | null;
+    maxPaxPerUnit?: number | null;
+    costBaseAmount?: number | null;
+    costCurrency?: string | null;
+  }> | null;
 };
 
 type Hotel = {
@@ -421,6 +429,7 @@ export function QuoteItemCard({
   const marginWarning = getItemMarginWarning(currentItem.totalSell, currentItem.totalCost);
   const externalPackageInternalLines = isExternalPackage ? getExternalPackageInternalLines(currentItem) : [];
   const externalPackageClientLines = isExternalPackage ? getExternalPackageClientLines(currentItem) : [];
+  const pricingDiagnostics = buildPricingDiagnostics(currentItem);
   const itineraryDayNumber = currentItem.itineraryId
     ? quote.itineraries.find((day) => day.id === currentItem.itineraryId)?.dayNumber ?? null
     : null;
@@ -577,6 +586,14 @@ export function QuoteItemCard({
               {currentItem.fxRate ? ` | FX ${currentItem.fxFromCurrency}/${currentItem.fxToCurrency} ${currentItem.fxRate}` : ''}
             </p>
           ) : null}
+          <div className="quote-preview-total-list" aria-label="Pricing diagnostics">
+            {pricingDiagnostics.rows.map((row) => (
+              <div key={row.label}>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </div>
+            ))}
+          </div>
           {currentItem.salesTaxPercent || currentItem.serviceChargePercent || currentItem.tourismFeeAmount ? (
             <p>
               {[

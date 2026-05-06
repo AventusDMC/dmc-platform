@@ -13,8 +13,6 @@ type ActivityFormProps = {
   initialValues?: Activity | null;
 };
 
-const CURRENCIES = ['USD', 'EUR', 'JOD'];
-
 function toStringValue(value: string | number | null | undefined) {
   return value === null || value === undefined ? '' : String(value);
 }
@@ -23,16 +21,11 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
   const router = useRouter();
   const [name, setName] = useState(initialValues?.name || '');
   const [description, setDescription] = useState(initialValues?.description || '');
-  const [country, setCountry] = useState(initialValues?.country || initialValues?.supplierCompany?.country || '');
-  const [city, setCity] = useState(initialValues?.city || initialValues?.supplierCompany?.city || '');
   const [supplierCompanyId, setSupplierCompanyId] = useState(initialValues?.supplierCompanyId || '');
   const [pricingBasis, setPricingBasis] = useState<ActivityPricingBasis>(initialValues?.pricingBasis || 'PER_PERSON');
   const [costPrice, setCostPrice] = useState(toStringValue(initialValues?.costPrice));
   const [sellPrice, setSellPrice] = useState(toStringValue(initialValues?.sellPrice));
-  const [currency, setCurrency] = useState(initialValues?.currency || 'USD');
   const [durationMinutes, setDurationMinutes] = useState(toStringValue(initialValues?.durationMinutes));
-  const [defaultStartTime, setDefaultStartTime] = useState(initialValues?.defaultStartTime || '');
-  const [operationNotes, setOperationNotes] = useState(initialValues?.operationNotes || '');
   const [active, setActive] = useState(initialValues?.active ?? true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -66,16 +59,11 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
       const payload = {
         name: name.trim(),
         description: description.trim() || null,
-        country: country.trim() || null,
-        city: city.trim() || null,
         supplierCompanyId,
         pricingBasis,
         costPrice: normalizedCostPrice,
         sellPrice: normalizedSellPrice,
-        currency,
         durationMinutes: durationMinutes.trim() ? Number(durationMinutes) : null,
-        defaultStartTime: defaultStartTime.trim() || null,
-        operationNotes: operationNotes.trim() || null,
         active,
       };
 
@@ -118,17 +106,6 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
       </label>
 
-      <div className="form-row">
-        <label>
-          Country
-          <input value={country} onChange={(event) => setCountry(event.target.value)} />
-        </label>
-        <label>
-          City
-          <input value={city} onChange={(event) => setCity(event.target.value)} />
-        </label>
-      </div>
-
       <label>
         Supplier company
         <select value={supplierCompanyId} onChange={(event) => setSupplierCompanyId(event.target.value)} required>
@@ -151,19 +128,6 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
           </select>
         </label>
         <label>
-          Currency
-          <select value={currency} onChange={(event) => setCurrency(event.target.value)} required>
-            {CURRENCIES.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="form-row">
-        <label>
           Cost price
           <input value={costPrice} onChange={(event) => setCostPrice(event.target.value)} type="number" min="0" step="0.01" required />
         </label>
@@ -178,16 +142,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
           Duration minutes
           <input value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} type="number" min="0" />
         </label>
-        <label>
-          Default start time
-          <input value={defaultStartTime} onChange={(event) => setDefaultStartTime(event.target.value)} type="time" />
-        </label>
       </div>
-
-      <label>
-        Operation notes
-        <textarea value={operationNotes} onChange={(event) => setOperationNotes(event.target.value)} rows={3} />
-      </label>
 
       <label className="checkbox-row">
         <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />

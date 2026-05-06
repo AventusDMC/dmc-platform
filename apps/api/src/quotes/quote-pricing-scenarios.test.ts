@@ -131,6 +131,104 @@ async function resolveExternalPackage(values: Record<string, any>) {
   });
 }
 
+function createServiceRateQuoteService(values: {
+  service: Record<string, any>;
+  serviceRate?: Record<string, any> | null;
+  quote?: Record<string, any>;
+  activity?: Record<string, any> | null;
+}) {
+  return createQuotesService({
+    quote: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'quote-1'
+          ? {
+              id: 'quote-1',
+              quoteCurrency: 'USD',
+              adults: 3,
+              children: 1,
+              roomCount: 2,
+              nightCount: 2,
+              travelStartDate: null,
+              createdAt: new Date('2026-04-27T00:00:00.000Z'),
+              jordanPassType: 'NONE',
+              ...values.quote,
+            }
+          : null,
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'service-1'
+          ? {
+              id: 'service-1',
+              supplierId: 'supplier-1',
+              name: 'Generic support service',
+              category: 'Other',
+              unitType: 'per_group',
+              baseCost: 20,
+              currency: 'USD',
+              costBaseAmount: 20,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              tourismFeeAmount: null,
+              tourismFeeCurrency: null,
+              tourismFeeMode: null,
+              serviceType: { name: 'Other Support', code: 'OTHER' },
+              entranceFee: null,
+              serviceRates: values.serviceRate ? [values.serviceRate] : [],
+              ...values.service,
+            }
+          : null,
+    },
+    activity: {
+      findUnique: async ({ where }: any) =>
+        values.activity === null
+          ? null
+          : values.activity
+            ? {
+                id: where.id,
+                name: 'Catalog Activity',
+                pricingBasis: 'PER_PERSON',
+                costPrice: 35,
+                sellPrice: 52.5,
+                durationMinutes: 120,
+                supplierCompany: null,
+                ...values.activity,
+              }
+            : null,
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+  });
+}
+
+async function resolveServiceRateQuoteItem(values: {
+  service?: Record<string, any>;
+  serviceRate?: Record<string, any> | null;
+  item?: Record<string, any>;
+  quote?: Record<string, any>;
+  activity?: Record<string, any> | null;
+}) {
+  const service = createServiceRateQuoteService({
+    service: values.service || {},
+    serviceRate: values.serviceRate,
+    quote: values.quote,
+    activity: values.activity,
+  });
+
+  return (service as any).resolveQuoteItemValues({
+    quoteId: 'quote-1',
+    serviceId: 'service-1',
+    quantity: 1,
+    paxCount: 4,
+    markupPercent: 20,
+    ...values.item,
+  });
+}
+
 function createHotelLookupRate(overrides: any = {}) {
   return {
     id: overrides.id || 'rate-1',
@@ -988,6 +1086,175 @@ test('capacity pricing uses ceil pax over max pax per unit for non per-person se
 
   assert.equal(pricing.totalCost, 150);
   assert.equal(pricing.totalSell, 180);
+});
+
+test('generic service PER_PERSON ServiceRate uses pax count', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: { unitType: 'per_group', baseCost: 99, costBaseAmount: 99 },
+    serviceRate: {
+      pricingMode: 'PER_PERSON',
+      costBaseAmount: 15,
+      costCurrency: 'USD',
+    },
+    item: { paxCount: 4, markupPercent: 20 },
+  });
+
+  assert.equal(values.data.costBaseAmount, 15);
+  assert.equal(values.data.totalCost, 60);
+  assert.equal(values.data.totalSell, 72);
+});
+
+test('generic service PER_DAY ServiceRate uses day count', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: { unitType: 'per_group', baseCost: 99, costBaseAmount: 99 },
+    serviceRate: {
+      pricingMode: 'PER_DAY',
+      costBaseAmount: 40,
+      costCurrency: 'USD',
+    },
+    item: { dayCount: 3, markupPercent: 10 },
+  });
+
+  assert.equal(values.data.costBaseAmount, 40);
+  assert.equal(values.data.totalCost, 120);
+  assert.equal(values.data.totalSell, 132);
+});
+
+test('generic service PER_GROUP ServiceRate charges one group unit', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: { unitType: 'per_person', baseCost: 12, costBaseAmount: 12 },
+    serviceRate: {
+      pricingMode: 'PER_GROUP',
+      costBaseAmount: 100,
+      costCurrency: 'USD',
+    },
+    item: { paxCount: 8, markupPercent: 0 },
+  });
+
+  assert.equal(values.data.costBaseAmount, 100);
+  assert.equal(values.data.totalCost, 100);
+  assert.equal(values.data.totalSell, 100);
+});
+
+test('generic service PER_GROUP ServiceRate capacity uses max pax per unit', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: { unitType: 'per_group', baseCost: 99, costBaseAmount: 99 },
+    serviceRate: {
+      pricingMode: 'PER_GROUP',
+      costBaseAmount: 50,
+      costCurrency: 'USD',
+      maxPaxPerUnit: 4,
+    },
+    item: { paxCount: 9, markupPercent: 20 },
+  });
+
+  assert.equal(values.data.costBaseAmount, 50);
+  assert.equal(values.data.totalCost, 150);
+  assert.equal(values.data.totalSell, 180);
+});
+
+test('generic service without ServiceRate falls back to SupplierService base cost', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      unitType: 'per_person',
+      baseCost: 12,
+      costBaseAmount: 12,
+      costCurrency: 'USD',
+    },
+    serviceRate: null,
+    item: { paxCount: 5, markupPercent: 0 },
+  });
+
+  assert.equal(values.data.costBaseAmount, 12);
+  assert.equal(values.data.totalCost, 60);
+  assert.equal(values.data.totalSell, 60);
+});
+
+test('meal pricing ignores generic ServiceRate and keeps custom meal cost', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Lunch template',
+      category: 'Meal',
+      unitType: 'per_person',
+      baseCost: 99,
+      costBaseAmount: 99,
+      serviceType: { name: 'Meal', code: 'MEAL' },
+    },
+    serviceRate: {
+      pricingMode: 'PER_PERSON',
+      costBaseAmount: 5,
+      costCurrency: 'USD',
+    },
+    item: {
+      paxCount: 3,
+      customServiceName: 'Lunch in Petra',
+      unitCost: 25,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.costBaseAmount, 25);
+  assert.equal(values.data.totalCost, 75);
+  assert.equal(values.data.totalSell, 75);
+});
+
+test('guide pricing ignores generic ServiceRate and keeps guide rate table', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Guide template',
+      category: 'Guide',
+      unitType: 'per_group',
+      baseCost: 120,
+      costBaseAmount: 120,
+      serviceType: { name: 'Guide', code: 'GUIDE' },
+    },
+    serviceRate: {
+      pricingMode: 'PER_DAY',
+      costBaseAmount: 20,
+      costCurrency: 'USD',
+    },
+    item: {
+      guideType: 'local',
+      guideDuration: 'full_day',
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.totalCost, 120);
+  assert.equal(values.data.totalSell, 120);
+});
+
+test('catalog-backed activity ignores generic ServiceRate and keeps Activity pricing', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 99,
+      costBaseAmount: 99,
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    serviceRate: {
+      pricingMode: 'PER_GROUP',
+      costBaseAmount: 20,
+      costCurrency: 'USD',
+      maxPaxPerUnit: 2,
+    },
+    activity: {
+      pricingBasis: 'PER_PERSON',
+      costPrice: 35,
+      sellPrice: 52.5,
+    },
+    item: {
+      activityId: 'activity-1',
+      paxCount: 4,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.costBaseAmount, 35);
+  assert.equal(values.data.totalCost, 140);
+  assert.equal(values.data.totalSell, 210);
 });
 
 test('capacity max does not change per-person pricing', () => {

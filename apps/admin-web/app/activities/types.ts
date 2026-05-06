@@ -12,17 +12,12 @@ export type Activity = {
   id: string;
   name: string;
   description: string | null;
-  country?: string | null;
-  city?: string | null;
   supplierCompanyId: string;
   supplierCompany?: ActivityCompany | null;
   pricingBasis: ActivityPricingBasis;
   costPrice: number;
   sellPrice: number;
-  currency?: string | null;
   durationMinutes: number | null;
-  defaultStartTime?: string | null;
-  operationNotes?: string | null;
   active: boolean;
 };
 
@@ -42,7 +37,7 @@ export function formatActivityPricingBasis(value: string | null | undefined) {
   return 'Pricing pending';
 }
 
-export function formatActivityMoney(value: number | null | undefined, currency?: string | null) {
+export function formatActivityMoney(value: number | null | undefined) {
   const amount = Number(value ?? 0);
-  return `${amount.toFixed(2)} ${currency || 'USD'}`;
+  return amount.toFixed(2);
 }

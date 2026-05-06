@@ -46,6 +46,7 @@ type CreateServiceRateInput = {
   tourismFeeAmount?: number | null;
   tourismFeeCurrency?: string | null;
   tourismFeeMode?: TourismFeeMode | null;
+  maxPaxPerUnit?: number | null;
 };
 
 type UpdateServiceRateInput = Partial<CreateServiceRateInput>;
@@ -237,6 +238,7 @@ export class ServicesService {
             : ensureValidNumber(data.tourismFeeAmount, 'tourismFeeAmount', { min: 0 }),
         tourismFeeCurrency: normalizeOptionalSupportedCurrency(data.tourismFeeCurrency ?? null, 'tourismFeeCurrency'),
         tourismFeeMode: data.tourismFeeMode ?? null,
+        maxPaxPerUnit: this.normalizeOptionalMaxPaxPerUnit(data.maxPaxPerUnit),
       } as any,
     });
   }
@@ -282,6 +284,10 @@ export class ServicesService {
             ? undefined
             : normalizeOptionalSupportedCurrency(data.tourismFeeCurrency, 'tourismFeeCurrency'),
         tourismFeeMode: data.tourismFeeMode === undefined ? undefined : data.tourismFeeMode,
+        maxPaxPerUnit:
+          data.maxPaxPerUnit === undefined
+            ? undefined
+            : this.normalizeOptionalMaxPaxPerUnit(data.maxPaxPerUnit),
       } as any,
     });
   }
@@ -373,5 +379,14 @@ export class ServicesService {
     }
 
     throw new BadRequestException('Unsupported service rate pricing mode');
+  }
+
+  private normalizeOptionalMaxPaxPerUnit(value: number | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = ensureValidNumber(value, 'maxPaxPerUnit', { min: 0 });
+    return Math.floor(normalized);
   }
 }

@@ -75,7 +75,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
             <SummaryStrip
               items={[
                 { id: 'basis', label: 'Pricing basis', value: formatActivityPricingBasis(activity.pricingBasis), helper: 'Quote calculation mode' },
-                { id: 'sell', label: 'Sell price', value: formatActivityMoney(activity.sellPrice, activity.currency), helper: 'Visible sales price' },
+                { id: 'sell', label: 'Sell price', value: formatActivityMoney(activity.sellPrice), helper: 'Visible sales price' },
                 { id: 'supplier', label: 'Supplier', value: activity.supplierCompany?.name || activity.supplierCompanyId, helper: 'Internal supplier company' },
                 { id: 'status', label: 'Status', value: activity.active ? 'Active' : 'Inactive', helper: activity.active ? 'Available for new quotes' : 'Existing references remain visible' },
               ]}

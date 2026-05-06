@@ -17,11 +17,11 @@ function expectSourceContains(source: string, fragments: string[]) {
 }
 
 describe('activities catalog admin UI regression', () => {
-  it('renders activity list rows with location supplier pricing sell price and active status', () => {
+  it('renders activity list rows with supplier location pricing sell price and active status', () => {
     expectSourceContains(listPageSource, [
       'title="Activities"',
       '<th>Name</th>',
-      '<th>City / Country</th>',
+      '<th>Supplier location</th>',
       '<th>Supplier company</th>',
       '<th>Pricing basis</th>',
       '<th>Sell price</th>',
@@ -30,40 +30,33 @@ describe('activities catalog admin UI regression', () => {
       'activity.description',
       'activity.supplierCompany?.name || activity.supplierCompanyId',
       'formatActivityPricingBasis(activity.pricingBasis)',
-      'formatActivityMoney(activity.sellPrice, activity.currency)',
+      'formatActivityMoney(activity.sellPrice)',
       "activity.active ? 'Active' : 'Inactive'",
     ]);
   });
 
-  it('supports all first-class activity create form fields', () => {
+  it('submits only fields supported by the lightweight Activity catalog model', () => {
     expectSourceContains(formSource, [
       'const [name, setName]',
       'const [description, setDescription]',
-      'const [country, setCountry]',
-      'const [city, setCity]',
       'const [supplierCompanyId, setSupplierCompanyId]',
       'const [pricingBasis, setPricingBasis]',
       'const [costPrice, setCostPrice]',
       'const [sellPrice, setSellPrice]',
-      'const [currency, setCurrency]',
       'const [durationMinutes, setDurationMinutes]',
-      'const [defaultStartTime, setDefaultStartTime]',
-      'const [operationNotes, setOperationNotes]',
       'const [active, setActive]',
       'name: name.trim()',
       'description: description.trim() || null',
-      'country: country.trim() || null',
-      'city: city.trim() || null',
       'supplierCompanyId',
       'pricingBasis',
       'costPrice: normalizedCostPrice',
       'sellPrice: normalizedSellPrice',
-      'currency',
       'durationMinutes: durationMinutes.trim() ? Number(durationMinutes) : null',
-      'defaultStartTime: defaultStartTime.trim() || null',
-      'operationNotes: operationNotes.trim() || null',
       'active',
     ]);
+
+    assert.doesNotMatch(formSource, /\bcountry:|setCountry|defaultStartTime|operationNotes|\bcurrency,/);
+    assert.doesNotMatch(typesSource, /\bcurrency\?:|defaultStartTime|operationNotes/);
   });
 
   it('loads existing activity detail and wires edit form to PATCH updates', () => {
@@ -108,8 +101,8 @@ describe('activities catalog admin UI regression', () => {
       'allow404: true',
     ]);
     expectSourceContains(activitiesProxySource, [
-      '`${API_BASE_URL}/activities${request.nextUrl.search}`',
-      "proxyRequest(request, `${API_BASE_URL}/activities`, 'POST')",
+      '`${getApiBaseUrl()}/activities${request.nextUrl.search}`',
+      "proxyRequest(request, `${getApiBaseUrl()}/activities`, 'POST')",
     ]);
     expectSourceContains(activityProxySource, [
       '`${API_BASE_URL}/activities/${encodeURIComponent(id)}`',

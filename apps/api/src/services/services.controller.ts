@@ -37,6 +37,7 @@ type CreateServiceRateBody = {
   tourismFeeAmount?: number | null;
   tourismFeeCurrency?: string | null;
   tourismFeeMode?: TourismFeeMode | null;
+  maxPaxPerUnit?: number | null;
 };
 
 type UpdateServiceRateBody = Partial<CreateServiceRateBody>;
@@ -106,6 +107,8 @@ export class ServicesController {
         body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
       tourismFeeCurrency: body.tourismFeeCurrency,
       tourismFeeMode: body.tourismFeeMode,
+      maxPaxPerUnit:
+        body.maxPaxPerUnit === undefined || body.maxPaxPerUnit === null ? body.maxPaxPerUnit : Number(body.maxPaxPerUnit),
     });
   }
 
@@ -125,6 +128,8 @@ export class ServicesController {
         body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
       tourismFeeCurrency: body.tourismFeeCurrency,
       tourismFeeMode: body.tourismFeeMode,
+      maxPaxPerUnit:
+        body.maxPaxPerUnit === undefined || body.maxPaxPerUnit === null ? body.maxPaxPerUnit : Number(body.maxPaxPerUnit),
     });
   }
 

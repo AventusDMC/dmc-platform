@@ -408,6 +408,161 @@ quoteCreateTest('DMC admin can add activity item to quote for external client wi
   quoteCreateAssert.equal(createdItemData.participantCount, 4);
 });
 
+quoteCreateTest('catalog activity requires activity-compatible service pairing', async () => {
+  const prisma = {
+    quote: {
+      findFirst: async () => ({ id: 'quote-1' }),
+      findUnique: async () => ({
+        id: 'quote-1',
+        adults: 2,
+        children: 0,
+        roomCount: 1,
+        nightCount: 1,
+        quoteCurrency: 'USD',
+        jordanPassType: 'NONE',
+        travelStartDate: new Date('2026-06-01T00:00:00.000Z'),
+        createdAt: new Date('2026-04-27T00:00:00.000Z'),
+      }),
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        supplierId: 'supplier-company-1',
+        name: 'Hotel template',
+        category: 'Hotel',
+        unitType: 'per_room',
+        baseCost: 40,
+        currency: 'USD',
+        costBaseAmount: 40,
+        costCurrency: 'USD',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+        serviceType: { name: 'Hotel', code: 'HOTEL' },
+        entranceFee: null,
+      }),
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        name: 'Petra by Night Catalog',
+        supplierCompanyId: 'supplier-company-1',
+        pricingBasis: 'PER_PERSON',
+        costPrice: 35,
+        sellPrice: 52.5,
+        durationMinutes: 120,
+      }),
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+  };
+  const service = new QuoteCreateQuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    new QuoteCreateQuotePricingService(),
+  );
+
+  await quoteCreateAssert.rejects(
+    () =>
+      service.createItem(
+        {
+          quoteId: 'quote-1',
+          serviceId: 'hotel-service-1',
+          activityId: 'catalog-activity-1',
+          paxCount: 2,
+          quantity: 1,
+          markupPercent: 20,
+        } as any,
+        { companyId: 'dmc-company-1' } as any,
+      ),
+    (error: any) => {
+      quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
+      quoteCreateAssert.equal(error.message, 'Activity catalog items require an activity-compatible service.');
+      return true;
+    },
+  );
+});
+
+quoteCreateTest('SupplierService-only activity item fallback still works', async () => {
+  let createdItemData: any;
+  const prisma = {
+    quote: {
+      findFirst: async () => ({ id: 'quote-1' }),
+      findUnique: async () => ({
+        id: 'quote-1',
+        adults: 2,
+        children: 0,
+        roomCount: 1,
+        nightCount: 1,
+        quoteCurrency: 'USD',
+        jordanPassType: 'NONE',
+        travelStartDate: new Date('2026-06-01T00:00:00.000Z'),
+        createdAt: new Date('2026-04-27T00:00:00.000Z'),
+      }),
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        supplierId: 'supplier-company-1',
+        name: 'Petra by Night',
+        category: 'Activity',
+        unitType: 'per_person',
+        baseCost: 40,
+        currency: 'USD',
+        costBaseAmount: 40,
+        costCurrency: 'USD',
+        salesTaxPercent: 0,
+        salesTaxIncluded: false,
+        serviceChargePercent: 0,
+        serviceChargeIncluded: false,
+        tourismFeeAmount: null,
+        tourismFeeCurrency: null,
+        tourismFeeMode: null,
+        serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        entranceFee: null,
+      }),
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+    quoteItem: {
+      create: async ({ data }: any) => {
+        createdItemData = data;
+        return { id: 'item-activity-fallback-1', ...data };
+      },
+    },
+  };
+  const service = new QuoteCreateQuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    new QuoteCreateQuotePricingService(),
+  );
+  (service as any).recalculateQuoteTotals = async () => undefined;
+
+  await service.createItem(
+    {
+      quoteId: 'quote-1',
+      serviceId: 'activity-service-1',
+      paxCount: 2,
+      participantCount: 2,
+      quantity: 1,
+      markupPercent: 20,
+    } as any,
+    { companyId: 'dmc-company-1' } as any,
+  );
+
+  quoteCreateAssert.equal(createdItemData.serviceId, 'activity-service-1');
+  quoteCreateAssert.equal(createdItemData.activityId, null);
+  quoteCreateAssert.equal(createdItemData.totalCost, 80);
+  quoteCreateAssert.equal(createdItemData.totalSell, 96);
+});
+
 quoteCreateTest('create quote with invalid quoteType returns clear bad request', async () => {
   const { service } = createService();
 

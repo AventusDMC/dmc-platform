@@ -104,9 +104,30 @@ type SupplierService = {
   baseCost: number;
   currency: string;
   serviceRates?: Array<{
+    id?: string | null;
     pricingMode?: string | null;
     maxPaxPerUnit?: number | null;
+    costBaseAmount?: number | null;
+    costCurrency?: string | null;
   }>;
+};
+
+type ActivityCatalogItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  supplierCompanyId: string;
+  supplierCompany?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    country?: string | null;
+  } | null;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  costPrice: number;
+  sellPrice: number;
+  durationMinutes: number | null;
+  active: boolean;
 };
 
 type Hotel = {
@@ -751,6 +772,12 @@ async function getQuote(id: string): Promise<QuoteFetchResult> {
 
 async function getServices(): Promise<SupplierService[]> {
   return adminPageFetchJson<SupplierService[]>(`${DATA_API_BASE_URL}/services`, 'Quote detail services', {
+    cache: 'no-store',
+  });
+}
+
+async function getActivities(): Promise<ActivityCatalogItem[]> {
+  return adminPageFetchJson<ActivityCatalogItem[]>(`${DATA_API_BASE_URL}/activities`, 'Quote detail activities', {
     cache: 'no-store',
   });
 }
@@ -1498,10 +1525,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         resolvedSearchParams?.catalogRateCurrency ||
         resolvedSearchParams?.catalogRateNote,
     );
+  const shouldLoadActivityCatalogData = activeTab === 'services' || resolvedSearchParams?.addCategory === 'activity';
   const shouldLoadHotelCategories = activeTab === 'pricing';
   const [
     quoteSettled,
     servicesSettled,
+    activitiesSettled,
     transportServiceTypesSettled,
     routesSettled,
     vehiclesSettled,
@@ -1521,6 +1550,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   ] = await Promise.allSettled([
     getQuote(id),
     safeQuoteDetailFetch('services', [] as SupplierService[], getServices),
+    shouldLoadActivityCatalogData
+      ? safeQuoteDetailFetch('activities', [] as ActivityCatalogItem[], getActivities)
+      : skippedQuoteDetailFetch('activities', [] as ActivityCatalogItem[]),
     safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
     safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
     safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
@@ -1544,6 +1576,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   ]);
   const quoteResult = unwrapSettledQuoteDetail<QuoteFetchResult>(quoteSettled, { status: 'error', message: 'Quote could not be loaded' }, 'quote');
   const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
+  const activitiesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<ActivityCatalogItem[]>>(activitiesSettled, { status: 'error', label: 'activities', data: [], message: 'Activities unavailable' }, 'activities');
   const transportServiceTypesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportServiceType[]>>(transportServiceTypesSettled, { status: 'error', label: 'transport service types', data: [], message: 'Transport service types unavailable' }, 'transport service types');
   const routesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteOption[]>>(routesSettled, { status: 'error', label: 'routes', data: [], message: 'Routes unavailable' }, 'routes');
   const vehiclesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportVehicle[]>>(vehiclesSettled, { status: 'error', label: 'vehicles', data: [], message: 'Vehicles unavailable' }, 'vehicles');
@@ -1561,6 +1594,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteBlocksResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<QuoteBlock[]>>(quoteBlocksSettled, { status: 'error', label: 'quote blocks', data: [], message: 'Quote blocks unavailable' }, 'quote blocks');
   const quoteItineraryResult = unwrapSettledQuoteDetail<QuoteItineraryFetchResult>(quoteItinerarySettled, { status: 'error', itinerary: { quoteId: id, days: [] }, message: 'Itinerary unavailable' }, 'itinerary');
   const services = servicesResult.data;
+  const activities = activitiesResult.data;
   const transportServiceTypes = transportServiceTypesResult.data;
   const routes = routesResult.data;
   console.log('[QuoteDetailsPage] routes loaded', routes.length);
@@ -1863,6 +1897,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       quoteItinerary={quoteItinerary}
       quoteBlocks={quoteBlocks}
       services={services}
+      activities={activities}
       transportServiceTypes={transportServiceTypes}
       routes={routes}
       vehicles={vehicles}

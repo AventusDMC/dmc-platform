@@ -40,6 +40,24 @@ type SupplierService = {
   currency: string;
 };
 
+type ActivityCatalogItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  supplierCompanyId: string;
+  supplierCompany?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    country?: string | null;
+  } | null;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  costPrice: number;
+  sellPrice: number;
+  durationMinutes: number | null;
+  active: boolean;
+};
+
 type Hotel = {
   id: string;
   name: string;
@@ -229,6 +247,7 @@ type QuoteBlock = {
 
 type QuoteItemInitialValues = {
   serviceId: string;
+  activityId?: string;
   quantity: string;
   markupPercent: string;
   paxCount: string;
@@ -285,6 +304,7 @@ type QuoteItemsFormProps = {
   optionId?: string;
   blocks?: QuoteBlock[];
   services: SupplierService[];
+  activities?: ActivityCatalogItem[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
   hotels: Hotel[];
@@ -304,6 +324,7 @@ type QuoteItemsFormProps = {
   itineraryId?: string;
   initialServiceTypeKey?: ServiceTypeKey | null;
   preferredServiceId?: string;
+  preferredActivityId?: string;
   preferredHotelId?: string;
   preferredContractId?: string;
   preferredRoomCategoryId?: string;
@@ -542,6 +563,25 @@ function isImportedPlaceholderService(service: Pick<SupplierService, 'supplierId
   return service.supplierId === IMPORTED_SERVICE_SUPPLIER_ID;
 }
 
+function normalizeActivityMatchText(value: string | null | undefined) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[]) {
+  const activityName = normalizeActivityMatchText(activity.name);
+  const activityServices = services.filter((service) => getServiceTypeKey(service) === 'activity');
+
+  return (
+    activityServices.find((service) => normalizeActivityMatchText(service.name) === activityName) ||
+    activityServices.find((service) => {
+      const serviceName = normalizeActivityMatchText(service.name);
+      return Boolean(activityName && (serviceName.includes(activityName) || activityName.includes(serviceName)));
+    }) ||
+    activityServices[0] ||
+    null
+  );
+}
+
 function formatDisplayLabel(value: string) {
   return value
     .trim()
@@ -674,6 +714,7 @@ export function QuoteItemsForm({
   optionId,
   blocks = [],
   services,
+  activities = [],
   transportServiceTypes,
   routes,
   hotels,
@@ -693,6 +734,7 @@ export function QuoteItemsForm({
   itineraryId,
   initialServiceTypeKey,
   preferredServiceId,
+  preferredActivityId,
   preferredHotelId,
   preferredContractId,
   preferredRoomCategoryId,
@@ -723,6 +765,7 @@ export function QuoteItemsForm({
     initialActiveServiceType,
   );
   const [serviceId, setServiceId] = useState(initialValues?.serviceId || preferredServiceId || '');
+  const [activityId, setActivityId] = useState(initialValues?.activityId || preferredActivityId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
   const [markupPercent, setMarkupPercent] = useState(initialValues?.markupPercent || '20');
   const [markupAmount, setMarkupAmount] = useState(initialValues?.markupAmount || '');
@@ -946,6 +989,8 @@ export function QuoteItemsForm({
     : [];
 
   const selectedService = services.find((service) => service.id === serviceId) || (activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
+  const activeActivities = activities.filter((activity) => activity.active !== false);
+  const selectedActivity = activeActivities.find((activity) => activity.id === activityId) || null;
   const isHotelService = selectedService ? getServiceTypeKey(selectedService) === 'hotel' : false;
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
@@ -1139,6 +1184,10 @@ export function QuoteItemsForm({
     : isMealService
       ? mealCurrency
       : preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
+  const activityParticipantTotal = Math.max(
+    1,
+    Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
+  );
   const finalCost = useMemo(() => {
     if (isExternalPackageService) {
       if (useOverride && overrideCost.trim()) {
@@ -1159,12 +1208,13 @@ export function QuoteItemsForm({
     }
 
     if (isActivityService) {
-      const unitCost = Number(baseCost || 0);
+      const unitCost = Number(selectedActivity?.costPrice ?? baseCost ?? 0);
       const participants = Math.max(
         1,
         Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
       );
-      return Number.isFinite(unitCost) ? Number((unitCost * participants).toFixed(2)) : null;
+      const units = selectedActivity?.pricingBasis === 'PER_GROUP' ? 1 : participants;
+      return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
     }
 
     return baseCost ? Number(baseCost) : null;
@@ -1182,6 +1232,8 @@ export function QuoteItemsForm({
     participantCount,
     paxCount,
     selectedService?.baseCost,
+    selectedActivity?.costPrice,
+    selectedActivity?.pricingBasis,
     useOverride,
   ]);
   const finalSellPrice = useMemo(() => {
@@ -1193,18 +1245,19 @@ export function QuoteItemsForm({
       return finalCost === null ? null : Number((finalCost + Number(markupAmount)).toFixed(2));
     }
 
+    if (isActivityService && selectedActivity) {
+      const units = selectedActivity.pricingBasis === 'PER_GROUP' ? 1 : activityParticipantTotal;
+      return Number((Number(selectedActivity.sellPrice || 0) * units).toFixed(2));
+    }
+
     return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
-  }, [finalCost, markupAmount, markupPercent, sellPrice]);
+  }, [activityParticipantTotal, finalCost, isActivityService, markupAmount, markupPercent, selectedActivity, sellPrice]);
   const finalMargin =
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
       : null;
-  const activityParticipantTotal = Math.max(
-    1,
-    Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
-  );
-  const activityUnitRate = Number(baseCost || 0);
-  const isActivitySelected = Boolean(isActivityService && serviceId && selectedService);
+  const activityUnitRate = Number(selectedActivity?.costPrice ?? baseCost ?? 0);
+  const isActivitySelected = Boolean(isActivityService && serviceId && selectedService && (activeActivities.length === 0 || activityId));
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const activityIssues =
@@ -1295,6 +1348,18 @@ export function QuoteItemsForm({
   }, [activeServiceType, filteredServices, isEditing, serviceId]);
 
   useEffect(() => {
+    if (isEditing || activeServiceType !== 'activity' || !selectedActivity) {
+      return;
+    }
+
+    const pairedService = findPairedActivityService(selectedActivity, services);
+
+    if (pairedService && !serviceId) {
+      setServiceId(pairedService.id);
+    }
+  }, [activeServiceType, isEditing, selectedActivity, serviceId, services]);
+
+  useEffect(() => {
     if (!selectedService) {
       setBaseCost('');
       return;
@@ -1311,6 +1376,11 @@ export function QuoteItemsForm({
     }
 
     if (isTransportService) {
+      return;
+    }
+
+    if (isActivityService && selectedActivity) {
+      setBaseCost(String(selectedActivity.costPrice));
       return;
     }
 
@@ -1365,6 +1435,7 @@ export function QuoteItemsForm({
     isExternalPackageService,
     isMealService,
     isTransportService,
+    isActivityService,
     externalPackage.netCost,
     externalPackage.pricingBasis,
     paxCount,
@@ -1373,6 +1444,7 @@ export function QuoteItemsForm({
     mealName,
     overnight,
     selectedHotelRate,
+    selectedActivity,
     selectedService,
   ]);
 
@@ -2080,6 +2152,7 @@ export function QuoteItemsForm({
 
       const quoteItemPayload = {
         serviceId,
+        activityId: isActivityService && activityId ? activityId : undefined,
         itineraryId,
         serviceDate:
           (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
@@ -2977,24 +3050,64 @@ export function QuoteItemsForm({
                   {selectedService ? <span className="page-tab-badge">Activity selected</span> : null}
                 </div>
 
-                {filteredServices.length === 0 ? (
+                {activeActivities.length === 0 && filteredServices.length === 0 ? (
                   <div className="quote-service-empty-state">
                     <strong>No activities available</strong>
                     <p>Create an activity catalog service before adding it to the quote.</p>
                   </div>
                 ) : (
                   <div className="quote-transport-step-fields">
-                    <label>
-                      Activity
-                      <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
-                        <option value="">Select activity</option>
-                        {filteredServices.map((service) => (
-                          <option key={service.id} value={service.id}>
-                            {service.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {activeActivities.length > 0 ? (
+                      <>
+                        <label>
+                          Activity
+                          <select
+                            value={activityId}
+                            onChange={(event) => {
+                              const nextActivityId = event.target.value;
+                              const nextActivity = activeActivities.find((activity) => activity.id === nextActivityId) || null;
+                              setActivityId(nextActivityId);
+                              if (nextActivity) {
+                                const pairedService = findPairedActivityService(nextActivity, services);
+                                setServiceId(pairedService?.id || '');
+                              }
+                            }}
+                            required
+                          >
+                            <option value="">Select activity</option>
+                            {activeActivities.map((activity) => (
+                              <option key={activity.id} value={activity.id}>
+                                {activity.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Pricing service
+                          <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
+                            <option value="">Select pricing service</option>
+                            {filteredServices.map((service) => (
+                              <option key={service.id} value={service.id}>
+                                {service.name} ({service.currency} {Number(service.baseCost || 0).toFixed(2)})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : (
+                      <label>
+                        Activity service
+                        <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
+                          <option value="">Select activity service</option>
+                          {filteredServices.map((service) => (
+                            <option key={service.id} value={service.id}>
+                              {service.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
 
                     <label>
                       Date
@@ -3023,7 +3136,7 @@ export function QuoteItemsForm({
                     <div className="quote-selected-transport-summary">
                       <span>
                         Activity
-                        <strong>{selectedService?.name || 'Selected activity'}</strong>
+                        <strong>{selectedActivity?.name || selectedService?.name || 'Selected activity'}</strong>
                       </span>
                       <span>
                         Participants
@@ -3031,7 +3144,10 @@ export function QuoteItemsForm({
                       </span>
                       <span>
                         Unit rate
-                        <strong>{displayCurrency} {Number.isFinite(activityUnitRate) ? activityUnitRate.toFixed(2) : '0.00'}</strong>
+                        <strong>
+                          {displayCurrency} {Number.isFinite(activityUnitRate) ? activityUnitRate.toFixed(2) : '0.00'}
+                          {selectedActivity?.pricingBasis === 'PER_GROUP' ? ' group' : ''}
+                        </strong>
                       </span>
                       <span>
                         Total cost

@@ -259,7 +259,10 @@ function getCapacityPricingHelper(item: QuoteItem, services: SupplierService[]) 
   const catalogService = services.find((service) => service.id === item.service.id);
   const serviceRates = item.service.serviceRates?.length ? item.service.serviceRates : catalogService?.serviceRates;
   const rate = serviceRates?.find(
-    (serviceRate) => serviceRate.pricingMode === 'PER_VEHICLE' || serviceRate.pricingMode === 'per_vehicle',
+    (serviceRate) =>
+      serviceRate.pricingMode === 'PER_GROUP' ||
+      serviceRate.pricingMode === 'PER_VEHICLE' ||
+      serviceRate.pricingMode === 'per_vehicle',
   );
   const pax = Number(item.paxCount || 0);
   const maxPaxPerUnit = Number(rate?.maxPaxPerUnit || 0);

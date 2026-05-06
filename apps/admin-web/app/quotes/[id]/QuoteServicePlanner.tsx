@@ -17,6 +17,7 @@ import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
 import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
+import { buildPricingDiagnostics } from './pricing-diagnostics';
 import {
   buildQuoteWorkspaceHref,
   buildQuoteReadinessModel,
@@ -44,6 +45,31 @@ type SupplierService = {
   baseCost: number;
   currency: string;
   createdAt?: string;
+  serviceRates?: Array<{
+    id?: string | null;
+    pricingMode?: string | null;
+    maxPaxPerUnit?: number | null;
+    costBaseAmount?: number | null;
+    costCurrency?: string | null;
+  }> | null;
+};
+
+type ActivityCatalogItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  supplierCompanyId: string;
+  supplierCompany?: {
+    id: string;
+    name: string;
+    city?: string | null;
+    country?: string | null;
+  } | null;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  costPrice: number;
+  sellPrice: number;
+  durationMinutes: number | null;
+  active: boolean;
 };
 
 type Hotel = {
@@ -279,6 +305,7 @@ type QuoteServicePlannerProps = {
   quoteItinerary?: PlannerItineraryResponse;
   quoteBlocks: QuoteBlock[];
   services: SupplierService[];
+  activities: ActivityCatalogItem[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
   vehicles: TransportVehicle[];
@@ -344,6 +371,7 @@ type ServiceLaneOrders = Record<string, string[]>;
 
 type QuoteItemInitialValues = {
   serviceId: string;
+  activityId?: string;
   quantity: string;
   markupPercent: string;
   markupAmount?: string;
@@ -423,6 +451,7 @@ type ActiveServicePanel =
       label: string;
       formReady?: boolean;
       selectedServiceId?: string;
+      selectedActivityId?: string;
       selectedHotelId?: string;
       selectedRouteId?: string;
     }
@@ -439,8 +468,9 @@ type SmartSuggestionItem = {
   label: string;
   detail: string;
   category: ServicePlannerCategory;
-  source: 'service' | 'hotel' | 'route';
+  source: 'service' | 'hotel' | 'route' | 'activity';
   serviceId?: string;
+  activityId?: string;
   hotelId?: string;
   routeId?: string;
   createdAt?: string;
@@ -541,6 +571,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
 
   return {
     serviceId: item.service?.id || '',
+    activityId: item.activityId || '',
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
     markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),
@@ -960,6 +991,29 @@ function compareSmartSuggestions(left: SmartSuggestionItem, right: SmartSuggesti
   return left.catalogRank - right.catalogRank || left.label.localeCompare(right.label);
 }
 
+function normalizeActivityMatchText(value: string | null | undefined) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function getActivityCompatibleServices(services: SupplierService[]) {
+  return services.filter((service) => getQuoteServiceCategoryKey(service) === 'activity');
+}
+
+function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[]) {
+  const activityName = normalizeActivityMatchText(activity.name);
+  const activityServices = getActivityCompatibleServices(services);
+
+  return (
+    activityServices.find((service) => normalizeActivityMatchText(service.name) === activityName) ||
+    activityServices.find((service) => {
+      const serviceName = normalizeActivityMatchText(service.name);
+      return Boolean(activityName && (serviceName.includes(activityName) || activityName.includes(serviceName)));
+    }) ||
+    activityServices[0] ||
+    null
+  );
+}
+
 function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerProps: QuoteServicePlannerProps): SmartSuggestionItem[] {
   const usageCounts = getQuoteUsageCounts(plannerProps.quote);
   if (category === 'hotel') {
@@ -987,6 +1041,30 @@ function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerP
         routeId: route.id,
         catalogRank: index,
       }))
+      .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
+  }
+
+  if (category === 'activity' && plannerProps.activities.length > 0) {
+    return plannerProps.activities
+      .filter((activity) => activity.active !== false)
+      .map((activity, index) => {
+        const pairedService = findPairedActivityService(activity, plannerProps.services);
+        const location = [activity.supplierCompany?.city, activity.supplierCompany?.country].filter(Boolean).join(' - ');
+        const pricing = `${pairedService?.currency || 'Service currency'} ${Number(activity.sellPrice || 0).toFixed(2)} ${
+          activity.pricingBasis === 'PER_GROUP' ? 'per group' : 'per person'
+        }`;
+
+        return {
+          id: `activity:${activity.id}`,
+          label: activity.name,
+          detail: [location || activity.supplierCompany?.name || 'Activity catalog', pricing, pairedService ? `Pricing service: ${pairedService.name}` : 'Choose pricing service'].filter(Boolean).join(' - '),
+          category,
+          source: 'activity' as const,
+          activityId: activity.id,
+          serviceId: pairedService?.id,
+          catalogRank: index,
+        };
+      })
       .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
   }
 
@@ -1088,6 +1166,7 @@ function buildQuickAddPayload(
 
   const payload: Record<string, unknown> = {
     serviceId: service.id,
+    activityId: category === 'activity' ? item.activityId : undefined,
     itineraryId: day.id,
     quantity: 1,
     paxCount: Math.max(1, plannerProps.totalPax || 1),
@@ -1152,6 +1231,7 @@ function AddServiceEditorPanel({
   optionId,
   day,
   selectedServiceId,
+  selectedActivityId,
   selectedHotelId,
   selectedRouteId,
   onSaved,
@@ -1163,6 +1243,7 @@ function AddServiceEditorPanel({
   optionId?: string;
   day: QuoteReadinessDay;
   selectedServiceId?: string;
+  selectedActivityId?: string;
   selectedHotelId?: string;
   selectedRouteId?: string;
   onSaved?: (item: QuoteItem) => void;
@@ -1193,6 +1274,7 @@ function AddServiceEditorPanel({
         optionId={optionId}
         blocks={plannerProps.quoteBlocks}
         services={plannerProps.services}
+        activities={plannerProps.activities}
         transportServiceTypes={plannerProps.transportServiceTypes}
         routes={plannerProps.routes}
         hotels={plannerProps.hotels}
@@ -1211,6 +1293,7 @@ function AddServiceEditorPanel({
         itineraryDayDescription={day.description}
         itineraryId={day.id}
         initialServiceTypeKey={category}
+        preferredActivityId={category === 'activity' ? selectedActivityId : undefined}
         preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}
         preferredHotelId={category === 'hotel' ? selectedHotelId || plannerProps.preferredCatalogHotelId : undefined}
         preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
@@ -1405,6 +1488,7 @@ function EditServiceEditorPanel({
       optionId={optionId}
       blocks={plannerProps.quoteBlocks}
       services={plannerProps.services}
+      activities={plannerProps.activities}
       transportServiceTypes={plannerProps.transportServiceTypes}
       routes={plannerProps.routes}
       hotels={plannerProps.hotels}
@@ -1662,6 +1746,7 @@ function SortableServiceCard({
   const serviceTimeLabel = item.pickupTime || item.startTime;
   const externalMatrixRows = isExternalPackage ? getExternalPackageMatrixRows(item) : [];
   const hasExternalMatrix = externalMatrixRows.length > 0;
+  const pricingDiagnostics = buildPricingDiagnostics(item);
 
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -1744,6 +1829,12 @@ function SortableServiceCard({
           <span>{item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'}</span>
         ) : null}
         {itemMarginWarning && !hasExternalMatrix ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
+      </div>
+      <div className="quote-service-card-pricing-summary" aria-label="Pricing diagnostics">
+        <span>{pricingDiagnostics.pricingSource}</span>
+        <span>{pricingDiagnostics.pricingMode}</span>
+        <span>{pricingDiagnostics.unitsUsed}</span>
+        <span>{pricingDiagnostics.overrideStatus}</span>
       </div>
       <details className="quote-service-card-details">
         <summary>Details</summary>
@@ -2516,6 +2607,7 @@ function ScopePlanner({
       label: action?.label || `Add ${SERVICE_PLANNER_TAB_LABELS[category] || category}`,
       formReady: true,
       selectedServiceId: undefined,
+      selectedActivityId: undefined,
       selectedHotelId: undefined,
       selectedRouteId: undefined,
     });
@@ -2572,6 +2664,7 @@ function ScopePlanner({
         key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:${item.id}`,
         formReady: true,
         selectedServiceId: item.serviceId,
+        selectedActivityId: item.activityId,
         selectedHotelId: item.hotelId,
         selectedRouteId: item.routeId,
       };
@@ -2648,6 +2741,7 @@ function ScopePlanner({
         key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:manual`,
         formReady: true,
         selectedServiceId: undefined,
+        selectedActivityId: undefined,
         selectedHotelId: undefined,
         selectedRouteId: undefined,
       };
@@ -2665,6 +2759,7 @@ function ScopePlanner({
         key: `${current.optionId || 'base'}:${current.day.id}:${current.category}:suggestions`,
         formReady: false,
         selectedServiceId: undefined,
+        selectedActivityId: undefined,
         selectedHotelId: undefined,
         selectedRouteId: undefined,
       };
@@ -3112,6 +3207,7 @@ function ScopePlanner({
                     optionId={activeServicePanel.optionId}
                     day={activeServicePanel.day}
                     selectedServiceId={activeServicePanel.selectedServiceId}
+                    selectedActivityId={activeServicePanel.selectedActivityId}
                     selectedHotelId={activeServicePanel.selectedHotelId}
                     selectedRouteId={activeServicePanel.selectedRouteId}
                     onSaved={handleEditorItemSaved}

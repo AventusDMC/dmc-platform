@@ -111,7 +111,7 @@ export default async function ActivitiesPage() {
                     <thead>
                       <tr>
                         <th>Name</th>
-                        <th>City / Country</th>
+                        <th>Supplier location</th>
                         <th>Supplier company</th>
                         <th>Pricing basis</th>
                         <th>Sell price</th>
@@ -127,13 +127,13 @@ export default async function ActivitiesPage() {
                             {activity.description ? <p className="table-cell-copy">{activity.description}</p> : null}
                           </td>
                           <td>
-                            {[activity.city || activity.supplierCompany?.city, activity.country || activity.supplierCompany?.country]
+                            {[activity.supplierCompany?.city, activity.supplierCompany?.country]
                               .filter(Boolean)
                               .join(', ') || 'Location pending'}
                           </td>
                           <td>{activity.supplierCompany?.name || activity.supplierCompanyId}</td>
                           <td>{formatActivityPricingBasis(activity.pricingBasis)}</td>
-                          <td>{formatActivityMoney(activity.sellPrice, activity.currency)}</td>
+                          <td>{formatActivityMoney(activity.sellPrice)}</td>
                           <td>
                             <span className={activity.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>
                               {activity.active ? 'Active' : 'Inactive'}

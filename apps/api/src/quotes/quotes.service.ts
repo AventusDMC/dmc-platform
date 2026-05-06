@@ -47,6 +47,7 @@ const GUIDE_OVERNIGHT_SUPPLEMENT = 50;
 
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
+type StructuredServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
 type QuoteFocType = 'none' | 'ratio' | 'fixed';
 type QuoteFocRoomType = 'single' | 'double';
 type QuoteTypeValue = 'FIT' | 'GROUP';
@@ -2222,6 +2223,10 @@ export class QuotesService {
         service: {
           include: {
             serviceType: true,
+            serviceRates: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
           },
         },
       },
@@ -2853,6 +2858,10 @@ export class QuotesService {
       throw new BadRequestException('Activity not found');
     }
 
+    if (activity && !this.isActivityService(effectiveService)) {
+      throw new BadRequestException('Activity catalog items require an activity-compatible service.');
+    }
+
     if (data.itineraryId && !legacyItinerary && !quoteItineraryDay) {
       throw new BadRequestException('Itinerary not found');
     }
@@ -2925,6 +2934,7 @@ export class QuotesService {
     let childCount: number | null = null;
     let externalPackageData: Record<string, unknown> = {};
     let capacityMaxPaxPerUnit: number | null = null;
+    let structuredServiceRatePricingMode: StructuredServiceRatePricingMode | null = null;
 
     const serviceRate = (effectiveService as any).serviceRates?.[0] as
       | {
@@ -2941,16 +2951,15 @@ export class QuotesService {
           maxPaxPerUnit?: number | null;
         }
       | undefined;
-    const serviceRatePricingMode =
-      serviceRate?.pricingMode === 'PER_VEHICLE' || serviceRate?.pricingMode === 'per_vehicle'
-        ? 'PER_GROUP'
-        : serviceRate?.pricingMode;
+    const serviceRatePricing = this.resolveGenericServiceRatePricing({
+      service: effectiveService,
+      serviceRate,
+      catalogActivity: activity,
+    });
 
-    if (serviceRate && serviceRatePricingMode === 'PER_GROUP') {
-      if (Number.isFinite(Number(serviceRate.maxPaxPerUnit)) && Number(serviceRate.maxPaxPerUnit) > 0) {
-        capacityMaxPaxPerUnit = Math.floor(Number(serviceRate.maxPaxPerUnit));
-      }
-
+    if (serviceRatePricing && serviceRate) {
+      capacityMaxPaxPerUnit = serviceRatePricing.capacityMaxPaxPerUnit;
+      structuredServiceRatePricingMode = serviceRatePricing.pricingMode;
       baseCost = Number(serviceRate.costBaseAmount ?? baseCost);
       supplierCostBaseAmount = Number(serviceRate.costBaseAmount ?? supplierCostBaseAmount);
       supplierCostCurrency = serviceRate.costCurrency ?? supplierCostCurrency;
@@ -3396,6 +3405,7 @@ export class QuotesService {
       hotelRatePricingBasis,
       externalPackagePricingBasis: typeof externalPackageData.externalPricingBasis === 'string' ? externalPackageData.externalPricingBasis : null,
       activityPricingBasis: activity?.pricingBasis ?? null,
+      structuredServiceRatePricingMode,
       unitCount,
       capacityMaxPaxPerUnit,
     });
@@ -4831,6 +4841,7 @@ export class QuotesService {
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+    structuredServiceRatePricingMode?: StructuredServiceRatePricingMode | null;
     unitCount?: number | null;
     capacityMaxPaxPerUnit?: number | null;
   }) {
@@ -4860,6 +4871,32 @@ export class QuotesService {
       return this.calculateItemPricing({
         unitType: values.externalPackagePricingBasis === 'PER_PERSON' ? ServiceUnitType.per_person : ServiceUnitType.per_group,
         quantity: 1,
+        paxCount: values.paxCount,
+        roomCount: values.roomCount,
+        nightCount: values.nightCount,
+        dayCount: values.dayCount,
+        unitCost: values.unitCost,
+        markupPercent: values.markupPercent,
+      });
+    }
+
+    if (values.structuredServiceRatePricingMode) {
+      const unitType =
+        values.structuredServiceRatePricingMode === 'PER_PERSON'
+          ? ServiceUnitType.per_person
+          : values.structuredServiceRatePricingMode === 'PER_DAY'
+            ? ServiceUnitType.per_day
+            : ServiceUnitType.per_group;
+      const quantity =
+        values.structuredServiceRatePricingMode === 'PER_GROUP' &&
+        Number.isFinite(Number(values.capacityMaxPaxPerUnit)) &&
+        Number(values.capacityMaxPaxPerUnit) > 0
+          ? Math.ceil(Math.max(1, values.paxCount) / Math.floor(Number(values.capacityMaxPaxPerUnit)))
+          : values.quantity;
+
+      return this.calculateItemPricing({
+        unitType,
+        quantity,
         paxCount: values.paxCount,
         roomCount: values.roomCount,
         nightCount: values.nightCount,
@@ -4910,16 +4947,19 @@ export class QuotesService {
     hotelRatePricingBasis?: 'PER_PERSON' | 'PER_ROOM' | string | null;
     externalPackagePricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
     activityPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+    structuredServiceRatePricingMode?: StructuredServiceRatePricingMode | null;
     unitCount?: number | null;
     legacyCurrency?: string | null;
     capacityMaxPaxPerUnit?: number | null;
   }) {
     const isPerPersonPricing =
+      values.structuredServiceRatePricingMode === 'PER_PERSON' ||
       values.service.unitType === ServiceUnitType.per_person ||
       (this.isHotelService(values.service) && values.hotelRatePricingBasis === 'PER_PERSON') ||
       (this.isExternalPackageService(values.service) && values.externalPackagePricingBasis === 'PER_PERSON') ||
       (this.isActivityService(values.service) && values.activityPricingBasis === 'PER_PERSON');
     const capacityUnits =
+      (values.structuredServiceRatePricingMode === 'PER_GROUP' || values.structuredServiceRatePricingMode === undefined || values.structuredServiceRatePricingMode === null) &&
       !isPerPersonPricing &&
       Number.isFinite(Number(values.capacityMaxPaxPerUnit)) &&
       Number(values.capacityMaxPaxPerUnit) > 0
@@ -4943,6 +4983,12 @@ export class QuotesService {
         ? values.activityPricingBasis === 'PER_GROUP'
           ? 1
           : Math.max(1, values.paxCount)
+      : values.structuredServiceRatePricingMode === 'PER_PERSON'
+        ? Math.max(1, values.paxCount)
+      : values.structuredServiceRatePricingMode === 'PER_DAY'
+        ? values.quantity * Math.max(1, values.dayCount)
+      : values.structuredServiceRatePricingMode === 'PER_GROUP'
+        ? values.quantity
       : this.isTransportService(values.service) &&
           values.transportPricingMode === 'capacity_unit' &&
           values.unitCount
@@ -4966,6 +5012,8 @@ export class QuotesService {
       transportPricingMode: values.transportPricingMode,
       unitCount: values.unitCount,
       externalPackagePricingBasis: values.externalPackagePricingBasis,
+      structuredServiceRatePricingMode: values.structuredServiceRatePricingMode,
+      capacityMaxPaxPerUnit: values.capacityMaxPaxPerUnit,
     });
 
     return calculateMultiCurrencyQuoteItemPricing({
@@ -5358,6 +5406,72 @@ export class QuotesService {
     const normalizedCategory = this.getNormalizedServiceCategory(service).replace(/[\s-]+/g, '_');
 
     return normalizedCategory === 'external_package' || normalizedCategory.includes('external_package') || normalizedCategory.includes('partner_package');
+  }
+
+  private normalizeStructuredServiceRatePricingMode(value: string | null | undefined): StructuredServiceRatePricingMode | null {
+    if (value === 'PER_VEHICLE' || value === 'per_vehicle') {
+      return 'PER_GROUP';
+    }
+
+    if (value === 'PER_PERSON' || value === 'PER_GROUP' || value === 'PER_DAY') {
+      return value;
+    }
+
+    return null;
+  }
+
+  private isGenericServiceRateEligibleService(
+    service: {
+      category: string;
+      serviceType?: { name: string; code: string | null } | null;
+      entranceFee?: unknown | null;
+    },
+    catalogActivity: unknown,
+  ) {
+    return (
+      !this.isHotelService(service) &&
+      !this.isTransportService(service) &&
+      !this.isMealService(service) &&
+      !this.isGuideService(service) &&
+      !this.isExternalPackageService(service) &&
+      !this.isActivityService(service) &&
+      !service.entranceFee &&
+      !catalogActivity
+    );
+  }
+
+  private resolveGenericServiceRatePricing(values: {
+    service: {
+      category: string;
+      serviceType?: { name: string; code: string | null } | null;
+      entranceFee?: unknown | null;
+    };
+    serviceRate?:
+      | {
+          pricingMode?: string | null;
+          maxPaxPerUnit?: number | null;
+        }
+      | null;
+    catalogActivity: unknown;
+  }) {
+    if (!values.serviceRate || !this.isGenericServiceRateEligibleService(values.service, values.catalogActivity)) {
+      return null;
+    }
+
+    const pricingMode = this.normalizeStructuredServiceRatePricingMode(values.serviceRate.pricingMode);
+    if (!pricingMode) {
+      return null;
+    }
+
+    return {
+      pricingMode,
+      capacityMaxPaxPerUnit:
+        pricingMode === 'PER_GROUP' &&
+        Number.isFinite(Number(values.serviceRate.maxPaxPerUnit)) &&
+        Number(values.serviceRate.maxPaxPerUnit) > 0
+          ? Math.floor(Number(values.serviceRate.maxPaxPerUnit))
+          : null,
+    };
   }
 
   private getPlannerServiceType(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
@@ -7202,7 +7316,15 @@ export class QuotesService {
           optionId: null,
         },
         include: {
-          service: { include: { serviceType: true } },
+          service: {
+            include: {
+              serviceType: true,
+              serviceRates: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
           activity: { include: { supplierCompany: true } },
           itinerary: true,
           hotel: true,
@@ -7238,7 +7360,15 @@ export class QuotesService {
             include: {
               quoteService: {
                 include: {
-                  service: { include: { serviceType: true } },
+                  service: {
+                    include: {
+                      serviceType: true,
+                      serviceRates: {
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                      },
+                    },
+                  },
                   activity: { include: { supplierCompany: true } },
                   itinerary: true,
                   hotel: true,
@@ -7268,7 +7398,15 @@ export class QuotesService {
           },
           quoteItems: {
             include: {
-              service: { include: { serviceType: true } },
+              service: {
+                include: {
+                  serviceType: true,
+                  serviceRates: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                  },
+                },
+              },
               activity: { include: { supplierCompany: true } },
               itinerary: true,
               hotel: true,

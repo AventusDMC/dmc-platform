@@ -88,6 +88,55 @@ test('create activity persists supplier company pricing and active state', async
   assert.equal(createdData.active, true);
 });
 
+test('create and update activity ignore unsupported UI-only fields', async () => {
+  let createdData: any;
+  let updateData: any;
+  const { service } = createActivitiesService({
+    activity: {
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'activity-1', ...data };
+      },
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      update: async ({ data }: any) => {
+        updateData = data;
+        return { id: 'activity-1', ...data };
+      },
+    },
+  });
+
+  await service.create({
+    name: 'Petra by Night',
+    description: 'Evening visit',
+    supplierCompanyId: 'supplier-company-1',
+    pricingBasis: 'PER_PERSON',
+    costPrice: 35,
+    sellPrice: 55,
+    durationMinutes: 120,
+    country: 'Jordan',
+    city: 'Petra',
+    currency: 'JOD',
+    defaultStartTime: '20:30',
+    operationNotes: 'Meet at visitor center',
+  } as any);
+  await service.update('activity-1', {
+    sellPrice: 60,
+    country: 'Jordan',
+    city: 'Petra',
+    currency: 'JOD',
+    defaultStartTime: '20:30',
+    operationNotes: 'Meet at visitor center',
+  } as any);
+
+  for (const data of [createdData, updateData]) {
+    assert.equal(data.country, undefined);
+    assert.equal(data.city, undefined);
+    assert.equal(data.currency, undefined);
+    assert.equal(data.defaultStartTime, undefined);
+    assert.equal(data.operationNotes, undefined);
+  }
+});
+
 test('list and detail activities are not filtered by actor company', async () => {
   let findManyArgs: any;
   let findUniqueArgs: any;

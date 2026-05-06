@@ -40,12 +40,28 @@ test('createRate persists a structured service rate', async () => {
     tourismFeeAmount: 5,
     tourismFeeCurrency: 'JOD',
     tourismFeeMode: 'PER_NIGHT_PER_ROOM',
+    maxPaxPerUnit: 44,
   });
 
   assert.equal(result.serviceId, 'service-1');
   assert.equal(result.costCurrency, 'USD');
   assert.equal(result.pricingMode, 'PER_GROUP');
   assert.equal(result.tourismFeeCurrency, 'JOD');
+  assert.equal(result.maxPaxPerUnit, 44);
+});
+
+test('createRate API returns persisted maxPaxPerUnit', async () => {
+  const { service } = createServicesService();
+  const controller = new ServicesController(service);
+
+  const result = await controller.createRate('service-1', {
+    costBaseAmount: 120,
+    costCurrency: 'USD',
+    pricingMode: 'PER_GROUP',
+    maxPaxPerUnit: 18,
+  });
+
+  assert.equal(result.maxPaxPerUnit, 18);
 });
 
 test('DMC admin can create an activity for a supplier company different from actor and client companies', async () => {
@@ -142,6 +158,7 @@ test('updateRate updates structured service rate fields', async () => {
     tourismFeeAmount: null,
     tourismFeeCurrency: null,
     tourismFeeMode: null,
+    maxPaxPerUnit: 24,
   });
 
   assert.equal(result.id, 'rate-1');
@@ -149,6 +166,18 @@ test('updateRate updates structured service rate fields', async () => {
   assert.equal(result.costCurrency, 'EUR');
   assert.equal(result.pricingMode, 'PER_DAY');
   assert.equal(result.tourismFeeAmount, null);
+  assert.equal(result.maxPaxPerUnit, 24);
+});
+
+test('updateRate clears maxPaxPerUnit when null is submitted', async () => {
+  const { service } = createServicesService();
+
+  const result = await service.updateRate('rate-1', {
+    maxPaxPerUnit: null,
+  });
+
+  assert.equal(result.id, 'rate-1');
+  assert.equal(result.maxPaxPerUnit, null);
 });
 
 test('removeRate deletes an existing service rate', async () => {

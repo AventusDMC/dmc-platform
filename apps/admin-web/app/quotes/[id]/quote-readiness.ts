@@ -24,6 +24,7 @@ export type QuoteReadinessService = {
 
 export type QuoteReadinessItem = {
   id: string;
+  activityId?: string | null;
   itineraryId: string | null;
   serviceDate: string | null;
   startTime: string | null;
@@ -270,6 +271,7 @@ export function getQuoteServiceCategoryKey(
     normalized.includes('excursion') ||
     normalized.includes('sightseeing') ||
     normalized.includes('experience') ||
+    normalized.includes('entrance') ||
     normalized.includes('ticket')
   ) {
     return 'activity';
