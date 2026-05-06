@@ -7,6 +7,7 @@ import {
   ProposalV3InvestmentRow,
   ProposalV3Quote,
   ProposalV3QuoteItem,
+  ProposalV3QuotePlannerDay,
   ProposalV3ViewModel,
 } from './proposal-v3.types';
 
@@ -216,6 +217,13 @@ function getAccentColor(quote: ProposalV3Quote) {
 }
 
 type NullableProposalV3QuoteItem = ProposalV3QuoteItem | null | undefined;
+type ProposalV3DaySource = {
+  id: string;
+  dayNumber: number;
+  title: string;
+  description?: string | null;
+  items: ProposalV3QuoteItem[];
+};
 
 function isPresentQuoteItem(item: NullableProposalV3QuoteItem): item is ProposalV3QuoteItem {
   return Boolean(item && item.service);
@@ -263,6 +271,7 @@ function isActivityItem(item: NullableProposalV3QuoteItem) {
     normalized.includes('tour') ||
     normalized.includes('excursion') ||
     normalized.includes('experience') ||
+    normalized.includes('entrance') ||
     normalized.includes('ticket')
   );
 }
@@ -335,11 +344,11 @@ function extractImportedDescription(item: ProposalV3QuoteItem) {
 }
 
 function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3AccommodationRow[] {
-  const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
+  const sortedDays = getProposalDaySources(quote);
   const rows: ProposalV3AccommodationRow[] = [];
 
   for (const day of sortedDays) {
-    const hotelItems = quote.quoteItems.filter((item) => item.itineraryId === day.id && isHotelItem(item));
+    const hotelItems = day.items.filter((item) => isHotelItem(item));
     const location = extractDayLocation(day.title, day.dayNumber);
 
     for (const item of hotelItems) {
@@ -480,6 +489,57 @@ function getPositiveDayNumber(value: number | null | undefined) {
   return Number.isInteger(value) && Number(value) > 0 ? Number(value) : null;
 }
 
+function sortPlannerDays(left: ProposalV3QuotePlannerDay, right: ProposalV3QuotePlannerDay) {
+  const leftSort = Number.isFinite(Number(left.sortOrder)) ? Number(left.sortOrder) : left.dayNumber;
+  const rightSort = Number.isFinite(Number(right.sortOrder)) ? Number(right.sortOrder) : right.dayNumber;
+  return leftSort - rightSort || left.dayNumber - right.dayNumber;
+}
+
+function sortPlannerDayItems(
+  left: NonNullable<ProposalV3QuotePlannerDay['dayItems']>[number],
+  right: NonNullable<ProposalV3QuotePlannerDay['dayItems']>[number],
+) {
+  const leftSort = Number.isFinite(Number(left.sortOrder)) ? Number(left.sortOrder) : 0;
+  const rightSort = Number.isFinite(Number(right.sortOrder)) ? Number(right.sortOrder) : 0;
+  return leftSort - rightSort;
+}
+
+function buildActivePlannerDaySources(quote: ProposalV3Quote): ProposalV3DaySource[] {
+  return (quote.quoteItineraryDays || [])
+    .filter((day) => day && day.isActive !== false)
+    .sort(sortPlannerDays)
+    .map((day) => ({
+      id: day.id,
+      dayNumber: day.dayNumber,
+      title: day.title,
+      description: day.notes || null,
+      items: (day.dayItems || [])
+        .filter((dayItem) => dayItem?.isActive !== false && isPresentQuoteItem(dayItem?.quoteService))
+        .sort(sortPlannerDayItems)
+        .map((dayItem) => ({
+          ...(dayItem.quoteService as ProposalV3QuoteItem),
+          itineraryId: day.id,
+        })),
+    }));
+}
+
+function buildLegacyDaySources(quote: ProposalV3Quote): ProposalV3DaySource[] {
+  return [...quote.itineraries]
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .map((day) => ({
+      id: day.id,
+      dayNumber: day.dayNumber,
+      title: day.title,
+      description: day.description || null,
+      items: quote.quoteItems.filter((item) => item.itineraryId === day.id),
+    }));
+}
+
+function getProposalDaySources(quote: ProposalV3Quote): ProposalV3DaySource[] {
+  const activePlannerDays = buildActivePlannerDaySources(quote);
+  return activePlannerDays.length > 0 ? activePlannerDays : buildLegacyDaySources(quote);
+}
+
 function appendDayGroups(target: ProposalV3Day, groups: ProposalV3DayGroup[]) {
   for (const group of groups) {
     const existing = target.groups.find((targetGroup) => targetGroup.label === group.label);
@@ -492,12 +552,13 @@ function appendDayGroups(target: ProposalV3Day, groups: ProposalV3DayGroup[]) {
 }
 
 function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
-  const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
-  const days = sortedDays.map((day) => {
+  const daySources = getProposalDaySources(quote);
+  const usingActivePlannerDays = buildActivePlannerDaySources(quote).length > 0;
+  const assignedDayIds = new Set(daySources.map((day) => day.id));
+  const activePlannerItemIds = new Set(daySources.flatMap((day) => day.items.map((item) => item.id)));
+  const days = daySources.map((day) => {
     const location = extractDayLocation(day.title, day.dayNumber);
-    const dayItems = quote.quoteItems.filter(
-      (item) => item.itineraryId === day.id && !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)),
-    );
+    const dayItems = day.items.filter((item) => !(isExternalPackageItem(item) && getPositiveDayNumber(item.externalStartDay)));
     const summary = cleanText(day.description || '');
 
     return {
@@ -509,11 +570,11 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
     };
   });
 
-  const assignedItineraryIds = new Set(sortedDays.map((day) => day.id));
   const externalRangeItems = quote.quoteItems.filter(
     (item) =>
       isExternalPackageItem(item) &&
-      (getPositiveDayNumber(item.externalStartDay) || !item.itineraryId || !assignedItineraryIds.has(item.itineraryId)),
+      (getPositiveDayNumber(item.externalStartDay) ||
+        (usingActivePlannerDays ? !activePlannerItemIds.has(item.id) : !item.itineraryId || !assignedDayIds.has(item.itineraryId))),
   );
 
   if (externalRangeItems.length > 0) {
@@ -872,7 +933,7 @@ function formatDurationLabel(dayCount: number, nightCount: number) {
 
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
   quote = withSanitizedQuoteItems(quote);
-  const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
+  const sortedDays = getProposalDaySources(quote);
   const days = buildDays(quote);
   const totalPax = quote.adults + quote.children;
   const dayCount = Math.max(days.length, (quote.nightCount || 0) + 1, 1);

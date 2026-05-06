@@ -150,6 +150,83 @@ function createActivityPdfItem(overrides: Record<string, any> = {}) {
   };
 }
 
+function createGuidePdfItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 'guide-item-1',
+    itineraryId: 'day-1',
+    serviceDate: new Date('2026-06-01T09:00:00.000Z'),
+    service: {
+      name: 'Licensed local guide',
+      category: 'Guide',
+      serviceType: { name: 'Guide', code: 'GUIDE' },
+    },
+    pricingDescription: 'Full-day guide service',
+    totalCost: 100,
+    totalSell: 150,
+    ...overrides,
+  };
+}
+
+function createMealPdfItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 'meal-item-1',
+    itineraryId: 'day-1',
+    serviceDate: new Date('2026-06-01T13:00:00.000Z'),
+    service: {
+      name: 'Lunch at local restaurant',
+      category: 'Meal',
+      serviceType: { name: 'Meal', code: 'MEAL' },
+    },
+    pricingDescription: 'Set menu lunch',
+    totalCost: 60,
+    totalSell: 90,
+    ...overrides,
+  };
+}
+
+function createEntrancePdfItem(overrides: Record<string, any> = {}) {
+  return {
+    id: 'entrance-item-1',
+    itineraryId: 'day-1',
+    serviceDate: new Date('2026-06-01T11:00:00.000Z'),
+    service: {
+      name: 'Jerash Entrance Ticket',
+      category: 'Entrance',
+      serviceType: { name: 'Entrance', code: 'ENTRANCE' },
+    },
+    pricingDescription: 'Entrance tickets',
+    totalCost: 40,
+    totalSell: 70,
+    ...overrides,
+  };
+}
+
+function createPlannerDayItem(quoteService: Record<string, any>, overrides: Record<string, any> = {}) {
+  return {
+    id: `planner-item-${quoteService.id}`,
+    dayId: 'planner-day-1',
+    quoteServiceId: quoteService.id,
+    sortOrder: 0,
+    notes: null,
+    isActive: true,
+    quoteService,
+    ...overrides,
+  };
+}
+
+function createPlannerDay(overrides: Record<string, any> = {}) {
+  return {
+    id: 'planner-day-1',
+    dayNumber: 1,
+    title: 'Day 1: Amman',
+    notes: 'Arrival and overnight in Amman.',
+    sortOrder: 0,
+    isActive: true,
+    dayItems: [],
+    ...overrides,
+  };
+}
+
 function createHotelOptionSet(overrides: Record<string, any> = {}) {
   return {
     id: 'hotel-option-set-1',
@@ -481,6 +558,95 @@ test('proposal V3 keeps confirmed hotel quote items in Stay Overview alongside h
   assert.equal(proposal.accommodationRows.length, 1);
   assert.equal(proposal.accommodationRows[0].hotelName, 'Grand Petra Hotel');
   assert.equal(proposal.hotelOptionSets.length, 1);
+});
+
+test('proposal V3 maps active planner hotel stays into Stay Overview and Day by Day', () => {
+  const hotelItem = createHotelPdfItem({
+    id: 'active-hotel-item',
+    itineraryId: null,
+    hotel: { name: 'Active Planner Hotel', city: 'Amman' },
+    service: {
+      name: 'Active Planner Hotel',
+      category: 'Hotel',
+      serviceType: { name: 'Hotel', code: 'HOTEL' },
+    },
+  });
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [hotelItem],
+      itineraries: [
+        {
+          id: 'legacy-day-1',
+          dayNumber: 1,
+          title: 'Day 1: Legacy Day',
+          description: 'Legacy day should not drive active planner grouping.',
+        },
+      ],
+      quoteItineraryDays: [
+        createPlannerDay({
+          id: 'planner-day-1',
+          title: 'Day 1: Active Amman',
+          dayItems: [createPlannerDayItem(hotelItem)],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.accommodationRows.length, 1);
+  assert.equal(proposal.accommodationRows[0].hotelName, 'Active Planner Hotel');
+  assert.equal(proposal.days[0].title, 'Day 1: Active Amman');
+  const stayGroup = proposal.days[0].groups.find((group) => group.label === 'Stay');
+  assert.ok(stayGroup);
+  assert.equal(stayGroup.items[0].title, 'Active Planner Hotel');
+});
+
+test('proposal V3 maps active planner guide transport meal activity and entrance services into Day by Day', () => {
+  const transportItem = createTransportPdfItem({ id: 'active-transport-item', itineraryId: null });
+  const guideItem = createGuidePdfItem({ id: 'active-guide-item', itineraryId: null });
+  const mealItem = createMealPdfItem({ id: 'active-meal-item', itineraryId: null });
+  const activityItem = createActivityPdfItem({ id: 'active-activity-item', itineraryId: null });
+  const entranceItem = createEntrancePdfItem({ id: 'active-entrance-item', itineraryId: null });
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [transportItem, guideItem, mealItem, activityItem, entranceItem],
+      quoteItineraryDays: [
+        createPlannerDay({
+          dayItems: [
+            createPlannerDayItem(transportItem, { sortOrder: 1 }),
+            createPlannerDayItem(guideItem, { sortOrder: 2 }),
+            createPlannerDayItem(mealItem, { sortOrder: 3 }),
+            createPlannerDayItem(activityItem, { sortOrder: 4 }),
+            createPlannerDayItem(entranceItem, { sortOrder: 5 }),
+          ],
+        }),
+      ],
+    }),
+  );
+
+  const labels = proposal.days[0].groups.map((group) => group.label);
+  assert.deepEqual(labels, ['Transfer', 'Experience', 'Meal', 'Guide']);
+  assert.match(JSON.stringify(proposal.days[0]), /QAIA to Petra/);
+  assert.match(JSON.stringify(proposal.days[0]), /Licensed local guide/);
+  assert.match(JSON.stringify(proposal.days[0]), /Lunch at local restaurant/);
+  assert.match(JSON.stringify(proposal.days[0]), /Petra by Night/);
+  const experienceGroup = proposal.days[0].groups.find((group) => group.label === 'Experience');
+  assert.ok(experienceGroup);
+  assert.ok(experienceGroup.items.some((item) => item.title === 'Jerash Entrance Ticket'));
+});
+
+test('proposal V3 falls back to legacy QuoteItem itineraryId mapping when active planner days are absent', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [createHotelPdfItem()],
+      quoteItineraryDays: [],
+    }),
+  );
+
+  assert.equal(proposal.accommodationRows.length, 1);
+  assert.equal(proposal.accommodationRows[0].hotelName, 'Grand Petra Hotel');
+  const stayGroup = proposal.days[0].groups.find((group) => group.label === 'Stay');
+  assert.ok(stayGroup);
+  assert.equal(stayGroup.items[0].title, 'Grand Petra Hotel');
 });
 
 test('proposal PDF export shows transport sell context without leaking supplier company or net fields', () => {

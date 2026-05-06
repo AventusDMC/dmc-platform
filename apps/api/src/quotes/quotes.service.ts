@@ -7161,6 +7161,7 @@ export class QuotesService {
       pricingSlabs,
       quoteItems,
       itineraries,
+      quoteItineraryDays,
       quoteOptions,
       scenarios,
       invoice,
@@ -7226,6 +7227,37 @@ export class QuotesService {
         },
         orderBy: { dayNumber: 'asc' },
       }), [] as any[]),
+      safeLoad('quoteItineraryDays', () => (prismaClient as any).quoteItineraryDay.findMany({
+        where: {
+          quoteId: quote.id,
+          isActive: true,
+        },
+        include: {
+          dayItems: {
+            where: { isActive: true },
+            include: {
+              quoteService: {
+                include: {
+                  service: { include: { serviceType: true } },
+                  activity: { include: { supplierCompany: true } },
+                  itinerary: true,
+                  hotel: true,
+                  contract: true,
+                  roomCategory: true,
+                  appliedVehicleRate: {
+                    include: {
+                      vehicle: true,
+                      serviceType: true,
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] as any,
+          },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { dayNumber: 'asc' }, { createdAt: 'asc' }] as any,
+      }), [] as any[]),
       safeLoad('quoteOptions', () => prismaClient.quoteOption.findMany({
         where: { quoteId: quote.id },
         include: {
@@ -7280,6 +7312,13 @@ export class QuotesService {
       pricingSlabs,
       quoteItems,
       itineraries,
+      quoteItineraryDays: quoteItineraryDays.map((day: any) => ({
+        ...day,
+        dayItems: (day.dayItems || []).map((dayItem: any) => ({
+          ...dayItem,
+          quoteService: dayItem.quoteService ? this.hydrateOneOffExternalPackageItem(dayItem.quoteService) : dayItem.quoteService,
+        })),
+      })),
       quoteOptions: quoteOptions.map((option: any) => {
         const optionQuoteItems = (option.quoteItems || []).map((item: any) => this.hydrateOneOffExternalPackageItem(item));
         return {

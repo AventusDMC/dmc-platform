@@ -75,6 +75,24 @@ export type ProposalV3QuoteItem = {
   } | null;
 };
 
+export type ProposalV3QuotePlannerDay = {
+  id: string;
+  dayNumber: number;
+  title: string;
+  notes?: string | null;
+  sortOrder?: number | null;
+  isActive?: boolean | null;
+  dayItems?: Array<{
+    id: string;
+    dayId: string;
+    quoteServiceId: string;
+    sortOrder?: number | null;
+    notes?: string | null;
+    isActive?: boolean | null;
+    quoteService?: ProposalV3QuoteItem | null;
+  }>;
+};
+
 export type ProposalV3Quote = {
   id: string;
   quoteNumber?: string | null;
@@ -90,6 +108,7 @@ export type ProposalV3Quote = {
   adults: number;
   children: number;
   quoteItems: ProposalV3QuoteItem[];
+  quoteItineraryDays?: ProposalV3QuotePlannerDay[];
   quoteOptions: Array<{
     id: string;
     kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION' | string | null;
