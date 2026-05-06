@@ -23,10 +23,11 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Sales',
     href: '/quotes',
-    match: ['/quotes', '/leads', '/contacts', '/companies', '/quote-blocks', '/import-itinerary'],
+    match: ['/quotes', '/quote-engine', '/leads', '/contacts', '/companies', '/quote-blocks', '/import-itinerary'],
     helper: 'Quotes, leads, contacts, and client companies',
     children: [
       { label: 'Quotes', href: '/quotes' },
+      { label: 'DMC Quote Engine', href: '/quote-engine' },
       { label: 'Leads', href: '/leads' },
       { label: 'Contacts', href: '/contacts' },
       { label: 'Companies', href: '/companies' },

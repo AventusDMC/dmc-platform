@@ -65,6 +65,8 @@ import { PromotionsController } from './promotions/promotions.controller';
 import { PromotionsService } from './promotions/promotions.service';
 import { QuoteBlocksController } from './quote-blocks/quote-blocks.controller';
 import { QuoteBlocksService } from './quote-blocks/quote-blocks.service';
+import { QuoteEngineController } from './quote-engine/quote-engine.controller';
+import { QuoteEngineService } from './quote-engine/quote-engine.service';
 import { QuoteItineraryModule } from './quote-itinerary/quote-itinerary.module';
 import { QuotesController } from './quotes/quotes.controller';
 import { QuotePricingService } from './quotes/quote-pricing.service';
@@ -132,6 +134,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     InvoicePortalController,
     ExportsController,
     QuoteBlocksController,
+    QuoteEngineController,
     QuotesController,
     PublicProposalsController,
     ReportsController,
@@ -187,6 +190,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     InvoicesService,
     ExportsService,
     QuoteBlocksService,
+    QuoteEngineService,
     ProposalV3Service,
     QuotePricingService,
     QuotesService,
