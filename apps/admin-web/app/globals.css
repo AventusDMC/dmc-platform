@@ -6472,6 +6472,179 @@ th.money-cell {
   gap: 1.25rem;
 }
 
+.quote-hotel-option-set {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(31, 154, 207, 0.14);
+  border-left: 4px solid #1FA3D6;
+  border-radius: 0.5rem;
+  background: #FFFFFF;
+  break-inside: avoid;
+}
+
+.quote-hotel-option-set-std {
+  border-left-color: #1FA3D6;
+}
+
+.quote-hotel-option-set-dlx {
+  border-left-color: #2563EB;
+}
+
+.quote-hotel-option-set-custom {
+  border-left-color: #64748B;
+}
+
+.quote-hotel-option-set-head,
+.quote-hotel-city-head,
+.quote-hotel-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.quote-hotel-option-set-head span,
+.quote-hotel-city-head span,
+.quote-hotel-fact-block span {
+  display: block;
+  color: rgba(30, 27, 24, 0.58);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quote-hotel-option-set-head strong,
+.quote-hotel-card-head strong {
+  display: block;
+  color: var(--text-strong);
+  line-height: 1.2;
+}
+
+.quote-hotel-option-set-head p,
+.quote-hotel-city-head p,
+.quote-hotel-card-head p,
+.quote-hotel-description {
+  margin: 0.25rem 0 0;
+  color: rgba(30, 27, 24, 0.72);
+}
+
+.quote-hotel-option-set-head > p,
+.quote-hotel-city-head p {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.quote-hotel-city-list,
+.quote-hotel-city-group,
+.quote-hotel-card-list,
+.quote-hotel-facts {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-hotel-city-group {
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.26);
+}
+
+.quote-hotel-card-list {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.quote-hotel-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.5rem;
+  background: #F9FAFB;
+  break-inside: avoid;
+}
+
+.quote-hotel-card-primary {
+  border-color: rgba(31, 163, 214, 0.38);
+  background: #FFFFFF;
+}
+
+.quote-hotel-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  border-radius: 999px;
+  color: rgba(30, 27, 24, 0.68);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quote-hotel-badge-primary {
+  border-color: rgba(31, 163, 214, 0.42);
+  color: #075985;
+  background: rgba(31, 163, 214, 0.08);
+}
+
+.quote-hotel-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.quote-hotel-meta-grid div {
+  min-width: 0;
+}
+
+.quote-hotel-meta-grid dt {
+  color: rgba(30, 27, 24, 0.54);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quote-hotel-meta-grid dd {
+  margin: 0.2rem 0 0;
+  color: var(--text-strong);
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.quote-hotel-description {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.quote-hotel-fact-block ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  color: rgba(30, 27, 24, 0.72);
+}
+
+.quote-hotel-fact-block li {
+  margin: 0.18rem 0;
+}
+
+.quote-hotel-amenity-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-left: 0 !important;
+  list-style: none;
+}
+
+.quote-hotel-amenity-list li {
+  margin: 0;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: #FFFFFF;
+  font-size: 0.8rem;
+}
+
 .quote-client-info-card,
 .quote-client-itinerary-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 253, 252, 0.98));

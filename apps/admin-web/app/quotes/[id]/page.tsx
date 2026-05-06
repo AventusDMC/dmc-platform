@@ -18,6 +18,7 @@ import { QuoteSummaryPanel } from './QuoteSummaryPanel';
 import { ShareQuoteButton } from './ShareQuoteButton';
 import { SaveQuoteVersionButton } from './SaveQuoteVersionButton';
 import { SendQuoteButton } from './SendQuoteButton';
+import { QuoteHotelOptionSets } from './QuoteHotelOptionSets';
 import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
@@ -114,6 +115,13 @@ type Hotel = {
   city: string;
   category: string;
   hotelCategoryId?: string | null;
+  factSheet?: {
+    shortDescription?: string | null;
+    highlightsJson?: unknown;
+    amenitiesJson?: unknown;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+  } | null;
   roomCategories: {
     id: string;
     name: string;
@@ -348,9 +356,30 @@ type QuoteItem = {
   } | null;
 };
 
+type QuoteHotelOption = {
+  id: string;
+  quoteOptionId: string;
+  city: string;
+  hotelId: string | null;
+  roomCategoryId?: string | null;
+  hotelNameSnapshot: string;
+  roomType: string;
+  mealPlan: string;
+  mealPlanCode?: 'RO' | 'BB' | 'HB' | 'FB' | 'AI' | null;
+  nights: number;
+  isPrimary: boolean;
+  notes: string | null;
+  roomCategory?: {
+    id: string;
+    name: string;
+    code: string | null;
+  } | null;
+};
+
 type QuoteOption = {
   id: string;
   quoteId: string;
+  kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION';
   name: string;
   notes: string | null;
   hotelCategoryId: string | null;
@@ -362,6 +391,7 @@ type QuoteOption = {
   totalSell: number;
   profit: number;
   pricePerPax: number;
+  hotelOptions: QuoteHotelOption[];
   quoteItems: QuoteItem[];
 };
 
@@ -676,6 +706,14 @@ async function safeQuoteDetailTransportFetch<T>(
   return safeQuoteDetailFetch(label, fallback, load, {
     timeoutMs: QUOTE_DETAIL_TRANSPORT_FETCH_TIMEOUT_MS,
     retries: 1,
+  });
+}
+
+function skippedQuoteDetailFetch<T>(label: string, data: T): Promise<OptionalQuoteDetailFetchResult<T>> {
+  return Promise.resolve({
+    status: 'ok',
+    label,
+    data,
   });
 }
 
@@ -997,6 +1035,7 @@ function normalizeQuoteDetail(quote: Quote): Quote {
     quoteOptions: Array.isArray(quote.quoteOptions)
       ? quote.quoteOptions.map((option) => ({
           ...option,
+          hotelOptions: Array.isArray(option.hotelOptions) ? option.hotelOptions : [],
           quoteItems: Array.isArray(option.quoteItems) ? option.quoteItems.map((item) => normalizeQuoteItem(item)) : [],
         }))
       : [],
@@ -1446,6 +1485,20 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const session = readSessionActor((await cookies()).get('dmc_session')?.value || '');
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
+  const shouldLoadHotelPlanningData =
+    activeTab === 'hotels' ||
+    resolvedSearchParams?.addCategory === 'hotel' ||
+    Boolean(
+      resolvedSearchParams?.catalogHotelId ||
+        resolvedSearchParams?.catalogContractId ||
+        resolvedSearchParams?.catalogRoomCategoryId ||
+        resolvedSearchParams?.catalogMealPlan ||
+        resolvedSearchParams?.catalogOccupancyType ||
+        resolvedSearchParams?.catalogRateCost ||
+        resolvedSearchParams?.catalogRateCurrency ||
+        resolvedSearchParams?.catalogRateNote,
+    );
+  const shouldLoadHotelCategories = activeTab === 'pricing';
   const [
     quoteSettled,
     servicesSettled,
@@ -1472,15 +1525,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
     safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
     safeQuoteDetailTransportFetch('supplier rate cards', [] as TransportSupplierRateCard[], getSupplierRateCards),
-    safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels),
-    safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts),
-    safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates),
+    shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels) : skippedQuoteDetailFetch('hotels', [] as Hotel[]),
+    shouldLoadHotelPlanningData
+      ? safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts)
+      : skippedQuoteDetailFetch('hotel contracts', [] as HotelContract[]),
+    shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates) : skippedQuoteDetailFetch('hotel rates', [] as HotelRate[]),
     safeQuoteDetailFetch('seasons', [] as Season[], getSeasons),
     safeQuoteDetailFetch('companies', [] as Company[], getCompanies),
     safeQuoteDetailFetch('contacts', [] as Contact[], getContacts),
     safeQuoteDetailFetch('users', [] as User[], getUsers),
     getVersions(id),
-    safeQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[], getHotelCategories),
+    shouldLoadHotelCategories
+      ? safeQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[], getHotelCategories)
+      : skippedQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[]),
     safeQuoteDetailFetch('support text templates', [] as SupportTextTemplate[], getSupportTextTemplates),
     safeQuoteDetailFetch('quote blocks', [] as QuoteBlock[], getQuoteBlocks),
     getQuoteItinerary(id),
@@ -2193,6 +2250,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   </Link>
                 </div>
               </section>
+              <QuoteHotelOptionSets
+                apiBaseUrl={ACTION_API_BASE_URL}
+                quoteId={quote.id}
+                quoteOptions={quote.quoteOptions}
+                hotels={hotels}
+              />
               {renderQuoteServicePlanner('hotel')}
               {guidedStepFooter}
             </div>

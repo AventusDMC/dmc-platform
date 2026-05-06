@@ -44,6 +44,7 @@ type QuoteItem = {
 
 type QuoteOption = {
   id: string;
+  kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION';
   name: string;
   notes: string | null;
   hotelCategoryId: string | null;
@@ -533,7 +534,8 @@ export function QuotePricingTable({
         : null,
     ].filter(Boolean) as string[];
 
-    const optionRows: PricingRow[] = quote.quoteOptions.map((option) => {
+    const commercialQuoteOptions = quote.quoteOptions.filter((option) => option.kind !== 'HOTEL_OPTION_SET');
+    const optionRows: PricingRow[] = commercialQuoteOptions.map((option) => {
       const optionMissingPriceCount = countItemsMissingPrice(option.quoteItems);
       const optionMissingCostCount = countItemsMissingCost(option.quoteItems);
       const optionMissingSellCount = countItemsMissingSell(option.quoteItems);
@@ -704,7 +706,7 @@ export function QuotePricingTable({
         pricePerPax: quote.pricingMode === 'SLAB' ? quote.pricePerPax : quote.fixedPricePerPerson,
         issueMessages: modelIssueMessages,
         hasPromotions:
-          hasRowPromotion(quote.quoteItems) || quote.quoteOptions.some((option) => hasRowPromotion(option.quoteItems)),
+          hasRowPromotion(quote.quoteItems) || commercialQuoteOptions.some((option) => hasRowPromotion(option.quoteItems)),
         itemIds: [],
         detail: (
           <InlineRowEditorShell>

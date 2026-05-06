@@ -12,6 +12,15 @@ type CreateHotelBody = {
 
 type UpdateHotelBody = Partial<CreateHotelBody>;
 
+type UpsertHotelFactSheetBody = {
+  shortDescription?: string | null;
+  highlightsJson?: unknown;
+  amenitiesJson?: unknown;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  imageGalleryJson?: unknown;
+};
+
 type CreateHotelRoomCategoryBody = {
   name: string;
   code?: string;
@@ -43,6 +52,11 @@ export class HotelsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: UpdateHotelBody) {
     return this.hotelsService.update(id, body);
+  }
+
+  @Patch(':id/fact-sheet')
+  upsertFactSheet(@Param('id') id: string, @Body() body: UpsertHotelFactSheetBody) {
+    return this.hotelsService.upsertFactSheet(id, body);
   }
 
   @Delete(':id')

@@ -8,6 +8,7 @@ import {
   HotelMealPlan,
   HotelOccupancyType,
   Prisma,
+  QuoteOptionKind,
   QuoteOptionPricingMode,
   QuoteStatus,
   ServiceUnitType,
@@ -208,6 +209,7 @@ type GenerateQuoteScenariosInput = {
 
 type CreateQuoteOptionInput = {
   quoteId: string;
+  kind?: QuoteOptionKind;
   name?: string;
   notes?: string;
   hotelCategoryId?: string | null;
@@ -222,6 +224,25 @@ type UpdateQuoteOptionInput = {
   pricingMode?: QuoteOptionPricingMode;
   packageMarginPercent?: number | null;
 };
+
+type QuoteOptionKindGuard = {
+  expectedKind?: QuoteOptionKind;
+};
+
+type CreateQuoteHotelOptionInput = {
+  city?: string;
+  hotelId?: string | null;
+  roomCategoryId?: string | null;
+  hotelNameSnapshot?: string;
+  roomType?: string;
+  mealPlan?: string;
+  mealPlanCode?: HotelMealPlan | null;
+  nights?: number | string;
+  isPrimary?: boolean;
+  notes?: string | null;
+};
+
+type UpdateQuoteHotelOptionInput = Partial<CreateQuoteHotelOptionInput>;
 
 type CreateQuoteVersionInput = {
   quoteId: string;
@@ -1666,7 +1687,13 @@ export class QuotesService {
         pricingSlabs: true,
         itineraries: true,
         quoteItems: true,
-        quoteOptions: true,
+        quoteOptions: {
+          include: {
+            hotelOptions: {
+              include: this.quoteHotelOptionIncludeArgs(),
+            },
+          },
+        },
         scenarios: true,
       },
     } as any)) as any;
@@ -1745,6 +1772,7 @@ export class QuotesService {
           data: {
             quoteId: created.id,
             name: option.name,
+            kind: option.kind,
             notes: option.notes,
             hotelCategoryId: option.hotelCategoryId,
             pricingMode: option.pricingMode,
@@ -1752,6 +1780,23 @@ export class QuotesService {
           } as any,
         });
         optionIdByOriginalId.set(option.id, clonedOption.id);
+        for (const hotelOption of option.hotelOptions || []) {
+          await tx.quoteHotelOption.create({
+            data: {
+              quoteOptionId: clonedOption.id,
+              city: hotelOption.city,
+              hotelId: hotelOption.hotelId,
+              roomCategoryId: hotelOption.roomCategoryId,
+              hotelNameSnapshot: hotelOption.hotelNameSnapshot,
+              roomType: hotelOption.roomType,
+              mealPlan: hotelOption.mealPlan,
+              mealPlanCode: hotelOption.mealPlanCode,
+              nights: hotelOption.nights,
+              isPrimary: hotelOption.isPrimary,
+              notes: hotelOption.notes,
+            } as any,
+          });
+        }
       }
 
       for (const slab of original.pricingSlabs || []) {
@@ -4195,6 +4240,13 @@ export class QuotesService {
     return locationTokens.length;
   }
 
+  private quoteHotelOptionIncludeArgs() {
+    return {
+      hotel: { include: { roomCategories: true, factSheet: true } },
+      roomCategory: true,
+    } as any;
+  }
+
   async findOptions(quoteId: string) {
     const quote = await this.prisma.quote.findUnique({
       where: { id: quoteId },
@@ -4208,7 +4260,7 @@ export class QuotesService {
       throw new BadRequestException('Quote not found');
     }
 
-    const options = await this.prisma.quoteOption.findMany({
+    const options = await (this.prisma.quoteOption as any).findMany({
       where: { quoteId },
       orderBy: {
         createdAt: 'asc',
@@ -4216,18 +4268,24 @@ export class QuotesService {
       include: {
         hotelCategory: true,
         quoteItems: true,
+        hotelOptions: {
+          orderBy: [{ city: 'asc' }, { isPrimary: 'desc' }, { hotelNameSnapshot: 'asc' }],
+          include: this.quoteHotelOptionIncludeArgs(),
+        },
       },
     });
 
-    return options.map((option) => ({
+    return options.map((option: any) => ({
       id: option.id,
       quoteId: option.quoteId,
+      kind: option.kind,
       name: option.name,
       notes: option.notes,
       hotelCategoryId: option.hotelCategoryId,
       hotelCategory: option.hotelCategory,
       pricingMode: option.pricingMode,
       packageMarginPercent: option.packageMarginPercent,
+      hotelOptions: option.hotelOptions,
       createdAt: option.createdAt,
       updatedAt: option.updatedAt,
       ...this.calculateOptionTotals(option, quote.adults + quote.children),
@@ -4237,9 +4295,10 @@ export class QuotesService {
   createOption(data: CreateQuoteOptionInput, actor?: CompanyScopedActor) {
     return this.assertQuoteMutationAccess(data.quoteId, actor).then(() =>
       this.resolveQuoteOptionName(data.name, data.hotelCategoryId).then(({ hotelCategoryId, name }) =>
-      this.prisma.quoteOption.create({
+      (this.prisma.quoteOption as any).create({
         data: {
           quoteId: data.quoteId,
+          kind: data.kind ?? QuoteOptionKind.COMMERCIAL_OPTION,
           name,
           notes: data.notes || null,
           hotelCategoryId,
@@ -4251,6 +4310,10 @@ export class QuotesService {
         },
         include: {
           hotelCategory: true,
+          hotelOptions: {
+            orderBy: [{ city: 'asc' }, { isPrimary: 'desc' }, { hotelNameSnapshot: 'asc' }],
+            include: this.quoteHotelOptionIncludeArgs(),
+          },
         },
       }),
     ).then((option) => ({
@@ -4286,7 +4349,7 @@ export class QuotesService {
       option.name,
     );
 
-    return this.prisma.quoteOption.update({
+    return (this.prisma.quoteOption as any).update({
       where: { id: optionId },
       data: {
         name: resolvedName.name,
@@ -4308,8 +4371,12 @@ export class QuotesService {
       },
       include: {
         hotelCategory: true,
+        hotelOptions: {
+          orderBy: [{ city: 'asc' }, { isPrimary: 'desc' }, { hotelNameSnapshot: 'asc' }],
+          include: this.quoteHotelOptionIncludeArgs(),
+        },
       },
-    }).then(async (updatedOption) => {
+    }).then(async (updatedOption: any) => {
       const quote = await this.prisma.quote.findUnique({
         where: { id: updatedOption.quoteId },
         select: {
@@ -4337,14 +4404,91 @@ export class QuotesService {
     });
   }
 
-  async removeOption(quoteId: string, optionId: string, actor?: CompanyScopedActor) {
-    await this.ensureOptionBelongsToQuote(quoteId, optionId, actor);
+  async removeOption(quoteId: string, optionId: string, actor?: CompanyScopedActor, options: QuoteOptionKindGuard = {}) {
+    await this.ensureOptionBelongsToQuote(quoteId, optionId, actor, options);
 
     await this.prisma.quoteOption.delete({
       where: { id: optionId },
     });
 
     return { id: optionId };
+  }
+
+  async createHotelOptionAlternative(quoteId: string, optionId: string, data: CreateQuoteHotelOptionInput, actor?: CompanyScopedActor) {
+    await this.ensureHotelOptionSetBelongsToQuote(quoteId, optionId, actor);
+    const payload = await this.buildHotelOptionAlternativeData(data);
+
+    if (!payload.isPrimary) {
+      return (this.prisma.quoteHotelOption as any).create({
+        data: {
+          quoteOptionId: optionId,
+          ...payload,
+        },
+        include: this.quoteHotelOptionIncludeArgs(),
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.quoteHotelOption.updateMany({
+        where: { quoteOptionId: optionId, city: payload.city },
+        data: { isPrimary: false },
+      });
+      return (tx.quoteHotelOption as any).create({
+        data: {
+          quoteOptionId: optionId,
+          ...payload,
+        },
+        include: this.quoteHotelOptionIncludeArgs(),
+      });
+    });
+  }
+
+  async updateHotelOptionAlternative(quoteId: string, optionId: string, hotelOptionId: string, data: UpdateQuoteHotelOptionInput, actor?: CompanyScopedActor) {
+    await this.ensureHotelOptionSetBelongsToQuote(quoteId, optionId, actor);
+    const existing = await this.prisma.quoteHotelOption.findFirst({
+      where: { id: hotelOptionId, quoteOptionId: optionId },
+    });
+
+    if (!existing) {
+      throw new BadRequestException('Hotel option not found');
+    }
+
+    const payload = await this.buildHotelOptionAlternativeData(data, existing);
+
+    if (payload.isPrimary !== true) {
+      return (this.prisma.quoteHotelOption as any).update({
+        where: { id: hotelOptionId },
+        data: payload,
+        include: this.quoteHotelOptionIncludeArgs(),
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.quoteHotelOption.updateMany({
+        where: { quoteOptionId: optionId, city: payload.city, id: { not: hotelOptionId } },
+        data: { isPrimary: false },
+      });
+      return (tx.quoteHotelOption as any).update({
+        where: { id: hotelOptionId },
+        data: payload,
+        include: this.quoteHotelOptionIncludeArgs(),
+      });
+    });
+  }
+
+  async removeHotelOptionAlternative(quoteId: string, optionId: string, hotelOptionId: string, actor?: CompanyScopedActor) {
+    await this.ensureHotelOptionSetBelongsToQuote(quoteId, optionId, actor);
+    const existing = await this.prisma.quoteHotelOption.findFirst({
+      where: { id: hotelOptionId, quoteOptionId: optionId },
+    });
+
+    if (!existing) {
+      throw new BadRequestException('Hotel option not found');
+    }
+
+    await this.prisma.quoteHotelOption.delete({ where: { id: hotelOptionId } });
+
+    return { id: hotelOptionId };
   }
 
   async findOptionItems(quoteId: string, optionId: string) {
@@ -5316,6 +5460,103 @@ export class QuotesService {
     return normalized;
   }
 
+  private normalizeRequiredText(value: unknown, fieldName: string) {
+    const text = String(value || '').trim();
+    if (!text) {
+      throw new BadRequestException(`${fieldName} is required`);
+    }
+    return text;
+  }
+
+  private async buildHotelOptionAlternativeData(data: UpdateQuoteHotelOptionInput, existing?: {
+    city: string;
+    hotelId: string | null;
+    roomCategoryId?: string | null;
+    hotelNameSnapshot: string;
+    roomType: string;
+    mealPlan: string;
+    mealPlanCode?: HotelMealPlan | null;
+    nights: number;
+    isPrimary: boolean;
+    notes: string | null;
+  }) {
+    const hotelId = data.hotelId === undefined ? existing?.hotelId ?? null : data.hotelId || null;
+    const hotel = hotelId
+      ? await this.prisma.hotel.findUnique({
+          where: { id: hotelId },
+          select: { id: true, name: true, city: true },
+        })
+      : null;
+
+    if (hotelId && !hotel) {
+      throw new BadRequestException('Hotel not found');
+    }
+
+    const hotelChanged = data.hotelId !== undefined && hotelId !== (existing?.hotelId ?? null);
+    const roomCategoryId =
+      data.roomCategoryId === undefined
+        ? hotelChanged
+          ? null
+          : existing?.roomCategoryId ?? null
+        : data.roomCategoryId || null;
+
+    if (roomCategoryId && !hotelId) {
+      throw new BadRequestException('Hotel is required when selecting a room category');
+    }
+
+    const roomCategory = roomCategoryId
+      ? await this.prisma.hotelRoomCategory.findUnique({
+          where: { id: roomCategoryId },
+          select: { id: true, hotelId: true, name: true },
+        })
+      : null;
+
+    if (roomCategoryId && (!roomCategory || roomCategory.hotelId !== hotelId)) {
+      throw new BadRequestException('Room category does not belong to the selected hotel');
+    }
+
+    const mealPlanCode = this.normalizeQuoteHotelMealPlanCode(
+      data.mealPlanCode === undefined ? existing?.mealPlanCode ?? null : data.mealPlanCode,
+    );
+
+    const city =
+      data.city === undefined
+        ? existing?.city || hotel?.city
+        : String(data.city || '').trim() || hotel?.city;
+    const hotelNameSnapshot =
+      data.hotelNameSnapshot === undefined
+        ? existing?.hotelNameSnapshot || hotel?.name
+        : String(data.hotelNameSnapshot || '').trim() || hotel?.name;
+    const nightsInput = data.nights === undefined ? existing?.nights ?? 1 : Number(data.nights);
+    const nights = this.normalizeOptionalPositiveInteger(nightsInput, 'nights') ?? 1;
+
+    return {
+      city: this.normalizeRequiredText(city, 'city'),
+      hotelId,
+      roomCategoryId,
+      hotelNameSnapshot: this.normalizeRequiredText(hotelNameSnapshot, 'hotelNameSnapshot'),
+      roomType: data.roomType === undefined ? existing?.roomType || roomCategory?.name || 'Standard' : this.normalizeRequiredText(data.roomType, 'roomType'),
+      mealPlan: data.mealPlan === undefined ? existing?.mealPlan || mealPlanCode || 'BB' : this.normalizeRequiredText(data.mealPlan, 'mealPlan'),
+      mealPlanCode,
+      nights,
+      isPrimary: data.isPrimary === undefined ? existing?.isPrimary ?? false : Boolean(data.isPrimary),
+      notes: data.notes === undefined ? existing?.notes ?? null : String(data.notes || '').trim() || null,
+    };
+  }
+
+  private normalizeQuoteHotelMealPlanCode(value: HotelMealPlan | string | null | undefined) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const normalized = String(value).trim().toUpperCase();
+    if (!Object.values(HotelMealPlan).includes(normalized as HotelMealPlan)) {
+      throw new BadRequestException('Unknown meal plan code');
+    }
+
+    return normalized as HotelMealPlan;
+  }
+
   private normalizeQuoteItemOperationalText(value: string | null | undefined) {
     if (value === undefined || value === null) {
       return null;
@@ -5429,7 +5670,7 @@ export class QuotesService {
     return value === 'half_day' ? 'Half day' : 'Full day';
   }
 
-  private async ensureOptionBelongsToQuote(quoteId: string, optionId: string, actor?: CompanyScopedActor) {
+  private async ensureOptionBelongsToQuote(quoteId: string, optionId: string, actor?: CompanyScopedActor, options: QuoteOptionKindGuard = {}) {
     const quote = await this.assertQuoteMutationAccess(quoteId, actor);
     const option = await this.prisma.quoteOption.findFirst({
       where: {
@@ -5442,7 +5683,21 @@ export class QuotesService {
       throw new BadRequestException('Quote option not found');
     }
 
+    if (options.expectedKind && option.kind !== options.expectedKind) {
+      throw new BadRequestException(
+        options.expectedKind === QuoteOptionKind.HOTEL_OPTION_SET
+          ? 'Hotel option set not found'
+          : 'Quote option not found',
+      );
+    }
+
     return option;
+  }
+
+  private ensureHotelOptionSetBelongsToQuote(quoteId: string, optionId: string, actor?: CompanyScopedActor) {
+    return this.ensureOptionBelongsToQuote(quoteId, optionId, actor, {
+      expectedKind: QuoteOptionKind.HOTEL_OPTION_SET,
+    });
   }
 
   private async assertQuoteMutationAccess(
@@ -6975,6 +7230,10 @@ export class QuotesService {
         where: { quoteId: quote.id },
         include: {
           hotelCategory: true,
+          hotelOptions: {
+            orderBy: [{ city: 'asc' }, { isPrimary: 'desc' }, { hotelNameSnapshot: 'asc' }],
+            include: this.quoteHotelOptionIncludeArgs(),
+          },
           quoteItems: {
             include: {
               service: { include: { serviceType: true } },

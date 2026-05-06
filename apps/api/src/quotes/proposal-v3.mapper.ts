@@ -3,6 +3,7 @@ import {
   ProposalV3AccommodationRow,
   ProposalV3Day,
   ProposalV3DayGroup,
+  ProposalV3HotelOptionSet,
   ProposalV3InvestmentRow,
   ProposalV3Quote,
   ProposalV3QuoteItem,
@@ -214,28 +215,49 @@ function getAccentColor(quote: ProposalV3Quote) {
   return quote.brandCompany?.branding?.primaryColor || quote.clientCompany?.branding?.primaryColor || AXIS_PRIMARY_COLOR;
 }
 
-function isHotelItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+type NullableProposalV3QuoteItem = ProposalV3QuoteItem | null | undefined;
+
+function isPresentQuoteItem(item: NullableProposalV3QuoteItem): item is ProposalV3QuoteItem {
+  return Boolean(item && item.service);
+}
+
+function getItemServiceClassification(item: NullableProposalV3QuoteItem) {
+  return normalizeComparisonText(item?.service?.serviceType?.code || item?.service?.serviceType?.name || item?.service?.category);
+}
+
+function sanitizeQuoteItems(quote: ProposalV3Quote): ProposalV3QuoteItem[] {
+  return (quote.quoteItems || []).filter(isPresentQuoteItem);
+}
+
+function withSanitizedQuoteItems(quote: ProposalV3Quote): ProposalV3Quote {
+  return {
+    ...quote,
+    quoteItems: sanitizeQuoteItems(quote),
+  };
+}
+
+function isHotelItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item);
   return normalized.includes('hotel') || normalized.includes('accommodation');
 }
 
-function isTransportItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+function isTransportItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item);
   return normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle');
 }
 
-function isGuideItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+function isGuideItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item);
   return normalized.includes('guide');
 }
 
-function isMealItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+function isMealItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item);
   return normalized.includes('meal') || normalized.includes('breakfast') || normalized.includes('lunch') || normalized.includes('dinner');
 }
 
-function isActivityItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+function isActivityItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item);
   return (
     normalized.includes('activity') ||
     normalized.includes('tour') ||
@@ -245,8 +267,8 @@ function isActivityItem(item: ProposalV3QuoteItem) {
   );
 }
 
-function isExternalPackageItem(item: ProposalV3QuoteItem) {
-  const normalized = normalizeComparisonText(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category).replace(/\s+/g, '_');
+function isExternalPackageItem(item: NullableProposalV3QuoteItem) {
+  const normalized = getItemServiceClassification(item).replace(/\s+/g, '_');
   return normalized === 'external_package' || normalized.includes('external_package') || normalized.includes('partner_package');
 }
 
@@ -333,6 +355,62 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
   }
 
   return rows;
+}
+
+function listFactSheetValues(value: unknown) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => cleanText(String(entry || ''))).filter(Boolean);
+  }
+
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>)
+      .map((entry) => cleanText(String(entry || '')))
+      .filter(Boolean);
+  }
+
+  return String(value)
+    .split(/\r?\n|,/)
+    .map((entry) => cleanText(entry))
+    .filter(Boolean);
+}
+
+function getPositiveOptionNights(value: number | null | undefined) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function buildHotelOptionSets(quote: ProposalV3Quote): ProposalV3HotelOptionSet[] {
+  return (quote.quoteOptions || [])
+    .filter((option) => option.kind === 'HOTEL_OPTION_SET')
+    .map((option) => {
+      const hotelOptions = Array.isArray(option.hotelOptions) ? option.hotelOptions : [];
+
+      return {
+        id: option.id,
+        name: cleanText(option.name || '') || 'Hotel option set',
+        notes: cleanText(option.notes || '') || null,
+        options: hotelOptions.map((hotelOption) => {
+          const factSheet = hotelOption.hotel?.factSheet || null;
+
+          return {
+            id: hotelOption.id,
+            city: cleanText(hotelOption.city || hotelOption.hotel?.city || '') || null,
+            hotelName: cleanText(hotelOption.hotelNameSnapshot || hotelOption.hotel?.name || '') || 'Hotel or similar',
+            room: cleanText(hotelOption.roomCategory?.name || hotelOption.roomType || '') || null,
+            mealPlan: cleanText(hotelOption.mealPlanCode || hotelOption.mealPlan || '') || null,
+            nights: getPositiveOptionNights(hotelOption.nights),
+            isPrimary: Boolean(hotelOption.isPrimary),
+            shortDescription: cleanText(factSheet?.shortDescription || '') || null,
+            highlights: listFactSheetValues(factSheet?.highlightsJson).slice(0, 4),
+            amenities: listFactSheetValues(factSheet?.amenitiesJson).slice(0, 6),
+          };
+        }),
+      };
+    });
 }
 
 function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[], currency = 'USD'): ProposalV3DayGroup[] {
@@ -793,6 +871,7 @@ function formatDurationLabel(dayCount: number, nightCount: number) {
 }
 
 export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewModel {
+  quote = withSanitizedQuoteItems(quote);
   const sortedDays = [...quote.itineraries].sort((a, b) => a.dayNumber - b.dayNumber);
   const days = buildDays(quote);
   const totalPax = quote.adults + quote.children;
@@ -848,6 +927,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     journeySummary,
     highlights: buildHighlights(quote, destinationLine),
     accommodationRows: buildAccommodationRows(quote),
+    hotelOptionSets: buildHotelOptionSets(quote),
     days,
     investment: buildInvestment(quote, currency),
     inclusions: parseSupportTextList(quote.inclusionsText).length

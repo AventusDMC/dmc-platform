@@ -479,6 +479,101 @@ body {
   background: #F9FAFB;
 }
 
+.proposal-hotel-options {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.proposal-hotel-option-set-list,
+.proposal-hotel-option-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.proposal-hotel-option-set {
+  padding: 16px;
+  border: 1px solid var(--proposal-border);
+  border-left: 4px solid var(--proposal-accent);
+  border-radius: 14px;
+  background: var(--proposal-paper-soft-2);
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}
+
+.proposal-hotel-option-set-head,
+.proposal-hotel-option-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.proposal-hotel-option-set-head h4,
+.proposal-hotel-option-card-head h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.proposal-hotel-option-set-head p,
+.proposal-hotel-option-card-head p,
+.proposal-hotel-option-description,
+.proposal-hotel-option-facts p,
+.proposal-hotel-option-empty {
+  margin: 4px 0 0;
+  color: var(--proposal-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.proposal-hotel-option-set-head span,
+.proposal-hotel-option-badge,
+.proposal-hotel-option-facts span {
+  color: var(--proposal-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.proposal-hotel-option-card {
+  padding: 14px;
+  border: 1px solid var(--proposal-border);
+  border-radius: 12px;
+  background: #FFFFFF;
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}
+
+.proposal-hotel-option-card-primary {
+  border-color: var(--proposal-border-strong);
+}
+
+.proposal-hotel-option-badge {
+  display: inline-block;
+  padding: 4px 7px;
+  border: 1px solid rgba(31, 163, 214, 0.24);
+  border-radius: 999px;
+}
+
+.proposal-hotel-option-badge-primary {
+  background: var(--proposal-accent-soft);
+}
+
+.proposal-hotel-option-facts {
+  margin-top: 10px;
+}
+
+.proposal-hotel-option-facts ul {
+  margin: 5px 0 0;
+  padding-left: 16px;
+  color: var(--proposal-subtle);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .proposal-section-intro {
   margin-bottom: 14px;
 }

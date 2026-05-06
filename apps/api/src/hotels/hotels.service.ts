@@ -14,6 +14,15 @@ type CreateHotelInput = {
 
 type UpdateHotelInput = Partial<CreateHotelInput>;
 
+type UpsertHotelFactSheetInput = {
+  shortDescription?: string | null;
+  highlightsJson?: unknown;
+  amenitiesJson?: unknown;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  imageGalleryJson?: unknown;
+};
+
 type CreateHotelRoomCategoryInput = {
   hotelId: string;
   name: string;
@@ -29,9 +38,10 @@ export class HotelsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    const hotels = await this.prisma.hotel.findMany({
+    const hotels = await (this.prisma.hotel as any).findMany({
       include: {
         cityRecord: true,
+        factSheet: true,
         hotelCategory: true,
         roomCategories: {
           orderBy: [
@@ -55,14 +65,15 @@ export class HotelsService {
       },
     });
 
-    return Promise.all(hotels.map((hotel) => this.serializeHotel(hotel)));
+    return Promise.all(hotels.map((hotel: any) => this.serializeHotel(hotel)));
   }
 
   async findOne(id: string) {
-    const hotel = await this.prisma.hotel.findUnique({
+    const hotel = await (this.prisma.hotel as any).findUnique({
       where: { id },
       include: {
         cityRecord: true,
+        factSheet: true,
         hotelCategory: true,
         roomCategories: {
           include: {
@@ -92,7 +103,7 @@ export class HotelsService {
       },
     });
 
-    return this.serializeHotel(throwIfNotFound(hotel, 'Hotel'));
+    return this.serializeHotel(throwIfNotFound(hotel, 'Hotel') as any);
   }
 
   async create(data: CreateHotelInput) {
@@ -103,7 +114,7 @@ export class HotelsService {
     });
     await this.warnUnresolvedSupplierId(data.supplierId, 'create');
 
-    const hotel = await this.prisma.hotel.create({
+    const hotel = await (this.prisma.hotel as any).create({
       data: {
         name: requireTrimmedString(data.name, 'name'),
         cityId: cityDetails.cityId,
@@ -114,15 +125,16 @@ export class HotelsService {
       },
       include: {
         cityRecord: true,
+        factSheet: true,
         hotelCategory: true,
       },
     });
 
-    return this.serializeHotel(hotel);
+    return this.serializeHotel(hotel as any);
   }
 
   async update(id: string, data: UpdateHotelInput) {
-    const existing = await this.findOne(id);
+    const existing = (await this.findOne(id)) as any;
     const cityDetails =
       data.city !== undefined || data.cityId !== undefined
         ? await this.resolveCity({
@@ -142,7 +154,7 @@ export class HotelsService {
       await this.warnUnresolvedSupplierId(data.supplierId, 'update');
     }
 
-    const hotel = await this.prisma.hotel.update({
+    const hotel = await (this.prisma.hotel as any).update({
       where: { id },
       data: {
         name: data.name === undefined ? undefined : requireTrimmedString(data.name, 'name'),
@@ -154,11 +166,25 @@ export class HotelsService {
       },
       include: {
         cityRecord: true,
+        factSheet: true,
         hotelCategory: true,
       },
     });
 
-    return this.serializeHotel(hotel);
+    return this.serializeHotel(hotel as any);
+  }
+
+  async upsertFactSheet(hotelId: string, data: UpsertHotelFactSheetInput) {
+    await this.findOne(hotelId);
+
+    return (this.prisma as any).hotelFactSheet.upsert({
+      where: { hotelId },
+      create: {
+        hotelId,
+        ...this.buildFactSheetData(data),
+      },
+      update: this.buildFactSheetData(data),
+    });
   }
 
   async remove(id: string) {
@@ -238,6 +264,14 @@ export class HotelsService {
 
     blockDelete('hotel room category', 'hotel rates', existingCategory._count.hotelRates);
     blockDelete('hotel room category', 'quote items', existingCategory._count.quoteItems);
+    const quoteHotelOptionCount = await (this.prisma as any).quoteHotelOption.count({
+      where: {
+        roomCategoryId: categoryId,
+      },
+    });
+    if (quoteHotelOptionCount > 0) {
+      throw new BadRequestException('This room category is used in quote hotel options and cannot be deleted.');
+    }
 
     return this.prisma.hotelRoomCategory.delete({
       where: { id: categoryId },
@@ -270,6 +304,25 @@ export class HotelsService {
       cityId: null,
       cityName: trimmedCity,
     };
+  }
+
+  private buildFactSheetData(data: UpsertHotelFactSheetInput) {
+    return {
+      shortDescription: data.shortDescription === undefined ? undefined : normalizeOptionalString(data.shortDescription),
+      highlightsJson: data.highlightsJson === undefined ? undefined : this.normalizeOptionalJson(data.highlightsJson),
+      amenitiesJson: data.amenitiesJson === undefined ? undefined : this.normalizeOptionalJson(data.amenitiesJson),
+      checkInTime: data.checkInTime === undefined ? undefined : normalizeOptionalString(data.checkInTime),
+      checkOutTime: data.checkOutTime === undefined ? undefined : normalizeOptionalString(data.checkOutTime),
+      imageGalleryJson: data.imageGalleryJson === undefined ? undefined : this.normalizeOptionalJson(data.imageGalleryJson),
+    };
+  }
+
+  private normalizeOptionalJson(value: unknown) {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+
+    return value;
   }
 
   private async resolveHotelCategory(data: {

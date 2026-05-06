@@ -8,10 +8,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   StreamableFile,
 } from '@nestjs/common';
-import { HotelMealPlan, HotelOccupancyType, QuoteStatus } from '@prisma/client';
+import { HotelMealPlan, HotelOccupancyType, QuoteOptionKind, QuoteStatus } from '@prisma/client';
 import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { ProposalV3Service } from './proposal-v3.service';
@@ -154,6 +155,7 @@ type MoveQuoteItemBody = {
 };
 
 type CreateQuoteOptionBody = {
+  kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION';
   name?: string;
   notes?: string;
   hotelCategoryId?: string | null;
@@ -162,6 +164,21 @@ type CreateQuoteOptionBody = {
 };
 
 type UpdateQuoteOptionBody = Partial<CreateQuoteOptionBody>;
+
+type CreateQuoteHotelOptionBody = {
+  city?: string;
+  hotelId?: string | null;
+  roomCategoryId?: string | null;
+  hotelNameSnapshot?: string;
+  roomType?: string;
+  mealPlan?: string;
+  mealPlanCode?: HotelMealPlan | null;
+  nights?: number | string;
+  isPrimary?: boolean;
+  notes?: string | null;
+};
+
+type UpdateQuoteHotelOptionBody = Partial<CreateQuoteHotelOptionBody>;
 
 type GenerateQuoteScenariosBody = {
   paxCounts?: number[];
@@ -977,6 +994,7 @@ export class QuotesController {
 
     return this.quotesService.createOption({
       quoteId: id,
+      kind: body.kind === 'HOTEL_OPTION_SET' ? QuoteOptionKind.HOTEL_OPTION_SET : undefined,
       name: body.name,
       notes: body.notes,
       hotelCategoryId: body.hotelCategoryId,
@@ -1014,6 +1032,7 @@ export class QuotesController {
   async removeOption(
     @Param('id') id: string,
     @Param('optionId') optionId: string,
+    @Query('kind') kind: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION' | undefined,
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Actor() actor: AuthenticatedActor,
   ) {
@@ -1023,7 +1042,64 @@ export class QuotesController {
       throw new NotFoundException('Quote not found');
     }
 
-    return this.quotesService.removeOption(id, optionId, actor);
+    return this.quotesService.removeOption(
+      id,
+      optionId,
+      actor,
+      kind === 'HOTEL_OPTION_SET' ? { expectedKind: QuoteOptionKind.HOTEL_OPTION_SET } : undefined,
+    );
+  }
+
+  @Post(':id/options/:optionId/hotel-options')
+  @Roles('admin', 'viewer', 'finance')
+  async createHotelOptionAlternative(
+    @Param('id') id: string,
+    @Param('optionId') optionId: string,
+    @Body() body: CreateQuoteHotelOptionBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.createHotelOptionAlternative(id, optionId, body, actor);
+  }
+
+  @Patch(':id/options/:optionId/hotel-options/:hotelOptionId')
+  @Roles('admin', 'viewer', 'finance')
+  async updateHotelOptionAlternative(
+    @Param('id') id: string,
+    @Param('optionId') optionId: string,
+    @Param('hotelOptionId') hotelOptionId: string,
+    @Body() body: UpdateQuoteHotelOptionBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.updateHotelOptionAlternative(id, optionId, hotelOptionId, body, actor);
+  }
+
+  @Delete(':id/options/:optionId/hotel-options/:hotelOptionId')
+  @Roles('admin', 'viewer', 'finance')
+  async removeHotelOptionAlternative(
+    @Param('id') id: string,
+    @Param('optionId') optionId: string,
+    @Param('hotelOptionId') hotelOptionId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.removeHotelOptionAlternative(id, optionId, hotelOptionId, actor);
   }
 
   @Get(':id/options/:optionId/items')

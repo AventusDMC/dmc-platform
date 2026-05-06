@@ -11,6 +11,10 @@ type HotelContract = {
   validFrom: string;
   validTo: string;
   currency: string;
+  hotel: {
+    id: string;
+    name: string;
+  };
 };
 
 type HotelRate = {
@@ -86,6 +90,10 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
   const [activeHotelId, setActiveHotelId] = useState<string | null>(null);
   const [activeContractId, setActiveContractId] = useState<string | null>(null);
+  const [workflowContracts, setWorkflowContracts] = useState<HotelContract[]>([]);
+  const [workflowRates, setWorkflowRates] = useState<HotelRate[]>([]);
+  const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [workflowError, setWorkflowError] = useState('');
 
   const cityOptions = useMemo(
     () => Array.from(new Set(hotels.map((hotel) => hotel.city).filter(Boolean))).sort((left, right) => left.localeCompare(right)),
@@ -120,11 +128,26 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
   }, [categoryFilter, cityFilter, hotels, query]);
 
   const activeHotel = filteredHotels.find((hotel) => hotel.id === activeHotelId) || hotels.find((hotel) => hotel.id === activeHotelId) || null;
+  const activeHotelContracts = useMemo(() => {
+    if (!activeHotel) {
+      return [];
+    }
+
+    const lazyContracts = workflowContracts.filter((contract) => contract.hotel.id === activeHotel.id);
+    return lazyContracts.length > 0 ? lazyContracts : activeHotel.contracts;
+  }, [activeHotel, workflowContracts]);
   const activeContract =
-    activeHotel?.contracts.find((contract) => contract.id === activeContractId) || activeHotel?.contracts[0] || null;
+    activeHotelContracts.find((contract) => contract.id === activeContractId) || activeHotelContracts[0] || null;
   const activeRates = useMemo(
-    () => (activeHotel && activeContract ? activeHotel.rates.filter((rate) => rate.contractId === activeContract.id) : []),
-    [activeContract, activeHotel],
+    () => {
+      if (!activeHotel || !activeContract) {
+        return [];
+      }
+
+      const lazyRates = workflowRates.filter((rate) => rate.contractId === activeContract.id);
+      return lazyRates.length > 0 ? lazyRates : activeHotel.rates.filter((rate) => rate.contractId === activeContract.id);
+    },
+    [activeContract, activeHotel, workflowRates],
   );
   const quoteContext = useMemo(() => {
     if (!returnTo) {
@@ -165,6 +188,53 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeHotel]);
+
+  useEffect(() => {
+    if (!activeHotel || workflowStatus === 'loading' || workflowStatus === 'ready') {
+      return;
+    }
+
+    let cancelled = false;
+    setWorkflowStatus('loading');
+    setWorkflowError('');
+
+    Promise.all([
+      fetch('/api/hotel-contracts', { cache: 'no-store' }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Hotel contracts unavailable.');
+        }
+        return response.json() as Promise<HotelContract[]>;
+      }),
+      fetch('/api/hotel-rates', { cache: 'no-store' }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Hotel rates unavailable.');
+        }
+        return response.json() as Promise<HotelRate[]>;
+      }),
+    ])
+      .then(([contracts, rates]) => {
+        if (cancelled) {
+          return;
+        }
+
+        setWorkflowContracts(Array.isArray(contracts) ? contracts : []);
+        setWorkflowRates(Array.isArray(rates) ? rates : []);
+        setWorkflowStatus('ready');
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error('[hotels] workflow data unavailable', error);
+        setWorkflowError(error instanceof Error ? error.message : 'Hotel workflow data unavailable.');
+        setWorkflowStatus('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeHotel, workflowStatus]);
 
   return (
     <div className="catalog-browser-shell">
@@ -296,11 +366,11 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
               <div className="quote-preview-total-list quote-hotel-workflow-summary">
                 <div>
                   <span>Contracts</span>
-                  <strong>{activeHotel.contracts.length}</strong>
+                  <strong>{workflowStatus === 'loading' ? '...' : activeHotelContracts.length}</strong>
                 </div>
                 <div>
                   <span>Rates</span>
-                  <strong>{activeHotel.rates.length}</strong>
+                  <strong>{workflowStatus === 'loading' ? '...' : activeRates.length}</strong>
                 </div>
                 <div>
                   <span>Room categories</span>
@@ -334,11 +404,13 @@ export function HotelsCatalogBrowser({ hotels }: HotelsCatalogBrowserProps) {
                     <h3>Choose a contract</h3>
                   </div>
                 </div>
+                {workflowStatus === 'loading' ? <p className="detail-copy">Loading contracts and rates...</p> : null}
+                {workflowStatus === 'error' ? <p className="form-error">{workflowError || 'Could not load hotel workflow data.'}</p> : null}
                 <div className="section-stack">
-                  {activeHotel.contracts.length === 0 ? (
+                  {activeHotelContracts.length === 0 ? (
                     <p className="detail-copy">No contracts available for this hotel yet.</p>
                   ) : (
-                    activeHotel.contracts.map((contract) => (
+                    activeHotelContracts.map((contract) => (
                       <button
                         key={contract.id}
                         type="button"

@@ -90,7 +90,35 @@ export type ProposalV3Quote = {
   adults: number;
   children: number;
   quoteItems: ProposalV3QuoteItem[];
-  quoteOptions: Array<{ id: string }>;
+  quoteOptions: Array<{
+    id: string;
+    kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION' | string | null;
+    name?: string | null;
+    notes?: string | null;
+    hotelOptions?: Array<{
+      id: string;
+      city?: string | null;
+      hotelNameSnapshot?: string | null;
+      roomType?: string | null;
+      mealPlan?: string | null;
+      mealPlanCode?: 'RO' | 'BB' | 'HB' | 'FB' | 'AI' | string | null;
+      nights?: number | null;
+      isPrimary?: boolean | null;
+      roomCategory?: {
+        name?: string | null;
+        code?: string | null;
+      } | null;
+      hotel?: {
+        name?: string | null;
+        city?: string | null;
+        factSheet?: {
+          shortDescription?: string | null;
+          highlightsJson?: unknown;
+          amenitiesJson?: unknown;
+        } | null;
+      } | null;
+    }>;
+  }>;
   itineraries: Array<{
     id: string;
     dayNumber: number;
@@ -194,6 +222,26 @@ export type ProposalV3AccommodationRow = {
   note: string | null;
 };
 
+export type ProposalV3HotelOption = {
+  id: string;
+  city: string | null;
+  hotelName: string;
+  room: string | null;
+  mealPlan: string | null;
+  nights: number | null;
+  isPrimary: boolean;
+  shortDescription: string | null;
+  highlights: string[];
+  amenities: string[];
+};
+
+export type ProposalV3HotelOptionSet = {
+  id: string;
+  name: string;
+  notes: string | null;
+  options: ProposalV3HotelOption[];
+};
+
 export type ProposalV3ViewModel = {
   documentTitle: string;
   metaTitle: string;
@@ -218,6 +266,7 @@ export type ProposalV3ViewModel = {
   journeySummary: string;
   highlights: string[];
   accommodationRows: ProposalV3AccommodationRow[];
+  hotelOptionSets: ProposalV3HotelOptionSet[];
   days: ProposalV3Day[];
   investment: {
     title: string;

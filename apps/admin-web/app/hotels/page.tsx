@@ -53,10 +53,23 @@ const HOTEL_TABS: Array<{ id: HotelsTab; label: string }> = [
 
 type HotelsPageHotel = {
   id: string;
+  name: string;
+  cityId: string | null;
+  city: string;
+  hotelCategoryId: string | null;
+  category: string;
+  supplierId: string;
+  cityRecord: unknown;
+  hotelCategory: unknown;
   roomCategories: Array<{
     id: string;
+    name: string;
+    code: string | null;
     isActive: boolean;
   }>;
+  _count: {
+    contracts: number;
+  };
 };
 
 type HotelsPageContract = {
@@ -81,13 +94,6 @@ type HotelsPageContract = {
   readinessStatus?: 'draft' | 'in_progress' | 'ready';
 };
 
-type HotelsPagePromotion = {
-  id: string;
-  hotelContractId: string;
-  isActive: boolean;
-  combinable: boolean;
-};
-
 function resolveActiveTab(tab?: string): HotelsTab {
   return HOTEL_TABS.some((entry) => entry.id === tab) ? (tab as HotelsTab) : 'hotels';
 }
@@ -102,55 +108,68 @@ async function getHotels(): Promise<HotelsPageHotel[]> {
   });
 }
 
-async function getHotelContracts(): Promise<HotelsPageContract[]> {
-  return adminPageFetchJson<HotelsPageContract[]>(`${API_BASE_URL}/hotel-contracts`, 'Hotels workspace contracts', {
+async function getHotelContract(contractId: string): Promise<HotelsPageContract | null> {
+  return adminPageFetchJson<HotelsPageContract | null>(`${API_BASE_URL}/hotel-contracts/${contractId}`, 'Hotels workspace current contract', {
     cache: 'no-store',
+    allow404: true,
   });
 }
 
-async function getPromotions(): Promise<HotelsPagePromotion[]> {
-  return adminPageFetchJson<HotelsPagePromotion[]>(`${API_BASE_URL}/promotions`, 'Hotels workspace promotions', {
-    cache: 'no-store',
-  });
+async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<HotelsPageProps['searchParams']>, initialHotels?: HotelsPageHotel[]) {
+  try {
+    if (activeTab === 'hotels') {
+      return await HotelsSection({
+        initialHotels: initialHotels as any,
+        filters: {
+          cityId: params?.cityId,
+          hotelId: params?.hotelId,
+          roomCategoryId: params?.roomCategoryId,
+          status: params?.status,
+        },
+      });
+    }
+
+    if (activeTab === 'room-categories') return await RoomCategoriesSection();
+    if (activeTab === 'contracts') return await HotelContractsSection({ contractId: params?.contractId });
+    if (activeTab === 'allotments') return await HotelAllotmentsSection({ contractId: params?.contractId });
+    if (activeTab === 'rates') {
+      return await HotelRatesSection({
+        contractId: params?.contractId,
+        filters: {
+          cityId: params?.cityId,
+          hotelId: params?.hotelId,
+          contractId: params?.contractId,
+          roomCategoryId: params?.roomCategoryId,
+          mealPlan: params?.mealPlan,
+          status: params?.status,
+        },
+      });
+    }
+    if (activeTab === 'occupancy-child-policy') return await HotelOccupancyChildPolicySection({ contractId: params?.contractId });
+    if (activeTab === 'meal-plans-supplements') return await HotelMealPlansSupplementsSection({ contractId: params?.contractId });
+    if (activeTab === 'policies') return await HotelPoliciesSection({ contractId: params?.contractId });
+    if (activeTab === 'promotions') return await HotelPromotionsSection({ contractId: params?.contractId });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error(`[hotels] ${activeTab} tab unavailable`, error);
+    return (
+      <section className="detail-card">
+        <p className="eyebrow">Section unavailable</p>
+        <h2>{HOTEL_TABS.find((tab) => tab.id === activeTab)?.label || 'Hotels'} could not load</h2>
+        <p className="detail-copy">This workspace section failed to load. Other hotel tabs remain available.</p>
+      </section>
+    );
+  }
+
+  return null;
 }
 
 export default async function HotelsPage({ searchParams }: HotelsPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const [hotels, contracts, promotions] = await Promise.all([
-    getHotels().catch((error) => {
-      if (isNextRedirectError(error)) {
-        throw error;
-      }
-
-      console.error('[hotels] hotels summary unavailable', error);
-      return [] as HotelsPageHotel[];
-    }),
-    getHotelContracts().catch((error) => {
-      if (isNextRedirectError(error)) {
-        throw error;
-      }
-
-      console.error('[hotels] contracts summary unavailable', error);
-      return [] as HotelsPageContract[];
-    }),
-    getPromotions().catch((error) => {
-      if (isNextRedirectError(error)) {
-        throw error;
-      }
-
-      console.error('[hotels] promotions summary unavailable', error);
-      return [] as HotelsPagePromotion[];
-    }),
-  ]);
-  const roomCategoryCount = hotels.reduce((sum, hotel) => sum + hotel.roomCategories.length, 0);
-  const activeRoomCategoryCount = hotels.reduce(
-    (sum, hotel) => sum + hotel.roomCategories.filter((roomCategory) => roomCategory.isActive).length,
-    0,
-  );
-  const allotmentCount = contracts.reduce((sum, contract) => sum + contract._count.allotments, 0);
-  const rateCount = contracts.reduce((sum, contract) => sum + contract._count.rates, 0);
-  const activePromotionCount = promotions.filter((promotion) => promotion.isActive).length;
   const isCommercialTab =
     activeTab === 'contracts' ||
     activeTab === 'allotments' ||
@@ -159,8 +178,32 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
     activeTab === 'promotions';
-  const currentContract = resolvedSearchParams?.contractId ? contracts.find((contract) => contract.id === resolvedSearchParams.contractId) || null : null;
-  const currentContractPromotionCount = currentContract ? promotions.filter((promotion) => promotion.hotelContractId === currentContract.id).length : 0;
+  const [hotels, currentContract] = await Promise.all([
+    getHotels().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] hotels summary unavailable', error);
+      return [] as HotelsPageHotel[];
+    }),
+    isCommercialTab && resolvedSearchParams?.contractId
+      ? getHotelContract(resolvedSearchParams.contractId).catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+
+          console.error('[hotels] current contract unavailable', error);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+  const roomCategoryCount = hotels.reduce((sum, hotel) => sum + hotel.roomCategories.length, 0);
+  const activeRoomCategoryCount = hotels.reduce(
+    (sum, hotel) => sum + hotel.roomCategories.filter((roomCategory) => roomCategory.isActive).length,
+    0,
+  );
+  const contractedHotelCount = hotels.filter((hotel) => (hotel._count?.contracts || 0) > 0).length;
   const commercialDescription =
     activeTab === 'contracts'
       ? 'Manage agreement structure first, then move directly into allotments and rates without leaving the commercial flow.'
@@ -236,21 +279,9 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                 },
                 {
                   id: 'contracts',
-                  label: 'Contracts',
-                  value: String(contracts.length),
-                  helper: `${allotmentCount} allotments`,
-                },
-                {
-                  id: 'rates',
-                  label: 'Rates',
-                  value: String(rateCount),
-                  helper: 'Across all contracts',
-                },
-                {
-                  id: 'promotions',
-                  label: 'Promotions',
-                  value: String(promotions.length),
-                  helper: `${activePromotionCount} active`,
+                  label: 'Contracted hotels',
+                  value: String(contractedHotelCount),
+                  helper: 'Commercial data loads by tab',
                 },
               ]}
             />
@@ -327,7 +358,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                       </article>
                       <article className="commercial-contract-chip">
                         <span>Promotions</span>
-                        <strong>{currentContractPromotionCount}</strong>
+                        <strong>Open tab</strong>
                       </article>
                       <article className="commercial-contract-chip">
                         <span>Readiness</span>
@@ -366,37 +397,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
               </>
             ) : null}
 
-            {activeTab === 'hotels' ? (
-              <HotelsSection
-                filters={{
-                  cityId: resolvedSearchParams?.cityId,
-                  hotelId: resolvedSearchParams?.hotelId,
-                  contractId: resolvedSearchParams?.contractId,
-                  roomCategoryId: resolvedSearchParams?.roomCategoryId,
-                  status: resolvedSearchParams?.status,
-                }}
-              />
-            ) : null}
-            {activeTab === 'room-categories' ? <RoomCategoriesSection /> : null}
-            {activeTab === 'contracts' ? <HotelContractsSection contractId={resolvedSearchParams?.contractId} /> : null}
-            {activeTab === 'allotments' ? <HotelAllotmentsSection contractId={resolvedSearchParams?.contractId} /> : null}
-            {activeTab === 'rates' ? (
-              <HotelRatesSection
-                contractId={resolvedSearchParams?.contractId}
-                filters={{
-                  cityId: resolvedSearchParams?.cityId,
-                  hotelId: resolvedSearchParams?.hotelId,
-                  contractId: resolvedSearchParams?.contractId,
-                  roomCategoryId: resolvedSearchParams?.roomCategoryId,
-                  mealPlan: resolvedSearchParams?.mealPlan,
-                  status: resolvedSearchParams?.status,
-                }}
-              />
-            ) : null}
-            {activeTab === 'occupancy-child-policy' ? <HotelOccupancyChildPolicySection contractId={resolvedSearchParams?.contractId} /> : null}
-            {activeTab === 'meal-plans-supplements' ? <HotelMealPlansSupplementsSection contractId={resolvedSearchParams?.contractId} /> : null}
-            {activeTab === 'policies' ? <HotelPoliciesSection contractId={resolvedSearchParams?.contractId} /> : null}
-            {activeTab === 'promotions' ? <HotelPromotionsSection contractId={resolvedSearchParams?.contractId} /> : null}
+            {await renderHotelsTabSection(activeTab, resolvedSearchParams, hotels)}
           </section>
         </WorkspaceShell>
       </section>

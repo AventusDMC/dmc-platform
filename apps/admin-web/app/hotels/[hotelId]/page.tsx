@@ -11,6 +11,7 @@ import { HotelOccupancyChildPolicySection } from '../HotelOccupancyChildPolicySe
 import { HotelPoliciesSection } from '../HotelPoliciesSection';
 import { HotelPromotionsSection } from '../HotelPromotionsSection';
 import { HotelRatesSection } from '../HotelRatesSection';
+import { HotelFactSheetForm } from '../HotelFactSheetForm';
 import { RoomCategoriesSection } from '../RoomCategoriesSection';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,7 @@ const API_BASE_URL = '/api';
 
 type HotelDetailTab =
   | 'overview'
+  | 'fact-sheet'
   | 'room-categories'
   | 'contracts'
   | 'allotments'
@@ -34,6 +36,14 @@ type Hotel = {
   city: string;
   category: string;
   supplierId: string;
+  factSheet?: {
+    shortDescription: string | null;
+    highlightsJson: unknown;
+    amenitiesJson: unknown;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    imageGalleryJson: unknown;
+  } | null;
   roomCategories?: Array<{
     id: string;
     name: string;
@@ -42,23 +52,6 @@ type Hotel = {
   }>;
   _count?: {
     contracts?: number;
-  };
-};
-
-type HotelContract = {
-  id: string;
-  name: string;
-  validFrom: string;
-  validTo: string;
-  currency: string;
-  hotel: {
-    id: string;
-    name: string;
-    city: string;
-  };
-  _count: {
-    rates: number;
-    allotments: number;
   };
 };
 
@@ -77,6 +70,7 @@ type HotelDetailPageProps = {
 
 const HOTEL_DETAIL_TABS: Array<{ id: HotelDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
+  { id: 'fact-sheet', label: 'Fact Sheet' },
   { id: 'room-categories', label: 'Room Categories' },
   { id: 'contracts', label: 'Contracts' },
   { id: 'allotments', label: 'Allotments' },
@@ -91,55 +85,54 @@ function resolveActiveTab(tab?: string): HotelDetailTab {
   return HOTEL_DETAIL_TABS.some((entry) => entry.id === tab) ? (tab as HotelDetailTab) : 'overview';
 }
 
-async function getHotels(): Promise<Hotel[]> {
-  return adminPageFetchJson<Hotel[]>(`${API_BASE_URL}/hotels`, 'Hotel detail hotels', {
+async function getHotel(hotelId: string): Promise<Hotel | null> {
+  return adminPageFetchJson<Hotel | null>(`${API_BASE_URL}/hotels/${hotelId}`, 'Hotel detail', {
     cache: 'no-store',
+    allow404: true,
   });
-}
-
-async function getHotelContracts(): Promise<HotelContract[]> {
-  return adminPageFetchJson<HotelContract[]>(`${API_BASE_URL}/hotel-contracts`, 'Hotel detail contracts', {
-    cache: 'no-store',
-  });
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString();
-}
-
-function getContractStatus(contract: HotelContract) {
-  const now = new Date();
-  const validFrom = new Date(contract.validFrom);
-  const validTo = new Date(contract.validTo);
-
-  if (validTo < now) {
-    return 'Expired';
-  }
-
-  if (validFrom > now) {
-    return 'Upcoming';
-  }
-
-  return 'Active';
 }
 
 export default async function HotelDetailPage({ params, searchParams }: HotelDetailPageProps) {
   const [{ hotelId }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const [hotels, hotelContracts] = await Promise.all([getHotels(), getHotelContracts()]);
-  const hotel = hotels.find((entry) => entry.id === hotelId);
+  let hotel: Hotel | null = null;
+  let hotelLoadError = '';
+
+  try {
+    hotel = await getHotel(hotelId);
+  } catch (error) {
+    hotelLoadError = error instanceof Error ? error.message : 'Could not load hotel detail.';
+  }
 
   if (!hotel) {
+    if (hotelLoadError) {
+      return (
+        <main className="page">
+          <section className="panel workspace-panel workspace-panel-wide">
+            <WorkspaceShell
+              eyebrow="Hotel Detail"
+              title="Hotel unavailable"
+              description="The selected hotel could not be loaded."
+              className="hotel-detail-workspace"
+            >
+              <section className="detail-card">
+                <p className="form-error">{hotelLoadError}</p>
+                <Link href="/hotels" className="secondary-button">
+                  Back to hotels
+                </Link>
+              </section>
+            </WorkspaceShell>
+          </section>
+        </main>
+      );
+    }
+
     notFound();
   }
 
   const roomCategories = hotel.roomCategories || [];
   const activeRoomCategories = roomCategories.filter((roomCategory) => roomCategory.isActive).length;
   const inactiveRoomCategories = roomCategories.length - activeRoomCategories;
-  const contracts = hotelContracts.filter((contract) => contract.hotel.id === hotel.id);
-  const activeContracts = contracts.filter((contract) => getContractStatus(contract) === 'Active').length;
-  const totalRates = contracts.reduce((total, contract) => total + contract._count.rates, 0);
-  const totalAllotments = contracts.reduce((total, contract) => total + contract._count.allotments, 0);
   const contractCount = hotel._count?.contracts || 0;
   const hotelDetailTabs = HOTEL_DETAIL_TABS.map((tab) => ({
     id: tab.id,
@@ -224,56 +217,14 @@ export default async function HotelDetailPage({ params, searchParams }: HotelDet
                       <strong>{contractCount}</strong>
                     </div>
                     <div>
-                      <span>Active contracts</span>
-                      <strong>{activeContracts}</strong>
-                    </div>
-                    <div>
-                      <span>Rate rows</span>
-                      <strong>{totalRates}</strong>
-                    </div>
-                    <div>
-                      <span>Allotment rows</span>
-                      <strong>{totalAllotments}</strong>
+                      <span>Contract details</span>
+                      <strong>{contractCount > 0 ? 'Available in Contracts tab' : 'Not configured'}</strong>
                     </div>
                   </div>
 
-                  {contracts.length > 0 ? (
-                    <div className="table-wrap">
-                      <table className="data-table allotment-table">
-                        <thead>
-                          <tr>
-                            <th>Contract</th>
-                            <th>Validity</th>
-                            <th>Status</th>
-                            <th>Setup</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contracts.slice(0, 3).map((contract) => (
-                            <tr key={contract.id}>
-                              <td>
-                                <strong>{contract.name}</strong>
-                                <div className="table-subcopy">{contract.currency}</div>
-                              </td>
-                              <td>{`${formatDate(contract.validFrom)} - ${formatDate(contract.validTo)}`}</td>
-                              <td>{getContractStatus(contract)}</td>
-                              <td>{`${contract._count.rates} rates | ${contract._count.allotments} allotments`}</td>
-                              <td>
-                                <div className="table-action-row">
-                                  <Link href={`/hotels/contracts/${contract.id}`} className="compact-button">
-                                    Open contract workspace
-                                  </Link>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
+                  {contractCount === 0 ? (
                     <p className="empty-state">No contracts are linked to this hotel yet.</p>
-                  )}
+                  ) : null}
                 </section>
 
                 <section className="detail-card">
@@ -324,6 +275,21 @@ export default async function HotelDetailPage({ params, searchParams }: HotelDet
                   )}
                 </section>
               </div>
+            ) : null}
+
+            {activeTab === 'fact-sheet' ? (
+              <section className="detail-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Hotel Fact Sheet</p>
+                    <h2>Proposal-facing hotel content</h2>
+                    <p className="detail-copy">
+                      Store descriptive hotel content for future proposal output. This does not affect contracts, rates, allotments, policies, or pricing.
+                    </p>
+                  </div>
+                </div>
+                <HotelFactSheetForm apiBaseUrl="/api" hotelId={hotel.id} factSheet={hotel.factSheet} />
+              </section>
             ) : null}
 
             {activeTab === 'room-categories' ? <RoomCategoriesSection hotelId={hotel.id} /> : null}

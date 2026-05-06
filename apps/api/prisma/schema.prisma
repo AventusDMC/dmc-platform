@@ -744,21 +744,22 @@ model PromotionRule {
 }
 
 model HotelRoomCategory {
-  id             String                       @id @default(uuid()) @db.Uuid
-  hotelId        String                       @db.Uuid
-  name           String
-  code           String?
-  description    String?
-  isActive       Boolean                      @default(true)
-  createdAt      DateTime                     @default(now())
-  updatedAt      DateTime                     @updatedAt
-  allotments     HotelAllotment[]
-  hotelRates     HotelRate[]
-  hotel          Hotel                        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  occupancyRules HotelContractOccupancyRule[]
-  promotionRules PromotionRule[]
-  quoteItems     QuoteItem[]
-  supplements    HotelContractSupplement[]
+  id                String                       @id @default(uuid()) @db.Uuid
+  hotelId           String                       @db.Uuid
+  name              String
+  code              String?
+  description       String?
+  isActive          Boolean                      @default(true)
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  allotments        HotelAllotment[]
+  hotelRates        HotelRate[]
+  hotel             Hotel                        @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  occupancyRules    HotelContractOccupancyRule[]
+  promotionRules    PromotionRule[]
+  quoteHotelOptions QuoteHotelOption[]
+  quoteItems        QuoteItem[]
+  supplements       HotelContractSupplement[]
 
   @@index([hotelId])
   @@map("hotel_room_categories")
@@ -777,16 +778,35 @@ model Hotel {
   cityId               String?               @db.Uuid
   hotelCategoryId      String?               @db.Uuid
   contracts            HotelContract[]
+  factSheet            HotelFactSheet?
   rates                HotelRate[]
   roomCategories       HotelRoomCategory[]
   cityRecord           City?                 @relation(fields: [cityId], references: [id])
   hotelCategory        HotelCategory?        @relation(fields: [hotelCategoryId], references: [id])
+  quoteHotelOptions    QuoteHotelOption[]
   quoteItems           QuoteItem[]
   dmcQuoteHotelOptions DmcQuoteHotelOption[]
 
   @@index([cityId])
   @@index([hotelCategoryId])
   @@map("hotels")
+}
+
+model HotelFactSheet {
+  id               String   @id @default(uuid()) @db.Uuid
+  hotelId          String   @unique @db.Uuid
+  shortDescription String?
+  highlightsJson   Json?
+  amenitiesJson    Json?
+  checkInTime      String?
+  checkOutTime     String?
+  imageGalleryJson Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  hotel            Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId])
+  @@map("hotel_fact_sheets")
 }
 
 model Itinerary {
@@ -1052,20 +1072,48 @@ model QuoteItineraryAuditLog {
 model QuoteOption {
   id                   String                 @id @default(uuid()) @db.Uuid
   quoteId              String                 @db.Uuid
+  kind                 QuoteOptionKind        @default(COMMERCIAL_OPTION)
   name                 String
   notes                String?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   pricingMode          QuoteOptionPricingMode @default(itemized)
   packageMarginPercent Float?
+  hotelOptions         QuoteHotelOption[]
   hotelCategoryId      String?                @db.Uuid
   quoteItems           QuoteItem[]
   hotelCategory        HotelCategory?         @relation(fields: [hotelCategoryId], references: [id])
   quote                Quote                  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
   @@index([hotelCategoryId])
+  @@index([kind])
   @@index([quoteId])
   @@map("quote_options")
+}
+
+model QuoteHotelOption {
+  id                String             @id @default(uuid()) @db.Uuid
+  quoteOptionId     String             @db.Uuid
+  city              String
+  hotelId           String?            @db.Uuid
+  roomCategoryId    String?            @db.Uuid
+  hotelNameSnapshot String
+  roomType          String
+  mealPlan          String
+  mealPlanCode      HotelMealPlan?
+  nights            Int                @default(1)
+  isPrimary         Boolean            @default(false)
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  hotel             Hotel?             @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+  roomCategory      HotelRoomCategory? @relation(fields: [roomCategoryId], references: [id], onDelete: SetNull)
+  quoteOption       QuoteOption        @relation(fields: [quoteOptionId], references: [id], onDelete: Cascade)
+
+  @@index([hotelId])
+  @@index([roomCategoryId])
+  @@index([quoteOptionId, city])
+  @@map("quote_hotel_options")
 }
 
 model QuotePricingSlab {
@@ -2007,6 +2055,11 @@ enum QuoteBlockType {
 enum QuoteOptionPricingMode {
   itemized
   package
+}
+
+enum QuoteOptionKind {
+  HOTEL_OPTION_SET
+  COMMERCIAL_OPTION
 }
 
 enum QuoteStatus {

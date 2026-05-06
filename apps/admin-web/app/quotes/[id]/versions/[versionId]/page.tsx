@@ -4,6 +4,7 @@ import { formatNightCountLabel } from '../../../../lib/formatters';
 import { getItineraryDayDisplay } from '../../../../lib/itineraryDayDisplay';
 import { getValidatedTripSummary } from '../../../../lib/tripSummary';
 import { getAutoItineraryDayCount } from '../../QuoteAutoItineraryBuilder.logic';
+import { QuoteHotelOptionSummary, type ProposalReadyQuoteOption } from '../../QuoteHotelOptionSummary';
 
 import { adminPageFetchJson } from '../../../../lib/admin-server';
 
@@ -93,11 +94,13 @@ type QuoteItem = {
 
 type QuoteOption = {
   id: string;
+  kind?: 'HOTEL_OPTION_SET' | 'COMMERCIAL_OPTION' | string | null;
   name: string;
   notes: string | null;
   totalSell: number;
   pricePerPax: number;
   quoteItems: QuoteItem[];
+  hotelOptions?: ProposalReadyQuoteOption['hotelOptions'];
 };
 
 type QuoteScenario = {
@@ -565,22 +568,7 @@ export default async function QuoteVersionPage({ params }: QuoteVersionPageProps
           <article className="detail-card">
             <p className="eyebrow">Option Summary</p>
             <div className="quote-preview-option-list">
-              {quote.quoteOptions.length === 0 ? (
-                <p className="empty-state">No hotel options added yet.</p>
-              ) : (
-                quote.quoteOptions.map((option) => (
-                  <div key={option.id} className="quote-preview-option-row">
-                    <div>
-                      <strong>{option.name}</strong>
-                      <p>{option.notes || 'No notes provided.'}</p>
-                    </div>
-                    <div>
-                      <strong>{formatMoney(option.totalSell)}</strong>
-                      <p>{formatMoney(option.pricePerPax)} per pax</p>
-                    </div>
-                  </div>
-                ))
-              )}
+              <QuoteHotelOptionSummary options={quote.quoteOptions} formatMoney={formatMoney} />
             </div>
           </article>
         </section>

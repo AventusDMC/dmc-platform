@@ -150,6 +150,38 @@ function createActivityPdfItem(overrides: Record<string, any> = {}) {
   };
 }
 
+function createHotelOptionSet(overrides: Record<string, any> = {}) {
+  return {
+    id: 'hotel-option-set-1',
+    kind: 'HOTEL_OPTION_SET',
+    name: '4 Star STD',
+    notes: 'Client can select the preferred stay.',
+    hotelOptions: [
+      {
+        id: 'hotel-option-1',
+        city: 'Amman',
+        hotelNameSnapshot: 'Amman Central Hotel',
+        roomType: 'Standard Room',
+        mealPlan: 'BB',
+        mealPlanCode: 'BB',
+        nights: 2,
+        isPrimary: true,
+        roomCategory: { name: 'Deluxe Room', code: 'DLX' },
+        hotel: {
+          name: 'Amman Central Hotel',
+          city: 'Amman',
+          factSheet: {
+            shortDescription: 'A central Amman stay close to restaurants and galleries.',
+            highlightsJson: ['Downtown location', 'Rooftop views'],
+            amenitiesJson: ['Wi-Fi', 'Pool', 'Breakfast room'],
+          },
+        },
+      },
+    ],
+    ...overrides,
+  };
+}
+
 test('proposal PDF export shows persisted hotel pricing basis labels', () => {
   const perPerson = mapQuoteToProposalV3(createPdfQuote());
   const perRoom = mapQuoteToProposalV3(
@@ -222,6 +254,32 @@ test('proposal PDF export renders external package client content and hides supp
   assert.doesNotMatch(renderedText, /externalNetCost/);
 });
 
+test('proposal PDF export skips null quote items while preserving service rendering and external package detection', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [
+        createHotelPdfItem(),
+        null,
+        createTransportPdfItem(),
+        undefined,
+        createActivityPdfItem(),
+        createExternalPackagePdfItem(),
+      ],
+      totalCost: 1710,
+      totalSell: 2115,
+      pricePerPax: 705,
+    }),
+  );
+  const renderedText = JSON.stringify(proposal);
+
+  assert.equal(proposal.servicesCountLabel, '4 services');
+  assert.match(renderedText, /Grand Petra Hotel/);
+  assert.match(renderedText, /QAIA to Petra/);
+  assert.match(renderedText, /Petra by Night/);
+  assert.match(renderedText, /Partner Package/);
+  assert.match(renderedText, /private Cairo and Giza extension/i);
+});
+
 test('proposal PDF export tolerates missing optional external package text and still hides internal fields', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({
@@ -282,6 +340,98 @@ test('proposal PDF export shows external package totals in quote currency withou
   assert.doesNotMatch(renderedText, /USD net cost/);
   assert.doesNotMatch(renderedText, /externalNetCost/);
   assert.doesNotMatch(renderedText, /100 USD|USD 100/);
+});
+
+test('proposal V3 maps normalized hotel option sets with room categories and fact sheets', async () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [createHotelOptionSet()],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const accommodationHtml = (service as any).renderAccommodationRows(proposal);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+
+  assert.equal(proposal.accommodationRows.length, 0);
+  assert.equal(proposal.hotelOptionSets.length, 1);
+  assert.equal(proposal.hotelOptionSets[0].name, '4 Star STD');
+  assert.equal(proposal.hotelOptionSets[0].options[0].hotelName, 'Amman Central Hotel');
+  assert.equal(proposal.hotelOptionSets[0].options[0].room, 'Deluxe Room');
+  assert.equal(proposal.hotelOptionSets[0].options[0].mealPlan, 'BB');
+  assert.equal(proposal.hotelOptionSets[0].options[0].nights, 2);
+  assert.equal(proposal.hotelOptionSets[0].options[0].isPrimary, true);
+  assert.deepEqual(proposal.hotelOptionSets[0].options[0].highlights, ['Downtown location', 'Rooftop views']);
+  assert.deepEqual(proposal.hotelOptionSets[0].options[0].amenities, ['Wi-Fi', 'Pool', 'Breakfast room']);
+  assert.match(accommodationHtml, /Hotel options are outlined below/);
+  assert.doesNotMatch(accommodationHtml, /Accommodation details will be confirmed with the final operating revision/);
+  assert.match(hotelOptionsHtml, /Accommodation Alternatives/);
+  assert.match(hotelOptionsHtml, /Recommended/);
+  assert.match(hotelOptionsHtml, /Deluxe Room/);
+  assert.match(hotelOptionsHtml, /A central Amman stay/);
+  assert.match(hotelOptionsHtml, /Downtown location/);
+  assert.match(hotelOptionsHtml, /Wi-Fi, Pool, Breakfast room/);
+});
+
+test('proposal V3 maps legacy snapshot-only hotel option rows safely', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          name: 'Custom Hotels',
+          hotelOptions: [
+            {
+              id: 'legacy-hotel-option',
+              city: 'Petra',
+              hotelNameSnapshot: 'Petra Hotel or Similar',
+              roomType: 'Classic Room',
+              mealPlan: 'Half Board',
+              mealPlanCode: null,
+              nights: 1,
+              isPrimary: false,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.hotelOptionSets[0].name, 'Custom Hotels');
+  assert.equal(proposal.hotelOptionSets[0].options[0].city, 'Petra');
+  assert.equal(proposal.hotelOptionSets[0].options[0].hotelName, 'Petra Hotel or Similar');
+  assert.equal(proposal.hotelOptionSets[0].options[0].room, 'Classic Room');
+  assert.equal(proposal.hotelOptionSets[0].options[0].mealPlan, 'Half Board');
+});
+
+test('proposal V3 renders an empty hotel option set fallback', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [createHotelOptionSet({ hotelOptions: [] })],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+
+  assert.equal(proposal.hotelOptionSets.length, 1);
+  assert.equal(proposal.hotelOptionSets[0].options.length, 0);
+  assert.match(hotelOptionsHtml, /Hotel alternatives to be confirmed/);
+});
+
+test('proposal V3 keeps confirmed hotel quote items in Stay Overview alongside hotel option sets', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [createHotelPdfItem()],
+      quoteOptions: [createHotelOptionSet()],
+    }),
+  );
+
+  assert.equal(proposal.accommodationRows.length, 1);
+  assert.equal(proposal.accommodationRows[0].hotelName, 'Grand Petra Hotel');
+  assert.equal(proposal.hotelOptionSets.length, 1);
 });
 
 test('proposal PDF export shows transport sell context without leaking supplier company or net fields', () => {
@@ -590,10 +740,12 @@ test('proposal PDF template and footer use AXIS branding without warm palette co
   const mapperSource = readFileSync(resolve(__dirname, 'proposal-v3.mapper.ts'), 'utf8');
 
   assert.match(templateSource, /proposal-brand-logo/);
+  assert.match(templateSource, /hotelOptionSetsHtml/);
   assert.match(templateSource, /AXIS Destination Management/);
   assert.match(serviceSource, /AXIS Destination Management/);
   assert.match(mapperSource, /AXIS_LOGO_URL/);
   assert.match(cssSource, /--proposal-accent:\s*#1FA3D6/);
+  assert.match(cssSource, /\.proposal-hotel-options/);
   assert.match(cssSource, /\.proposal-brand-logo-stage\s*\{[\s\S]*background:\s*#F3F4F6/);
   assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|#c8a96a|#8a6a3a|rgba\(200,\s*169,\s*106|rgba\(138,\s*106,\s*58|proposal-brand-logo-stage\s*\{[\s\S]*#061B33/i);
   assert.doesNotMatch(serviceSource + mapperSource, /Aventus DMC|PDF sell total|finalCost override|Desert Compass Jordan/i);

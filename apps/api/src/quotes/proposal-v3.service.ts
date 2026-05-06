@@ -243,6 +243,7 @@ export class ProposalV3Service {
       journeySummary: this.escapeHtml(viewModel.journeySummary),
       highlightsHtml: this.renderList(viewModel.highlights),
       accommodationRowsHtml: this.renderAccommodationRows(viewModel),
+      hotelOptionSetsHtml: this.renderHotelOptionSets(viewModel),
       itineraryDaysHtml: this.renderItineraryDays(viewModel),
       investmentHtml: this.renderInvestment(viewModel),
       inclusionsHtml: this.renderList(viewModel.inclusions),
@@ -305,9 +306,13 @@ export class ProposalV3Service {
 
   private renderAccommodationRows(viewModel: ProposalV3ViewModel) {
     if (viewModel.accommodationRows.length === 0) {
+      const message = viewModel.hotelOptionSets.length > 0
+        ? 'Hotel options are outlined below for review and selection.'
+        : 'Accommodation details will be confirmed with the final operating revision.';
+
       return `
         <tr class="proposal-table-empty-row">
-          <td colspan="5">Accommodation details will be confirmed with the final operating revision.</td>
+          <td colspan="5">${this.escapeHtml(message)}</td>
         </tr>
       `;
     }
@@ -325,6 +330,92 @@ export class ProposalV3Service {
         `,
       )
       .join('');
+  }
+
+  private renderHotelOptionSets(viewModel: ProposalV3ViewModel) {
+    if (viewModel.hotelOptionSets.length === 0) {
+      return '';
+    }
+
+    return `
+      <div class="proposal-hotel-options avoid-break">
+        <header class="proposal-subsection-header">
+          <p class="proposal-eyebrow">Hotel Options</p>
+          <h3>Accommodation Alternatives</h3>
+        </header>
+        <div class="proposal-hotel-option-set-list">
+          ${viewModel.hotelOptionSets
+            .map((optionSet) => {
+              const optionsHtml = optionSet.options.length > 0
+                ? optionSet.options
+                    .map((hotelOption) => {
+                      const factsHtml = this.renderHotelOptionFacts(hotelOption);
+                      const meta = this.joinInlineParts([
+                        hotelOption.city,
+                        hotelOption.room,
+                        hotelOption.mealPlan,
+                        hotelOption.nights ? `${hotelOption.nights} night${hotelOption.nights === 1 ? '' : 's'}` : null,
+                      ]);
+
+                      return `
+                        <article class="proposal-hotel-option-card${hotelOption.isPrimary ? ' proposal-hotel-option-card-primary' : ''}">
+                          <div class="proposal-hotel-option-card-head">
+                            <div>
+                              <h4>${this.escapeHtml(this.getDisplayText(hotelOption.hotelName, 'Stay'))}</h4>
+                              ${meta ? `<p>${this.escapeHtml(meta)}</p>` : ''}
+                            </div>
+                            <span class="proposal-hotel-option-badge${hotelOption.isPrimary ? ' proposal-hotel-option-badge-primary' : ''}">
+                              ${hotelOption.isPrimary ? 'Recommended' : 'Alternative'}
+                            </span>
+                          </div>
+                          ${factsHtml}
+                        </article>
+                      `;
+                    })
+                    .join('')
+                : '<p class="proposal-hotel-option-empty">Hotel alternatives to be confirmed.</p>';
+
+              return `
+                <section class="proposal-hotel-option-set avoid-break">
+                  <div class="proposal-hotel-option-set-head">
+                    <div>
+                      <h4>${this.escapeHtml(optionSet.name)}</h4>
+                      ${optionSet.notes ? `<p>${this.escapeHtml(optionSet.notes)}</p>` : ''}
+                    </div>
+                    <span>${optionSet.options.length} option${optionSet.options.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div class="proposal-hotel-option-card-list">${optionsHtml}</div>
+                </section>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderHotelOptionFacts(option: ProposalV3ViewModel['hotelOptionSets'][number]['options'][number]) {
+    const descriptionHtml = option.shortDescription
+      ? `<p class="proposal-hotel-option-description">${this.escapeHtml(option.shortDescription)}</p>`
+      : '';
+    const highlightsHtml = option.highlights.length > 0
+      ? `
+        <div class="proposal-hotel-option-facts">
+          <span>Highlights</span>
+          <ul>${option.highlights.map((highlight) => `<li>${this.escapeHtml(highlight)}</li>`).join('')}</ul>
+        </div>
+      `
+      : '';
+    const amenitiesHtml = option.amenities.length > 0
+      ? `
+        <div class="proposal-hotel-option-facts">
+          <span>Amenities</span>
+          <p>${this.escapeHtml(option.amenities.join(', '))}</p>
+        </div>
+      `
+      : '';
+
+    return [descriptionHtml, highlightsHtml, amenitiesHtml].filter(Boolean).join('');
   }
 
   private renderItineraryDays(viewModel: ProposalV3ViewModel) {

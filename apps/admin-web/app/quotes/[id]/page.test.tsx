@@ -9,6 +9,7 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
@@ -104,6 +105,55 @@ describe('quote detail page regression', () => {
       "activeTab === 'proposal'",
       "activeTab === 'versions'",
       "activeTab === 'review'",
+    ]);
+  });
+
+  it('defers heavy hotel planning data until the hotels workflow needs it', () => {
+    expectSourceContains(pageSource, [
+      'const shouldLoadHotelPlanningData =',
+      "activeTab === 'hotels'",
+      "resolvedSearchParams?.addCategory === 'hotel'",
+      'resolvedSearchParams?.catalogHotelId',
+      "shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels) : skippedQuoteDetailFetch('hotels', [] as Hotel[])",
+      "skippedQuoteDetailFetch('hotel contracts', [] as HotelContract[])",
+      "shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates) : skippedQuoteDetailFetch('hotel rates', [] as HotelRate[])",
+      "const shouldLoadHotelCategories = activeTab === 'pricing';",
+      "skippedQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[])",
+    ]);
+  });
+
+  it('renders proposal hotel option sets as grouped hotel cards with fact sheet details', () => {
+    expectSourceContains(quoteHotelOptionSummarySource, [
+      "option.kind === 'HOTEL_OPTION_SET'",
+      'getHotelOptionSetLabel(option.name)',
+      "'4\\u2605 STD'",
+      "'4\\u2605 DLX'",
+      "'Custom hotel set'",
+      'quote-hotel-city-group',
+      'quote-hotel-card',
+      'quote-hotel-card-primary',
+      'Recommended',
+      'Alternative',
+      'getHotelName(hotelOption)',
+      'getHotelCity(hotelOption)',
+      'getRoomLabel(hotelOption)',
+      'getMealPlanLabel(hotelOption)',
+      'getNightsLabel(hotelOption)',
+      'factSheet.shortDescription',
+      'factSheet.highlightsJson',
+      'factSheet.amenitiesJson',
+      'Hotel alternatives to be confirmed.',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.quote-hotel-option-set',
+      '.quote-hotel-option-set-std',
+      '.quote-hotel-option-set-dlx',
+      '.quote-hotel-option-set-custom',
+      '.quote-hotel-meta-grid',
+      '.quote-hotel-facts',
+      '.quote-hotel-amenity-list',
+      'break-inside: avoid;',
     ]);
   });
 

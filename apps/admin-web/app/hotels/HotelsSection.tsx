@@ -1,6 +1,6 @@
 import { CityOption } from '../lib/cities';
 import { HotelCategoryOption } from '../lib/hotelCategories';
-import { adminPageFetchJson } from '../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { CollapsibleCreatePanel } from '../components/CollapsibleCreatePanel';
 import { QueryDropdownFilters, type QueryDropdownFilterOption } from '../components/QueryDropdownFilters';
 import { TableSectionShell } from '../components/TableSectionShell';
@@ -30,45 +30,16 @@ type Hotel = {
   };
 };
 
-type HotelContract = {
-  id: string;
-  name: string;
-  validFrom: string;
-  validTo: string;
-  currency: string;
-  hotel: {
-    id: string;
-    name: string;
-  };
-};
-
-type HotelRate = {
-  id: string;
-  contractId: string;
-  seasonName: string;
-  roomCategoryId: string;
-  occupancyType: 'SGL' | 'DBL' | 'TPL';
-  mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
-  pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
-  currency: string;
-  cost: number;
-  roomCategory: {
-    id: string;
-    name: string;
-    code: string | null;
-  };
-};
-
 type HotelsSectionFilters = {
   cityId?: string;
   hotelId?: string;
-  contractId?: string;
   roomCategoryId?: string;
   status?: string;
 };
 
 type HotelsSectionProps = {
   filters?: HotelsSectionFilters;
+  initialHotels?: Hotel[];
 };
 
 type HotelDirectoryStatus = 'current' | 'upcoming' | 'expired' | 'uncontracted';
@@ -91,103 +62,56 @@ async function getHotelCategories(): Promise<HotelCategoryOption[]> {
   });
 }
 
-async function getHotelContracts(): Promise<HotelContract[]> {
-  return adminPageFetchJson<HotelContract[]>(`${API_BASE_URL}/hotel-contracts`, 'Hotels section contracts', {
-    cache: 'no-store',
-  });
-}
-
-async function getHotelRates(): Promise<HotelRate[]> {
-  return adminPageFetchJson<HotelRate[]>(`${API_BASE_URL}/hotel-rates`, 'Hotels section rates', {
-    cache: 'no-store',
-  });
-}
-
 function buildOptions(entries: Array<{ value: string; label: string }>): QueryDropdownFilterOption[] {
   return entries.sort((left, right) => left.label.localeCompare(right.label));
 }
 
-function getContractLifecycleStatus(validFrom: string, validTo: string): Exclude<HotelDirectoryStatus, 'uncontracted'> {
-  const today = new Date();
-  const start = new Date(validFrom);
-  const end = new Date(validTo);
-
-  if (start <= today && end >= today) {
-    return 'current';
-  }
-
-  if (start > today) {
-    return 'upcoming';
-  }
-
-  return 'expired';
-}
-
-function getHotelStatus(hotelId: string, contractsByHotelId: Map<string, HotelContract[]>): HotelDirectoryStatus {
-  const contracts = contractsByHotelId.get(hotelId) || [];
-
-  if (contracts.length === 0) {
-    return 'uncontracted';
-  }
-
-  const statuses = contracts.map((contract) => getContractLifecycleStatus(contract.validFrom, contract.validTo));
-
-  if (statuses.includes('current')) {
-    return 'current';
-  }
-
-  if (statuses.includes('upcoming')) {
-    return 'upcoming';
-  }
-
-  return 'expired';
+function getHotelStatus(hotel: Hotel): HotelDirectoryStatus {
+  return hotel._count.contracts > 0 ? 'current' : 'uncontracted';
 }
 
 function getHotelStatusLabel(status: HotelDirectoryStatus) {
-  if (status === 'current') return 'Current contract';
+  if (status === 'current') return 'Contracted';
   if (status === 'upcoming') return 'Upcoming contract';
   if (status === 'expired') return 'Expired only';
   return 'Uncontracted';
 }
 
-export async function HotelsSection({ filters }: HotelsSectionProps) {
-  const [hotels, cities, hotelCategories, contracts, hotelRates] = await Promise.all([
-    getHotels(),
-    getCities(),
-    getHotelCategories(),
-    getHotelContracts(),
-    getHotelRates(),
+export async function HotelsSection({ filters, initialHotels }: HotelsSectionProps) {
+  const [hotels, cities, hotelCategories] = await Promise.all([
+    initialHotels
+      ? Promise.resolve(initialHotels)
+      : getHotels().catch((error) => {
+          if (isNextRedirectError(error)) {
+            throw error;
+          }
+
+          console.error('[hotels] hotel directory unavailable', error);
+          return [] as Hotel[];
+        }),
+    getCities().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] city filters unavailable', error);
+      return [] as CityOption[];
+    }),
+    getHotelCategories().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[hotels] hotel category filters unavailable', error);
+      return [] as HotelCategoryOption[];
+    }),
   ]);
-  const contractsByHotelId = contracts.reduce<Map<string, HotelContract[]>>((summary, contract) => {
-    const current = summary.get(contract.hotel.id) || [];
-    current.push(contract);
-    summary.set(contract.hotel.id, current);
-    return summary;
-  }, new Map<string, HotelContract[]>());
   const cityId = filters?.cityId || '';
   const hotelId = filters?.hotelId || '';
-  const contractId = filters?.contractId || '';
   const roomCategoryId = filters?.roomCategoryId || '';
   const status = filters?.status || '';
   const hotelsForSelectedCity = cityId ? hotels.filter((hotel) => hotel.cityId === cityId) : hotels;
-  const hotelsForSelectedContract = contractId
-    ? hotels.filter((hotel) => (contractsByHotelId.get(hotel.id) || []).some((contract) => contract.id === contractId))
-    : hotelsForSelectedCity;
-  const availableHotels = cityId || contractId ? hotelsForSelectedContract : hotels;
-  const availableContracts = contracts.filter((contract) => {
-    if (hotelId && contract.hotel.id !== hotelId) {
-      return false;
-    }
-
-    if (cityId) {
-      const contractHotel = hotels.find((hotel) => hotel.id === contract.hotel.id);
-      if (!contractHotel || contractHotel.cityId !== cityId) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  const availableHotels = cityId ? hotelsForSelectedCity : hotels;
   const availableRoomCategories = hotels
     .filter((hotel) => {
       if (hotelId) {
@@ -196,10 +120,6 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
 
       if (cityId) {
         return hotel.cityId === cityId;
-      }
-
-      if (contractId) {
-        return (contractsByHotelId.get(hotel.id) || []).some((contract) => contract.id === contractId);
       }
 
       return true;
@@ -219,15 +139,11 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
       return false;
     }
 
-    if (contractId && !(contractsByHotelId.get(hotel.id) || []).some((contract) => contract.id === contractId)) {
-      return false;
-    }
-
     if (roomCategoryId && !(hotel.roomCategories || []).some((roomCategory) => roomCategory.id === roomCategoryId)) {
       return false;
     }
 
-    if (status && getHotelStatus(hotel.id, contractsByHotelId) !== status) {
+    if (status && getHotelStatus(hotel) !== status) {
       return false;
     }
 
@@ -252,7 +168,7 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
                 label: city.country ? `${city.name}, ${city.country}` : city.name,
               })),
             ),
-            resetKeys: ['hotelId', 'contractId', 'roomCategoryId'],
+            resetKeys: ['hotelId', 'roomCategoryId'],
           },
           {
             key: 'hotelId',
@@ -265,20 +181,7 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
                 label: hotel.name,
               })),
             ),
-            resetKeys: ['contractId', 'roomCategoryId'],
-          },
-          {
-            key: 'contractId',
-            label: 'Contract',
-            placeholder: 'All contracts',
-            value: contractId,
-            options: buildOptions(
-              availableContracts.map((contract) => ({
-                value: contract.id,
-                label: `${contract.hotel.name} - ${contract.name}`,
-              })),
-            ),
-            advanced: true,
+            resetKeys: ['roomCategoryId'],
           },
           {
             key: 'roomCategoryId',
@@ -295,8 +198,6 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
             value: status,
             options: [
               { value: 'current', label: getHotelStatusLabel('current') },
-              { value: 'upcoming', label: getHotelStatusLabel('upcoming') },
-              { value: 'expired', label: getHotelStatusLabel('expired') },
               { value: 'uncontracted', label: getHotelStatusLabel('uncontracted') },
             ],
             advanced: true,
@@ -326,28 +227,9 @@ export async function HotelsSection({ filters }: HotelsSectionProps) {
               category: hotel.category,
               roomCategories: hotel.roomCategories,
               _count: hotel._count,
-              statusLabel: getHotelStatusLabel(getHotelStatus(hotel.id, contractsByHotelId)),
-              contracts: (contractsByHotelId.get(hotel.id) || []).map((contract) => ({
-                id: contract.id,
-                name: contract.name,
-                validFrom: contract.validFrom,
-                validTo: contract.validTo,
-                currency: contract.currency,
-              })),
-              rates: hotelRates
-                .filter((rate) => (contractsByHotelId.get(hotel.id) || []).some((contract) => contract.id === rate.contractId))
-                .map((rate) => ({
-                  id: rate.id,
-                  contractId: rate.contractId,
-                  seasonName: rate.seasonName,
-                  roomCategoryId: rate.roomCategoryId,
-                  occupancyType: rate.occupancyType,
-                  mealPlan: rate.mealPlan,
-                  pricingBasis: rate.pricingBasis,
-                  currency: rate.currency,
-                  cost: rate.cost,
-                  roomCategory: rate.roomCategory,
-                })),
+              statusLabel: getHotelStatusLabel(getHotelStatus(hotel)),
+              contracts: [],
+              rates: [],
             }))}
           />
         ) : null}
