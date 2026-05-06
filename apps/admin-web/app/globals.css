@@ -14999,6 +14999,15 @@ textarea:focus,
   line-height: 1;
 }
 
+.quote-service-empty-add small {
+  display: block;
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .quote-service-empty-add:hover {
   border-style: solid;
   background: rgba(31, 154, 207, 0.1);
@@ -21819,6 +21828,7 @@ video {
 
 .quote-service-planner .quote-service-empty-add {
   width: 100%;
+  flex-wrap: wrap;
   justify-content: center;
   background: rgba(255, 255, 255, 0.78);
 }

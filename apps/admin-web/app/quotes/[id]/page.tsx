@@ -476,7 +476,7 @@ type QuoteDetailsPageProps = {
     id: string;
   }>;
   searchParams?: Promise<{
-    tab?: 'overview' | 'itinerary' | 'services' | 'pricing' | 'versions' | 'review';
+    tab?: 'overview' | 'itinerary' | 'hotels' | 'transport' | 'services' | 'pricing' | 'proposal' | 'versions' | 'review';
     step?: 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
     day?: string;
     addCategory?: ServicePlannerCategory;
@@ -494,24 +494,29 @@ type QuoteDetailsPageProps = {
   }>;
 };
 
-type QuoteDetailTab = 'overview' | 'itinerary' | 'services' | 'pricing' | 'versions' | 'review';
+type QuoteDetailTab = 'overview' | 'itinerary' | 'hotels' | 'transport' | 'services' | 'pricing' | 'proposal' | 'versions' | 'review';
 type QuoteWorkspaceStep = 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
 
 const QUOTE_DETAIL_TABS: Array<{ id: QuoteDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'itinerary', label: 'Itinerary' },
+  { id: 'hotels', label: 'Hotels' },
+  { id: 'transport', label: 'Transport' },
   { id: 'services', label: 'Services' },
   { id: 'pricing', label: 'Pricing' },
+  { id: 'proposal', label: 'Proposal' },
   { id: 'versions', label: 'Versions' },
   { id: 'review', label: 'Notes' },
 ];
 
-const QUOTE_DASHBOARD_TABS: Array<{ id: QuoteDetailTab; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'itinerary', label: 'Itinerary' },
-  { id: 'pricing', label: 'Pricing' },
-  { id: 'versions', label: 'Documents' },
-  { id: 'review', label: 'Internal Notes' },
+const QUOTE_DASHBOARD_TABS: Array<{ id: QuoteDetailTab; label: string; helper: string }> = [
+  { id: 'overview', label: 'Setup', helper: 'Basic client, dates, pax, currency' },
+  { id: 'itinerary', label: 'Itinerary', helper: 'Build day-by-day program' },
+  { id: 'hotels', label: 'Hotels', helper: 'Choose hotel options' },
+  { id: 'transport', label: 'Transport', helper: 'Select routes, vehicles, suppliers' },
+  { id: 'services', label: 'Meals & Services', helper: 'Add lunches, guides, entrances, activities' },
+  { id: 'pricing', label: 'Pricing', helper: 'Review cost, sell, margin' },
+  { id: 'proposal', label: 'Proposal', helper: 'Preview and export client proposal' },
 ];
 
 const QUOTE_DASHBOARD_WORKFLOW = ['Draft', 'Pricing', 'Review', 'Sent', 'Accepted', 'Booking'];
@@ -1270,7 +1275,15 @@ function resolveActiveQuoteStep(step: string | undefined, activeTab: QuoteDetail
     return step as QuoteWorkspaceStep;
   }
 
-  if (activeTab === 'itinerary' || activeTab === 'services' || activeTab === 'pricing' || activeTab === 'review') {
+  if (activeTab === 'hotels' || activeTab === 'transport' || activeTab === 'services') {
+    return 'services';
+  }
+
+  if (activeTab === 'proposal' || activeTab === 'versions' || activeTab === 'review') {
+    return 'review';
+  }
+
+  if (activeTab === 'itinerary' || activeTab === 'pricing') {
     return activeTab;
   }
 
@@ -1695,6 +1708,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const showGuidedStepFooter =
     activeTab === 'overview' ||
     activeTab === 'itinerary' ||
+    activeTab === 'hotels' ||
+    activeTab === 'transport' ||
     activeTab === 'services' ||
     activeTab === 'pricing' ||
     guidedReviewMode;
@@ -1751,6 +1766,39 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       <p className="form-helper">{nextStepHelperCopy}</p>
     </div>
   ) : null;
+  const renderQuoteServicePlanner = (initialAddCategory?: ServicePlannerCategory) => (
+    <QuoteServicePlanner
+      apiBaseUrl={ACTION_API_BASE_URL}
+      quote={quote}
+      quoteItinerary={quoteItinerary}
+      quoteBlocks={quoteBlocks}
+      services={services}
+      transportServiceTypes={transportServiceTypes}
+      routes={routes}
+      vehicles={vehicles}
+      supplierRateCards={supplierRateCards}
+      transportDataStatus={transportDataStatus}
+      hotels={hotels}
+      hotelContracts={hotelContracts}
+      hotelRates={hotelRates}
+      seasons={seasons}
+      totalPax={totalPax}
+      routeContext={{ quoteId: quote.id }}
+      focusedDayId={resolvedSearchParams?.day}
+      initialAddCategory={resolvedSearchParams?.addCategory || initialAddCategory}
+      preferredCatalogServiceId={resolvedSearchParams?.catalogServiceId}
+      preferredCatalogHotelId={resolvedSearchParams?.catalogHotelId}
+      preferredCatalogContractId={resolvedSearchParams?.catalogContractId}
+      preferredCatalogRoomCategoryId={resolvedSearchParams?.catalogRoomCategoryId}
+      preferredCatalogMealPlan={resolvedSearchParams?.catalogMealPlan}
+      preferredCatalogOccupancyType={resolvedSearchParams?.catalogOccupancyType}
+      preferredCatalogRateCost={resolvedSearchParams?.catalogRateCost}
+      preferredCatalogRateCurrency={resolvedSearchParams?.catalogRateCurrency}
+      preferredCatalogRateNote={resolvedSearchParams?.catalogRateNote}
+      preferredCatalogRouteId={resolvedSearchParams?.catalogRouteId}
+      sessionRole={session?.role || null}
+    />
+  );
 
   return (
     <main className="page quote-builder-page">
@@ -1775,10 +1823,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               </div>
               <div className="quote-dashboard-meta-grid">
                 <div><span>Client</span><strong>{quote.company.name}</strong></div>
+                <div><span>Title</span><strong>{quote.title}</strong></div>
                 <div><span>Contact</span><strong>{quote.contact.firstName} {quote.contact.lastName}</strong></div>
-                <div><span>Destination</span><strong>{destination}</strong></div>
                 <div><span>Dates</span><strong>{travelDates}</strong></div>
                 <div><span>Pax</span><strong>{totalPax} pax</strong></div>
+                <div><span>Currency</span><strong>{quote.quoteCurrency}</strong></div>
+                <div><span>Status</span><strong>{quote.status.replace(/_/g, ' ')}</strong></div>
+                <div><span>Destination</span><strong>{destination}</strong></div>
                 <div><span>Revision</span><strong>Rev {quote.revisionNumber ?? 1}</strong></div>
               </div>
             </div>
@@ -1877,20 +1928,24 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           </section>
 
           <nav className="quote-dashboard-tabs" aria-label="Quote detail sections">
-            {QUOTE_DASHBOARD_TABS.map((tab) => {
-              const isActive = activeTab === tab.id || (tab.id === 'itinerary' && activeTab === 'services');
+            {QUOTE_DASHBOARD_TABS.map((tab, index) => {
+              const isActive = activeTab === tab.id;
               const badge =
-                tab.id === 'itinerary'
+                tab.id === 'itinerary' || tab.id === 'hotels' || tab.id === 'transport' || tab.id === 'services'
                   ? quoteServicesBadgeCount
                   : tab.id === 'pricing'
                     ? quotePricingBadgeCount
-                    : tab.id === 'review'
+                    : tab.id === 'proposal'
                       ? quoteReviewBadgeCount
                       : null;
 
               return (
                 <Link key={tab.id} href={buildTabHref(tab.id)} className={`quote-dashboard-tab${isActive ? ' quote-dashboard-tab-active' : ''}`}>
-                  {tab.label}
+                  <span className="quote-dashboard-tab-index">{index + 1}</span>
+                  <span className="quote-dashboard-tab-copy">
+                    <strong>{tab.label}</strong>
+                    <small>{tab.helper}</small>
+                  </span>
                   {badge && badge > 0 ? <span className="page-tab-badge page-tab-badge-warning">{badge}</span> : null}
                 </Link>
               );
@@ -2071,6 +2126,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     </div>
                   </div>
                 </article>
+                <article className="detail-card">
+                  <p className="eyebrow">Segments</p>
+                  <h3>Multi-country planning</h3>
+                  <p className="detail-copy">
+                    This workspace is ready to host ordered country segments later. For now, keep the current Jordan operating plan here and track external package notes in the proposal/review text.
+                  </p>
+                </article>
               </div>
             </section>
             {guidedStepFooter}
@@ -2079,37 +2141,52 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
           {activeTab === 'itinerary' ? (
             <div className="section-stack">
-              <QuoteServicePlanner
+              {renderQuoteServicePlanner()}
+              {guidedStepFooter}
+            </div>
+          ) : null}
+
+          {activeTab === 'hotels' ? (
+            <div className="section-stack quote-services-page-panel">
+              <section className="workspace-section quote-services-hero app-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Hotels</p>
+                    <h2>Plan stays by day and option</h2>
+                    <p className="detail-copy">Review hotel rows alongside the day plan. Existing hotel contract and rate selection behavior stays unchanged.</p>
+                  </div>
+                  <Link href={buildTabHref('pricing')} className="primary-button">
+                    Review pricing
+                  </Link>
+                </div>
+              </section>
+              {renderQuoteServicePlanner('hotel')}
+              {guidedStepFooter}
+            </div>
+          ) : null}
+
+          {activeTab === 'transport' ? (
+            <div className="section-stack quote-services-page-panel">
+              <section className="workspace-section quote-services-hero app-card">
+                <div className="workspace-section-head">
+                  <div>
+                    <p className="eyebrow">Transport</p>
+                    <h2>Assign route-based transport</h2>
+                    <p className="detail-copy">Use the existing transport picker flow: Route, Vehicle Type, Pricing Mode, Supplier, Price.</p>
+                  </div>
+                  <Link href={buildTabHref('pricing')} className="primary-button">
+                    Review pricing
+                  </Link>
+                </div>
+              </section>
+              <QuoteTransportBulkAssign
                 apiBaseUrl={ACTION_API_BASE_URL}
-                quote={quote}
-                quoteItinerary={quoteItinerary}
-                quoteBlocks={quoteBlocks}
+                quoteId={quote.id}
                 services={services}
-                transportServiceTypes={transportServiceTypes}
-                routes={routes}
-                vehicles={vehicles}
-                supplierRateCards={supplierRateCards}
-                transportDataStatus={transportDataStatus}
-                hotels={hotels}
-                hotelContracts={hotelContracts}
-                hotelRates={hotelRates}
-                seasons={seasons}
-                totalPax={totalPax}
-                routeContext={{ quoteId: quote.id }}
-                focusedDayId={resolvedSearchParams?.day}
-                initialAddCategory={resolvedSearchParams?.addCategory}
-                preferredCatalogServiceId={resolvedSearchParams?.catalogServiceId}
-                preferredCatalogHotelId={resolvedSearchParams?.catalogHotelId}
-                preferredCatalogContractId={resolvedSearchParams?.catalogContractId}
-                preferredCatalogRoomCategoryId={resolvedSearchParams?.catalogRoomCategoryId}
-                preferredCatalogMealPlan={resolvedSearchParams?.catalogMealPlan}
-                preferredCatalogOccupancyType={resolvedSearchParams?.catalogOccupancyType}
-                preferredCatalogRateCost={resolvedSearchParams?.catalogRateCost}
-                preferredCatalogRateCurrency={resolvedSearchParams?.catalogRateCurrency}
-                preferredCatalogRateNote={resolvedSearchParams?.catalogRateNote}
-                preferredCatalogRouteId={resolvedSearchParams?.catalogRouteId}
-                sessionRole={session?.role || null}
+                quoteItems={quote.quoteItems}
+                quoteOptions={quote.quoteOptions}
               />
+              {renderQuoteServicePlanner('transport')}
               {guidedStepFooter}
             </div>
           ) : null}
@@ -2119,9 +2196,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               <section className="workspace-section quote-services-hero app-card">
                 <div className="workspace-section-head">
                   <div>
-                    <p className="eyebrow">Quote Services</p>
-                    <h2>Build the operational plan</h2>
-                    <p className="detail-copy">Add hotel, transport, activity, meal, and package rows while keeping pricing, margin, and day coverage visible.</p>
+                    <p className="eyebrow">Services / Meals</p>
+                    <h2>Build non-hotel services</h2>
+                    <p className="detail-copy">Add meals, activities, guide, entrance-style, other, and package rows while keeping pricing, margin, and day coverage visible.</p>
                   </div>
                   <Link href={buildStepHref('pricing')} className="primary-button">
                     Review pricing
@@ -2136,44 +2213,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   { id: 'planner-unassigned', label: 'Needs dates', value: String(quoteUnassignedServicesCount), helper: 'Services still need itinerary placement' },
                 ]}
               />
-              <QuoteTransportBulkAssign
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                services={services}
-                quoteItems={quote.quoteItems}
-                quoteOptions={quote.quoteOptions}
-              />
-              <QuoteServicePlanner
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quote={quote}
-                quoteItinerary={quoteItinerary}
-                quoteBlocks={quoteBlocks}
-                services={services}
-                transportServiceTypes={transportServiceTypes}
-                routes={routes}
-                vehicles={vehicles}
-                supplierRateCards={supplierRateCards}
-                transportDataStatus={transportDataStatus}
-                hotels={hotels}
-                hotelContracts={hotelContracts}
-                hotelRates={hotelRates}
-                seasons={seasons}
-                totalPax={totalPax}
-                routeContext={{ quoteId: quote.id }}
-                focusedDayId={resolvedSearchParams?.day}
-                initialAddCategory={resolvedSearchParams?.addCategory}
-                preferredCatalogServiceId={resolvedSearchParams?.catalogServiceId}
-                preferredCatalogHotelId={resolvedSearchParams?.catalogHotelId}
-                preferredCatalogContractId={resolvedSearchParams?.catalogContractId}
-                preferredCatalogRoomCategoryId={resolvedSearchParams?.catalogRoomCategoryId}
-                preferredCatalogMealPlan={resolvedSearchParams?.catalogMealPlan}
-                preferredCatalogOccupancyType={resolvedSearchParams?.catalogOccupancyType}
-                preferredCatalogRateCost={resolvedSearchParams?.catalogRateCost}
-                preferredCatalogRateCurrency={resolvedSearchParams?.catalogRateCurrency}
-                preferredCatalogRateNote={resolvedSearchParams?.catalogRateNote}
-                preferredCatalogRouteId={resolvedSearchParams?.catalogRouteId}
-                sessionRole={session?.role || null}
-              />
+              {renderQuoteServicePlanner('meal')}
             {guidedStepFooter}
             </div>
           ) : null}
@@ -2287,6 +2327,76 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   </aside>
                 </div>
               )}
+              {guidedStepFooter}
+            </div>
+          ) : null}
+
+          {activeTab === 'proposal' ? (
+            <div className="section-stack">
+              <SummaryStrip
+                items={[
+                  { id: 'proposal-blockers', label: 'Blocking issues', value: String(reviewBlockingIssues.length), helper: 'Must be resolved before sharing' },
+                  { id: 'proposal-warnings', label: 'Warnings', value: String(reviewWarningCount), helper: 'Review before sending' },
+                  { id: 'proposal-versions', label: 'Snapshots', value: String(versions.length), helper: 'Saved proposal versions' },
+                  { id: 'proposal-ready', label: 'Status', value: reviewReadyState, helper: convertBlocked ? 'Conversion disabled' : 'Ready for decision flow' },
+                ]}
+              />
+
+              <section className="split-layout">
+                <article className="workspace-section">
+                  <div className="workspace-section-head">
+                    <div>
+                      <p className="eyebrow">Proposal</p>
+                      <h2>Prepare the client-facing quote</h2>
+                    </div>
+                    <span className={`quote-ui-badge ${reviewBlockingIssues.length > 0 ? 'quote-ui-badge-warning' : 'quote-ui-badge-success'}`}>
+                      {reviewBlockingIssues.length > 0 ? 'Needs review' : 'Ready'}
+                    </span>
+                  </div>
+                  <p className="detail-copy">
+                    Save a snapshot, preview the proposal, download a PDF, or share the public link without changing the quote pricing logic.
+                  </p>
+                  <div className="workspace-document-actions">
+                    <QuotePreviewLink quoteId={quote.id} />
+                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
+                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
+                    <ShareQuoteButton
+                      apiBaseUrl={ACTION_API_BASE_URL}
+                      quoteId={quote.id}
+                      initialPublicToken={quote.publicToken}
+                      initialPublicEnabled={quote.publicEnabled}
+                    />
+                    <Link href={buildTabHref('versions')} className="secondary-button">
+                      Versions
+                    </Link>
+                    <Link href={buildTabHref('review')} className="secondary-button">
+                      Internal notes
+                    </Link>
+                  </div>
+                </article>
+
+                <article className="detail-card">
+                  <p className="eyebrow">Readiness</p>
+                  <div className="quote-preview-total-list">
+                    <div>
+                      <span>Days</span>
+                      <strong>{quote.itineraries.length}</strong>
+                    </div>
+                    <div>
+                      <span>Services</span>
+                      <strong>{quote.quoteItems.length}</strong>
+                    </div>
+                    <div>
+                      <span>Pricing warnings</span>
+                      <strong>{pricingWarningCount}</strong>
+                    </div>
+                    <div>
+                      <span>Blocking issues</span>
+                      <strong>{reviewBlockingIssues.length}</strong>
+                    </div>
+                  </div>
+                </article>
+              </section>
               {guidedStepFooter}
             </div>
           ) : null}

@@ -445,11 +445,11 @@ type SmartSuggestionItem = {
 };
 
 const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
-  hotel: 'Stay',
-  transport: 'Transfer',
+  hotel: 'Hotel',
+  transport: 'Transport',
   guide: 'Guide',
-  activity: 'Experience',
-  meal: 'Meals',
+  activity: 'Activity',
+  meal: 'Meal',
   externalPackage: 'External Package',
   other: 'Other',
 };
@@ -459,10 +459,12 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'transport', label: 'Add Transport' },
   { category: 'activity', label: 'Add Activity' },
   { category: 'meal', label: 'Add Meal' },
+  { category: 'guide', label: 'Add Guide' },
+  { category: 'other', label: 'Add Other Service' },
   { category: 'externalPackage', label: 'Add External Package' },
 ];
 
-const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal', 'externalPackage'];
+const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'guide', 'other', 'externalPackage'];
 const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Hotel',
   transport: 'Transport',
@@ -484,14 +486,14 @@ const SERVICE_PLANNER_ICONS: Record<ServicePlannerCategory, string> = {
 };
 
 const GROUP_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
-  { key: 'hotel', label: 'Stay' },
-  { key: 'transport', label: 'Transfer' },
-  { key: 'activity', label: 'Experience' },
+  { key: 'hotel', label: 'Hotel' },
+  { key: 'transport', label: 'Transport' },
+  { key: 'activity', label: 'Activity' },
 ];
 
 const FIT_DAY_COMPLETENESS_RULES: Array<{ key: ServicePlannerCategory; label: string }> = [
-  { key: 'activity', label: 'Experience' },
-  { key: 'transport', label: 'Transfer' },
+  { key: 'activity', label: 'Activity' },
+  { key: 'transport', label: 'Transport' },
 ];
 
 function getDayCompletenessRules(quoteType: Quote['quoteType']) {
@@ -596,33 +598,33 @@ function buildServiceWorkflowState(items: QuoteItem[], quoteType: Quote['quoteTy
       description = 'The FIT experience is started. Add transport if the quote includes private movement.';
     } else if (!hasHotel) {
       recommendedCategory = 'hotel';
-      title = 'Review accommodation';
-      description = 'Transport and experience coverage are started. Add accommodation if it is part of this FIT package.';
+      title = 'Review hotels';
+      description = 'Transport and activity coverage are started. Add a hotel if it is part of this FIT package.';
     } else {
       recommendedCategory = 'activity';
       title = 'FIT workflow started';
-      description = 'Experience, transfer, and accommodation coverage are represented. Keep adding services as needed.';
+      description = 'Activity, transport, and hotel coverage are represented. Keep adding services as needed.';
     }
   } else if (!hasHotel && hasTransport && !hasActivity) {
     recommendedCategory = 'activity';
-    title = 'Add experiences next';
-    description = 'Transport is already in place. Add the first experience when you are ready.';
+    title = 'Add activities next';
+    description = 'Transport is already in place. Add the first activity or entrance-style service when you are ready.';
   } else if (!hasHotel) {
     recommendedCategory = 'hotel';
-    title = 'Start with accommodation';
-    description = 'A hotel gives the quote a clear base before transfers and experiences are layered in.';
+    title = 'Start with hotels';
+    description = 'A hotel gives the quote a clear base before transport and activities are layered in.';
   } else if (!hasTransport) {
     recommendedCategory = 'transport';
-    title = 'Add transfer coverage';
-    description = 'Accommodation is started. Add transfers next, or choose any other service if the program needs it first.';
+    title = 'Add transport coverage';
+    description = 'Hotels are started. Add transport next, or choose any other service if the program needs it first.';
   } else if (!hasActivity) {
     recommendedCategory = 'activity';
-    title = 'Add experiences next';
-    description = 'Stay and transfer coverage are in place. Add an experience to start shaping the trip content.';
+    title = 'Add activities next';
+    description = 'Hotel and transport coverage are in place. Add an activity to start shaping the trip content.';
   } else {
     recommendedCategory = 'activity';
     title = 'Core workflow started';
-    description = 'Accommodation, transport, and experiences are all represented. Keep adding services in any order.';
+    description = 'Hotels, transport, and activities are all represented. Keep adding services in any order.';
   }
 
   return {
@@ -633,9 +635,9 @@ function buildServiceWorkflowState(items: QuoteItem[], quoteType: Quote['quoteTy
     title,
     description,
     steps: [
-      { category: 'hotel', step: 'Step 1', label: 'Accommodation', hasItem: hasHotel },
+      { category: 'hotel', step: 'Step 1', label: 'Hotels', hasItem: hasHotel },
       { category: 'transport', step: 'Step 2', label: 'Transport', hasItem: hasTransport },
-      { category: 'activity', step: 'Step 3', label: 'Experiences', hasItem: hasActivity },
+      { category: 'activity', step: 'Step 3', label: 'Activities', hasItem: hasActivity },
     ],
   };
 }
@@ -712,6 +714,26 @@ function getLaneItemIds(items: QuoteItem[], dayId: string, category: ServicePlan
     .filter((item) => item.itineraryId === dayId && getQuoteServiceCategoryKey(item.service) === category)
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))
     .map((item) => item.id);
+}
+
+function getServiceLaneEmptyCopy(category: ServicePlannerCategory) {
+  switch (category) {
+    case 'hotel':
+      return 'No hotel added for this day yet.';
+    case 'transport':
+      return 'No transport added yet. Add route-based transport using Route > Vehicle Type > Pricing Mode > Supplier > Price.';
+    case 'meal':
+      return 'No meal service added for this day yet.';
+    case 'activity':
+      return 'No activity or entrance-style service added for this day yet.';
+    case 'guide':
+      return 'No guide service added for this day yet.';
+    case 'externalPackage':
+      return 'No external package row added for this day yet.';
+    case 'other':
+    default:
+      return 'No other service added for this day yet.';
+  }
 }
 
 function parseDayContent(value: string | null | undefined): ParsedDayContent {
@@ -1097,7 +1119,7 @@ function AddServiceEditorPanel({
       <div className="quote-service-catalog-link">
         <span>Need to browse the catalog first?</span>
         <Link href={browseHref} className="secondary-button">
-          Browse {category === 'hotel' ? 'Hotels' : category === 'transport' ? 'Transport' : 'Experiences'}
+          Browse {category === 'hotel' ? 'Hotels' : category === 'transport' ? 'Transport' : SERVICE_PLANNER_TAB_LABELS[category]}
         </Link>
       </div>
       <QuoteItemsForm
@@ -1452,12 +1474,13 @@ function ServiceLane({
       {orderedItems.length === 0 ? (
         category === 'transport' ? (
           <div className="quote-service-empty-state">
-            <p>No transport added yet. Add route-based transport using Route → Vehicle → Pricing Mode → Supplier Rate → Price.</p>
+            <p>{getServiceLaneEmptyCopy(category)}</p>
             {transportPicker}
           </div>
         ) : (
           <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
             <span aria-hidden="true">+</span>
+            <small>{getServiceLaneEmptyCopy(category)}</small>
             Add {label}
           </button>
         )
@@ -2553,7 +2576,7 @@ function ScopePlanner({
         </div>
         <div className="quote-preview-total-list">
           <div>
-            <span>Accommodation</span>
+            <span>Hotels</span>
             <strong>{workflow.hasHotel ? 'Started' : 'Missing'}</strong>
           </div>
           <div>
@@ -2561,25 +2584,25 @@ function ScopePlanner({
             <strong>{workflow.hasTransport ? 'Started' : 'Missing'}</strong>
           </div>
           <div>
-            <span>Experiences</span>
+            <span>Activities</span>
             <strong>{workflow.hasActivity ? 'Started' : 'Missing'}</strong>
           </div>
           <div>
-            <span>Days completed</span>
+            <span>Day coverage</span>
             <strong>
               {daysCompleted}/{daySummaries.length}
             </strong>
           </div>
           <div>
-            <span>Missing service warnings</span>
+            <span>Coverage warnings</span>
             <strong>{missingCoverageWarnings}</strong>
           </div>
           <div>
-            <span>Unresolved imported rows</span>
+            <span>Imported rows</span>
             <strong>{unresolvedItems.length}</strong>
           </div>
           <div>
-            <span>Unassigned services</span>
+            <span>Unassigned rows</span>
             <strong>{unassignedItems.length}</strong>
           </div>
         </div>
@@ -2662,7 +2685,7 @@ function ScopePlanner({
               <div>
                 <p className="workspace-day-kicker quote-service-day-kicker">
                   <span className="quote-service-day-label">Day {String(summary.day.dayNumber).padStart(2, '0')}</span>
-                  <span>Itinerary Builder</span>
+                  <span>Day Editor</span>
                 </p>
                 <h3>{dayHeading}</h3>
                 <p className="workspace-day-copy">{daySubtitle}</p>
@@ -2683,7 +2706,7 @@ function ScopePlanner({
                 <div className="workspace-section-head">
                   <div>
                     <p className="eyebrow">Assigned Services</p>
-                    <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'Build this day visually'}</h4>
+                    <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'No services planned yet'}</h4>
                   </div>
                 </div>
                 <AssignedServicesTable
@@ -3162,11 +3185,11 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           <div className="workspace-section-head">
             <div>
               <p className="eyebrow">Service Planner</p>
-              <h2>Build the trip service by service, day by day</h2>
+              <h2>Day-by-day workspace</h2>
             </div>
           </div>
           <p className="detail-copy">
-          Use each day card below to complete the trip step by step. Add the core services first, then review what is still missing before pricing.
+          Pick a day from the left, then add and review hotel, transport, meal, activity, guide, entrance-style, and other service rows in grouped lanes.
           </p>
         {props.focusedDayId ? (
           <p className="form-helper">

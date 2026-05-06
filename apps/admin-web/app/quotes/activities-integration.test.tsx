@@ -146,14 +146,14 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
 
     expectSourceContains(quotePlannerSource, [
-      'className="quote-service-editor-panel"',
+      'className="quote-service-editor-panel quote-service-editor-panel-drawer"',
       '<AssignedServicesTable',
       '<AddServiceEditorPanel',
       '<EditServiceEditorPanel',
-      "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'activity', 'meal', 'externalPackage'];",
+      "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'guide', 'other', 'externalPackage'];",
       'const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);',
-      '<strong>Select a service type to begin</strong>',
-      'Choose Add Hotel, Transport, Activity, Meal, or External Package from a day card.',
+      '<h2>Day-by-day workspace</h2>',
+      'Pick a day from the left, then add and review hotel, transport, meal, activity, guide, entrance-style, and other service rows in grouped lanes.',
     ]);
     assert.doesNotMatch(quotePlannerSource, /function DayWorkflowAction|openServiceEditorKey|initialActivePanel|<DayWorkflowAction|Route\/Notes|quote-service-day-action`\}/);
     assert.doesNotMatch(bookingCssSource, /quote-service-day-action\[open\]|grid-template-columns: minmax\(0, 1\.45fr\) minmax\(360px, 0\.72fr\)/);
