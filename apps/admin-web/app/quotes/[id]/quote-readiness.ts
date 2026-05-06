@@ -39,7 +39,19 @@ export type QuoteReadinessItem = {
   totalCost: number;
   totalSell: number;
   currency?: string | null;
-  service: QuoteReadinessService;
+  service: QuoteReadinessService | null;
+  externalPackageCountry?: string | null;
+  externalPackageName?: string | null;
+  externalSupplierName?: string | null;
+  externalPricingBasis?: string | null;
+  externalNetCost?: number | null;
+  externalPackagePricingMatrixJson?: unknown;
+  externalPackageSingleSupplement?: number | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalInternalNotes?: string | null;
+  externalHotelsOrSimilar?: string | null;
+  externalClientDescription?: string | null;
   hotel?: {
     name: string;
   } | null;
@@ -193,7 +205,47 @@ function titleCase(value: string) {
     .join(' ');
 }
 
-export function getQuoteServiceCategoryKey(service: Pick<QuoteReadinessService, 'category' | 'serviceType'>): ServicePlannerCategory {
+export function getQuoteServiceCategoryKey(
+  service: Pick<QuoteReadinessService, 'category' | 'serviceType'> | null | undefined,
+  item?: Pick<
+    QuoteReadinessItem,
+    | 'externalPackageCountry'
+    | 'externalPackageName'
+    | 'externalSupplierName'
+    | 'externalPricingBasis'
+    | 'externalNetCost'
+    | 'externalPackagePricingMatrixJson'
+    | 'externalPackageSingleSupplement'
+    | 'externalIncludes'
+    | 'externalExcludes'
+    | 'externalInternalNotes'
+    | 'externalHotelsOrSimilar'
+    | 'externalClientDescription'
+  >,
+): ServicePlannerCategory {
+  const hasExternalPackagePayload = Boolean(
+    item?.externalPackageName ||
+      item?.externalPackageCountry ||
+      item?.externalSupplierName ||
+      item?.externalClientDescription ||
+      item?.externalIncludes ||
+      item?.externalExcludes ||
+      item?.externalInternalNotes ||
+      item?.externalHotelsOrSimilar ||
+      item?.externalPricingBasis ||
+      (item?.externalNetCost !== null && item?.externalNetCost !== undefined) ||
+      (Array.isArray(item?.externalPackagePricingMatrixJson) && item.externalPackagePricingMatrixJson.length > 0) ||
+      (item?.externalPackageSingleSupplement !== null && item?.externalPackageSingleSupplement !== undefined),
+  );
+
+  if (hasExternalPackagePayload) {
+    return 'externalPackage';
+  }
+
+  if (!service) {
+    return 'other';
+  }
+
   const normalized = normalizeCategory(service.serviceType?.code || service.serviceType?.name || service.category);
 
   if (normalized.includes('external_package') || normalized.includes('external package') || normalized.includes('partner_package') || normalized.includes('partner package')) {
@@ -237,7 +289,11 @@ export function getQuoteServiceCategoryKey(service: Pick<QuoteReadinessService, 
 }
 
 export function isImportedQuoteService(item: Pick<QuoteReadinessItem, 'service'>) {
-  return item.service.supplierId === IMPORTED_SERVICE_SUPPLIER_ID;
+  return item.service?.supplierId === IMPORTED_SERVICE_SUPPLIER_ID;
+}
+
+function getQuoteReadinessItemName(item: QuoteReadinessItem) {
+  return item.service?.name || 'External Country Package';
 }
 
 export function isQuoteServiceMissingPrice(item: Pick<QuoteReadinessItem, 'totalCost' | 'totalSell' | 'paxCount'>) {
@@ -420,7 +476,7 @@ export function buildQuoteReadinessModel(
 
   const daySummaries = sortedDays.map((day) => {
     const items = allItems.filter((item) => item.itineraryId === day.id);
-    const categories = Array.from(new Set(items.map((item) => getQuoteServiceCategoryKey(item.service))));
+    const categories = Array.from(new Set(items.map((item) => getQuoteServiceCategoryKey(item.service, item))));
     const text = buildDayNarrative(day);
     const hasHotel = categories.includes('hotel');
     const hasTransport = categories.includes('transport');
@@ -572,7 +628,7 @@ export function buildQuoteReadinessModel(
         id: `item-price-${item.id}`,
         severity: 'blocker',
         code: 'service-missing-price',
-        title: `${item.service.name} is missing cost or sell price`,
+        title: `${getQuoteReadinessItemName(item)} is missing cost or sell price`,
         description: 'Complete cost, sell, and pax inputs before preview or share.',
         href,
         source: 'Pricing',
@@ -588,7 +644,7 @@ export function buildQuoteReadinessModel(
         id: `item-zero-sell-${item.id}`,
         severity: 'warning',
         code: 'service-zero-sell',
-        title: `${item.service.name} has zero sell price`,
+        title: `${getQuoteReadinessItemName(item)} has zero sell price`,
         description: 'Review commercial setup because the service currently contributes no sell value.',
         href,
         source: 'Pricing',
@@ -601,13 +657,13 @@ export function buildQuoteReadinessModel(
     if (isImportedQuoteService(item)) {
       const href = buildIssueHref(buildStepHref, 'services', {
         day: item.itineraryId || undefined,
-        addCategory: getQuoteServiceCategoryKey(item.service),
+        addCategory: getQuoteServiceCategoryKey(item.service, item),
       });
       cleanupItems.push({
         id: `item-import-${item.id}`,
         severity: 'cleanup',
         code: 'unresolved-imported-item',
-        title: `${item.service.name} is still unresolved from import`,
+        title: `${getQuoteReadinessItemName(item)} is still unresolved from import`,
         description: 'Assign a real supplier service or remove the placeholder before sharing.',
         href,
         source: 'Service Planner',
@@ -625,7 +681,7 @@ export function buildQuoteReadinessModel(
         id: `item-currency-${item.id}`,
         severity: 'warning',
         code: 'service-missing-currency',
-        title: `${item.service.name} has no currency`,
+        title: `${getQuoteReadinessItemName(item)} has no currency`,
         description: 'Add or correct currency before relying on the commercial totals.',
         href,
         source: 'Pricing',
@@ -644,7 +700,7 @@ export function buildQuoteReadinessModel(
           id: `item-date-outside-trip-${item.id}`,
           severity: 'warning',
           code: 'service-date-outside-trip',
-          title: `${item.service.name} falls outside the trip range`,
+          title: `${getQuoteReadinessItemName(item)} falls outside the trip range`,
           description: 'Check the service date because it is outside the current quote travel window.',
           href,
           source: 'Service Planner',
@@ -657,7 +713,7 @@ export function buildQuoteReadinessModel(
       }
     }
 
-    const category = getQuoteServiceCategoryKey(item.service);
+    const category = getQuoteServiceCategoryKey(item.service, item);
     const tracksOperationalDetails = category === 'activity' || category === 'transport';
     const missingTime = !item.startTime && !item.pickupTime;
     const missingLocation = !item.pickupLocation && !item.meetingPoint;
@@ -673,7 +729,7 @@ export function buildQuoteReadinessModel(
         id: `item-operational-${item.id}`,
         severity: 'warning',
         code: 'service-operational-details-missing',
-        title: `${item.service.name} has operational details missing`,
+        title: `${getQuoteReadinessItemName(item)} has operational details missing`,
         description: `Add ${missing} before booking handoff or final operations.`,
         href,
         source: 'Operations Readiness',
@@ -691,7 +747,7 @@ export function buildQuoteReadinessModel(
         id: `item-negative-margin-${item.id}`,
         severity: 'warning',
         code: 'service-negative-margin',
-        title: `${item.service.name} has negative margin`,
+        title: `${getQuoteReadinessItemName(item)} has negative margin`,
         description: 'This service is being sold below cost and should be reviewed before sending.',
         href,
         source: 'Pricing',
@@ -707,7 +763,7 @@ export function buildQuoteReadinessModel(
         id: `item-unassigned-${item.id}`,
         severity: 'cleanup',
         code: 'service-unassigned-day',
-        title: `${item.service.name} is not assigned to a day`,
+        title: `${getQuoteReadinessItemName(item)} is not assigned to a day`,
         description: 'Assign the service to a day so it appears in the day-by-day review.',
         href,
         source: 'Service Planner',
@@ -722,7 +778,7 @@ export function buildQuoteReadinessModel(
         id: `item-low-margin-${item.id}`,
         severity: 'warning',
         code: 'service-low-margin',
-        title: `${item.service.name} has low margin`,
+        title: `${getQuoteReadinessItemName(item)} has low margin`,
         description: 'Review commercials before sending the quote.',
         href,
         source: 'Pricing',

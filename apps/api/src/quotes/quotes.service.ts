@@ -158,9 +158,12 @@ type CreateQuoteItemInput = {
   startDate?: Date | null;
   endDate?: Date | null;
   netCost?: number | null;
+  pricingMatrixJson?: unknown;
+  singleSupplement?: number | null;
   includes?: string | null;
   excludes?: string | null;
   internalNotes?: string | null;
+  hotelsOrSimilar?: string | null;
   clientDescription?: string | null;
   quantity: number;
   paxCount?: number;
@@ -3213,7 +3216,10 @@ export class QuotesService {
       const includes = this.normalizeQuoteItemOperationalText(data.includes);
       const excludes = this.normalizeQuoteItemOperationalText(data.excludes);
       const internalNotes = this.normalizeQuoteItemOperationalText(data.internalNotes);
+      const hotelsOrSimilar = this.normalizeQuoteItemOperationalText(data.hotelsOrSimilar);
       const pricingBasis = this.normalizeExternalPackagePricingBasis(data.pricingBasis);
+      const pricingMatrixJson = this.normalizeExternalPackagePricingMatrixJson(data.pricingMatrixJson);
+      const singleSupplement = this.normalizeOptionalNonNegativeNumber(data.singleSupplement, 'External package single supplement');
       if (data.netCost === undefined || data.netCost === null || String(data.netCost).trim() === '') {
         throw new BadRequestException('External package netCost is required');
       }
@@ -3281,9 +3287,12 @@ export class QuotesService {
         externalEndDate: endDate,
         externalPricingBasis: pricingBasis,
         externalNetCost: netCost,
+        externalPackagePricingMatrixJson: pricingMatrixJson,
+        externalPackageSingleSupplement: singleSupplement,
         externalIncludes: includes,
         externalExcludes: excludes,
         externalInternalNotes: internalNotes,
+        externalHotelsOrSimilar: hotelsOrSimilar,
         externalClientDescription: clientDescription,
       };
     }
@@ -4879,6 +4888,37 @@ export class QuotesService {
     }
 
     return Number(normalized.toFixed(2));
+  }
+
+  private normalizeExternalPackagePricingMatrixJson(value: unknown) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const rows = Array.isArray(value) ? value : (value as any)?.rows;
+    if (!Array.isArray(rows)) {
+      throw new BadRequestException('External package pricing matrix must be a list of rows');
+    }
+
+    return rows
+      .map((row) => ({
+        label: this.normalizeQuoteItemOperationalText(row?.label) || '',
+        paxFrom: row?.paxFrom === undefined || row?.paxFrom === null || row?.paxFrom === '' ? null : Number(row.paxFrom),
+        paxTo: row?.paxTo === undefined || row?.paxTo === null || row?.paxTo === '' ? null : Number(row.paxTo),
+        freePax: row?.freePax === undefined || row?.freePax === null || row?.freePax === '' ? null : Number(row.freePax),
+        costPerPerson: row?.costPerPerson === undefined || row?.costPerPerson === null || row?.costPerPerson === '' ? null : Number(row.costPerPerson),
+        sellPerPerson: row?.sellPerPerson === undefined || row?.sellPerPerson === null || row?.sellPerPerson === '' ? null : Number(row.sellPerPerson),
+        notes: this.normalizeQuoteItemOperationalText(row?.notes) || null,
+      }))
+      .filter((row) => row.label || row.paxFrom !== null || row.paxTo !== null || row.freePax !== null || row.costPerPerson !== null || row.sellPerPerson !== null || row.notes)
+      .map((row) => {
+        for (const [key, rawValue] of Object.entries(row)) {
+          if (typeof rawValue === 'number' && (!Number.isFinite(rawValue) || rawValue < 0)) {
+            throw new BadRequestException(`External package pricing matrix ${key} must be zero or greater`);
+          }
+        }
+        return row;
+      });
   }
 
   private getFinalItemCost(baseCost: number, overrideCost: number | null, useOverride: boolean) {

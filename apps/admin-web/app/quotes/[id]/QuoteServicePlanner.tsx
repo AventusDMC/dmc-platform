@@ -16,7 +16,7 @@ import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
-import { getExternalPackagePricingBasisForService, type ExternalPackageFormState } from './external-package-ui';
+import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
 import {
   buildQuoteWorkspaceHref,
   buildQuoteReadinessModel,
@@ -189,7 +189,7 @@ type ParsedDayContent = {
 };
 
 type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
-  service: SupplierService;
+  service: SupplierService | null;
   hotel: {
     name: string;
   } | null;
@@ -245,9 +245,12 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   externalEndDate?: string | null;
   externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
   externalNetCost?: number | null;
+  externalPackagePricingMatrixJson?: unknown;
+  externalPackageSingleSupplement?: number | null;
   externalIncludes?: string | null;
   externalExcludes?: string | null;
   externalInternalNotes?: string | null;
+  externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
 };
 
@@ -537,7 +540,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
   const guideValues = parseGuideInitialValues(item.pricingDescription);
 
   return {
-    serviceId: item.service.id,
+    serviceId: item.service?.id || '',
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
     markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),
@@ -574,7 +577,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     guideDuration: guideValues.guideDuration,
     overnight: guideValues.overnight,
     externalPackage: {
-      packageName: item.externalPackageName || item.service.name || '',
+      packageName: item.externalPackageName || item.service?.name || '',
       country: item.externalPackageCountry || '',
       supplierName: item.externalSupplierName || '',
       startDay: item.externalStartDay !== null && item.externalStartDay !== undefined ? String(item.externalStartDay) : '',
@@ -583,19 +586,23 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
       endDate: toDateInputValue(item.externalEndDate),
       pricingBasis: item.externalPricingBasis === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
       netCost: item.externalNetCost !== null && item.externalNetCost !== undefined ? String(item.externalNetCost) : '',
+      singleSupplement:
+        item.externalPackageSingleSupplement !== null && item.externalPackageSingleSupplement !== undefined ? String(item.externalPackageSingleSupplement) : '',
+      pricingMatrixRows: normalizeExternalPackagePricingMatrixRows(item.externalPackagePricingMatrixJson),
       currency: item.currency || 'USD',
       includes: item.externalIncludes || '',
       excludes: item.externalExcludes || '',
       internalNotes: item.externalInternalNotes || '',
+      hotelsOrSimilar: item.externalHotelsOrSimilar || '',
       clientItineraryText: item.externalClientDescription || '',
     },
   };
 }
 
 function buildServiceWorkflowState(items: QuoteItem[], quoteType: Quote['quoteType']): ServiceWorkflowState {
-  const hasHotel = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'hotel');
-  const hasTransport = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'transport');
-  const hasActivity = items.some((item) => getQuoteServiceCategoryKey(item.service) === 'activity');
+  const hasHotel = items.some((item) => getItemCategory(item) === 'hotel');
+  const hasTransport = items.some((item) => getItemCategory(item) === 'transport');
+  const hasActivity = items.some((item) => getItemCategory(item) === 'activity');
   let recommendedCategory: ServicePlannerCategory = 'hotel';
   let title = 'Start building your itinerary';
   let description = 'Begin with accommodation, then add transfer coverage and experiences.';
@@ -692,15 +699,15 @@ function getServiceNotes(item: QuoteItem) {
 }
 
 function getServiceSupplierLabel(item: QuoteItem) {
-  return item.externalSupplierName || item.hotel?.name || item.contract?.name || item.service.supplierId || 'Supplier pending';
+  return item.externalSupplierName || item.hotel?.name || item.contract?.name || getItemSupplierId(item) || 'Supplier pending';
 }
 
 function isExternalPackageItem(item: QuoteItem) {
-  return getQuoteServiceCategoryKey(item.service) === 'externalPackage';
+  return getItemCategory(item) === 'externalPackage';
 }
 
 function getExternalPackageName(item: QuoteItem) {
-  return item.externalPackageName || item.service.name || 'External package';
+  return item.externalPackageName || item.service?.name || 'External package';
 }
 
 function getExternalPackageDayRange(item: QuoteItem, fallbackDayNumber?: number | null) {
@@ -724,9 +731,13 @@ function buildServiceLaneId(dayId: string, category: ServicePlannerCategory) {
 
 function getLaneItemIds(items: QuoteItem[], dayId: string, category: ServicePlannerCategory) {
   return items
-    .filter((item) => item.itineraryId === dayId && getQuoteServiceCategoryKey(item.service) === category)
+    .filter((item) => item.itineraryId === dayId && getItemCategory(item) === category)
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))
     .map((item) => item.id);
+}
+
+function removeItemFromLaneOrders(laneOrders: ServiceLaneOrders, itemId: string): ServiceLaneOrders {
+  return Object.fromEntries(Object.entries(laneOrders).map(([laneId, itemIds]) => [laneId, itemIds.filter((id) => id !== itemId)]));
 }
 
 function getServiceLaneEmptyCopy(category: ServicePlannerCategory) {
@@ -847,6 +858,45 @@ function getServiceTypeLabel(service: SupplierService) {
   return service.serviceType?.name || service.category || service.unitType || 'Service';
 }
 
+function getItemCategory(item: QuoteItem): ServicePlannerCategory {
+  const hasExternalPackagePayload = Boolean(
+    item.externalPackageName ||
+      item.externalPackageCountry ||
+      item.externalSupplierName ||
+      item.externalClientDescription ||
+      item.externalIncludes ||
+      item.externalExcludes ||
+      item.externalInternalNotes ||
+      item.externalHotelsOrSimilar ||
+      item.externalStartDay ||
+      item.externalEndDay ||
+      item.externalStartDate ||
+      item.externalEndDate ||
+      item.externalPricingBasis ||
+      (item.externalNetCost !== null && item.externalNetCost !== undefined) ||
+      (Array.isArray(item.externalPackagePricingMatrixJson) && item.externalPackagePricingMatrixJson.length > 0) ||
+      item.externalPackageSingleSupplement !== null && item.externalPackageSingleSupplement !== undefined,
+  );
+
+  if (hasExternalPackagePayload) {
+    return 'externalPackage';
+  }
+
+  return item.service ? getQuoteServiceCategoryKey(item.service, item) : 'other';
+}
+
+function getItemServiceName(item: QuoteItem) {
+  return item.service?.name || item.externalPackageName || 'External Country Package';
+}
+
+function getItemServiceTypeLabel(item: QuoteItem) {
+  return item.service ? getServiceTypeLabel(item.service) : 'External Country Package';
+}
+
+function getItemSupplierId(item: QuoteItem) {
+  return item.service?.supplierId || null;
+}
+
 function normalizeSuggestionText(value: string | null | undefined) {
   return (value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
 }
@@ -866,7 +916,7 @@ function getQuoteUsageCounts(quote: Quote) {
   const counts = new Map<string, number>();
 
   for (const item of getAllPlannerItems(quote)) {
-    const keys = [item.service.id, item.hotelId ? `hotel:${item.hotelId}` : null, item.appliedVehicleRate?.routeId ? `route:${item.appliedVehicleRate.routeId}` : null].filter(
+    const keys = [item.service?.id, item.hotelId ? `hotel:${item.hotelId}` : null, item.appliedVehicleRate?.routeId ? `route:${item.appliedVehicleRate.routeId}` : null].filter(
       (key): key is string => Boolean(key),
     );
 
@@ -975,14 +1025,14 @@ function getUsedInQuoteSuggestions(category: ServicePlannerCategory, plannerProp
   const used = new Map<string, SmartSuggestionItem>();
 
   for (const item of getAllPlannerItems(plannerProps.quote)) {
-    if (getQuoteServiceCategoryKey(item.service) !== category) {
+    if (getItemCategory(item) !== category) {
       continue;
     }
 
     if (category === 'hotel' && item.hotelId) {
       used.set(`hotel:${item.hotelId}`, {
         id: `hotel:${item.hotelId}`,
-        label: item.hotel?.name || item.service.name,
+        label: item.hotel?.name || getItemServiceName(item),
         detail: item.contract?.name || 'Used in this quote',
         category,
         source: 'hotel',
@@ -992,14 +1042,14 @@ function getUsedInQuoteSuggestions(category: ServicePlannerCategory, plannerProp
     } else if (category === 'transport' && item.appliedVehicleRate?.routeId) {
       used.set(`route:${item.appliedVehicleRate.routeId}`, {
         id: `route:${item.appliedVehicleRate.routeId}`,
-        label: item.appliedVehicleRate.routeName || item.service.name,
+        label: item.appliedVehicleRate.routeName || getItemServiceName(item),
         detail: item.appliedVehicleRate.serviceType.name || 'Used in this quote',
         category,
         source: 'route',
         routeId: item.appliedVehicleRate.routeId,
         catalogRank: 0,
       });
-    } else {
+    } else if (item.service) {
       used.set(`service:${item.service.id}`, {
         id: `service:${item.service.id}`,
         label: item.service.name,
@@ -1105,6 +1155,7 @@ function AddServiceEditorPanel({
   selectedHotelId,
   selectedRouteId,
   onSaved,
+  onCancel,
 }: {
   category: ServicePlannerCategory;
   label: string;
@@ -1115,6 +1166,7 @@ function AddServiceEditorPanel({
   selectedHotelId?: string;
   selectedRouteId?: string;
   onSaved?: (item: QuoteItem) => void;
+  onCancel?: () => void;
 }) {
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
@@ -1171,6 +1223,7 @@ function AddServiceEditorPanel({
         preferredRouteId={category === 'transport' ? selectedRouteId || plannerProps.preferredCatalogRouteId : undefined}
         submitLabel={label}
         onSaved={(item) => onSaved?.(item as QuoteItem)}
+        onCancel={onCancel}
       />
     </>
   );
@@ -1333,12 +1386,14 @@ function EditServiceEditorPanel({
   optionId,
   dayNumber,
   onSaved,
+  onCancel,
 }: {
   item: QuoteItem;
   plannerProps: QuoteServicePlannerProps;
   optionId?: string;
   dayNumber: number | null;
   onSaved?: (item: QuoteItem) => void;
+  onCancel?: () => void;
 }) {
   const itineraryDay = item.itineraryId ? plannerProps.quote.itineraries.find((day) => day.id === item.itineraryId) ?? null : null;
 
@@ -1367,10 +1422,11 @@ function EditServiceEditorPanel({
       itineraryDayTitle={itineraryDay?.title ?? null}
       itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
-      initialServiceTypeKey={getQuoteServiceCategoryKey(item.service)}
+      initialServiceTypeKey={getItemCategory(item)}
       submitLabel="Save service"
       initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
+      onCancel={onCancel}
     />
   );
 }
@@ -1403,7 +1459,7 @@ function AssignedServicesTable({
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
     label: SERVICE_PLANNER_LANE_LABELS[category],
-    items: items.filter((item) => getQuoteServiceCategoryKey(item.service) === category),
+    items: items.filter((item) => getItemCategory(item) === category),
   }));
 
   return (
@@ -1538,6 +1594,35 @@ function formatLiveMoney(value: number | null | undefined, currency: string) {
   })}`;
 }
 
+function getExternalPackageMatrixRows(item: QuoteItem) {
+  return Array.isArray(item.externalPackagePricingMatrixJson) ? item.externalPackagePricingMatrixJson : [];
+}
+
+function getExternalPackageMatrixRowLabel(row: any) {
+  const label = row?.label === undefined || row?.label === null ? '' : String(row.label).trim();
+  if (label) {
+    return label;
+  }
+
+  const paxFrom = row?.paxFrom === undefined || row?.paxFrom === null || row?.paxFrom === '' ? '' : String(row.paxFrom);
+  const paxTo = row?.paxTo === undefined || row?.paxTo === null || row?.paxTo === '' ? '' : String(row.paxTo);
+  const freePax = row?.freePax === undefined || row?.freePax === null || row?.freePax === '' ? '' : String(row.freePax);
+  const paxRange = paxFrom && paxTo ? `${paxFrom}-${paxTo}` : paxFrom || paxTo;
+
+  return freePax && paxRange ? `${paxRange}+${freePax}` : paxRange || 'Pax slab';
+}
+
+function formatExternalPackageMatrixRow(row: any, currency: string) {
+  const cost = row?.costPerPerson === undefined || row?.costPerPerson === null || row?.costPerPerson === '' ? null : Number(row.costPerPerson);
+  const sell = row?.sellPerPerson === undefined || row?.sellPerPerson === null || row?.sellPerPerson === '' ? null : Number(row.sellPerPerson);
+  const parts = [
+    Number.isFinite(cost) ? `cost pp ${formatLiveMoney(cost, currency)}` : null,
+    Number.isFinite(sell) ? `sell pp ${formatLiveMoney(sell, currency)}` : null,
+  ].filter(Boolean);
+
+  return `${getExternalPackageMatrixRowLabel(row)} -> ${parts.join(' / ') || 'pricing pending'}`;
+}
+
 function buildSortableTransform(transform: ReturnType<typeof useSortable>['transform']) {
   if (!transform) {
     return undefined;
@@ -1569,12 +1654,14 @@ function SortableServiceCard({
 }) {
   const isExternalPackage = isExternalPackageItem(item);
   const externalRange = isExternalPackage ? getExternalPackageDayRange(item, dayNumber) : null;
-  const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || item.service.name;
+  const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || getItemServiceName(item);
   const itemProfit = calculateProfit(item.totalSell, item.totalCost);
   const itemMarginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
   const itemMarginWarning = getItemMarginWarning(item.totalSell, item.totalCost);
   const itemCurrency = (item.currency as Quote['quoteCurrency']) || currency;
   const serviceTimeLabel = item.pickupTime || item.startTime;
+  const externalMatrixRows = isExternalPackage ? getExternalPackageMatrixRows(item) : [];
+  const hasExternalMatrix = externalMatrixRows.length > 0;
 
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -1606,11 +1693,11 @@ function SortableServiceCard({
           {...listeners}
         >
           <span className="quote-service-type-icon" aria-hidden="true">
-            {SERVICE_PLANNER_ICONS[getQuoteServiceCategoryKey(item.service)] || 'S'}
+            {SERVICE_PLANNER_ICONS[getItemCategory(item)] || 'S'}
           </span>
         </button>
         {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
-        {item.service.supplierId === 'import-itinerary-system' ? <em>Unmatched</em> : null}
+        {getItemSupplierId(item) === 'import-itinerary-system' ? <em>Unmatched</em> : null}
       </div>
       <div className="quote-service-mini-card-main">
         <div className="quote-service-mini-card-title-row">
@@ -1619,7 +1706,7 @@ function SortableServiceCard({
             <h5>{displayName}</h5>
             {serviceTimeLabel ? <em className="quote-service-time-badge">{serviceTimeLabel}</em> : null}
           </div>
-          <strong className="quote-service-card-price">{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
+          <strong className="quote-service-card-price">{hasExternalMatrix ? 'Matrix pricing' : formatLiveMoney(item.totalSell, itemCurrency)}</strong>
         </div>
         <p className="quote-service-card-supplier">
           {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
@@ -1630,16 +1717,33 @@ function SortableServiceCard({
           <span>Multi-day partner package</span>
           {externalRange ? <strong>Spans {externalRange.label}</strong> : null}
           <em>{item.externalPackageCountry || 'Country pending'}</em>
+          {hasExternalMatrix ? (
+            <div className="quote-service-external-matrix-summary">
+              {externalMatrixRows.map((row: any, index) => (
+                <p key={`${getExternalPackageMatrixRowLabel(row)}-${index}`}>{formatExternalPackageMatrixRow(row, itemCurrency)}</p>
+              ))}
+            </div>
+          ) : null}
+          {item.externalPackageSingleSupplement !== null && item.externalPackageSingleSupplement !== undefined ? (
+            <p>Single supplement: {formatLiveMoney(item.externalPackageSingleSupplement, itemCurrency)}</p>
+          ) : null}
+          {item.externalHotelsOrSimilar ? <p>Hotels or Similar: {item.externalHotelsOrSimilar}</p> : null}
         </div>
       ) : null}
       <div className="quote-service-card-pricing-summary">
-        <span>Cost <span className="quote-money">{formatLiveMoney(item.totalCost, itemCurrency)}</span></span>
-        <span>Profit <span className="quote-money">{formatLiveMoney(itemProfit, itemCurrency)}</span></span>
-        <span>Margin <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span></span>
+        {hasExternalMatrix ? (
+          <span>Fallback net <span className="quote-money">{item.externalNetCost !== null && item.externalNetCost !== undefined ? formatLiveMoney(item.externalNetCost, itemCurrency) : 'Not set'}</span></span>
+        ) : (
+          <>
+            <span>Cost <span className="quote-money">{formatLiveMoney(item.totalCost, itemCurrency)}</span></span>
+            <span>Profit <span className="quote-money">{formatLiveMoney(itemProfit, itemCurrency)}</span></span>
+            <span>Margin <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span></span>
+          </>
+        )}
         {isExternalPackage ? (
           <span>{item.externalPricingBasis === 'PER_GROUP' ? 'Per group' : 'Per person'}</span>
         ) : null}
-        {itemMarginWarning ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
+        {itemMarginWarning && !hasExternalMatrix ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
       </div>
       <details className="quote-service-card-details">
         <summary>Details</summary>
@@ -1680,7 +1784,7 @@ function getActiveServiceDrawerTitle(activeServicePanel: ActiveServicePanel | nu
     return `${activeServicePanel.label} - Day ${activeServicePanel.day.dayNumber}`;
   }
 
-  return `${activeServicePanel.item.service.name} - Day ${activeServicePanel.dayNumber || 'Unassigned'}`;
+  return `${getItemServiceName(activeServicePanel.item)} - Day ${activeServicePanel.dayNumber || 'Unassigned'}`;
 }
 
 function getActiveServiceDrawerDescription(activeServicePanel: ActiveServicePanel | null) {
@@ -1692,7 +1796,7 @@ function getActiveServiceDrawerDescription(activeServicePanel: ActiveServicePane
     return `${SERVICE_PLANNER_TAB_LABELS[activeServicePanel.category]} setup for ${activeServicePanel.day.title || `Day ${activeServicePanel.day.dayNumber}`}.`;
   }
 
-  return `${getServiceTypeLabel(activeServicePanel.item.service)} service details, supplier context, and pricing.`;
+  return `${getItemServiceTypeLabel(activeServicePanel.item)} service details, supplier context, and pricing.`;
 }
 
 function ActiveServiceDrawerFinancials({
@@ -2067,7 +2171,7 @@ function ScopePlanner({
     items: localItems.filter((item) => item.itineraryId === summary.day.id),
   }));
   const unassignedItems = localItems.filter((item) => !item.itineraryId);
-  const unresolvedItems = localItems.filter((item) => item.service.supplierId === 'import-itinerary-system');
+  const unresolvedItems = localItems.filter((item): item is QuoteItem & { service: SupplierService } => getItemSupplierId(item) === 'import-itinerary-system' && Boolean(item.service));
   const workflow = buildServiceWorkflowState(localItems, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
@@ -2075,14 +2179,14 @@ function ScopePlanner({
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
-      summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
+      summary.items.some((item) => getItemCategory(item) === rule.key),
     ),
   ).length;
   const missingCoverageWarnings = daySummaries.reduce((count, summary) => {
     return (
       count +
       dayCompletenessRules.filter(
-        (rule) => !summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
+        (rule) => !summary.items.some((item) => getItemCategory(item) === rule.key),
       ).length
     );
   }, 0);
@@ -2229,6 +2333,10 @@ function ScopePlanner({
   }
 
   function handleEditorItemSaved(savedItem: QuoteItem) {
+    let savedCategory: ServicePlannerCategory | null = null;
+    let savedDayId: string | null = null;
+    let nextLocalItems: QuoteItem[] | null = null;
+
     setLocalItems((current) => {
       if (!savedItem?.id) {
         return current;
@@ -2244,19 +2352,32 @@ function ScopePlanner({
         ...savedItem,
         itineraryId: savedItem.itineraryId || fallbackItineraryId,
       };
+      savedCategory = getItemCategory(nextItem);
+      savedDayId = nextItem.itineraryId;
+      nextLocalItems = [...current.filter((item) => item.id !== nextItem.id), nextItem];
 
-      return [...current.filter((item) => item.id !== nextItem.id), nextItem];
+      return nextLocalItems;
     });
 
-    if (savedItem?.id && activeServicePanel?.kind === 'add') {
-      const laneId = buildServiceLaneId(activeServicePanel.day.id, activeServicePanel.category);
-      setLaneOrders((current) => ({
-        ...current,
-        [laneId]: [
-          ...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)).filter((id) => id !== savedItem.id),
-          savedItem.id,
-        ],
-      }));
+    if (savedItem?.id) {
+      setLaneOrders((current) => {
+        const nextOrders = removeItemFromLaneOrders(current, savedItem.id);
+
+        if (activeServicePanel?.kind !== 'add' || !savedCategory || !savedDayId) {
+          return nextOrders;
+        }
+
+        const laneId = buildServiceLaneId(savedDayId, savedCategory);
+        const fallbackItems = nextLocalItems || localItems;
+
+        return {
+          ...nextOrders,
+          [laneId]: [
+            ...(nextOrders[laneId] || getLaneItemIds(fallbackItems, savedDayId, savedCategory)).filter((id) => id !== savedItem.id),
+            savedItem.id,
+          ],
+        };
+      });
       setRecentlyAddedItemId(savedItem.id);
       window.setTimeout(() => setRecentlyAddedItemId((current) => (current === savedItem.id ? null : current)), 1800);
     }
@@ -2487,16 +2608,22 @@ function ScopePlanner({
         ...createdItem,
         itineraryId: createdItem.itineraryId || activeServicePanel.day.id,
       };
-      const laneId = buildServiceLaneId(activeServicePanel.day.id, activeServicePanel.category);
+      const optimisticCategory = getItemCategory(optimisticItem);
+      const laneId = buildServiceLaneId(optimisticItem.itineraryId, optimisticCategory);
+      const nextLocalItems = [...localItems.filter((entry) => entry.id !== optimisticItem.id), optimisticItem];
 
       setLocalItems((current) => [...current.filter((entry) => entry.id !== optimisticItem.id), optimisticItem]);
-      setLaneOrders((current) => ({
-        ...current,
-        [laneId]: [
-          ...(current[laneId] || getLaneItemIds(localItems, activeServicePanel.day.id, activeServicePanel.category)).filter((id) => id !== optimisticItem.id),
-          optimisticItem.id,
-        ],
-      }));
+      setLaneOrders((current) => {
+        const nextOrders = removeItemFromLaneOrders(current, optimisticItem.id);
+
+        return {
+          ...nextOrders,
+          [laneId]: [
+            ...(nextOrders[laneId] || getLaneItemIds(nextLocalItems, optimisticItem.itineraryId, optimisticCategory)).filter((id) => id !== optimisticItem.id),
+            optimisticItem.id,
+          ],
+        };
+      });
       setRecentlyAddedItemId(optimisticItem.id);
       setActiveServicePanel(null);
       window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
@@ -2545,7 +2672,7 @@ function ScopePlanner({
   }
 
   async function handleRemoveItem(item: QuoteItem) {
-    const displayName = item.hotel?.name || item.service.name;
+    const displayName = item.hotel?.name || getItemServiceName(item);
 
     if (!window.confirm(`Remove ${displayName}?`)) {
       return;
@@ -2677,7 +2804,7 @@ function ScopePlanner({
         const summary = activeDaySummary;
         const completeness = dayCompletenessRules.map((rule) => ({
           ...rule,
-          complete: summary.items.some((item) => getQuoteServiceCategoryKey(item.service) === rule.key),
+          complete: summary.items.some((item) => getItemCategory(item) === rule.key),
         }));
         const currentServicesCount = summary.items.length;
         const dayHeading = formatDayHeading(summary.day, summary.inferredCity);
@@ -2919,7 +3046,7 @@ function ScopePlanner({
                   const activeCategory =
                     activeServicePanel.kind === 'add'
                       ? activeServicePanel.category
-                      : getQuoteServiceCategoryKey(activeServicePanel.item.service);
+                      : getItemCategory(activeServicePanel.item);
                   const active = activeCategory === tabCategory;
                   const tabDay =
                     activeServicePanel.kind === 'add'
@@ -2988,6 +3115,7 @@ function ScopePlanner({
                     selectedHotelId={activeServicePanel.selectedHotelId}
                     selectedRouteId={activeServicePanel.selectedRouteId}
                     onSaved={handleEditorItemSaved}
+                    onCancel={() => setActiveServicePanel(null)}
                   />
                 </div>
               ) : (
@@ -2997,6 +3125,7 @@ function ScopePlanner({
                   optionId={activeServicePanel.optionId}
                   dayNumber={activeServicePanel.dayNumber}
                   onSaved={handleEditorItemSaved}
+                  onCancel={() => setActiveServicePanel(null)}
                 />
               )}
             </section>

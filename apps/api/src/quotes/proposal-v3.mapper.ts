@@ -93,6 +93,26 @@ function cleanText(value: string | null | undefined) {
     .trim();
 }
 
+function formatExternalPackagePricingMatrix(value: unknown, currency = 'USD') {
+  const rows = Array.isArray(value) ? value : (value as any)?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  const labels = rows
+    .map((row: any) => {
+      const label = cleanText(row?.label === undefined || row?.label === null ? '' : String(row.label));
+      const paxLabel = label || [row?.paxFrom, row?.paxTo].filter((part) => part !== undefined && part !== null && part !== '').join('-');
+      const amount = row?.sellPerPerson ?? row?.costPerPerson;
+      const amountNumber = Number(amount);
+      const amountLabel = Number.isFinite(amountNumber) ? formatProposalMoney(amountNumber, currency) : null;
+      return [paxLabel, amountLabel].filter(Boolean).join(': ');
+    })
+    .filter(Boolean);
+
+  return labels.length > 0 ? `Pricing Matrix: ${labels.join(' | ')}` : null;
+}
+
 function normalizeComparisonText(value: string | null | undefined) {
   return cleanText(value)
     .toLowerCase()
@@ -315,7 +335,7 @@ function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3Accommodation
   return rows;
 }
 
-function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[]): ProposalV3DayGroup[] {
+function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[], currency = 'USD'): ProposalV3DayGroup[] {
   const location = extractDayLocation(day.title, day.dayNumber);
   const grouped = new Map<string, ProposalV3DayGroup['items']>();
   const order = ['Stay', 'Transfer', 'Partner Package', 'Experience', 'Meal', 'Guide', 'Other'];
@@ -332,6 +352,11 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
         isExternalPackageItem(item)
           ? [
               item.externalClientDescription,
+              item.externalHotelsOrSimilar ? `Hotels or Similar: ${item.externalHotelsOrSimilar}` : null,
+              formatExternalPackagePricingMatrix(item.externalPackagePricingMatrixJson, currency),
+              item.externalPackageSingleSupplement !== null && item.externalPackageSingleSupplement !== undefined
+                ? `Single supplement: ${formatProposalMoney(Number(item.externalPackageSingleSupplement), currency)}`
+                : null,
               item.externalIncludes ? `Includes: ${item.externalIncludes}` : null,
               item.externalExcludes ? `Excludes: ${item.externalExcludes}` : null,
             ]
@@ -402,7 +427,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
       title: isWeakText(day.title) ? location : cleanText(day.title) || location,
       summary: isPlaceholderText(summary) ? null : summary || null,
       overnightLocation: dayItems.some((item) => isHotelItem(item)) ? location : null,
-      groups: buildDayGroups(day, dayItems),
+      groups: buildDayGroups(day, dayItems, quote.quoteCurrency || 'USD'),
     };
   });
 
@@ -430,6 +455,7 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
             description: null,
           },
           [item],
+          quote.quoteCurrency || 'USD',
         );
         const existingDay = days.find((day) => day.dayNumber === dayNumber);
 

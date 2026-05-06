@@ -892,90 +892,93 @@ model QuoteBlock {
 }
 
 model QuoteItem {
-  id                        String                  @id @default(uuid()) @db.Uuid
-  quoteId                   String                  @db.Uuid
-  serviceId                 String?                 @db.Uuid
-  activityId                String?                 @db.Uuid
-  quantity                  Int                     @default(1)
-  paxCount                  Int?
-  participantCount          Int?
-  adultCount                Int?
-  childCount                Int?
-  roomCount                 Int?
-  nightCount                Int?
-  dayCount                  Int?
-  markupPercent             Float                   @default(0)
-  markupAmount              Float?
-  sellPrice                 Float?
-  totalCost                 Float
-  totalSell                 Float
-  sortOrder                 Int                     @default(0)
-  createdAt                 DateTime                @default(now())
-  updatedAt                 DateTime                @updatedAt
-  appliedVehicleRateId      String?                 @db.Uuid
-  entranceFeeId             String?                 @db.Uuid
-  jordanPassCovered         Boolean                 @default(false)
-  jordanPassSavingsJod      Float                   @default(0)
-  currency                  String
-  quoteCurrency             String                  @default("USD")
-  pricingDescription        String?
-  itineraryId               String?                 @db.Uuid
-  serviceDate               DateTime?
-  startTime                 String?
-  pickupTime                String?
-  pickupLocation            String?
-  meetingPoint              String?
-  reconfirmationRequired    Boolean                 @default(false)
-  reconfirmationDueAt       DateTime?
-  optionId                  String?                 @db.Uuid
-  hotelId                   String?                 @db.Uuid
-  contractId                String?                 @db.Uuid
-  seasonName                String?
-  mealPlan                  HotelMealPlan?
-  roomCategoryId            String?                 @db.Uuid
-  occupancyType             HotelOccupancyType?
-  baseCost                  Float
-  costBaseAmount            Float                   @default(0)
-  costCurrency              String                  @default("USD")
-  salesTaxPercent           Float                   @default(0)
-  salesTaxIncluded          Boolean                 @default(false)
-  serviceChargePercent      Float                   @default(0)
-  serviceChargeIncluded     Boolean                 @default(false)
-  tourismFeeAmount          Float?
-  tourismFeeCurrency        String?
-  tourismFeeMode            TourismFeeMode?
-  fxRate                    Float?
-  fxFromCurrency            String?
-  fxToCurrency              String?
-  fxRateDate                DateTime?
-  overrideCost              Float?
-  finalCost                 Float?
-  overrideReason            String?
-  useOverride               Boolean                 @default(false)
-  externalPackageCountry    String?
-  externalPackageName       String?
-  externalSupplierName      String?
-  externalStartDay          Int?
-  externalEndDay            Int?
-  externalStartDate         DateTime?
-  externalEndDate           DateTime?
-  externalPricingBasis      String?
-  externalNetCost           Float?
-  externalIncludes          String?
-  externalExcludes          String?
-  externalInternalNotes     String?
-  externalClientDescription String?
-  appliedVehicleRate        VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
-  activity                  Activity?               @relation(fields: [activityId], references: [id])
-  contract                  HotelContract?          @relation(fields: [contractId], references: [id])
-  entranceFee               EntranceFee?            @relation(fields: [entranceFeeId], references: [id])
-  hotel                     Hotel?                  @relation(fields: [hotelId], references: [id])
-  itinerary                 Itinerary?              @relation(fields: [itineraryId], references: [id])
-  option                    QuoteOption?            @relation(fields: [optionId], references: [id], onDelete: Cascade)
-  quote                     Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  quoteItineraryDayItems    QuoteItineraryDayItem[]
-  roomCategory              HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
-  service                   SupplierService?        @relation(fields: [serviceId], references: [id])
+  id                               String                  @id @default(uuid()) @db.Uuid
+  quoteId                          String                  @db.Uuid
+  serviceId                        String?                 @db.Uuid
+  activityId                       String?                 @db.Uuid
+  quantity                         Int                     @default(1)
+  paxCount                         Int?
+  participantCount                 Int?
+  adultCount                       Int?
+  childCount                       Int?
+  roomCount                        Int?
+  nightCount                       Int?
+  dayCount                         Int?
+  markupPercent                    Float                   @default(0)
+  markupAmount                     Float?
+  sellPrice                        Float?
+  totalCost                        Float
+  totalSell                        Float
+  sortOrder                        Int                     @default(0)
+  createdAt                        DateTime                @default(now())
+  updatedAt                        DateTime                @updatedAt
+  appliedVehicleRateId             String?                 @db.Uuid
+  entranceFeeId                    String?                 @db.Uuid
+  jordanPassCovered                Boolean                 @default(false)
+  jordanPassSavingsJod             Float                   @default(0)
+  currency                         String
+  quoteCurrency                    String                  @default("USD")
+  pricingDescription               String?
+  itineraryId                      String?                 @db.Uuid
+  serviceDate                      DateTime?
+  startTime                        String?
+  pickupTime                       String?
+  pickupLocation                   String?
+  meetingPoint                     String?
+  reconfirmationRequired           Boolean                 @default(false)
+  reconfirmationDueAt              DateTime?
+  optionId                         String?                 @db.Uuid
+  hotelId                          String?                 @db.Uuid
+  contractId                       String?                 @db.Uuid
+  seasonName                       String?
+  mealPlan                         HotelMealPlan?
+  roomCategoryId                   String?                 @db.Uuid
+  occupancyType                    HotelOccupancyType?
+  baseCost                         Float
+  costBaseAmount                   Float                   @default(0)
+  costCurrency                     String                  @default("USD")
+  salesTaxPercent                  Float                   @default(0)
+  salesTaxIncluded                 Boolean                 @default(false)
+  serviceChargePercent             Float                   @default(0)
+  serviceChargeIncluded            Boolean                 @default(false)
+  tourismFeeAmount                 Float?
+  tourismFeeCurrency               String?
+  tourismFeeMode                   TourismFeeMode?
+  fxRate                           Float?
+  fxFromCurrency                   String?
+  fxToCurrency                     String?
+  fxRateDate                       DateTime?
+  overrideCost                     Float?
+  finalCost                        Float?
+  overrideReason                   String?
+  useOverride                      Boolean                 @default(false)
+  externalPackageCountry           String?
+  externalPackageName              String?
+  externalSupplierName             String?
+  externalStartDay                 Int?
+  externalEndDay                   Int?
+  externalStartDate                DateTime?
+  externalEndDate                  DateTime?
+  externalPricingBasis             String?
+  externalNetCost                  Float?
+  externalPackagePricingMatrixJson Json?
+  externalPackageSingleSupplement  Float?
+  externalIncludes                 String?
+  externalExcludes                 String?
+  externalInternalNotes            String?
+  externalHotelsOrSimilar          String?
+  externalClientDescription        String?
+  appliedVehicleRate               VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
+  activity                         Activity?               @relation(fields: [activityId], references: [id])
+  contract                         HotelContract?          @relation(fields: [contractId], references: [id])
+  entranceFee                      EntranceFee?            @relation(fields: [entranceFeeId], references: [id])
+  hotel                            Hotel?                  @relation(fields: [hotelId], references: [id])
+  itinerary                        Itinerary?              @relation(fields: [itineraryId], references: [id])
+  option                           QuoteOption?            @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  quote                            Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteItineraryDayItems           QuoteItineraryDayItem[]
+  roomCategory                     HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
+  service                          SupplierService?        @relation(fields: [serviceId], references: [id])
 
   @@index([contractId])
   @@index([activityId])

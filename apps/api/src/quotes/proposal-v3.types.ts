@@ -37,9 +37,12 @@ export type ProposalV3QuoteItem = {
   externalEndDate?: Date | string | null;
   externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
   externalNetCost?: number | null;
+  externalPackagePricingMatrixJson?: unknown;
+  externalPackageSingleSupplement?: number | null;
   externalIncludes?: string | null;
   externalExcludes?: string | null;
   externalInternalNotes?: string | null;
+  externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
   service: {
     name: string;

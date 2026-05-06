@@ -109,9 +109,12 @@ type CreateQuoteItemBody = {
   startDate?: string | null;
   endDate?: string | null;
   netCost?: number | null;
+  pricingMatrixJson?: unknown;
+  singleSupplement?: number | null;
   includes?: string | null;
   excludes?: string | null;
   internalNotes?: string | null;
+  hotelsOrSimilar?: string | null;
   clientDescription?: string | null;
   quantity?: number;
   paxCount?: number;
@@ -781,9 +784,12 @@ export class QuotesController {
       startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
       netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      pricingMatrixJson: body.pricingMatrixJson === undefined ? undefined : body.pricingMatrixJson,
+      singleSupplement: body.singleSupplement === undefined || body.singleSupplement === null ? body.singleSupplement : Number(body.singleSupplement),
       includes: body.includes === undefined ? undefined : body.includes || null,
       excludes: body.excludes === undefined ? undefined : body.excludes || null,
       internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      hotelsOrSimilar: body.hotelsOrSimilar === undefined ? undefined : body.hotelsOrSimilar || null,
       clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
@@ -867,9 +873,12 @@ export class QuotesController {
       startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
       netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      pricingMatrixJson: body.pricingMatrixJson === undefined ? undefined : body.pricingMatrixJson,
+      singleSupplement: body.singleSupplement === undefined || body.singleSupplement === null ? body.singleSupplement : Number(body.singleSupplement),
       includes: body.includes === undefined ? undefined : body.includes || null,
       excludes: body.excludes === undefined ? undefined : body.excludes || null,
       internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      hotelsOrSimilar: body.hotelsOrSimilar === undefined ? undefined : body.hotelsOrSimilar || null,
       clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
@@ -1086,9 +1095,12 @@ export class QuotesController {
       startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
       netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      pricingMatrixJson: body.pricingMatrixJson === undefined ? undefined : body.pricingMatrixJson,
+      singleSupplement: body.singleSupplement === undefined || body.singleSupplement === null ? body.singleSupplement : Number(body.singleSupplement),
       includes: body.includes === undefined ? undefined : body.includes || null,
       excludes: body.excludes === undefined ? undefined : body.excludes || null,
       internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      hotelsOrSimilar: body.hotelsOrSimilar === undefined ? undefined : body.hotelsOrSimilar || null,
       clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: Number(body.quantity ?? 1),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
@@ -1172,9 +1184,12 @@ export class QuotesController {
       startDate: body.startDate === undefined ? undefined : body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate === undefined ? undefined : body.endDate ? new Date(body.endDate) : null,
       netCost: body.netCost === undefined || body.netCost === null ? body.netCost : Number(body.netCost),
+      pricingMatrixJson: body.pricingMatrixJson === undefined ? undefined : body.pricingMatrixJson,
+      singleSupplement: body.singleSupplement === undefined || body.singleSupplement === null ? body.singleSupplement : Number(body.singleSupplement),
       includes: body.includes === undefined ? undefined : body.includes || null,
       excludes: body.excludes === undefined ? undefined : body.excludes || null,
       internalNotes: body.internalNotes === undefined ? undefined : body.internalNotes || null,
+      hotelsOrSimilar: body.hotelsOrSimilar === undefined ? undefined : body.hotelsOrSimilar || null,
       clientDescription: body.clientDescription === undefined ? undefined : body.clientDescription || null,
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),

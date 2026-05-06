@@ -31,10 +31,13 @@ describe('external package quote builder UI', () => {
       'endDate',
       'pricingBasis',
       'netCost',
+      'singleSupplement',
+      'pricingMatrixRows',
       'currency',
       'includes',
       'excludes',
       'internalNotes',
+      'hotelsOrSimilar',
       'clientItineraryText',
     ]);
     assert.equal(state.currency, 'JOD');
@@ -73,10 +76,24 @@ describe('external package quote builder UI', () => {
       endDate: '2026-06-05',
       pricingBasis: 'PER_PERSON',
       netCost: '250',
+      singleSupplement: '500',
+      pricingMatrixRows: [
+        {
+          id: 'row-1',
+          label: '20+1',
+          paxFrom: '20',
+          paxTo: '',
+          freePax: '1',
+          costPerPerson: '893',
+          sellPerPerson: '950',
+          notes: 'Partner slab',
+        },
+      ],
       currency: ' usd ',
       includes: ' Private touring ',
       excludes: ' International flights ',
       internalNotes: ' Net confirmed ',
+      hotelsOrSimilar: ' Cairo: Steigenberger / Concorde ',
       clientItineraryText: ' Cairo and Giza extension ',
     });
 
@@ -89,10 +106,23 @@ describe('external package quote builder UI', () => {
     assert.match(String(payload.endDate), /^2026-06-05T/);
     assert.equal(payload.pricingBasis, 'PER_PERSON');
     assert.equal(payload.netCost, 250);
+    assert.equal(payload.singleSupplement, 500);
+    assert.deepEqual(payload.pricingMatrixJson, [
+      {
+        label: '20+1',
+        paxFrom: 20,
+        paxTo: null,
+        freePax: 1,
+        costPerPerson: 893,
+        sellPerPerson: 950,
+        notes: 'Partner slab',
+      },
+    ]);
     assert.equal(payload.currency, 'USD');
     assert.equal(payload.includes, 'Private touring');
     assert.equal(payload.excludes, 'International flights');
     assert.equal(payload.internalNotes, 'Net confirmed');
+    assert.equal(payload.hotelsOrSimilar, 'Cairo: Steigenberger / Concorde');
     assert.equal(payload.clientDescription, 'Cairo and Giza extension');
     assert.equal('hotelId' in payload, false);
     assert.equal('contractId' in payload, false);
@@ -115,6 +145,64 @@ describe('external package quote builder UI', () => {
     assert.equal(payload.clientDescription, 'Updated partner program.');
   });
 
+  it('allows fallback net cost to be omitted when a complete pricing matrix row exists', () => {
+    const payload = buildExternalPackagePayload({
+      ...createEmptyExternalPackageFormState('USD'),
+      country: 'Egypt',
+      packageName: 'Cairo extension',
+      clientItineraryText: 'Cairo program.',
+      netCost: '',
+      pricingMatrixRows: [
+        {
+          id: 'row-1',
+          label: '20+1',
+          paxFrom: '20',
+          paxTo: '',
+          freePax: '1',
+          costPerPerson: '893',
+          sellPerPerson: '',
+          notes: '',
+        },
+      ],
+    });
+
+    const errors = validateExternalPackageFormState({
+      ...createEmptyExternalPackageFormState('USD'),
+      country: 'Egypt',
+      packageName: 'Cairo extension',
+      clientItineraryText: 'Cairo program.',
+      netCost: '',
+      pricingMatrixRows: [
+        {
+          id: 'row-1',
+          label: '20+1',
+          paxFrom: '20',
+          paxTo: '',
+          freePax: '1',
+          costPerPerson: '893',
+          sellPerPerson: '',
+          notes: '',
+        },
+      ],
+    });
+
+    assert.equal(errors.includes('Enter a fallback net cost or at least one pricing matrix row with a pax slab and cost pp.'), false);
+    assert.equal(payload.netCost, 893);
+    assert.equal((payload.pricingMatrixJson as any[])[0].sellPerPerson, null);
+  });
+
+  it('requires either fallback net cost or a complete matrix row', () => {
+    const errors = validateExternalPackageFormState({
+      ...createEmptyExternalPackageFormState('USD'),
+      country: 'Egypt',
+      packageName: 'Cairo extension',
+      clientItineraryText: 'Cairo program.',
+      netCost: '',
+    });
+
+    assert.ok(errors.includes('Enter a fallback net cost or at least one pricing matrix row with a pax slab and cost pp.'));
+  });
+
   it('calculates builder preview cost for per-person and per-group packages', () => {
     assert.equal(getExternalPackageCalculatedCost({ pricingBasis: 'PER_PERSON', netCost: '250' }, 4), 1000);
     assert.equal(getExternalPackageCalculatedCost({ pricingBasis: 'PER_GROUP', netCost: '900' }, 4), 900);
@@ -131,17 +219,33 @@ describe('external package quote builder UI', () => {
       endDate: '2026-06-03',
       pricingBasis: 'BAD' as any,
       netCost: '',
+      singleSupplement: '-5',
+      pricingMatrixRows: [
+        {
+          id: 'row-1',
+          label: 'Bad',
+          paxFrom: '-1',
+          paxTo: '',
+          freePax: '',
+          costPerPerson: '',
+          sellPerPerson: '',
+          notes: '',
+        },
+      ],
       currency: '',
       includes: '',
       excludes: '',
       internalNotes: '',
+      hotelsOrSimilar: '',
       packageName: '',
       clientItineraryText: '',
     });
 
     assert.ok(invalid.includes('External package country is required.'));
     assert.ok(invalid.includes('External package pricing basis must be Per person or Per group.'));
-    assert.ok(invalid.includes('External package net cost must be zero or greater.'));
+    assert.ok(invalid.includes('Enter a fallback net cost or at least one pricing matrix row with a pax slab and cost pp.'));
+    assert.ok(invalid.includes('External package single supplement must be zero or greater.'));
+    assert.ok(invalid.includes('External package matrix paxFrom must be zero or greater.'));
     assert.ok(invalid.includes('External package currency is required.'));
     assert.ok(invalid.includes('External package name is required.'));
     assert.ok(invalid.includes('External package client itinerary text is required.'));
@@ -170,7 +274,10 @@ describe('external package quote builder UI', () => {
       externalSupplierName: 'Cairo Partner DMC',
       externalPricingBasis: 'PER_PERSON',
       externalNetCost: 250,
+      externalPackagePricingMatrixJson: [{ label: '20+1', costPerPerson: 893 }],
+      externalPackageSingleSupplement: 500,
       externalInternalNotes: 'Net confirmed by supplier',
+      externalHotelsOrSimilar: 'Cairo: Steigenberger / Concorde',
       externalClientDescription: 'Client-facing Cairo and Giza extension.',
       externalIncludes: 'Private touring',
       externalExcludes: 'International flights',
@@ -182,8 +289,13 @@ describe('external package quote builder UI', () => {
 
     assert.match(internalText, /Cairo Partner DMC/);
     assert.match(internalText, /USD 250\.00/);
+    assert.match(internalText, /Matrix rows: 1/);
+    assert.match(internalText, /Single supplement: USD 500\.00/);
     assert.match(internalText, /Net confirmed by supplier/);
     assert.match(clientText, /Client-facing Cairo and Giza extension/);
+    assert.match(clientText, /Hotels or Similar: Cairo: Steigenberger \/ Concorde/);
+    assert.match(clientText, /Pricing Matrix: 20\+1: USD 893/);
+    assert.match(clientText, /Single supplement: USD 500\.00/);
     assert.match(clientText, /Private touring/);
     assert.match(clientText, /International flights/);
     assert.doesNotMatch(clientText, /Cairo Partner DMC/);

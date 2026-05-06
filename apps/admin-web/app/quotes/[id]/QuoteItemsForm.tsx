@@ -12,8 +12,10 @@ import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateMod
 import {
   buildExternalPackagePayload,
   createEmptyExternalPackageFormState,
+  createExternalPackagePricingMatrixRow,
   EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS,
   ExternalPackageFormState,
+  ExternalPackagePricingMatrixRow,
   ExternalPackagePricingBasis,
   getExternalPackageCalculatedCost,
   getExternalPackagePricingBasisForService,
@@ -314,6 +316,7 @@ type QuoteItemsFormProps = {
   submitLabel?: string;
   initialValues?: QuoteItemInitialValues;
   onSaved?: (item: any) => void;
+  onCancel?: () => void;
 };
 
 function notifyQuotePricingChanged(quoteId: string) {
@@ -408,7 +411,7 @@ const SERVICE_TYPE_BUTTONS = [
   { key: 'guide', label: 'Add Guide' },
   { key: 'activity', label: 'Add Activity' },
   { key: 'meal', label: 'Add Meal' },
-  { key: 'externalPackage', label: 'Add External Package' },
+  { key: 'externalPackage', label: 'Add External Country Package' },
   { key: 'other', label: 'Add Other' },
 ] as const;
 
@@ -427,6 +430,15 @@ const GUIDE_OVERNIGHT_SUPPLEMENT = 50;
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 
 type ServiceTypeKey = (typeof SERVICE_TYPE_BUTTONS)[number]['key'];
+type ExternalPackageSection = 'basics' | 'pricing' | 'hotels' | 'clientText' | 'internalNotes';
+
+const EXTERNAL_PACKAGE_SECTION_TABS: Array<{ id: ExternalPackageSection; label: string }> = [
+  { id: 'basics', label: 'Basics' },
+  { id: 'pricing', label: 'Pricing Matrix' },
+  { id: 'hotels', label: 'Hotels' },
+  { id: 'clientText', label: 'Client Text' },
+  { id: 'internalNotes', label: 'Internal Notes' },
+];
 
 function normalizeCategory(value: string) {
   return value.trim().toLowerCase();
@@ -693,6 +705,7 @@ export function QuoteItemsForm({
   submitLabel = 'Add item',
   initialValues,
   onSaved,
+  onCancel,
 }: QuoteItemsFormProps) {
   const router = useRouter();
   const isEditing = Boolean(itemId);
@@ -752,6 +765,7 @@ export function QuoteItemsForm({
   const [externalPackage, setExternalPackage] = useState<ExternalPackageFormState>(
     initialValues?.externalPackage || createEmptyExternalPackageFormState(initialService?.currency || 'USD'),
   );
+  const [externalPackageSection, setExternalPackageSection] = useState<ExternalPackageSection>('basics');
   const [mealName, setMealName] = useState('');
   const [mealCost, setMealCost] = useState('');
   const [mealCurrency, setMealCurrency] = useState('USD');
@@ -762,6 +776,7 @@ export function QuoteItemsForm({
   const [isLoadingTransportCost, setIsLoadingTransportCost] = useState(false);
   const [isLoadingHotelCost, setIsLoadingHotelCost] = useState(false);
   const [error, setError] = useState('');
+  const [hasAttemptedExternalPackageSubmit, setHasAttemptedExternalPackageSubmit] = useState(false);
   const [showHotelRateModal, setShowHotelRateModal] = useState(false);
   const [manualHotelRateDraft, setManualHotelRateDraft] = useState<QuoteHotelRateDraftRow | null>(null);
   const [hotelRateReference, setHotelRateReference] = useState<HotelRateReference | null>(null);
@@ -772,11 +787,33 @@ export function QuoteItemsForm({
   const [transportPricingRules, setTransportPricingRules] = useState<TransportPricingRuleSummary[]>([]);
   const [isLoadingTransportPricingRules, setIsLoadingTransportPricingRules] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const serviceEntryFormId = `quote-item-form-${quoteId}-${optionId || 'base'}-${itemId || 'new'}`;
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
   const hotelCostLastRequestedKeyRef = useRef<string | null>(null);
   const externalPackageDefaultsServiceIdRef = useRef<string | null>(isEditing ? initialService?.id || null : null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
+
+  function updateExternalPackageMatrixRow(rowId: string, patch: Partial<ExternalPackagePricingMatrixRow>) {
+    setExternalPackage((current) => ({
+      ...current,
+      pricingMatrixRows: current.pricingMatrixRows.map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function addExternalPackageMatrixRow() {
+    setExternalPackage((current) => ({
+      ...current,
+      pricingMatrixRows: [...current.pricingMatrixRows, createExternalPackagePricingMatrixRow()],
+    }));
+  }
+
+  function removeExternalPackageMatrixRow(rowId: string) {
+    setExternalPackage((current) => ({
+      ...current,
+      pricingMatrixRows: current.pricingMatrixRows.filter((row) => row.id !== rowId),
+    }));
+  }
 
   const transportCandidates = useMemo(() => {
     const candidates = resolvedTransportPricing?.candidates || [];
@@ -915,6 +952,14 @@ export function QuoteItemsForm({
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+  const externalPackageValidationErrors = useMemo(() => validateExternalPackageFormState(externalPackage), [externalPackage]);
+  const externalPackageFooterErrors = isExternalPackageService
+    ? error
+      ? [error]
+      : hasAttemptedExternalPackageSubmit
+        ? externalPackageValidationErrors
+        : []
+    : [];
   const hasTransportRouteSelection = Boolean(routeId);
   const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
   const isTransportVehicleSelected = Boolean(
@@ -1904,10 +1949,43 @@ export function QuoteItemsForm({
     }
   }
 
+  function logExternalPackageSubmit(message: string, details?: unknown) {
+    if (!isExternalPackageService) {
+      return;
+    }
+
+    console.log(`[External Country Package] ${message}`, details);
+  }
+
+  function logExternalPackageError(message: string, details?: unknown) {
+    if (!isExternalPackageService) {
+      return;
+    }
+
+    console.error(`[External Country Package] ${message}`, details);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitting(true);
     setError('');
+
+    if (isExternalPackageService) {
+      console.log('[External Country Package] submit handler fired before loading starts', {
+        quoteId,
+        itemId: itemId || null,
+        optionId: optionId || null,
+        serviceId,
+      });
+      setHasAttemptedExternalPackageSubmit(true);
+      if (externalPackageValidationErrors.length > 0) {
+        setError(externalPackageValidationErrors[0]);
+        logExternalPackageSubmit('validation blocked submit', { errors: externalPackageValidationErrors });
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
 
     try {
       const endpoint = optionId
@@ -1968,13 +2046,6 @@ export function QuoteItemsForm({
         }
       }
 
-      if (isExternalPackageService) {
-        const validationErrors = validateExternalPackageFormState(externalPackage);
-        if (validationErrors.length > 0) {
-          throw new Error(validationErrors[0]);
-        }
-      }
-
       if (useOverride && !overrideCost.trim()) {
         throw new Error('Override cost is required when override is enabled.');
       }
@@ -2007,65 +2078,84 @@ export function QuoteItemsForm({
         }
       }
 
-      const response = await fetch(logFetchUrl(endpoint), {
-        method: isEditing ? 'PATCH' : 'POST',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          serviceId,
-          itineraryId,
-          serviceDate:
-            (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
-              ? new Date(`${serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate}T09:00:00`).toISOString()
+      const quoteItemPayload = {
+        serviceId,
+        itineraryId,
+        serviceDate:
+          (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
+            ? new Date(`${serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate}T09:00:00`).toISOString()
+            : undefined,
+        startTime: isActivityService ? startTime || null : undefined,
+        pickupTime: isActivityService ? pickupTime || null : undefined,
+        pickupLocation: isActivityService ? pickupLocation.trim() || null : undefined,
+        meetingPoint: isActivityService ? meetingPoint.trim() || null : undefined,
+        participantCount: isActivityService ? activityParticipantTotal : undefined,
+        adultCount: isActivityService ? Number(adultCount || 0) : undefined,
+        childCount: isActivityService ? Number(childCount || 0) : undefined,
+        reconfirmationRequired: isActivityService ? reconfirmationRequired : undefined,
+        reconfirmationDueAt:
+          isActivityService && reconfirmationRequired && reconfirmationDueAt
+            ? new Date(reconfirmationDueAt).toISOString()
+            : isActivityService
+              ? null
               : undefined,
-          startTime: isActivityService ? startTime || null : undefined,
-          pickupTime: isActivityService ? pickupTime || null : undefined,
-          pickupLocation: isActivityService ? pickupLocation.trim() || null : undefined,
-          meetingPoint: isActivityService ? meetingPoint.trim() || null : undefined,
-          participantCount: isActivityService ? activityParticipantTotal : undefined,
-          adultCount: isActivityService ? Number(adultCount || 0) : undefined,
-          childCount: isActivityService ? Number(childCount || 0) : undefined,
-          reconfirmationRequired: isActivityService ? reconfirmationRequired : undefined,
-          reconfirmationDueAt:
-            isActivityService && reconfirmationRequired && reconfirmationDueAt
-              ? new Date(reconfirmationDueAt).toISOString()
-              : isActivityService
-                ? null
-                : undefined,
-          hotelId: isHotelService ? hotelId : undefined,
-          contractId: isHotelService ? contractId : undefined,
-          seasonId: isHotelService ? seasonId || undefined : undefined,
-          seasonName: isHotelService ? effectiveSeasonName : undefined,
-          roomCategoryId: isHotelService ? roomCategoryId : undefined,
-          occupancyType: isHotelService ? occupancyType : undefined,
-          mealPlan: isHotelService ? mealPlan : undefined,
-          customServiceName: isMealService ? mealName.trim() : undefined,
-          unitCost: isMealService ? Number(mealCost) : undefined,
-          pricingBasis: isMealService ? 'PER_PERSON' : isExternalPackageService ? externalPackage.pricingBasis : undefined,
-          ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
-          quantity: Number(quantity),
-          paxCount: isActivityService ? activityParticipantTotal : Number(paxCount),
-          roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
-          nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
-          dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
-          overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
-          overrideReason: useOverride ? overrideReason.trim() || null : null,
-          useOverride,
-          markupAmount: markupAmount.trim() ? Number(markupAmount) : null,
-          sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
-          markupPercent: Number(markupPercent),
-          transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
-          transportVehicleId: isTransportService ? selectedTransportVehicleId : undefined,
-          routeId: isTransportService ? routeId || undefined : undefined,
-          routeName: isTransportService ? routeName.trim() : undefined,
-          transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,
-          guideType: isGuideService ? guideType : undefined,
-          guideDuration: isGuideService ? guideDuration : undefined,
-          overnight: isGuideService ? overnight === 'yes' : undefined,
-          currency: isMealService ? mealCurrency.trim().toUpperCase() : isExternalPackageService ? externalPackage.currency.trim().toUpperCase() : undefined,
-        }),
+        hotelId: isHotelService ? hotelId : undefined,
+        contractId: isHotelService ? contractId : undefined,
+        seasonId: isHotelService ? seasonId || undefined : undefined,
+        seasonName: isHotelService ? effectiveSeasonName : undefined,
+        roomCategoryId: isHotelService ? roomCategoryId : undefined,
+        occupancyType: isHotelService ? occupancyType : undefined,
+        mealPlan: isHotelService ? mealPlan : undefined,
+        customServiceName: isMealService ? mealName.trim() : undefined,
+        unitCost: isMealService ? Number(mealCost) : undefined,
+        pricingBasis: isMealService ? 'PER_PERSON' : isExternalPackageService ? externalPackage.pricingBasis : undefined,
+        ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
+        quantity: Number(quantity),
+        paxCount: isActivityService ? activityParticipantTotal : Number(paxCount),
+        roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
+        nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
+        dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
+        overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
+        overrideReason: useOverride ? overrideReason.trim() || null : null,
+        useOverride,
+        markupAmount: markupAmount.trim() ? Number(markupAmount) : null,
+        sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
+        markupPercent: Number(markupPercent),
+        transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
+        transportVehicleId: isTransportService ? selectedTransportVehicleId : undefined,
+        routeId: isTransportService ? routeId || undefined : undefined,
+        routeName: isTransportService ? routeName.trim() : undefined,
+        transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,
+        guideType: isGuideService ? guideType : undefined,
+        guideDuration: isGuideService ? guideDuration : undefined,
+        overnight: isGuideService ? overnight === 'yes' : undefined,
+        currency: isMealService ? mealCurrency.trim().toUpperCase() : isExternalPackageService ? externalPackage.currency.trim().toUpperCase() : undefined,
+      };
+      const requestUrl = logFetchUrl(endpoint);
+      const submitController = isExternalPackageService ? new AbortController() : null;
+      const submitTimeoutId = submitController ? window.setTimeout(() => submitController.abort(), 30000) : null;
+
+      logExternalPackageSubmit('calling API endpoint', {
+        method: isEditing ? 'PATCH' : 'POST',
+        endpoint,
+        payload: quoteItemPayload,
       });
+
+      let response: Response;
+      try {
+        response = await fetch(requestUrl, {
+          method: isEditing ? 'PATCH' : 'POST',
+          headers: buildAuthHeaders({
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify(quoteItemPayload),
+          signal: submitController?.signal,
+        });
+      } finally {
+        if (submitTimeoutId) {
+          window.clearTimeout(submitTimeoutId);
+        }
+      }
 
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, `Could not ${isEditing ? 'update' : 'add'} quote item.`));
@@ -2115,15 +2205,34 @@ export function QuoteItemsForm({
         setMealCost('');
         setMealCurrency('USD');
         setExternalPackage(createEmptyExternalPackageFormState(selectedService?.currency || 'USD'));
+        setHasAttemptedExternalPackageSubmit(false);
         setActiveServiceType(null);
       }
       router.refresh();
     } catch (caughtError) {
       const fallbackMessage = `Could not ${isEditing ? 'update' : 'add'} quote item.`;
-      const message = caughtError instanceof Error ? caughtError.message : fallbackMessage;
+      const isAbortError = caughtError instanceof DOMException && caughtError.name === 'AbortError';
+      const message = isAbortError
+        ? 'External package save timed out before the server responded. Please try again.'
+        : caughtError instanceof Error
+          ? caughtError.message
+          : fallbackMessage;
+      logExternalPackageError('save failed', caughtError);
       setError(isTransportService && !message.toLowerCase().includes('transport') ? `Could not add transport item: ${message}` : message);
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  function handleExternalPackageCancel() {
+    setError('');
+    setHasAttemptedExternalPackageSubmit(false);
+    if (onCancel) {
+      onCancel();
+      return;
+    }
+    if (!isEditing) {
+      setActiveServiceType(null);
     }
   }
 
@@ -2195,13 +2304,13 @@ export function QuoteItemsForm({
       ) : null}
 
       {activeServiceType ? (
-        <form ref={formRef} className="entity-form compact-form service-entry-form" onSubmit={handleSubmit}>
+        <form id={serviceEntryFormId} ref={formRef} className="entity-form compact-form service-entry-form" onSubmit={handleSubmit} noValidate={isExternalPackageService}>
           <div className="service-entry-form-head">
             <div>
               <strong>{SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
               <p>{submitLabel}</p>
             </div>
-            {!isEditing ? (
+            {!isEditing && !isExternalPackageService ? (
               <button type="button" className="secondary-button" onClick={() => setActiveServiceType(null)}>
                 Cancel
               </button>
@@ -2707,172 +2816,153 @@ export function QuoteItemsForm({
           ) : null}
 
           {hasPrimarySelection && isExternalPackageService ? (
-            <>
-              <div className="form-row form-row-4">
-                <label>
-                  Country
-                  <input
-                    value={externalPackage.country}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, country: event.target.value }))}
-                    placeholder="Egypt"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Supplier name
-                  <input
-                    value={externalPackage.supplierName}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, supplierName: event.target.value }))}
-                    placeholder="Internal supplier"
-                  />
-                </label>
-
-                <label>
-                  Start day
-                  <input
-                    value={externalPackage.startDay}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, startDay: event.target.value }))}
-                    type="number"
-                    min="1"
-                  />
-                </label>
-
-                <label>
-                  End day
-                  <input
-                    value={externalPackage.endDay}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, endDay: event.target.value }))}
-                    type="number"
-                    min="1"
-                  />
-                </label>
-              </div>
-
-              <div className="form-row form-row-4">
-                <label>
-                  Start date
-                  <input
-                    value={externalPackage.startDate}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, startDate: event.target.value }))}
-                    type="date"
-                  />
-                </label>
-
-                <label>
-                  End date
-                  <input
-                    value={externalPackage.endDate}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, endDate: event.target.value }))}
-                    type="date"
-                  />
-                </label>
-
-                <label>
-                  Pricing basis
-                  <select
-                    value={externalPackage.pricingBasis}
-                    onChange={(event) =>
-                      setExternalPackage((current) => ({
-                        ...current,
-                        pricingBasis: event.target.value as ExternalPackagePricingBasis,
-                      }))
-                    }
-                    required
+            <section className="quote-external-package-editor">
+              <div className="quote-external-package-tabs" role="tablist" aria-label="External country package sections">
+                {EXTERNAL_PACKAGE_SECTION_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={externalPackageSection === tab.id}
+                    className={externalPackageSection === tab.id ? 'quote-external-package-tab quote-external-package-tab-active' : 'quote-external-package-tab'}
+                    onClick={() => setExternalPackageSection(tab.id)}
                   >
-                    {EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Currency
-                  <input
-                    value={externalPackage.currency}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
-                    maxLength={3}
-                    required
-                  />
-                </label>
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="form-row form-row-3">
-                <label>
-                  Package name
-                  <input
-                    value={externalPackage.packageName}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, packageName: event.target.value }))}
-                    placeholder="Cairo extension"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Net cost
-                  <input
-                    value={externalPackage.netCost}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, netCost: event.target.value }))}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </label>
-
-                <div className="quote-item-override-status quote-item-override-status-active">
-                  <strong>External package cost</strong>
-                  <span>
-                    {finalCost !== null && Number.isFinite(finalCost)
-                      ? `${displayCurrency} ${finalCost.toFixed(2)} ${externalPackage.pricingBasis === 'PER_PERSON' ? `for ${Math.max(1, Number(paxCount || defaultPaxCount || 1))} pax` : 'per group'}`
-                      : 'Enter net cost'}
-                  </span>
+              {externalPackageSection === 'basics' ? (
+                <div className="quote-external-package-section">
+                  <div className="form-row form-row-2">
+                    <label>
+                      Country
+                      <input value={externalPackage.country} onChange={(event) => setExternalPackage((current) => ({ ...current, country: event.target.value }))} placeholder="Egypt" required />
+                    </label>
+                    <label>
+                      Supplier name
+                      <input value={externalPackage.supplierName} onChange={(event) => setExternalPackage((current) => ({ ...current, supplierName: event.target.value }))} placeholder="Internal supplier" />
+                    </label>
+                  </div>
+                  <div className="form-row form-row-2">
+                    <label>
+                      Package name
+                      <input value={externalPackage.packageName} onChange={(event) => setExternalPackage((current) => ({ ...current, packageName: event.target.value }))} placeholder="Cairo extension" required />
+                    </label>
+                    <label>
+                      Currency
+                      <input value={externalPackage.currency} onChange={(event) => setExternalPackage((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} maxLength={3} required />
+                    </label>
+                  </div>
+                  <div className="form-row form-row-4">
+                    <label>
+                      Start day
+                      <input value={externalPackage.startDay} onChange={(event) => setExternalPackage((current) => ({ ...current, startDay: event.target.value }))} type="number" min="1" />
+                    </label>
+                    <label>
+                      End day
+                      <input value={externalPackage.endDay} onChange={(event) => setExternalPackage((current) => ({ ...current, endDay: event.target.value }))} type="number" min="1" />
+                    </label>
+                    <label>
+                      Start date
+                      <input value={externalPackage.startDate} onChange={(event) => setExternalPackage((current) => ({ ...current, startDate: event.target.value }))} type="date" />
+                    </label>
+                    <label>
+                      End date
+                      <input value={externalPackage.endDate} onChange={(event) => setExternalPackage((current) => ({ ...current, endDate: event.target.value }))} type="date" />
+                    </label>
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
-              <div className="form-row form-row-3">
-                <label>
-                  Client itinerary text
-                  <textarea
-                    value={externalPackage.clientItineraryText}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, clientItineraryText: event.target.value }))}
-                    placeholder="Client-facing program description"
-                    required
-                  />
-                </label>
+              {externalPackageSection === 'pricing' ? (
+                <div className="quote-external-package-section">
+                  <div className="form-row form-row-4">
+                    <label>
+                      Pricing basis
+                      <select value={externalPackage.pricingBasis} onChange={(event) => setExternalPackage((current) => ({ ...current, pricingBasis: event.target.value as ExternalPackagePricingBasis }))} required>
+                        {EXTERNAL_PACKAGE_PRICING_BASIS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Fallback net cost
+                      <input value={externalPackage.netCost} onChange={(event) => setExternalPackage((current) => ({ ...current, netCost: event.target.value }))} type="number" min="0" step="0.01" placeholder="Optional with matrix" />
+                    </label>
+                    <label>
+                      Single supplement
+                      <input value={externalPackage.singleSupplement} onChange={(event) => setExternalPackage((current) => ({ ...current, singleSupplement: event.target.value }))} type="number" min="0" step="0.01" placeholder="500" />
+                    </label>
+                    <div className="quote-item-override-status quote-item-override-status-active">
+                      <strong>Current total uses fallback cost</strong>
+                      <span>{finalCost !== null && Number.isFinite(finalCost) ? `${displayCurrency} ${finalCost.toFixed(2)}` : 'Enter net cost'}</span>
+                    </div>
+                  </div>
 
-                <label>
-                  Includes
-                  <textarea
-                    value={externalPackage.includes}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, includes: event.target.value }))}
-                    placeholder="Client-facing inclusions"
-                  />
-                </label>
+                  <div className="quote-external-matrix-table">
+                    <div className="quote-external-matrix-head">
+                      <strong>Pax slab</strong>
+                      <strong>From</strong>
+                      <strong>To</strong>
+                      <strong>FOC</strong>
+                      <strong>Cost pp</strong>
+                      <strong>Sell pp</strong>
+                      <strong>Notes</strong>
+                      <span />
+                    </div>
+                    {externalPackage.pricingMatrixRows.map((row) => (
+                      <div key={row.id} className="quote-external-matrix-row">
+                        <input value={row.label} onChange={(event) => updateExternalPackageMatrixRow(row.id, { label: event.target.value })} placeholder="20+1" />
+                        <input value={row.paxFrom} onChange={(event) => updateExternalPackageMatrixRow(row.id, { paxFrom: event.target.value })} type="number" min="0" placeholder="20" />
+                        <input value={row.paxTo} onChange={(event) => updateExternalPackageMatrixRow(row.id, { paxTo: event.target.value })} type="number" min="0" />
+                        <input value={row.freePax} onChange={(event) => updateExternalPackageMatrixRow(row.id, { freePax: event.target.value })} type="number" min="0" placeholder="1" />
+                        <input value={row.costPerPerson} onChange={(event) => updateExternalPackageMatrixRow(row.id, { costPerPerson: event.target.value })} type="number" min="0" step="0.01" placeholder="893" />
+                        <input value={row.sellPerPerson} onChange={(event) => updateExternalPackageMatrixRow(row.id, { sellPerPerson: event.target.value })} type="number" min="0" step="0.01" />
+                        <input value={row.notes} onChange={(event) => updateExternalPackageMatrixRow(row.id, { notes: event.target.value })} placeholder="Supplier notes" />
+                        <button type="button" className="compact-button" onClick={() => removeExternalPackageMatrixRow(row.id)}>Remove</button>
+                      </div>
+                    ))}
+                    <button type="button" className="secondary-button" onClick={addExternalPackageMatrixRow}>+ Add matrix row</button>
+                  </div>
+                </div>
+              ) : null}
 
-                <label>
-                  Excludes
-                  <textarea
-                    value={externalPackage.excludes}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, excludes: event.target.value }))}
-                    placeholder="Client-facing exclusions"
-                  />
-                </label>
-              </div>
+              {externalPackageSection === 'hotels' ? (
+                <div className="quote-external-package-section">
+                  <label>
+                    Hotels or Similar
+                    <textarea className="quote-external-large-textarea" value={externalPackage.hotelsOrSimilar} onChange={(event) => setExternalPackage((current) => ({ ...current, hotelsOrSimilar: event.target.value }))} placeholder={`Cairo: Steigenberger / Concorde\nLuxor: Sonesta / Jolie Ville`} />
+                  </label>
+                </div>
+              ) : null}
 
-              <div className="form-row">
-                <label>
-                  Internal notes
-                  <textarea
-                    value={externalPackage.internalNotes}
-                    onChange={(event) => setExternalPackage((current) => ({ ...current, internalNotes: event.target.value }))}
-                    placeholder="Internal only"
-                  />
-                </label>
-              </div>
-            </>
+              {externalPackageSection === 'clientText' ? (
+                <div className="quote-external-package-section quote-external-package-text-grid">
+                  <label>
+                    Client itinerary text
+                    <textarea className="quote-external-large-textarea" value={externalPackage.clientItineraryText} onChange={(event) => setExternalPackage((current) => ({ ...current, clientItineraryText: event.target.value }))} placeholder="Client-facing program description" required />
+                  </label>
+                  <label>
+                    Includes
+                    <textarea className="quote-external-large-textarea" value={externalPackage.includes} onChange={(event) => setExternalPackage((current) => ({ ...current, includes: event.target.value }))} placeholder="Client-facing inclusions" />
+                  </label>
+                  <label>
+                    Excludes
+                    <textarea className="quote-external-large-textarea" value={externalPackage.excludes} onChange={(event) => setExternalPackage((current) => ({ ...current, excludes: event.target.value }))} placeholder="Client-facing exclusions" />
+                  </label>
+                </div>
+              ) : null}
+
+              {externalPackageSection === 'internalNotes' ? (
+                <div className="quote-external-package-section">
+                  <label>
+                    Internal notes
+                    <textarea className="quote-external-large-textarea" value={externalPackage.internalNotes} onChange={(event) => setExternalPackage((current) => ({ ...current, internalNotes: event.target.value }))} placeholder="Internal only" />
+                  </label>
+                </div>
+              ) : null}
+            </section>
           ) : null}
 
           {activeServiceType === 'activity' ? (
@@ -3797,7 +3887,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService && !isExternalPackageService ? (
             <button
               type="submit"
               disabled={
@@ -3825,7 +3915,40 @@ export function QuoteItemsForm({
           {hasPrimarySelection && isTransportService && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (
             <p className="form-error">No transport pricing rule matches the selected route, service type, and pax count.</p>
           ) : null}
-          {error ? <p className="form-error">{error}</p> : null}
+          {hasPrimarySelection && isExternalPackageService ? (
+            <div className="quote-external-package-sticky-footer">
+              {externalPackageFooterErrors.length > 0 ? (
+                <div className="quote-external-package-errors" role="alert">
+                  <strong>Check these fields before saving:</strong>
+                  {externalPackageFooterErrors.map((message) => (
+                    <p key={message} className="form-error">{message}</p>
+                  ))}
+                </div>
+              ) : null}
+              <div className="quote-external-package-footer-actions">
+                <button type="button" className="secondary-button" onClick={handleExternalPackageCancel}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  form={serviceEntryFormId}
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    console.log('[External Country Package] save button clicked', {
+                      quoteId,
+                      itemId: itemId || null,
+                      optionId: optionId || null,
+                      serviceId,
+                    });
+                    formRef.current?.requestSubmit();
+                  }}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save External Package'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {error && !isExternalPackageService ? <p className="form-error">{error}</p> : null}
         </form>
       ) : null}
 

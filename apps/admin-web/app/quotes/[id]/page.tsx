@@ -307,6 +307,22 @@ type QuoteItem = {
   markupPercent: number;
   totalCost: number;
   totalSell: number;
+  externalPackageCountry?: string | null;
+  externalPackageName?: string | null;
+  externalSupplierName?: string | null;
+  externalStartDay?: number | null;
+  externalEndDay?: number | null;
+  externalStartDate?: string | null;
+  externalEndDate?: string | null;
+  externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
+  externalNetCost?: number | null;
+  externalPackagePricingMatrixJson?: unknown;
+  externalPackageSingleSupplement?: number | null;
+  externalIncludes?: string | null;
+  externalExcludes?: string | null;
+  externalInternalNotes?: string | null;
+  externalHotelsOrSimilar?: string | null;
+  externalClientDescription?: string | null;
   service: SupplierService;
   appliedVehicleRate: {
     id: string;
@@ -841,6 +857,7 @@ async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult>
 }
 
 function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteItem {
+  const rawItem = item as (Partial<QuoteItem> & Record<string, unknown>) | null | undefined;
   const service = item?.service || ({
     id: 'missing-service',
     supplierId: 'import-itinerary-system',
@@ -917,6 +934,22 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     markupPercent: item?.markupPercent ?? 0,
     totalCost: item?.totalCost ?? 0,
     totalSell: item?.totalSell ?? 0,
+    externalPackageCountry: item?.externalPackageCountry ?? (typeof rawItem?.country === 'string' ? rawItem.country : null),
+    externalPackageName: item?.externalPackageName ?? (typeof rawItem?.packageName === 'string' ? rawItem.packageName : null),
+    externalSupplierName: item?.externalSupplierName ?? (typeof rawItem?.supplierName === 'string' ? rawItem.supplierName : null),
+    externalStartDay: item?.externalStartDay ?? (typeof rawItem?.startDay === 'number' ? rawItem.startDay : null),
+    externalEndDay: item?.externalEndDay ?? (typeof rawItem?.endDay === 'number' ? rawItem.endDay : null),
+    externalStartDate: item?.externalStartDate ?? (typeof rawItem?.startDate === 'string' ? rawItem.startDate : null),
+    externalEndDate: item?.externalEndDate ?? (typeof rawItem?.endDate === 'string' ? rawItem.endDate : null),
+    externalPricingBasis: item?.externalPricingBasis ?? (typeof rawItem?.pricingBasis === 'string' ? rawItem.pricingBasis : null),
+    externalNetCost: item?.externalNetCost ?? (typeof rawItem?.netCost === 'number' ? rawItem.netCost : null),
+    externalPackagePricingMatrixJson: item?.externalPackagePricingMatrixJson ?? rawItem?.pricingMatrixJson ?? null,
+    externalPackageSingleSupplement: item?.externalPackageSingleSupplement ?? (typeof rawItem?.singleSupplement === 'number' ? rawItem.singleSupplement : null),
+    externalIncludes: item?.externalIncludes ?? (typeof rawItem?.includes === 'string' ? rawItem.includes : null),
+    externalExcludes: item?.externalExcludes ?? (typeof rawItem?.excludes === 'string' ? rawItem.excludes : null),
+    externalInternalNotes: item?.externalInternalNotes ?? (typeof rawItem?.internalNotes === 'string' ? rawItem.internalNotes : null),
+    externalHotelsOrSimilar: item?.externalHotelsOrSimilar ?? (typeof rawItem?.hotelsOrSimilar === 'string' ? rawItem.hotelsOrSimilar : null),
+    externalClientDescription: item?.externalClientDescription ?? (typeof rawItem?.clientDescription === 'string' ? rawItem.clientDescription : null),
     service: {
       ...service,
       serviceType: service.serviceType

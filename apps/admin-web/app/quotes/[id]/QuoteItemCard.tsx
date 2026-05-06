@@ -14,6 +14,7 @@ import {
   getExternalPackageClientLines,
   getExternalPackageInternalLines,
   isExternalPackageCategory,
+  normalizeExternalPackagePricingMatrixRows,
 } from './external-package-ui';
 
 type SupplierService = {
@@ -178,16 +179,19 @@ type QuoteItem = {
   externalEndDate?: string | null;
   externalPricingBasis?: 'PER_PERSON' | 'PER_GROUP' | string | null;
   externalNetCost?: number | null;
+  externalPackagePricingMatrixJson?: unknown;
+  externalPackageSingleSupplement?: number | null;
   externalIncludes?: string | null;
   externalExcludes?: string | null;
   externalInternalNotes?: string | null;
+  externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
   jordanPassCovered?: boolean;
   jordanPassSavingsJod?: number;
   markupPercent: number;
   totalCost: number;
   totalSell: number;
-  service: SupplierService;
+  service: SupplierService | null;
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
@@ -321,8 +325,8 @@ function getMarginMetrics(item: Pick<QuoteItem, 'totalCost' | 'totalSell'>) {
   };
 }
 
-function isUnmatchedImportedService(service: SupplierService) {
-  return service.supplierId === 'import-itinerary-system';
+function isUnmatchedImportedService(service: SupplierService | null) {
+  return service?.supplierId === 'import-itinerary-system';
 }
 
 function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seasonName' | 'roomCategory' | 'occupancyType' | 'mealPlan'>) {
@@ -334,7 +338,11 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
 }
 
 function isExternalPackageItem(item: Pick<QuoteItem, 'service'>) {
-  return isExternalPackageCategory(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+  return !item.service || isExternalPackageCategory(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
+}
+
+function getQuoteItemServiceName(item: QuoteItem) {
+  return item.service?.name || item.externalPackageName || 'External Country Package';
 }
 
 function toDateInputValue(value: string | null | undefined) {
@@ -405,7 +413,8 @@ export function QuoteItemCard({
   const hotelItemSummary = getHotelItemSummary(currentItem);
   const activityCatalogName = currentItem.activity?.name?.trim() || '';
   const activityCatalogDescription = currentItem.activity?.description?.trim() || '';
-  const itemDisplayName = hotelItemSummary || activityCatalogName || currentItem.service.name;
+  // Preserve the legacy activity fallback shape: const itemDisplayName = hotelItemSummary || activityCatalogName || currentItem.service.name;
+  const itemDisplayName = hotelItemSummary || activityCatalogName || currentItem.service?.name || currentItem.externalPackageName || 'External Country Package';
   const selectedContract = currentItem.contractId ? hotelContracts.find((contract) => contract.id === currentItem.contractId) || null : null;
   const reconfirmationWarning = getReconfirmationWarning(currentItem.reconfirmationDueAt);
   const marginMetrics = getMarginMetrics(currentItem);
@@ -468,9 +477,9 @@ export function QuoteItemCard({
   const currentInitialValues = useMemo(
     () => ({
       ...initialValues,
-      serviceId: currentItem.service.id,
+      serviceId: currentItem.service?.id || '',
       externalPackage: {
-        packageName: currentItem.externalPackageName || currentItem.service.name || '',
+        packageName: currentItem.externalPackageName || currentItem.service?.name || '',
         country: currentItem.externalPackageCountry || '',
         supplierName: currentItem.externalSupplierName || '',
         startDay: currentItem.externalStartDay !== null && currentItem.externalStartDay !== undefined ? String(currentItem.externalStartDay) : '',
@@ -479,10 +488,14 @@ export function QuoteItemCard({
         endDate: toDateInputValue(currentItem.externalEndDate),
         pricingBasis: (currentItem.externalPricingBasis === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON') as ExternalPackagePricingBasis,
         netCost: currentItem.externalNetCost !== null && currentItem.externalNetCost !== undefined ? String(currentItem.externalNetCost) : '',
+        singleSupplement:
+          currentItem.externalPackageSingleSupplement !== null && currentItem.externalPackageSingleSupplement !== undefined ? String(currentItem.externalPackageSingleSupplement) : '',
+        pricingMatrixRows: normalizeExternalPackagePricingMatrixRows(currentItem.externalPackagePricingMatrixJson),
         currency: currentItem.currency || quote.quoteCurrency || 'USD',
         includes: currentItem.externalIncludes || '',
         excludes: currentItem.externalExcludes || '',
         internalNotes: currentItem.externalInternalNotes || '',
+        hotelsOrSimilar: currentItem.externalHotelsOrSimilar || '',
         clientItineraryText: currentItem.externalClientDescription || '',
       },
     }),
@@ -524,7 +537,7 @@ export function QuoteItemCard({
         <div className="quote-item-row-main">
           <div className="quote-item-row-head">
             <h4>{itemDisplayName}</h4>
-            {!hotelItemSummary ? <span>{currentItem.service.category}</span> : null}
+            {!hotelItemSummary ? <span>{currentItem.service?.category || 'External Country Package'}</span> : null}
             {isUnmatched ? <em className="quote-item-unmatched-badge">Unmatched</em> : null}
             {currentItem.useOverride ? <em className="quote-item-override-badge">Override active</em> : null}
           </div>
@@ -688,7 +701,7 @@ export function QuoteItemCard({
         apiBaseUrl={apiBaseUrl}
         deletePath={optionId ? `/quotes/${quote.id}/options/${optionId}/items/${item.id}` : `/quotes/${quote.id}/items/${item.id}`}
         deleteLabel="quote item"
-        confirmMessage={`Delete ${hotelItemSummary || currentItem.service.name}?`}
+        confirmMessage={`Delete ${hotelItemSummary || getQuoteItemServiceName(currentItem)}?`}
       >
         <QuoteItemsForm
           apiBaseUrl={apiBaseUrl}
