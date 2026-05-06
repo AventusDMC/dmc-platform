@@ -127,6 +127,8 @@ describe('pricing diagnostics', () => {
   it('surfaces diagnostics in admin quote item displays only', () => {
     assert.ok(quoteItemCardSource.includes('aria-label="Pricing diagnostics"'));
     assert.ok(quoteServicePlannerSource.includes('aria-label="Pricing diagnostics"'));
+    assert.ok(quoteServicePlannerSource.includes('<span>Pricing diagnostics</span>'));
+    assert.ok(quoteServicePlannerSource.includes('const pricingDiagnostics = buildPricingDiagnostics(item);'));
     assert.ok(quoteItemCardSource.includes('buildPricingDiagnostics(currentItem)'));
     assert.ok(quoteServicePlannerSource.includes('buildPricingDiagnostics(item)'));
   });

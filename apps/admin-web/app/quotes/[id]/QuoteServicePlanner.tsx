@@ -1920,22 +1920,38 @@ function ActiveServiceDrawerFinancials({
   const itemCurrency = (item.currency as Quote['quoteCurrency']) || currency;
   const marginAmount = calculateProfit(item.totalSell, item.totalCost);
   const marginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
+  const pricingDiagnostics = buildPricingDiagnostics(item);
 
   return (
-    <div className="quote-drawer-financial-summary">
-      <div>
-        <span>Cost</span>
-        <strong>{formatLiveMoney(item.totalCost, itemCurrency)}</strong>
+    <div className="section-stack">
+      <div className="quote-drawer-financial-summary">
+        <div>
+          <span>Cost</span>
+          <strong>{formatLiveMoney(item.totalCost, itemCurrency)}</strong>
+        </div>
+        <div>
+          <span>Sell</span>
+          <strong>{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
+        </div>
+        <div>
+          <span>Margin</span>
+          <strong>
+            {formatLiveMoney(marginAmount, itemCurrency)} / {formatMarginPercent(marginPercent)}
+          </strong>
+        </div>
       </div>
-      <div>
-        <span>Sell</span>
-        <strong>{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
-      </div>
-      <div>
-        <span>Margin</span>
-        <strong>
-          {formatLiveMoney(marginAmount, itemCurrency)} / {formatMarginPercent(marginPercent)}
-        </strong>
+
+      <div className="quote-preview-total-list" aria-label="Pricing diagnostics">
+        <div>
+          <span>Pricing diagnostics</span>
+          <strong>Calculation metadata</strong>
+        </div>
+        {pricingDiagnostics.rows.map((row) => (
+          <div key={row.label}>
+            <span>{row.label}</span>
+            <strong>{row.value}</strong>
+          </div>
+        ))}
       </div>
     </div>
   );
