@@ -2833,10 +2833,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 eyebrow="Internal"
                 title="Financial summary"
                 items={[
-                  { label: 'Total sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client sell price' },
-                  { label: 'Total cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier and service cost' },
-                  { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Internal only' },
-                  { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Internal only' },
+                  { label: 'Total Sell', value: formatMoney(quote.totalSell, quote.quoteCurrency), helper: 'Client price' },
+                  { label: 'Total Cost', value: formatMoney(quote.totalCost, quote.quoteCurrency), helper: 'Supplier cost' },
+                  { label: 'Profit', value: formatMoney(quoteProfit, quote.quoteCurrency), helper: quoteMarginWarning ? <span className={`quote-ui-badge ${quoteMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{quoteMarginWarning}</span> : 'Sell less cost' },
+                  { label: 'Margin %', value: formatMarginPercent(quoteMarginPercent), helper: 'Profit / sell' },
                 ]}
               />
 
@@ -2853,15 +2853,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
               <QuotePricingSummaryCard
                 className="quote-pricing-summary-card-actions quote-primary-action-card"
-                eyebrow="Primary Actions"
-                title="Move this quote forward"
+                eyebrow="Actions"
+                title="Save, send, export"
                 items={[
-                  { label: 'Client sharing', value: quoteReadOnly ? 'Locked' : 'Available', helper: quoteReadOnly ? 'Open the latest active quote to send.' : 'Send the current proposal to the client.' },
-                  { label: 'Booking conversion', value: quote.booking ? 'Created' : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? 'Available' : 'After acceptance', helper: quote.booking ? `Booking ${quote.booking.id}` : 'Convert when accepted and clear of blockers.' },
+                  { label: 'Send', value: quoteReadOnly ? 'Locked' : 'Ready', helper: quoteReadOnly ? 'Open latest quote' : 'Email client proposal' },
+                  { label: 'Export', value: 'PDF', helper: 'Client document' },
                 ]}
                 footer={
                   <div className="quote-builder-sidebar-actions">
+                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                     {!quoteReadOnly ? <SendQuoteButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} currentStatus={quote.status} /> : null}
+                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
                     ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
@@ -2889,7 +2891,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 ]}
                 footer={
                   <div className="quote-builder-sidebar-actions">
-                    {!quoteReadOnly ? <SaveQuoteVersionButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} /> : null}
                     <QuotePreviewLink quoteId={quote.id} />
                     <ShareQuoteButton
                       apiBaseUrl={ACTION_API_BASE_URL}
@@ -2899,7 +2900,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     />
                     <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
                     {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
-                    <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                   </div>
                 }
               />

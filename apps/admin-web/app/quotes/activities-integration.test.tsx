@@ -68,7 +68,7 @@ describe('activities quote and booking UI integration regression', () => {
   it('keeps activity add/edit affordances and existing quote service handlers wired', () => {
     expectSourceContains(quotePlannerSource, [
       "{ category: 'activity', label: 'Add Activity' }",
-      "{ category: 'externalPackage', label: 'Add External Package' }",
+      "{ category: 'externalPackage', label: 'Add External Country Package' }",
       'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}',
       '<QuoteItemsForm',
       '<QuoteItemCard',
@@ -94,7 +94,7 @@ describe('activities quote and booking UI integration regression', () => {
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",
-      "{ category: 'externalPackage', label: 'Add External Package' }",
+      "{ category: 'externalPackage', label: 'Add External Country Package' }",
     ]);
     assert.doesNotMatch(quotePlannerSource, /baseProgramOpen|setBaseProgramOpen|id="planner-shared"|checked=\{selectedScopeId === 'shared'|workspace-tab-panel workspace-panel-shared/);
   });

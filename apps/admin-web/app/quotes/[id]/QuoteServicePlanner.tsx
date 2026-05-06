@@ -450,7 +450,7 @@ const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   guide: 'Guide',
   activity: 'Activity',
   meal: 'Meal',
-  externalPackage: 'External Package',
+  externalPackage: 'External Country Package',
   other: 'Other',
 };
 
@@ -460,8 +460,8 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'activity', label: 'Add Activity' },
   { category: 'meal', label: 'Add Meal' },
   { category: 'guide', label: 'Add Guide' },
-  { category: 'other', label: 'Add Other Service' },
-  { category: 'externalPackage', label: 'Add External Package' },
+  { category: 'other', label: 'Add Other' },
+  { category: 'externalPackage', label: 'Add External Country Package' },
 ];
 
 const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'guide', 'other', 'externalPackage'];
@@ -470,17 +470,30 @@ const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
   transport: 'Transport',
   activity: 'Activity',
   meal: 'Meal',
-  externalPackage: 'External Package',
+  externalPackage: 'External Country Package',
   // These are unused for the planner tabs, but keep the record exhaustive.
   guide: 'Guide',
   other: 'Other',
+};
+const SERVICE_PLANNER_LANE_LABELS: Record<ServicePlannerCategory, string> = {
+  ...SERVICE_PLANNER_TAB_LABELS,
+  meal: 'Meals',
+};
+const SERVICE_PLANNER_ADD_LABELS: Record<ServicePlannerCategory, string> = {
+  hotel: '+ Add Hotel',
+  transport: '+ Add Transport',
+  meal: '+ Add Meal',
+  activity: '+ Add Activity',
+  guide: '+ Add Guide',
+  other: '+ Add Other',
+  externalPackage: '+ Add External Country Package',
 };
 const SERVICE_PLANNER_ICONS: Record<ServicePlannerCategory, string> = {
   hotel: 'H',
   transport: 'T',
   activity: 'A',
   meal: 'M',
-  externalPackage: 'P',
+  externalPackage: 'E',
   guide: 'G',
   other: 'O',
 };
@@ -729,7 +742,7 @@ function getServiceLaneEmptyCopy(category: ServicePlannerCategory) {
     case 'guide':
       return 'No guide service added for this day yet.';
     case 'externalPackage':
-      return 'No external package row added for this day yet.';
+      return 'Add supplier package pricing for Israel, Egypt, Turkey, or another country.';
     case 'other':
     default:
       return 'No other service added for this day yet.';
@@ -1196,7 +1209,7 @@ function SmartSuggestionsPanel({
         <h4>{SERVICE_PLANNER_TAB_LABELS[category]} for Day {day.dayNumber}</h4>
         <p className="detail-copy">Click a suggestion to add it with smart defaults, or configure it first when details matter.</p>
         <button type="button" className="secondary-button" onClick={onManualSelect}>
-          Advanced / Configure before adding
+          Configure manually
         </button>
       </div>
 
@@ -1355,7 +1368,7 @@ function EditServiceEditorPanel({
       itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
       initialServiceTypeKey={getQuoteServiceCategoryKey(item.service)}
-      submitLabel="Save item"
+      submitLabel="Save service"
       initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
     />
@@ -1389,7 +1402,7 @@ function AssignedServicesTable({
 }) {
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
     category,
-    label: SERVICE_PLANNER_TAB_LABELS[category],
+    label: SERVICE_PLANNER_LANE_LABELS[category],
     items: items.filter((item) => getQuoteServiceCategoryKey(item.service) === category),
   }));
 
@@ -1466,24 +1479,25 @@ function ServiceLane({
     >
       <div className="quote-service-lane-head">
         <div>
-          <span>{label}</span>
-          <strong>{orderedItems.length}</strong>
+          <span>{label} ({orderedItems.length})</span>
+          <strong>{orderedItems.length > 0 ? 'Added' : 'Empty'}</strong>
         </div>
       </div>
 
       {orderedItems.length === 0 ? (
-        category === 'transport' ? (
-          <div className="quote-service-empty-state">
-            <p>{getServiceLaneEmptyCopy(category)}</p>
-            {transportPicker}
-          </div>
-        ) : (
-          <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
-            <span aria-hidden="true">+</span>
-            <small>{getServiceLaneEmptyCopy(category)}</small>
-            Add {label}
-          </button>
-        )
+        <details className="quote-service-empty-state quote-service-empty-state-collapsed">
+          <summary>
+            <span>{getServiceLaneEmptyCopy(category)}</span>
+            <strong>{SERVICE_PLANNER_ADD_LABELS[category]}</strong>
+          </summary>
+          {category === 'transport' ? (
+            transportPicker
+          ) : (
+            <button type="button" className="quote-service-empty-add" onClick={() => onAdd(category)}>
+              {SERVICE_PLANNER_ADD_LABELS[category]}
+            </button>
+          )}
+        </details>
       ) : (
         <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <div className="quote-service-card-row">
@@ -1506,7 +1520,7 @@ function ServiceLane({
       )}
       {orderedItems.length > 0 && category !== 'transport' ? (
         <button type="button" className="quote-service-lane-add quote-service-lane-add-bottom" onClick={() => onAdd(category)}>
-          Add {label}
+          {SERVICE_PLANNER_ADD_LABELS[category]}
         </button>
       ) : null}
       {orderedItems.length > 0 && category === 'transport' ? transportPicker : null}
@@ -2624,7 +2638,7 @@ function ScopePlanner({
             <div>
               <p className="workspace-day-kicker">Day plan</p>
               <h3>Generate itinerary days from nights to start.</h3>
-              <p className="workspace-day-copy">Use the Auto Builder above to create the Base Program days, then add services inside each day card.</p>
+              <p className="workspace-day-copy">Start by adding your first itinerary day, then add hotels, transport, and meals.</p>
             </div>
           </div>
         </article>
@@ -2688,7 +2702,7 @@ function ScopePlanner({
                   <span>Day Editor</span>
                 </p>
                 <h3>{dayHeading}</h3>
-                <p className="workspace-day-copy">{daySubtitle}</p>
+                <p className="workspace-day-copy">{daySubtitle || 'Add the day notes and then attach the services needed for operations.'}</p>
               </div>
               <div className="quote-service-day-meta">
                 <span className="page-tab-badge">Services {currentServicesCount}</span>
@@ -2696,7 +2710,7 @@ function ScopePlanner({
                 {summary.unpricedCount > 0 ? <span className="page-tab-badge page-tab-badge-warning">Unpriced {summary.unpricedCount}</span> : null}
                 {summary.unresolvedCount > 0 ? <span className="page-tab-badge">Unresolved {summary.unresolvedCount}</span> : null}
                 <button type="button" className="primary-button quote-service-add-primary" onClick={() => openAddPanel(summary.day, dayCompletenessRules[0]?.key || 'activity')}>
-                  + Add Service
+                  Add service
                 </button>
               </div>
             </div>
@@ -2962,7 +2976,7 @@ function ScopePlanner({
               ) : activeServicePanel.kind === 'add' ? (
                 <div key={activeServicePanel.key}>
                   <button type="button" className="secondary-button quote-smart-back-button" onClick={returnToSmartSuggestions}>
-                    Change selection
+                    Back to suggestions
                   </button>
                   <AddServiceEditorPanel
                     category={activeServicePanel.category}

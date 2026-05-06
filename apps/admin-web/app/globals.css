@@ -21833,6 +21833,232 @@ video {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.quote-dashboard-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.quote-dashboard-tab {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.55rem;
+  min-height: 4.25rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+.quote-dashboard-tab-index {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: #EEF2F7;
+  color: #344054;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.quote-dashboard-tab-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.quote-dashboard-tab-copy strong {
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.quote-dashboard-tab-copy small {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.quote-dashboard-tab-active {
+  border-color: #1F9ACF;
+  background: #E8F6FB;
+  color: #145F83;
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.26), 0 8px 18px rgba(31, 154, 207, 0.12);
+}
+
+.quote-dashboard-tab-active .quote-dashboard-tab-index {
+  background: #1F9ACF;
+  color: #FFFFFF;
+}
+
+.quote-dashboard-tab-active .quote-dashboard-tab-copy small {
+  color: #145F83;
+}
+
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:first-child strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(2) strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(3) strong,
+.quote-pricing-summary-card-dominant .quote-pricing-summary-row:nth-child(4) strong {
+  font-size: 1.08rem;
+}
+
+.quote-service-empty-state-collapsed {
+  padding: 0;
+  border-style: dashed;
+  background: #F8FAFC;
+}
+
+.quote-service-empty-state-collapsed summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.72rem 0.82rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.quote-service-empty-state-collapsed summary::-webkit-details-marker {
+  display: none;
+}
+
+.quote-service-empty-state-collapsed summary span {
+  min-width: 0;
+  color: #667085;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.quote-service-empty-state-collapsed summary strong {
+  color: #1C7FB8;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.quote-service-empty-state-collapsed[open] {
+  padding-bottom: 0.75rem;
+}
+
+.quote-service-empty-state-collapsed[open] > :not(summary) {
+  margin: 0 0.82rem;
+}
+
+.quote-service-planner .quote-service-lane-head strong {
+  width: auto;
+  min-width: 3.1rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+
+.quote-service-editor-drawer .quote-drawer-section {
+  border-radius: 8px;
+}
+
+.quote-service-editor-drawer .quote-drawer-section-head h3 {
+  font-size: 1rem;
+}
+
+.quote-service-editor-drawer .primary-button,
+.quote-service-editor-drawer .quote-transport-add-button,
+.quote-service-editor-drawer .service-entry-form > button[type="submit"] {
+  min-height: 2.65rem;
+  font-weight: 900;
+}
+
+@media (max-width: 1180px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Quote service lane beta polish. */
+.quote-service-planner .quote-service-lane {
+  --lane-accent: #1F9ACF;
+  --lane-soft: #E8F6FB;
+  border-left: 4px solid var(--lane-accent);
+  background: linear-gradient(180deg, var(--lane-soft), #FFFFFF 58%);
+}
+
+.quote-service-planner .quote-service-lane-hotel {
+  --lane-accent: #2563EB;
+  --lane-soft: #EFF6FF;
+}
+
+.quote-service-planner .quote-service-lane-transport {
+  --lane-accent: #0F766E;
+  --lane-soft: #ECFDF5;
+}
+
+.quote-service-planner .quote-service-lane-meal {
+  --lane-accent: #B45309;
+  --lane-soft: #FFF7ED;
+}
+
+.quote-service-planner .quote-service-lane-activity {
+  --lane-accent: #7C3AED;
+  --lane-soft: #F5F3FF;
+}
+
+.quote-service-planner .quote-service-lane-guide {
+  --lane-accent: #0369A1;
+  --lane-soft: #F0F9FF;
+}
+
+.quote-service-planner .quote-service-lane-other {
+  --lane-accent: #475467;
+  --lane-soft: #F8FAFC;
+}
+
+.quote-service-planner .quote-service-lane-externalPackage {
+  --lane-accent: #BE123C;
+  --lane-soft: #FFF1F2;
+}
+
+.quote-service-planner .quote-service-lane-head strong,
+.quote-service-empty-state-collapsed summary strong {
+  background: color-mix(in srgb, var(--lane-accent) 12%, #FFFFFF);
+  color: var(--lane-accent);
+}
+
+.quote-service-planner .quote-service-lane-add,
+.quote-service-planner .quote-service-empty-add {
+  min-height: 2.75rem;
+  padding: 0.7rem 0.95rem;
+  border-color: color-mix(in srgb, var(--lane-accent) 32%, #FFFFFF);
+  background: #FFFFFF;
+  color: var(--lane-accent);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.quote-service-planner .quote-service-lane-add:hover,
+.quote-service-planner .quote-service-empty-add:hover {
+  background: color-mix(in srgb, var(--lane-accent) 10%, #FFFFFF);
+}
+
+.quote-service-empty-state-collapsed summary strong {
+  max-width: 13rem;
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--lane-accent) 28%, #FFFFFF);
+  border-radius: 8px;
+  line-height: 1.2;
+  text-align: center;
+}
+
 .quote-service-planner .quote-service-side-section {
   padding: 0.95rem 1rem;
   border-style: dashed;
@@ -24247,6 +24473,44 @@ video {
     .allotment-table td
   ) {
     max-width: 78vw;
+  }
+}
+
+/* Quote workspace usability overrides. Keep last so older quote layout rules do not dilute the stepper. */
+.quote-dashboard-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.quote-dashboard-tab {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.55rem;
+  min-height: 4.25rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 8px;
+  line-height: 1.2;
+}
+
+.quote-dashboard-tab-active {
+  border-color: #1F9ACF;
+  background: #E8F6FB;
+  color: #145F83;
+  box-shadow: inset 0 0 0 1px rgba(31, 154, 207, 0.26), 0 8px 18px rgba(31, 154, 207, 0.12);
+}
+
+@media (max-width: 1180px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .quote-dashboard-tabs {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
