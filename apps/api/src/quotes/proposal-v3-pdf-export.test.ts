@@ -365,12 +365,61 @@ test('proposal V3 maps normalized hotel option sets with room categories and fac
   assert.deepEqual(proposal.hotelOptionSets[0].options[0].amenities, ['Wi-Fi', 'Pool', 'Breakfast room']);
   assert.match(accommodationHtml, /Hotel options are outlined below/);
   assert.doesNotMatch(accommodationHtml, /Accommodation details will be confirmed with the final operating revision/);
-  assert.match(hotelOptionsHtml, /Accommodation Alternatives/);
+  assert.match(hotelOptionsHtml, /Accommodation Options/);
   assert.match(hotelOptionsHtml, /Recommended/);
   assert.match(hotelOptionsHtml, /Deluxe Room/);
   assert.match(hotelOptionsHtml, /A central Amman stay/);
   assert.match(hotelOptionsHtml, /Downtown location/);
   assert.match(hotelOptionsHtml, /Wi-Fi, Pool, Breakfast room/);
+});
+
+test('proposal V3 renders each hotel option row night count instead of total quote nights', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      nightCount: 7,
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          hotelOptions: [
+            {
+              id: 'hotel-option-one-night',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman One Night Hotel',
+              roomType: 'Standard Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 1,
+              isPrimary: true,
+              roomCategory: { name: 'Standard Room', code: 'STD' },
+              hotel: null,
+            },
+            {
+              id: 'hotel-option-three-nights',
+              city: 'Petra',
+              hotelNameSnapshot: 'Petra Three Night Hotel',
+              roomType: 'Deluxe Room',
+              mealPlan: 'HB',
+              mealPlanCode: 'HB',
+              nights: 3,
+              isPrimary: false,
+              roomCategory: { name: 'Deluxe Room', code: 'DLX' },
+              hotel: null,
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+
+  assert.equal(proposal.hotelOptionSets[0].options[0].nights, 1);
+  assert.equal(proposal.hotelOptionSets[0].options[1].nights, 3);
+  assert.match(hotelOptionsHtml, /Amman One Night Hotel/);
+  assert.match(hotelOptionsHtml, /Amman[\s\S]*Standard Room[\s\S]*BB[\s\S]*1 night/);
+  assert.match(hotelOptionsHtml, /Petra Three Night Hotel/);
+  assert.match(hotelOptionsHtml, /Petra[\s\S]*Deluxe Room[\s\S]*HB[\s\S]*3 nights/);
+  assert.doesNotMatch(hotelOptionsHtml, /7 nights/);
 });
 
 test('proposal V3 maps legacy snapshot-only hotel option rows safely', () => {
@@ -418,7 +467,7 @@ test('proposal V3 renders an empty hotel option set fallback', () => {
 
   assert.equal(proposal.hotelOptionSets.length, 1);
   assert.equal(proposal.hotelOptionSets[0].options.length, 0);
-  assert.match(hotelOptionsHtml, /Hotel alternatives to be confirmed/);
+  assert.match(hotelOptionsHtml, /Accommodation options to be confirmed/);
 });
 
 test('proposal V3 keeps confirmed hotel quote items in Stay Overview alongside hotel option sets', () => {

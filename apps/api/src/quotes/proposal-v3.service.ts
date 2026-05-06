@@ -340,8 +340,8 @@ export class ProposalV3Service {
     return `
       <div class="proposal-hotel-options avoid-break">
         <header class="proposal-subsection-header">
-          <p class="proposal-eyebrow">Hotel Options</p>
-          <h3>Accommodation Alternatives</h3>
+          <p class="proposal-eyebrow">Accommodation Options</p>
+          <h3>Accommodation Options</h3>
         </header>
         <div class="proposal-hotel-option-set-list">
           ${viewModel.hotelOptionSets
@@ -350,11 +350,12 @@ export class ProposalV3Service {
                 ? optionSet.options
                     .map((hotelOption) => {
                       const factsHtml = this.renderHotelOptionFacts(hotelOption);
+                      const hotelOptionNightLabel = this.formatHotelOptionNightLabel(hotelOption.nights);
                       const meta = this.joinInlineParts([
                         hotelOption.city,
                         hotelOption.room,
                         hotelOption.mealPlan,
-                        hotelOption.nights ? `${hotelOption.nights} night${hotelOption.nights === 1 ? '' : 's'}` : null,
+                        hotelOptionNightLabel,
                       ]);
 
                       return `
@@ -373,7 +374,7 @@ export class ProposalV3Service {
                       `;
                     })
                     .join('')
-                : '<p class="proposal-hotel-option-empty">Hotel alternatives to be confirmed.</p>';
+                : '<p class="proposal-hotel-option-empty">Accommodation options to be confirmed.</p>';
 
               return `
                 <section class="proposal-hotel-option-set avoid-break">
@@ -392,6 +393,10 @@ export class ProposalV3Service {
         </div>
       </div>
     `;
+  }
+
+  private formatHotelOptionNightLabel(nights: number | null) {
+    return nights ? `${nights} night${nights === 1 ? '' : 's'}` : null;
   }
 
   private renderHotelOptionFacts(option: ProposalV3ViewModel['hotelOptionSets'][number]['options'][number]) {

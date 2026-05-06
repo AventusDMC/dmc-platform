@@ -406,7 +406,7 @@ function getSmartTransportSuggestions<T extends TransportPricingCandidate>(candi
 }
 
 const SERVICE_TYPE_BUTTONS = [
-  { key: 'hotel', label: 'Add Hotel' },
+  { key: 'hotel', label: 'Add Confirmed Hotel Stay' },
   { key: 'transport', label: 'Add Transport' },
   { key: 'guide', label: 'Add Guide' },
   { key: 'activity', label: 'Add Activity' },
@@ -3519,7 +3519,7 @@ export function QuoteItemsForm({
               </details>
 
               <button className="quote-transport-add-button" type="submit" disabled={isSubmitting || isLoadingHotelCost || !isHotelPricingReady}>
-                {isSubmitting ? 'Saving...' : 'Add Hotel'}
+                {isSubmitting ? 'Saving...' : 'Add Confirmed Hotel Stay'}
               </button>
             </section>
           ) : null}

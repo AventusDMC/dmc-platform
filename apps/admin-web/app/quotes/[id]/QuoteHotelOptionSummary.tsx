@@ -165,11 +165,11 @@ function HotelOptionSetSummary({ option }: { option: ProposalReadyQuoteOption })
           <strong>{option.name}</strong>
           {option.notes ? <p>{option.notes}</p> : null}
         </div>
-        <p>{hotelOptions.length > 0 ? `${hotelOptions.length} hotel option${hotelOptions.length === 1 ? '' : 's'}` : 'Hotels pending'}</p>
+        <p>{hotelOptions.length > 0 ? `${hotelOptions.length} accommodation option${hotelOptions.length === 1 ? '' : 's'}` : 'Accommodation options pending'}</p>
       </header>
       <div>
         {hotelOptions.length === 0 ? (
-          <p className="empty-state">Hotel alternatives to be confirmed.</p>
+          <p className="empty-state">Accommodation options to be confirmed.</p>
         ) : (
           <div className="quote-hotel-city-list">
             {Object.entries(hotelsByCity).map(([city, cityOptions]) => (
@@ -234,7 +234,7 @@ function CommercialOptionSummary({ option, formatMoney }: { option: ProposalRead
 
 export function QuoteHotelOptionSummary({ options, formatMoney }: QuoteHotelOptionSummaryProps) {
   if (options.length === 0) {
-    return <p className="empty-state">No hotel options added yet.</p>;
+    return <p className="empty-state">No accommodation options added yet.</p>;
   }
 
   return (

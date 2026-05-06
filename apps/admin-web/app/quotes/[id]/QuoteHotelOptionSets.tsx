@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Hotel = {
@@ -64,6 +64,10 @@ type QuoteHotelOptionSetsProps = {
 const HOTEL_OPTION_SET_CATEGORIES = ['3 Star', '4 Star STD', '4 Star DLX', 'Custom'];
 const MEAL_PLAN_OPTIONS = ['RO', 'BB', 'HB', 'FB', 'AI'] as const;
 type MealPlanCode = (typeof MEAL_PLAN_OPTIONS)[number];
+
+function getOptionSetSectionId(optionSetId: string) {
+  return `hotel-option-set-${optionSetId}`;
+}
 
 function listFactSheetValues(value: unknown) {
   if (!value) {
@@ -163,6 +167,27 @@ export function QuoteHotelOptionSets({ apiBaseUrl, quoteId, quoteOptions, hotels
     () => quoteOptions.filter((option) => option.kind === 'HOTEL_OPTION_SET').sort((left, right) => left.name.localeCompare(right.name)),
     [quoteOptions],
   );
+  const [selectedOptionSetId, setSelectedOptionSetId] = useState(sortedOptions[0]?.id || '');
+
+  useEffect(() => {
+    if (sortedOptions.length === 0) {
+      setSelectedOptionSetId('');
+      return;
+    }
+
+    if (!sortedOptions.some((optionSet) => optionSet.id === selectedOptionSetId)) {
+      setSelectedOptionSetId(sortedOptions[0].id);
+    }
+  }, [selectedOptionSetId, sortedOptions]);
+
+  function selectOptionSet(optionSetId: string) {
+    setSelectedOptionSetId(optionSetId);
+    window.requestAnimationFrame(() => {
+      const section = document.getElementById(getOptionSetSectionId(optionSetId));
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      section?.focus({ preventScroll: true });
+    });
+  }
 
   async function createOptionSet() {
     setError('');
@@ -193,9 +218,9 @@ export function QuoteHotelOptionSets({ apiBaseUrl, quoteId, quoteOptions, hotels
     <section className="workspace-section app-card">
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Hotel Option Sets</p>
-          <h2>Build package hotel options</h2>
-          <p className="detail-copy">Create 3 Star, 4 Star STD, 4 Star DLX, or custom sets, then add city-level hotel alternatives. This stores structure only; pricing remains manual.</p>
+          <p className="eyebrow">Accommodation Options</p>
+          <h2>Build proposal accommodation choices</h2>
+          <p className="detail-copy">Create 3 Star, 4 Star STD, 4 Star DLX, or custom sets, then add city-level accommodation options. This stores structure only; pricing remains manual.</p>
         </div>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
@@ -219,11 +244,37 @@ export function QuoteHotelOptionSets({ apiBaseUrl, quoteId, quoteOptions, hotels
           <input value={setForm.notes} onChange={(event) => setSetForm({ ...setForm, notes: event.target.value })} placeholder="Client-facing or internal note" />
         </label>
       </div>
-      <button className="button" type="button" onClick={createOptionSet}>Add hotel option set</button>
-      {sortedOptions.length === 0 ? <p className="empty-state">No hotel option sets yet. Add your first category, then add hotel alternatives by city.</p> : null}
+      <button className="button" type="button" onClick={createOptionSet}>Add accommodation option set</button>
+      {sortedOptions.length === 0 ? <p className="empty-state">No accommodation option sets yet. Add your first category, then add accommodation options by city.</p> : null}
+      {sortedOptions.length > 0 ? (
+        <div className="quote-hotel-option-set-nav" aria-label="Hotel option set editor navigation">
+          {sortedOptions.map((optionSet) => {
+            const isSelected = optionSet.id === selectedOptionSetId;
+            return (
+              <button
+                key={optionSet.id}
+                type="button"
+                className={`workspace-tab-label quote-hotel-option-set-pill${isSelected ? ' workspace-tab-label-active quote-hotel-option-set-pill-active' : ''}`}
+                aria-pressed={isSelected}
+                aria-controls={getOptionSetSectionId(optionSet.id)}
+                onClick={() => selectOptionSet(optionSet.id)}
+              >
+                {optionSet.name}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <div className="section-stack">
         {sortedOptions.map((optionSet) => (
-          <HotelOptionSetCard key={optionSet.id} apiBaseUrl={apiBaseUrl} quoteId={quoteId} optionSet={optionSet} hotels={hotels} />
+          <HotelOptionSetCard
+            key={optionSet.id}
+            apiBaseUrl={apiBaseUrl}
+            quoteId={quoteId}
+            optionSet={optionSet}
+            hotels={hotels}
+            isSelected={optionSet.id === selectedOptionSetId}
+          />
         ))}
       </div>
     </section>
@@ -235,11 +286,13 @@ function HotelOptionSetCard({
   quoteId,
   optionSet,
   hotels,
+  isSelected,
 }: {
   apiBaseUrl: string;
   quoteId: string;
   optionSet: QuoteOptionSet;
   hotels: Hotel[];
+  isSelected: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState('');
@@ -323,13 +376,13 @@ function HotelOptionSetCard({
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, 'Could not add hotel alternative.'));
+        throw new Error(await readError(response, 'Could not add accommodation option.'));
       }
 
       setForm({ city: '', hotelId: '', roomCategoryId: '', hotelNameSnapshot: '', roomType: 'Standard', mealPlan: 'BB', mealPlanCode: 'BB', nights: '1', isPrimary: false, notes: '' });
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not add hotel alternative.');
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not add accommodation option.');
     }
   }
 
@@ -343,12 +396,12 @@ function HotelOptionSetCard({
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, 'Could not update hotel alternative.'));
+        throw new Error(await readError(response, 'Could not update accommodation option.'));
       }
 
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not update hotel alternative.');
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not update accommodation option.');
     }
   }
 
@@ -360,17 +413,17 @@ function HotelOptionSetCard({
       });
 
       if (!response.ok) {
-        throw new Error(await readError(response, 'Could not delete hotel alternative.'));
+        throw new Error(await readError(response, 'Could not delete accommodation option.'));
       }
 
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not delete hotel alternative.');
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not delete accommodation option.');
     }
   }
 
   async function deleteOptionSet() {
-    if (!window.confirm('Delete this hotel option set and all hotel alternatives inside it?')) {
+    if (!window.confirm('Delete this accommodation option set and all accommodation options inside it?')) {
       return;
     }
 
@@ -391,14 +444,19 @@ function HotelOptionSetCard({
   }
 
   return (
-    <article className="detail-card">
+    <article
+      id={getOptionSetSectionId(optionSet.id)}
+      className={`detail-card quote-hotel-option-set-editor${isSelected ? ' quote-hotel-option-set-editor-selected' : ' quote-hotel-option-set-editor-dimmed'}`}
+      tabIndex={-1}
+    >
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Option Set</p>
+          <p className="eyebrow">{isSelected ? 'Editing' : 'Accommodation Option Set'}</p>
           <h3>{optionSet.name}</h3>
+          {isSelected ? <p className="detail-copy">Editing: {optionSet.name}</p> : null}
           <p className="detail-copy">{optionSet.notes || 'No notes yet.'}</p>
         </div>
-        <button className="compact-button" type="button" onClick={deleteOptionSet}>Delete Option Set</button>
+        <button className="compact-button" type="button" onClick={deleteOptionSet}>Delete Accommodation Option Set</button>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
       <div className="form-row form-row-3">
@@ -416,7 +474,7 @@ function HotelOptionSetCard({
           </select>
         </label>
         <label>City<input value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="Amman" /></label>
-        <label>Hotel alternative<input value={form.hotelNameSnapshot} onChange={(event) => setForm({ ...form, hotelNameSnapshot: event.target.value })} placeholder="Hotel name / similar" /></label>
+        <label>Accommodation option<input value={form.hotelNameSnapshot} onChange={(event) => setForm({ ...form, hotelNameSnapshot: event.target.value })} placeholder="Hotel name / similar" /></label>
         {!showManualRoomType ? (
           <label>
             Room category
@@ -442,8 +500,8 @@ function HotelOptionSetCard({
       </div>
       {selectedHotel ? <HotelFactSheetSummary hotel={selectedHotel} /> : null}
       <label>Notes<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Internal notes, client caveat, or hotel-or-similar wording" /></label>
-      <button className="button" type="button" onClick={addHotelAlternative}>Add hotel alternative</button>
-      {Object.keys(optionHotelsByCity).length === 0 ? <p className="empty-state">No hotel alternatives yet for this option set.</p> : null}
+      <button className="primary-button quote-hotel-option-set-add-button" type="button" onClick={addHotelAlternative}>Add accommodation option</button>
+      {Object.keys(optionHotelsByCity).length === 0 ? <p className="empty-state">No accommodation options yet for this option set.</p> : null}
       <div className="section-stack">
         {Object.entries(optionHotelsByCity).map(([city, options]) => (
           <div className="subsection" key={city}>

@@ -90,7 +90,7 @@ describe('activities quote and booking UI integration regression', () => {
       'className={`workspace-tab-label${selectedScopeId === \'shared\' ? \' workspace-tab-label-active\' : \'\'}`}',
       '<section className="workspace-panel-shared quote-base-program-panel-open" data-locked={itineraryDays.length === 0 ? \'true\' : \'false\'}>',
       '<div id="quote-base-program-days">',
-      "{ category: 'hotel', label: 'Add Hotel' }",
+      "{ category: 'hotel', label: 'Add Confirmed Hotel Stay' }",
       "{ category: 'transport', label: 'Add Transport' }",
       "{ category: 'activity', label: 'Add Activity' }",
       "{ category: 'meal', label: 'Add Meal' }",

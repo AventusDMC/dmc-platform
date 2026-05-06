@@ -2243,7 +2243,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                   <div>
                     <p className="eyebrow">Hotels</p>
                     <h2>Plan stays by day and option</h2>
-                    <p className="detail-copy">Review hotel rows alongside the day plan. Existing hotel contract and rate selection behavior stays unchanged.</p>
+                    <p className="detail-copy">Accommodation Options are proposal choices. Confirmed Hotel Stays are day-by-day operational services.</p>
                   </div>
                   <Link href={buildTabHref('pricing')} className="primary-button">
                     Review pricing

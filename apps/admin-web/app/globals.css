@@ -6495,6 +6495,53 @@ th.money-cell {
   border-left-color: #64748B;
 }
 
+.quote-hotel-option-set-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  padding-top: 0.25rem;
+}
+
+.quote-hotel-option-set-pill {
+  font: inherit;
+}
+
+.quote-hotel-option-set-pill-active {
+  box-shadow: 0 10px 24px rgba(31, 154, 207, 0.2);
+}
+
+.quote-hotel-option-set-editor {
+  scroll-margin-top: 1rem;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.quote-hotel-option-set-editor:focus {
+  outline: 2px solid rgba(31, 154, 207, 0.42);
+  outline-offset: 3px;
+}
+
+.quote-hotel-option-set-editor-selected {
+  border-color: rgba(31, 154, 207, 0.52);
+  box-shadow: 0 16px 36px rgba(31, 154, 207, 0.14);
+}
+
+.quote-hotel-option-set-editor-dimmed {
+  opacity: 0.74;
+}
+
+.quote-hotel-option-set-editor-dimmed:hover,
+.quote-hotel-option-set-editor-dimmed:focus-within {
+  opacity: 1;
+}
+
+.quote-hotel-option-set-add-button {
+  justify-self: start;
+}
+
 .quote-hotel-option-set-head,
 .quote-hotel-city-head,
 .quote-hotel-card-head {

@@ -458,7 +458,7 @@ const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
 };
 
 const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: string }> = [
-  { category: 'hotel', label: 'Add Hotel' },
+  { category: 'hotel', label: 'Add Confirmed Hotel Stay' },
   { category: 'transport', label: 'Add Transport' },
   { category: 'activity', label: 'Add Activity' },
   { category: 'meal', label: 'Add Meal' },
@@ -483,7 +483,7 @@ const SERVICE_PLANNER_LANE_LABELS: Record<ServicePlannerCategory, string> = {
   meal: 'Meals',
 };
 const SERVICE_PLANNER_ADD_LABELS: Record<ServicePlannerCategory, string> = {
-  hotel: '+ Add Hotel',
+  hotel: '+ Add Confirmed Hotel Stay',
   transport: '+ Add Transport',
   meal: '+ Add Meal',
   activity: '+ Add Activity',
