@@ -448,12 +448,14 @@ describe('quote detail page regression', () => {
       'const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;',
       'const [paxInput, setPaxInput] = useState',
       'function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[])',
+      "const displayVehicleType = /\\bvv?ip\\b/i.test(legacyName) && entry.vehicle.maxPax >= 20 ? 'Luxury' : vehicleType;",
+      'const legacyDetail = legacyName && normalizeVehicleTypeLabel(legacyName, vehicleTypes) !== displayVehicleType',
+      'return `${displayVehicleType} · ${entry.vehicle.maxPax} pax${legacyDetail}${availabilityDetail}`;',
       'Pax',
-      '<select value={selectedVehicleId} onChange={(event) => setSelectedVehicleId(event.target.value)}>',
+      'Select vehicle / capacity',
       '{formatVehicleOptionLabel(entry, vehicleTypes)}',
-      'disabled={isTooSmall}',
-      'Not enough capacity',
-      'Larger vehicles remain available for manual override.',
+      'disabled={entry.isTooSmall}',
+      'Too small',
     ]);
   });
 

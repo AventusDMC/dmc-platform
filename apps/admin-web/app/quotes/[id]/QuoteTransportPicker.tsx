@@ -196,7 +196,12 @@ function isActiveVehicle(vehicle: Vehicle) {
 
 function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[]) {
   const vehicleType = resolveVehicleTypeLabel(entry.vehicle, vehicleTypes);
-  return `${entry.vehicle.name} (${vehicleType} • ${entry.vehicle.maxPax} pax) — ${entry.group}`;
+  const legacyName = String(entry.vehicle['name'] || '').trim();
+  const displayVehicleType = /\bvv?ip\b/i.test(legacyName) && entry.vehicle.maxPax >= 20 ? 'Luxury' : vehicleType;
+  const legacyDetail = legacyName && normalizeVehicleTypeLabel(legacyName, vehicleTypes) !== displayVehicleType ? ` — ${legacyName}` : '';
+  const availabilityDetail = entry.isTooSmall ? ' — Too small' : '';
+
+  return `${displayVehicleType} · ${entry.vehicle.maxPax} pax${legacyDetail}${availabilityDetail}`;
 }
 
 function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null) {
@@ -835,13 +840,12 @@ export function QuoteTransportPicker({
                     />
                   </label>
                   <label>
-                    Vehicle Type
+                    Select vehicle / capacity
                     <select value={selectedVehicleId} onChange={(event) => handleVehicleChange(event.target.value)} disabled={!selectedRoute || vehicleListForRouteIsEmpty}>
-                      <option value="">Select vehicle type</option>
+                      <option value="">Select vehicle / capacity</option>
                       {rankedVehicles.map((entry) => (
                         <option key={entry.vehicle.id} value={entry.vehicle.id} disabled={entry.isTooSmall}>
                           {formatVehicleOptionLabel(entry, vehicleTypes)}
-                          {entry.isTooSmall ? ' — Not enough capacity' : ''}
                         </option>
                       ))}
                     </select>
