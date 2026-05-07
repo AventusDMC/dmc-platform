@@ -1,4 +1,4 @@
-export type TransportPricingMode =
+export type CanonicalTransportPricingMode =
   | 'Point-to-Point'
   | 'Airport Transfer'
   | 'Half Day'
@@ -8,7 +8,7 @@ export type TransportPricingMode =
   | 'Stationary / Waiting'
   | 'Add-on / Supplement';
 
-export const TRANSPORT_PRICING_MODES: TransportPricingMode[] = [
+export const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] = [
   'Point-to-Point',
   'Airport Transfer',
   'Half Day',
@@ -19,9 +19,7 @@ export const TRANSPORT_PRICING_MODES: TransportPricingMode[] = [
   'Add-on / Supplement',
 ];
 
-export const TRANSPORT_PRICING_MODE_HELPER_TEXT = 'Pricing Mode defines how the rate is calculated (e.g., Full Day, Point-to-Point).';
-
-const PRICING_MODE_ALIASES: Record<string, TransportPricingMode> = {
+const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMode> = {
   pointtopoint: 'Point-to-Point',
   airporttransfer: 'Airport Transfer',
   halfday: 'Half Day',
@@ -43,13 +41,13 @@ const PRICING_MODE_ALIASES: Record<string, TransportPricingMode> = {
   perkm: 'Extra KM',
 };
 
-function normalizePricingModeKey(value: string) {
+export function normalizeTransportPricingModeKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
-export function normalizeTransportPricingMode(value?: string | null): TransportPricingMode | null {
-  const normalized = normalizePricingModeKey(value || '');
-  return normalized ? PRICING_MODE_ALIASES[normalized] || null : null;
+export function normalizeTransportPricingMode(value?: string | null): CanonicalTransportPricingMode | null {
+  const normalized = normalizeTransportPricingModeKey(value || '');
+  return normalized ? TRANSPORT_PRICING_MODE_ALIASES[normalized] || null : null;
 }
 
 type TransportPricingModeSource = {
@@ -65,7 +63,7 @@ type TransportPricingModeSource = {
   } | null;
 };
 
-export function deriveTransportPricingMode(source: TransportPricingModeSource): TransportPricingMode | null {
+export function deriveTransportPricingMode(source: TransportPricingModeSource): CanonicalTransportPricingMode | null {
   const explicitMode =
     normalizeTransportPricingMode(source.pricingMode) ||
     normalizeTransportPricingMode(source.serviceType?.name) ||

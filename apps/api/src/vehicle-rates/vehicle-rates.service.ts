@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
+import {
+  CANONICAL_TRANSPORT_PRICING_MODES,
+  deriveTransportPricingMode,
+  normalizeTransportPricingMode,
+  type CanonicalTransportPricingMode,
+} from '../common/transport-pricing-mode-normalization';
 import { getVehicleTypeCatalogLabels, getVehicleTypeMatchLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, routePairsMatch } from '../routes/route-normalization';
@@ -64,15 +70,6 @@ type SupplierRateCardQuery = {
 type TransportContractImportMode = 'preview' | 'import';
 type TransportContractMergeMode = 'keep' | 'merge';
 type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
-type CanonicalTransportPricingMode =
-  | 'Point-to-Point'
-  | 'Airport Transfer'
-  | 'Half Day'
-  | 'Full Day'
-  | 'Extra Hour'
-  | 'Extra KM'
-  | 'Stationary / Waiting'
-  | 'Add-on / Supplement';
 type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
@@ -206,42 +203,8 @@ const REQUIRED_TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
   'currency',
 ] as const;
 
-const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] = [
-  'Point-to-Point',
-  'Airport Transfer',
-  'Half Day',
-  'Full Day',
-  'Extra Hour',
-  'Extra KM',
-  'Stationary / Waiting',
-  'Add-on / Supplement',
-];
-
-const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMode> = {
-  pointtopoint: 'Point-to-Point',
-  airporttransfer: 'Airport Transfer',
-  halfday: 'Half Day',
-  fullday: 'Full Day',
-  extrahour: 'Extra Hour',
-  extrakm: 'Extra KM',
-  extrakilometer: 'Extra KM',
-  stationarywaiting: 'Stationary / Waiting',
-  addonsupplement: 'Add-on / Supplement',
-  addon: 'Add-on / Supplement',
-  supplement: 'Add-on / Supplement',
-  transfer: 'Point-to-Point',
-  airport: 'Airport Transfer',
-  perhour: 'Extra Hour',
-  perkm: 'Extra KM',
-};
-
 function normalizeImportKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-function normalizeTransportPricingMode(value?: string | null): CanonicalTransportPricingMode | null {
-  const normalized = normalizeImportKey(value || '');
-  return normalized ? TRANSPORT_PRICING_MODE_ALIASES[normalized] || null : null;
 }
 
 function normalizeImportText(value: unknown) {
@@ -485,7 +448,7 @@ function isUuid(value: string) {
 }
 
 function getRatePricingMode(rate: { routeName: string; serviceType: { name: string; code?: string | null; classification?: string | null } }) {
-  return normalizeTransportPricingMode(rate.serviceType.name) || normalizeTransportPricingMode(rate.serviceType.code) || 'Point-to-Point';
+  return deriveTransportPricingMode(rate) || 'Point-to-Point';
 }
 
 function groupRatesByVehicleType(rates: any[]) {

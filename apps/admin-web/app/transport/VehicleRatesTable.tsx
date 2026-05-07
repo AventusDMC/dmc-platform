@@ -24,6 +24,7 @@ import {
   type ManualSupplierRateCard,
 } from '../lib/manual-supplier-rate-cards';
 import {
+  deriveTransportPricingMode,
   normalizeTransportPricingMode,
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
   TRANSPORT_PRICING_MODES,
@@ -582,7 +583,7 @@ function findRateValue(rates: VehicleRate[], matcher: (rate: VehicleRate, text: 
 }
 
 function getPricingModeForRate(rate: VehicleRate): PricingMode {
-  return normalizeTransportPricingMode(rate.serviceType.name) || normalizeTransportPricingMode(rate.serviceType.code) || 'Point-to-Point';
+  return deriveTransportPricingMode(rate) || 'Point-to-Point';
 }
 
 function groupRateLinesByVehicleType(rates: VehicleRate[]) {

@@ -385,6 +385,63 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(stores.pricingRules[0].baseCost, 50);
 });
 
+test('transfer service labels derive point-to-point pricing mode for import and pricing lookup', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const pricingService = new TransportPricingService(prisma as any);
+  const transferRow = {
+    ...activeImportRow,
+    serviceName: 'Private Transfer',
+    pricingMode: '',
+    routeName: 'Aqaba South Border -> Petra',
+    origin: 'Aqaba South Border',
+    destination: 'Petra',
+    vehicleType: 'Medium 30',
+    maxPaxPerUnit: 30,
+    cost: 520,
+  };
+  seedImportRoute(stores, transferRow);
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer([transferRow]), originalname: 'private-transfer.xlsx' }, { allowCreateSuppliers: true });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRates, 1);
+  assert.equal(stores.transportServiceTypes[0].name, 'Point-to-Point');
+  assert.equal(stores.transportServiceTypes[0].code, 'POINT_TO_POINT');
+  assert.equal(stores.transportServiceTypes[0].classification, 'ROUTE_TRANSFER');
+
+  const priced = await pricingService.calculate({
+    serviceTypeId: stores.transportServiceTypes[0].id,
+    routeId: stores.routes[0].id,
+    paxCount: 21,
+  });
+
+  assert.equal(priced.pricingMode, 'capacity_unit');
+  assert.equal(priced.unitCapacity, 30);
+  assert.equal(priced.price, 520);
+});
+
+test('explicit transport pricing modes are preserved over transfer fallback', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const halfDayRow = {
+    ...activeImportRow,
+    serviceName: 'Half Day',
+    serviceCategory: 'Transfers',
+    routeName: 'Petra local service',
+    origin: 'Petra',
+    destination: 'Petra',
+    cost: 120,
+  };
+  seedImportRoute(stores, halfDayRow);
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer([halfDayRow]), originalname: 'half-day.xlsx' }, { allowCreateSuppliers: true });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(stores.transportServiceTypes[0].name, 'Half Day');
+  assert.equal(stores.transportServiceTypes[0].classification, 'HALF_DAY');
+});
+
 test('transport contract import accepts clean Route and Rate column aliases', async () => {
   const { prisma, stores } = createPrismaMock();
   stores.suppliers.push({ id: 'supplier-existing', name: 'Test Supplier', type: 'transport' });

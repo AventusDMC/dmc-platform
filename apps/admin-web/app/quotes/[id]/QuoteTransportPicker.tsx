@@ -12,7 +12,7 @@ import { normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTy
 import { MANUAL_SUPPLIER_RATE_CARDS_CHANGED_EVENT, readManualSupplierRateCards } from '../../lib/manual-supplier-rate-cards';
 import { resolveSupplierNameById, SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../../lib/transport-suppliers';
 import {
-  normalizeTransportPricingMode,
+  deriveTransportPricingMode,
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
   TRANSPORT_PRICING_MODES,
   type TransportPricingMode as PricingMode,
@@ -155,11 +155,7 @@ function getPricingModeForRate(rate: VehicleRate): PricingMode {
 }
 
 function getNormalizedPricingModeForRate(rate: VehicleRate) {
-  return (
-    normalizeTransportPricingMode(rate.pricingMode) ||
-    normalizeTransportPricingMode(rate.serviceType?.name) ||
-    normalizeTransportPricingMode(rate.serviceType?.code)
-  );
+  return deriveTransportPricingMode(rate);
 }
 
 function getSupplierDisplay(rate: VehicleRate, suppliers: Supplier[]) {

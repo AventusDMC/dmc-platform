@@ -19,6 +19,7 @@ const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineE
 const rowDetailsPanelSource = readFileSync(new URL('../../components/RowDetailsPanel.tsx', import.meta.url), 'utf8');
 const quoteDetailApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/route.ts', import.meta.url), 'utf8');
 const quoteCancelApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/cancel/route.ts', import.meta.url), 'utf8');
+const transportPricingModesSource = readFileSync(new URL('../../lib/transport-pricing-modes.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -497,7 +498,7 @@ describe('quote detail page regression', () => {
       'selectedCanonicalVehicleType',
       'selectedVehicleId',
       'pricingMode?: string | null',
-      'normalizeTransportPricingMode(rate.pricingMode)',
+      'deriveTransportPricingMode(rate)',
       'routeMatchingRowsCount',
       'legacyVehicleTypes',
       'pricingModesForVehicle.map((mode)',
@@ -517,6 +518,21 @@ describe('quote detail page regression', () => {
       'rejectedReasonCounts.map((entry)',
       "reject('route mismatch')",
       "reject('vehicle mismatch')",
+      "reject('missing pricingMode')",
+    ]);
+  });
+
+  it('derives point-to-point pricing mode for legacy transfer supplier rate rows', () => {
+    expectSourceContains(transportPricingModesSource, [
+      "privatetransfer: 'Point-to-Point'",
+      "transfers: 'Point-to-Point'",
+      "routetransfer: 'Point-to-Point'",
+      'export function deriveTransportPricingMode',
+      "return 'Point-to-Point';",
+    ]);
+
+    expectSourceContains(quoteTransportPickerSource, [
+      'deriveTransportPricingMode(rate)',
       "reject('missing pricingMode')",
     ]);
   });
