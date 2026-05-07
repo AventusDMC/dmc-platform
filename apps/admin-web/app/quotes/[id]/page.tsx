@@ -200,12 +200,14 @@ type TransportSupplierRateCard = {
   } | null;
   vehicle?: {
     name?: string | null;
+    vehicleType?: string | null;
   } | null;
   serviceType?: {
     name: string;
     code: string;
     classification?: string | null;
   } | null;
+  pricingMode?: string | null;
   contractDiscountPercent?: number | null;
   grossRate?: number | null;
 };
@@ -1597,10 +1599,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const activities = activitiesResult.data;
   const transportServiceTypes = transportServiceTypesResult.data;
   const routes = routesResult.data;
-  console.log('[QuoteDetailsPage] routes loaded', routes.length);
   const vehicles = vehiclesResult.data;
   const supplierRateCards = supplierRateCardsResult.data;
-  console.log('[QuoteDetailsPage] supplier rate cards loaded', supplierRateCards.length);
   const transportDataStatus = {
     routes: { status: routesResult.status, message: routesResult.message },
     vehicles: { status: vehiclesResult.status, message: vehiclesResult.message },

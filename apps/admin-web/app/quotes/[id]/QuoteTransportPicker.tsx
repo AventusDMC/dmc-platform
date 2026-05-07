@@ -64,6 +64,7 @@ type VehicleRate = {
     code: string;
     classification?: string | null;
   } | null;
+  pricingMode?: string | null;
   contractDiscountPercent?: number | null;
   grossRate?: number | null;
   rates?: VehicleRate[];
@@ -154,7 +155,11 @@ function getPricingModeForRate(rate: VehicleRate): PricingMode {
 }
 
 function getNormalizedPricingModeForRate(rate: VehicleRate) {
-  return normalizeTransportPricingMode(rate.serviceType?.name) || normalizeTransportPricingMode(rate.serviceType?.code);
+  return (
+    normalizeTransportPricingMode(rate.pricingMode) ||
+    normalizeTransportPricingMode(rate.serviceType?.name) ||
+    normalizeTransportPricingMode(rate.serviceType?.code)
+  );
 }
 
 function getSupplierDisplay(rate: VehicleRate, suppliers: Supplier[]) {
@@ -227,6 +232,26 @@ export function isActiveValidTransportRate(rate: VehicleRate, now = new Date()) 
   const current = new Date(now);
 
   return (!validFrom || validFrom <= current) && (!validTo || validTo >= current);
+}
+
+function getTransportRateValidityIssue(rate: VehicleRate, now = new Date()) {
+  if (rate.active === false) {
+    return 'inactive';
+  }
+
+  const validFrom = parseDateBoundary(rate.validFrom, 'start');
+  const validTo = parseDateBoundary(rate.validTo, 'end');
+  const current = new Date(now);
+
+  if (validFrom && validFrom > current) {
+    return 'not yet valid';
+  }
+
+  if (validTo && validTo < current) {
+    return 'expired';
+  }
+
+  return '';
 }
 
 function getRouteNames(route: RouteOption) {
@@ -318,6 +343,7 @@ function getTransportPricingModeDiagnostics({
   rates,
   route,
   selectedVehicleId,
+  selectedVehicleName,
   selectedCanonicalVehicleType,
   vehicleTypes,
   now = new Date(),
@@ -325,37 +351,73 @@ function getTransportPricingModeDiagnostics({
   rates: VehicleRate[];
   route: RouteOption;
   selectedVehicleId: string;
+  selectedVehicleName: string;
   selectedCanonicalVehicleType: string;
   vehicleTypes: VehicleTypeOption[];
   now?: Date;
 }) {
   const selectedType = normalizeType(selectedCanonicalVehicleType);
-  const activeValidRates = rates.filter((rate) => isActiveValidTransportRate(rate, now));
-  const routeRates = activeValidRates.filter((rate) => transportRateMatchesSelectedRoute(rate, route));
+  const rejectedReasonCounts: Record<string, number> = {};
+  const pricingModesFound = new Set<PricingMode>();
+  const routeRates: VehicleRate[] = [];
+  let activeValidRowsCount = 0;
+
+  function reject(reason: string) {
+    rejectedReasonCounts[reason] = (rejectedReasonCounts[reason] || 0) + 1;
+  }
+
+  for (const rate of rates) {
+    if (!transportRateMatchesSelectedRoute(rate, route)) {
+      reject('route mismatch');
+      continue;
+    }
+
+    routeRates.push(rate);
+
+    const validityIssue = getTransportRateValidityIssue(rate, now);
+    if (validityIssue) {
+      reject(validityIssue);
+      continue;
+    }
+
+    activeValidRowsCount += 1;
+
+    const canonicalRateType = getCanonicalRateVehicleType(rate, vehicleTypes);
+    if (!selectedType || normalizeType(canonicalRateType) !== selectedType) {
+      reject('vehicle mismatch');
+      continue;
+    }
+
+    const pricingMode = getNormalizedPricingModeForRate(rate);
+    if (!pricingMode) {
+      reject('missing pricingMode');
+      continue;
+    }
+
+    if (!hasNumericRate(rate)) {
+      reject('missing price');
+      continue;
+    }
+
+    pricingModesFound.add(pricingMode);
+  }
+
   const legacyVehicleTypes = Array.from(
     new Set(routeRates.map((rate) => rate.vehicleType || rate.vehicle?.vehicleType || rate.vehicle?.name || '').filter(Boolean)),
   );
-  const rejectedReasons = routeRates.slice(0, 8).map((rate) => {
-    const canonicalRateType = getCanonicalRateVehicleType(rate, vehicleTypes);
-    const rateType = normalizeType(canonicalRateType);
-    const pricingMode = getNormalizedPricingModeForRate(rate);
-    const reasons = [
-      rateType !== selectedType ? `vehicle type ${canonicalRateType || 'unrecognized'}` : null,
-      !pricingMode ? 'pricing mode unrecognized' : null,
-      !hasNumericRate(rate) ? 'missing price' : null,
-    ].filter(Boolean);
-
-    return `${rate.vehicle?.name || rate.vehicleType || 'Rate'}: ${reasons.join(', ') || 'matched vehicle type but no mode'}`;
-  });
 
   return {
     selectedRouteId: route.id,
     selectedRouteName: formatRoute(route),
     selectedVehicleId,
+    selectedVehicleName,
     selectedCanonicalVehicleType: selectedCanonicalVehicleType || 'Unrecognized',
-    routeRateCount: routeRates.length,
+    vehicleRatesLoaded: rates.length,
+    routeMatchingRowsCount: routeRates.length,
     legacyVehicleTypes,
-    rejectedReasons,
+    activeValidRowsCount,
+    pricingModesFound: Array.from(pricingModesFound),
+    rejectedReasonCounts: Object.entries(rejectedReasonCounts).map(([reason, count]) => ({ reason, count })),
   };
 }
 
@@ -548,18 +610,6 @@ export function QuoteTransportPicker({
     setPaxInput(String(Math.max(1, totalPax || 1)));
   }, [totalPax]);
 
-  useEffect(() => {
-    console.log('[QuoteTransportPicker] vehicles loaded', propVehicles.length);
-  }, [propVehicles.length]);
-
-  useEffect(() => {
-    console.log('[QuoteTransportPicker] routes received', routes.length);
-  }, [routes.length]);
-
-  useEffect(() => {
-    console.log('[QuoteTransportPicker] supplier rate cards received', loadedSupplierRates.length);
-  }, [loadedSupplierRates.length]);
-
   const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;
   const selectedVehicleType = selectedVehicle ? resolveVehicleTypeLabel(selectedVehicle, vehicleTypes) : 'Other';
   const selectedVehicleTypeForMatch = getCanonicalPickerVehicleType(selectedVehicle, vehicleTypes);
@@ -599,54 +649,6 @@ export function QuoteTransportPicker({
     if (!selectedRoute || !selectedVehicle || !selectedPricingMode) {
       return [] as SupplierRateMatch[];
     }
-
-    const matchedRoute = selectedRoute;
-    const routeLabel = formatRoute(matchedRoute);
-    const selectedRouteNames = [
-      matchedRoute.name,
-      routeLabel,
-      `${matchedRoute.fromPlace.name} → ${matchedRoute.toPlace.name}`,
-    ].map(normalizeRouteText);
-    const availableRates = loadedSupplierRates.filter((rate) => isActiveValidTransportRate(rate));
-
-    function rateMatchesRoute(rate: VehicleRate) {
-      if (rate.routeId === matchedRoute.id || rate.route?.id === matchedRoute.id) {
-        return true;
-      }
-
-      if (rate.fromPlaceId && rate.toPlaceId) {
-        return rate.fromPlaceId === matchedRoute.fromPlaceId && rate.toPlaceId === matchedRoute.toPlaceId;
-      }
-
-      if (rate.routeId || rate.route?.id) {
-        return false;
-      }
-
-      if (rate.route?.fromPlace && rate.route?.toPlace) {
-        return transportRoutePairsMatch(
-          { fromPlaceName: rate.route.fromPlace.name, toPlaceName: rate.route.toPlace.name },
-          { fromPlaceName: matchedRoute.fromPlace.name, toPlaceName: matchedRoute.toPlace.name },
-        );
-      }
-
-      const rateRouteNames = [
-        rate.routeName,
-        rate.route?.name,
-        rate.route ? `${rate.route.fromPlace.name} → ${rate.route.toPlace.name}` : '',
-      ].map(normalizeRouteText);
-
-      return rateRouteNames.some((rateName) => Boolean(rateName) && selectedRouteNames.includes(rateName));
-    }
-
-    function isGeneralRouteRate(rate: VehicleRate) {
-      if (rate.routeId || rate.route?.id) {
-        return false;
-      }
-
-      const routeName = normalizeRouteText(rate.routeName || rate.route?.name || '');
-      return !routeName || routeName.includes('general') || routeName.includes('all routes') || routeName.includes('any route');
-    }
-
     function rateVehicleType(rate: VehicleRate) {
       return normalizeType(getCanonicalRateVehicleType(rate, vehicleTypes));
     }
@@ -661,14 +663,13 @@ export function QuoteTransportPicker({
       return getNormalizedPricingModeForRate(rate) === selectedPricingMode;
     }
 
-    const exactRouteRates = availableRates.filter(rateMatchesRoute);
-    const routeCandidateRates = exactRouteRates.length > 0 ? exactRouteRates : availableRates.filter(isGeneralRouteRate);
+    const routeCandidateRates = getRouteCandidateRates(loadedSupplierRates, selectedRoute);
     const routeScopedRates = routeCandidateRates.filter(
       (rate) => rateMatchesVehicleType(rate) && rateMatchesPricingMode(rate) && hasNumericRate(rate),
     );
 
     const rankedMatches = routeScopedRates.map((rate) => {
-      const exactRoute = rateMatchesRoute(rate);
+      const exactRoute = transportRateMatchesSelectedRoute(rate, selectedRoute);
       const exactVehicle = Boolean(rate.vehicleId && selectedVehicle.id && rate.vehicleId === selectedVehicle.id);
       const priority: SupplierRateMatch['priority'] = exactRoute && exactVehicle ? 1 : exactRoute ? 2 : exactVehicle ? 3 : 5;
       return {
@@ -748,10 +749,11 @@ export function QuoteTransportPicker({
       rates: loadedSupplierRates,
       route: selectedRoute,
       selectedVehicleId,
+      selectedVehicleName: selectedVehicle?.name || '',
       selectedCanonicalVehicleType: selectedVehicleTypeForMatch,
       vehicleTypes,
     });
-  }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, selectedRoute, selectedVehicleId, selectedVehicleTypeForMatch, vehicleTypes]);
+  }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, selectedRoute, selectedVehicle, selectedVehicleId, selectedVehicleTypeForMatch, vehicleTypes]);
 
   function handleAddTransport() {
     if (!selectedRoute || !selectedVehicle || !selectedRate) {
@@ -957,25 +959,6 @@ export function QuoteTransportPicker({
                     <h3>Select pricing mode</h3>
                   </div>
                 </div>
-                {pricingModesForVehicleIsEmpty ? (
-                  <div className="empty-state">
-                    <p>No pricing modes for vehicle.</p>
-                    {noPricingModesDiagnostics ? (
-                      <p>
-                        Route {noPricingModesDiagnostics.selectedRouteId} ({noPricingModesDiagnostics.selectedRouteName}) |
-                        Vehicle {noPricingModesDiagnostics.selectedVehicleId || '—'} |
-                        Vehicle type {noPricingModesDiagnostics.selectedCanonicalVehicleType} |
-                        Route rows {noPricingModesDiagnostics.routeRateCount}
-                        {noPricingModesDiagnostics.legacyVehicleTypes.length > 0
-                          ? ` | Rate card vehicle labels: ${noPricingModesDiagnostics.legacyVehicleTypes.join(', ')}`
-                          : ' | No active rate cards found for this route'}
-                        {noPricingModesDiagnostics.rejectedReasons.length > 0
-                          ? ` | Rejected: ${noPricingModesDiagnostics.rejectedReasons.join('; ')}`
-                          : ''}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
                 <select
                   value={selectedPricingMode}
                   onChange={(event) => handlePricingModeChange(event.target.value as PricingMode)}
@@ -988,6 +971,56 @@ export function QuoteTransportPicker({
                     </option>
                   ))}
                 </select>
+                {pricingModesForVehicleIsEmpty ? (
+                  <div className="empty-state" aria-label="Transport pricing diagnostics">
+                    <p>
+                      <strong>Transport pricing diagnostics</strong>
+                    </p>
+                    <p>No pricing modes for vehicle.</p>
+                    {noPricingModesDiagnostics ? (
+                      <div className="section-stack">
+                        <p>
+                          Route: {noPricingModesDiagnostics.selectedRouteName} / routeId: {noPricingModesDiagnostics.selectedRouteId}
+                          <br />
+                          Vehicle: {noPricingModesDiagnostics.selectedVehicleName || 'Unknown'} / vehicleId:{' '}
+                          {noPricingModesDiagnostics.selectedVehicleId || 'None'}
+                          <br />
+                          Canonical type: {noPricingModesDiagnostics.selectedCanonicalVehicleType}
+                          <br />
+                          Vehicle rates loaded: {noPricingModesDiagnostics.vehicleRatesLoaded}
+                          <br />
+                          Rows for this route: {noPricingModesDiagnostics.routeMatchingRowsCount}
+                          <br />
+                          Legacy labels for route:{' '}
+                          {noPricingModesDiagnostics.legacyVehicleTypes.length > 0
+                            ? noPricingModesDiagnostics.legacyVehicleTypes.join(', ')
+                            : 'None'}
+                          <br />
+                          Active/valid rows: {noPricingModesDiagnostics.activeValidRowsCount}
+                          <br />
+                          Pricing modes found:{' '}
+                          {noPricingModesDiagnostics.pricingModesFound.length > 0
+                            ? noPricingModesDiagnostics.pricingModesFound.join(', ')
+                            : 'None'}
+                        </p>
+                        <div>
+                          <strong>Rejected:</strong>
+                          {noPricingModesDiagnostics.rejectedReasonCounts.length > 0 ? (
+                            <ul>
+                              {noPricingModesDiagnostics.rejectedReasonCounts.map((entry) => (
+                                <li key={entry.reason}>
+                                  {entry.count} {entry.reason}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>No rejected rows. Matching rows have no usable pricing mode.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="form-helper">{TRANSPORT_PRICING_MODE_HELPER_TEXT}</p>
               </section>
             ) : null}

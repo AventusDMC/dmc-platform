@@ -135,12 +135,14 @@ type TransportSupplierRateCard = {
   } | null;
   vehicle?: {
     name?: string | null;
+    vehicleType?: string | null;
   } | null;
   serviceType?: {
     name: string;
     code: string;
     classification?: string | null;
   } | null;
+  pricingMode?: string | null;
   contractDiscountPercent?: number | null;
   grossRate?: number | null;
 };

@@ -462,9 +462,9 @@ describe('quote detail page regression', () => {
   it('uses a route vehicle type and pricing mode dependent supplier rate dropdown', () => {
     expectSourceContains(quoteTransportPickerSource, [
       'function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null)',
-      'function isGeneralRouteRate(rate: VehicleRate)',
-      'const exactRouteRates = availableRates.filter(rateMatchesRoute);',
-      'const routeCandidateRates = exactRouteRates.length > 0 ? exactRouteRates : availableRates.filter(isGeneralRouteRate);',
+      'export function isGeneralTransportRouteRate(rate: VehicleRate)',
+      'function getRouteCandidateRates(rates: VehicleRate[], route: RouteOption, now = new Date())',
+      'const routeCandidateRates = getRouteCandidateRates(loadedSupplierRates, selectedRoute);',
       'const routeScopedRates = routeCandidateRates.filter(',
       'No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.',
       'disabled={!selectedRoute || !selectedVehicle || !selectedPricingMode || supplierRateMatches.length === 0}',
@@ -492,13 +492,32 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteTransportPickerSource, [
       'export function getAvailableTransportPricingModesForSelection',
-      'isActiveValidTransportRate(rate)',
+      'isActiveValidTransportRate(rate, now)',
       'getCanonicalRateVehicleType(rate, vehicleTypes)',
       'selectedCanonicalVehicleType',
       'selectedVehicleId',
-      'routeRateCount',
+      'pricingMode?: string | null',
+      'normalizeTransportPricingMode(rate.pricingMode)',
+      'routeMatchingRowsCount',
       'legacyVehicleTypes',
       'pricingModesForVehicle.map((mode)',
+    ]);
+  });
+
+
+  it('shows visible transport pricing diagnostics when pricing modes are empty', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'aria-label="Transport pricing diagnostics"',
+      '<strong>Transport pricing diagnostics</strong>',
+      'Vehicle rates loaded: {noPricingModesDiagnostics.vehicleRatesLoaded}',
+      'Rows for this route: {noPricingModesDiagnostics.routeMatchingRowsCount}',
+      'Legacy labels for route:',
+      'Active/valid rows: {noPricingModesDiagnostics.activeValidRowsCount}',
+      'Pricing modes found:',
+      'rejectedReasonCounts.map((entry)',
+      "reject('route mismatch')",
+      "reject('vehicle mismatch')",
+      "reject('missing pricingMode')",
     ]);
   });
 
