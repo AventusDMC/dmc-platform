@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildRouteNormalizedKey, formatRouteName, normalizeRouteName } from '../routes/route-normalization';
+import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 
 type FindTransportRateInput = {
   serviceTypeId: string;
@@ -27,6 +28,7 @@ type TransportPricingCandidate = {
   vehicle: {
     id: string;
     name: string;
+    vehicleType?: string | null;
     maxPax: number;
     luggageCapacity?: number | null;
   };
@@ -170,7 +172,7 @@ export class TransportPricingService {
     }
 
     const route = await this.resolveRouteReference(data);
-    const rule = await this.prisma.transportPricingRule.findFirst({
+    let rule = await this.prisma.transportPricingRule.findFirst({
       where: {
         routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
@@ -201,6 +203,27 @@ export class TransportPricingService {
         },
       ],
     });
+
+    if (!rule && data.vehicleId) {
+      const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
+      const candidateRules = await this.prisma.transportPricingRule.findMany({
+        where: {
+          routeId: route.id,
+          transportServiceTypeId: data.transportServiceTypeId,
+          isActive: true,
+          minPax: { lte: data.pax },
+          maxPax: { gte: data.pax },
+        },
+        include: {
+          route: true,
+          supplier: true,
+          transportServiceType: true,
+          vehicle: true,
+        },
+        orderBy: [{ unitCapacity: 'asc' }, { baseCost: 'asc' }, { vehicleId: 'asc' }],
+      });
+      rule = candidateRules.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType)) || null;
+    }
 
     if (!rule) {
       throw new NotFoundException('No matching transport pricing rule found');
@@ -266,6 +289,7 @@ export class TransportPricingService {
           vehicle: {
             select: {
               name: true,
+              vehicleType: true,
               maxPax: true,
             },
           },
@@ -296,6 +320,7 @@ export class TransportPricingService {
           vehicle: {
             select: {
               name: true,
+              vehicleType: true,
               maxPax: true,
             },
           },
@@ -310,11 +335,10 @@ export class TransportPricingService {
     });
     console.log('transport-pricing resolvePricingRuleCandidates debug: matched active rules by route before service/capacity filtering', routeRules);
     console.log('transport-pricing resolvePricingRuleCandidates debug: matched active rules by route + service before capacity filtering', routeServiceRules);
-    const rules = await this.prisma.transportPricingRule.findMany({
+    const allRules = await this.prisma.transportPricingRule.findMany({
       where: {
         routeId: route.id,
         transportServiceTypeId: data.transportServiceTypeId,
-        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         isActive: true,
         minPax: {
           lte: data.pax,
@@ -341,6 +365,16 @@ export class TransportPricingService {
         },
       ],
     });
+    let rules = allRules;
+    if (data.vehicleId) {
+      const exactRules = allRules.filter((rule: any) => rule.vehicleId === data.vehicleId);
+      if (exactRules.length > 0) {
+        rules = exactRules;
+      } else {
+        const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
+        rules = allRules.filter((rule: any) => this.vehicleMatchesCanonicalType(rule.vehicle, selectedVehicleType));
+      }
+    }
     console.log('transport-pricing resolvePricingRuleCandidates debug: filtered candidate rules after vehicle/capacity filters', rules);
 
     return rules.map((rule) => {
@@ -365,6 +399,7 @@ export class TransportPricingService {
         vehicle: {
           id: rule.vehicle.id,
           name: rule.vehicle.name,
+          vehicleType: rule.vehicle.vehicleType,
           maxPax: rule.vehicle.maxPax,
           luggageCapacity: rule.vehicle.luggageCapacity,
         },
@@ -393,10 +428,9 @@ export class TransportPricingService {
 
     const routeFilter = await this.buildRouteFilter(data);
     const pricingDate = data.travelDate ?? new Date();
-    const rates = await this.prisma.vehicleRate.findMany({
+    const allRates = await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
-        ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
         active: true,
         ...routeFilter,
         minPax: {
@@ -429,6 +463,16 @@ export class TransportPricingService {
         },
       ],
     });
+    let rates = allRates;
+    if (data.vehicleId) {
+      const exactRates = allRates.filter((rate: any) => rate.vehicleId === data.vehicleId);
+      if (exactRates.length > 0) {
+        rates = exactRates;
+      } else {
+        const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
+        rates = allRates.filter((rate: any) => this.vehicleMatchesCanonicalType(rate.vehicle, selectedVehicleType));
+      }
+    }
 
     return rates.map((rate) => ({
       vehicleRateId: rate.id,
@@ -443,6 +487,7 @@ export class TransportPricingService {
       vehicle: {
         id: rate.vehicle.id,
         name: rate.vehicle.name,
+        vehicleType: rate.vehicle.vehicleType,
         maxPax: rate.vehicle.maxPax,
         luggageCapacity: rate.vehicle.luggageCapacity,
       },
@@ -471,7 +516,7 @@ export class TransportPricingService {
     const routeFilter = await this.buildRouteFilter(data);
     const pricingDate = data.travelDate ?? new Date();
 
-    const rate = await this.prisma.vehicleRate.findFirst({
+    let rate = await this.prisma.vehicleRate.findFirst({
       where: {
         serviceTypeId: data.serviceTypeId,
         ...(data.vehicleId ? { vehicleId: data.vehicleId } : {}),
@@ -516,6 +561,36 @@ export class TransportPricingService {
       ],
     });
 
+    if (!rate && data.vehicleId) {
+      const selectedVehicleType = await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId);
+      const candidateRates = await this.prisma.vehicleRate.findMany({
+        where: {
+          serviceTypeId: data.serviceTypeId,
+          active: true,
+          ...routeFilter,
+          minPax: { lte: data.paxCount },
+          maxPax: { gte: data.paxCount },
+          validFrom: { lte: pricingDate },
+          validTo: { gte: pricingDate },
+        },
+        include: {
+          vehicle: true,
+          serviceType: true,
+          supplier: true,
+          route: {
+            include: {
+              fromPlace: true,
+              toPlace: true,
+            },
+          },
+          fromPlace: true,
+          toPlace: true,
+        },
+        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
+      });
+      rate = candidateRates.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType)) || null;
+    }
+
     if (!rate) {
       throw new NotFoundException('No matching vehicle rate found');
     }
@@ -559,6 +634,7 @@ export class TransportPricingService {
           vehicle: {
             id: resolvedPricing.rule.vehicle.id,
             name: resolvedPricing.rule.vehicle.name,
+            vehicleType: resolvedPricing.rule.vehicle.vehicleType,
             maxPax: resolvedPricing.rule.vehicle.maxPax,
             luggageCapacity: resolvedPricing.rule.vehicle.luggageCapacity,
           },
@@ -610,6 +686,7 @@ export class TransportPricingService {
       vehicle: {
         id: rate.vehicle.id,
         name: rate.vehicle.name,
+        vehicleType: rate.vehicle.vehicleType,
         maxPax: rate.vehicle.maxPax,
         luggageCapacity: rate.vehicle.luggageCapacity,
       },
@@ -689,6 +766,33 @@ export class TransportPricingService {
         defaultQuantity: destinationSuggestsAddOn ? 1 : 0,
       };
     });
+  }
+
+  private async getCanonicalVehicleTypeForVehicleId(vehicleId: string | null | undefined) {
+    if (!vehicleId) {
+      return '';
+    }
+
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+      select: {
+        name: true,
+        vehicleType: true,
+      },
+    });
+
+    return this.getCanonicalVehicleType(vehicle);
+  }
+
+  private getCanonicalVehicleType(vehicle: { name?: string | null; vehicleType?: string | null } | null | undefined) {
+    return normalizeVehicleTypeLabel(vehicle?.vehicleType) || normalizeVehicleTypeLabel(vehicle?.name);
+  }
+
+  private vehicleMatchesCanonicalType(
+    vehicle: { name?: string | null; vehicleType?: string | null } | null | undefined,
+    canonicalVehicleType: string,
+  ) {
+    return Boolean(canonicalVehicleType && this.getCanonicalVehicleType(vehicle) === canonicalVehicleType);
   }
 
   private async buildRouteFilter(data: FindTransportRateInput) {

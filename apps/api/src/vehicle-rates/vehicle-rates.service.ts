@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { blockDelete, ensureValidNumber, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
-import { getVehicleTypeCatalogLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
+import { getVehicleTypeCatalogLabels, getVehicleTypeMatchLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, routePairsMatch } from '../routes/route-normalization';
 import * as XLSX from 'xlsx';
@@ -585,9 +585,13 @@ export class VehicleRatesService {
 
     if (query.vehicleType?.trim()) {
       const vehicleType = normalizeVehicleTypeLabel(query.vehicleType) || query.vehicleType.trim();
+      const vehicleTypeLabels = getVehicleTypeMatchLabels(vehicleType);
       and.push({
         OR: [
           { vehicle: { name: { equals: vehicleType, mode: 'insensitive' } } },
+          { vehicle: { vehicleType: { equals: vehicleType, mode: 'insensitive' } } },
+          ...vehicleTypeLabels.map((label) => ({ vehicle: { name: { equals: label, mode: 'insensitive' } } })),
+          ...vehicleTypeLabels.map((label) => ({ vehicle: { vehicleType: { equals: label, mode: 'insensitive' } } })),
         ],
       });
     }

@@ -1,6 +1,7 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
 import { TransportPricingService } from './transport-pricing.service';
+import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 
 function buildRule(overrides: Record<string, unknown>) {
   return {
@@ -97,4 +98,59 @@ test('transport pricing preserves a user-selected vehicle during quote save', as
   assert.equal(findFirstArgs.where.vehicleId, 'vehicle-minivan');
   assert.equal(resolved.rule.vehicle.name, 'Mini Van');
   assert.equal(resolved.unitCount, 1);
+});
+
+test('legacy supplier vehicle types normalize to canonical quote picker types', () => {
+  assert.equal(normalizeVehicleTypeLabel('Medium 30'), 'Coach');
+  assert.equal(normalizeVehicleTypeLabel('Large 49'), 'Coach');
+  assert.equal(normalizeVehicleTypeLabel('Small 17'), 'Mini Bus');
+  assert.equal(normalizeVehicleTypeLabel('Mini Van 5'), 'Mini Van');
+  assert.equal(normalizeVehicleTypeLabel('Van VIP 9'), 'Van');
+  assert.equal(normalizeVehicleTypeLabel('Large VVIP 29'), 'Coach');
+  assert.equal(normalizeVehicleTypeLabel('Mercedes Grand Star 49 Pax'), 'Coach');
+  assert.equal(normalizeVehicleTypeLabel('Toyota Coaster'), 'Mini Bus');
+});
+
+test('transport pricing falls back from selected Coach vehicle to legacy coach-like rate vehicle', async () => {
+  const route = {
+    id: 'route-aqaba-petra',
+    name: 'Aqaba -> Petra',
+    normalizedKey: 'aqaba-petra',
+    fromPlaceId: 'aqaba',
+    toPlaceId: 'petra',
+    fromPlace: { id: 'aqaba', name: 'Aqaba' },
+    toPlace: { id: 'petra', name: 'Petra' },
+  };
+  const service = new TransportPricingService({
+    route: {
+      findUnique: async () => route,
+    },
+    vehicle: {
+      findUnique: async () => ({ id: 'vehicle-coach', name: 'Coach', vehicleType: 'Coach' }),
+    },
+    transportPricingRule: {
+      findFirst: async () => null,
+      findMany: async () => [
+        buildRule({
+          id: 'rule-medium-30',
+          routeId: route.id,
+          vehicleId: 'vehicle-medium-30',
+          unitCapacity: 30,
+          baseCost: 300,
+          route,
+          vehicle: { id: 'vehicle-medium-30', name: 'Medium 30', vehicleType: 'Medium 30', maxPax: 30, luggageCapacity: 30 },
+        }),
+      ],
+    },
+  } as any);
+
+  const resolved = await service.resolvePricingRule({
+    routeId: route.id,
+    transportServiceTypeId: 'service-transfer',
+    vehicleId: 'vehicle-coach',
+    pax: 21,
+  });
+
+  assert.equal(resolved.rule.vehicle.name, 'Medium 30');
+  assert.equal(resolved.calculatedCost, 300);
 });

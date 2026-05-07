@@ -8,10 +8,28 @@ export const VEHICLE_TYPE_STORAGE_KEY = 'dmc.transport.vehicleTypes';
 export const VEHICLE_TYPE_ASSIGNMENT_STORAGE_KEY = 'dmc.transport.vehicleTypeAssignments';
 
 const VEHICLE_TYPE_ALIASES: Record<string, string> = {
+  minivan5: 'Mini Van',
   minivan: 'Mini Van',
+  vanvip9: 'Van',
+  van9: 'Van',
+  van12: 'Van',
+  small17: 'Mini Bus',
+  medium30: 'Coach',
+  large49: 'Coach',
+  largevip29: 'Coach',
+  largevvip29: 'Coach',
+  largevip3133: 'Coach',
+  largevvip3133: 'Coach',
+  large3133: 'Coach',
   bus: 'Coach',
+  minibus: 'Mini Bus',
+  smallbus: 'Mini Bus',
+  mediumbus: 'Coach',
   coach: 'Coach',
   largebus: 'Coach',
+  vipbus: 'Coach',
+  vipcoach: 'Coach',
+  luxurycoach: 'Coach',
   sedan: 'Sedan',
   car: 'Sedan',
   suv: 'SUV',
@@ -74,7 +92,37 @@ export function normalizeVehicleTypeLabel(value: string | { label?: string | nul
   const catalogOptions = options.length > 0 ? getVehicleTypeOptionsWithFallback(options) : getDefaultVehicleTypeOptions();
   const match = catalogOptions.find((option) => option.id === rawLabel || normalizeVehicleTypeKey(option.label) === key || option.id === slugifyVehicleTypeLabel(rawLabel));
 
-  return match?.label || VEHICLE_TYPE_ALIASES[key] || '';
+  const aliasMatch = VEHICLE_TYPE_ALIASES[key];
+  if (match?.label || aliasMatch) {
+    return match?.label || aliasMatch;
+  }
+
+  const normalizedText = rawLabel.toLowerCase();
+  if (/\b(sedan|saloon|camry|car)\b/.test(normalizedText)) {
+    return 'Sedan';
+  }
+
+  if (/\b(suv|jeep)\b/.test(normalizedText)) {
+    return 'SUV';
+  }
+
+  if (/\b(mini\s*van|minivan|h1|staria)\b/.test(normalizedText)) {
+    return 'Mini Van';
+  }
+
+  if (/\b(sprinter|v[-\s]*class|h350|van)\b/.test(normalizedText)) {
+    return 'Van';
+  }
+
+  if (/\b(small\s*17|mini\s*bus|mini\s*coach|coaster)\b/.test(normalizedText)) {
+    return 'Mini Bus';
+  }
+
+  if (/\b(coach|bus|large|medium|grand\s*star)\b/.test(normalizedText) || /\b(29|30|31|33|49)\b/.test(normalizedText)) {
+    return 'Coach';
+  }
+
+  return '';
 }
 
 export function readStoredVehicleTypeOptions() {

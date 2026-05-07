@@ -184,7 +184,10 @@ function getMatchBadge(priority: SupplierRateMatch['priority']): SupplierRateMat
 }
 
 function getRateVehicleTypeForMatch(rate: VehicleRate, vehicleTypes: VehicleTypeOption[]) {
-  return normalizeVehicleTypeLabel(rate.vehicleType || rate.vehicle?.vehicleType, vehicleTypes);
+  return (
+    normalizeVehicleTypeLabel(rate.vehicleType || rate.vehicle?.vehicleType, vehicleTypes) ||
+    normalizeVehicleTypeLabel(rate.vehicle?.name, vehicleTypes)
+  );
 }
 
 function isActiveVehicle(vehicle: Vehicle) {
@@ -385,7 +388,7 @@ export function QuoteTransportPicker({
 
   const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;
   const selectedVehicleType = selectedVehicle ? resolveVehicleTypeLabel(selectedVehicle, vehicleTypes) : 'Other';
-  const selectedVehicleTypeForMatch = normalizeVehicleTypeLabel(selectedVehicle?.vehicleType, vehicleTypes);
+  const selectedVehicleTypeForMatch = selectedVehicle ? resolveVehicleTypeLabel(selectedVehicle, vehicleTypes) : '';
 
   useEffect(() => {
     if (!selectedRoute) {
@@ -605,6 +608,51 @@ export function QuoteTransportPicker({
   }, [loadedSupplierRates, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, vehicleTypes]);
   const pricingModesForVehicleIsEmpty = Boolean(selectedRoute && selectedVehicle && !supplierRatesLoadFailed && pricingModesForVehicle.length === 0);
   const noSupplierRateForSelection = Boolean(selectedRoute && selectedVehicle && selectedPricingMode && supplierRateMatches.length === 0 && !supplierRatesLoadFailed);
+  const noPricingModesDiagnostics = useMemo(() => {
+    if (!pricingModesForVehicleIsEmpty || !selectedRoute) {
+      return null;
+    }
+
+    const selectedType = normalizeType(selectedVehicleTypeForMatch);
+    const activeRates = loadedSupplierRates.filter((rate) => rate.active !== false);
+    const routeRates = activeRates.filter((rate) => {
+      if (rate.routeId === selectedRoute.id || rate.route?.id === selectedRoute.id) {
+        return true;
+      }
+
+      if (rate.fromPlaceId && rate.toPlaceId) {
+        return rate.fromPlaceId === selectedRoute.fromPlaceId && rate.toPlaceId === selectedRoute.toPlaceId;
+      }
+
+      return false;
+    });
+    const legacyVehicleTypes = Array.from(
+      new Set(
+        routeRates
+          .map((rate) => rate.vehicleType || rate.vehicle?.vehicleType || rate.vehicle?.name || '')
+          .filter(Boolean),
+      ),
+    );
+    const rejectedReasons = routeRates.slice(0, 8).map((rate) => {
+      const canonicalRateType = getRateVehicleTypeForMatch(rate, vehicleTypes);
+      const rateType = normalizeType(canonicalRateType);
+      const pricingMode = getNormalizedPricingModeForRate(rate);
+      const reasons = [
+        rateType !== selectedType ? `vehicle type ${canonicalRateType || 'unrecognized'}` : null,
+        !pricingMode ? 'pricing mode unrecognized' : null,
+        !hasNumericRate(rate) ? 'missing price' : null,
+      ].filter(Boolean);
+
+      return `${rate.vehicle?.name || rate.vehicleType || 'Rate'}: ${reasons.join(', ') || 'matched vehicle type but no mode'}`;
+    });
+
+    return {
+      routeId: selectedRoute.id,
+      selectedVehicleType: selectedVehicleTypeForMatch || 'Unrecognized',
+      legacyVehicleTypes,
+      rejectedReasons,
+    };
+  }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, selectedRoute, selectedVehicleTypeForMatch, vehicleTypes]);
 
   function handleAddTransport() {
     if (!selectedRoute || !selectedVehicle || !selectedRate) {
@@ -811,7 +859,22 @@ export function QuoteTransportPicker({
                     <h3>Select pricing mode</h3>
                   </div>
                 </div>
-                {pricingModesForVehicleIsEmpty ? <p className="empty-state">No pricing modes for vehicle.</p> : null}
+                {pricingModesForVehicleIsEmpty ? (
+                  <div className="empty-state">
+                    <p>No pricing modes for vehicle.</p>
+                    {noPricingModesDiagnostics ? (
+                      <p>
+                        Route {noPricingModesDiagnostics.routeId} | Vehicle type {noPricingModesDiagnostics.selectedVehicleType}
+                        {noPricingModesDiagnostics.legacyVehicleTypes.length > 0
+                          ? ` | Rate card vehicle labels: ${noPricingModesDiagnostics.legacyVehicleTypes.join(', ')}`
+                          : ' | No active rate cards found for this route'}
+                        {noPricingModesDiagnostics.rejectedReasons.length > 0
+                          ? ` | Rejected: ${noPricingModesDiagnostics.rejectedReasons.join('; ')}`
+                          : ''}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <select
                   value={selectedPricingMode}
                   onChange={(event) => handlePricingModeChange(event.target.value as PricingMode)}
