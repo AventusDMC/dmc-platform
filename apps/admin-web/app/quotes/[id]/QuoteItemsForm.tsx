@@ -752,7 +752,15 @@ export function QuoteItemsForm({
   const router = useRouter();
   const isEditing = Boolean(itemId);
   const initialService = services.find((service) => service.id === (initialValues?.serviceId || preferredServiceId));
-  const initialActiveServiceType = initialService ? getServiceTypeKey(initialService) : initialServiceTypeKey || null;
+  const hasInitialExternalPackage = Boolean(
+    initialValues?.externalPackage?.packageName ||
+      initialValues?.externalPackage?.country ||
+      initialValues?.externalPackage?.netCost ||
+      initialValues?.externalPackage?.clientItineraryText,
+  );
+  const initialActiveServiceType = initialService
+    ? getServiceTypeKey(initialService)
+    : initialServiceTypeKey || (isEditing && hasInitialExternalPackage ? 'externalPackage' : null);
   const initialServiceDate =
     (initialActiveServiceType === 'activity' || initialActiveServiceType === 'hotel' || initialActiveServiceType === 'meal') && !itineraryId && travelStartDate
       ? travelStartDate.slice(0, 10)
@@ -2390,7 +2398,7 @@ export function QuoteItemsForm({
             ) : null}
           </div>
 
-          {isEditing ? (
+          {isEditing && !isExternalPackageService ? (
             <label>
               {activeServiceType === 'transport'
                 ? 'Transport selector'
@@ -2398,9 +2406,7 @@ export function QuoteItemsForm({
                   ? 'Activity selector'
                   : activeServiceType === 'meal'
                     ? 'Meal service'
-                    : activeServiceType === 'externalPackage'
-                      ? 'External package service'
-                      : 'Service'}
+                    : 'Service'}
               <select
                 value={serviceId}
                 onChange={(event) => {

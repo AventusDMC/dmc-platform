@@ -2569,6 +2569,75 @@ export class QuotesService {
       guideType: data.guideType,
       guideDuration: data.guideDuration,
       overnight: data.overnight,
+      customServiceName:
+        data.customServiceName === undefined
+          ? (existingItem as { customServiceName?: string | null }).customServiceName ?? undefined
+          : data.customServiceName,
+      unitCost: data.unitCost,
+      pricingBasis:
+        data.pricingBasis === undefined
+          ? ((existingItem as { externalPricingBasis?: 'PER_PERSON' | 'PER_ROOM' | 'PER_GROUP' | null }).externalPricingBasis ?? undefined)
+          : data.pricingBasis,
+      packageName:
+        data.packageName === undefined
+          ? (existingItem as { externalPackageName?: string | null }).externalPackageName ?? undefined
+          : data.packageName,
+      country:
+        data.country === undefined
+          ? (existingItem as { externalPackageCountry?: string | null }).externalPackageCountry ?? undefined
+          : data.country,
+      supplierName:
+        data.supplierName === undefined
+          ? (existingItem as { externalSupplierName?: string | null }).externalSupplierName ?? undefined
+          : data.supplierName,
+      startDay:
+        data.startDay === undefined
+          ? (existingItem as { externalStartDay?: number | null }).externalStartDay ?? undefined
+          : data.startDay,
+      endDay:
+        data.endDay === undefined
+          ? (existingItem as { externalEndDay?: number | null }).externalEndDay ?? undefined
+          : data.endDay,
+      startDate:
+        data.startDate === undefined
+          ? (existingItem as { externalStartDate?: Date | null }).externalStartDate ?? undefined
+          : data.startDate,
+      endDate:
+        data.endDate === undefined
+          ? (existingItem as { externalEndDate?: Date | null }).externalEndDate ?? undefined
+          : data.endDate,
+      netCost:
+        data.netCost === undefined
+          ? (existingItem as { externalNetCost?: number | null }).externalNetCost ?? undefined
+          : data.netCost,
+      pricingMatrixJson:
+        data.pricingMatrixJson === undefined
+          ? (existingItem as { externalPackagePricingMatrixJson?: unknown }).externalPackagePricingMatrixJson
+          : data.pricingMatrixJson,
+      singleSupplement:
+        data.singleSupplement === undefined
+          ? (existingItem as { externalPackageSingleSupplement?: number | null }).externalPackageSingleSupplement ?? undefined
+          : data.singleSupplement,
+      includes:
+        data.includes === undefined
+          ? (existingItem as { externalIncludes?: string | null }).externalIncludes ?? undefined
+          : data.includes,
+      excludes:
+        data.excludes === undefined
+          ? (existingItem as { externalExcludes?: string | null }).externalExcludes ?? undefined
+          : data.excludes,
+      internalNotes:
+        data.internalNotes === undefined
+          ? (existingItem as { externalInternalNotes?: string | null }).externalInternalNotes ?? undefined
+          : data.internalNotes,
+      hotelsOrSimilar:
+        data.hotelsOrSimilar === undefined
+          ? (existingItem as { externalHotelsOrSimilar?: string | null }).externalHotelsOrSimilar ?? undefined
+          : data.hotelsOrSimilar,
+      clientDescription:
+        data.clientDescription === undefined
+          ? (existingItem as { externalClientDescription?: string | null }).externalClientDescription ?? undefined
+          : data.clientDescription,
       quantity: data.quantity ?? existingItem.quantity,
       paxCount: data.paxCount === undefined ? existingItem.paxCount || undefined : data.paxCount,
       roomCount: data.roomCount === undefined ? existingItem.roomCount || undefined : data.roomCount,
@@ -2591,8 +2660,11 @@ export class QuotesService {
       currency: data.currency === undefined ? existingItem.currency : data.currency,
       markupPercent: data.markupPercent ?? existingItem.markupPercent,
       transportServiceTypeId: data.transportServiceTypeId,
+      transportVehicleId: data.transportVehicleId,
       routeId: data.routeId,
+      normalizedKey: data.normalizedKey,
       routeName: data.routeName,
+      transportAddOns: data.transportAddOns,
     });
 
     const item = await this.prisma.quoteItem.update({
@@ -2608,7 +2680,7 @@ export class QuotesService {
     await this.recalculateQuoteTotals(quote.id);
 
     return {
-      ...item,
+      ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
     };
   }

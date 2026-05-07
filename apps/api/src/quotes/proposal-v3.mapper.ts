@@ -30,6 +30,23 @@ const PLACEHOLDER_TEXT_PATTERNS = [
   /\bprice unavailable\b/i,
 ];
 
+const INTERNAL_COPY_PATTERNS = [
+  /\binternal\b/i,
+  /\bsupplier\b/i,
+  /\bnet\s*(?:cost|rate|price|amount)\b/i,
+  /\bcost\s*(?:price|base|amount|total)?\b/i,
+  /\bbase\s*cost\b/i,
+  /\btotal\s*cost\b/i,
+  /\bfinal\s*cost\b/i,
+  /\boverride\b/i,
+  /\bmarkup\b/i,
+  /\bmargin\b/i,
+  /\bgross\s*profit\b/i,
+  /\bsell\s*price\b/i,
+  /\bprofit\b/i,
+  /\bcommission\b/i,
+];
+
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
 const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png';
@@ -140,6 +157,38 @@ function isPlaceholderText(value: string | null | undefined) {
   return !normalized || PLACEHOLDER_TEXT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+export function isClientSafeCopy(value: string | null | undefined) {
+  const cleaned = cleanText(value);
+  if (!cleaned || isWeakText(cleaned) || isPlaceholderText(cleaned)) {
+    return false;
+  }
+
+  return !INTERNAL_COPY_PATTERNS.some((pattern) => pattern.test(cleaned));
+}
+
+function ensureSentence(value: string) {
+  const cleaned = cleanText(value);
+  if (!cleaned) {
+    return '';
+  }
+  return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+function conciseCopy(value: string | null | undefined, maxLength = 130) {
+  const cleaned = ensureSentence(cleanText(value));
+  if (!cleaned || cleaned.length <= maxLength) {
+    return cleaned;
+  }
+
+  const sentence = cleaned.match(/^(.+?[.!?])\s/)?.[1];
+  if (sentence && sentence.length <= maxLength) {
+    return sentence;
+  }
+
+  const truncated = cleaned.slice(0, maxLength).replace(/\s+\S*$/, '').trim();
+  return truncated ? `${truncated}.` : '';
+}
+
 function summarizeDestinations(destinations: string[]) {
   const cleaned = Array.from(new Set(destinations.map((destination) => cleanText(destination)).filter(Boolean)));
 
@@ -163,6 +212,57 @@ function formatDestinationSubtitle(destinations: string[]) {
   return cleaned.join(' · ');
 }
 
+function isGenericRouteLabel(value: string | null | undefined) {
+  const normalized = normalizeComparisonText(value);
+  return (
+    !normalized ||
+    /^day\s*\d+$/.test(normalized) ||
+    /^destination\s*\d+$/.test(normalized) ||
+    /^(arrival|departure|leisure day|program details|program|details|free day|at leisure)$/.test(normalized) ||
+    /^(arrival|departure)\s+(day|transfer)?$/.test(normalized)
+  );
+}
+
+function cleanRouteAnchor(value: string | null | undefined) {
+  const cleaned = cleanText(value)
+    .replace(/\bairport\b/gi, '')
+    .replace(/\bintl\.?\b/gi, '')
+    .replace(/\binternational\b/gi, '')
+    .replace(/\bhotel\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned && !isGenericRouteLabel(cleaned) && !isWeakText(cleaned) && !isPlaceholderText(cleaned) ? cleaned : '';
+}
+
+function addUniqueRouteAnchor(target: string[], value: string | null | undefined) {
+  const cleaned = cleanRouteAnchor(value);
+  if (!cleaned) {
+    return;
+  }
+
+  const normalized = normalizeComparisonText(cleaned);
+  if (!target.some((entry) => normalizeComparisonText(entry) === normalized)) {
+    target.push(cleaned);
+  }
+}
+
+export function parseTransportRouteSegments(routeName: string | null | undefined) {
+  const cleaned = cleanText(routeName);
+  if (!cleaned || isGenericRouteLabel(cleaned) || /general|all routes|any route/i.test(cleaned)) {
+    return [];
+  }
+
+  const routeMatch = cleaned.match(/^(.+?)\s+(?:to|→)\s+(.+)$/i) || cleaned.match(/^(.+?)\s+-\s+(.+)$/);
+  if (!routeMatch) {
+    return [];
+  }
+
+  const from = cleanRouteAnchor(routeMatch[1]);
+  const to = cleanRouteAnchor(routeMatch[2]);
+  return from && to && normalizeComparisonText(from) !== normalizeComparisonText(to) ? [{ from, to }] : [];
+}
+
 function formatDate(value: Date | string | null | undefined) {
   if (!value) {
     return null;
@@ -184,6 +284,15 @@ function formatNightCountLabel(value: number) {
 
 function formatGuestCountLabel(value: number) {
   return `${value} guest${value === 1 ? '' : 's'}`;
+}
+
+function getServiceMix(quote: ProposalV3Quote) {
+  return {
+    hasHotels: quote.quoteItems.some((item) => isHotelItem(item)) || quote.quoteOptions.some((option) => option.kind === 'HOTEL_OPTION_SET'),
+    hasTransport: quote.quoteItems.some((item) => isTransportItem(item)),
+    hasExperiences: quote.quoteItems.some((item) => isActivityItem(item) || isGuideItem(item)),
+    hasExternalPackages: quote.quoteItems.some((item) => isExternalPackageItem(item)),
+  };
 }
 
 function extractDayLocation(dayTitle: string | null | undefined, dayNumber: number) {
@@ -408,7 +517,18 @@ function extractImportedDescription(item: ProposalV3QuoteItem) {
     return null;
   }
 
-  return cleanText(item.pricingDescription);
+  const description = cleanText(item.pricingDescription);
+  return isClientSafeCopy(description) ? description : null;
+}
+
+export function getClientSafeActivityDescription(item: ProposalV3QuoteItem) {
+  const candidates = [
+    item.activity?.description,
+    item.externalClientDescription,
+    item.pricingDescription,
+  ];
+  const description = candidates.map((candidate) => conciseCopy(candidate)).find((candidate) => isClientSafeCopy(candidate));
+  return description || null;
 }
 
 function buildAccommodationRows(quote: ProposalV3Quote): ProposalV3AccommodationRow[] {
@@ -567,6 +687,7 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
       ? cleanText(item.externalPackageCountry || item.service.name || '')
       : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
     const importedDescription = extractImportedDescription(item);
+    const activityDescription = getClientSafeActivityDescription(item);
     let description =
       cleanText(
         isExternalPackageItem(item)
@@ -582,7 +703,7 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
             ]
               .filter(Boolean)
               .join(' ')
-          : importedDescription || item.pricingDescription || '',
+          : activityDescription || importedDescription || '',
       ) ||
       (isTransportItem(item) && item.appliedVehicleRate
         ? cleanText(`${item.appliedVehicleRate.vehicle?.name || ''} ${item.appliedVehicleRate.serviceType?.name || ''}`)
@@ -673,6 +794,89 @@ function getProposalDaySources(quote: ProposalV3Quote): ProposalV3DaySource[] {
   return activePlannerDays.length > 0 ? activePlannerDays : buildLegacyDaySources(quote);
 }
 
+export function buildRouteIntelligence(
+  quote: ProposalV3Quote,
+  hotelOptionSets: ProposalV3HotelOptionSet[],
+  daySources: ProposalV3DaySource[] = getProposalDaySources(quote),
+) {
+  const overnightAnchors: string[] = [];
+  const hotelCityByDay = new Map<string, string[]>();
+
+  for (const day of daySources) {
+    for (const item of day.items.filter((entry) => isHotelItem(entry))) {
+      const city = item.hotel?.city || item.hotel?.name || null;
+      addUniqueRouteAnchor(overnightAnchors, city);
+      const cleaned = cleanRouteAnchor(city);
+      if (cleaned) {
+        hotelCityByDay.set(day.id, [...(hotelCityByDay.get(day.id) || []), cleaned]);
+      }
+    }
+  }
+
+  if (overnightAnchors.length === 0) {
+    for (const option of hotelOptionSets.flatMap((optionSet) => optionSet.options).filter((option) => option.isPrimary)) {
+      addUniqueRouteAnchor(overnightAnchors, option.city);
+    }
+  }
+
+  if (overnightAnchors.length === 0) {
+    for (const option of hotelOptionSets.flatMap((optionSet) => optionSet.options)) {
+      addUniqueRouteAnchor(overnightAnchors, option.city);
+    }
+  }
+
+  const externalCountries: string[] = [];
+  for (const item of quote.quoteItems.filter((entry) => isExternalPackageItem(entry))) {
+    addUniqueRouteAnchor(externalCountries, item.externalPackageCountry);
+  }
+
+  const transportSegments: Array<{ from: string; to: string }> = [];
+  for (const item of quote.quoteItems.filter((entry) => isTransportItem(entry))) {
+    for (const segment of parseTransportRouteSegments(item.appliedVehicleRate?.routeName || item.pricingDescription)) {
+      const key = `${normalizeComparisonText(segment.from)}|${normalizeComparisonText(segment.to)}`;
+      if (!transportSegments.some((entry) => `${normalizeComparisonText(entry.from)}|${normalizeComparisonText(entry.to)}` === key)) {
+        transportSegments.push(segment);
+      }
+    }
+  }
+
+  const fallbackDayAnchors: string[] = [];
+  for (const day of daySources) {
+    if (hotelCityByDay.has(day.id)) {
+      continue;
+    }
+    addUniqueRouteAnchor(fallbackDayAnchors, extractDayLocation(day.title, day.dayNumber));
+  }
+
+  const routeAnchors: string[] = [];
+  for (const anchor of overnightAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
+  for (const country of externalCountries) addUniqueRouteAnchor(routeAnchors, country);
+  for (const segment of transportSegments) {
+    addUniqueRouteAnchor(routeAnchors, segment.from);
+    addUniqueRouteAnchor(routeAnchors, segment.to);
+  }
+  if (routeAnchors.length === 0) {
+    for (const anchor of fallbackDayAnchors) addUniqueRouteAnchor(routeAnchors, anchor);
+  }
+
+  const destinationLine = summarizeDestinations(routeAnchors);
+  const coverSubtitle =
+    routeAnchors.some((value) => value.toLowerCase() === 'amman') &&
+    routeAnchors.some((value) => value.toLowerCase() === 'petra') &&
+    routeAnchors.some((value) => value.toLowerCase() === 'wadi rum')
+      ? 'Amman · Petra · Wadi Rum'
+      : formatDestinationSubtitle(routeAnchors) || destinationLine || 'Travel';
+
+  return {
+    routeAnchors,
+    overnightAnchors,
+    transportSegments,
+    externalCountries,
+    destinationLine,
+    coverSubtitle,
+  };
+}
+
 function appendDayGroups(target: ProposalV3Day, groups: ProposalV3DayGroup[]) {
   for (const group of groups) {
     const existing = target.groups.find((targetGroup) => targetGroup.label === group.label);
@@ -753,15 +957,63 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
   return days.sort((a, b) => a.dayNumber - b.dayNumber);
 }
 
-function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string) {
+export function buildProposalDocumentTitle(quote: ProposalV3Quote, destinationLine: string) {
+  const cleanedTitle = cleanText(quote.title);
+  if (cleanedTitle && !isWeakText(cleanedTitle) && !isPlaceholderText(cleanedTitle)) {
+    return cleanedTitle;
+  }
+
+  return destinationLine ? `${destinationLine} Travel Proposal` : 'Private Travel Proposal';
+}
+
+export function buildAccommodationStory(hotelOptionSets: ProposalV3HotelOptionSet[], destinationLine: string) {
+  const factHighlights = hotelOptionSets
+    .flatMap((optionSet) => optionSet.options)
+    .flatMap((option) => [option.shortDescription, ...option.highlights])
+    .map((value) => conciseCopy(value, 120))
+    .filter((value) => isClientSafeCopy(value));
+
+  if (factHighlights.length > 0) {
+    return factHighlights[0];
+  }
+
+  const primaryCities = Array.from(
+    new Set(
+      hotelOptionSets
+        .flatMap((optionSet) => optionSet.options)
+        .filter((option) => option.isPrimary)
+        .map((option) => cleanText(option.city || ''))
+        .filter(Boolean),
+    ),
+  );
+  const cityLine = summarizeDestinations(primaryCities);
+
+  if (cityLine) {
+    return `Accommodation options are organized by stay location across ${cityLine}.`;
+  }
+
+  return destinationLine ? `Accommodation options are aligned to the ${destinationLine} routing.` : '';
+}
+
+export function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string, dayCount: number, totalPax: number, hotelOptionSets: ProposalV3HotelOptionSet[]) {
   const quoteDescription = cleanText(quote.description || '');
-  if (quoteDescription && !isWeakText(quoteDescription) && !isPlaceholderText(quoteDescription)) {
+  if (isClientSafeCopy(quoteDescription)) {
     return quoteDescription;
   }
 
+  const mix = getServiceMix(quote);
+  const guestLabel = formatGuestCountLabel(totalPax);
+  const pillars = [
+    mix.hasHotels || hotelOptionSets.length > 0 ? 'selected stays' : null,
+    mix.hasTransport ? 'private ground arrangements' : null,
+    mix.hasExperiences ? 'included experiences' : null,
+    mix.hasExternalPackages ? 'partner DMC services' : null,
+  ].filter(Boolean);
+  const arrangementLine = pillars.length > 0 ? pillars.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'the confirmed services';
+
   return destinationLine
-    ? `A curated journey through ${destinationLine}, combining cultural context, well-paced routing, and seamless ground arrangements.`
-    : 'A curated journey combining cultural context, well-paced routing, and seamless ground arrangements.';
+    ? `A ${dayCount}-day journey through ${destinationLine} for ${guestLabel}, shaped around ${arrangementLine}.`
+    : `A ${dayCount}-day private journey for ${guestLabel}, shaped around ${arrangementLine}.`;
 }
 
 function buildCoverIntro(quote: ProposalV3Quote, destinationLine: string) {
@@ -770,28 +1022,104 @@ function buildCoverIntro(quote: ProposalV3Quote, destinationLine: string) {
     return brandSubtitle;
   }
 
+  const mix = getServiceMix(quote);
+  const programParts = [
+    mix.hasHotels ? 'stays' : null,
+    mix.hasTransport ? 'transfers' : null,
+    mix.hasExperiences ? 'experiences' : null,
+    mix.hasExternalPackages ? 'partner arrangements' : null,
+  ].filter(Boolean);
+  const programLine = programParts.length > 0 ? programParts.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'travel arrangements';
+
   return destinationLine
-    ? `A refined proposal designed for a seamless ${destinationLine} experience, with carefully sequenced touring, stays, and private ground arrangements.`
-    : 'A refined proposal designed for a seamless travel experience, with carefully sequenced touring, stays, and private ground arrangements.';
+    ? `A destination-aware proposal for ${destinationLine}, with ${programLine} sequenced around the itinerary.`
+    : `A destination-aware proposal with ${programLine} sequenced around the itinerary.`;
 }
 
-function buildHighlights(quote: ProposalV3Quote, destinationLine: string) {
-  const highlights = new Set<string>();
+export function buildDayByDayIntro(days: ProposalV3Day[], destinationLine: string) {
+  const dayCount = Math.max(days.length, 1);
+  const overnightStops = Array.from(new Set(days.map((day) => cleanText(day.overnightLocation || '')).filter(Boolean)));
+  const hasDailyServices = days.some((day) => day.groups.length > 0);
+
+  if (destinationLine && overnightStops.length > 0) {
+    return `A ${dayCount}-day outline following the route through ${destinationLine}, with overnight stays noted as the program develops.`;
+  }
 
   if (destinationLine) {
-    highlights.add(`A well-paced routing through ${destinationLine}.`);
+    return `A ${dayCount}-day outline following the route through ${destinationLine}${hasDailyServices ? ', with services grouped by day.' : '.'}`;
   }
 
-  if (quote.quoteItems.some((item) => isHotelItem(item))) {
-    highlights.add('Handpicked stays aligned with the journey flow.');
+  return hasDailyServices
+    ? `A ${dayCount}-day outline with confirmed services grouped by day.`
+    : 'The itinerary structure is being finalized and will be shared in the confirmed proposal.';
+}
+
+export function buildDestinationAwareCoverSignature(quote: ProposalV3Quote, destinationLine: string, hotelOptionSets: ProposalV3HotelOptionSet[]) {
+  const accommodationStory = buildAccommodationStory(hotelOptionSets, destinationLine);
+  if (accommodationStory) {
+    return accommodationStory;
   }
 
-  if (quote.quoteItems.some((item) => isTransportItem(item))) {
-    highlights.add('Private transfers coordinated throughout the route.');
+  const mix = getServiceMix(quote);
+  const focus = [
+    mix.hasExperiences ? 'destination experiences' : null,
+    mix.hasTransport ? 'smooth transfers' : null,
+    mix.hasHotels ? 'well-placed stays' : null,
+  ].filter(Boolean);
+  const focusLine = focus.length > 0 ? focus.join(', ').replace(/, ([^,]*)$/, ', and $1') : 'the confirmed journey flow';
+
+  return destinationLine
+    ? `Tailored around ${destinationLine}, with ${focusLine} coordinated into one proposal.`
+    : `Tailored with ${focusLine} coordinated into one proposal.`;
+}
+
+export function buildDeterministicHighlights(
+  quote: ProposalV3Quote,
+  destinationLine: string,
+  days: ProposalV3Day[],
+  hotelOptionSets: ProposalV3HotelOptionSet[],
+) {
+  const highlights = new Set<string>();
+  const destinations = Array.from(new Set(days.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean)));
+  const routeSubtitle = formatDestinationSubtitle(destinations);
+
+  const pushHighlight = (value: string | null | undefined) => {
+    const copy = conciseCopy(value, 120);
+    if (isClientSafeCopy(copy)) {
+      highlights.add(copy);
+    }
+  };
+
+  if (routeSubtitle) {
+    pushHighlight(`Route planned through ${routeSubtitle}.`);
+  } else if (destinationLine) {
+    pushHighlight(`Route planned through ${destinationLine}.`);
   }
 
-  if (quote.quoteItems.some((item) => isActivityItem(item) || isGuideItem(item))) {
-    highlights.add('Cultural visits and experiences arranged day by day.');
+  for (const day of days) {
+    const destination = extractDayLocation(day.title, day.dayNumber);
+    if (destination && !/^Destination\s+\d+$/i.test(destination)) {
+      pushHighlight(`Time built into the program for ${destination}.`);
+    }
+    if (highlights.size >= 2) {
+      break;
+    }
+  }
+
+  for (const item of quote.quoteItems) {
+    if (isActivityItem(item) || isGuideItem(item)) {
+      pushHighlight(getClientSafeActivityDescription(item) || item.activity?.name || item.service.name);
+    }
+    if (highlights.size >= 4) {
+      break;
+    }
+  }
+
+  for (const option of hotelOptionSets.flatMap((optionSet) => optionSet.options)) {
+    pushHighlight(option.shortDescription || option.highlights[0]);
+    if (highlights.size >= 4) {
+      break;
+    }
   }
 
   return Array.from(highlights).slice(0, 4);
@@ -843,6 +1171,7 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
       snapshotLabel: 'Pricing status',
       snapshotValue: 'Pricing to be confirmed',
       snapshotHelper: 'Final slab selection depends on confirmed group size',
+      summaryNote: 'A client-facing summary of the current package pricing once the proposal pricing is confirmed.',
       mode: 'pending' as const,
       basisLines: [],
       noteLines: [],
@@ -856,6 +1185,7 @@ function buildInvestment(quote: ProposalV3Quote, currency: string) {
     snapshotLabel: pricing.snapshotLabel,
     snapshotValue: pricing.snapshotValue,
     snapshotHelper: pricing.snapshotHelper,
+    summaryNote: 'A client-facing summary of the current package pricing for the proposed journey.',
     mode: pricing.mode,
     basisLines: pricing.basisLines.filter((line) => !isPlaceholderText(line)),
     noteLines: [
@@ -1070,10 +1400,6 @@ function buildClientFacingTitle(quote: ProposalV3Quote, destinationLine: string)
   return cleanedTitle;
 }
 
-function buildProposalTitle() {
-  return 'Jordan Travel Proposal';
-}
-
 function formatDurationLabel(dayCount: number, nightCount: number) {
   return `${dayCount} Day${dayCount === 1 ? '' : 's'} / ${nightCount} Night${nightCount === 1 ? '' : 's'}`;
 }
@@ -1084,25 +1410,17 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const days = buildDays(quote);
   const totalPax = quote.adults + quote.children;
   const dayCount = Math.max(days.length, (quote.nightCount || 0) + 1, 1);
-  const itineraryDestinations = sortedDays.map((day) => extractDayLocation(day.title, day.dayNumber)).filter(Boolean);
-  const externalDestinations = quote.quoteItems
-    .filter((item) => isExternalPackageItem(item))
-    .map((item) => cleanText(item.externalPackageCountry || ''))
-    .filter(Boolean);
-  const destinations = Array.from(new Set([...itineraryDestinations, ...externalDestinations]));
-  const destinationLine = summarizeDestinations(destinations) || cleanText(quote.title).replace(/\s+Journey$/i, '');
-  const coverSubtitle =
-    destinations.some((value) => value.toLowerCase() === 'amman') &&
-    destinations.some((value) => value.toLowerCase() === 'petra') &&
-    destinations.some((value) => value.toLowerCase() === 'wadi rum')
-      ? 'Amman · Petra · Wadi Rum'
-      : formatDestinationSubtitle(destinations) || destinationLine || 'Jordan';
+  const hotelOptionSets = buildHotelOptionSets(quote);
+  const routeIntelligence = buildRouteIntelligence(quote, hotelOptionSets, sortedDays);
+  const destinationLine = routeIntelligence.destinationLine || cleanText(quote.title).replace(/\s+Journey$/i, '');
+  const coverSubtitle = routeIntelligence.coverSubtitle || destinationLine || 'Travel';
   const currency = getProposalCurrency(quote);
-  const documentTitle = buildProposalTitle();
+  const documentTitle = buildProposalDocumentTitle(quote, destinationLine);
   const durationLabel = formatDurationLabel(dayCount, quote.nightCount || Math.max(dayCount - 1, 0));
   const coverIntro = buildCoverIntro(quote, destinationLine);
-  const journeySummary = buildJourneySummary(quote, destinationLine);
-  const hotelOptionSets = buildHotelOptionSets(quote);
+  const journeySummary = buildJourneySummary(quote, destinationLine, dayCount, totalPax, hotelOptionSets);
+  const coverSignature = buildDestinationAwareCoverSignature(quote, destinationLine, hotelOptionSets);
+  const dayByDayIntro = buildDayByDayIntro(days, destinationLine);
   const brandName = getBrandName(quote);
   const footerLine = getFooterLine(quote, brandName);
   const contactLine = getBrandContactParts(quote).join(' | ') || footerLine;
@@ -1130,6 +1448,8 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     durationLabel,
     travelDatesLabel: formatDate(quote.travelStartDate) || 'Dates to be confirmed',
     coverIntro,
+    coverSignature,
+    dayByDayIntro,
     subtitle: `${formatNightCountLabel(quote.nightCount)} · ${formatGuestCountLabel(totalPax)}${destinationLine ? ` · ${destinationLine}` : ''}`,
     proposalDateLabel: formatDate(quote.createdAt) || formatDate(new Date()) || '',
     travelerCountLabel: formatGuestCountLabel(totalPax),
@@ -1139,7 +1459,7 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     pricingHighlightPerPax: perPersonValue,
     pricingHighlightCurrency: currency,
     journeySummary,
-    highlights: buildHighlights(quote, destinationLine),
+    highlights: buildDeterministicHighlights(quote, destinationLine, days, hotelOptionSets),
     accommodationRows: buildAccommodationRows(quote),
     hotelOptionSets,
     accommodationMatrix: buildAccommodationMatrix(hotelOptionSets),

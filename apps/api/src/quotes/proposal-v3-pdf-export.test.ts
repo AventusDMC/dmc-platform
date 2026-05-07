@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { mapQuoteToProposalV3 } from './proposal-v3.mapper';
+import { buildRouteIntelligence, mapQuoteToProposalV3, parseTransportRouteSegments } from './proposal-v3.mapper';
 import { ProposalV3Service } from './proposal-v3.service';
 
 function createPdfQuote(overrides: Record<string, any> = {}) {
@@ -1254,6 +1254,310 @@ test('proposal PDF subtitle generation follows destinations instead of hardcoded
 
   assert.equal(proposal.coverSubtitle, 'Amman · Aqaba');
   assert.notEqual(proposal.coverSubtitle, 'Amman · Petra · Wadi Rum');
+});
+
+test('proposal route intelligence uses hotel cities over generic day titles', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Demo QA quote',
+      description: null,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Leisure day', description: null },
+      ],
+      quoteItems: [
+        createHotelPdfItem({ itineraryId: 'day-1', hotel: { name: 'Capital Hotel', city: 'Cairo' } }),
+        createHotelPdfItem({ id: 'item-2', itineraryId: 'day-2', hotel: { name: 'Red Sea Resort', city: 'Hurghada' } }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.destinationLine, 'Cairo and Hurghada');
+  assert.match(proposal.coverSubtitle, /Cairo.*Hurghada/);
+  assert.equal(proposal.documentTitle, 'Cairo and Hurghada Travel Proposal');
+});
+
+test('proposal route intelligence uses primary hotel option cities when confirmed stays are absent', () => {
+  const route = buildRouteIntelligence(
+    createPdfQuote({
+      quoteItems: [],
+      itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Program details', description: null }],
+    }) as any,
+    [
+      {
+        id: 'set-1',
+        name: '4 Star STD',
+        notes: null,
+        options: [
+          {
+            id: 'option-1',
+            city: 'Muscat',
+            hotelName: 'Muscat Hotel',
+            room: 'Standard',
+            mealPlan: 'BB',
+            nights: 2,
+            isPrimary: true,
+            shortDescription: null,
+            highlights: [],
+            amenities: [],
+          },
+        ],
+      },
+    ],
+  );
+
+  assert.deepEqual(route.overnightAnchors, ['Muscat']);
+  assert.deepEqual(route.routeAnchors, ['Muscat']);
+  assert.equal(route.destinationLine, 'Muscat');
+});
+
+test('proposal route intelligence enriches route from conservative transport names', () => {
+  const route = buildRouteIntelligence(
+    createPdfQuote({
+      quoteItems: [
+        createTransportPdfItem({
+          appliedVehicleRate: {
+            routeName: 'Lima Airport to Sacred Valley',
+            vehicle: { name: 'Private van' },
+            serviceType: { name: 'Transfer', code: 'TRANSFER' },
+          },
+        }),
+      ],
+      itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Arrival', description: null }],
+    }) as any,
+    [],
+  );
+
+  assert.deepEqual(parseTransportRouteSegments('Amman - Petra'), [{ from: 'Amman', to: 'Petra' }]);
+  assert.deepEqual(parseTransportRouteSegments('Petra → Wadi Rum'), [{ from: 'Petra', to: 'Wadi Rum' }]);
+  assert.deepEqual(route.transportSegments, [{ from: 'Lima', to: 'Sacred Valley' }]);
+  assert.deepEqual(route.routeAnchors, ['Lima', 'Sacred Valley']);
+});
+
+test('proposal route intelligence falls back to useful day titles when no better data exists', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1: Bangkok', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2: Chiang Mai', description: null },
+      ],
+    }),
+  );
+
+  assert.equal(proposal.destinationLine, 'Bangkok and Chiang Mai');
+  assert.match(proposal.coverSubtitle, /Bangkok.*Chiang Mai/);
+});
+
+test('proposal route intelligence preserves external package countries and filters placeholders', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Regional Journey',
+      description: null,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Arrival', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Program details', description: null },
+      ],
+      quoteItems: [
+        createExternalPackagePdfItem({ externalPackageCountry: 'Egypt' }),
+        createTransportPdfItem({
+          appliedVehicleRate: {
+            routeName: 'General / All Routes',
+            vehicle: { name: 'Vehicle' },
+            serviceType: { name: 'Transfer', code: 'TRANSFER' },
+          },
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.destinationLine, 'Egypt');
+  assert.doesNotMatch(proposal.coverSubtitle, /Arrival|Program details|General/);
+});
+
+test('proposal cover and overview use route intelligence instead of generic day titles', async () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Biblical Tour Draft',
+      description: null,
+      nightCount: 3,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Arrival', description: 'Overnight Cairo.' },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2', description: 'Overnight Mt. Sinai.' },
+        { id: 'day-3', dayNumber: 3, title: 'Day 3', description: 'Overnight Petra.' },
+      ],
+      quoteItems: [
+        createHotelPdfItem({
+          id: 'hotel-cairo',
+          itineraryId: 'day-1',
+          hotel: { name: 'Cairo Hotel', city: 'Cairo' },
+          service: { name: 'Cairo Hotel', category: 'Hotel', serviceType: { name: 'Hotel', code: 'HOTEL' } },
+        }),
+        createHotelPdfItem({
+          id: 'hotel-sinai',
+          itineraryId: 'day-2',
+          hotel: { name: 'Sinai Hotel', city: 'Mt. Sinai' },
+          service: { name: 'Sinai Hotel', category: 'Hotel', serviceType: { name: 'Hotel', code: 'HOTEL' } },
+        }),
+        createHotelPdfItem({
+          id: 'hotel-petra',
+          itineraryId: 'day-3',
+          hotel: { name: 'Petra Hotel', city: 'Petra' },
+          service: { name: 'Petra Hotel', category: 'Hotel', serviceType: { name: 'Hotel', code: 'HOTEL' } },
+        }),
+      ],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const html = await (service as any).renderHtml(proposal);
+
+  assert.equal(proposal.destinationLine, 'Cairo, Mt. Sinai, and Petra');
+  assert.match(proposal.coverSubtitle, /Cairo.*Mt\. Sinai.*Petra/);
+  assert.doesNotMatch(proposal.coverSubtitle, /Arrival|Day 2|Day 3/);
+  assert.match(html, /<p class="proposal-cover-destination">Cairo[\s\S]*Mt\. Sinai[\s\S]*Petra<\/p>/);
+  assert.match(html, /<h2>Cairo, Mt\. Sinai, and Petra<\/h2>/);
+  assert.doesNotMatch(html, /<p class="proposal-cover-destination">[^<]*(Arrival|Day 2|Day 3)/);
+});
+
+test('proposal storytelling uses destination-aware fallback for non-Jordan itineraries', async () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Peru Family Journey',
+      description: null,
+      nightCount: 3,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1: Lima', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2: Cusco', description: null },
+      ],
+      quoteItems: [
+        createTransportPdfItem({
+          itineraryId: 'day-1',
+          appliedVehicleRate: {
+            routeName: 'Lima Airport to Miraflores',
+            vehicle: { name: 'Private van' },
+            serviceType: { name: 'Transfer', code: 'TRANSFER' },
+          },
+        }),
+      ],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const html = await (service as any).renderHtml(proposal);
+
+  assert.equal(proposal.documentTitle, 'Peru Family Journey');
+  assert.match(proposal.coverSubtitle, /Lima.*Miraflores/);
+  assert.match(proposal.journeySummary, /4-day journey through Lima and Miraflores/);
+  assert.match(proposal.coverSignature, /Lima and Miraflores/);
+  assert.match(proposal.dayByDayIntro, /Lima and Miraflores/);
+  assert.doesNotMatch(html, /Jordan's cultural landmarks|proposed Jordan journey|Jordan Travel Proposal/);
+});
+
+test('proposal storytelling supports multi-country itinerary and external package destinations', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Levant and Egypt Journey',
+      description: null,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1: Amman', description: null },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2: Jerusalem', description: null },
+      ],
+      quoteItems: [
+        createHotelPdfItem({ itineraryId: 'day-1' }),
+        createExternalPackagePdfItem({ externalPackageCountry: 'Egypt', externalStartDay: 3, externalEndDay: 4 }),
+      ],
+    }),
+  );
+
+  assert.match(proposal.destinationLine, /Amman/);
+  assert.match(proposal.destinationLine, /Egypt/);
+  assert.match(proposal.journeySummary, /partner DMC services/);
+  assert.ok(proposal.highlights.some((highlight) => /Amman.*Egypt/.test(highlight)));
+});
+
+test('proposal storytelling uses client-safe activity descriptions in highlights and day copy', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      description: null,
+      quoteItems: [
+        createActivityPdfItem({
+          activity: {
+            id: 'activity-1',
+            name: 'Petra by Night',
+            description: 'Walk through the candlelit Siq before the treasury reveal.',
+          },
+          pricingDescription: 'Supplier net cost USD 35 internal margin note',
+        }),
+      ],
+    }),
+  );
+  const experienceGroup = proposal.days[0].groups.find((group) => group.label === 'Experience');
+
+  assert.ok(proposal.highlights.includes('Walk through the candlelit Siq before the treasury reveal.'));
+  assert.ok(experienceGroup);
+  assert.equal(experienceGroup.items[0].description, 'Walk through the candlelit Siq before the treasury reveal.');
+  assert.doesNotMatch(JSON.stringify(proposal), /Supplier net cost|internal margin/i);
+});
+
+test('proposal storytelling uses hotel fact sheet highlights for accommodation story', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      description: null,
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          hotelOptions: [
+            {
+              id: 'hotel-option-1',
+              city: 'Aqaba',
+              hotelNameSnapshot: 'Aqaba Beach Resort',
+              roomType: 'Sea View Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: {
+                name: 'Aqaba Beach Resort',
+                city: 'Aqaba',
+                factSheet: {
+                  shortDescription: null,
+                  highlightsJson: ['Red Sea beachfront setting', 'Walkable marina location'],
+                  amenitiesJson: ['Pool'],
+                },
+              },
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.coverSignature, 'Red Sea beachfront setting.');
+  assert.ok(proposal.highlights.includes('Red Sea beachfront setting.'));
+});
+
+test('proposal storytelling filters placeholder and internal copy before using fallbacks', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      title: 'Demo QA quote',
+      description: 'Internal supplier net cost and margin note',
+      quoteItems: [
+        createActivityPdfItem({
+          activity: {
+            id: 'activity-unsafe',
+            name: 'Supplier Cost Activity',
+            description: 'Supplier net cost USD 35 internal margin note',
+          },
+          pricingDescription: 'Service to be confirmed',
+        }),
+      ],
+    }),
+  );
+  const renderedText = JSON.stringify(proposal);
+
+  assert.equal(proposal.documentTitle, 'Amman Travel Proposal');
+  assert.match(proposal.journeySummary, /journey through Amman/);
+  assert.doesNotMatch(renderedText, /Internal supplier net cost|Supplier net cost USD|Service to be confirmed/i);
 });
 
 test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {

@@ -238,6 +238,8 @@ export class ProposalV3Service {
       durationLabel: this.escapeHtml(viewModel.durationLabel),
       travelDatesLabel: this.escapeHtml(viewModel.travelDatesLabel),
       coverIntro: this.escapeHtml(viewModel.coverIntro),
+      coverSignature: this.escapeHtml(viewModel.coverSignature),
+      dayByDayIntro: this.escapeHtml(viewModel.dayByDayIntro),
       subtitle: this.escapeHtml(viewModel.subtitle),
       proposalDateLabel: this.escapeHtml(viewModel.proposalDateLabel),
       travelerCountLabel: this.escapeHtml(viewModel.travelerCountLabel),
@@ -632,7 +634,7 @@ export class ProposalV3Service {
       <section class="investment-card">
         <p class="investment-kicker">${this.escapeHtml(investment.snapshotLabel)}</p>
         <h3>${this.escapeHtml(investment.snapshotValue)}</h3>
-        <p class="investment-summary-note">An elegant summary of the current package pricing for the proposed Jordan journey.</p>
+        <p class="investment-summary-note">${this.escapeHtml(investment.summaryNote)}</p>
         <p>${this.escapeHtml(investment.snapshotHelper)}</p>
       </section>
       ${slabTable}

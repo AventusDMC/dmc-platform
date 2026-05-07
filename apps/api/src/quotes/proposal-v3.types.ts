@@ -44,6 +44,11 @@ export type ProposalV3QuoteItem = {
   externalInternalNotes?: string | null;
   externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
+  activity?: {
+    name?: string | null;
+    description?: string | null;
+    durationMinutes?: number | null;
+  } | null;
   service: {
     name: string;
     category: string;
@@ -312,6 +317,8 @@ export type ProposalV3ViewModel = {
   durationLabel: string;
   travelDatesLabel: string;
   coverIntro: string;
+  coverSignature: string;
+  dayByDayIntro: string;
   subtitle: string;
   proposalDateLabel: string;
   travelerCountLabel: string;
@@ -331,6 +338,7 @@ export type ProposalV3ViewModel = {
     snapshotLabel: string;
     snapshotValue: string;
     snapshotHelper: string;
+    summaryNote: string;
     mode: ProposalPricingViewModel['mode'];
     basisLines: string[];
     noteLines: string[];

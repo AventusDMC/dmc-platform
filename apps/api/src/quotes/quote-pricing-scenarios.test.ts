@@ -475,6 +475,137 @@ test('EXTERNAL_PACKAGE PER_GROUP charges net cost once', async () => {
   assert.equal(values.data.totalSell, 990);
 });
 
+test('one-off EXTERNAL_PACKAGE update does not require a SupplierService', async () => {
+  let supplierServiceLookupCount = 0;
+  let updatedData: Record<string, any> | null = null;
+  const quote = {
+    id: 'quote-1',
+    quoteCurrency: 'USD',
+    adults: 3,
+    children: 1,
+    roomCount: 2,
+    nightCount: 1,
+    travelStartDate: null,
+    createdAt: new Date('2026-04-27T00:00:00.000Z'),
+  };
+  const existingItem = {
+    id: 'item-external-1',
+    quoteId: 'quote-1',
+    optionId: null,
+    serviceId: null,
+    activityId: null,
+    itineraryId: null,
+    serviceDate: null,
+    startTime: null,
+    pickupTime: null,
+    pickupLocation: null,
+    meetingPoint: null,
+    participantCount: null,
+    adultCount: null,
+    childCount: null,
+    reconfirmationRequired: false,
+    reconfirmationDueAt: null,
+    hotelId: null,
+    contractId: null,
+    seasonId: null,
+    seasonName: null,
+    roomCategoryId: null,
+    occupancyType: null,
+    mealPlan: null,
+    quantity: 1,
+    paxCount: 4,
+    roomCount: null,
+    nightCount: null,
+    dayCount: null,
+    overrideCost: null,
+    overrideReason: null,
+    useOverride: false,
+    markupAmount: null,
+    sellPrice: null,
+    currency: 'USD',
+    markupPercent: 10,
+    externalPackageCountry: 'Egypt',
+    externalPackageName: 'Cairo Extension',
+    externalSupplierName: 'Cairo Partner DMC',
+    externalStartDay: 1,
+    externalEndDay: 4,
+    externalStartDate: new Date('2026-10-01T00:00:00.000Z'),
+    externalEndDate: new Date('2026-10-04T00:00:00.000Z'),
+    externalPricingBasis: 'PER_GROUP',
+    externalNetCost: 900,
+    externalPackagePricingMatrixJson: [],
+    externalPackageSingleSupplement: null,
+    externalIncludes: 'Cairo guide and transfers',
+    externalExcludes: 'International flights',
+    externalInternalNotes: 'Partner net rate locked by ops',
+    externalHotelsOrSimilar: 'Cairo hotel or similar',
+    externalClientDescription: 'Four-day private Cairo and Giza extension.',
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async ({ where }: any) => (where.id === 'quote-1' ? quote : null),
+      findUnique: async ({ where }: any) => (where.id === 'quote-1' ? quote : null),
+    },
+    quoteItem: {
+      findFirst: async ({ where }: any) => (where.id === existingItem.id ? existingItem : null),
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { ...existingItem, ...data, service: null };
+      },
+    },
+    supplierService: {
+      findUnique: async () => {
+        supplierServiceLookupCount += 1;
+        return null;
+      },
+    },
+    activity: {
+      findUnique: async () => null,
+    },
+    itinerary: {
+      findUnique: async () => null,
+    },
+    quoteItineraryDay: {
+      findUnique: async () => null,
+    },
+    quoteOption: {
+      findUnique: async () => null,
+    },
+  });
+  (service as any).recalculateQuoteTotals = async () => undefined;
+
+  const updated = await service.updateItem(
+    existingItem.id,
+    {
+      quoteId: 'quote-1',
+      serviceId: null,
+      packageName: 'Updated Cairo Extension',
+      country: 'Egypt',
+      supplierName: 'Cairo Partner DMC',
+      startDay: 1,
+      endDay: 4,
+      pricingBasis: 'PER_GROUP',
+      netCost: 950,
+      currency: 'USD',
+      includes: 'Cairo guide and transfers',
+      excludes: 'International flights',
+      internalNotes: 'Updated partner notes',
+      hotelsOrSimilar: 'Cairo hotel or similar',
+      clientDescription: 'Updated Cairo and Giza extension.',
+      quantity: 1,
+      paxCount: 4,
+      markupPercent: 10,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(supplierServiceLookupCount, 0);
+  assert.equal((updatedData as any)?.serviceId, null);
+  assert.equal((updatedData as any)?.externalPackageName, 'Updated Cairo Extension');
+  assert.equal((updatedData as any)?.externalNetCost, 950);
+  assert.equal((updated as any).service?.name, 'Updated Cairo Extension');
+});
+
 test('EXTERNAL_PACKAGE accepts supported currencies and rejects missing or unsupported currency', async () => {
   const values = await resolveExternalPackage({
     quote: { quoteCurrency: 'EUR' },
