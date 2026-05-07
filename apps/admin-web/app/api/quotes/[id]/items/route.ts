@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { buildActorHeaders } from '../../../bookings/actorHeaders';
-import { forwardProxyJsonResponse } from '../../../proxy-response';
+import { forwardProxyJsonResponse, proxyFetchErrorResponse } from '../../../proxy-response';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -14,16 +14,21 @@ export async function POST(
 ) {
   const { id } = await context.params;
   const body = await request.json().catch(() => ({}));
-  const response = await fetch(`${API_BASE_URL}/quotes/${id}/items`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildActorHeaders(request),
-    },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-    redirect: 'manual',
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/quotes/${id}/items`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildActorHeaders(request),
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+  } catch (error) {
+    return proxyFetchErrorResponse(error, 'Could not reach API server while saving quote item.');
+  }
 
   return forwardProxyJsonResponse(response);
 }

@@ -3240,21 +3240,19 @@ export class QuotesService {
     }
 
     if (this.isGuideService(effectiveService)) {
-      const guideType = data.guideType?.trim().toLowerCase();
-      const guideDuration = data.guideDuration?.trim().toLowerCase();
+      const guideType = this.normalizeGuideType(data.guideType);
+      const guideDuration = this.normalizeGuideDuration(data.guideDuration);
       const overnight = Boolean(data.overnight);
 
       if (!guideType || !guideDuration) {
-        throw new BadRequestException('Guide items require guide type and duration');
-      }
-
-      if (!this.isGuideType(guideType) || !this.isGuideDuration(guideDuration)) {
-        throw new BadRequestException('Invalid guide pricing selection');
+        throw new BadRequestException('Guide items require guideType (local or escort) and guideDuration (half_day or full_day)');
       }
 
       baseCost = GUIDE_RATES[guideType][guideDuration] + (overnight ? GUIDE_OVERNIGHT_SUPPLEMENT : 0);
       currency = effectiveService.currency;
       pricingDescription = `Guide | ${this.formatGuideType(guideType)} | ${this.formatGuideDuration(guideDuration)} | Overnight: ${overnight ? 'Yes' : 'No'}`;
+    } else if (data.guideType !== undefined || data.guideDuration !== undefined || data.overnight !== undefined) {
+      throw new BadRequestException('Selected service is not guide-compatible. Choose a service with a guide service type or category.');
     }
 
     if (this.isActivityService(effectiveService)) {
@@ -5859,6 +5857,34 @@ export class QuotesService {
 
   private isGuideDuration(value: string): value is keyof (typeof GUIDE_RATES)['local'] {
     return value === 'half_day' || value === 'full_day';
+  }
+
+  private normalizeGuideType(value: string | null | undefined): keyof typeof GUIDE_RATES | null {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+    if (normalized === 'local' || normalized === 'local_guide') {
+      return 'local';
+    }
+
+    if (normalized === 'escort' || normalized === 'escort_guide') {
+      return 'escort';
+    }
+
+    return null;
+  }
+
+  private normalizeGuideDuration(value: string | null | undefined): keyof (typeof GUIDE_RATES)['local'] | null {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+    if (normalized === 'half_day' || normalized === 'half') {
+      return 'half_day';
+    }
+
+    if (normalized === 'full_day' || normalized === 'full') {
+      return 'full_day';
+    }
+
+    return null;
   }
 
   private formatGuideType(value: keyof typeof GUIDE_RATES) {

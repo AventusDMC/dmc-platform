@@ -229,6 +229,87 @@ async function resolveServiceRateQuoteItem(values: {
   });
 }
 
+function createGuideQuoteService(serviceOverrides: Record<string, any> = {}) {
+  const guideServiceId = serviceOverrides.id || 'd7ddfdd2-5d94-4ec7-b9a2-7376934addb8';
+  const quoteItineraryDayId = '6ca7bc63-33a7-43e4-9aaf-d9d4434f8390';
+  const quote = {
+    id: 'quote-1',
+    quoteCurrency: 'USD',
+    adults: 18,
+    children: 3,
+    roomCount: 11,
+    nightCount: 1,
+    travelStartDate: null,
+    createdAt: new Date('2026-04-27T00:00:00.000Z'),
+  };
+  const dayLinks: any[] = [];
+  const createdItems: any[] = [];
+  const service = createQuotesService({
+    quote: {
+      findFirst: async ({ where }: any) => (where?.revisedFromId ? null : where?.id === quote.id ? quote : null),
+      findUnique: async ({ where }: any) => (where?.id === quote.id ? quote : null),
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === guideServiceId
+          ? {
+              id: guideServiceId,
+              supplierId: 'supplier-guide',
+              name: 'Jordan Guide Service',
+              category: 'Guide',
+              unitType: 'per_group',
+              baseCost: 0,
+              currency: 'USD',
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              serviceType: { id: 'type-guide', name: 'Guide', code: 'GUIDE' },
+              entranceFee: null,
+              serviceRates: [],
+              ...serviceOverrides,
+            }
+          : null,
+    },
+    activity: {
+      findUnique: async () => null,
+    },
+    itinerary: {
+      findUnique: async () => null,
+    },
+    quoteItineraryDay: {
+      findUnique: async ({ where }: any) =>
+        where.id === quoteItineraryDayId ? { id: quoteItineraryDayId, quoteId: quote.id, dayNumber: 4 } : null,
+    },
+    quoteOption: {
+      findUnique: async () => null,
+    },
+    quoteItem: {
+      create: async ({ data, include }: any) => {
+        const item = {
+          id: `guide-item-${createdItems.length + 1}`,
+          ...data,
+          service: include?.service ? { id: guideServiceId, name: serviceOverrides.name || 'Jordan Guide Service', category: serviceOverrides.category || 'Guide' } : null,
+        };
+        createdItems.push(item);
+        return item;
+      },
+    },
+    quoteItineraryDayItem: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        dayLinks.push(data);
+        return data;
+      },
+    },
+  });
+  (service as any).recalculateQuoteTotals = async () => undefined;
+
+  return { service, guideServiceId, quoteItineraryDayId, dayLinks, createdItems };
+}
+
 function createHotelLookupRate(overrides: any = {}) {
   return {
     id: overrides.id || 'rate-1',
@@ -745,6 +826,84 @@ test('quote-only EXTERNAL_PACKAGE hotels-only edit keeps pricing stable and serv
   assert.equal(updated.totalSell, createdSell);
   assert.equal((quoteTotals as any)?.totalCost, createdCost);
   assert.equal((quoteTotals as any)?.totalSell, createdSell);
+});
+
+test('guide item creation supports local full-day and active planner day attachment', async () => {
+  const { service, guideServiceId, quoteItineraryDayId, dayLinks, createdItems } = createGuideQuoteService();
+
+  const item = await service.createItem(
+    {
+      quoteId: 'quote-1',
+      serviceId: guideServiceId,
+      itineraryId: quoteItineraryDayId,
+      guideType: 'local',
+      guideDuration: 'full_day',
+      overnight: false,
+      quantity: 1,
+      paxCount: 21,
+      markupPercent: 20,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(item.serviceId, guideServiceId);
+  assert.equal(item.itineraryId, null);
+  assert.equal(item.baseCost, 120);
+  assert.equal(item.totalCost, 120);
+  assert.equal(item.totalSell, 144);
+  assert.equal(item.pricingDescription, 'Guide | Local | Full day | Overnight: No');
+  assert.equal(dayLinks.length, 1);
+  assert.equal(dayLinks[0].dayId, quoteItineraryDayId);
+  assert.equal(dayLinks[0].quoteServiceId, item.id);
+  assert.equal(createdItems.length, 1);
+});
+
+test('guide item creation supports escort full-day with normalized UI values', async () => {
+  const { service, guideServiceId } = createGuideQuoteService();
+
+  const item = await service.createItem(
+    {
+      quoteId: 'quote-1',
+      serviceId: guideServiceId,
+      guideType: 'escort-guide',
+      guideDuration: 'full-day',
+      overnight: true,
+      quantity: 1,
+      paxCount: 21,
+      markupPercent: 20,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(item.baseCost, 250);
+  assert.equal(item.totalCost, 250);
+  assert.equal(item.totalSell, 300);
+  assert.equal(item.pricingDescription, 'Guide | Escort | Full day | Overnight: Yes');
+});
+
+test('guide item creation rejects non-guide service with clear error', async () => {
+  const { service, guideServiceId } = createGuideQuoteService({
+    category: 'Other',
+    serviceType: { id: 'type-other', name: 'Other Support', code: 'OTHER' },
+  });
+
+  await assert.rejects(
+    () =>
+      service.createItem(
+        {
+          quoteId: 'quote-1',
+          serviceId: guideServiceId,
+          guideType: 'local',
+          guideDuration: 'full_day',
+          overnight: false,
+          quantity: 1,
+          paxCount: 21,
+          markupPercent: 20,
+        },
+        { companyId: 'company-1' } as any,
+      ),
+    /Selected service is not guide-compatible/,
+  );
 });
 
 test('EXTERNAL_PACKAGE accepts supported currencies and rejects missing or unsupported currency', async () => {

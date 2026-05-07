@@ -46,6 +46,12 @@ export async function forwardProxyJsonResponse(response: Response) {
   );
 }
 
+export function proxyFetchErrorResponse(error: unknown, fallbackMessage = 'Could not reach API server.') {
+  const message = error instanceof Error && error.message ? `${fallbackMessage} ${error.message}` : fallbackMessage;
+
+  return NextResponse.json({ message }, { status: 502 });
+}
+
 export async function forwardProxyContentResponse(response: Response) {
   if (response.status === 204 || response.status === 205) {
     return new NextResponse(null, { status: response.status });
