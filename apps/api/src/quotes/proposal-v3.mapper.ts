@@ -1,5 +1,6 @@
 import { buildProposalPricingViewModel } from './proposal-pricing';
 import {
+  ProposalV3AccommodationMatrix,
   ProposalV3AccommodationRow,
   ProposalV3Day,
   ProposalV3DayGroup,
@@ -33,6 +34,8 @@ const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 const AXIS_BRAND_NAME = 'AXIS Destination Management';
 const AXIS_LOGO_URL = 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png';
 const AXIS_PRIMARY_COLOR = '#1FA3D6';
+
+type ProposalBrandCompany = NonNullable<ProposalV3Quote['brandCompany']>;
 
 function formatProposalMoney(amount: number, currency = 'USD') {
   if (!Number.isFinite(amount)) {
@@ -93,6 +96,10 @@ function cleanText(value: string | null | undefined) {
     .replace(/\bTest\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function cleanBrandText(value: string | null | undefined) {
+  return (value || '').replace(/\s+/g, ' ').trim();
 }
 
 function formatExternalPackagePricingMatrix(value: unknown, currency = 'USD') {
@@ -204,6 +211,7 @@ function getBrandName(quote: ProposalV3Quote) {
     quote.brandCompany?.branding?.displayName,
     quote.brandCompany?.name,
     quote.clientCompany?.branding?.displayName,
+    quote.clientCompany?.name,
   ];
   const cleaned = candidates
     .map((value) => cleanText(value).replace(/^brand\s*-\s*/i, ''))
@@ -212,8 +220,68 @@ function getBrandName(quote: ProposalV3Quote) {
   return cleaned || AXIS_BRAND_NAME;
 }
 
+function getBrandCompanyCandidates(quote: ProposalV3Quote): ProposalBrandCompany[] {
+  return [quote.brandCompany, quote.clientCompany].filter(Boolean) as ProposalBrandCompany[];
+}
+
+function getBrandLogoUrl(quote: ProposalV3Quote) {
+  for (const company of getBrandCompanyCandidates(quote)) {
+    const logoUrl = cleanBrandText(company.branding?.logoUrl || company.logoUrl || '');
+    if (logoUrl && !isWeakText(logoUrl)) {
+      return logoUrl;
+    }
+  }
+
+  return AXIS_LOGO_URL;
+}
+
 function getAccentColor(quote: ProposalV3Quote) {
-  return quote.brandCompany?.branding?.primaryColor || quote.clientCompany?.branding?.primaryColor || AXIS_PRIMARY_COLOR;
+  for (const company of getBrandCompanyCandidates(quote)) {
+    const color = cleanBrandText(company.branding?.primaryColor || company.primaryColor || '');
+    if (color) {
+      return color;
+    }
+  }
+
+  return AXIS_PRIMARY_COLOR;
+}
+
+function getBrandHeaderSubtitle(quote: ProposalV3Quote) {
+  for (const company of getBrandCompanyCandidates(quote)) {
+    const subtitle = cleanBrandText(company.branding?.headerSubtitle || '');
+    if (subtitle && !isWeakText(subtitle)) {
+      return subtitle;
+    }
+  }
+
+  return null;
+}
+
+function getBrandContactParts(quote: ProposalV3Quote) {
+  for (const company of getBrandCompanyCandidates(quote)) {
+    const parts = [
+      cleanBrandText(company.branding?.website || company.website || ''),
+      cleanBrandText(company.branding?.email || ''),
+      cleanBrandText(company.branding?.phone || ''),
+    ].filter((part) => part && !isWeakText(part));
+
+    if (parts.length > 0) {
+      return parts;
+    }
+  }
+
+  return [];
+}
+
+function getFooterLine(quote: ProposalV3Quote, brandName: string) {
+  for (const company of getBrandCompanyCandidates(quote)) {
+    const footerText = cleanBrandText(company.branding?.footerText || '');
+    if (footerText && !isWeakText(footerText)) {
+      return footerText;
+    }
+  }
+
+  return [brandName, ...getBrandContactParts(quote)].join(' | ');
 }
 
 type NullableProposalV3QuoteItem = ProposalV3QuoteItem | null | undefined;
@@ -422,6 +490,71 @@ function buildHotelOptionSets(quote: ProposalV3Quote): ProposalV3HotelOptionSet[
     });
 }
 
+function getHotelOptionCity(option: ProposalV3HotelOptionSet['options'][number]) {
+  return cleanText(option.city || '') || 'City to be confirmed';
+}
+
+function sortAccommodationCities(left: string, right: string) {
+  if (left === 'City to be confirmed') return 1;
+  if (right === 'City to be confirmed') return -1;
+  return left.localeCompare(right);
+}
+
+function getPrimaryHotelOption(options: ProposalV3HotelOptionSet['options']) {
+  return options.find((option) => option.isPrimary) || options[0] || null;
+}
+
+export function buildAccommodationMatrix(hotelOptionSets: ProposalV3HotelOptionSet[]): ProposalV3AccommodationMatrix | null {
+  if (hotelOptionSets.length < 2 || hotelOptionSets.length > 3) {
+    return null;
+  }
+
+  if (hotelOptionSets.some((optionSet) => optionSet.options.length === 0)) {
+    return null;
+  }
+
+  const citySetsByOptionSet = hotelOptionSets.map(
+    (optionSet) => new Set(optionSet.options.map(getHotelOptionCity).filter(Boolean)),
+  );
+  const sharedCities = Array.from(citySetsByOptionSet[0] || []).filter((city) =>
+    citySetsByOptionSet.slice(1).some((citySet) => citySet.has(city)),
+  );
+
+  if (sharedCities.length === 0) {
+    return null;
+  }
+
+  const cities = Array.from(new Set(hotelOptionSets.flatMap((optionSet) => optionSet.options.map(getHotelOptionCity))))
+    .filter(Boolean)
+    .sort(sortAccommodationCities);
+
+  return {
+    optionSets: hotelOptionSets.map((optionSet) => ({
+      id: optionSet.id,
+      name: optionSet.name,
+    })),
+    rows: cities.map((city) => ({
+      city,
+      cells: hotelOptionSets.map((optionSet) => {
+        const optionsForCity = optionSet.options.filter((option) => getHotelOptionCity(option) === city);
+        const primaryOption = getPrimaryHotelOption(optionsForCity);
+        const alternatives = optionsForCity.filter((option) => option.id !== primaryOption?.id);
+
+        return {
+          optionSetId: optionSet.id,
+          primaryHotel: primaryOption?.hotelName || null,
+          room: primaryOption?.room || null,
+          mealPlan: primaryOption?.mealPlan || null,
+          nights: primaryOption?.nights || null,
+          isRecommended: Boolean(primaryOption?.isPrimary),
+          alternativeHotels: alternatives.map((option) => option.hotelName).filter(Boolean).slice(0, 2),
+          hasMoreAlternatives: alternatives.length > 2,
+        };
+      }),
+    })),
+  };
+}
+
 function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: ProposalV3QuoteItem[], currency = 'USD'): ProposalV3DayGroup[] {
   const location = extractDayLocation(day.title, day.dayNumber);
   const grouped = new Map<string, ProposalV3DayGroup['items']>();
@@ -621,11 +754,25 @@ function buildDays(quote: ProposalV3Quote): ProposalV3Day[] {
 }
 
 function buildJourneySummary(quote: ProposalV3Quote, destinationLine: string) {
-  return 'A curated journey through Jordan’s most iconic destinations, combining culture, history, and desert experiences.';
+  const quoteDescription = cleanText(quote.description || '');
+  if (quoteDescription && !isWeakText(quoteDescription) && !isPlaceholderText(quoteDescription)) {
+    return quoteDescription;
+  }
+
+  return destinationLine
+    ? `A curated journey through ${destinationLine}, combining cultural context, well-paced routing, and seamless ground arrangements.`
+    : 'A curated journey combining cultural context, well-paced routing, and seamless ground arrangements.';
 }
 
-function buildCoverIntro() {
-  return 'A refined proposal designed for a seamless Jordan experience, with carefully sequenced touring, stays, and private ground arrangements.';
+function buildCoverIntro(quote: ProposalV3Quote, destinationLine: string) {
+  const brandSubtitle = getBrandHeaderSubtitle(quote);
+  if (brandSubtitle) {
+    return brandSubtitle;
+  }
+
+  return destinationLine
+    ? `A refined proposal designed for a seamless ${destinationLine} experience, with carefully sequenced touring, stays, and private ground arrangements.`
+    : 'A refined proposal designed for a seamless travel experience, with carefully sequenced touring, stays, and private ground arrangements.';
 }
 
 function buildHighlights(quote: ProposalV3Quote, destinationLine: string) {
@@ -953,8 +1100,12 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
   const currency = getProposalCurrency(quote);
   const documentTitle = buildProposalTitle();
   const durationLabel = formatDurationLabel(dayCount, quote.nightCount || Math.max(dayCount - 1, 0));
-  const coverIntro = buildCoverIntro();
+  const coverIntro = buildCoverIntro(quote, destinationLine);
   const journeySummary = buildJourneySummary(quote, destinationLine);
+  const hotelOptionSets = buildHotelOptionSets(quote);
+  const brandName = getBrandName(quote);
+  const footerLine = getFooterLine(quote, brandName);
+  const contactLine = getBrandContactParts(quote).join(' | ') || footerLine;
   const totalValue =
     typeof quote.totalSell === 'number' && Number.isFinite(quote.totalSell) && quote.totalSell > 0
       ? formatProposalMoney(quote.totalSell, currency)
@@ -966,13 +1117,15 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
 
   return {
     documentTitle,
-    metaTitle: `${documentTitle || 'Travel Proposal'} | ${getBrandName(quote)}`,
-    brandName: getBrandName(quote),
-    logoUrl: AXIS_LOGO_URL,
+    metaTitle: `${documentTitle || 'Travel Proposal'} | ${brandName}`,
+    brandName,
+    logoUrl: getBrandLogoUrl(quote),
     accentColor: getAccentColor(quote),
+    footerLine,
+    contactLine,
     quoteReference: cleanText(quote.quoteNumber) || 'Quote reference to be confirmed',
     travelerName: getTravelerName(quote),
-    coverSubtitle: 'Amman · Petra · Wadi Rum',
+    coverSubtitle,
     destinationLine,
     durationLabel,
     travelDatesLabel: formatDate(quote.travelStartDate) || 'Dates to be confirmed',
@@ -988,7 +1141,8 @@ export function mapQuoteToProposalV3(quote: ProposalV3Quote): ProposalV3ViewMode
     journeySummary,
     highlights: buildHighlights(quote, destinationLine),
     accommodationRows: buildAccommodationRows(quote),
-    hotelOptionSets: buildHotelOptionSets(quote),
+    hotelOptionSets,
+    accommodationMatrix: buildAccommodationMatrix(hotelOptionSets),
     days,
     investment: buildInvestment(quote, currency),
     inclusions: parseSupportTextList(quote.inclusionsText).length

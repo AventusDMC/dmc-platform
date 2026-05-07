@@ -499,6 +499,221 @@ test('proposal V3 renders each hotel option row night count instead of total quo
   assert.doesNotMatch(hotelOptionsHtml, /7 nights/);
 });
 
+test('proposal V3 builds accommodation matrix grouped by city and option set', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          id: 'set-std',
+          name: '4 Star STD',
+          hotelOptions: [
+            {
+              id: 'std-amman',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman Standard Hotel',
+              roomType: 'Standard Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: true,
+              roomCategory: { name: 'Standard Room', code: 'STD' },
+              hotel: null,
+            },
+            {
+              id: 'std-petra',
+              city: 'Petra',
+              hotelNameSnapshot: 'Petra Standard Hotel',
+              roomType: 'Classic Room',
+              mealPlan: 'HB',
+              mealPlanCode: 'HB',
+              nights: 1,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+        createHotelOptionSet({
+          id: 'set-dlx',
+          name: '4 Star DLX',
+          hotelOptions: [
+            {
+              id: 'dlx-amman',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman Deluxe Hotel',
+              roomType: 'Deluxe Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: true,
+              roomCategory: { name: 'Deluxe Room', code: 'DLX' },
+              hotel: null,
+            },
+            {
+              id: 'dlx-petra',
+              city: 'Petra',
+              hotelNameSnapshot: 'Petra Deluxe Hotel',
+              roomType: 'Junior Suite',
+              mealPlan: 'HB',
+              mealPlanCode: 'HB',
+              nights: 1,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+
+  assert.ok(proposal.accommodationMatrix);
+  assert.deepEqual(proposal.accommodationMatrix.optionSets.map((optionSet) => optionSet.name), ['4 Star STD', '4 Star DLX']);
+  assert.deepEqual(proposal.accommodationMatrix.rows.map((row) => row.city), ['Amman', 'Petra']);
+  assert.equal(proposal.accommodationMatrix.rows[0].cells[0].primaryHotel, 'Amman Standard Hotel');
+  assert.equal(proposal.accommodationMatrix.rows[0].cells[1].primaryHotel, 'Amman Deluxe Hotel');
+  assert.match(hotelOptionsHtml, /Accommodation Comparison/);
+  assert.match(hotelOptionsHtml, /Amman Standard Hotel/);
+  assert.match(hotelOptionsHtml, /Amman Deluxe Hotel/);
+  assert.match(hotelOptionsHtml, /Recommended/);
+});
+
+test('proposal V3 keeps hotel option cards as fallback when matrix is not eligible', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [createHotelOptionSet()],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+
+  assert.equal(proposal.accommodationMatrix, null);
+  assert.doesNotMatch(hotelOptionsHtml, /Accommodation Comparison/);
+  assert.match(hotelOptionsHtml, /proposal-hotel-option-card/);
+  assert.match(hotelOptionsHtml, /Amman Central Hotel/);
+});
+
+test('proposal V3 does not render accommodation matrix when option sets have no shared cities', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          id: 'set-amman',
+          name: 'Amman Only',
+          hotelOptions: [
+            {
+              id: 'amman-only',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman Only Hotel',
+              roomType: 'Standard Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 1,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+        createHotelOptionSet({
+          id: 'set-petra',
+          name: 'Petra Only',
+          hotelOptions: [
+            {
+              id: 'petra-only',
+              city: 'Petra',
+              hotelNameSnapshot: 'Petra Only Hotel',
+              roomType: 'Classic Room',
+              mealPlan: 'HB',
+              mealPlanCode: 'HB',
+              nights: 1,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.accommodationMatrix, null);
+});
+
+test('proposal V3 accommodation matrix keeps long alternative hotel lists compact', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [],
+      quoteOptions: [
+        createHotelOptionSet({
+          id: 'set-std',
+          name: '4 Star STD',
+          hotelOptions: [
+            {
+              id: 'std-primary',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman Primary Hotel',
+              roomType: 'Standard Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+            ...['One', 'Two', 'Three', 'Four'].map((label, index) => ({
+              id: `std-alt-${index}`,
+              city: 'Amman',
+              hotelNameSnapshot: `Amman Alternative ${label}`,
+              roomType: 'Standard Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: false,
+              roomCategory: null,
+              hotel: null,
+            })),
+          ],
+        }),
+        createHotelOptionSet({
+          id: 'set-dlx',
+          name: '4 Star DLX',
+          hotelOptions: [
+            {
+              id: 'dlx-primary',
+              city: 'Amman',
+              hotelNameSnapshot: 'Amman Deluxe Primary Hotel',
+              roomType: 'Deluxe Room',
+              mealPlan: 'BB',
+              mealPlanCode: 'BB',
+              nights: 2,
+              isPrimary: true,
+              roomCategory: null,
+              hotel: null,
+            },
+          ],
+        }),
+      ],
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const hotelOptionsHtml = (service as any).renderHotelOptionSets(proposal);
+  const firstCell = proposal.accommodationMatrix?.rows[0].cells[0];
+
+  assert.ok(firstCell);
+  assert.deepEqual(firstCell.alternativeHotels, ['Amman Alternative One', 'Amman Alternative Two']);
+  assert.equal(firstCell.hasMoreAlternatives, true);
+  assert.match(hotelOptionsHtml, /Amman Alternative One/);
+  assert.match(hotelOptionsHtml, /Amman Alternative Two/);
+  assert.match(hotelOptionsHtml, /Alternatives available/);
+  assert.match(hotelOptionsHtml, /Amman Alternative Four/);
+});
+
 test('proposal V3 maps legacy snapshot-only hotel option rows safely', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({
@@ -948,7 +1163,7 @@ test('proposal PDF export HTML contains client-safe consistency lines rendered t
   assert.doesNotMatch(html, /Aventus DMC|PDF sell total|finalCost override|PDF total cost|PDF margin|supplierCost|totalCost|gross profit/i);
 });
 
-test('proposal PDF template and footer use AXIS branding without warm palette colors', () => {
+test('proposal PDF template supports dynamic branding without warm palette colors', () => {
   const cssSource = readFileSync(resolve(__dirname, 'proposal-v3.css'), 'utf8');
   const templateSource = readFileSync(resolve(__dirname, 'proposal-v3.hbs'), 'utf8');
   const serviceSource = readFileSync(resolve(__dirname, 'proposal-v3.service.ts'), 'utf8');
@@ -956,14 +1171,52 @@ test('proposal PDF template and footer use AXIS branding without warm palette co
 
   assert.match(templateSource, /proposal-brand-logo/);
   assert.match(templateSource, /hotelOptionSetsHtml/);
-  assert.match(templateSource, /AXIS Destination Management/);
-  assert.match(serviceSource, /AXIS Destination Management/);
+  assert.match(templateSource, /alt="\{\{brandName\}\}"/);
+  assert.match(templateSource, /footerLine/);
+  assert.match(serviceSource, /footerLine/);
   assert.match(mapperSource, /AXIS_LOGO_URL/);
   assert.match(cssSource, /--proposal-accent:\s*#1FA3D6/);
   assert.match(cssSource, /\.proposal-hotel-options/);
+  assert.match(cssSource, /\.proposal-footer/);
   assert.match(cssSource, /\.proposal-brand-logo-stage\s*\{[\s\S]*background:\s*#F3F4F6/);
   assert.doesNotMatch(cssSource, /#F5EFE6|#F3E8D0|#fffdfa|#f5efe6|#fcf8f2|#f9f3ea|#c8a96a|#8a6a3a|rgba\(200,\s*169,\s*106|rgba\(138,\s*106,\s*58|proposal-brand-logo-stage\s*\{[\s\S]*#061B33/i);
   assert.doesNotMatch(serviceSource + mapperSource, /Aventus DMC|PDF sell total|finalCost override|Desert Compass Jordan/i);
+});
+
+test('proposal PDF uses dynamic brand company metadata when available', async () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      brandCompany: {
+        name: 'Levant Journeys',
+        website: 'https://levant.example',
+        logoUrl: 'https://cdn.example/fallback-logo.png',
+        primaryColor: '#123456',
+        branding: {
+          displayName: 'Levant Signature DMC',
+          logoUrl: 'https://cdn.example/brand-logo.png',
+          primaryColor: '#005F73',
+          headerSubtitle: 'Tailored journeys across Jordan and the Levant.',
+          footerText: 'Levant Signature DMC | Bespoke travel design',
+          website: 'https://levant.example',
+          email: 'sales@levant.example',
+          phone: '+962 6 000 0000',
+        },
+      },
+    }),
+  );
+  const service = new ProposalV3Service({} as any);
+  const html = await (service as any).renderHtml(proposal);
+
+  assert.equal(proposal.brandName, 'Levant Signature DMC');
+  assert.equal(proposal.logoUrl, 'https://cdn.example/brand-logo.png');
+  assert.equal(proposal.accentColor, '#005F73');
+  assert.equal(proposal.coverIntro, 'Tailored journeys across Jordan and the Levant.');
+  assert.equal(proposal.footerLine, 'Levant Signature DMC | Bespoke travel design');
+  assert.equal(proposal.contactLine, 'https://levant.example | sales@levant.example | +962 6 000 0000');
+  assert.match(html, /Levant Signature DMC/);
+  assert.match(html, /https:\/\/cdn\.example\/brand-logo\.png/);
+  assert.match(html, /Levant Signature DMC \| Bespoke travel design/);
+  assert.match(html, /sales@levant\.example/);
 });
 
 test('proposal PDF brand name falls back to AXIS instead of demo brand labels', () => {
@@ -980,6 +1233,27 @@ test('proposal PDF brand name falls back to AXIS instead of demo brand labels', 
   );
 
   assert.equal(proposal.brandName, 'AXIS Destination Management');
+  assert.equal(proposal.logoUrl, 'https://axisdmc.com/wp-content/uploads/2024/09/Axis-white-logo-2-1024x482.png');
+  assert.equal(proposal.footerLine, 'AXIS Destination Management');
+});
+
+test('proposal PDF subtitle generation follows destinations instead of hardcoded routing', () => {
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      nightCount: 1,
+      itineraries: [
+        { id: 'day-1', dayNumber: 1, title: 'Day 1: Amman', description: 'Arrival.' },
+        { id: 'day-2', dayNumber: 2, title: 'Day 2: Aqaba', description: 'Red Sea stay.' },
+      ],
+      quoteItems: [
+        createHotelPdfItem({ itineraryId: 'day-1', hotel: { name: 'Amman Hotel', city: 'Amman' } }),
+        createHotelPdfItem({ id: 'item-2', itineraryId: 'day-2', hotel: { name: 'Aqaba Hotel', city: 'Aqaba' } }),
+      ],
+    }),
+  );
+
+  assert.equal(proposal.coverSubtitle, 'Amman · Aqaba');
+  assert.notEqual(proposal.coverSubtitle, 'Amman · Petra · Wadi Rum');
 });
 
 test('quote PDF renderer exposes premium client-ready sections without internal pricing labels', () => {

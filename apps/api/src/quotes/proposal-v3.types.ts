@@ -146,17 +146,33 @@ export type ProposalV3Quote = {
   }>;
   clientCompany?: {
     name?: string | null;
+    website?: string | null;
+    logoUrl?: string | null;
+    primaryColor?: string | null;
     branding?: {
       displayName?: string | null;
       logoUrl?: string | null;
+      headerSubtitle?: string | null;
+      footerText?: string | null;
+      website?: string | null;
+      email?: string | null;
+      phone?: string | null;
       primaryColor?: string | null;
     } | null;
   } | null;
   brandCompany?: {
     name?: string | null;
+    website?: string | null;
+    logoUrl?: string | null;
+    primaryColor?: string | null;
     branding?: {
       displayName?: string | null;
       logoUrl?: string | null;
+      headerSubtitle?: string | null;
+      footerText?: string | null;
+      website?: string | null;
+      email?: string | null;
+      phone?: string | null;
       primaryColor?: string | null;
     } | null;
   } | null;
@@ -261,12 +277,34 @@ export type ProposalV3HotelOptionSet = {
   options: ProposalV3HotelOption[];
 };
 
+export type ProposalV3AccommodationMatrix = {
+  optionSets: Array<{
+    id: string;
+    name: string;
+  }>;
+  rows: Array<{
+    city: string;
+    cells: Array<{
+      optionSetId: string;
+      primaryHotel: string | null;
+      room: string | null;
+      mealPlan: string | null;
+      nights: number | null;
+      isRecommended: boolean;
+      alternativeHotels: string[];
+      hasMoreAlternatives: boolean;
+    }>;
+  }>;
+};
+
 export type ProposalV3ViewModel = {
   documentTitle: string;
   metaTitle: string;
   brandName: string;
   logoUrl: string;
   accentColor: string;
+  footerLine: string;
+  contactLine: string;
   quoteReference: string;
   travelerName: string;
   coverSubtitle: string;
@@ -286,6 +324,7 @@ export type ProposalV3ViewModel = {
   highlights: string[];
   accommodationRows: ProposalV3AccommodationRow[];
   hotelOptionSets: ProposalV3HotelOptionSet[];
+  accommodationMatrix: ProposalV3AccommodationMatrix | null;
   days: ProposalV3Day[];
   investment: {
     title: string;

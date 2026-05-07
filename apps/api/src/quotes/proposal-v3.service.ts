@@ -77,26 +77,30 @@ export class ProposalV3Service {
 
   async getProposalPdf(quoteId: string, actor?: AuthenticatedActor) {
     console.info('[proposal-v3] getProposalPdf:start', { quoteId });
-    const html = await this.getProposalHtml(quoteId, actor);
+    const quote = await this.quotesService.findOne(quoteId, actor);
 
-    if (!html) {
+    if (!quote) {
       console.warn('[proposal-v3] getProposalPdf:no-html', { quoteId });
       return null;
     }
 
-    return this.renderPdfFromHtml(html, 'quoteId', quoteId);
+    const viewModel = mapQuoteToProposalV3(quote as any);
+    const html = await this.renderHtml(viewModel);
+    return this.renderPdfFromHtml(html, 'quoteId', quoteId, viewModel.footerLine);
   }
 
   async getPublicProposalPdf(token: string) {
     console.info('[proposal-v3] getPublicProposalPdf:start', { token });
-    const html = await this.getPublicProposalHtml(token);
+    const quote = await this.quotesService.findPublicProposalQuote(token);
 
-    if (!html) {
+    if (!quote) {
       console.warn('[proposal-v3] getPublicProposalPdf:no-html', { token });
       return null;
     }
 
-    return this.renderPdfFromHtml(html, 'token', token);
+    const viewModel = mapQuoteToProposalV3(quote as any);
+    const html = await this.renderHtml(viewModel);
+    return this.renderPdfFromHtml(html, 'token', token, viewModel.footerLine);
   }
 
   private async renderProposalHtml(quote: unknown, contextKey: 'quoteId' | 'token', contextValue: string) {
@@ -109,7 +113,7 @@ export class ProposalV3Service {
     return this.renderHtml(viewModel);
   }
 
-  private async renderPdfFromHtml(html: string, contextKey: 'quoteId' | 'token', contextValue: string) {
+  private async renderPdfFromHtml(html: string, contextKey: 'quoteId' | 'token', contextValue: string, footerLine = 'Travel Proposal') {
     const logContext = { [contextKey]: contextValue };
 
     let puppeteer: PuppeteerModule;
@@ -180,7 +184,7 @@ export class ProposalV3Service {
           `,
           footerTemplate: `
             <div style="width:100%; padding:0 12mm; font-family:Arial, sans-serif; font-size:8px; color:#6B6B6B; display:flex; justify-content:space-between; align-items:center;">
-              <span>AXIS Destination Management</span>
+              <span>${this.escapeHtml(footerLine)}</span>
               <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
             </div>
           `,
@@ -225,6 +229,8 @@ export class ProposalV3Service {
       brandName: this.escapeHtml(viewModel.brandName),
       logoUrl: this.escapeHtml(viewModel.logoUrl),
       accentColor: this.escapeHtml(viewModel.accentColor),
+      footerLine: this.escapeHtml(viewModel.footerLine),
+      contactLine: this.escapeHtml(viewModel.contactLine),
       quoteReference: this.escapeHtml(viewModel.quoteReference),
       travelerName: this.escapeHtml(viewModel.travelerName),
       coverSubtitle: this.escapeHtml(viewModel.coverSubtitle),
@@ -253,10 +259,10 @@ export class ProposalV3Service {
 
   private resolveTemplateAssetPath(fileName: 'proposal-v3.hbs' | 'proposal-v3.css') {
     const candidatePaths = [
-      resolve(process.cwd(), 'dist', 'quotes', fileName),
-      resolve(process.cwd(), 'apps', 'api', 'dist', 'quotes', fileName),
       resolve(process.cwd(), 'src', 'quotes', fileName),
       resolve(process.cwd(), 'apps', 'api', 'src', 'quotes', fileName),
+      resolve(process.cwd(), 'dist', 'quotes', fileName),
+      resolve(process.cwd(), 'apps', 'api', 'dist', 'quotes', fileName),
     ];
     const resolvedPath = candidatePaths.find((candidatePath) => existsSync(candidatePath)) ?? candidatePaths[0];
 
@@ -337,12 +343,15 @@ export class ProposalV3Service {
       return '';
     }
 
+    const matrixHtml = this.renderAccommodationMatrix(viewModel);
+
     return `
-      <div class="proposal-hotel-options avoid-break">
+      <div class="proposal-hotel-options">
         <header class="proposal-subsection-header">
           <p class="proposal-eyebrow">Accommodation Options</p>
           <h3>Accommodation Options</h3>
         </header>
+        ${matrixHtml}
         <div class="proposal-hotel-option-set-list">
           ${viewModel.hotelOptionSets
             .map((optionSet) => {
@@ -391,6 +400,94 @@ export class ProposalV3Service {
             })
             .join('')}
         </div>
+      </div>
+    `;
+  }
+
+  private renderAccommodationMatrix(viewModel: ProposalV3ViewModel) {
+    const matrix = viewModel.accommodationMatrix;
+    if (!matrix) {
+      return '';
+    }
+
+    const optionSetHeaders = matrix.optionSets
+      .map((optionSet) => `<th scope="col">${this.escapeHtml(optionSet.name)}</th>`)
+      .join('');
+    const cityRows = matrix.rows
+      .map(
+        (row) => `
+          <tr class="proposal-accommodation-matrix-city-row">
+            <th scope="row">${this.escapeHtml(row.city)}</th>
+            ${row.cells.map((cell) => `<td>${this.renderAccommodationMatrixCell(cell)}</td>`).join('')}
+          </tr>
+        `,
+      )
+      .join('');
+
+    return `
+      <section class="proposal-accommodation-matrix-shell">
+        <div class="proposal-hotel-option-set-head proposal-accommodation-matrix-head">
+          <div>
+            <h4>Accommodation Comparison</h4>
+            <p>Primary stays by city and option set.</p>
+          </div>
+          <span>${matrix.optionSets.length} option sets</span>
+        </div>
+        <div class="proposal-table-shell proposal-accommodation-matrix-wrap">
+          <table class="proposal-table proposal-accommodation-matrix">
+            <colgroup>
+              <col class="proposal-accommodation-matrix-city-col" />
+              ${matrix.optionSets.map(() => '<col class="proposal-accommodation-matrix-option-col" />').join('')}
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">City</th>
+                ${optionSetHeaders}
+              </tr>
+            </thead>
+            <tbody>${cityRows}</tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderAccommodationMatrixCell(
+    cell: NonNullable<ProposalV3ViewModel['accommodationMatrix']>['rows'][number]['cells'][number],
+  ) {
+    if (!cell.primaryHotel) {
+      return '<p class="proposal-accommodation-matrix-empty">To be confirmed</p>';
+    }
+
+    const detailParts = [
+      cell.room,
+      cell.mealPlan,
+      this.formatHotelOptionNightLabel(cell.nights),
+    ];
+    const details = this.joinInlineParts(detailParts);
+    const alternativesHtml =
+      cell.alternativeHotels.length > 0 || cell.hasMoreAlternatives
+        ? `
+          <div class="proposal-accommodation-matrix-alternatives">
+            <span>Alternatives</span>
+            ${
+              cell.alternativeHotels.length > 0
+                ? `<ul>${cell.alternativeHotels.map((hotel) => `<li>${this.escapeHtml(hotel)}</li>`).join('')}</ul>`
+                : ''
+            }
+            ${cell.hasMoreAlternatives ? '<p>Alternatives available</p>' : ''}
+          </div>
+        `
+        : '';
+
+    return `
+      <div class="proposal-accommodation-matrix-cell">
+        <div class="proposal-accommodation-matrix-cell-head">
+          <strong>${this.escapeHtml(this.getDisplayText(cell.primaryHotel, 'Stay'))}</strong>
+          ${cell.isRecommended ? '<span>Recommended</span>' : ''}
+        </div>
+        ${details ? `<p>${this.escapeHtml(details)}</p>` : ''}
+        ${alternativesHtml}
       </div>
     `;
   }

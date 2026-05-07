@@ -491,6 +491,106 @@ body {
   gap: 12px;
 }
 
+.proposal-accommodation-matrix-shell {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--proposal-border);
+  border-left: 4px solid var(--proposal-accent);
+  border-radius: 14px;
+  background: var(--proposal-paper-soft-2);
+}
+
+.proposal-accommodation-matrix-head {
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.proposal-accommodation-matrix-wrap {
+  overflow: hidden;
+}
+
+.proposal-accommodation-matrix {
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+.proposal-accommodation-matrix-city-col {
+  width: 18%;
+}
+
+.proposal-accommodation-matrix-option-col {
+  width: 27.333%;
+}
+
+.proposal-accommodation-matrix-city-row {
+  break-inside: avoid-page;
+  page-break-inside: avoid;
+}
+
+.proposal-accommodation-matrix th,
+.proposal-accommodation-matrix td {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.proposal-accommodation-matrix tbody th {
+  color: var(--proposal-ink);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  background: #FFFFFF;
+}
+
+.proposal-accommodation-matrix-cell {
+  display: grid;
+  gap: 5px;
+  min-height: 100%;
+}
+
+.proposal-accommodation-matrix-cell-head {
+  display: grid;
+  gap: 4px;
+}
+
+.proposal-accommodation-matrix-cell strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.proposal-accommodation-matrix-cell-head span,
+.proposal-accommodation-matrix-alternatives span {
+  color: var(--proposal-accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.proposal-accommodation-matrix-cell p,
+.proposal-accommodation-matrix-empty,
+.proposal-accommodation-matrix-alternatives p {
+  margin: 0;
+  color: var(--proposal-subtle);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.proposal-accommodation-matrix-alternatives {
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--proposal-border);
+}
+
+.proposal-accommodation-matrix-alternatives ul {
+  margin: 3px 0 0;
+  padding-left: 14px;
+  color: var(--proposal-subtle);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
 .proposal-hotel-option-set {
   padding: 16px;
   border: 1px solid var(--proposal-border);
@@ -708,6 +808,16 @@ body {
 .proposal-empty-state,
 .proposal-table-empty-row td {
   color: var(--proposal-muted);
+}
+
+.proposal-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 4px 12px;
+  color: var(--proposal-muted);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 @page {
