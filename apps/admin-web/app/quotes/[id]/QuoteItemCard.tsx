@@ -125,6 +125,7 @@ type HotelRate = {
 
 type QuoteItem = {
   id: string;
+  serviceId?: string | null;
   itineraryId: string | null;
   activityId?: string | null;
   activity?: {
@@ -486,7 +487,7 @@ export function QuoteItemCard({
   const currentInitialValues = useMemo(
     () => ({
       ...initialValues,
-      serviceId: currentItem.service?.id || '',
+      serviceId: currentItem.serviceId || '',
       externalPackage: {
         packageName: currentItem.externalPackageName || currentItem.service?.name || '',
         country: currentItem.externalPackageCountry || '',

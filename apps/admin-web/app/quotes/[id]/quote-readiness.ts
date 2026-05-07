@@ -24,6 +24,7 @@ export type QuoteReadinessService = {
 
 export type QuoteReadinessItem = {
   id: string;
+  serviceId?: string | null;
   activityId?: string | null;
   itineraryId: string | null;
   serviceDate: string | null;

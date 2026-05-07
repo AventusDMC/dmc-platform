@@ -215,6 +215,7 @@ type ParsedDayContent = {
 };
 
 type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
+  serviceId?: string | null;
   service: SupplierService | null;
   hotel: {
     name: string;
@@ -570,7 +571,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
   const guideValues = parseGuideInitialValues(item.pricingDescription);
 
   return {
-    serviceId: item.service?.id || '',
+    serviceId: item.serviceId || '',
     activityId: item.activityId || '',
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),

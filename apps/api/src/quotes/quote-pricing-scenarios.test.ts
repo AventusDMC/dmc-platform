@@ -723,7 +723,7 @@ test('quote-only EXTERNAL_PACKAGE hotels-only edit keeps pricing stable and serv
     created.id,
     {
       quoteId: quote.id,
-      serviceId: null,
+      serviceId: 'manual/external-package',
       hotelsOrSimilar: 'Updated hotels or similar',
     },
     { companyId: 'company-1' } as any,

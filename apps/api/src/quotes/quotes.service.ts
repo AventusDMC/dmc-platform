@@ -322,6 +322,7 @@ type ScoredServiceMatch = {
 };
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MIN_TRIP_SUMMARY_LENGTH = 20;
 const QUOTE_TYPES = ['FIT', 'GROUP'] as const;
 const BOOKING_TYPES = ['FIT', 'GROUP', 'SERIES'] as const;
@@ -2873,13 +2874,20 @@ export class QuotesService {
   }
 
   private async resolveQuoteItemValues(data: CreateQuoteItemInput) {
+    const hasExternalPackageFields = Boolean(data.packageName || data.country || data.netCost !== undefined);
+    const hasSyntheticExternalPackageServiceId = Boolean(
+      data.serviceId && !UUID_PATTERN.test(data.serviceId) && hasExternalPackageFields,
+    );
+    const normalizedServiceId = hasSyntheticExternalPackageServiceId ? null : data.serviceId || null;
+    const isOneOffExternalPackage = !normalizedServiceId && hasExternalPackageFields;
+
     const [quote, service, activity, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
-      data.serviceId
+      normalizedServiceId
         ? this.prisma.supplierService.findUnique({
-            where: { id: data.serviceId },
+            where: { id: normalizedServiceId },
             include: {
               serviceType: true,
               entranceFee: true,
@@ -2919,7 +2927,6 @@ export class QuotesService {
       throw new BadRequestException('Quote not found');
     }
 
-    const isOneOffExternalPackage = !data.serviceId && Boolean(data.packageName || data.country || data.netCost !== undefined);
     const effectiveService = service || (isOneOffExternalPackage ? this.buildOneOffExternalPackageService(data) : null);
 
     if (!effectiveService) {
@@ -3510,7 +3517,7 @@ export class QuotesService {
       data: {
         quoteId: data.quoteId,
         optionId: data.optionId || null,
-        serviceId: data.serviceId || null,
+        serviceId: normalizedServiceId,
         activityId: activity?.id ?? null,
         itineraryId: itemLegacyItinerary?.id || null,
         serviceDate,
