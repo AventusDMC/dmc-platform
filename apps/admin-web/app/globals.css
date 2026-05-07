@@ -3780,6 +3780,56 @@ select option:checked {
   font-size: 0.9rem;
 }
 
+.transport-rate-card-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transport-rate-card-title-block {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.transport-rate-card-title-block h3 {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.94);
+  font-size: 1.08rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.transport-rate-card-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.transport-rate-card-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(31, 154, 207, 0.1);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.transport-rate-card-chip-muted {
+  background: rgba(30, 27, 24, 0.06);
+  color: rgba(30, 27, 24, 0.72);
+}
+
+.transport-rate-card-operations {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .transport-contract-count {
   display: inline-flex;
   align-items: center;
@@ -4097,6 +4147,135 @@ select option:checked {
   margin-top: 1rem;
 }
 
+.transport-rate-card-detail-shell {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.transport-rate-card-section {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.transport-rate-card-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.transport-rate-card-section-head h4 {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.9);
+  font-size: 1rem;
+  font-weight: 780;
+}
+
+.transport-rate-card-collapsible {
+  display: block;
+}
+
+.transport-rate-card-collapsible > summary,
+.transport-vehicle-pricing-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  color: rgba(30, 27, 24, 0.86);
+  font-size: 0.92rem;
+  font-weight: 780;
+  list-style: none;
+}
+
+.transport-rate-card-collapsible > summary::-webkit-details-marker,
+.transport-vehicle-pricing-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.transport-rate-card-collapsible > summary::after,
+.transport-vehicle-pricing-group > summary::after {
+  content: '+';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: rgba(30, 27, 24, 0.06);
+  color: rgba(30, 27, 24, 0.64);
+}
+
+.transport-rate-card-collapsible[open] > summary::after,
+.transport-vehicle-pricing-group[open] > summary::after {
+  content: '-';
+}
+
+.transport-vehicle-pricing-groups {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.transport-vehicle-pricing-group {
+  padding: 0.85rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.85rem;
+  background: rgba(249, 250, 251, 0.62);
+}
+
+.transport-vehicle-pricing-group small {
+  color: rgba(30, 27, 24, 0.56);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.transport-vehicle-pricing-summary,
+.transport-rate-card-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.7rem;
+  margin-top: 0.85rem;
+}
+
+.transport-vehicle-pricing-summary div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.transport-vehicle-pricing-summary span {
+  color: rgba(30, 27, 24, 0.56);
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.transport-vehicle-pricing-summary strong {
+  color: rgba(30, 27, 24, 0.9);
+  font-size: 0.95rem;
+}
+
+.transport-vehicle-pricing-table-wrap {
+  margin-top: 0.85rem;
+}
+
+.transport-vehicle-pricing-table,
+.transport-rate-card-backend-section .transport-contract-table {
+  min-width: 980px;
+}
+
+.transport-rate-card-backend-section {
+  overflow-x: visible;
+}
+
 .transport-contracts-page .workspace-panel-wide {
   width: 100%;
   max-width: none;
@@ -4115,6 +4294,11 @@ select option:checked {
 @media (max-width: 860px) {
   .transport-rate-card-summary {
     grid-template-columns: 1fr;
+  }
+
+  .transport-rate-card-summary-head,
+  .transport-rate-card-section-head {
+    display: grid;
   }
 
   .supplier-rate-card-safe-filters {
@@ -24433,8 +24617,11 @@ video {
   .transport-rate-card-list,
   .transport-contract-supplier-group,
   .transport-contract-supplier-head,
+  .transport-rate-card-summary-head,
   .transport-rate-card-summary,
   .transport-rate-card-detail-grid,
+  .transport-rate-card-detail-shell,
+  .transport-rate-card-section,
   .transport-rate-card-form-panel,
   .transport-rate-card-metadata-form,
   .routes-workspace,
@@ -24503,6 +24690,8 @@ video {
   .quote-selected-transport-summary,
   .transport-rate-card-summary,
   .transport-rate-card-detail-grid,
+  .transport-vehicle-pricing-summary,
+  .transport-rate-card-secondary-grid,
   .transport-pricing-rule-grid,
   .route-detail-grid,
   .vehicle-detail-grid,
@@ -24758,6 +24947,8 @@ video {
   .quote-client-modal-actions,
   .transport-rate-card-toolbar,
   .transport-contract-supplier-head,
+  .transport-rate-card-summary-head,
+  .transport-rate-card-section-head,
   .quote-service-day-actions,
   .quote-timeline-drawer-actions
 ) {
@@ -24776,6 +24967,8 @@ video {
   .quote-client-modal-actions > *,
   .transport-rate-card-toolbar > *,
   .transport-contract-supplier-head > *,
+  .transport-rate-card-summary-head > *,
+  .transport-rate-card-section-head > *,
   .quote-service-day-actions > *,
   .quote-timeline-drawer-actions > *
 ) {
@@ -24807,6 +25000,8 @@ video {
     .quote-selected-transport-summary,
     .transport-rate-card-summary,
     .transport-rate-card-detail-grid,
+    .transport-vehicle-pricing-summary,
+    .transport-rate-card-secondary-grid,
     .transport-pricing-rule-grid,
     .route-detail-grid,
     .vehicle-detail-grid,

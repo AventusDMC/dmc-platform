@@ -53,7 +53,7 @@ describe('transport catalog supplier rate-card UX', () => {
       "type ServiceCategory = 'Transfers' | 'Disposal' | 'Add-ons';",
       "const SERVICE_CATEGORIES: ServiceCategory[] = ['Transfers', 'Disposal', 'Add-ons'];",
       'transport-contract-supplier-group',
-      '{rateCard.rates.length} rate lines',
+      '{rateCard.rateLineCount ?? rateCard.rates.length} rate lines',
       'transport-contract-divider',
       'aria-label={`Rate lines for ${rateCard.name}`}',
       'Supplier Rate Card',
@@ -68,7 +68,7 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(tableSource, [
       'transport-contract-table',
-      '<th>Service / Route</th>',
+      '<th>Route</th>',
       '<th>Classification</th>',
       '<th>Vehicle Size</th>',
       '<th>Duration / Basis</th>',
@@ -79,6 +79,25 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
 
     assert.equal(tableSource.includes('<th>Service type</th>'), false);
+  });
+
+  it('structures supplier rate-card details into readable pricing workflow sections', () => {
+    expectSourceContains(tableSource, [
+      'transport-rate-card-summary-head',
+      'transport-rate-card-chip-row',
+      'Vehicle Pricing',
+      'transport-vehicle-pricing-group',
+      'Add-ons &amp; Supplements',
+      'Discounts / quote pricing driver',
+      'Backend rows',
+      '<th>Vehicle Type</th>',
+      '<th>Pax Range</th>',
+      '<th>Route</th>',
+      '<th>Currency</th>',
+      '<th>Notes</th>',
+      '<th>Actions</th>',
+      'open={sectionIndex === 0}',
+    ]);
   });
 
   it('keeps creation and edit forms in a single side panel instead of inline rows', () => {

@@ -12,7 +12,7 @@ import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { isBackendUuid } from '../lib/backend-uuid';
-import { formatClassificationLabel, formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
+import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
 import { getCanonicalRouteLabel } from '../lib/transport-routes';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import {
@@ -1846,6 +1846,7 @@ export function VehicleRatesTable({
             const visibleRateLines = isExpanded ? rateCard.rates.slice(0, visibleRateLineCount) : [];
             const hasMoreRateLines = visibleRateLineCount < rateCard.rates.length;
             const vehicleSections = isExpanded ? groupRateLinesByVehicleType(rateCard.rates) : [];
+            const vehicleTypeChips = Array.from(new Set((rateCard.vehicleTypes?.length ? rateCard.vehicleTypes : [rateCard.vehicleType]).filter(Boolean)));
             const vehicleSectionFormIsOpen = activeVehicleSectionCardId === rateCard.id;
             const selectedVehicleSectionType = vehicleSectionFormIsOpen
               ? normalizeVehicleTypeLabel(vehicleSectionDraft.vehicleType, vehicleTypeOptions) || vehicleSectionDraft.vehicleType
@@ -1857,17 +1858,50 @@ export function VehicleRatesTable({
 
             return (
               <section key={rateCard.id} className="transport-contract-supplier-group">
-                <div className="transport-contract-supplier-head">
-                  <div>
+                <div className="transport-rate-card-summary-head">
+                  <div className="transport-rate-card-title-block">
                     <p className="transport-rate-card-label">Supplier Rate Card</p>
                     <h3>{rateCard.name}</h3>
-                    <p className="transport-rate-card-supplier">Supplier: {formatSupplierDisplay(rateCard.supplierName)}</p>
-                    <p className="transport-rate-card-supplier">
-                      Route: {formatDash(rateCard.routeOrServiceArea)}
-                    </p>
+                    <div className="transport-rate-card-chip-row" aria-label={`Summary for ${rateCard.name}`}>
+                      <span className="transport-rate-card-chip">Supplier: {formatSupplierDisplay(rateCard.supplierName)}</span>
+                      <span className="transport-rate-card-chip">Route: {formatDash(rateCard.routeOrServiceArea)}</span>
+                      <span className="transport-rate-card-chip">Currency: {formatDash(rateCard.currency)}</span>
+                      <span className="transport-rate-card-chip">
+                        Validity: {formatDate(rateCard.validFrom)} - {formatDate(rateCard.validTo)}
+                      </span>
+                      <span className="transport-rate-card-chip">{rateCard.rateLineCount ?? rateCard.rates.length} rate lines</span>
+                    </div>
                   </div>
                   <div className="table-action-row">
-                    <span className="transport-contract-count">{rateCard.rateLineCount ?? rateCard.rates.length} rate lines</span>
+                    <button type="button" className="compact-button" onClick={() => handleToggleRateCardDetails(rateCard.id)}>
+                      {loadingRateCardDetailId === rateCard.id ? 'Loading details...' : isExpanded ? 'Hide details' : 'View details'}
+                    </button>
+                    {rateCard.rates[0] ? (
+                      <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate: rateCard.rates[0] })}>
+                        Edit
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="compact-button"
+                      onClick={() => void handleStartDuplicateRateCard(rateCard)}
+                      disabled={!rateCard.isManual && rateCard.rates.length === 0 && loadingRateCardDetailId === rateCard.id}
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      className="compact-button compact-button-danger"
+                      onClick={() => setPendingRateCardDelete({ rateCard })}
+                      disabled={deleteIsDisabled}
+                      title={isSystemRateCard(rateCard) ? 'Locked or system rate cards cannot be deleted' : undefined}
+                    >
+                      {deletingId === rateCard.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+                <div className="transport-rate-card-operations">
+                  <div className="table-action-row">
                     <button
                       type="button"
                       className="compact-button"
@@ -1894,15 +1928,6 @@ export function VehicleRatesTable({
                       title={backendActionsDisabled ? 'Manual local cards keep their saved supplier metadata' : detailsRequired ? 'Open details before editing supplier' : undefined}
                     >
                       Edit Supplier
-                    </button>
-                    <button
-                      type="button"
-                      className="compact-button compact-button-danger"
-                      onClick={() => setPendingRateCardDelete({ rateCard })}
-                      disabled={deleteIsDisabled}
-                      title={isSystemRateCard(rateCard) ? 'Locked or system rate cards cannot be deleted' : undefined}
-                    >
-                      {deletingId === rateCard.id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
@@ -1940,8 +1965,12 @@ export function VehicleRatesTable({
                 <div className="transport-contract-divider" />
                 <div className="transport-rate-card-summary">
                   <div>
+                    <span>Supplier</span>
+                    <strong>{formatSupplierDisplay(rateCard.supplierName)}</strong>
+                  </div>
+                  <div>
                     <span>Vehicle types</span>
-                    <strong>{formatDash(rateCard.vehicleTypes?.join(', ') || rateCard.vehicleType)}</strong>
+                    <strong>{formatDash(vehicleTypeChips.join(', ') || rateCard.vehicleType)}</strong>
                   </div>
                   <div>
                     <span>Route / service area</span>
@@ -1964,26 +1993,19 @@ export function VehicleRatesTable({
                     <strong>{formatDash(rateCard.status)}</strong>
                   </div>
                 </div>
+                {vehicleTypeChips.length > 0 ? (
+                  <div className="transport-rate-card-chip-row">
+                    {vehicleTypeChips.map((vehicleType) => (
+                      <span key={vehicleType} className="transport-rate-card-chip transport-rate-card-chip-muted">
+                        {vehicleType}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="table-action-row">
-                  <button type="button" className="compact-button" onClick={() => handleToggleRateCardDetails(rateCard.id)}>
-                    {loadingRateCardDetailId === rateCard.id ? 'Loading details...' : isExpanded ? 'Hide details' : 'View details'}
-                  </button>
                   <button type="button" className="compact-button" onClick={() => void handleStartAddVehicleSection(rateCard)}>
                     + Add Vehicle Type
                   </button>
-                  <button
-                    type="button"
-                    className="compact-button"
-                    onClick={() => void handleStartDuplicateRateCard(rateCard)}
-                    disabled={!rateCard.isManual && rateCard.rates.length === 0 && loadingRateCardDetailId === rateCard.id}
-                  >
-                    Duplicate
-                  </button>
-                  {rateCard.rates[0] ? (
-                    <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate: rateCard.rates[0] })}>
-                      Edit
-                    </button>
-                  ) : null}
                 </div>
                 {vehicleSectionFormIsOpen ? (
                   <form className="transport-rate-card-metadata-form" onSubmit={(event) => event.preventDefault()}>
@@ -2033,188 +2055,141 @@ export function VehicleRatesTable({
                     </section>
                   </form>
                 ) : null}
-                {pricing ? (
-                  <>
-                    <h4 className="transport-rate-lines-title">Vehicle type pricing sections</h4>
-                    <div className="transport-rate-card-detail-grid">
-                      {vehicleSections.map((section) => {
-                        const sectionPricing = getRateCardPricing({ ...rateCard, rates: section.rates });
-
-                        return (
-                          <section key={section.vehicleType} className="detail-card">
-                            <div className="workspace-section-head">
-                              <div>
-                                <p className="eyebrow">Vehicle Type</p>
-                                <h2>{formatDash(section.vehicleType)}</h2>
-                              </div>
-                            </div>
-                            <div className="quote-preview-total-list">
-                              <div><span>Pricing Mode: Airport Transfer</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.airportTransfer)}</strong></div>
-                              <div><span>Pricing Mode: Point-to-Point</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.pointToPoint)}</strong></div>
-                              <div><span>Pricing Mode: Half Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.halfDay)}</strong></div>
-                              <div><span>Pricing Mode: Full Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.fullDay)}</strong></div>
-                              <div><span>Pricing Mode: Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.stationaryWaitingHourly)}</strong></div>
-                              <div><span>Pricing Mode: Extra Hour</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraHourRate)}</strong></div>
-                              <div><span>Pricing Mode: Extra KM</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraKmRate)}</strong></div>
-                            </div>
-                          </section>
-                        );
-                      })}
-                    </div>
-                    <div className="table-wrap transport-contract-table-wrap">
-                      <table className="data-table allotment-table transport-contract-table" aria-label={`Supplier rate card summary for ${rateCard.name}`}>
-                        <thead>
-                          <tr>
-                            <th>Supplier</th>
-                            <th>Vehicle Type</th>
-                            <th>Route / Service Area</th>
-                            <th>Airport Transfer</th>
-                            <th>Point-to-Point</th>
-                            <th>Half Day</th>
-                            <th>Full Day</th>
-                            <th>Currency</th>
-                            <th>Validity</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td>{formatSupplierDisplay(rateCard.supplierName)}</td>
-                            <td>{formatDash(rateCard.vehicleTypes?.join(', ') || rateCard.vehicleType)}</td>
-                            <td>{formatDash(rateCard.routeOrServiceArea)}</td>
-                            <td>{formatMoney(rateCard.currency, pricing.baseRates.airportTransfer)}</td>
-                            <td>{formatMoney(rateCard.currency, pricing.baseRates.pointToPoint)}</td>
-                            <td>{formatMoney(rateCard.currency, pricing.baseRates.halfDay)}</td>
-                            <td>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</td>
-                            <td>{formatDash(rateCard.currency)}</td>
-                            <td>{formatDate(rateCard.validFrom)} - {formatDate(rateCard.validTo)}</td>
-                            <td>{formatDash(rateCard.status)}</td>
-                            <td>
-                              <div className="table-action-row">
-                                <button type="button" className="compact-button" onClick={() => handleToggleRateCardDetails(rateCard.id)}>
-                                  Hide details
-                                </button>
-                                {rateCard.rates[0] ? (
-                                  <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate: rateCard.rates[0] })}>
-                                    Edit
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="compact-button compact-button-danger"
-                                  onClick={() => setPendingRateCardDelete({ rateCard })}
-                                  disabled={deleteIsDisabled}
-                                  title={isSystemRateCard(rateCard) ? 'Locked or system rate cards cannot be deleted' : undefined}
-                                >
-                                  {deletingId === rateCard.id ? 'Deleting...' : 'Delete'}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : null}
                 {pricing && contractTerms ? (
-                  <div className="transport-rate-card-detail-grid">
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
+                  <div className="transport-rate-card-detail-shell">
+                    <section className="transport-rate-card-section">
+                      <div className="transport-rate-card-section-head">
                         <div>
-                          <p className="eyebrow">Card Info</p>
-                          <h2>{rateCard.name}</h2>
+                          <p className="eyebrow">Primary pricing</p>
+                          <h4>Vehicle Pricing</h4>
                         </div>
+                        <button type="button" className="compact-button" onClick={() => void handleStartAddVehicleSection(rateCard)}>
+                          + Add Vehicle Type
+                        </button>
                       </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Supplier</span><strong>{formatSupplierDisplay(rateCard.supplierName)}</strong></div>
-                        <div><span>Vehicle types</span><strong>{formatDash(rateCard.vehicleTypes?.join(', ') || rateCard.vehicleType)}</strong></div>
-                        <div><span>Route or service area</span><strong>{formatDash(rateCard.routeOrServiceArea)}</strong></div>
-                        <div><span>Currency</span><strong>{formatDash(rateCard.currency)}</strong></div>
-                        <div><span>Valid from</span><strong>{formatDate(rateCard.validFrom)}</strong></div>
-                        <div><span>Valid to</span><strong>{formatDate(rateCard.validTo)}</strong></div>
-                        <div><span>Status</span><strong>{formatDash(rateCard.status)}</strong></div>
+                      <div className="transport-vehicle-pricing-groups">
+                        {vehicleSections.map((section, sectionIndex) => {
+                          const sectionPricing = getRateCardPricing({ ...rateCard, rates: section.rates });
+
+                          return (
+                            <details key={section.vehicleType} className="transport-vehicle-pricing-group" open={sectionIndex === 0}>
+                              <summary>
+                                <span>{formatDash(section.vehicleType)}</span>
+                                <small>{section.rates.length} rate lines</small>
+                              </summary>
+                              <div className="transport-vehicle-pricing-summary">
+                                <div><span>Airport Transfer</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.airportTransfer)}</strong></div>
+                                <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.pointToPoint)}</strong></div>
+                                <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.halfDay)}</strong></div>
+                                <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.fullDay)}</strong></div>
+                                <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.stationaryWaitingHourly)}</strong></div>
+                                <div><span>Extra Hour</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraHourRate)}</strong></div>
+                                <div><span>Extra KM</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraKmRate)}</strong></div>
+                              </div>
+                              <div className="table-wrap transport-contract-table-wrap transport-vehicle-pricing-table-wrap">
+                                <table className="data-table allotment-table transport-contract-table transport-vehicle-pricing-table" aria-label={`${section.vehicleType} pricing rows for ${rateCard.name}`}>
+                                  <thead>
+                                    <tr>
+                                      <th>Pricing Mode</th>
+                                      <th>Route / Service</th>
+                                      <th>Pax Range</th>
+                                      <th>Price</th>
+                                      <th>Validity</th>
+                                      <th>Notes</th>
+                                      <th>Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {section.rates.map((rate) => (
+                                      <tr key={rate.id}>
+                                        <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
+                                        <td>
+                                          <strong>{formatRouteLabel(rate.routeName)}</strong>
+                                          <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
+                                        </td>
+                                        <td>{rate.minPax} - {rate.maxPax}</td>
+                                        <td>{rate.currency} {rate.price.toFixed(2)}</td>
+                                        <td>{formatDate(rate.validFrom)} - {formatDate(rate.validTo)}</td>
+                                        <td>{formatDash(rate.discountNotes || rate.guideSeatPolicy)}</td>
+                                        <td>
+                                          <div className="table-action-row">
+                                            {isLocalVehicleSectionRate(rate) ? null : (
+                                              <>
+                                                <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
+                                                  Edit
+                                                </button>
+                                                <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />
+                                              </>
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="compact-button compact-button-danger"
+                                              onClick={() => handleDelete(rate)}
+                                              disabled={deletingId === rate.id}
+                                            >
+                                              {deletingId === rate.id ? 'Deleting...' : 'Delete'}
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          );
+                        })}
                       </div>
                     </section>
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
-                        <div>
-                          <p className="eyebrow">Base pricing modes</p>
-                          <h2>Quote pricing driver</h2>
+
+                    <details className="transport-rate-card-section transport-rate-card-collapsible">
+                      <summary>Add-ons &amp; Supplements</summary>
+                      <div className="transport-rate-card-secondary-grid">
+                        <div className="quote-preview-total-list">
+                          <div><span>Extra Hour</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.extraHourRate)}</strong></div>
+                          <div><span>Extra KM</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.extraKmRate)}</strong></div>
+                          <div><span>Night supplement</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.nightSupplement)}</strong></div>
+                          <div><span>Weekend / holiday</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.weekendHolidaySupplement)}</strong></div>
+                        </div>
+                        <div className="quote-preview-total-list">
+                          <div><span>Driver accommodation</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.driverAccommodation)}</strong></div>
+                          <div><span>Driver meal allowance</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.driverMealAllowance)}</strong></div>
+                          <div><span>Parking fee</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.parkingFee)}</strong></div>
+                          <div><span>Border permit fee</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.borderPermitFee)}</strong></div>
+                          <div><span>Guide seat / free seat policy</span><strong>{formatDash(pricing.busCoachSpecific.guideSeatPolicy)}</strong></div>
+                          <div><span>Minimum charge</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.minimumCharge)}</strong></div>
+                        </div>
+                        <div className="quote-preview-total-list">
+                          <div><span>Half-day included hours</span><strong>{formatDash(pricing.includedLimits.halfDayIncludedHours)}</strong></div>
+                          <div><span>Half-day included km</span><strong>{formatDash(pricing.includedLimits.halfDayIncludedKm)}</strong></div>
+                          <div><span>Full-day included hours</span><strong>{formatDash(pricing.includedLimits.fullDayIncludedHours)}</strong></div>
+                          <div><span>Full-day included km</span><strong>{formatDash(pricing.includedLimits.fullDayIncludedKm)}</strong></div>
                         </div>
                       </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Pricing Mode: Airport Transfer</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.airportTransfer)}</strong></div>
-                        <div><span>Pricing Mode: Point-to-Point</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.pointToPoint)}</strong></div>
-                        <div><span>Pricing Mode: Half Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.halfDay)}</strong></div>
-                        <div><span>Pricing Mode: Full Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</strong></div>
-                        <div><span>Pricing Mode: Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.stationaryWaitingHourly)}</strong></div>
-                      </div>
-                    </section>
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
-                        <div>
-                          <p className="eyebrow">Included Limits</p>
-                          <h2>Hours and distance</h2>
+                    </details>
+
+                    <details className="transport-rate-card-section transport-rate-card-collapsible">
+                      <summary>Discounts / quote pricing driver</summary>
+                      <div className="transport-rate-card-secondary-grid">
+                        <div className="quote-preview-total-list">
+                          <div><span>Airport Transfer</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.airportTransfer)}</strong></div>
+                          <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.pointToPoint)}</strong></div>
+                          <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.halfDay)}</strong></div>
+                          <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</strong></div>
+                          <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.stationaryWaitingHourly)}</strong></div>
+                        </div>
+                        <div className="quote-preview-total-list">
+                          <div><span>Contract discount %</span><strong>{formatPercent(contractTerms.contractDiscountPercent)}</strong></div>
+                          <div><span>Discount applies to</span><strong>{formatDash(contractTerms.discountAppliesTo)}</strong></div>
+                          <div><span>Gross rate</span><strong>{formatMoney(rateCard.currency, contractTerms.grossRate)}</strong></div>
+                          <div><span>Net supplier cost</span><strong>{formatMoney(rateCard.currency, contractTerms.netSupplierCost)}</strong></div>
+                          <div><span>Discount notes</span><strong>{formatDash(contractTerms.discountNotes)}</strong></div>
                         </div>
                       </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Half-day included hours</span><strong>{formatDash(pricing.includedLimits.halfDayIncludedHours)}</strong></div>
-                        <div><span>Half-day included km</span><strong>{formatDash(pricing.includedLimits.halfDayIncludedKm)}</strong></div>
-                        <div><span>Full-day included hours</span><strong>{formatDash(pricing.includedLimits.fullDayIncludedHours)}</strong></div>
-                        <div><span>Full-day included km</span><strong>{formatDash(pricing.includedLimits.fullDayIncludedKm)}</strong></div>
-                      </div>
-                    </section>
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
-                        <div>
-                          <p className="eyebrow">Extra pricing modes</p>
-                          <h2>Usage-based pricing</h2>
-                        </div>
-                      </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Pricing Mode: Extra Hour</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.extraHourRate)}</strong></div>
-                        <div><span>Pricing Mode: Extra KM</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.extraKmRate)}</strong></div>
-                        <div><span>Pricing Mode: Add-on / Supplement - Night</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.nightSupplement)}</strong></div>
-                        <div><span>Pricing Mode: Add-on / Supplement - Weekend / holiday</span><strong>{formatMoney(rateCard.currency, pricing.extraCharges.weekendHolidaySupplement)}</strong></div>
-                      </div>
-                    </section>
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
-                        <div>
-                          <p className="eyebrow">Bus/coach supplements</p>
-                          <h2>Add-on / Supplement pricing</h2>
-                        </div>
-                      </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Driver accommodation</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.driverAccommodation)}</strong></div>
-                        <div><span>Driver meal allowance</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.driverMealAllowance)}</strong></div>
-                        <div><span>Parking fee</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.parkingFee)}</strong></div>
-                        <div><span>Border permit fee</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.borderPermitFee)}</strong></div>
-                        <div><span>Guide seat / free seat policy</span><strong>{formatDash(pricing.busCoachSpecific.guideSeatPolicy)}</strong></div>
-                        <div><span>Minimum charge</span><strong>{formatMoney(rateCard.currency, pricing.busCoachSpecific.minimumCharge)}</strong></div>
-                      </div>
-                    </section>
-                    <section className="detail-card">
-                      <div className="workspace-section-head">
-                        <div>
-                          <p className="eyebrow">Contract Terms</p>
-                          <h2>Supplier-side discount</h2>
-                          <p className="detail-copy">
-                            This discount is applied to supplier cost before markup and selling price. It is not a customer quote discount.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="quote-preview-total-list">
-                        <div><span>Contract discount %</span><strong>{formatPercent(contractTerms.contractDiscountPercent)}</strong></div>
-                        <div><span>Discount applies to</span><strong>{formatDash(contractTerms.discountAppliesTo)}</strong></div>
-                        <div><span>Gross rate</span><strong>{formatMoney(rateCard.currency, contractTerms.grossRate)}</strong></div>
-                        <div><span>Net supplier cost</span><strong>{formatMoney(rateCard.currency, contractTerms.netSupplierCost)}</strong></div>
-                        <div><span>Discount notes</span><strong>{formatDash(contractTerms.discountNotes)}</strong></div>
-                      </div>
-                      <p className="detail-copy">Quote transport pricing should use net supplier cost as the cost price.</p>
-                    </section>
-                    <section className="detail-card">
+                      <p className="detail-copy">Supplier-side discount only. Existing quote transport pricing uses the current cost flow unchanged.</p>
+                    </details>
+
+                    <section className="transport-rate-card-section transport-rate-card-backend-section">
                       <div className="workspace-section-head">
                         <div>
                           <p className="eyebrow">Rate lines</p>
@@ -2225,15 +2200,16 @@ export function VehicleRatesTable({
                         <table className="data-table allotment-table transport-contract-table" aria-label={`Rate lines for ${rateCard.name}`}>
                           <thead>
                             <tr>
-                              <th>Service / Route</th>
-                              <th>Mapped Pricing Mode</th>
-                              <th>Classification</th>
-                              <th>Vehicle Size</th>
-                              {/* Legacy regression marker: <th>Duration / Basis</th> */}
-                              <th>Legacy Service Type</th>
-                              <th>Pax / Capacity</th>
-                              <th>Validity</th>
+                              <th>Vehicle Type</th>
+                              <th>Pax Range</th>
+                              <th>Route</th>
                               <th>Price</th>
+                              <th>Currency</th>
+                              <th>Notes</th>
+                              <th>Pricing Mode</th>
+                              {/* Legacy regression markers: <th>Classification</th> <th>Vehicle Size</th> <th>Pax / Capacity</th> */}
+                              {/* Legacy regression marker: <th>Duration / Basis</th> */}
+                              <th>Validity</th>
                               <th>Status</th>
                               <th>Actions</th>
                             </tr>
@@ -2242,22 +2218,20 @@ export function VehicleRatesTable({
                             {visibleRateLines.map((rate) => (
                               <Fragment key={rate.id}>
                                 <tr>
-                                  <td>
-                                    <strong>{formatRouteLabel(rate.routeName)}</strong>
-                                    <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
-                                  </td>
-                                  <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
-                                  <td><span className="status-badge">{formatClassificationLabel(rate.serviceType.classification)}</span></td>
                                   <td>{formatDash(getRateVehicleTypeLabel(rate))}</td>
-                                  <td>{formatServiceTypeLabel(rate.serviceType.name)}</td>
                                   <td>
                                     {rate.minPax} - {rate.maxPax}
                                   </td>
                                   <td>
-                                    {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
+                                    <strong>{formatRouteLabel(rate.routeName)}</strong>
+                                    <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
                                   </td>
+                                  <td>{rate.price.toFixed(2)}</td>
+                                  <td>{rate.currency}</td>
+                                  <td>{formatDash(rate.discountNotes || rate.guideSeatPolicy)}</td>
+                                  <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
                                   <td>
-                                    {rate.currency} {rate.price.toFixed(2)}
+                                    {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
                                   </td>
                                   <td>{rate.active ? 'Active' : 'Inactive'}</td>
                                   <td>

@@ -467,7 +467,7 @@ describe('quote detail page regression', () => {
       'const routeCandidateRates = exactRouteRates.length > 0 ? exactRouteRates : availableRates.filter(isGeneralRouteRate);',
       'const routeScopedRates = routeCandidateRates.filter(',
       'No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.',
-      '<select value={selectedRateId} onChange={(event) => setSelectedRateId(event.target.value)} disabled={supplierRateMatches.length === 0}>',
+      'disabled={!selectedRoute || !selectedVehicle || !selectedPricingMode || supplierRateMatches.length === 0}',
       '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute)}',
     ]);
   });
@@ -480,6 +480,25 @@ describe('quote detail page regression', () => {
       'setManualSupplierRateCards(normalizeSupplierRateRows(readManualSupplierRateCards()));',
       'window.addEventListener(MANUAL_SUPPLIER_RATE_CARDS_CHANGED_EVENT, loadManualSupplierRateCards);',
       '() => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards)]',
+    ]);
+  });
+
+  it('keeps QuoteTransportPicker pricing modes on full active rate rows with canonical vehicle fallback', () => {
+    expectSourceContains(pageSource, [
+      "`${API_BASE_URL}/vehicle-rates`",
+      'normalizeTransportSupplierRateRows(payload)',
+    ]);
+    assert.equal(pageSource.includes('/vehicle-rates/summary'), false);
+
+    expectSourceContains(quoteTransportPickerSource, [
+      'export function getAvailableTransportPricingModesForSelection',
+      'isActiveValidTransportRate(rate)',
+      'getCanonicalRateVehicleType(rate, vehicleTypes)',
+      'selectedCanonicalVehicleType',
+      'selectedVehicleId',
+      'routeRateCount',
+      'legacyVehicleTypes',
+      'pricingModesForVehicle.map((mode)',
     ]);
   });
 
