@@ -43,6 +43,11 @@ export class VehicleRatesController {
     return this.vehicleRatesService.findAll();
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.vehicleRatesService.getSummary();
+  }
+
   @Get('cards')
   findCards(@Query() query: SupplierRateCardQuery) {
     return this.vehicleRatesService.findRateCards({

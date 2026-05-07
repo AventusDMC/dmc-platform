@@ -216,6 +216,7 @@ const DISCOUNT_APPLIES_TO_OPTIONS: DiscountAppliesTo[] = [
 ];
 
 const SERVICE_CATEGORIES: ServiceCategory[] = ['Transfers', 'Disposal', 'Add-ons'];
+const vehicleTypeLabelCache = new Map<string, string>();
 
 function getPricingModeClassification(pricingMode: PricingMode) {
   if (pricingMode === 'Half Day') {
@@ -335,11 +336,19 @@ function getUniqueLabel(values: string[]) {
 }
 
 function getVehicleType(rates: VehicleRate[]) {
-  return getUniqueLabel(rates.map((rate) => normalizeVehicleTypeLabel(rate.vehicle.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle.name) || rate.vehicle.name));
+  return getUniqueLabel(rates.map(getRateVehicleTypeLabel));
 }
 
 function getRateVehicleTypeLabel(rate: VehicleRate) {
-  return normalizeVehicleTypeLabel(rate.vehicle.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle.name) || rate.vehicle.name || 'Unassigned vehicle';
+  const cacheKey = `${rate.vehicle.vehicleType || ''}|${rate.vehicle.name || ''}`;
+  const cached = vehicleTypeLabelCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const label = normalizeVehicleTypeLabel(rate.vehicle.vehicleType) || normalizeVehicleTypeLabel(rate.vehicle.name) || rate.vehicle.name || 'Unassigned vehicle';
+  vehicleTypeLabelCache.set(cacheKey, label);
+  return label;
 }
 
 function getRouteOrServiceArea(rates: VehicleRate[]) {
@@ -1838,9 +1847,13 @@ export function VehicleRatesTable({
             const hasMoreRateLines = visibleRateLineCount < rateCard.rates.length;
             const vehicleSections = isExpanded ? groupRateLinesByVehicleType(rateCard.rates) : [];
             const vehicleSectionFormIsOpen = activeVehicleSectionCardId === rateCard.id;
-            const selectedVehicleSectionType = normalizeVehicleTypeLabel(vehicleSectionDraft.vehicleType, vehicleTypeOptions) || vehicleSectionDraft.vehicleType;
-            const vehicleSectionAlreadyExists = groupRateLinesByVehicleType(rateCard.rates)
-              .some((section) => section.vehicleType.toLowerCase() === selectedVehicleSectionType.toLowerCase());
+            const selectedVehicleSectionType = vehicleSectionFormIsOpen
+              ? normalizeVehicleTypeLabel(vehicleSectionDraft.vehicleType, vehicleTypeOptions) || vehicleSectionDraft.vehicleType
+              : '';
+            const vehicleSectionAlreadyExists = vehicleSectionFormIsOpen
+              ? (isExpanded ? vehicleSections : groupRateLinesByVehicleType(rateCard.rates))
+                .some((section) => section.vehicleType.toLowerCase() === selectedVehicleSectionType.toLowerCase())
+              : false;
 
             return (
               <section key={rateCard.id} className="transport-contract-supplier-group">

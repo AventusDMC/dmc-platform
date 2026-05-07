@@ -562,6 +562,18 @@ export class VehicleRatesService {
     };
   }
 
+  async getSummary() {
+    const [rateLines, activeRateLines] = await Promise.all([
+      this.prisma.vehicleRate.count(),
+      this.prisma.vehicleRate.count({ where: { active: true } }),
+    ]);
+
+    return {
+      rateLines,
+      activeRateLines,
+    };
+  }
+
   private buildRateCardWhere(query: SupplierRateCardQuery) {
     const where: Record<string, unknown> = {};
     const and: Array<Record<string, unknown>> = [];
@@ -711,6 +723,7 @@ export class VehicleRatesService {
             select: {
               id: true,
               name: true,
+              vehicleType: true,
               maxPax: true,
             },
           },

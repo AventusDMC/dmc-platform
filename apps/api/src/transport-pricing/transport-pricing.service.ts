@@ -264,77 +264,6 @@ export class TransportPricingService {
     }
 
     const route = await this.resolveRouteReference(data);
-    const [routeRules, routeServiceRules] = await Promise.all([
-      this.prisma.transportPricingRule.findMany({
-        where: {
-          routeId: route.id,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          routeId: true,
-          transportServiceTypeId: true,
-          vehicleId: true,
-          minPax: true,
-          maxPax: true,
-          unitCapacity: true,
-          baseCost: true,
-          transportServiceType: {
-            select: {
-              name: true,
-              code: true,
-              classification: true,
-            },
-          },
-          vehicle: {
-            select: {
-              name: true,
-              vehicleType: true,
-              maxPax: true,
-            },
-          },
-        },
-      }),
-      this.prisma.transportPricingRule.findMany({
-        where: {
-          routeId: route.id,
-          transportServiceTypeId: data.transportServiceTypeId,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          routeId: true,
-          transportServiceTypeId: true,
-          vehicleId: true,
-          minPax: true,
-          maxPax: true,
-          unitCapacity: true,
-          baseCost: true,
-          transportServiceType: {
-            select: {
-              name: true,
-              code: true,
-              classification: true,
-            },
-          },
-          vehicle: {
-            select: {
-              name: true,
-              vehicleType: true,
-              maxPax: true,
-            },
-          },
-        },
-      }),
-    ]);
-    console.log('transport-pricing resolvePricingRuleCandidates debug: incoming payload', data);
-    console.log('transport-pricing resolvePricingRuleCandidates debug: resolved route', {
-      id: route.id,
-      name: route.name,
-      normalizedKey: route.normalizedKey,
-    });
-    console.log('transport-pricing resolvePricingRuleCandidates debug: matched active rules by route before service/capacity filtering', routeRules);
-    console.log('transport-pricing resolvePricingRuleCandidates debug: matched active rules by route + service before capacity filtering', routeServiceRules);
     const allRules = await this.prisma.transportPricingRule.findMany({
       where: {
         routeId: route.id,
@@ -375,8 +304,6 @@ export class TransportPricingService {
         rules = allRules.filter((rule: any) => this.vehicleMatchesCanonicalType(rule.vehicle, selectedVehicleType));
       }
     }
-    console.log('transport-pricing resolvePricingRuleCandidates debug: filtered candidate rules after vehicle/capacity filters', rules);
-
     return rules.map((rule) => {
       const discountedBaseCost = Number((rule.baseCost * (1 - rule.discountPercent / 100)).toFixed(2));
       const unitCount =
@@ -599,8 +526,6 @@ export class TransportPricingService {
   }
 
   async calculate(data: FindTransportRateInput) {
-    console.log('transport-pricing calculate debug: incoming payload', data);
-
     if (data.routeId || data.normalizedKey || data.routeName?.trim()) {
       try {
         const resolvedPricing = await this.resolvePricingRule({

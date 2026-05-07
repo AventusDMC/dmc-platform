@@ -41,12 +41,12 @@ async function getRoutesCount() {
 }
 
 async function getTransportSummary() {
-  const [vehicles, routesResponse, serviceTypes, pricingRules, vehicleRates] = await Promise.all([
+  const [vehicles, routesResponse, serviceTypes, pricingRules, vehicleRatesSummary] = await Promise.all([
     getVehiclesCount(),
     getRoutesCount(),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-service-types`, 'Transport service types', { cache: 'no-store' }),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-pricing/rules`, 'Transport pricing rules', { cache: 'no-store' }),
-    adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/vehicle-rates`, 'Transport vehicle rates', { cache: 'no-store' }),
+    adminPageFetchJson<{ rateLines: number }>(`${API_BASE_URL}/vehicle-rates/summary`, 'Transport vehicle rates summary', { cache: 'no-store' }),
   ]);
 
   return {
@@ -54,7 +54,7 @@ async function getTransportSummary() {
     routes: routesResponse,
     serviceTypes: serviceTypes.length,
     pricingRules: pricingRules.length,
-    vehicleRates: vehicleRates.length,
+    vehicleRates: vehicleRatesSummary.rateLines,
   };
 }
 
