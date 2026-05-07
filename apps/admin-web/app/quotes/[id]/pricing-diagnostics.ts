@@ -1,3 +1,5 @@
+import { formatPricingPolicyMarkup, getPricingPolicyRecommendation } from './pricing-policy';
+
 export type PricingDiagnosticRate = {
   id?: string | null;
   pricingMode?: string | null;
@@ -63,6 +65,8 @@ export type PricingDiagnosticQuoteItem = {
   costBaseAmount?: number | null;
   costCurrency?: string | null;
   baseCost?: number | null;
+  totalCost?: number | null;
+  totalSell?: number | null;
   overrideCost?: number | null;
   finalCost?: number | null;
   markupAmount?: number | null;
@@ -81,11 +85,19 @@ export type PricingDiagnostics = {
   appliedRateSource: string;
   fallbackStatus: string;
   overrideStatus: string;
+  policyEligible: string;
+  suggestedMarkup: string;
+  policySkippedBecause: string;
   rows: Array<{
     label: string;
     value: string;
   }>;
 };
+
+type PricingDiagnosticsBase = Pick<
+  PricingDiagnostics,
+  'pricingSource' | 'pricingMode' | 'unitsUsed' | 'appliedRateSource' | 'fallbackStatus' | 'overrideStatus'
+>;
 
 function normalize(value: string | null | undefined) {
   return (value || '').trim().toLowerCase();
@@ -204,6 +216,9 @@ function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>) {
     { label: 'Rate', value: diagnostics.appliedRateSource },
     { label: 'Fallback', value: diagnostics.fallbackStatus },
     { label: 'Override', value: diagnostics.overrideStatus },
+    { label: 'Policy eligible', value: diagnostics.policyEligible },
+    { label: 'Suggested markup', value: diagnostics.suggestedMarkup },
+    { label: 'Skipped because...', value: diagnostics.policySkippedBecause },
   ];
 }
 
@@ -212,8 +227,9 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
   const latestServiceRate = item.service?.serviceRates?.[0] || null;
   const pricingDescription = item.pricingDescription || '';
   const overrideStatus = getOverrideStatus(item);
+  const pricingPolicy = getPricingPolicyRecommendation(item);
 
-  let base: Omit<PricingDiagnostics, 'rows'>;
+  let base: PricingDiagnosticsBase;
 
   if (hasExternalPackageData(item) || serviceKind === 'external') {
     const mode = item.externalPricingBasis || 'PER_PERSON';
@@ -307,6 +323,14 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
 
   return {
     ...base,
-    rows: buildRows(base),
+    policyEligible: pricingPolicy.eligible ? 'Yes' : 'No',
+    suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
+    policySkippedBecause: pricingPolicy.skippedReason || 'None',
+    rows: buildRows({
+      ...base,
+      policyEligible: pricingPolicy.eligible ? 'Yes' : 'No',
+      suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
+      policySkippedBecause: pricingPolicy.skippedReason || 'None',
+    }),
   };
 }
