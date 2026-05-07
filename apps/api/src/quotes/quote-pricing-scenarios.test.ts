@@ -606,6 +606,147 @@ test('one-off EXTERNAL_PACKAGE update does not require a SupplierService', async
   assert.equal((updated as any).service?.name, 'Updated Cairo Extension');
 });
 
+test('quote-only EXTERNAL_PACKAGE hotels-only edit keeps pricing stable and serviceId null', async () => {
+  const quote = {
+    id: 'quote-1',
+    quoteCurrency: 'USD',
+    adults: 18,
+    children: 3,
+    roomCount: 11,
+    nightCount: 1,
+    travelStartDate: null,
+    createdAt: new Date('2026-04-27T00:00:00.000Z'),
+    focType: 'NONE',
+    focRatio: null,
+    focCount: null,
+    focRoomType: null,
+    pricingType: 'simple',
+    pricingMode: 'SIMPLE',
+    jordanPassType: 'NONE',
+    pricingSlabs: [],
+  };
+  const items: any[] = [];
+  let supplierServiceLookupCount = 0;
+  let quoteTotals: Record<string, any> | null = null;
+  const service = createQuotesService({
+    quote: {
+      findFirst: async ({ where }: any) => (where?.revisedFromId ? null : where?.id === quote.id ? quote : null),
+      findUnique: async ({ where }: any) => (where?.id === quote.id ? quote : null),
+      update: async ({ data }: any) => {
+        quoteTotals = data;
+        return { ...quote, ...data };
+      },
+    },
+    quoteItem: {
+      create: async ({ data }: any) => {
+        assert.notEqual(data.externalPackagePricingMatrixJson, null);
+        const item = {
+          id: 'item-external-1',
+          createdAt: new Date('2026-04-27T00:00:00.000Z'),
+          updatedAt: new Date('2026-04-27T00:00:00.000Z'),
+          ...data,
+          service: null,
+          entranceFee: null,
+          appliedVehicleRate: null,
+        };
+        items.push(item);
+        return item;
+      },
+      findFirst: async ({ where }: any) =>
+        items.find((item) => item.id === where?.id && (where.optionId === undefined || item.optionId === where.optionId)) || null,
+      findMany: async ({ where }: any) => {
+        if (where?.entranceFeeId) {
+          return [];
+        }
+
+        return items.filter((item) => item.quoteId === where?.quoteId && (where.optionId === undefined || item.optionId === where.optionId));
+      },
+      update: async ({ where, data }: any) => {
+        assert.notEqual(data.externalPackagePricingMatrixJson, null);
+        const index = items.findIndex((item) => item.id === where.id);
+        assert.notEqual(index, -1);
+        items[index] = { ...items[index], ...data, service: null };
+        return items[index];
+      },
+      count: async () => 0,
+    },
+    supplierService: {
+      findUnique: async () => {
+        supplierServiceLookupCount += 1;
+        return null;
+      },
+    },
+    activity: {
+      findUnique: async () => null,
+    },
+    itinerary: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+    },
+    quoteItineraryDay: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+    },
+    quoteOption: {
+      findUnique: async () => null,
+    },
+  });
+
+  const created = await service.createItem(
+    {
+      quoteId: quote.id,
+      serviceId: null,
+      packageName: 'Cairo Extension',
+      country: 'Egypt',
+      supplierName: 'Cairo Partner DMC',
+      startDay: 1,
+      endDay: 4,
+      pricingBasis: 'PER_PERSON',
+      netCost: 1500,
+      pricingMatrixJson: null,
+      currency: 'USD',
+      includes: 'Cairo guide and transfers',
+      excludes: 'International flights',
+      internalNotes: 'Partner net rate locked by ops',
+      hotelsOrSimilar: 'Original hotels',
+      clientDescription: 'Four-day private Cairo and Giza extension.',
+      quantity: 1,
+      paxCount: 21,
+      markupPercent: 20,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  const createdCost = created.totalCost;
+  const createdSell = created.totalSell;
+  const updated = await service.updateItem(
+    created.id,
+    {
+      quoteId: quote.id,
+      serviceId: null,
+      hotelsOrSimilar: 'Updated hotels or similar',
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(supplierServiceLookupCount, 0);
+  assert.equal(updated.serviceId, null);
+  assert.equal(updated.externalPackageCountry, 'Egypt');
+  assert.equal(updated.externalPackageName, 'Cairo Extension');
+  assert.equal(updated.externalStartDay, 1);
+  assert.equal(updated.externalEndDay, 4);
+  assert.equal(updated.externalPricingBasis, 'PER_PERSON');
+  assert.equal(updated.externalNetCost, 1500);
+  assert.equal(updated.externalHotelsOrSimilar, 'Updated hotels or similar');
+  assert.equal(updated.externalClientDescription, 'Four-day private Cairo and Giza extension.');
+  assert.equal(updated.externalIncludes, 'Cairo guide and transfers');
+  assert.equal(updated.externalExcludes, 'International flights');
+  assert.equal(updated.totalCost, createdCost);
+  assert.equal(updated.totalSell, createdSell);
+  assert.equal((quoteTotals as any)?.totalCost, createdCost);
+  assert.equal((quoteTotals as any)?.totalSell, createdSell);
+});
+
 test('EXTERNAL_PACKAGE accepts supported currencies and rejects missing or unsupported currency', async () => {
   const values = await resolveExternalPackage({
     quote: { quoteCurrency: 'EUR' },

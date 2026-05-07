@@ -3413,7 +3413,7 @@ export class QuotesService {
         externalEndDate: endDate,
         externalPricingBasis: pricingBasis,
         externalNetCost: netCost,
-        externalPackagePricingMatrixJson: pricingMatrixJson,
+        externalPackagePricingMatrixJson: pricingMatrixJson === null ? Prisma.JsonNull : pricingMatrixJson,
         externalPackageSingleSupplement: singleSupplement,
         externalIncludes: includes,
         externalExcludes: excludes,
@@ -5155,7 +5155,13 @@ export class QuotesService {
   }
 
   private normalizeExternalPackagePricingMatrixJson(value: unknown) {
-    if (value === undefined || value === null) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === Prisma.JsonNull ||
+      value === Prisma.DbNull ||
+      value === Prisma.AnyNull
+    ) {
       return null;
     }
 
