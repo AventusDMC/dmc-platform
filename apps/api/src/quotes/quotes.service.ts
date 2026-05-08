@@ -3148,6 +3148,10 @@ export class QuotesService {
       }
 
       try {
+        if (data.vehicleRateId) {
+          throw new NotFoundException('Use selected vehicle rate row');
+        }
+
         const resolvedPricing = await this.transportPricingService.resolvePricingRule({
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,
