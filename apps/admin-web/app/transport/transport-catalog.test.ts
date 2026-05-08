@@ -68,7 +68,7 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(tableSource, [
       'transport-contract-table',
-      '<th>Route</th>',
+      '<th>{routeFieldLabel}</th>',
       '<th>Classification</th>',
       '<th>Vehicle Size</th>',
       '<th>Duration / Basis</th>',
@@ -92,11 +92,27 @@ describe('transport catalog supplier rate-card UX', () => {
       'Backend rows',
       '<th>Vehicle Type</th>',
       '<th>Pax Range</th>',
-      '<th>Route</th>',
+      'getRouteFieldLabel(rateCard.category)',
+      'getRateRouteOrServiceAreaDisplay(rate, rateCard.category)',
+      "return category === 'Transfers' ? 'Route' : 'Service Area';",
       '<th>Currency</th>',
       '<th>Notes</th>',
       '<th>Actions</th>',
       'open={sectionIndex === 0}',
+    ]);
+  });
+
+  it('displays disposal and add-on rate cards as service areas instead of routes', () => {
+    expectSourceContains(tableSource, [
+      'function getRateRouteOrServiceAreaDisplay',
+      'function getServiceAreaFallbackLabel',
+      "if (normalizedLabel.includes('jordan_program')) return 'Jordan Program';",
+      "if (normalizedLabel.includes('amman_city')) return 'Amman City';",
+      "return 'Disposal / Day Services';",
+      'Service Area',
+      '{routeFieldLabel}: {routeOrServiceAreaLabel}',
+      '<span>{routeFieldLabel}</span>',
+      '<th>{routeFieldLabel}</th>',
     ]);
   });
 
@@ -301,7 +317,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'Duplicate',
       'Duplicate Supplier Rate Card',
       'Reuse contract structure',
-      'Copies all vehicle type sections, pricing modes, and rates into one grouped supplier and route card.',
+      'Copies all vehicle type sections, pricing modes, and rates into one grouped supplier route or service-area card.',
       'A supplier rate card already exists for this supplier, route, currency, and validity.',
       'setPreparedRateCards((currentCards) => [duplicatedCard, ...currentCards]);',
       "setSuccessMessage('Rate card duplicated');",

@@ -135,6 +135,32 @@ function formatRoute(route: RouteOption | null) {
   return route.name || `${route.fromPlace.name} -> ${route.toPlace.name}`;
 }
 
+function getRouteAreaName(route: RouteOption) {
+  return route.fromPlace.city || route.toPlace.city || route.fromPlace.name || route.toPlace.name || route.name;
+}
+
+function isSameAreaRouteOption(route: RouteOption) {
+  const from = normalizeTransportRouteText(route.fromPlace.city || route.fromPlace.name);
+  const to = normalizeTransportRouteText(route.toPlace.city || route.toPlace.name);
+  return Boolean(from && to && from === to);
+}
+
+function isProgramOrDisposalRouteOption(route: RouteOption) {
+  const normalized = normalizeTransportRouteText(`${route.name} ${route.routeType || ''} ${route.notes || ''}`);
+  return isSameAreaRouteOption(route) || normalized.includes('program') || normalized.includes('disposal') || normalized.includes('day_services');
+}
+
+function formatRouteSelectionLabel(route: RouteOption) {
+  if (isSameAreaRouteOption(route)) {
+    return `${getRouteAreaName(route)} City`;
+  }
+
+  const normalized = normalizeTransportRouteText(route.name);
+  if (normalized.includes('jordan_program')) return 'Jordan Program';
+  if (normalized.includes('disposal') || normalized.includes('day_services')) return 'Disposal / Day Services';
+  return formatRoute(route);
+}
+
 function formatMoney(value: number, currency: string) {
   return `${currency || 'USD'} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -697,6 +723,8 @@ export function QuoteTransportPicker({
   }, []);
 
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) || null;
+  const routeTransferOptions = useMemo(() => routes.filter((route) => !isProgramOrDisposalRouteOption(route)), [routes]);
+  const serviceAreaOptions = useMemo(() => routes.filter(isProgramOrDisposalRouteOption), [routes]);
   const allVehicles = useMemo(() => propVehicles.filter(isActiveVehicle), [propVehicles]);
   const loadedSupplierRates = useMemo(
     () => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards)],
@@ -981,27 +1009,40 @@ export function QuoteTransportPicker({
             <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
-                  <p className="eyebrow">Route</p>
-                  <h3>Choose movement</h3>
-                  <p className="detail-copy">Pick the route first. Vehicle and supplier pricing follow from this route.</p>
+                  <p className="eyebrow">Route / Service Area</p>
+                  <h3>Choose movement or service area</h3>
+                  <p className="detail-copy">Use route transfers for point-to-point movement. Use service areas for disposal modes like Full Day, Half Day, and Day Tour.</p>
                 </div>
               </div>
               <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routes.length === 0}>
                 {routes.length > 0 ? <option value="">Select route</option> : null}
                 {routesLoadFailed ? <option value="">Routes failed to load</option> : null}
                 {routeListIsConfirmedEmpty ? <option value="">No routes available</option> : null}
-                {routes.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {formatRoute(route)}
-                  </option>
-                ))}
+                {routeTransferOptions.length > 0 ? (
+                  <optgroup label="Route transfers">
+                    {routeTransferOptions.map((route) => (
+                      <option key={route.id} value={route.id}>
+                        {formatRoute(route)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {serviceAreaOptions.length > 0 ? (
+                  <optgroup label="Program / disposal service areas">
+                    {serviceAreaOptions.map((route) => (
+                      <option key={route.id} value={route.id}>
+                        {formatRouteSelectionLabel(route)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
               </select>
               {routesLoadFailed ? (
                 <p className="form-error">{transportDataStatus.routes.message || 'Routes could not load after retry. Refresh this quote to retry.'}</p>
               ) : null}
             </section>
 
-            {!selectedRoute ? <p className="empty-state">Select a route to continue</p> : null}
+            {!selectedRoute ? <p className="empty-state">Select a route or service area to continue</p> : null}
 
             {selectedRoute ? (
               <section className="quote-hotel-step-panel quote-transport-step-panel">

@@ -361,7 +361,8 @@ function getRateVehicleDisplayLabel(rate: VehicleRate) {
 }
 
 function getRouteOrServiceArea(rates: VehicleRate[]) {
-  const labels = rates.map((rate) => formatRouteLabel(rate.route?.name || rate.routeName));
+  const category = getRateCardServiceCategory(rates);
+  const labels = rates.map((rate) => getRateRouteOrServiceAreaDisplay(rate, category));
   const uniqueLabels = Array.from(new Set(labels.filter(Boolean)));
 
   if (uniqueLabels.length === 0) {
@@ -373,6 +374,57 @@ function getRouteOrServiceArea(rates: VehicleRate[]) {
   }
 
   return `${uniqueLabels[0]} + ${uniqueLabels.length - 1} more`;
+}
+
+function getRouteEndpointName(endpoint?: { name?: string | null; city?: string | null; country?: string | null } | null) {
+  return endpoint?.city || endpoint?.name || '';
+}
+
+function isSameAreaRoute(rate: VehicleRate) {
+  const route = rate.route;
+  if (!route?.fromPlace || !route?.toPlace) {
+    const routeName = normalizeTransportRouteText(rate.routeName || route?.name || '');
+    const parts = routeName.split('_').filter(Boolean);
+    return parts.length === 2 && parts[0] === parts[1];
+  }
+
+  const from = normalizeTransportRouteText(getRouteEndpointName(route.fromPlace));
+  const to = normalizeTransportRouteText(getRouteEndpointName(route.toPlace));
+  return Boolean(from && to && from === to);
+}
+
+function getServiceAreaFallbackLabel(rate: VehicleRate) {
+  const route = rate.route;
+  const city = route?.fromPlace?.city || route?.toPlace?.city || route?.fromPlace?.name || route?.toPlace?.name || '';
+  if (city) {
+    return `${city} City`;
+  }
+
+  const normalizedRouteName = normalizeTransportRouteText(rate.routeName || route?.name || '');
+  if (normalizedRouteName.includes('jordan')) return 'Jordan Program';
+  if (normalizedRouteName.includes('amman')) return 'Amman City';
+  if (normalizedRouteName.includes('disposal') || normalizedRouteName.includes('day')) return 'Disposal / Day Services';
+  return 'Disposal / Day Services';
+}
+
+function getRateRouteOrServiceAreaDisplay(rate: VehicleRate, category: ServiceCategory = getRateCardServiceCategory([rate])) {
+  const rawLabel = rate.route?.name || rate.routeName;
+  const normalizedLabel = normalizeTransportRouteText(rawLabel || '');
+
+  if (category === 'Transfers') {
+    return formatRouteLabel(rawLabel);
+  }
+
+  if (normalizedLabel.includes('jordan_program')) return 'Jordan Program';
+  if (normalizedLabel.includes('amman_city')) return 'Amman City';
+  if (normalizedLabel.includes('disposal') || normalizedLabel.includes('day_services')) return 'Disposal / Day Services';
+  if (isSameAreaRoute(rate)) return getServiceAreaFallbackLabel(rate);
+
+  return formatRouteLabel(rawLabel) || getServiceAreaFallbackLabel(rate);
+}
+
+function getRouteFieldLabel(category: ServiceCategory) {
+  return category === 'Transfers' ? 'Route' : 'Service Area';
 }
 
 function getCardStatus(rates: VehicleRate[]) {
@@ -1872,6 +1924,8 @@ export function VehicleRatesTable({
               ? (isExpanded ? vehicleSections : groupRateLinesByVehicleType(rateCard.rates))
                 .some((section) => section.vehicleType.toLowerCase() === selectedVehicleSectionType.toLowerCase())
               : false;
+            const routeFieldLabel = getRouteFieldLabel(rateCard.category);
+            const routeOrServiceAreaLabel = formatDash(rateCard.routeOrServiceArea);
 
             return (
               <section key={rateCard.id} className="transport-contract-supplier-group">
@@ -1881,7 +1935,7 @@ export function VehicleRatesTable({
                     <h3>{rateCard.name}</h3>
                     <div className="transport-rate-card-chip-row" aria-label={`Summary for ${rateCard.name}`}>
                       <span className="transport-rate-card-chip">Supplier: {formatSupplierDisplay(rateCard.supplierName)}</span>
-                      <span className="transport-rate-card-chip">Route: {formatDash(rateCard.routeOrServiceArea)}</span>
+                      <span className="transport-rate-card-chip">{routeFieldLabel}: {routeOrServiceAreaLabel}</span>
                       <span className="transport-rate-card-chip">Currency: {formatDash(rateCard.currency)}</span>
                       <span className="transport-rate-card-chip">
                         Validity: {formatDate(rateCard.validFrom)} - {formatDate(rateCard.validTo)}
@@ -1990,8 +2044,8 @@ export function VehicleRatesTable({
                     <strong>{formatDash(vehicleTypeChips.join(', ') || rateCard.vehicleType)}</strong>
                   </div>
                   <div>
-                    <span>Route / service area</span>
-                    <strong>{formatDash(rateCard.routeOrServiceArea)}</strong>
+                    <span>{routeFieldLabel}</span>
+                    <strong>{routeOrServiceAreaLabel}</strong>
                   </div>
                   <div>
                     <span>Currency</span>
@@ -2109,7 +2163,7 @@ export function VehicleRatesTable({
                                   <thead>
                                     <tr>
                                       <th>Pricing Mode</th>
-                                      <th>Route / Service</th>
+                                      <th>{routeFieldLabel}</th>
                                       <th>Pax Range</th>
                                       <th>Price</th>
                                       <th>Validity</th>
@@ -2122,7 +2176,7 @@ export function VehicleRatesTable({
                                       <tr key={rate.id}>
                                         <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
                                         <td>
-                                          <strong>{formatRouteLabel(rate.routeName)}</strong>
+                                          <strong>{getRateRouteOrServiceAreaDisplay(rate, rateCard.category)}</strong>
                                           <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
                                         </td>
                                         <td>{rate.minPax} - {rate.maxPax}</td>
@@ -2221,7 +2275,7 @@ export function VehicleRatesTable({
                             <tr>
                               <th>Vehicle Type</th>
                               <th>Pax Range</th>
-                              <th>Route</th>
+                              <th>{routeFieldLabel}</th>
                               <th>Price</th>
                               <th>Currency</th>
                               <th>Notes</th>
@@ -2242,7 +2296,7 @@ export function VehicleRatesTable({
                                     {rate.minPax} - {rate.maxPax}
                                   </td>
                                   <td>
-                                    <strong>{formatRouteLabel(rate.routeName)}</strong>
+                                    <strong>{getRateRouteOrServiceAreaDisplay(rate, rateCard.category)}</strong>
                                     <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
                                   </td>
                                   <td>{rate.price.toFixed(2)}</td>
@@ -2653,7 +2707,7 @@ export function VehicleRatesTable({
             <p className="detail-copy">This removes the rate card from Supplier Rate Cards and quote transport selection.</p>
             <div className="quote-preview-total-list">
               <div><span>Supplier</span><strong>{formatSupplierDisplay(pendingRateCardDelete.rateCard.supplierName)}</strong></div>
-              <div><span>Route</span><strong>{formatDash(pendingRateCardDelete.rateCard.routeOrServiceArea)}</strong></div>
+              <div><span>{getRouteFieldLabel(pendingRateCardDelete.rateCard.category)}</span><strong>{formatDash(pendingRateCardDelete.rateCard.routeOrServiceArea)}</strong></div>
               <div><span>Currency</span><strong>{formatDash(pendingRateCardDelete.rateCard.currency)}</strong></div>
               <div><span>Validity</span><strong>{formatDate(pendingRateCardDelete.rateCard.validFrom)} - {formatDate(pendingRateCardDelete.rateCard.validTo)}</strong></div>
             </div>
@@ -2686,7 +2740,7 @@ export function VehicleRatesTable({
                 x
               </button>
             </div>
-            <p className="detail-copy">Copies all vehicle type sections, pricing modes, and rates into one grouped supplier and route card.</p>
+            <p className="detail-copy">Copies all vehicle type sections, pricing modes, and rates into one grouped supplier route or service-area card.</p>
             <div className="transport-rate-card-metadata-form">
               <label>
                 Supplier
@@ -2738,7 +2792,7 @@ export function VehicleRatesTable({
             <div className="quote-preview-total-list">
               <div><span>Vehicle sections</span><strong>{groupRateLinesByVehicleType(pendingRateCardDuplicate.rateCard.rates).length}</strong></div>
               <div><span>Rate lines copied</span><strong>{pendingRateCardDuplicate.rateCard.rates.length}</strong></div>
-              <div><span>Source route</span><strong>{formatDash(pendingRateCardDuplicate.rateCard.routeOrServiceArea)}</strong></div>
+              <div><span>Source {getRouteFieldLabel(pendingRateCardDuplicate.rateCard.category).toLowerCase()}</span><strong>{formatDash(pendingRateCardDuplicate.rateCard.routeOrServiceArea)}</strong></div>
             </div>
             <div className="table-action-row quote-client-modal-actions">
               <button type="button" className="compact-button" onClick={handleCancelDuplicateRateCard}>

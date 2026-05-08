@@ -471,6 +471,18 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('separates route transfers from program disposal service areas in QuoteTransportPicker', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'function formatRouteSelectionLabel(route: RouteOption)',
+      'function isProgramOrDisposalRouteOption(route: RouteOption)',
+      'const routeTransferOptions = useMemo',
+      'const serviceAreaOptions = useMemo',
+      '<optgroup label="Route transfers">',
+      '<optgroup label="Program / disposal service areas">',
+      'Use route transfers for point-to-point movement. Use service areas for disposal modes like Full Day, Half Day, and Day Tour.',
+    ]);
+  });
+
   it('includes locally saved manual supplier rate cards in QuoteTransportPicker matching', () => {
     expectSourceContains(quoteTransportPickerSource, [
       'readManualSupplierRateCards',
