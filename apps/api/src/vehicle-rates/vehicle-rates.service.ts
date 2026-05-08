@@ -1231,6 +1231,22 @@ export class VehicleRatesService {
         'Valid To': '2026-12-31',
         Notes: 'Alpha PDF sample: Half Day (100 KM) normalizes to Half Day.',
       },
+      {
+        'Supplier Name': alphaSupplierName,
+        'Rate Card Name': alphaRateCardName,
+        'Service Category': 'Disposal',
+        'Route / Service Area': routes[4]?.name || 'Jerash & Ajloun Day Tour',
+        'Vehicle Label': 'Small 17',
+        'Canonical Vehicle Type': 'Mini Bus',
+        'Pax From': 1,
+        'Pax To': 17,
+        'Pricing Mode': 'Day Tour',
+        Cost: 280,
+        Currency: 'USD',
+        'Valid From': '2026-01-01',
+        'Valid To': '2026-12-31',
+        Notes: 'Sample: standalone sightseeing day normalizes to Day Tour under Disposal.',
+      },
     ];
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...TRANSPORT_CONTRACT_IMPORT_COLUMNS] });
@@ -1523,6 +1539,7 @@ export class VehicleRatesService {
       routeTransfers: [] as Array<Record<string, unknown>>,
       fullDay: [] as Array<Record<string, unknown>>,
       halfDay: [] as Array<Record<string, unknown>>,
+      dayTour: [] as Array<Record<string, unknown>>,
       addOns: [] as Array<Record<string, unknown>>,
       contractWarnings: [] as Array<{
         supplierName: string;
@@ -1653,10 +1670,13 @@ export class VehicleRatesService {
       };
 
       summary.previewRows.push(previewRow);
+      const pricingMode = normalizeTransportPricingMode(normalized.serviceName);
       if (classification === 'ADD_ON') {
         summary.addOns.push(previewRow);
       } else if (classification === 'HALF_DAY') {
         summary.halfDay.push(previewRow);
+      } else if (pricingMode === 'Day Tour') {
+        summary.dayTour.push(previewRow);
       } else if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
         summary.fullDay.push(previewRow);
       } else {

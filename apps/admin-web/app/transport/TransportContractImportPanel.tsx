@@ -30,6 +30,7 @@ type ImportSummary = {
   routeTransfers?: Array<Record<string, unknown>>;
   fullDay?: Array<Record<string, unknown>>;
   halfDay?: Array<Record<string, unknown>>;
+  dayTour?: Array<Record<string, unknown>>;
   addOns?: Array<Record<string, unknown>>;
   contractWarnings?: Array<{
     supplierName: string;
@@ -84,7 +85,11 @@ function getPreviewGroup(row: Record<string, unknown>) {
     return 'halfDay';
   }
 
-  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day' || pricingMode === 'Day Tour') {
+  if (pricingMode === 'Day Tour') {
+    return 'dayTour';
+  }
+
+  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day') {
     return 'fullDay';
   }
 
@@ -130,14 +135,16 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
   const routeTransfers = filterPreviewRows(getSafeRows(summary.routeTransfers), filters);
   const fullDay = filterPreviewRows(getSafeRows(summary.fullDay), filters);
   const halfDay = filterPreviewRows(getSafeRows(summary.halfDay), filters);
+  const dayTour = filterPreviewRows(getSafeRows(summary.dayTour), filters);
   const addOns = filterPreviewRows(getSafeRows(summary.addOns), filters);
-  const hasGroupedRows = [routeTransfers, fullDay, halfDay, addOns].some((rows) => rows.length > 0);
+  const hasGroupedRows = [routeTransfers, fullDay, halfDay, dayTour, addOns].some((rows) => rows.length > 0);
   const groups = hasGroupedRows
-    ? [routeTransfers || [], fullDay || [], halfDay || [], addOns || []]
+    ? [routeTransfers || [], fullDay || [], halfDay || [], dayTour || [], addOns || []]
     : [
         previewRows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
         previewRows.filter((row) => getPreviewGroup(row) === 'fullDay'),
         previewRows.filter((row) => getPreviewGroup(row) === 'halfDay'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'dayTour'),
         previewRows.filter((row) => getPreviewGroup(row) === 'addOns'),
       ];
 
@@ -161,10 +168,16 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
       rows: groups[2] || [],
     },
     {
+      id: 'dayTour',
+      title: 'Day tour services',
+      helper: 'Standalone sightseeing and FIT touring disposal rows that do not use full-day minimum contract logic.',
+      rows: groups[3] || [],
+    },
+    {
       id: 'addOns',
       title: 'Add-ons',
       helper: 'Driver overnight, stationary, waiting, and other optional charges.',
-      rows: groups[3] || [],
+      rows: groups[4] || [],
     },
   ];
 }

@@ -499,6 +499,7 @@ describe('quote detail page regression', () => {
       'deriveTransportPricingMode(rate)',
       'routeMatchingRowsCount',
       'legacyVehicleTypes',
+      'supportedPricingModes',
       'pricingModesForVehicle.map((mode)',
     ]);
   });
@@ -525,12 +526,15 @@ describe('quote detail page regression', () => {
       "privatetransfer: 'Point-to-Point'",
       "transfers: 'Point-to-Point'",
       "routetransfer: 'Point-to-Point'",
+      "daytour: 'Day Tour'",
+      "fittouring: 'Day Tour'",
       'export function deriveTransportPricingMode',
       "return 'Point-to-Point';",
     ]);
 
     expectSourceContains(quoteTransportPickerSource, [
       'deriveTransportPricingMode(rate)',
+      'Supported normalized modes:',
       "reject('missing pricingMode')",
     ]);
   });

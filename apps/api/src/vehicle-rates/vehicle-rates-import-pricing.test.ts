@@ -522,6 +522,16 @@ test('transport import preview groups route transfer, disposal full day, and dis
       destination: 'Amman',
       cost: 80,
     },
+    {
+      ...activeImportRow,
+      serviceCategory: 'Disposal',
+      serviceName: 'Day Tour',
+      pricingMode: 'Day Tour',
+      routeName: 'Jerash & Ajloun Day Tour',
+      origin: 'Amman',
+      destination: 'Jerash',
+      cost: 95,
+    },
   ];
   rows.forEach((row) => seedImportRoute(stores, row));
 
@@ -534,6 +544,9 @@ test('transport import preview groups route transfer, disposal full day, and dis
   assert.equal(preview.fullDay[0].classification, 'FULL_DAY');
   assert.equal(preview.halfDay.length, 1);
   assert.equal(preview.halfDay[0].classification, 'HALF_DAY');
+  assert.equal(preview.dayTour.length, 1);
+  assert.equal(preview.dayTour[0].serviceCategory, 'Disposal');
+  assert.equal(preview.dayTour[0].serviceName, 'Day Tour');
   assert.equal(preview.addOns.length, 0);
   assert.equal(preview.routeTransfers.some((row) => row.serviceCategory === 'Disposal'), false);
 });
@@ -596,6 +609,8 @@ test('transport import template uses Alpha Bus standardized columns and sample r
   assert.equal(rows[0]['Vehicle Label'], 'Large VVIP 29');
   assert.equal(rows[0]['Canonical Vehicle Type'], 'Luxury');
   assert.equal(rows[2]['Pricing Mode'], 'Full Day (200 KM)');
+  assert.equal(rows[4]['Service Category'], 'Disposal');
+  assert.equal(rows[4]['Pricing Mode'], 'Day Tour');
 });
 
 test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicle types', async () => {
@@ -645,6 +660,22 @@ test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicl
     {
       'Supplier Name': 'Alpha Bus and Limo Co',
       'Rate Card Name': 'Alpha Bus and Limo Co 2026 Rates in USD',
+      'Service Category': 'Disposal',
+      'Route / Service Area': 'Aqaba South Border -> Petra',
+      'Vehicle Label': 'Small 17',
+      'Canonical Vehicle Type': 'Mini Bus',
+      'Pax From': 1,
+      'Pax To': 17,
+      'Pricing Mode': 'Day Tour',
+      Cost: 280,
+      Currency: 'USD',
+      'Valid From': '2026-01-01',
+      'Valid To': '2026-12-31',
+      Notes: 'PDF standalone day tour row',
+    },
+    {
+      'Supplier Name': 'Alpha Bus and Limo Co',
+      'Rate Card Name': 'Alpha Bus and Limo Co 2026 Rates in USD',
       'Service Category': 'Add-ons',
       'Route / Service Area': 'Aqaba South Border -> Petra',
       'Vehicle Label': 'Van VIP 9',
@@ -663,13 +694,15 @@ test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicl
   const imported = await importService.importTransportContract({ buffer, originalname: 'alpha-2026.xlsx' });
 
   assert.deepEqual(imported.errors, []);
-  assert.equal(imported.createdRates, 3);
+  assert.equal(imported.createdRates, 4);
   assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Medium 30')?.vehicleType, 'Coach');
   assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Large 49')?.vehicleType, 'Coach');
+  assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Small 17')?.vehicleType, 'Mini Bus');
   assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Van VIP 9')?.vehicleType, 'Van');
   assert.equal(stores.vehicleRates.find((rate) => rate.maxPax === 30)?.minPax, 1);
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Point-to-Point')?.classification, 'ROUTE_TRANSFER');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Full Day')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Day Tour')?.classification, 'FULL_DAY');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 });
 

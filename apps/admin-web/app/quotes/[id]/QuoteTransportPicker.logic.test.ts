@@ -76,6 +76,17 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.deepEqual(modes, ['Half Day']);
   });
 
+  it('keeps Day Tour as a disposal pricing mode for matching, not a point-to-point fallback', () => {
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates: [rate('Small 17', 'Day Tour', { serviceType: { name: 'Day Tour', code: 'DAY_TOUR', classification: 'FULL_DAY' } })],
+      route,
+      selectedCanonicalVehicleType: 'Mini Bus',
+      now: activeDate,
+    });
+
+    assert.deepEqual(modes, ['Day Tour']);
+  });
+
   it('returns Aqaba to Petra coach modes when legacy route rows exist', () => {
     const selectedVehicle = { id: 'canonical-coach', name: 'Coach', vehicleType: 'Coach', maxPax: 49 } as any;
     const modes = getAvailableTransportPricingModesForSelection({

@@ -167,6 +167,7 @@ type DiscountAppliesTo =
   | 'point-to-point'
   | 'half day'
   | 'full day'
+  | 'day tour'
   | 'stationary / waiting'
   | 'extras / supplements';
 type ManualRateCardFormState = {
@@ -214,6 +215,7 @@ const DISCOUNT_APPLIES_TO_OPTIONS: DiscountAppliesTo[] = [
   'point-to-point',
   'half day',
   'full day',
+  'day tour',
   'stationary / waiting',
   'extras / supplements',
 ];
@@ -622,6 +624,7 @@ function getRateCardPricing(rateCard: SupplierRateCard) {
       pointToPoint: getPointToPointRate(rates),
       halfDay: findPricingModeValue(rates, 'Half Day'),
       fullDay: findPricingModeValue(rates, 'Full Day'),
+      dayTour: findPricingModeValue(rates, 'Day Tour'),
       stationaryWaitingHourly: findPricingModeValue(rates, 'Stationary / Waiting'),
     },
     includedLimits: {
@@ -2096,6 +2099,7 @@ export function VehicleRatesTable({
                                 <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.pointToPoint)}</strong></div>
                                 <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.halfDay)}</strong></div>
                                 <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.fullDay)}</strong></div>
+                                <div><span>Day Tour</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.dayTour)}</strong></div>
                                 <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.stationaryWaitingHourly)}</strong></div>
                                 <div><span>Extra Hour</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraHourRate)}</strong></div>
                                 <div><span>Extra KM</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraKmRate)}</strong></div>
@@ -2190,6 +2194,7 @@ export function VehicleRatesTable({
                           <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.pointToPoint)}</strong></div>
                           <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.halfDay)}</strong></div>
                           <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</strong></div>
+                          <div><span>Day Tour</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.dayTour)}</strong></div>
                           <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.stationaryWaitingHourly)}</strong></div>
                         </div>
                         <div className="quote-preview-total-list">
