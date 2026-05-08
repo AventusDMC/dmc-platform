@@ -573,18 +573,39 @@ describe('quote detail page regression', () => {
     ]);
   });
 
-  it('allows saved transport picker cards to be edited and removed', () => {
+  it('persists route-first transport picker selections instead of rendering local preview cards', () => {
+    const quotesServiceSource = readFileSync(new URL('../../../../api/src/quotes/quotes.service.ts', import.meta.url), 'utf8');
+
     expectSourceContains(quoteTransportPickerSource, [
-      'const [editingLineId, setEditingLineId] = useState<string | null>(null);',
-      'function handleEditLine(line: TransportLine)',
-      'setSelectedRouteId(line.routeId);',
-      'setSelectedVehicleId(line.vehicleId);',
-      'setSelectedPricingMode(line.pricingMode);',
-      'setSelectedRateId(line.rateId);',
-      'setMarkupPercent(String(line.markupPercent));',
-      'function handleRemoveLine(lineId: string)',
-      'handleEditLine(line)',
-      'handleRemoveLine(line.id)',
+      'quoteId: string;',
+      'itineraryId: string;',
+      'services: SupplierService[];',
+      'transportServiceTypes: TransportServiceType[];',
+      'async function handleAddTransport()',
+      "fetch(`${apiBaseUrl}/quotes/${quoteId}/items`,",
+      'serviceId: service.id',
+      'itineraryId,',
+      'transportServiceTypeId,',
+      'transportVehicleId: selectedVehicle.id',
+      "setSelectedRouteId('');",
+      "{isSavingTransport ? 'Saving Transport...' : 'Add Transport'}",
+    ]);
+
+    assert.equal(quoteTransportPickerSource.includes('type TransportLine ='), false);
+    assert.equal(quoteTransportPickerSource.includes('setLines('), false);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'quoteId={plannerProps.quote.id}',
+      'itineraryId={summary.day.id}',
+      'services={plannerProps.services}',
+      'transportServiceTypes={plannerProps.transportServiceTypes}',
+      'onSaved={(item) => handleEditorItemSaved(item as QuoteItem)}',
+      'void refreshScopeItemsFromQuote().catch',
+    ]);
+
+    expectSourceContains(quotesServiceSource, [
+      'const displayVehicleRate = await this.transportPricingService.findMatchingRate({',
+      'appliedVehicleRateId = displayVehicleRate.id;',
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [

@@ -3006,13 +3006,18 @@ function ScopePlanner({
                   transportPicker={
                     <QuoteTransportPicker
                       apiBaseUrl={plannerProps.apiBaseUrl}
+                      quoteId={plannerProps.quote.id}
+                      itineraryId={summary.day.id}
                       routes={plannerProps.routes}
                       vehicles={plannerProps.vehicles}
                       supplierRateCards={plannerProps.supplierRateCards}
+                      services={plannerProps.services}
+                      transportServiceTypes={plannerProps.transportServiceTypes}
                       transportDataStatus={plannerProps.transportDataStatus}
                       totalPax={plannerProps.totalPax}
                       quoteCurrency={plannerProps.quote.quoteCurrency}
                       dayNumber={summary.day.dayNumber}
+                      onSaved={(item) => handleEditorItemSaved(item as QuoteItem)}
                     />
                   }
                   onEdit={(item) =>

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { DrawerPanel } from '../../components/ui';
-import { readJsonResponse } from '../../lib/api';
+import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
 import { formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
@@ -35,6 +36,27 @@ type Supplier = {
   name: string;
 };
 
+type SupplierService = {
+  id: string;
+  supplierId: string;
+  name: string;
+  category: string;
+  serviceTypeId?: string | null;
+  serviceType?: {
+    id: string;
+    name: string;
+    code: string | null;
+    isActive?: boolean;
+  } | null;
+};
+
+type TransportServiceType = {
+  id: string;
+  name: string;
+  code: string;
+  classification?: string | null;
+};
+
 type VehicleRate = {
   id: string;
   vehicleId?: string | null;
@@ -63,6 +85,7 @@ type VehicleRate = {
   } | null;
   route?: RouteOption | null;
   serviceType?: {
+    id?: string | null;
     name: string;
     code: string;
     classification?: string | null;
@@ -88,31 +111,20 @@ type RankedVehicle = {
   isTooSmall: boolean;
 };
 
-type TransportLine = {
-  id: string;
-  routeId: string;
-  vehicleId: string;
-  rateId: string;
-  routeLabel: string;
-  vehicleLabel: string;
-  vehicleType: string;
-  pax: number;
-  pricingMode: PricingMode;
-  currency: string;
-  costPrice: number;
-  markupPercent: number;
-  sellingPrice: number;
-};
-
 type QuoteTransportPickerProps = {
   apiBaseUrl: string;
+  quoteId: string;
+  itineraryId: string;
   routes: RouteOption[];
   vehicles: Vehicle[];
   supplierRateCards: VehicleRate[];
+  services: SupplierService[];
+  transportServiceTypes: TransportServiceType[];
   transportDataStatus: TransportDataStatus;
   totalPax: number;
   quoteCurrency: string;
   dayNumber?: number;
+  onSaved?: (item: unknown) => void;
 };
 
 type TransportDataStatus = {
@@ -206,6 +218,71 @@ function getPricingModeForRate(rate: VehicleRate): PricingMode {
 
 function getNormalizedPricingModeForRate(rate: VehicleRate) {
   return deriveTransportPricingMode(rate);
+}
+
+function getServiceCategorySource(service: SupplierService) {
+  return service.serviceType?.code || service.serviceType?.name || service.category;
+}
+
+function isTransportSupplierService(service: SupplierService) {
+  const normalized = getServiceCategorySource(service).toLowerCase();
+  return normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle');
+}
+
+function inferSupplierServicePricingMode(service: SupplierService): PricingMode | null {
+  const directMode =
+    deriveTransportPricingMode({
+      serviceType: service.serviceType
+        ? {
+            name: service.serviceType.name,
+            code: service.serviceType.code,
+          }
+        : null,
+    }) ||
+    deriveTransportPricingMode({ pricingMode: service.name }) ||
+    deriveTransportPricingMode({ routeName: service.name });
+
+  if (directMode) {
+    return directMode;
+  }
+
+  const text = service.name.toLowerCase();
+  if (/\bextra\s*(km|kilometer|kilometre)|per\s*km\b/.test(text)) return 'Extra KM';
+  if (/\bdriver\s*overnight|overnight\s*driver\b/.test(text)) return 'Driver Overnight';
+  if (/\bstationary|waiting\b/.test(text)) return 'Stationary / Waiting';
+  if (/\bday\s*tour|sightseeing\s*day|fit\s*touring\b/.test(text)) return 'Day Tour';
+  if (/\bhalf\s*day\b/.test(text)) return 'Half Day';
+  if (/\bfull\s*day|daily\s*fd|daily\s*package|minimum\s*3\b/.test(text)) return 'Full Day';
+
+  return null;
+}
+
+function findSupplierServiceForRate(services: SupplierService[], rate: VehicleRate, pricingMode: PricingMode | '') {
+  const transportServices = services.filter(isTransportSupplierService);
+  const supplierId = rate.supplierId || rate.supplier?.id || null;
+  const supplierScoped = supplierId ? transportServices.filter((service) => service.supplierId === supplierId) : transportServices;
+  const searchPool = supplierScoped.length > 0 ? supplierScoped : transportServices;
+  const targetMode = pricingMode || getNormalizedPricingModeForRate(rate);
+  const modeMatch = targetMode ? searchPool.find((service) => inferSupplierServicePricingMode(service) === targetMode) : null;
+
+  return modeMatch || searchPool[0] || null;
+}
+
+function findTransportServiceTypeIdForRate(rate: VehicleRate, transportServiceTypes: TransportServiceType[], pricingMode: PricingMode | '') {
+  if (rate.serviceType?.id) {
+    return rate.serviceType.id;
+  }
+
+  const targetMode = pricingMode || getNormalizedPricingModeForRate(rate);
+  if (!targetMode) {
+    return '';
+  }
+
+  return (
+    transportServiceTypes.find((serviceType) => deriveTransportPricingMode({ serviceType }) === targetMode)?.id ||
+    transportServiceTypes.find((serviceType) => serviceType.name.toLowerCase() === targetMode.toLowerCase())?.id ||
+    ''
+  );
 }
 
 function isMinimumFullDayRate(rate: VehicleRate) {
@@ -674,13 +751,18 @@ function normalizeSupplierRateRows(payload: unknown): VehicleRate[] {
 
 export function QuoteTransportPicker({
   apiBaseUrl,
+  quoteId,
+  itineraryId,
   routes,
   vehicles: propVehicles,
   supplierRateCards,
+  services,
+  transportServiceTypes,
   transportDataStatus,
   totalPax,
   quoteCurrency,
   dayNumber,
+  onSaved,
 }: QuoteTransportPickerProps) {
   const [open, setOpen] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -692,8 +774,7 @@ export function QuoteTransportPicker({
   const [selectedRateId, setSelectedRateId] = useState('');
   const [paxInput, setPaxInput] = useState(String(Math.max(1, totalPax || 1)));
   const [markupPercent, setMarkupPercent] = useState('30');
-  const [lines, setLines] = useState<TransportLine[]>([]);
-  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [isSavingTransport, setIsSavingTransport] = useState(false);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
   const [manualSupplierRateCards, setManualSupplierRateCards] = useState<VehicleRate[]>([]);
 
@@ -918,52 +999,65 @@ export function QuoteTransportPicker({
     });
   }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, requestedPax, selectedRoute, selectedVehicle, selectedVehicleId, selectedVehicleTypeForMatch, vehicleTypes]);
 
-  function handleAddTransport() {
+  async function handleAddTransport() {
     if (!selectedRoute || !selectedVehicle || !selectedRate) {
       setError('Select a route, vehicle, pricing mode, and supplier rate card before adding transport.');
       return;
     }
 
-    const nextLine = {
-      id: editingLineId || `${selectedRoute.id}-${selectedVehicle.id}-${selectedRate.id}-${Date.now()}`,
-      routeId: selectedRoute.id,
-      vehicleId: selectedVehicle.id,
-      rateId: selectedRate.id,
-      routeLabel: formatRoute(selectedRoute),
-      vehicleLabel: selectedVehicle.name,
-      vehicleType: selectedVehicleType,
-      pax: requestedPax,
-      pricingMode: selectedPricingMode || 'Point-to-Point',
-      currency: selectedRate.currency || quoteCurrency,
-      costPrice,
-      markupPercent: markup,
-      sellingPrice,
-    };
+    const service = findSupplierServiceForRate(services, selectedRate, selectedPricingMode);
+    const transportServiceTypeId = findTransportServiceTypeIdForRate(selectedRate, transportServiceTypes, selectedPricingMode);
 
-    setLines((current) =>
-      editingLineId
-        ? current.map((line) => (line.id === editingLineId ? nextLine : line))
-        : [...current, nextLine],
-    );
-    setEditingLineId(null);
-    setOpen(false);
-  }
+    if (!service || !transportServiceTypeId) {
+      setError('Could not resolve the selected supplier service and pricing mode for this transport rate.');
+      return;
+    }
 
-  function handleEditLine(line: TransportLine) {
-    setEditingLineId(line.id);
-    setSelectedRouteId(line.routeId);
-    setSelectedVehicleId(line.vehicleId);
-    setSelectedPricingMode(line.pricingMode);
-    setSelectedRateId(line.rateId);
-    setPaxInput(String(line.pax));
-    setMarkupPercent(String(line.markupPercent));
-    setOpen(true);
-  }
+    setIsSavingTransport(true);
+    setError('');
 
-  function handleRemoveLine(lineId: string) {
-    setLines((current) => current.filter((line) => line.id !== lineId));
-    if (editingLineId === lineId) {
-      setEditingLineId(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/items`, {
+        method: 'POST',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          serviceId: service.id,
+          itineraryId,
+          quantity: 1,
+          paxCount: requestedPax,
+          dayCount: 1,
+          markupPercent: markup,
+          markupAmount: null,
+          sellPrice: null,
+          overrideCost: null,
+          overrideReason: null,
+          useOverride: false,
+          transportServiceTypeId,
+          transportVehicleId: selectedVehicle.id,
+          routeId: selectedRoute.id,
+          routeName: formatRoute(selectedRoute),
+          transportAddOns: [],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not save transport item.'));
+      }
+
+      const savedItem = await readJsonResponse<unknown>(response, 'Could not read saved transport item.');
+      onSaved?.(savedItem);
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId } }));
+      setSelectedRateId('');
+      setSelectedPricingMode('');
+      setSelectedVehicleId('');
+      setSelectedRouteId('');
+      setOpen(false);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not save transport item.');
+    } finally {
+      setIsSavingTransport(false);
     }
   }
 
@@ -973,34 +1067,6 @@ export function QuoteTransportPicker({
         <span aria-hidden="true">+</span>
         Add Transport
       </button>
-
-      {lines.length > 0 ? (
-        <div className="quote-transport-candidate-list">
-          {lines.map((line) => (
-            <div key={line.id} className="quote-selected-transport-card quote-selected-transport-card-active">
-              <div className="quote-selected-transport-summary">
-                <div>
-                  <span>{line.routeLabel}</span>
-                  <strong>
-                    {formatTransportVehicleDisplay({ name: line.vehicleLabel, vehicleType: line.vehicleType, maxPax: line.pax }, vehicleTypes)} | {line.pricingMode}
-                  </strong>
-                </div>
-                <strong>
-                  {formatMoney(line.costPrice, line.currency)} {'->'} {formatMoney(line.sellingPrice, line.currency)}
-                </strong>
-              </div>
-              <div className="quote-service-mini-card-actions">
-                <button type="button" className="secondary-button" onClick={() => handleEditLine(line)}>
-                  Edit
-                </button>
-                <button type="button" className="secondary-button secondary-button-danger" onClick={() => handleRemoveLine(line.id)}>
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
 
       <DrawerPanel
         open={open}
@@ -1328,8 +1394,8 @@ export function QuoteTransportPicker({
             ) : null}
           </section>
 
-          <button type="button" className="quote-transport-add-button" onClick={handleAddTransport} disabled={!pricingReady}>
-            Add Transport
+          <button type="button" className="quote-transport-add-button" onClick={handleAddTransport} disabled={!pricingReady || isSavingTransport}>
+            {isSavingTransport ? 'Saving Transport...' : 'Add Transport'}
           </button>
         </div>
       </DrawerPanel>

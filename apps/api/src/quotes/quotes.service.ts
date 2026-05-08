@@ -3185,6 +3185,19 @@ export class QuotesService {
             ? `Capacity unit x ${resolvedPricing.unitCount}`
             : 'Per vehicle',
         ].join(' | ');
+
+        try {
+          const displayVehicleRate = await this.transportPricingService.findMatchingRate({
+            serviceTypeId: resolvedPricing.rule.transportServiceTypeId,
+            vehicleId: resolvedPricing.rule.vehicleId,
+            routeId: resolvedPricing.rule.routeId,
+            normalizedKey: routeNormalizedKey,
+            paxCount,
+          });
+          appliedVehicleRateId = displayVehicleRate.id;
+        } catch {
+          appliedVehicleRateId = null;
+        }
       } catch (error) {
         if (!(error instanceof NotFoundException)) {
           throw error;
