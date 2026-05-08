@@ -6,6 +6,17 @@ import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 import { normalizeTransportPricingMode } from '../lib/transport-pricing-modes';
 import { SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../lib/transport-suppliers';
 
+const PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS = ['Transfers', 'Disposal', 'Add-ons'];
+const PREVIEW_PRICING_MODE_FILTER_OPTIONS = [
+  'Point-to-Point',
+  'Full Day',
+  'Half Day',
+  'Day Tour',
+  'Extra KM',
+  'Driver Overnight',
+  'Stationary / Waiting',
+];
+
 type ImportSummary = {
   rows: number;
   createdSuppliers: number;
@@ -63,9 +74,9 @@ function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMer
 
 function getPreviewGroup(row: Record<string, unknown>) {
   const classification = String(row.classification || '').toUpperCase();
-  const pricingMode = normalizeTransportPricingMode(String(row.serviceName || ''));
+  const pricingMode = getPreviewPricingMode(row);
 
-  if (classification === 'ADD_ON' || pricingMode === 'Stationary / Waiting' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Add-on / Supplement') {
+  if (classification === 'ADD_ON' || pricingMode === 'Stationary / Waiting' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Driver Overnight' || pricingMode === 'Add-on / Supplement') {
     return 'addOns';
   }
 
@@ -73,7 +84,7 @@ function getPreviewGroup(row: Record<string, unknown>) {
     return 'halfDay';
   }
 
-  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day') {
+  if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day' || pricingMode === 'Day Tour') {
     return 'fullDay';
   }
 
@@ -82,6 +93,20 @@ function getPreviewGroup(row: Record<string, unknown>) {
 
 function getSafeRows(rows?: Array<Record<string, unknown>>) {
   return Array.isArray(rows) ? rows : [];
+}
+
+function getPreviewPricingMode(row: Record<string, unknown>) {
+  return normalizeTransportPricingMode(String(row.serviceName || row.pricingMode || ''));
+}
+
+function filterPreviewRows(rows: Array<Record<string, unknown>>, filters: { serviceCategory: string; pricingMode: string }) {
+  return rows.filter((row) => {
+    const serviceCategory = String(row.serviceCategory || '').trim().toLowerCase();
+    const pricingMode = getPreviewPricingMode(row);
+    const matchesServiceCategory = !filters.serviceCategory || serviceCategory === filters.serviceCategory.toLowerCase();
+    const matchesPricingMode = !filters.pricingMode || pricingMode === filters.pricingMode;
+    return matchesServiceCategory && matchesPricingMode;
+  });
 }
 
 function formatPreviewVehicleLabel(row: Record<string, unknown>) {
@@ -96,16 +121,16 @@ function formatPreviewVehicleLabel(row: Record<string, unknown>) {
   );
 }
 
-function getPreviewGroups(summary: ImportSummary | null) {
+function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCategory: string; pricingMode: string }) {
   if (!summary) {
     return [];
   }
 
-  const previewRows = getSafeRows(summary.previewRows);
-  const routeTransfers = getSafeRows(summary.routeTransfers);
-  const fullDay = getSafeRows(summary.fullDay);
-  const halfDay = getSafeRows(summary.halfDay);
-  const addOns = getSafeRows(summary.addOns);
+  const previewRows = filterPreviewRows(getSafeRows(summary.previewRows), filters);
+  const routeTransfers = filterPreviewRows(getSafeRows(summary.routeTransfers), filters);
+  const fullDay = filterPreviewRows(getSafeRows(summary.fullDay), filters);
+  const halfDay = filterPreviewRows(getSafeRows(summary.halfDay), filters);
+  const addOns = filterPreviewRows(getSafeRows(summary.addOns), filters);
   const hasGroupedRows = [routeTransfers, fullDay, halfDay, addOns].some((rows) => rows.length > 0);
   const groups = hasGroupedRows
     ? [routeTransfers || [], fullDay || [], halfDay || [], addOns || []]
@@ -153,6 +178,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
   const [contractMergeChoice, setContractMergeChoice] = useState<ContractMergeChoice>('keep');
   const [contractNameOverride, setContractNameOverride] = useState('');
   const [allowCreateSuppliers, setAllowCreateSuppliers] = useState(false);
+  const [previewServiceCategoryFilter, setPreviewServiceCategoryFilter] = useState('');
+  const [previewPricingModeFilter, setPreviewPricingModeFilter] = useState('');
 
   async function handlePreview() {
     if (!file) {
@@ -216,7 +243,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
 
   const activeSummary = result || preview;
   const canImport = Boolean(preview && file);
-  const previewGroups = getPreviewGroups(preview);
+  const previewGroups = getPreviewGroups(preview, { serviceCategory: previewServiceCategoryFilter, pricingMode: previewPricingModeFilter });
   const skippedInvalidRows = preview?.errors?.length || 0;
 
   return (
@@ -234,6 +261,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
               setError('');
               setContractMergeChoice('keep');
               setContractNameOverride('');
+              setPreviewServiceCategoryFilter('');
+              setPreviewPricingModeFilter('');
             }}
           />
         </label>
@@ -372,6 +401,33 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
               />
             </label>
           ) : null}
+        </div>
+      ) : null}
+
+      {preview ? (
+        <div className="supplier-rate-card-safe-filters transport-import-preview-filters">
+          <label>
+            Service Category
+            <select value={previewServiceCategoryFilter} onChange={(event) => setPreviewServiceCategoryFilter(event.target.value)}>
+              <option value="">All service categories</option>
+              {PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS.map((serviceCategory) => (
+                <option key={serviceCategory} value={serviceCategory}>
+                  {serviceCategory}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Pricing Mode
+            <select value={previewPricingModeFilter} onChange={(event) => setPreviewPricingModeFilter(event.target.value)}>
+              <option value="">All pricing modes</option>
+              {PREVIEW_PRICING_MODE_FILTER_OPTIONS.map((pricingMode) => (
+                <option key={pricingMode} value={pricingMode}>
+                  {pricingMode}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
 

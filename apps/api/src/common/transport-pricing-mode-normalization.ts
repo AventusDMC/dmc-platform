@@ -3,8 +3,10 @@ export type CanonicalTransportPricingMode =
   | 'Airport Transfer'
   | 'Half Day'
   | 'Full Day'
+  | 'Day Tour'
   | 'Extra Hour'
   | 'Extra KM'
+  | 'Driver Overnight'
   | 'Stationary / Waiting'
   | 'Add-on / Supplement';
 
@@ -13,8 +15,10 @@ export const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] 
   'Airport Transfer',
   'Half Day',
   'Full Day',
+  'Day Tour',
   'Extra Hour',
   'Extra KM',
+  'Driver Overnight',
   'Stationary / Waiting',
   'Add-on / Supplement',
 ];
@@ -26,10 +30,14 @@ const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMo
   halfday100km: 'Half Day',
   fullday: 'Full Day',
   fullday200km: 'Full Day',
+  daytour: 'Day Tour',
+  daytours: 'Day Tour',
   extrahour: 'Extra Hour',
   extrakm: 'Extra KM',
   extrakilometer: 'Extra KM',
   extrakilometre: 'Extra KM',
+  driverovernight: 'Driver Overnight',
+  overnightdriver: 'Driver Overnight',
   stationary: 'Stationary / Waiting',
   stationarywaiting: 'Stationary / Waiting',
   addonsupplement: 'Add-on / Supplement',

@@ -149,6 +149,7 @@ export type VehicleRatesTableProps = {
   rateCardFilters?: {
     supplierId?: string;
     routeId?: string;
+    serviceCategory?: string;
     vehicleType?: string;
     pricingMode?: string;
     status?: string;
@@ -225,11 +226,11 @@ function getPricingModeClassification(pricingMode: PricingMode) {
     return 'HALF_DAY';
   }
 
-  if (pricingMode === 'Full Day') {
+  if (pricingMode === 'Full Day' || pricingMode === 'Day Tour') {
     return 'FULL_DAY';
   }
 
-  if (pricingMode === 'Add-on / Supplement' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM') {
+  if (pricingMode === 'Add-on / Supplement' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Driver Overnight') {
     return 'ADD_ON';
   }
 

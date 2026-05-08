@@ -9,6 +9,17 @@ import { formatRouteLabel } from '../lib/transport-formatters';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import { VehicleRatesTable, type Supplier, type TransportServiceType, type Vehicle } from './VehicleRatesTable';
 
+const PRICING_MODE_FILTER_OPTIONS = [
+  'Point-to-Point',
+  'Full Day',
+  'Half Day',
+  'Day Tour',
+  'Extra KM',
+  'Driver Overnight',
+  'Stationary / Waiting',
+];
+const SERVICE_CATEGORY_FILTER_OPTIONS = ['Transfers', 'Disposal', 'Add-ons'];
+
 type SupplierRateCardsSafeLoaderProps = {
   apiBaseUrl: string;
   routeId?: string;
@@ -33,7 +44,9 @@ export function SupplierRateCardsSafeLoader({
   suppliers,
 }: SupplierRateCardsSafeLoaderProps) {
   const [supplierFilter, setSupplierFilter] = useState('');
+  const [serviceCategoryFilter, setServiceCategoryFilter] = useState('');
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('');
+  const [pricingModeFilter, setPricingModeFilter] = useState('');
   const [routeFilter, setRouteFilter] = useState('');
   const [hasRequestedLoad, setHasRequestedLoad] = useState(false);
   const [hasRequestedCreate, setHasRequestedCreate] = useState(false);
@@ -66,15 +79,17 @@ export function SupplierRateCardsSafeLoader({
     return routes.map((route) => ({ id: route.id, name: formatRouteLabel(route.name) })).sort((left, right) => left.name.localeCompare(right.name));
   }, [routes]);
 
-  const hasAnyFilter = Boolean(supplierFilter || vehicleTypeFilter || routeFilter);
+  const hasAnyFilter = Boolean(supplierFilter || serviceCategoryFilter || vehicleTypeFilter || pricingModeFilter || routeFilter);
   const shouldMountTable = hasRequestedLoad || hasRequestedCreate;
   const rateCardFilters = useMemo(
     () => ({
       supplierId: supplierFilter,
+      serviceCategory: serviceCategoryFilter,
       vehicleType: normalizeVehicleTypeLabel(vehicleTypeFilter, vehicleTypeCatalog),
+      pricingMode: pricingModeFilter,
       routeId: routeFilter || routeId || '',
     }),
-    [routeFilter, routeId, supplierFilter, vehicleTypeCatalog, vehicleTypeFilter],
+    [pricingModeFilter, routeFilter, routeId, serviceCategoryFilter, supplierFilter, vehicleTypeCatalog, vehicleTypeFilter],
   );
 
   function handleAddRateCard() {
@@ -108,12 +123,34 @@ export function SupplierRateCardsSafeLoader({
           </select>
         </label>
         <label>
+          Service Category
+          <select value={serviceCategoryFilter} onChange={(event) => setServiceCategoryFilter(event.target.value)}>
+            <option value="">All service categories</option>
+            {SERVICE_CATEGORY_FILTER_OPTIONS.map((serviceCategory) => (
+              <option key={serviceCategory} value={serviceCategory}>
+                {serviceCategory}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           Vehicle type
           <select value={vehicleTypeFilter} onChange={(event) => setVehicleTypeFilter(event.target.value)}>
             <option value="">All vehicle types</option>
             {vehicleTypeOptions.map((vehicleType) => (
               <option key={vehicleType} value={vehicleType}>
                 {vehicleType}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Pricing Mode
+          <select value={pricingModeFilter} onChange={(event) => setPricingModeFilter(event.target.value)}>
+            <option value="">All pricing modes</option>
+            {PRICING_MODE_FILTER_OPTIONS.map((pricingMode) => (
+              <option key={pricingMode} value={pricingMode}>
+                {pricingMode}
               </option>
             ))}
           </select>

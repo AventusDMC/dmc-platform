@@ -28,6 +28,7 @@ type SupplierRateCardQuery = {
   limit?: string;
   supplierId?: string;
   routeId?: string;
+  serviceCategory?: string;
   vehicleType?: string;
   pricingMode?: string;
   status?: string;
@@ -55,6 +56,7 @@ export class VehicleRatesController {
       limit: query.limit === undefined ? undefined : Number(query.limit),
       supplierId: query.supplierId,
       routeId: query.routeId,
+      serviceCategory: query.serviceCategory,
       vehicleType: query.vehicleType,
       pricingMode: query.pricingMode,
       status: query.status,

@@ -62,6 +62,7 @@ type SupplierRateCardQuery = {
   limit?: number;
   supplierId?: string;
   routeId?: string;
+  serviceCategory?: string;
   vehicleType?: string;
   pricingMode?: string;
   status?: string;
@@ -295,7 +296,8 @@ function getServiceCategoryClassification(serviceCategory: string, pricingMode: 
 
   if (normalized.includes('add')) return 'ADD_ON';
   if (canonicalPricingMode === 'Half Day' || normalized.includes('half')) return 'HALF_DAY';
-  if (canonicalPricingMode === 'Full Day' || normalized.includes('full') || normalized.includes('disposal')) return 'FULL_DAY';
+  if (canonicalPricingMode === 'Driver Overnight') return 'ADD_ON';
+  if (canonicalPricingMode === 'Full Day' || canonicalPricingMode === 'Day Tour' || normalized.includes('full') || normalized.includes('disposal')) return 'FULL_DAY';
   if (normalized.includes('daily')) return 'DAILY_PACKAGE';
 
   return classifyTransportServiceName(canonicalPricingMode || pricingMode);
@@ -591,6 +593,24 @@ export class VehicleRatesService {
           ...vehicleTypeLabels.map((label) => ({ vehicle: { vehicleType: { equals: label, mode: 'insensitive' } } })),
         ],
       });
+    }
+
+    if (query.serviceCategory?.trim()) {
+      const normalizedCategory = query.serviceCategory.trim().toLowerCase();
+      const classificationsByCategory: Record<string, TransportServiceClassification[]> = {
+        transfers: ['ROUTE_TRANSFER'],
+        disposal: ['FULL_DAY', 'HALF_DAY', 'DAILY_PACKAGE'],
+        'add-ons': ['ADD_ON'],
+        'add ons': ['ADD_ON'],
+      };
+      const classifications = classificationsByCategory[normalizedCategory] || [];
+      if (classifications.length > 0) {
+        and.push({
+          OR: classifications.map((classification) => ({ serviceType: { classification } })),
+        });
+      } else {
+        and.push({ id: '__service_category_not_recognized__' });
+      }
     }
 
     if (query.status?.trim()) {
