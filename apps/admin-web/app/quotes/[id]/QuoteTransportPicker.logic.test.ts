@@ -4,6 +4,8 @@ import {
   getAvailableTransportPricingModesForSelection,
   getCanonicalPickerVehicleType,
   getCanonicalRateVehicleType,
+  getQuoteTransportPersistedCostPreview,
+  getQuoteTransportRateBillableDays,
   getTransportPricingModeOptionLabel,
   formatVehicleOptionLabel,
   transportRateMatchesSelectedRoute,
@@ -72,6 +74,31 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     for (const [vehicle, expected] of examples) {
       assert.equal(formatVehicleOptionLabel({ vehicle, group: 'Available', isRecommended: false, isTooSmall: false } as any, []), expected);
     }
+  });
+
+  it('previews Full Day costs with the same capacity and billable-day rules used for persisted quote items', () => {
+    const fullDayRate = rate('Medium 30', 'Full Day', {
+      price: 301,
+      maxPax: 30,
+      grossRate: 509,
+      vehicle: { name: 'Medium 30', vehicleType: null, maxPax: 30 },
+      serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+    });
+
+    assert.equal(getQuoteTransportRateBillableDays(fullDayRate, 1), 3);
+    assert.equal(getQuoteTransportPersistedCostPreview(fullDayRate, 21, 1), 903);
+  });
+
+  it('previews transfer costs without Full Day minimums and applies capacity units when pax exceeds one vehicle', () => {
+    const transferRate = rate('Medium 30', 'Point-to-Point', {
+      price: 120,
+      maxPax: 30,
+      vehicle: { name: 'Medium 30', vehicleType: null, maxPax: 30 },
+      serviceType: { name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
+    });
+
+    assert.equal(getQuoteTransportRateBillableDays(transferRate, 1), 1);
+    assert.equal(getQuoteTransportPersistedCostPreview(transferRate, 31, 1), 240);
   });
 
   it('maps legacy Small 17 rows to Mini Bus pricing modes', () => {

@@ -460,14 +460,29 @@ describe('quote detail page regression', () => {
 
   it('uses a route vehicle type and pricing mode dependent supplier rate dropdown', () => {
     expectSourceContains(quoteTransportPickerSource, [
-      'function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null)',
+      'function formatSupplierRateOptionLabel(',
       'export function isGeneralTransportRouteRate(rate: VehicleRate)',
       'function getRouteCandidateRates(rates: VehicleRate[], route: RouteOption, now = new Date())',
       'const routeCandidateRates = getRouteCandidateRates(loadedSupplierRates, selectedRoute);',
       'const routeScopedRates = routeCandidateRates.filter(',
       'No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.',
       'disabled={!selectedRoute || !selectedVehicle || !selectedPricingMode || supplierRateMatches.length === 0}',
-      '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute)}',
+      '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax)}',
+    ]);
+  });
+
+  it('previews transport selected prices with the persisted quote-item cost path', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'export function getQuoteTransportRateUnitCost(rate: VehicleRate)',
+      'export function getQuoteTransportRateUnitCount(rate: VehicleRate, pax: number)',
+      'export function getQuoteTransportRateBillableDays(rate: VehicleRate, selectedDays = 1)',
+      'export function getQuoteTransportPersistedCostPreview(rate: VehicleRate, pax: number, selectedDays = 1)',
+      "classification === 'FULL_DAY'",
+      "classification === 'DAILY_PACKAGE'",
+      'return Number((unitCost * unitCount * billableDays).toFixed(2));',
+      'const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax) : 0;',
+      'getQuoteTransportPersistedCostPreview(left.rate, requestedPax)',
+      'getQuoteTransportPersistedCostPreview(rate, pax)',
     ]);
   });
 

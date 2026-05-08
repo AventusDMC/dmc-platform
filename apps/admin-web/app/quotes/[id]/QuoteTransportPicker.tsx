@@ -294,14 +294,38 @@ function getSupplierDisplay(rate: VehicleRate, suppliers: Supplier[]) {
   return formatSupplierName(resolveSupplierNameById(rate.supplierId || rate.supplier?.id, suppliers) || rate.supplier?.name || rate.supplierName, null);
 }
 
-function getRateCost(rate: VehicleRate) {
-  const grossRate = rate.grossRate ?? rate.price;
-  const discountPercent = rate.contractDiscountPercent ?? 0;
-  return grossRate - grossRate * (discountPercent / 100);
+export function getQuoteTransportRateUnitCost(rate: VehicleRate) {
+  return Number(rate.price) || 0;
+}
+
+export function getQuoteTransportRateUnitCount(rate: VehicleRate, pax: number) {
+  const requestedPax = Math.max(1, Math.floor(Number(pax) || 1));
+  const unitCapacity = Number(rate.maxPax ?? rate.vehicle?.maxPax ?? 0);
+  return unitCapacity > 0 ? Math.max(1, Math.ceil(requestedPax / unitCapacity)) : 1;
+}
+
+export function getQuoteTransportRateBillableDays(rate: VehicleRate, selectedDays = 1) {
+  const normalizedSelectedDays = Math.max(1, Math.floor(Number(selectedDays) || 1));
+  const classification = String(rate.serviceType?.classification || '').toUpperCase();
+  const serviceText = [classification, rate.serviceType?.name, rate.serviceType?.code].join(' ').toLowerCase();
+  const isDailyMinimumRate =
+    classification === 'FULL_DAY' ||
+    classification === 'DAILY_PACKAGE' ||
+    /\b(full_day|daily_package|daily\s*fd|daily\s+full\s+day|minimum\s+3)\b/.test(serviceText);
+
+  return isDailyMinimumRate ? Math.max(normalizedSelectedDays, 3) : normalizedSelectedDays;
+}
+
+export function getQuoteTransportPersistedCostPreview(rate: VehicleRate, pax: number, selectedDays = 1) {
+  const unitCost = getQuoteTransportRateUnitCost(rate);
+  const unitCount = getQuoteTransportRateUnitCount(rate, pax);
+  const billableDays = getQuoteTransportRateBillableDays(rate, selectedDays);
+
+  return Number((unitCost * unitCount * billableDays).toFixed(2));
 }
 
 function hasNumericRate(rate: VehicleRate) {
-  return Number.isFinite(Number(rate.grossRate ?? rate.price));
+  return Number.isFinite(Number(rate.price));
 }
 
 function getRateCapacity(rate: VehicleRate) {
@@ -671,7 +695,13 @@ export function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: Veh
   return `${formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)}${entry.isTooSmall ? ' — Too small' : ''}`;
 }
 
-function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null) {
+function formatSupplierRateOptionLabel(
+  match: SupplierRateMatch,
+  suppliers: Supplier[],
+  vehicleTypes: VehicleTypeOption[],
+  fallbackRoute: RouteOption | null,
+  pax: number,
+) {
   const rate = match.rate;
   const supplier = getSupplierDisplay(rate, suppliers);
   const vehicle = {
@@ -682,7 +712,7 @@ function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supp
   const vehicleLabel = formatTransportVehicleDisplay(vehicle, vehicleTypes);
   const route = rate.routeName || rate.route?.name || (fallbackRoute ? formatRoute(fallbackRoute) : 'General / All Routes');
   const pricingMode = getPricingModeForRate(rate);
-  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getRateCost(rate), rate.currency)}`;
+  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getQuoteTransportPersistedCostPreview(rate, pax), rate.currency)}`;
 }
 
 function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
@@ -931,7 +961,7 @@ export function QuoteTransportPicker({
         return supplierSort;
       }
 
-      return getRateCost(left.rate) - getRateCost(right.rate);
+      return getQuoteTransportPersistedCostPreview(left.rate, requestedPax) - getQuoteTransportPersistedCostPreview(right.rate, requestedPax);
     });
   }, [loadedSupplierRates, requestedPax, selectedPricingMode, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, suppliers, vehicleTypes]);
   const selectedRateMatch = supplierRateMatches.find((match) => match.rate.id === selectedRateId) || null;
@@ -946,7 +976,7 @@ export function QuoteTransportPicker({
 
   const selectedRate = selectedRateMatch?.rate || null;
   const selectedRateHasCost = Boolean(selectedRate && getNormalizedPricingModeForRate(selectedRate) === selectedPricingMode && hasNumericRate(selectedRate));
-  const costPrice = selectedRate && selectedRateHasCost ? getRateCost(selectedRate) : 0;
+  const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax) : 0;
   const markup = Number(markupPercent) || 0;
   const sellingPrice = costPrice + costPrice * (markup / 100);
   const profit = calculateProfit(sellingPrice, costPrice);
@@ -1373,7 +1403,7 @@ export function QuoteTransportPicker({
                       {supplierRateMatches.length === 0 ? <option value="">No supplier rate available</option> : null}
                       {supplierRateMatches.map((match) => (
                         <option key={match.rate.id} value={match.rate.id}>
-                          {formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute)}
+                          {formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax)}
                         </option>
                       ))}
                     </select>
