@@ -90,6 +90,9 @@ type RankedVehicle = {
 
 type TransportLine = {
   id: string;
+  routeId: string;
+  vehicleId: string;
+  rateId: string;
   routeLabel: string;
   vehicleLabel: string;
   vehicleType: string;
@@ -690,6 +693,7 @@ export function QuoteTransportPicker({
   const [paxInput, setPaxInput] = useState(String(Math.max(1, totalPax || 1)));
   const [markupPercent, setMarkupPercent] = useState('30');
   const [lines, setLines] = useState<TransportLine[]>([]);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
   const [manualSupplierRateCards, setManualSupplierRateCards] = useState<VehicleRate[]>([]);
 
@@ -920,22 +924,47 @@ export function QuoteTransportPicker({
       return;
     }
 
-    setLines((current) => [
-      ...current,
-      {
-        id: `${selectedRoute.id}-${selectedVehicle.id}-${selectedRate.id}-${Date.now()}`,
-        routeLabel: formatRoute(selectedRoute),
-        vehicleLabel: selectedVehicle.name,
-        vehicleType: selectedVehicleType,
-        pax: requestedPax,
-        pricingMode: selectedPricingMode || 'Point-to-Point',
-        currency: selectedRate.currency || quoteCurrency,
-        costPrice,
-        markupPercent: markup,
-        sellingPrice,
-      },
-    ]);
+    const nextLine = {
+      id: editingLineId || `${selectedRoute.id}-${selectedVehicle.id}-${selectedRate.id}-${Date.now()}`,
+      routeId: selectedRoute.id,
+      vehicleId: selectedVehicle.id,
+      rateId: selectedRate.id,
+      routeLabel: formatRoute(selectedRoute),
+      vehicleLabel: selectedVehicle.name,
+      vehicleType: selectedVehicleType,
+      pax: requestedPax,
+      pricingMode: selectedPricingMode || 'Point-to-Point',
+      currency: selectedRate.currency || quoteCurrency,
+      costPrice,
+      markupPercent: markup,
+      sellingPrice,
+    };
+
+    setLines((current) =>
+      editingLineId
+        ? current.map((line) => (line.id === editingLineId ? nextLine : line))
+        : [...current, nextLine],
+    );
+    setEditingLineId(null);
     setOpen(false);
+  }
+
+  function handleEditLine(line: TransportLine) {
+    setEditingLineId(line.id);
+    setSelectedRouteId(line.routeId);
+    setSelectedVehicleId(line.vehicleId);
+    setSelectedPricingMode(line.pricingMode);
+    setSelectedRateId(line.rateId);
+    setPaxInput(String(line.pax));
+    setMarkupPercent(String(line.markupPercent));
+    setOpen(true);
+  }
+
+  function handleRemoveLine(lineId: string) {
+    setLines((current) => current.filter((line) => line.id !== lineId));
+    if (editingLineId === lineId) {
+      setEditingLineId(null);
+    }
   }
 
   return (
@@ -959,6 +988,14 @@ export function QuoteTransportPicker({
                 <strong>
                   {formatMoney(line.costPrice, line.currency)} {'->'} {formatMoney(line.sellingPrice, line.currency)}
                 </strong>
+              </div>
+              <div className="quote-service-mini-card-actions">
+                <button type="button" className="secondary-button" onClick={() => handleEditLine(line)}>
+                  Edit
+                </button>
+                <button type="button" className="secondary-button secondary-button-danger" onClick={() => handleRemoveLine(line.id)}>
+                  Remove
+                </button>
               </div>
             </div>
           ))}

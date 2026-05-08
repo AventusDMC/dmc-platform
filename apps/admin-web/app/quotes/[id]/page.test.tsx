@@ -538,6 +538,46 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('saves and displays transport items with pricing-mode specific supplier service labels', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'function inferSupplierServiceTransportPricingMode(service: SupplierService): TransportPricingMode | null',
+      'function findSupplierServiceForTransportSelection',
+      'findSupplierServiceForTransportSelection(filteredServices, candidate)',
+      'findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || serviceId',
+      "return 'Extra KM';",
+      "return 'Driver Overnight';",
+      "return 'Full Day';",
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'if (item.appliedVehicleRate?.serviceType?.name) {',
+      'return item.appliedVehicleRate.serviceType.name;',
+    ]);
+  });
+
+  it('allows saved transport picker cards to be edited and removed', () => {
+    expectSourceContains(quoteTransportPickerSource, [
+      'const [editingLineId, setEditingLineId] = useState<string | null>(null);',
+      'function handleEditLine(line: TransportLine)',
+      'setSelectedRouteId(line.routeId);',
+      'setSelectedVehicleId(line.vehicleId);',
+      'setSelectedPricingMode(line.pricingMode);',
+      'setSelectedRateId(line.rateId);',
+      'setMarkupPercent(String(line.markupPercent));',
+      'function handleRemoveLine(lineId: string)',
+      'handleEditLine(line)',
+      'handleRemoveLine(line.id)',
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      '<button type="button" className="secondary-button" onClick={() => onEdit(item)}>',
+      '{deletingItemId === item.id ? \'Removing...\' : \'Remove\'}',
+      'onRemove={handleRemoveItem}',
+    ]);
+  });
+
   it('derives point-to-point pricing mode for legacy transfer supplier rate rows', () => {
     expectSourceContains(transportPricingModesSource, [
       "privatetransfer: 'Point-to-Point'",

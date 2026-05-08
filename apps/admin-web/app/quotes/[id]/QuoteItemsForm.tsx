@@ -7,6 +7,7 @@ import { RouteCombobox } from '../../components/RouteCombobox';
 import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
+import { deriveTransportPricingMode, normalizeTransportPricingMode, TransportPricingMode } from '../../lib/transport-pricing-modes';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
@@ -342,6 +343,86 @@ type QuoteItemsFormProps = {
   onSaved?: (item: any) => void;
   onCancel?: () => void;
 };
+
+function inferSupplierServiceTransportPricingMode(service: SupplierService): TransportPricingMode | null {
+  const directMode =
+    normalizeTransportPricingMode(service.name) ||
+    deriveTransportPricingMode({
+      serviceType: service.serviceType
+        ? {
+            name: service.serviceType.name,
+            code: service.serviceType.code,
+          }
+        : null,
+    });
+
+  if (directMode) {
+    return directMode;
+  }
+
+  const text = service.name.toLowerCase();
+
+  if (/\bextra\s*(km|kilometer|kilometre)|per\s*km\b/.test(text)) {
+    return 'Extra KM';
+  }
+
+  if (/\bdriver\s*overnight|overnight\s*driver\b/.test(text)) {
+    return 'Driver Overnight';
+  }
+
+  if (/\bstationary|waiting\b/.test(text)) {
+    return 'Stationary / Waiting';
+  }
+
+  if (/\bday\s*tour|sightseeing\s*day|fit\s*touring\b/.test(text)) {
+    return 'Day Tour';
+  }
+
+  if (/\bhalf\s*day\b/.test(text)) {
+    return 'Half Day';
+  }
+
+  if (/\bfull\s*day|daily\s*fd|daily\s*package|minimum\s*3\b/.test(text)) {
+    return 'Full Day';
+  }
+
+  return null;
+}
+
+function getTransportCandidatePricingMode(candidate: TransportPricingCandidate | ResolvedTransportPricing): TransportPricingMode | null {
+  return deriveTransportPricingMode({
+    pricingMode: 'pricingMode' in candidate ? candidate.pricingMode || null : null,
+    routeName: candidate.routeName,
+    serviceType: candidate.serviceType,
+  });
+}
+
+function findSupplierServiceForTransportSelection(
+  services: SupplierService[],
+  candidate: TransportPricingCandidate | ResolvedTransportPricing | null,
+) {
+  if (!candidate) {
+    return null;
+  }
+
+  const transportServices = services.filter((service) => getServiceTypeKey(service) === 'transport');
+  const targetPricingMode = getTransportCandidatePricingMode(candidate);
+  const supplierId = candidate.supplier?.id || null;
+  const supplierScopedServices = supplierId
+    ? transportServices.filter((service) => service.supplierId === supplierId)
+    : transportServices;
+  const searchPool = supplierScopedServices.length > 0 ? supplierScopedServices : transportServices;
+  const pricingModeMatchedService = targetPricingMode
+    ? searchPool.find((service) => inferSupplierServiceTransportPricingMode(service) === targetPricingMode)
+    : null;
+
+  return (
+    pricingModeMatchedService ||
+    searchPool.find((service) => service.serviceTypeId === candidate.serviceType.id) ||
+    searchPool[0] ||
+    null
+  );
+}
 
 function notifyQuotePricingChanged(quoteId: string) {
   window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId } }));
@@ -1766,7 +1847,7 @@ export function QuoteItemsForm({
 
   function applyTransportCandidate(candidate: (typeof transportCandidates)[number], options?: { userInitiated?: boolean }) {
     const matchingService =
-      filteredServices.find((service) => service.serviceTypeId === candidate.serviceType.id) ||
+      findSupplierServiceForTransportSelection(filteredServices, candidate) ||
       filteredServices.find((service) => getServiceTypeKey(service) === 'transport') ||
       null;
 
@@ -2161,8 +2242,12 @@ export function QuoteItemsForm({
         }
       }
 
+      const resolvedTransportServiceId =
+        isTransportService
+          ? findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || serviceId
+          : serviceId;
       const quoteItemPayload = {
-        serviceId,
+        serviceId: resolvedTransportServiceId,
         activityId: isActivityService && activityId ? activityId : undefined,
         itineraryId,
         serviceDate:

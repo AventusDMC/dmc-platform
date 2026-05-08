@@ -920,6 +920,10 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 }
 
 function getItemServiceName(item: QuoteItem) {
+  if (item.appliedVehicleRate?.serviceType?.name) {
+    return item.appliedVehicleRate.serviceType.name;
+  }
+
   return item.service?.name || item.externalPackageName || 'External Country Package';
 }
 
