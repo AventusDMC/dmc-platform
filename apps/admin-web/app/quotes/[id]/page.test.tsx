@@ -514,6 +514,8 @@ describe('quote detail page regression', () => {
       'supportedPricingModes',
       'disposalRateMatchesSelectedServiceArea',
       'requestedPax',
+      'getTransportPricingModeOptionLabel',
+      'Full Day - minimum 3 days',
       'pricingModesForVehicle.map((mode)',
     ]);
   });

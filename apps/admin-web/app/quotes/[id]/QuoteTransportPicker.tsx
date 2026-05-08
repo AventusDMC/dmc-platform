@@ -205,6 +205,11 @@ function getNormalizedPricingModeForRate(rate: VehicleRate) {
   return deriveTransportPricingMode(rate);
 }
 
+function isMinimumFullDayRate(rate: VehicleRate) {
+  const text = [rate.serviceType?.classification, rate.serviceType?.name, rate.serviceType?.code].join(' ').toLowerCase();
+  return /\b(daily_package|daily\s*fd|daily\s+full\s+day|minimum\s+3)\b/.test(text);
+}
+
 function getSupplierDisplay(rate: VehicleRate, suppliers: Supplier[]) {
   return formatSupplierName(resolveSupplierNameById(rate.supplierId || rate.supplier?.id, suppliers) || rate.supplier?.name || rate.supplierName, null);
 }
@@ -440,6 +445,37 @@ export function getAvailableTransportPricingModesForSelection({
         .filter((mode): mode is PricingMode => Boolean(mode)),
     ),
   );
+}
+
+export function getTransportPricingModeOptionLabel({
+  mode,
+  rates,
+  route,
+  selectedCanonicalVehicleType,
+  requestedPax,
+  vehicleTypes = [],
+  now = new Date(),
+}: {
+  mode: PricingMode;
+  rates: VehicleRate[];
+  route: RouteOption | null;
+  selectedCanonicalVehicleType: string;
+  requestedPax?: number;
+  vehicleTypes?: VehicleTypeOption[];
+  now?: Date;
+}) {
+  if (mode !== 'Full Day' || !route || !selectedCanonicalVehicleType) {
+    return mode;
+  }
+
+  const hasMinimumFullDayRate = getRouteCandidateRates(rates, route, now).some(
+    (rate) =>
+      getNormalizedPricingModeForRate(rate) === 'Full Day' &&
+      rateMatchesSelectedVehicleFallback(rate, selectedCanonicalVehicleType, vehicleTypes, requestedPax) &&
+      isMinimumFullDayRate(rate),
+  );
+
+  return hasMinimumFullDayRate ? 'Full Day - minimum 3 days' : mode;
 }
 
 function getTransportPricingModeDiagnostics({
@@ -1105,7 +1141,14 @@ export function QuoteTransportPicker({
                   <option value="">Select pricing mode</option>
                   {pricingModesForVehicle.map((mode) => (
                     <option key={mode} value={mode}>
-                      {mode}
+                      {getTransportPricingModeOptionLabel({
+                        mode,
+                        rates: loadedSupplierRates,
+                        route: selectedRoute,
+                        selectedCanonicalVehicleType: selectedVehicleTypeForMatch,
+                        requestedPax,
+                        vehicleTypes,
+                      })}
                     </option>
                   ))}
                 </select>

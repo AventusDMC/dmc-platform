@@ -30,6 +30,10 @@ const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMo
   halfday100km: 'Half Day',
   fullday: 'Full Day',
   fullday200km: 'Full Day',
+  dailyfd: 'Full Day',
+  dailyfullday: 'Full Day',
+  dailypackage: 'Full Day',
+  minimum3fulldays: 'Full Day',
   daytour: 'Day Tour',
   daytours: 'Day Tour',
   daytouring: 'Day Tour',
@@ -97,6 +101,18 @@ export function deriveTransportPricingMode(source: TransportPricingModeSource): 
     source.routeName,
     source.route?.name,
   ].join(' ').toLowerCase();
+
+  if (/\b(full_day|daily_package|daily\s*fd|daily\s+full\s+day|full\s+day|minimum\s+3)\b/.test(text)) {
+    return 'Full Day';
+  }
+
+  if (/\b(half_day|half\s+day)\b/.test(text)) {
+    return 'Half Day';
+  }
+
+  if (/\b(stationary|waiting)\b/.test(text)) {
+    return 'Stationary / Waiting';
+  }
 
   if (/\b(route_transfer|route transfer|transfer|transfers|private transfer)\b/.test(text)) {
     return 'Point-to-Point';

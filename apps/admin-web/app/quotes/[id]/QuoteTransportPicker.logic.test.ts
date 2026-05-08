@@ -4,6 +4,7 @@ import {
   getAvailableTransportPricingModesForSelection,
   getCanonicalPickerVehicleType,
   getCanonicalRateVehicleType,
+  getTransportPricingModeOptionLabel,
   formatVehicleOptionLabel,
   transportRateMatchesSelectedRoute,
 } from './QuoteTransportPicker';
@@ -118,6 +119,45 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.ok(modes.includes('Full Day'));
     assert.ok(modes.includes('Half Day'));
     assert.ok(modes.includes('Stationary / Waiting'));
+  });
+
+  it('normalizes daily package full-day disposal rows and labels the minimum rule', () => {
+    const dailyPackageFullDay = rate('Medium 30', 'Daily FD rate minimum 3 full days', {
+      id: 'full-daily-package',
+      routeId: null,
+      routeName: 'Amman City',
+      route: null,
+      maxPax: 30,
+      serviceType: { name: 'Daily FD rate minimum 3 full days', code: 'DAILY_FD', classification: 'DAILY_PACKAGE' },
+    });
+    const rates = [
+      rate('Alpha Medium Coach 30 Pax', 'Half Day', { id: 'half-amman-city', routeId: ammanRoute.id, routeName: ammanRoute.name, route: ammanRoute, maxPax: 30 }),
+      rate('Alpha Medium Coach 30 Pax', 'Stationary / Waiting', { id: 'stationary-amman-city', routeId: ammanRoute.id, routeName: ammanRoute.name, route: ammanRoute, maxPax: 30 }),
+      dailyPackageFullDay,
+    ];
+
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates,
+      route: ammanRoute,
+      selectedCanonicalVehicleType: 'Coach',
+      requestedPax: 30,
+      now: activeDate,
+    });
+
+    assert.ok(modes.includes('Full Day'));
+    assert.ok(modes.includes('Half Day'));
+    assert.ok(modes.includes('Stationary / Waiting'));
+    assert.equal(
+      getTransportPricingModeOptionLabel({
+        mode: 'Full Day',
+        rates,
+        route: ammanRoute,
+        selectedCanonicalVehicleType: 'Coach',
+        requestedPax: 30,
+        now: activeDate,
+      }),
+      'Full Day - minimum 3 days',
+    );
   });
 
   it('returns Aqaba to Petra coach modes when legacy route rows exist', () => {
