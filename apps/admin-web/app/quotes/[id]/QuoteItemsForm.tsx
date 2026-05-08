@@ -2291,6 +2291,7 @@ export function QuoteItemsForm({
         sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
         markupPercent: Number(markupPercent),
         transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
+        vehicleRateId: isTransportService ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,
         transportVehicleId: isTransportService ? selectedTransportVehicleId : undefined,
         routeId: isTransportService ? routeId || undefined : undefined,
         routeName: isTransportService ? routeName.trim() : undefined,

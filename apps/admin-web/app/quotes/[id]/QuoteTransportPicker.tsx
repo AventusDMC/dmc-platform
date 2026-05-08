@@ -1035,6 +1035,7 @@ export function QuoteTransportPicker({
           overrideReason: null,
           useOverride: false,
           transportServiceTypeId,
+          vehicleRateId: selectedRate.id,
           transportVehicleId: selectedVehicle.id,
           routeId: selectedRoute.id,
           routeName: formatRoute(selectedRoute),

@@ -130,6 +130,7 @@ type CreateQuoteItemBody = {
   currency?: string | null;
   markupPercent?: number;
   transportServiceTypeId?: string;
+  vehicleRateId?: string | null;
   transportVehicleId?: string;
   routeId?: string;
   normalizedKey?: string;
@@ -822,6 +823,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      vehicleRateId: body.vehicleRateId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
@@ -911,6 +913,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      vehicleRateId: body.vehicleRateId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
@@ -1192,6 +1195,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      vehicleRateId: body.vehicleRateId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
@@ -1281,6 +1285,7 @@ export class QuotesController {
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
+      vehicleRateId: body.vehicleRateId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,

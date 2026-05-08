@@ -180,6 +180,7 @@ type CreateQuoteItemInput = {
   currency?: string | null;
   markupPercent: number;
   transportServiceTypeId?: string;
+  vehicleRateId?: string | null;
   transportVehicleId?: string;
   routeId?: string;
   normalizedKey?: string;
@@ -3189,6 +3190,7 @@ export class QuotesService {
         try {
           const displayVehicleRate = await this.transportPricingService.findMatchingRate({
             serviceTypeId: resolvedPricing.rule.transportServiceTypeId,
+            vehicleRateId: data.vehicleRateId,
             vehicleId: resolvedPricing.rule.vehicleId,
             routeId: resolvedPricing.rule.routeId,
             normalizedKey: routeNormalizedKey,
@@ -3205,6 +3207,7 @@ export class QuotesService {
 
         const vehicleRate = await this.transportPricingService.findMatchingRate({
           serviceTypeId: data.transportServiceTypeId,
+          vehicleRateId: data.vehicleRateId,
           vehicleId: data.transportVehicleId,
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,

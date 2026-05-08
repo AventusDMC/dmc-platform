@@ -5,6 +5,7 @@ import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization'
 
 type FindTransportRateInput = {
   serviceTypeId: string;
+  vehicleRateId?: string | null;
   vehicleId?: string | null;
   routeId?: string | null;
   normalizedKey?: string | null;
@@ -355,6 +356,7 @@ export class TransportPricingService {
 
     const routeFilter = await this.buildRouteFilter(data);
     const pricingDate = data.travelDate ?? new Date();
+
     const allRates = await this.prisma.vehicleRate.findMany({
       where: {
         serviceTypeId: data.serviceTypeId,
@@ -443,6 +445,37 @@ export class TransportPricingService {
     const routeFilter = await this.buildRouteFilter(data);
     const pricingDate = data.travelDate ?? new Date();
 
+    if (data.vehicleRateId) {
+      const selectedRate = await this.prisma.vehicleRate.findFirst({
+        where: {
+          id: data.vehicleRateId,
+          serviceTypeId: data.serviceTypeId,
+          active: true,
+          minPax: { lte: data.paxCount },
+          maxPax: { gte: data.paxCount },
+          validFrom: { lte: pricingDate },
+          validTo: { gte: pricingDate },
+        },
+        include: {
+          vehicle: true,
+          serviceType: true,
+          supplier: true,
+          route: {
+            include: {
+              fromPlace: true,
+              toPlace: true,
+            },
+          },
+          fromPlace: true,
+          toPlace: true,
+        },
+      });
+
+      if (selectedRate) {
+        return selectedRate;
+      }
+    }
+
     let rate = await this.prisma.vehicleRate.findFirst({
       where: {
         serviceTypeId: data.serviceTypeId,
@@ -518,8 +551,50 @@ export class TransportPricingService {
       rate = candidateRates.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType)) || null;
     }
 
+    if (!rate && (data.routeId || data.normalizedKey || data.routeName?.trim())) {
+      const route = await this.resolveRouteReference({
+        routeId: data.routeId,
+        normalizedKey: data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined),
+      });
+      const selectedVehicleType = data.vehicleId ? await this.getCanonicalVehicleTypeForVehicleId(data.vehicleId) : '';
+      const broadCandidateRates = await this.prisma.vehicleRate.findMany({
+        where: {
+          serviceTypeId: data.serviceTypeId,
+          active: true,
+          minPax: { lte: data.paxCount },
+          maxPax: { gte: data.paxCount },
+          validFrom: { lte: pricingDate },
+          validTo: { gte: pricingDate },
+        },
+        include: {
+          vehicle: true,
+          serviceType: true,
+          supplier: true,
+          route: {
+            include: {
+              fromPlace: true,
+              toPlace: true,
+            },
+          },
+          fromPlace: true,
+          toPlace: true,
+        },
+        orderBy: [{ maxPax: 'asc' }, { price: 'asc' }, { minPax: 'desc' }],
+      });
+      const routeMatchedRates = broadCandidateRates.filter((entry: any) => this.rateMatchesRouteOrServiceArea(entry, route, data));
+      const exactVehicleRate = data.vehicleId ? routeMatchedRates.find((entry: any) => entry.vehicleId === data.vehicleId) : null;
+      rate =
+        exactVehicleRate ||
+        (selectedVehicleType
+          ? routeMatchedRates.find((entry: any) => this.vehicleMatchesCanonicalType(entry.vehicle, selectedVehicleType))
+          : routeMatchedRates[0]) ||
+        null;
+    }
+
     if (!rate) {
-      throw new NotFoundException('No matching vehicle rate found');
+      throw new NotFoundException(
+        `No matching vehicle rate found for serviceTypeId=${data.serviceTypeId}, routeId=${data.routeId || 'none'}, routeName=${data.routeName || data.normalizedKey || 'none'}, vehicleId=${data.vehicleId || 'none'}, vehicleRateId=${data.vehicleRateId || 'none'}, pax=${data.paxCount}`,
+      );
     }
 
     return rate;
@@ -718,6 +793,49 @@ export class TransportPricingService {
     canonicalVehicleType: string,
   ) {
     return Boolean(canonicalVehicleType && this.getCanonicalVehicleType(vehicle) === canonicalVehicleType);
+  }
+
+  private rateMatchesRouteOrServiceArea(
+    rate: {
+      routeId?: string | null;
+      routeName?: string | null;
+      fromPlaceId?: string | null;
+      toPlaceId?: string | null;
+      route?: { id: string; name: string; fromPlaceId?: string | null; toPlaceId?: string | null } | null;
+    },
+    route: { id: string; name: string; normalizedKey?: string | null; fromPlaceId: string | null; toPlaceId: string | null; fromPlace: { name: string }; toPlace: { name: string } },
+    data: FindTransportRateInput,
+  ) {
+    if (rate.routeId && rate.routeId === route.id) {
+      return true;
+    }
+
+    if (rate.fromPlaceId && rate.toPlaceId && rate.fromPlaceId === route.fromPlaceId && rate.toPlaceId === route.toPlaceId) {
+      return true;
+    }
+
+    const requestedLabels = [
+      route.name,
+      route.normalizedKey || '',
+      data.routeName || '',
+      route.fromPlace?.name && route.toPlace?.name ? `${route.fromPlace.name} ${route.toPlace.name}` : '',
+      route.fromPlace?.name && route.toPlace?.name ? `${route.fromPlace.name} to ${route.toPlace.name}` : '',
+      route.fromPlace?.name && route.toPlace?.name ? `${route.fromPlace.name} ${route.toPlace.name}` : '',
+      route.fromPlace?.name === route.toPlace?.name ? `${route.fromPlace.name} City` : '',
+      route.fromPlace?.name === route.toPlace?.name ? route.fromPlace.name : '',
+    ]
+      .map((label) => normalizeRouteName(label))
+      .filter(Boolean);
+    const rateLabels = [rate.routeName || '', rate.route?.name || ''].map((label) => normalizeRouteName(label)).filter(Boolean);
+
+    return rateLabels.some((rateLabel) =>
+      requestedLabels.some(
+        (requestedLabel) =>
+          rateLabel === requestedLabel ||
+          rateLabel.includes(requestedLabel) ||
+          requestedLabel.includes(rateLabel),
+      ),
+    );
   }
 
   private async buildRouteFilter(data: FindTransportRateInput) {

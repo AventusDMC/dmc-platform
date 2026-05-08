@@ -211,6 +211,112 @@ test('vehicle rate lookup keeps route id first and adds normalized route label f
   });
 });
 
+test('vehicle rate lookup prefers selected vehicleRateId for persisted picker saves', async () => {
+  const route = {
+    id: 'route-amman-city',
+    name: 'Amman -> Amman',
+    fromPlaceId: 'amman',
+    toPlaceId: 'amman',
+    fromPlace: { id: 'amman', name: 'Amman' },
+    toPlace: { id: 'amman', name: 'Amman' },
+  };
+  const service = new TransportPricingService({
+    route: {
+      findUnique: async () => route,
+    },
+    vehicleRate: {
+      findFirst: async (args: any) =>
+        args.where.id === 'rate-full-day'
+          ? {
+              id: 'rate-full-day',
+              vehicleId: 'vehicle-medium-30',
+              routeId: route.id,
+              routeName: 'Amman City',
+              minPax: 1,
+              maxPax: 30,
+              price: 320,
+              currency: 'USD',
+              active: true,
+              validFrom: new Date('2026-01-01'),
+              validTo: new Date('2026-12-31'),
+              vehicle: { id: 'vehicle-medium-30', name: 'Medium 30', vehicleType: 'Medium 30', maxPax: 30 },
+              serviceType: { id: 'service-full-day', name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+              supplier: { id: 'supplier-alpha', name: 'Alpha' },
+              route,
+              fromPlace: null,
+              toPlace: null,
+            }
+          : null,
+    },
+  } as any);
+
+  const rate = await service.findMatchingRate({
+    serviceTypeId: 'service-full-day',
+    vehicleRateId: 'rate-full-day',
+    vehicleId: 'vehicle-coach',
+    routeId: route.id,
+    paxCount: 21,
+  });
+
+  assert.equal(rate.id, 'rate-full-day');
+  assert.equal(rate.serviceType.name, 'Full Day');
+});
+
+test('vehicle rate lookup falls back to service-area label and canonical coach vehicle', async () => {
+  const route = {
+    id: 'route-amman-city',
+    name: 'Amman -> Amman',
+    normalizedKey: 'amman_amman',
+    fromPlaceId: 'amman',
+    toPlaceId: 'amman',
+    fromPlace: { id: 'amman', name: 'Amman' },
+    toPlace: { id: 'amman', name: 'Amman' },
+  };
+  const service = new TransportPricingService({
+    route: {
+      findUnique: async () => route,
+    },
+    vehicle: {
+      findUnique: async () => ({ id: 'vehicle-coach', name: 'Coach', vehicleType: 'Coach' }),
+    },
+    vehicleRate: {
+      findFirst: async () => null,
+      findMany: async () => [
+        {
+          id: 'rate-full-day',
+          vehicleId: 'vehicle-medium-30',
+          routeId: null,
+          routeName: 'Amman City',
+          minPax: 1,
+          maxPax: 30,
+          price: 320,
+          currency: 'USD',
+          active: true,
+          validFrom: new Date('2026-01-01'),
+          validTo: new Date('2026-12-31'),
+          vehicle: { id: 'vehicle-medium-30', name: 'Medium 30', vehicleType: 'Medium 30', maxPax: 30 },
+          serviceType: { id: 'service-full-day', name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+          supplier: { id: 'supplier-alpha', name: 'Alpha' },
+          route: null,
+          fromPlace: null,
+          toPlace: null,
+        },
+      ],
+    },
+  } as any);
+
+  const rate = await service.findMatchingRate({
+    serviceTypeId: 'service-full-day',
+    vehicleId: 'vehicle-coach',
+    routeId: route.id,
+    routeName: 'Amman City',
+    paxCount: 21,
+  });
+
+  assert.equal(rate.id, 'rate-full-day');
+  assert.equal(rate.vehicle.name, 'Medium 30');
+});
+
 test('route normalization treats imported supplier route labels as equivalent', () => {
   const equivalentRoutes = ['Petra → Amman', 'Petra - Amman', 'Petra / Amman', 'Petra to Amman', 'Petra to Amman (1 day)'];
 
