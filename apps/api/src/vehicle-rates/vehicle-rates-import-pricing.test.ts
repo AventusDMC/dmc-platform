@@ -51,6 +51,30 @@ function buildCleanTemplateWorkbookBuffer(rows: Array<Record<string, unknown>>) 
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
+function buildAlphaTemplateWorkbookBuffer(rows: Array<Record<string, unknown>>) {
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: [
+      'Supplier Name',
+      'Rate Card Name',
+      'Service Category',
+      'Route / Service Area',
+      'Vehicle Label',
+      'Canonical Vehicle Type',
+      'Pax From',
+      'Pax To',
+      'Pricing Mode',
+      'Cost',
+      'Currency',
+      'Valid From',
+      'Valid To',
+      'Notes',
+    ],
+  });
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Transport Rates');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
 function equalsCI(left: unknown, right: unknown) {
   return String(left || '').toLowerCase() === String(right || '').toLowerCase();
 }
@@ -131,6 +155,7 @@ function createPrismaMock() {
             (vehicle.supplierId === where.OR[0].supplierId || vehicle.resolvedSupplierId === where.OR[1].resolvedSupplierId || equalsCI(vehicle.supplierName, where.OR[2].supplierName.equals)),
         ) || null,
       findUnique: async ({ where }: any) => stores.vehicles.find((vehicle) => vehicle.id === where.id) || null,
+      findMany: async () => stores.vehicles,
       create: async ({ data }: any) => {
         const vehicle = { id: nextId('vehicle'), ...data };
         stores.vehicles.push(vehicle);
@@ -421,6 +446,28 @@ test('transfer service labels derive point-to-point pricing mode for import and 
   assert.equal(priced.price, 520);
 });
 
+test('transport contract import matches equivalent normalized route labels without duplicating routes', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const importRow = {
+    ...activeImportRow,
+    routeName: 'Petra to Amman (1 day)',
+    origin: 'Petra',
+    destination: 'Amman',
+    serviceName: 'Private Transfer',
+    pricingMode: '',
+  };
+  seedImportRoute(stores, { ...importRow, routeName: 'Petra → Amman' });
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer([importRow]), originalname: 'petra-amman.xlsx' }, { allowCreateSuppliers: true });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRoutes, 0);
+  assert.equal(imported.createdRates, 1);
+  assert.equal(stores.routes.length, 1);
+  assert.equal(stores.vehicleRates[0].routeId, stores.routes[0].id);
+});
+
 test('explicit transport pricing modes are preserved over transfer fallback', async () => {
   const { prisma, stores } = createPrismaMock();
   const importService = new VehicleRatesService(prisma as any);
@@ -467,6 +514,114 @@ test('transport contract import accepts clean Route and Rate column aliases', as
   assert.equal(stores.vehicleRates[0].routeId, stores.routes[0].id);
   assert.equal(stores.vehicleRates[0].currency, 'USD');
   assert.equal(stores.vehicleRates[0].price, 45);
+});
+
+test('transport import template uses Alpha Bus standardized columns and sample rows', async () => {
+  const { prisma, stores } = createPrismaMock();
+  stores.suppliers.push({ id: 'supplier-alpha', name: 'Alpha Bus and Limo Co', type: 'transport' });
+  stores.vehicles.push({ id: 'vehicle-coach', name: 'Large 49', vehicleType: 'Coach', maxPax: 49 });
+  seedImportRoute(stores, { ...activeImportRow, routeName: 'Aqaba South Border -> Petra', origin: 'Aqaba South Border', destination: 'Petra' });
+  const importService = new VehicleRatesService(prisma as any);
+
+  const buffer = await importService.getTransportContractImportTemplate();
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets['Transport Rates']);
+
+  assert.deepEqual(Object.keys(rows[0]), [
+    'Supplier Name',
+    'Rate Card Name',
+    'Service Category',
+    'Route / Service Area',
+    'Vehicle Label',
+    'Canonical Vehicle Type',
+    'Pax From',
+    'Pax To',
+    'Pricing Mode',
+    'Cost',
+    'Currency',
+    'Valid From',
+    'Valid To',
+    'Notes',
+  ]);
+  assert.equal(rows[0]['Supplier Name'], 'Alpha Bus and Limo Co');
+  assert.equal(rows[0]['Vehicle Label'], 'Large VVIP 29');
+  assert.equal(rows[0]['Canonical Vehicle Type'], 'Luxury');
+  assert.equal(rows[2]['Pricing Mode'], 'Full Day (200 KM)');
+});
+
+test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicle types', async () => {
+  const { prisma, stores } = createPrismaMock();
+  stores.suppliers.push({ id: 'supplier-alpha', name: 'Alpha Bus and Limo Co', type: 'transport' });
+  const alphaRoute = {
+    ...activeImportRow,
+    routeName: 'Aqaba South Border -> Petra',
+    origin: 'Aqaba South Border',
+    destination: 'Petra',
+  };
+  seedImportRoute(stores, alphaRoute);
+  const importService = new VehicleRatesService(prisma as any);
+  const buffer = buildAlphaTemplateWorkbookBuffer([
+    {
+      'Supplier Name': 'Alpha Bus and Limo Co',
+      'Rate Card Name': 'Alpha Bus and Limo Co 2026 Rates in USD',
+      'Service Category': 'Transfers',
+      'Route / Service Area': 'Aqaba South Border -> Petra',
+      'Vehicle Label': 'Medium 30',
+      'Canonical Vehicle Type': 'Coach',
+      'Pax From': 1,
+      'Pax To': 30,
+      'Pricing Mode': 'Transfer rows',
+      Cost: 520,
+      Currency: 'USD',
+      'Valid From': '2026-01-01',
+      'Valid To': '2026-12-31',
+      Notes: 'PDF transfer row',
+    },
+    {
+      'Supplier Name': 'Alpha Bus and Limo Co',
+      'Rate Card Name': 'Alpha Bus and Limo Co 2026 Rates in USD',
+      'Service Category': 'Disposal',
+      'Route / Service Area': 'Aqaba South Border -> Petra',
+      'Vehicle Label': 'Large 49',
+      'Canonical Vehicle Type': 'Coach',
+      'Pax From': 1,
+      'Pax To': 49,
+      'Pricing Mode': 'Full Day (200 KM)',
+      Cost: 650,
+      Currency: 'USD',
+      'Valid From': '2026-01-01',
+      'Valid To': '2026-12-31',
+      Notes: 'PDF full day row',
+    },
+    {
+      'Supplier Name': 'Alpha Bus and Limo Co',
+      'Rate Card Name': 'Alpha Bus and Limo Co 2026 Rates in USD',
+      'Service Category': 'Add-ons',
+      'Route / Service Area': 'Aqaba South Border -> Petra',
+      'Vehicle Label': 'Van VIP 9',
+      'Canonical Vehicle Type': 'Van',
+      'Pax From': 1,
+      'Pax To': 9,
+      'Pricing Mode': 'Stationary',
+      Cost: 80,
+      Currency: 'USD',
+      'Valid From': '2026-01-01',
+      'Valid To': '2026-12-31',
+      Notes: 'PDF stationary row',
+    },
+  ]);
+
+  const imported = await importService.importTransportContract({ buffer, originalname: 'alpha-2026.xlsx' });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRates, 3);
+  assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Medium 30')?.vehicleType, 'Coach');
+  assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Large 49')?.vehicleType, 'Coach');
+  assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Van VIP 9')?.vehicleType, 'Van');
+  assert.equal(stores.vehicleRates.find((rate) => rate.maxPax === 30)?.minPax, 1);
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Point-to-Point')?.classification, 'ROUTE_TRANSFER');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Full Day')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 });
 
 test('transport contract import treats currency and validity as distinct duplicate and upsert keys', async () => {

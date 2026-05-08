@@ -2,6 +2,7 @@ import test = require('node:test');
 import assert = require('node:assert/strict');
 import { TransportPricingService } from './transport-pricing.service';
 import { normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
+import { normalizeRouteName } from '../routes/route-normalization';
 
 function buildRule(overrides: Record<string, unknown>) {
   return {
@@ -208,4 +209,12 @@ test('vehicle rate lookup keeps route id first and adds normalized route label f
       { routeName: { contains: 'Amman', mode: 'insensitive' } },
     ],
   });
+});
+
+test('route normalization treats imported supplier route labels as equivalent', () => {
+  const equivalentRoutes = ['Petra → Amman', 'Petra - Amman', 'Petra / Amman', 'Petra to Amman', 'Petra to Amman (1 day)'];
+
+  assert.deepEqual(Array.from(new Set(equivalentRoutes.map(normalizeRouteName))), ['petra_amman']);
+  assert.equal(normalizeRouteName('Aqaba South Border → Petra'), normalizeRouteName('Aqaba South Border to Petra (1 day)'));
+  assert.notEqual(normalizeRouteName('Petra → Amman'), normalizeRouteName('Amman → Aqaba'));
 });

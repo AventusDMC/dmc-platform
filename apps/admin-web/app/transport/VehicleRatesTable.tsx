@@ -13,7 +13,7 @@ import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { isBackendUuid } from '../lib/backend-uuid';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
-import { getCanonicalRouteLabel } from '../lib/transport-routes';
+import { getCanonicalRouteLabel, normalizeTransportRouteText } from '../lib/transport-routes';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import {
   deleteManualSupplierRateCard,
@@ -395,7 +395,7 @@ function groupRatesIntoSupplierRateCards(vehicleRates: VehicleRate[]): SupplierR
     const supplierName = getSupplierName(rate);
     const validFrom = rate.validFrom.slice(0, 10);
     const validTo = rate.validTo.slice(0, 10);
-    const routeOrServiceArea = formatRouteLabel(rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+    const routeOrServiceArea = normalizeTransportRouteText(rate.route?.name || rate.routeName) || 'unassigned route';
     const key = [getSupplierIdentityKey(rate), routeOrServiceArea, rate.currency, validFrom, validTo].join('|');
     const group =
       groups.get(key) ||
@@ -433,7 +433,7 @@ function getRateCardGroupKey(rate: VehicleRate) {
   const supplierName = getSupplierName(rate);
   const validFrom = rate.validFrom.slice(0, 10);
   const validTo = rate.validTo.slice(0, 10);
-  const routeOrServiceArea = formatRouteLabel(rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+  const routeOrServiceArea = normalizeTransportRouteText(rate.route?.name || rate.routeName) || 'unassigned route';
 
   return {
     key: [getSupplierIdentityKey(rate), routeOrServiceArea, rate.currency, validFrom, validTo].join('|'),
@@ -719,7 +719,7 @@ function getRouteLabelForDuplicate(route: RouteOption | null | undefined, fallba
 
 function getRateCardDuplicateKey(data: { supplierId?: string | null; supplierName?: string | null; routeId?: string | null; routeName?: string | null; currency: string; validFrom: string; validTo: string }) {
   const supplierKey = data.supplierId || normalizeSupplierKey(data.supplierName) || 'unassigned supplier';
-  const routeKey = data.routeId || formatRouteLabel(data.routeName || '').trim().toLowerCase() || 'unassigned route';
+  const routeKey = data.routeId || normalizeTransportRouteText(data.routeName || '') || 'unassigned route';
   return [supplierKey, routeKey, data.currency.trim().toUpperCase(), data.validFrom.slice(0, 10), data.validTo.slice(0, 10)].join('|');
 }
 
@@ -1246,7 +1246,11 @@ export function VehicleRatesTable({
     }
 
     const sourceRate = targetCard.rates[0];
-    const sourceRouteId = sourceRate?.routeId || sourceRate?.route?.id || routes.find((route) => formatRouteLabel(route.name) === targetCard.routeOrServiceArea)?.id || '';
+    const sourceRouteId =
+      sourceRate?.routeId ||
+      sourceRate?.route?.id ||
+      routes.find((route) => normalizeTransportRouteText(formatRouteLabel(route.name)) === normalizeTransportRouteText(targetCard.routeOrServiceArea))?.id ||
+      '';
     const supplierId =
       targetCard.supplierId ||
       sourceRate?.supplierId ||
@@ -1404,7 +1408,10 @@ export function VehicleRatesTable({
     }
 
     const sourceRate = rateCard.rates[0];
-    const selectedRoute = sourceRate?.route || routes.find((route) => formatRouteLabel(route.name) === rateCard.routeOrServiceArea) || null;
+    const selectedRoute =
+      sourceRate?.route ||
+      routes.find((route) => normalizeTransportRouteText(formatRouteLabel(route.name)) === normalizeTransportRouteText(rateCard.routeOrServiceArea)) ||
+      null;
     const now = Date.now();
     const newRates: VehicleRate[] = enteredRates.map((entry, index) => ({
       id: `${LOCAL_VEHICLE_SECTION_RATE_PREFIX}-${rateCard.id}-${selectedVehicleType}-${entry.pricingMode}-${now}-${index}`,

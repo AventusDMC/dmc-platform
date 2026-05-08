@@ -84,7 +84,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       fromPlace: { id: 'petra', name: 'Petra', city: 'Petra', country: 'Jordan' },
       toPlace: { id: 'amman', name: 'Amman', city: 'Amman', country: 'Jordan' },
     } as any;
-    const routeLabels = ['Petra to Amman', 'Petra - Amman', 'Petra / Amman', 'Petra -> Amman'];
+    const routeLabels = ['Petra to Amman', 'Petra - Amman', 'Petra / Amman', 'Petra -> Amman', 'Petra to Amman (1 day)'];
 
     for (const routeName of routeLabels) {
       assert.equal(
@@ -94,6 +94,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     }
 
     assert.equal(new Set(routeLabels.map(normalizeTransportRouteText)).size, 1);
+    assert.equal(normalizeTransportRouteText('Petra → Amman'), 'petra_amman');
   });
 
   it('matches selected route label to supplier rows with duration suffixes', () => {
@@ -117,6 +118,23 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.equal(
       transportRateMatchesSelectedRoute(rate('Large 49', 'Point-to-Point', { routeId: route.id, routeName: 'Different route label', route: null }), route),
       true,
+    );
+  });
+
+  it('rejects non-matching route labels', () => {
+    const selectedRoute = {
+      ...route,
+      id: 'route-petra-amman-selected',
+      name: 'Petra -> Amman',
+      fromPlaceId: 'petra',
+      toPlaceId: 'amman',
+      fromPlace: { id: 'petra', name: 'Petra', city: 'Petra', country: 'Jordan' },
+      toPlace: { id: 'amman', name: 'Amman', city: 'Amman', country: 'Jordan' },
+    } as any;
+
+    assert.equal(
+      transportRateMatchesSelectedRoute(rate('Medium 30', 'Point-to-Point', { routeId: 'legacy-route-id', routeName: 'Amman to Aqaba', route: null }), selectedRoute),
+      false,
     );
   });
 

@@ -8,7 +8,7 @@ import {
 } from '../common/transport-pricing-mode-normalization';
 import { getVehicleTypeCatalogLabels, getVehicleTypeMatchLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
-import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, routePairsMatch } from '../routes/route-normalization';
+import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, normalizeRouteName, routePairsMatch } from '../routes/route-normalization';
 import * as XLSX from 'xlsx';
 
 type CreateVehicleRateInput = {
@@ -50,6 +50,7 @@ type VehicleRatePricingSyncData = {
   serviceTypeId: string;
   routeId: string | null;
   vehicleId: string;
+  minPax?: number;
   maxPax: number;
   price: number;
   currency: string;
@@ -92,7 +93,10 @@ type TransportContractImportRow = {
   routeName: string;
   origin: string;
   destination: string;
+  vehicleLabel: string;
   vehicleType: string;
+  paxFrom: string;
+  paxTo: string;
   maxPaxPerUnit: string;
   pricingMode: string;
   cost: string;
@@ -117,8 +121,10 @@ type NormalizedTransportContractImportRow = {
   routeName: string;
   origin: string;
   destination: string;
+  vehicleLabel: string;
   vehicleType: string;
   vehicleTypeWarning?: string;
+  minPaxPerUnit: number;
   maxPaxPerUnit: number;
   pricingMode: 'PER_GROUP';
   cost: number;
@@ -133,27 +139,36 @@ type ParsedTransportImportRow = {
 };
 
 const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
-  'Supplier',
-  'Vehicle Type',
-  'Route / Service Area',
+  'Supplier Name',
+  'Rate Card Name',
   'Service Category',
+  'Route / Service Area',
+  'Vehicle Label',
+  'Canonical Vehicle Type',
+  'Pax From',
+  'Pax To',
   'Pricing Mode',
+  'Cost',
   'Currency',
-  'Rate Amount',
   'Valid From',
   'Valid To',
-  'Status',
+  'Notes',
 ] as const;
 
 const TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES = {
-  supplierName: ['Supplier', 'supplierName'],
-  vehicleType: ['Vehicle Type', 'vehicleType'],
+  supplierName: ['Supplier Name', 'Supplier', 'supplierName'],
+  contractName: ['Rate Card Name', 'contractName'],
+  vehicleLabel: ['Vehicle Label', 'Supplier Vehicle Label', 'vehicleLabel'],
+  vehicleType: ['Canonical Vehicle Type', 'Vehicle Type', 'vehicleType'],
+  paxFrom: ['Pax From', 'Min Pax', 'minPaxPerUnit'],
+  paxTo: ['Pax To', 'Max Pax', 'maxPaxPerUnit'],
+  maxPaxPerUnit: ['Pax To', 'Max Pax', 'maxPaxPerUnit'],
   routeName: ['Route', 'Route / Service Area', 'routeName'],
   serviceCategory: ['Service Category', 'serviceCategory', 'classification'],
   serviceName: ['serviceName', 'Pricing Mode'],
   pricingMode: ['Pricing Mode', 'pricing mode', 'Rate Type', 'Service Mode', 'Price Mode', 'pricingMode'],
   currency: ['Currency', 'currency'],
-  cost: ['Rate', 'Rate Amount', 'cost'],
+  cost: ['Cost', 'Rate', 'Rate Amount', 'cost'],
   contractValidFrom: ['Valid From', 'contractValidFrom'],
   contractValidTo: ['Valid To', 'contractValidTo'],
   active: ['Status', 'active'],
@@ -161,11 +176,9 @@ const TRANSPORT_CONTRACT_IMPORT_FIELD_ALIASES = {
   supplierEmail: ['supplierEmail'],
   supplierPhone: ['supplierPhone'],
   supplierWebsite: ['supplierWebsite'],
-  contractName: ['contractName'],
   country: ['country'],
   origin: ['origin'],
   destination: ['destination'],
-  maxPaxPerUnit: ['maxPaxPerUnit'],
   notes: ['notes'],
 } satisfies Record<keyof TransportContractImportRow, string[]>;
 
@@ -209,6 +222,15 @@ function normalizeImportKey(value: string) {
 
 function normalizeImportText(value: unknown) {
   return String(value ?? '').trim();
+}
+
+function parseAlphaVehicleCapacity(value: string) {
+  const numbers = normalizeImportText(value).match(/\d+/g);
+  if (!numbers || numbers.length === 0) {
+    return null;
+  }
+
+  return Number(numbers[numbers.length - 1]);
 }
 
 function normalizeImportName(value: string) {
@@ -408,7 +430,7 @@ function getSupplierRateCardKey(rate: {
   validTo: Date;
 }) {
   const supplierKey = rate.supplierId || normalizeSupplierKey(getExportSupplierName(rate)) || 'unassigned supplier';
-  const routeKey = rate.routeId || rate.route?.id || (rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+  const routeKey = rate.routeId || rate.route?.id || normalizeRouteName(rate.route?.name || rate.routeName) || 'unassigned route';
 
   return [supplierKey, routeKey, rate.currency, formatExportDate(rate.validFrom), formatExportDate(rate.validTo)].join('|');
 }
@@ -426,7 +448,7 @@ function getLegacySupplierRateCardKey(rate: {
 }) {
   const supplierKey = rate.supplierId || normalizeSupplierKey(getExportSupplierName(rate)) || 'unassigned supplier';
   const vehicleKey = getRateVehicleType(rate).trim().toLowerCase() || 'unassigned vehicle';
-  const routeKey = rate.routeId || rate.route?.id || (rate.route?.name || rate.routeName).trim().toLowerCase() || 'unassigned route';
+  const routeKey = rate.routeId || rate.route?.id || normalizeRouteName(rate.route?.name || rate.routeName) || 'unassigned route';
 
   return [supplierKey, vehicleKey, routeKey, rate.currency, formatExportDate(rate.validFrom), formatExportDate(rate.validTo)].join('|');
 }
@@ -1122,18 +1144,72 @@ export class VehicleRatesService {
       this.prisma.route.findMany({ where: { routeType: 'transfer' }, orderBy: { name: 'asc' } }),
     ]);
     const vehicleTypeLabels = getVehicleTypeCatalogLabels(vehicles.map((vehicle) => (vehicle as any).vehicleType));
+    const alphaSupplierName = suppliers.find((supplier) => normalizeSupplierName(supplier.name).includes('alpha'))?.name || 'Alpha Bus and Limo Co';
+    const alphaRateCardName = 'Alpha Bus and Limo Co 2026 Rates in USD';
     const rows = [
       {
-        Supplier: suppliers[0]?.name || 'AlphaBus',
-        'Vehicle Type': vehicleTypeLabels[0] || 'Coach',
-        'Route / Service Area': routes[0]?.name || 'Amman City Center -> Petra Visitor Center',
+        'Supplier Name': alphaSupplierName,
+        'Rate Card Name': alphaRateCardName,
         'Service Category': 'Transfers',
-        'Pricing Mode': CANONICAL_TRANSPORT_PRICING_MODES[0],
+        'Route / Service Area': routes[0]?.name || 'Aqaba South Border -> Petra',
+        'Vehicle Label': 'Large VVIP 29',
+        'Canonical Vehicle Type': 'Luxury',
+        'Pax From': 1,
+        'Pax To': 29,
+        'Pricing Mode': 'Point-to-Point',
+        Cost: 560,
         Currency: 'USD',
-        'Rate Amount': 350,
         'Valid From': '2026-01-01',
         'Valid To': '2026-12-31',
-        Status: 'Active',
+        Notes: 'Alpha PDF sample: VVIP 29 mapped to Luxury; use Coach if planner policy prefers bus matching.',
+      },
+      {
+        'Supplier Name': alphaSupplierName,
+        'Rate Card Name': alphaRateCardName,
+        'Service Category': 'Transfers',
+        'Route / Service Area': routes[1]?.name || 'Amman -> Petra',
+        'Vehicle Label': 'Large VIP 31-33',
+        'Canonical Vehicle Type': 'Coach',
+        'Pax From': 1,
+        'Pax To': 33,
+        'Pricing Mode': 'Point-to-Point',
+        Cost: 520,
+        Currency: 'USD',
+        'Valid From': '2026-01-01',
+        'Valid To': '2026-12-31',
+        Notes: 'Alpha PDF sample: VIP 31-33 mapped to Coach.',
+      },
+      {
+        'Supplier Name': alphaSupplierName,
+        'Rate Card Name': alphaRateCardName,
+        'Service Category': 'Disposal',
+        'Route / Service Area': routes[2]?.name || 'Amman full day disposal',
+        'Vehicle Label': 'Large 49',
+        'Canonical Vehicle Type': 'Coach',
+        'Pax From': 1,
+        'Pax To': 49,
+        'Pricing Mode': 'Full Day (200 KM)',
+        Cost: 650,
+        Currency: 'USD',
+        'Valid From': '2026-01-01',
+        'Valid To': '2026-12-31',
+        Notes: 'Alpha PDF sample: Full Day (200 KM) normalizes to Full Day.',
+      },
+      {
+        'Supplier Name': alphaSupplierName,
+        'Rate Card Name': alphaRateCardName,
+        'Service Category': 'Transfers',
+        'Route / Service Area': routes[3]?.name || 'Petra local service',
+        'Vehicle Label': 'Medium 30',
+        'Canonical Vehicle Type': 'Coach',
+        'Pax From': 1,
+        'Pax To': 30,
+        'Pricing Mode': 'Half Day (100 KM)',
+        Cost: 300,
+        Currency: 'USD',
+        'Valid From': '2026-01-01',
+        'Valid To': '2026-12-31',
+        Notes: 'Alpha PDF sample: Half Day (100 KM) normalizes to Half Day.',
       },
     ];
     const workbook = XLSX.utils.book_new();
@@ -1141,25 +1217,29 @@ export class VehicleRatesService {
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Transport Rates');
     const dropdownValues = {
       Supplier: suppliers.map((supplier) => supplier.name),
-      'Vehicle Type': vehicleTypeLabels,
+      'Vehicle Label': ['Large VVIP 29', 'Large VIP 31-33', 'Large 49', 'Medium 30', 'Small 17', 'Van VIP 9', 'Van 12', 'Mini Van 5'],
+      'Canonical Vehicle Type': vehicleTypeLabels,
       'Route / Service Area': routes.map((route) => route.name),
       'Service Category': ['Transfers', 'Disposal', 'Add-ons'],
-      'Pricing Mode': CANONICAL_TRANSPORT_PRICING_MODES,
+      'Pricing Mode': [...CANONICAL_TRANSPORT_PRICING_MODES, 'Full Day (200 KM)', 'Half Day (100 KM)', 'Stationary'],
       Currency: ['USD', 'EUR', 'JOD'],
-      Status: ['Active', 'Inactive'],
     };
     const dropdownRowCount = Math.max(...Object.values(dropdownValues).map((values) => values.length), 1);
     const dropdownRows = Array.from({ length: dropdownRowCount }, (_, index) => ({
-      Supplier: dropdownValues.Supplier[index] || '',
-      'Vehicle Type': dropdownValues['Vehicle Type'][index] || '',
-      'Route / Service Area': dropdownValues['Route / Service Area'][index] || '',
+      'Supplier Name': dropdownValues.Supplier[index] || '',
+      'Rate Card Name': '',
       'Service Category': dropdownValues['Service Category'][index] || '',
+      'Route / Service Area': dropdownValues['Route / Service Area'][index] || '',
+      'Vehicle Label': dropdownValues['Vehicle Label'][index] || '',
+      'Canonical Vehicle Type': dropdownValues['Canonical Vehicle Type'][index] || '',
+      'Pax From': '',
+      'Pax To': '',
       'Pricing Mode': dropdownValues['Pricing Mode'][index] || '',
+      Cost: '',
       Currency: dropdownValues.Currency[index] || '',
-      'Rate Amount': '',
       'Valid From': '',
       'Valid To': '',
-      Status: dropdownValues.Status[index] || '',
+      Notes: '',
     }));
     XLSX.utils.book_append_sheet(
       workbook,
@@ -1478,7 +1558,7 @@ export class VehicleRatesService {
         normalizeImportKey(normalized.country),
         normalizeImportKey(normalized.origin),
         normalizeImportKey(normalized.destination),
-        normalizeImportKey(normalized.vehicleType),
+        normalizeImportKey(normalized.vehicleLabel || normalized.vehicleType),
         normalized.currency,
         formatImportDate(normalized.contractValidFrom),
         formatImportDate(normalized.contractValidTo),
@@ -1535,6 +1615,7 @@ export class VehicleRatesService {
         classification,
         rateCardGroup: `${normalized.supplierName} | ${normalized.routeName}`,
         vehicleTypeSection: normalized.vehicleType,
+        vehicleLabel: normalized.vehicleLabel,
         routeName: normalized.routeName,
         routeId: existingRoute?.id || null,
         fromPlaceId: fromPlaceMatch?.id || null,
@@ -1542,6 +1623,7 @@ export class VehicleRatesService {
         routeWarning,
         vehicleType: normalized.vehicleType,
         vehicleTypeWarning: normalized.vehicleTypeWarning || '',
+        minPaxPerUnit: normalized.minPaxPerUnit,
         maxPaxPerUnit: normalized.maxPaxPerUnit,
         pricingMode: 'PER_GROUP',
         cost: normalized.cost,
@@ -1590,6 +1672,7 @@ export class VehicleRatesService {
         fromPlaceId: existingRoute.fromPlaceId,
         toPlaceId: existingRoute.toPlaceId,
         routeName: normalized.routeName,
+        minPaxPerUnit: normalized.minPaxPerUnit,
         maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
         currency: normalized.currency,
@@ -1601,6 +1684,7 @@ export class VehicleRatesService {
         serviceTypeId: serviceType.id,
         vehicleId: vehicle.id,
         routeId: existingRoute.id,
+        minPaxPerUnit: normalized.minPaxPerUnit,
         maxPaxPerUnit: resolvedMaxPaxPerUnit,
         cost: normalized.cost,
         currency: normalized.currency,
@@ -1711,6 +1795,8 @@ export class VehicleRatesService {
     }
 
     const maxPaxPerUnit = Number(row.maxPaxPerUnit || 1);
+    const paxFrom = Number(row.paxFrom || 1);
+    const paxTo = Number(row.paxTo || row.maxPaxPerUnit || 1);
     const cost = Number(row.cost);
     const validFrom = new Date(row.contractValidFrom);
     const validTo = new Date(row.contractValidTo);
@@ -1719,6 +1805,15 @@ export class VehicleRatesService {
 
     if (row.maxPaxPerUnit && (!Number.isInteger(maxPaxPerUnit) || maxPaxPerUnit < 1)) {
       errors.push('maxPaxPerUnit must be a positive whole number.');
+    }
+    if (row.paxFrom && (!Number.isInteger(paxFrom) || paxFrom < 1)) {
+      errors.push('paxFrom must be a positive whole number.');
+    }
+    if (row.paxTo && (!Number.isInteger(paxTo) || paxTo < 1)) {
+      errors.push('paxTo must be a positive whole number.');
+    }
+    if (row.paxFrom && row.paxTo && Number.isInteger(paxFrom) && Number.isInteger(paxTo) && paxFrom > paxTo) {
+      errors.push('paxFrom cannot be greater than paxTo.');
     }
     if (row.cost && (!Number.isFinite(cost) || cost < 0)) {
       errors.push('cost must be zero or greater.');
@@ -1755,9 +1850,12 @@ export class VehicleRatesService {
     if (!pricingMode) {
       throw new BadRequestException('Pricing mode not recognized');
     }
-    const rawVehicleType = normalizeImportName(row.vehicleType);
-    const normalizedVehicleType = normalizeVehicleTypeLabel(rawVehicleType, vehicleTypeCatalog);
+    const rawVehicleLabel = normalizeImportName(row.vehicleLabel) || normalizeImportName(row.vehicleType);
+    const rawVehicleType = normalizeImportName(row.vehicleType) || rawVehicleLabel;
+    const normalizedVehicleType = normalizeVehicleTypeLabel(rawVehicleType, vehicleTypeCatalog) || normalizeVehicleTypeLabel(rawVehicleLabel, vehicleTypeCatalog);
     const vehicleTypeWarning = vehicleTypeCatalog.length > 0 && !normalizedVehicleType ? 'Vehicle type not found' : '';
+    const minPaxPerUnit = Number(row.paxFrom || 1);
+    const maxPaxPerUnit = Number(row.paxTo || row.maxPaxPerUnit || parseAlphaVehicleCapacity(rawVehicleLabel) || 1);
 
     return {
       supplierName: normalizeImportName(row.supplierName),
@@ -1775,9 +1873,11 @@ export class VehicleRatesService {
       routeName: routeServiceArea || formatRouteName(origin, destination),
       origin,
       destination,
+      vehicleLabel: rawVehicleLabel || normalizedVehicleType || rawVehicleType,
       vehicleType: normalizedVehicleType || rawVehicleType,
       vehicleTypeWarning,
-      maxPaxPerUnit: Number(row.maxPaxPerUnit || 1),
+      minPaxPerUnit: Number.isFinite(minPaxPerUnit) && minPaxPerUnit > 0 ? minPaxPerUnit : 1,
+      maxPaxPerUnit: Number.isFinite(maxPaxPerUnit) && maxPaxPerUnit > 0 ? maxPaxPerUnit : 1,
       pricingMode: 'PER_GROUP' as const,
       cost: Number(row.cost),
       currency: row.currency.trim().toUpperCase(),
@@ -1951,7 +2051,7 @@ export class VehicleRatesService {
   ) {
     const existing = await this.prisma.vehicle.findFirst({
       where: {
-        name: { equals: row.vehicleType, mode: 'insensitive' },
+        name: { equals: row.vehicleLabel || row.vehicleType, mode: 'insensitive' },
         maxPax: row.maxPaxPerUnit,
         OR: [{ supplierId: supplier.id }, { resolvedSupplierId: supplier.id }, { supplierName: { equals: supplier.name, mode: 'insensitive' } }],
       } as any,
@@ -1966,7 +2066,7 @@ export class VehicleRatesService {
         supplierId: supplier.id,
         resolvedSupplierId: supplier.id,
         supplierName: supplier.name,
-        name: row.vehicleType,
+        name: row.vehicleLabel || row.vehicleType,
         vehicleType: row.vehicleType,
         maxPax: row.maxPaxPerUnit,
         luggageCapacity: 0,
@@ -2060,12 +2160,20 @@ export class VehicleRatesService {
       },
     });
 
-    return candidates.find((route) =>
-      routePairsMatch(
-        { fromPlaceName: route.fromPlace.name, toPlaceName: route.toPlace.name },
-        { fromPlaceName: row.origin, toPlaceName: row.destination },
-      ),
-    ) || null;
+    const normalizedImportedRouteName = normalizeRouteName(row.routeName);
+    const existingByNormalizedName = candidates.find((route) => normalizeRouteName(route.name || '') === normalizedImportedRouteName);
+    if (existingByNormalizedName) {
+      return existingByNormalizedName;
+    }
+
+    return (
+      candidates.find((route) =>
+        routePairsMatch(
+          { fromPlaceName: route.fromPlace.name, toPlaceName: route.toPlace.name },
+          { fromPlaceName: row.origin, toPlaceName: row.destination },
+        ),
+      ) || null
+    );
   }
 
   private async findOrCreateTransportImportPlace(name: string, country: string) {
@@ -2105,6 +2213,7 @@ export class VehicleRatesService {
     fromPlaceId: string;
     toPlaceId: string;
     routeName: string;
+    minPaxPerUnit: number;
     maxPaxPerUnit: number;
     cost: number;
     currency: string;
@@ -2117,6 +2226,7 @@ export class VehicleRatesService {
         serviceTypeId: data.serviceTypeId,
         routeId: data.routeId,
         vehicleId: data.vehicleId,
+        minPax: data.minPaxPerUnit,
         maxPax: data.maxPaxPerUnit,
         currency: data.currency,
         validFrom: data.validFrom,
@@ -2132,7 +2242,7 @@ export class VehicleRatesService {
             fromPlaceId: data.fromPlaceId,
             toPlaceId: data.toPlaceId,
             routeName: data.routeName,
-            minPax: 1,
+            minPax: data.minPaxPerUnit,
             maxPax: data.maxPaxPerUnit,
             price: data.cost,
             currency: data.currency,
@@ -2155,7 +2265,7 @@ export class VehicleRatesService {
           fromPlaceId: data.fromPlaceId,
           toPlaceId: data.toPlaceId,
           routeName: data.routeName,
-          minPax: 1,
+          minPax: data.minPaxPerUnit,
           maxPax: data.maxPaxPerUnit,
           price: data.cost,
           currency: data.currency,
@@ -2173,6 +2283,7 @@ export class VehicleRatesService {
     serviceTypeId: string;
     vehicleId: string;
     routeId: string;
+    minPaxPerUnit: number;
     maxPaxPerUnit: number;
     cost: number;
     currency: string;
@@ -2182,6 +2293,7 @@ export class VehicleRatesService {
       serviceTypeId: data.serviceTypeId,
       routeId: data.routeId,
       vehicleId: data.vehicleId,
+      minPax: data.minPaxPerUnit,
       maxPax: data.maxPaxPerUnit,
       price: data.cost,
       currency: data.currency,
@@ -2268,7 +2380,7 @@ export class VehicleRatesService {
       routeId,
       vehicleId: data.vehicleId,
       pricingMode: 'capacity_unit' as const,
-      minPax: 1,
+      minPax: data.minPax ?? 1,
       maxPax: 999,
       unitCapacity: data.maxPax,
       baseCost: data.price,

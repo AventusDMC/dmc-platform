@@ -150,6 +150,24 @@ function normalizeRouteText(value: string | null | undefined) {
   return normalizeTransportRouteText(value);
 }
 
+function getRouteRawLabels(route: RouteOption) {
+  return [
+    route.name,
+    formatRoute(route),
+    `${route.fromPlace.name} -> ${route.toPlace.name}`,
+    `${route.fromPlace.name} \u2192 ${route.toPlace.name}`,
+  ].filter((label): label is string => Boolean(label));
+}
+
+function getRateRawRouteLabels(rate: VehicleRate) {
+  return [
+    rate.routeName,
+    rate.route?.name,
+    rate.route ? `${rate.route.fromPlace.name} -> ${rate.route.toPlace.name}` : '',
+    rate.route ? `${rate.route.fromPlace.name} \u2192 ${rate.route.toPlace.name}` : '',
+  ].filter((label): label is string => Boolean(label));
+}
+
 function getPricingModeForRate(rate: VehicleRate): PricingMode {
   return getNormalizedPricingModeForRate(rate) || 'Point-to-Point';
 }
@@ -251,12 +269,7 @@ function getTransportRateValidityIssue(rate: VehicleRate, now = new Date()) {
 }
 
 function getRouteNames(route: RouteOption) {
-  return [
-    route.name,
-    formatRoute(route),
-    `${route.fromPlace.name} -> ${route.toPlace.name}`,
-    `${route.fromPlace.name} → ${route.toPlace.name}`,
-  ].map(normalizeRouteText);
+  return getRouteRawLabels(route).map(normalizeRouteText);
 }
 
 export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: RouteOption) {
@@ -276,12 +289,7 @@ export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: Rout
   }
 
   const selectedRouteNames = getRouteNames(route);
-  const rateRouteNames = [
-    rate.routeName,
-    rate.route?.name,
-    rate.route ? `${rate.route.fromPlace.name} -> ${rate.route.toPlace.name}` : '',
-    rate.route ? `${rate.route.fromPlace.name} → ${rate.route.toPlace.name}` : '',
-  ].map(normalizeRouteText);
+  const rateRouteNames = getRateRawRouteLabels(rate).map(normalizeRouteText);
 
   return rateRouteNames.some((rateName) => Boolean(rateName) && selectedRouteNames.includes(rateName));
 }
@@ -292,7 +300,7 @@ export function isGeneralTransportRouteRate(rate: VehicleRate) {
   }
 
   const routeName = normalizeRouteText(rate.routeName || rate.route?.name || '');
-  return !routeName || routeName.includes('general') || routeName.includes('all routes') || routeName.includes('any route');
+  return !routeName || routeName.includes('general') || routeName.includes('all_routes') || routeName.includes('any_route');
 }
 
 function getRouteCandidateRates(rates: VehicleRate[], route: RouteOption, now = new Date()) {
@@ -352,6 +360,7 @@ function getTransportPricingModeDiagnostics({
   const rejectedReasonCounts: Record<string, number> = {};
   const pricingModesFound = new Set<PricingMode>();
   const routeRates: VehicleRate[] = [];
+  const normalizedCandidateRoutes = new Map<string, string>();
   let activeValidRowsCount = 0;
 
   function reject(reason: string) {
@@ -359,6 +368,13 @@ function getTransportPricingModeDiagnostics({
   }
 
   for (const rate of rates) {
+    for (const rawRoute of getRateRawRouteLabels(rate)) {
+      const normalizedRoute = normalizeRouteText(rawRoute);
+      if (normalizedRoute && !normalizedCandidateRoutes.has(normalizedRoute)) {
+        normalizedCandidateRoutes.set(normalizedRoute, rawRoute);
+      }
+    }
+
     if (!transportRateMatchesSelectedRoute(rate, route)) {
       reject('route mismatch');
       continue;
@@ -401,6 +417,11 @@ function getTransportPricingModeDiagnostics({
   return {
     selectedRouteId: route.id,
     selectedRouteName: formatRoute(route),
+    selectedRouteRawLabels: getRouteRawLabels(route),
+    selectedRouteNormalizedLabels: Array.from(new Set(getRouteRawLabels(route).map(normalizeRouteText).filter(Boolean))),
+    normalizedCandidateRoutes: Array.from(normalizedCandidateRoutes.entries())
+      .map(([normalized, raw]) => ({ raw, normalized }))
+      .slice(0, 20),
     selectedVehicleId,
     selectedVehicleName,
     selectedCanonicalVehicleType: selectedCanonicalVehicleType || 'Unrecognized',
@@ -974,6 +995,16 @@ export function QuoteTransportPicker({
                         <p>
                           Route: {noPricingModesDiagnostics.selectedRouteName} / routeId: {noPricingModesDiagnostics.selectedRouteId}
                           <br />
+                          Raw selected route:{' '}
+                          {noPricingModesDiagnostics.selectedRouteRawLabels.length > 0
+                            ? noPricingModesDiagnostics.selectedRouteRawLabels.join(', ')
+                            : 'None'}
+                          <br />
+                          Normalized selected route:{' '}
+                          {noPricingModesDiagnostics.selectedRouteNormalizedLabels.length > 0
+                            ? noPricingModesDiagnostics.selectedRouteNormalizedLabels.join(', ')
+                            : 'None'}
+                          <br />
                           Vehicle: {noPricingModesDiagnostics.selectedVehicleName || 'Unknown'} / vehicleId:{' '}
                           {noPricingModesDiagnostics.selectedVehicleId || 'None'}
                           <br />
@@ -995,6 +1026,20 @@ export function QuoteTransportPicker({
                             ? noPricingModesDiagnostics.pricingModesFound.join(', ')
                             : 'None'}
                         </p>
+                        <div>
+                          <strong>Normalized candidate routes:</strong>
+                          {noPricingModesDiagnostics.normalizedCandidateRoutes.length > 0 ? (
+                            <ul>
+                              {noPricingModesDiagnostics.normalizedCandidateRoutes.map((entry) => (
+                                <li key={`${entry.normalized}:${entry.raw}`}>
+                                  {entry.raw} → {entry.normalized}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>None</p>
+                          )}
+                        </div>
                         <div>
                           <strong>Rejected:</strong>
                           {noPricingModesDiagnostics.rejectedReasonCounts.length > 0 ? (
@@ -1080,3 +1125,4 @@ export function QuoteTransportPicker({
     </div>
   );
 }
+
