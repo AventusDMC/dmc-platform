@@ -552,8 +552,24 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
-      'if (item.appliedVehicleRate?.serviceType?.name) {',
-      'return item.appliedVehicleRate.serviceType.name;',
+      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);',
+      'function stripTransportPricingModeLabel(value: string)',
+    ]);
+
+    expectSourceContains(pageSource, [
+      'return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name);',
+      'return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category || \'Service\';',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8'), [
+      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);',
+      'const itemDisplayName = hotelItemSummary || activityCatalogName || getQuoteItemServiceName(currentItem);',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('./QuoteServicesTable.tsx', import.meta.url), 'utf8'), [
+      'function getQuoteItemServiceDisplayName(item: QuoteItem)',
+      '<h3>{hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}</h3>',
+      '{getQuoteItemServiceTypeDisplayName(currentItem)}',
     ]);
   });
 

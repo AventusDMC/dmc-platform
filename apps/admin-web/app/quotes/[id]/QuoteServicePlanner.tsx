@@ -921,10 +921,36 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 
 function getItemServiceName(item: QuoteItem) {
   if (item.appliedVehicleRate?.serviceType?.name) {
-    return item.appliedVehicleRate.serviceType.name;
+    return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
+}
+
+function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string) {
+  const rawName = (serviceName || '').trim();
+  const supplierBase = stripTransportPricingModeLabel(rawName) || rawName || 'Transport';
+  const formattedBase = formatTransportSupplierBaseName(supplierBase);
+
+  return pricingMode ? `${formattedBase} ${pricingMode}` : formattedBase;
+}
+
+function stripTransportPricingModeLabel(value: string) {
+  let next = value.trim();
+  const modeSuffixPattern =
+    /\s*(?:[-|:])?\s*(?:point\s*[- ]?\s*to\s*[- ]?\s*point|airport\s*transfer|half\s*day|full\s*day|day\s*tour|extra\s*hour|extra\s*(?:km|kilometer|kilometre)s?|driver\s*overnight|stationary(?:\s*\/\s*waiting)?|waiting|add\s*[- ]?\s*on(?:\s*\/\s*supplement)?|supplement)\s*$/i;
+
+  while (modeSuffixPattern.test(next)) {
+    next = next.replace(modeSuffixPattern, '').trim();
+  }
+
+  return next;
+}
+
+function formatTransportSupplierBaseName(value: string) {
+  return /^[A-Z0-9\s&.'-]+$/.test(value)
+    ? value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    : value;
 }
 
 function getItemServiceTypeLabel(item: QuoteItem) {

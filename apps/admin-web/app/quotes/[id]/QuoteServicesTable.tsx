@@ -341,6 +341,44 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
   return `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
 }
 
+function getQuoteItemServiceDisplayName(item: QuoteItem) {
+  if (item.appliedVehicleRate?.serviceType?.name) {
+    return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name);
+  }
+
+  return item.service.name;
+}
+
+function getQuoteItemServiceTypeDisplayName(item: QuoteItem) {
+  return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category;
+}
+
+function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string) {
+  const rawName = (serviceName || '').trim();
+  const supplierBase = stripTransportPricingModeLabel(rawName) || rawName || 'Transport';
+  const formattedBase = formatTransportSupplierBaseName(supplierBase);
+
+  return pricingMode ? `${formattedBase} ${pricingMode}` : formattedBase;
+}
+
+function stripTransportPricingModeLabel(value: string) {
+  let next = value.trim();
+  const modeSuffixPattern =
+    /\s*(?:[-|:])?\s*(?:point\s*[- ]?\s*to\s*[- ]?\s*point|airport\s*transfer|half\s*day|full\s*day|day\s*tour|extra\s*hour|extra\s*(?:km|kilometer|kilometre)s?|driver\s*overnight|stationary(?:\s*\/\s*waiting)?|waiting|add\s*[- ]?\s*on(?:\s*\/\s*supplement)?|supplement)\s*$/i;
+
+  while (modeSuffixPattern.test(next)) {
+    next = next.replace(modeSuffixPattern, '').trim();
+  }
+
+  return next;
+}
+
+function formatTransportSupplierBaseName(value: string) {
+  return /^[A-Z0-9\s&.'-]+$/.test(value)
+    ? value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    : value;
+}
+
 function getReconfirmationWarning(reconfirmationDueAt: string | null) {
   if (!reconfirmationDueAt) {
     return null;
@@ -582,11 +620,11 @@ function QuoteServiceRow({
         <div className="quote-service-card-head">
           <div>
             <p className="eyebrow">{itineraryDay ? `Day ${itineraryDay.dayNumber}` : 'Unassigned'}</p>
-            <h3>{hotelItemSummary || currentItem.service.name}</h3>
+            <h3>{hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}</h3>
             <p className="detail-copy">
               {itineraryDay?.title || 'Not linked to itinerary day'}
               {' | '}
-              {currentItem.service.serviceType?.name || currentItem.service.category}
+              {getQuoteItemServiceTypeDisplayName(currentItem)}
               {currentItem.useOverride ? ' | Override active' : ''}
               {isUnmatched ? ' | Unmatched import' : ''}
             </p>
@@ -633,7 +671,7 @@ function QuoteServiceRow({
             <div className="quote-preview-total-list">
               <div>
                 <span>Service</span>
-                <strong>{hotelItemSummary || currentItem.service.name}</strong>
+                <strong>{hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}</strong>
               </div>
               <div>
                 <span>Status</span>
@@ -762,7 +800,7 @@ function QuoteServiceRow({
               apiBaseUrl={apiBaseUrl}
               deletePath={optionId ? `/quotes/${quote.id}/options/${optionId}/items/${currentItem.id}` : `/quotes/${quote.id}/items/${currentItem.id}`}
               deleteLabel="quote item"
-              confirmMessage={`Delete ${hotelItemSummary || currentItem.service.name}?`}
+              confirmMessage={`Delete ${hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}?`}
             >
               <QuoteItemsForm
                 apiBaseUrl={apiBaseUrl}

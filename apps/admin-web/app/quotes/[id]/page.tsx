@@ -1221,15 +1221,41 @@ function getQuoteItemDisplayName(item: QuoteItem) {
     return item.hotel.name;
   }
 
-  if (item.appliedVehicleRate?.routeName) {
-    return item.appliedVehicleRate.routeName;
+  if (item.appliedVehicleRate?.serviceType?.name) {
+    return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name);
   }
 
   return item.activity?.name || item.service.name;
 }
 
 function getQuoteItemCategory(item: QuoteItem) {
-  return item.service.serviceType?.name || item.service.category || 'Service';
+  return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category || 'Service';
+}
+
+function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string) {
+  const rawName = (serviceName || '').trim();
+  const supplierBase = stripTransportPricingModeLabel(rawName) || rawName || 'Transport';
+  const formattedBase = formatTransportSupplierBaseName(supplierBase);
+
+  return pricingMode ? `${formattedBase} ${pricingMode}` : formattedBase;
+}
+
+function stripTransportPricingModeLabel(value: string) {
+  let next = value.trim();
+  const modeSuffixPattern =
+    /\s*(?:[-|:])?\s*(?:point\s*[- ]?\s*to\s*[- ]?\s*point|airport\s*transfer|half\s*day|full\s*day|day\s*tour|extra\s*hour|extra\s*(?:km|kilometer|kilometre)s?|driver\s*overnight|stationary(?:\s*\/\s*waiting)?|waiting|add\s*[- ]?\s*on(?:\s*\/\s*supplement)?|supplement)\s*$/i;
+
+  while (modeSuffixPattern.test(next)) {
+    next = next.replace(modeSuffixPattern, '').trim();
+  }
+
+  return next;
+}
+
+function formatTransportSupplierBaseName(value: string) {
+  return /^[A-Z0-9\s&.'-]+$/.test(value)
+    ? value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    : value;
 }
 
 function buildTripHighlights(quote: Quote, itinerary: QuoteItineraryResponse) {
