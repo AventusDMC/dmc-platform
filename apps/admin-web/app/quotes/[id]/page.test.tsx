@@ -500,6 +500,8 @@ describe('quote detail page regression', () => {
       'routeMatchingRowsCount',
       'legacyVehicleTypes',
       'supportedPricingModes',
+      'disposalRateMatchesSelectedServiceArea',
+      'requestedPax',
       'pricingModesForVehicle.map((mode)',
     ]);
   });
@@ -515,8 +517,9 @@ describe('quote detail page regression', () => {
       'Active/valid rows: {noPricingModesDiagnostics.activeValidRowsCount}',
       'Pricing modes found:',
       'rejectedReasonCounts.map((entry)',
-      "reject('route mismatch')",
-      "reject('vehicle mismatch')",
+      "rejectForMode(pricingMode, 'route/service area mismatch')",
+      "rejectForMode(pricingMode, 'vehicle/capacity mismatch')",
+      '`Full Day ${reason}`',
       "reject('missing pricingMode')",
     ]);
   });

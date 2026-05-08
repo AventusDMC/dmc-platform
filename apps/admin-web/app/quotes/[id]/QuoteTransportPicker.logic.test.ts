@@ -18,6 +18,14 @@ const route = {
   fromPlace: { id: 'aqaba', name: 'Aqaba', city: 'Aqaba', country: 'Jordan' },
   toPlace: { id: 'petra', name: 'Petra', city: 'Petra', country: 'Jordan' },
 } as any;
+const ammanRoute = {
+  id: 'route-amman-amman',
+  name: 'Amman -> Amman',
+  fromPlaceId: 'amman-from',
+  toPlaceId: 'amman-to',
+  fromPlace: { id: 'amman-from', name: 'Amman', city: 'Amman', country: 'Jordan' },
+  toPlace: { id: 'amman-to', name: 'Amman', city: 'Amman', country: 'Jordan' },
+} as any;
 
 function rate(vehicleName: string, pricingMode = 'Point-to-Point', overrides: Record<string, unknown> = {}) {
   return {
@@ -85,6 +93,31 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     });
 
     assert.deepEqual(modes, ['Day Tour']);
+  });
+
+  it('shows Full Day disposal modes for Amman service-area rows when Half Day and Stationary are exact route rows', () => {
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates: [
+        rate('Alpha Medium Coach 30 Pax', 'Half Day', { id: 'half-exact', routeId: ammanRoute.id, routeName: ammanRoute.name, route: ammanRoute, maxPax: 30 }),
+        rate('Alpha Medium Coach 30 Pax', 'Stationary / Waiting', { id: 'stationary-exact', routeId: ammanRoute.id, routeName: ammanRoute.name, route: ammanRoute, maxPax: 30 }),
+        rate('Medium 30', 'Full Day', {
+          id: 'full-service-area',
+          routeId: null,
+          routeName: 'Jordan Program',
+          route: null,
+          maxPax: 30,
+          serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+        }),
+      ],
+      route: ammanRoute,
+      selectedCanonicalVehicleType: 'Coach',
+      requestedPax: 30,
+      now: activeDate,
+    });
+
+    assert.ok(modes.includes('Full Day'));
+    assert.ok(modes.includes('Half Day'));
+    assert.ok(modes.includes('Stationary / Waiting'));
   });
 
   it('returns Aqaba to Petra coach modes when legacy route rows exist', () => {

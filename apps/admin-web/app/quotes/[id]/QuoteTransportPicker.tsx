@@ -406,8 +406,6 @@ export function getAvailableTransportPricingModesForSelection({
     return [] as PricingMode[];
   }
 
-  const selectedType = normalizeType(selectedCanonicalVehicleType);
-
   return Array.from(
     new Set(
       getRouteCandidateRates(rates, route, now)
@@ -750,14 +748,8 @@ export function QuoteTransportPicker({
     if (!selectedRoute || !selectedVehicle || !selectedPricingMode) {
       return [] as SupplierRateMatch[];
     }
-    function rateVehicleType(rate: VehicleRate) {
-      return normalizeType(getCanonicalRateVehicleType(rate, vehicleTypes));
-    }
-
     function rateMatchesVehicleType(rate: VehicleRate) {
-      const selectedType = normalizeType(selectedVehicleTypeForMatch);
-      const rateType = rateVehicleType(rate);
-      return Boolean(selectedType && rateType && selectedType === rateType);
+      return rateMatchesSelectedVehicleFallback(rate, selectedVehicleTypeForMatch, vehicleTypes, requestedPax);
     }
 
     function rateMatchesPricingMode(rate: VehicleRate) {
@@ -792,7 +784,7 @@ export function QuoteTransportPicker({
 
       return getRateCost(left.rate) - getRateCost(right.rate);
     });
-  }, [loadedSupplierRates, selectedPricingMode, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, suppliers, vehicleTypes]);
+  }, [loadedSupplierRates, requestedPax, selectedPricingMode, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, suppliers, vehicleTypes]);
   const selectedRateMatch = supplierRateMatches.find((match) => match.rate.id === selectedRateId) || null;
 
   useEffect(() => {
@@ -836,9 +828,10 @@ export function QuoteTransportPicker({
       rates: loadedSupplierRates,
       route: selectedRoute,
       selectedCanonicalVehicleType: selectedVehicleTypeForMatch,
+      requestedPax,
       vehicleTypes,
     });
-  }, [loadedSupplierRates, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, vehicleTypes]);
+  }, [loadedSupplierRates, requestedPax, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, vehicleTypes]);
   const pricingModesForVehicleIsEmpty = Boolean(selectedRoute && selectedVehicle && !supplierRatesLoadFailed && pricingModesForVehicle.length === 0);
   const noSupplierRateForSelection = Boolean(selectedRoute && selectedVehicle && selectedPricingMode && supplierRateMatches.length === 0 && !supplierRatesLoadFailed);
   const noPricingModesDiagnostics = useMemo(() => {
@@ -852,9 +845,10 @@ export function QuoteTransportPicker({
       selectedVehicleId,
       selectedVehicleName: selectedVehicle?.name || '',
       selectedCanonicalVehicleType: selectedVehicleTypeForMatch,
+      requestedPax,
       vehicleTypes,
     });
-  }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, selectedRoute, selectedVehicle, selectedVehicleId, selectedVehicleTypeForMatch, vehicleTypes]);
+  }, [loadedSupplierRates, pricingModesForVehicleIsEmpty, requestedPax, selectedRoute, selectedVehicle, selectedVehicleId, selectedVehicleTypeForMatch, vehicleTypes]);
 
   function handleAddTransport() {
     if (!selectedRoute || !selectedVehicle || !selectedRate) {
