@@ -76,17 +76,17 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     }
   });
 
-  it('previews Full Day costs with the same capacity and billable-day rules used for persisted quote items', () => {
+  it('previews Full Day costs as a daily rate with editable billable days', () => {
     const fullDayRate = rate('Medium 30', 'Full Day', {
-      price: 301,
+      price: 509,
       maxPax: 30,
-      grossRate: 509,
       vehicle: { name: 'Medium 30', vehicleType: null, maxPax: 30 },
       serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
     });
 
-    assert.equal(getQuoteTransportRateBillableDays(fullDayRate, 1), 3);
-    assert.equal(getQuoteTransportPersistedCostPreview(fullDayRate, 21, 1), 903);
+    assert.equal(getQuoteTransportRateBillableDays(fullDayRate, 1), 1);
+    assert.equal(getQuoteTransportPersistedCostPreview(fullDayRate, 21, 1), 509);
+    assert.equal(getQuoteTransportPersistedCostPreview(fullDayRate, 21, 2), 1018);
   });
 
   it('previews transfer costs without Full Day minimums and applies capacity units when pax exceeds one vehicle', () => {

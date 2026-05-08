@@ -305,15 +305,7 @@ export function getQuoteTransportRateUnitCount(rate: VehicleRate, pax: number) {
 }
 
 export function getQuoteTransportRateBillableDays(rate: VehicleRate, selectedDays = 1) {
-  const normalizedSelectedDays = Math.max(1, Math.floor(Number(selectedDays) || 1));
-  const classification = String(rate.serviceType?.classification || '').toUpperCase();
-  const serviceText = [classification, rate.serviceType?.name, rate.serviceType?.code].join(' ').toLowerCase();
-  const isDailyMinimumRate =
-    classification === 'FULL_DAY' ||
-    classification === 'DAILY_PACKAGE' ||
-    /\b(full_day|daily_package|daily\s*fd|daily\s+full\s+day|minimum\s+3)\b/.test(serviceText);
-
-  return isDailyMinimumRate ? Math.max(normalizedSelectedDays, 3) : normalizedSelectedDays;
+  return Math.max(1, Math.floor(Number(selectedDays) || 1));
 }
 
 export function getQuoteTransportPersistedCostPreview(rate: VehicleRate, pax: number, selectedDays = 1) {
@@ -326,6 +318,10 @@ export function getQuoteTransportPersistedCostPreview(rate: VehicleRate, pax: nu
 
 function hasNumericRate(rate: VehicleRate) {
   return Number.isFinite(Number(rate.price));
+}
+
+function usesBillableDaysInput(pricingMode: PricingMode | '') {
+  return pricingMode === 'Full Day' || pricingMode === 'Day Tour' || pricingMode === 'Driver Overnight';
 }
 
 function getRateCapacity(rate: VehicleRate) {
@@ -701,6 +697,7 @@ function formatSupplierRateOptionLabel(
   vehicleTypes: VehicleTypeOption[],
   fallbackRoute: RouteOption | null,
   pax: number,
+  billableDays = 1,
 ) {
   const rate = match.rate;
   const supplier = getSupplierDisplay(rate, suppliers);
@@ -712,7 +709,7 @@ function formatSupplierRateOptionLabel(
   const vehicleLabel = formatTransportVehicleDisplay(vehicle, vehicleTypes);
   const route = rate.routeName || rate.route?.name || (fallbackRoute ? formatRoute(fallbackRoute) : 'General / All Routes');
   const pricingMode = getPricingModeForRate(rate);
-  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getQuoteTransportPersistedCostPreview(rate, pax), rate.currency)}`;
+  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getQuoteTransportPersistedCostPreview(rate, pax, billableDays), rate.currency)}`;
 }
 
 function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
@@ -803,6 +800,7 @@ export function QuoteTransportPicker({
   const [selectedPricingMode, setSelectedPricingMode] = useState<PricingMode | ''>('');
   const [selectedRateId, setSelectedRateId] = useState('');
   const [paxInput, setPaxInput] = useState(String(Math.max(1, totalPax || 1)));
+  const [billableDaysInput, setBillableDaysInput] = useState('1');
   const [markupPercent, setMarkupPercent] = useState('30');
   const [isSavingTransport, setIsSavingTransport] = useState(false);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
@@ -882,6 +880,7 @@ export function QuoteTransportPicker({
     [manualSupplierRateCards, supplierRateCards],
   );
   const requestedPax = Math.max(1, Math.floor(Number(paxInput) || totalPax || 1));
+  const requestedBillableDays = Math.max(1, Math.floor(Number(billableDaysInput) || 1));
   const rankedVehicles = useMemo(() => getRankedVehicles(allVehicles, requestedPax), [allVehicles, requestedPax]);
 
   useEffect(() => {
@@ -921,6 +920,7 @@ export function QuoteTransportPicker({
   function handlePricingModeChange(pricingMode: PricingMode | '') {
     setSelectedPricingMode(pricingMode);
     setSelectedRateId('');
+    setBillableDaysInput('1');
   }
 
   const supplierRateMatches = useMemo(() => {
@@ -961,9 +961,12 @@ export function QuoteTransportPicker({
         return supplierSort;
       }
 
-      return getQuoteTransportPersistedCostPreview(left.rate, requestedPax) - getQuoteTransportPersistedCostPreview(right.rate, requestedPax);
+      return (
+        getQuoteTransportPersistedCostPreview(left.rate, requestedPax, requestedBillableDays) -
+        getQuoteTransportPersistedCostPreview(right.rate, requestedPax, requestedBillableDays)
+      );
     });
-  }, [loadedSupplierRates, requestedPax, selectedPricingMode, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, suppliers, vehicleTypes]);
+  }, [loadedSupplierRates, requestedBillableDays, requestedPax, selectedPricingMode, selectedRoute, selectedVehicle, selectedVehicleTypeForMatch, suppliers, vehicleTypes]);
   const selectedRateMatch = supplierRateMatches.find((match) => match.rate.id === selectedRateId) || null;
 
   useEffect(() => {
@@ -976,7 +979,7 @@ export function QuoteTransportPicker({
 
   const selectedRate = selectedRateMatch?.rate || null;
   const selectedRateHasCost = Boolean(selectedRate && getNormalizedPricingModeForRate(selectedRate) === selectedPricingMode && hasNumericRate(selectedRate));
-  const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax) : 0;
+  const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax, requestedBillableDays) : 0;
   const markup = Number(markupPercent) || 0;
   const sellingPrice = costPrice + costPrice * (markup / 100);
   const profit = calculateProfit(sellingPrice, costPrice);
@@ -1057,7 +1060,7 @@ export function QuoteTransportPicker({
           itineraryId,
           quantity: 1,
           paxCount: requestedPax,
-          dayCount: 1,
+          dayCount: usesBillableDaysInput(selectedPricingMode) ? requestedBillableDays : 1,
           markupPercent: markup,
           markupAmount: null,
           sellPrice: null,
@@ -1084,6 +1087,7 @@ export function QuoteTransportPicker({
       setSelectedPricingMode('');
       setSelectedVehicleId('');
       setSelectedRouteId('');
+      setBillableDaysInput('1');
       setOpen(false);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not save transport item.');
@@ -1152,10 +1156,26 @@ export function QuoteTransportPicker({
                   <span>Cost</span>
                   <strong>{formatMoney(costPrice, pricingCurrency)}</strong>
                 </div>
+                {usesBillableDaysInput(selectedPricingMode) ? (
+                  <label className="quote-live-pricing-row quote-transport-markup-row">
+                    <span>Billable days</span>
+                    <input
+                      value={billableDaysInput}
+                      onChange={(event) => setBillableDaysInput(event.target.value)}
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                    />
+                  </label>
+                ) : null}
                 <label className="quote-live-pricing-row quote-transport-markup-row">
                   <span>Markup %</span>
                   <input value={markupPercent} onChange={(event) => setMarkupPercent(event.target.value)} type="number" min="0" step="0.01" />
                 </label>
+                {selectedRate && isMinimumFullDayRate(selectedRate) ? (
+                  <p className="form-helper">Supplier minimum 3 full days may apply.</p>
+                ) : null}
                 <div className="quote-live-pricing-row">
                   <span>Profit</span>
                   <strong>{formatMoney(profit, pricingCurrency)}</strong>
@@ -1403,7 +1423,7 @@ export function QuoteTransportPicker({
                       {supplierRateMatches.length === 0 ? <option value="">No supplier rate available</option> : null}
                       {supplierRateMatches.map((match) => (
                         <option key={match.rate.id} value={match.rate.id}>
-                          {formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax)}
+                          {formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax, requestedBillableDays)}
                         </option>
                       ))}
                     </select>

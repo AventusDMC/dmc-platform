@@ -3178,10 +3178,9 @@ export class QuotesService {
         const classification = (resolvedPricing.rule.transportServiceType as any).classification || 'ROUTE_TRANSFER';
         if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
           const selectedDays = Math.max(1, dayCount);
-          const billableDays = Math.max(selectedDays, 3);
-          transportUnitCostMultiplier = billableDays;
-          if (selectedDays < 3) {
-            transportPricingDescriptionParts.push(`Daily FD minimum applied: ${selectedDays} selected, 3 charged`);
+          transportUnitCostMultiplier = selectedDays;
+          if (classification === 'DAILY_PACKAGE' && selectedDays < 3) {
+            transportPricingDescriptionParts.push('Supplier minimum 3 full days may apply');
           }
         }
         pricingDescription = [
@@ -3234,10 +3233,9 @@ export class QuotesService {
         unitCount = Math.ceil(paxCount / vehicleRate.maxPax);
         if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
           const selectedDays = Math.max(1, dayCount);
-          const billableDays = Math.max(selectedDays, 3);
-          transportUnitCostMultiplier = billableDays;
-          if (selectedDays < 3) {
-            transportPricingDescriptionParts.push(`Daily FD minimum applied: ${selectedDays} selected, 3 charged`);
+          transportUnitCostMultiplier = selectedDays;
+          if (classification === 'DAILY_PACKAGE' && selectedDays < 3) {
+            transportPricingDescriptionParts.push('Supplier minimum 3 full days may apply');
           }
         }
         pricingDescription = `${vehicleRate.serviceType.name} | ${vehicleRate.routeName} | ${vehicleRate.vehicle.name}`;

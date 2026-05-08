@@ -467,7 +467,7 @@ describe('quote detail page regression', () => {
       'const routeScopedRates = routeCandidateRates.filter(',
       'No supplier rate found for this route, vehicle type, and pricing mode. Add one in Transport → Supplier Rate Cards.',
       'disabled={!selectedRoute || !selectedVehicle || !selectedPricingMode || supplierRateMatches.length === 0}',
-      '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax)}',
+      '{formatSupplierRateOptionLabel(match, suppliers, vehicleTypes, selectedRoute, requestedPax, requestedBillableDays)}',
     ]);
   });
 
@@ -477,12 +477,14 @@ describe('quote detail page regression', () => {
       'export function getQuoteTransportRateUnitCount(rate: VehicleRate, pax: number)',
       'export function getQuoteTransportRateBillableDays(rate: VehicleRate, selectedDays = 1)',
       'export function getQuoteTransportPersistedCostPreview(rate: VehicleRate, pax: number, selectedDays = 1)',
-      "classification === 'FULL_DAY'",
-      "classification === 'DAILY_PACKAGE'",
       'return Number((unitCost * unitCount * billableDays).toFixed(2));',
-      'const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax) : 0;',
-      'getQuoteTransportPersistedCostPreview(left.rate, requestedPax)',
-      'getQuoteTransportPersistedCostPreview(rate, pax)',
+      'const [billableDaysInput, setBillableDaysInput] = useState(\'1\');',
+      'const requestedBillableDays = Math.max(1, Math.floor(Number(billableDaysInput) || 1));',
+      'const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax, requestedBillableDays) : 0;',
+      'getQuoteTransportPersistedCostPreview(left.rate, requestedPax, requestedBillableDays)',
+      'getQuoteTransportPersistedCostPreview(rate, pax, billableDays)',
+      'dayCount: usesBillableDaysInput(selectedPricingMode) ? requestedBillableDays : 1,',
+      'Supplier minimum 3 full days may apply.',
     ]);
   });
 
@@ -624,7 +626,11 @@ describe('quote detail page regression', () => {
     expectSourceContains(quotesServiceSource, [
       'const displayVehicleRate = await this.transportPricingService.findMatchingRate({',
       'appliedVehicleRateId = displayVehicleRate.id;',
+      'transportUnitCostMultiplier = selectedDays;',
+      "transportPricingDescriptionParts.push('Supplier minimum 3 full days may apply');",
     ]);
+    assert.equal(quotesServiceSource.includes('Daily FD minimum applied'), false);
+    assert.equal(quotesServiceSource.includes('Math.max(selectedDays, 3)'), false);
 
     expectSourceContains(quoteServicePlannerSource, [
       '<button type="button" className="secondary-button" onClick={() => onEdit(item)}>',
