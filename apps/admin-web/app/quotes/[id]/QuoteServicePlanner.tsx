@@ -9,6 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning, getQuoteMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { DayNavigation, DrawerPanel } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
@@ -245,12 +246,18 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
     routeName: string;
     vehicle: {
       name: string;
+      vehicleType?: string | null;
+      maxPax?: number | null;
     };
     serviceType: {
       id: string;
       name: string;
       code: string;
     };
+    supplier?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
   } | null;
   contract: {
     name: string;
@@ -733,6 +740,10 @@ function getServiceNotes(item: QuoteItem) {
 }
 
 function getServiceSupplierLabel(item: QuoteItem) {
+  if (item.appliedVehicleRate) {
+    return getTransportSupplierDisplayName(item) || 'Supplier pending';
+  }
+
   return item.externalSupplierName || item.hotel?.name || item.contract?.name || getItemSupplierId(item) || 'Supplier pending';
 }
 
@@ -921,22 +932,34 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 
 function getItemServiceName(item: QuoteItem) {
   if (item.appliedVehicleRate?.serviceType?.name) {
-    return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);
+    return buildTransportServiceDisplayName(
+      item.service?.name || null,
+      item.appliedVehicleRate.serviceType.name,
+      getTransportSupplierDisplayName(item),
+    );
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
 }
 
-function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string) {
-  const rawName = (serviceName || '').trim();
-  const supplierBase = stripTransportPricingModeLabel(rawName) || rawName || 'Transport';
+function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string, supplierName?: string | null) {
+  const normalizedPricingMode = normalizeTransportPricingModeLabel(pricingMode);
+  const supplierBase =
+    cleanTransportSupplierBase(supplierName) ||
+    cleanTransportSupplierBase(serviceName) ||
+    'Transport';
   const formattedBase = formatTransportSupplierBaseName(supplierBase);
 
-  return pricingMode ? `${formattedBase} ${pricingMode}` : formattedBase;
+  return normalizedPricingMode ? `${formattedBase} ${normalizedPricingMode}` : formattedBase;
 }
 
-function stripTransportPricingModeLabel(value: string) {
-  let next = value.trim();
+function cleanTransportSupplierBase(value: string | null | undefined) {
+  let next = (value || '').trim();
+
+  if (!next || isUuidLike(next)) {
+    return '';
+  }
+
   const modeSuffixPattern =
     /\s*(?:[-|:])?\s*(?:point\s*[- ]?\s*to\s*[- ]?\s*point|airport\s*transfer|half\s*day|full\s*day|day\s*tour|extra\s*hour|extra\s*(?:km|kilometer|kilometre)s?|driver\s*overnight|stationary(?:\s*\/\s*waiting)?|waiting|add\s*[- ]?\s*on(?:\s*\/\s*supplement)?|supplement)\s*$/i;
 
@@ -944,13 +967,52 @@ function stripTransportPricingModeLabel(value: string) {
     next = next.replace(modeSuffixPattern, '').trim();
   }
 
+  if (/^(daily|transport|transfer|service|full|half|day|tour|extra|stationary|waiting)$/i.test(next)) {
+    return '';
+  }
+
   return next;
+}
+
+function normalizeTransportPricingModeLabel(value: string | null | undefined) {
+  const text = (value || '').trim();
+  if (/\b(daily\s*full\s*day|daily\s*fd|daily_package|daily\s*package|minimum\s*3|full\s*day)\b/i.test(text)) return 'Full Day';
+  if (/\bhalf\s*day\b/i.test(text)) return 'Half Day';
+  if (/\bday\s*tour\b/i.test(text)) return 'Day Tour';
+  if (/\bextra\s*(km|kilometer|kilometre)\b/i.test(text)) return 'Extra KM';
+  if (/\bdriver\s*overnight\b/i.test(text)) return 'Driver Overnight';
+  if (/\bstationary|waiting\b/i.test(text)) return 'Stationary / Waiting';
+  return text;
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
 }
 
 function formatTransportSupplierBaseName(value: string) {
   return /^[A-Z0-9\s&.'-]+$/.test(value)
     ? value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
     : value;
+}
+
+function getTransportSupplierDisplayName(item: QuoteItem) {
+  return item.appliedVehicleRate?.supplier?.name || cleanTransportSupplierBase(item.service?.name || null) || null;
+}
+
+function getTransportItemDetailLabel(item: QuoteItem) {
+  if (!item.appliedVehicleRate) {
+    return null;
+  }
+
+  return [
+    formatTransportVehicleDisplay({
+      name: item.appliedVehicleRate.vehicle?.name || 'Vehicle',
+      vehicleType: item.appliedVehicleRate.vehicle?.vehicleType || null,
+      maxPax: item.appliedVehicleRate.vehicle?.maxPax ?? item.paxCount ?? null,
+    }),
+    item.paxCount ? `${item.paxCount} pax` : null,
+    normalizeTransportPricingModeLabel(item.appliedVehicleRate.serviceType?.name),
+  ].filter(Boolean).join(' | ');
 }
 
 function getItemServiceTypeLabel(item: QuoteItem) {
@@ -1829,6 +1891,12 @@ function SortableServiceCard({
         <p className="quote-service-card-supplier">
           {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
         </p>
+        {item.appliedVehicleRate ? (
+          <p className="quote-service-card-supplier">
+            {getTransportItemDetailLabel(item)}
+            {item.appliedVehicleRate.routeName ? ` | Service Area: ${item.appliedVehicleRate.routeName}` : ''}
+          </p>
+        ) : null}
       </div>
       {isExternalPackage ? (
         <div className="quote-service-external-package-meta">

@@ -552,17 +552,20 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
-      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);',
-      'function stripTransportPricingModeLabel(value: string)',
+      'getTransportSupplierDisplayName(item)',
+      'function cleanTransportSupplierBase(value: string | null | undefined)',
+      'function isUuidLike(value: string)',
+      'formatTransportVehicleDisplay({',
+      'Service Area:',
     ]);
 
     expectSourceContains(pageSource, [
-      'return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name);',
+      'return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);',
       'return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category || \'Service\';',
     ]);
 
     expectSourceContains(readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8'), [
-      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name);',
+      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);',
       'const itemDisplayName = hotelItemSummary || activityCatalogName || getQuoteItemServiceName(currentItem);',
     ]);
 

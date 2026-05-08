@@ -626,6 +626,7 @@ export class QuotesService {
                     include: {
                       vehicle: true,
                       serviceType: true,
+                      supplier: true,
                     },
                   },
                 },
@@ -2181,6 +2182,7 @@ export class QuotesService {
           include: {
             vehicle: true,
             serviceType: true,
+            supplier: true,
           },
         },
       },
@@ -2744,6 +2746,7 @@ export class QuotesService {
           include: {
             vehicle: true,
             serviceType: true,
+            supplier: true,
           },
         },
       },
@@ -3608,6 +3611,7 @@ export class QuotesService {
           include: {
             vehicle: true,
             serviceType: true,
+            supplier: true,
           },
         },
       },
@@ -4620,6 +4624,7 @@ export class QuotesService {
           include: {
             vehicle: true,
             serviceType: true,
+            supplier: true,
           },
         },
       },
@@ -4700,7 +4705,9 @@ export class QuotesService {
             },
             appliedVehicleRate: {
               include: {
+                vehicle: true,
                 serviceType: true,
+                supplier: true,
               },
             },
           },
@@ -6044,7 +6051,9 @@ export class QuotesService {
         entranceFee: true,
         appliedVehicleRate: {
           include: {
+            vehicle: true,
             serviceType: true,
+            supplier: true,
           },
         },
       },
@@ -7461,6 +7470,7 @@ export class QuotesService {
             include: {
               vehicle: true,
               serviceType: true,
+              supplier: true,
             },
           },
         },
@@ -7505,6 +7515,7 @@ export class QuotesService {
                     include: {
                       vehicle: true,
                       serviceType: true,
+                      supplier: true,
                     },
                   },
                 },
@@ -7543,6 +7554,7 @@ export class QuotesService {
                 include: {
                   vehicle: true,
                   serviceType: true,
+                  supplier: true,
                 },
               },
             },

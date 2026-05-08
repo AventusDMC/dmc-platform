@@ -100,6 +100,10 @@ type SupplierService = {
     code: string | null;
     isActive: boolean;
   } | null;
+  supplier?: {
+    id?: string | null;
+    name?: string | null;
+  } | null;
   unitType: string;
   baseCost: number;
   currency: string;
@@ -369,6 +373,10 @@ type QuoteItem = {
       name: string;
       code: string;
     };
+    supplier?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
   } | null;
   hotel: {
     name: string;
@@ -1045,6 +1053,12 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
             name: item.appliedVehicleRate.serviceType?.name || 'Transport',
             code: item.appliedVehicleRate.serviceType?.code || 'TRANSPORT',
           },
+          supplier: item.appliedVehicleRate.supplier
+            ? {
+                id: item.appliedVehicleRate.supplier.id || null,
+                name: item.appliedVehicleRate.supplier.name || null,
+              }
+            : null,
         }
       : null,
     hotel: item?.hotel ? { name: item.hotel.name } : null,
@@ -1222,7 +1236,7 @@ function getQuoteItemDisplayName(item: QuoteItem) {
   }
 
   if (item.appliedVehicleRate?.serviceType?.name) {
-    return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name);
+    return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);
   }
 
   return item.activity?.name || item.service.name;
@@ -1232,16 +1246,21 @@ function getQuoteItemCategory(item: QuoteItem) {
   return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category || 'Service';
 }
 
-function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string) {
-  const rawName = (serviceName || '').trim();
-  const supplierBase = stripTransportPricingModeLabel(rawName) || rawName || 'Transport';
+function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string, supplierName?: string | null) {
+  const normalizedPricingMode = normalizeTransportPricingModeLabel(pricingMode);
+  const supplierBase = cleanTransportSupplierBase(supplierName) || cleanTransportSupplierBase(serviceName) || 'Transport';
   const formattedBase = formatTransportSupplierBaseName(supplierBase);
 
-  return pricingMode ? `${formattedBase} ${pricingMode}` : formattedBase;
+  return normalizedPricingMode ? `${formattedBase} ${normalizedPricingMode}` : formattedBase;
 }
 
-function stripTransportPricingModeLabel(value: string) {
-  let next = value.trim();
+function cleanTransportSupplierBase(value: string | null | undefined) {
+  let next = (value || '').trim();
+
+  if (!next || isUuidLike(next)) {
+    return '';
+  }
+
   const modeSuffixPattern =
     /\s*(?:[-|:])?\s*(?:point\s*[- ]?\s*to\s*[- ]?\s*point|airport\s*transfer|half\s*day|full\s*day|day\s*tour|extra\s*hour|extra\s*(?:km|kilometer|kilometre)s?|driver\s*overnight|stationary(?:\s*\/\s*waiting)?|waiting|add\s*[- ]?\s*on(?:\s*\/\s*supplement)?|supplement)\s*$/i;
 
@@ -1249,7 +1268,22 @@ function stripTransportPricingModeLabel(value: string) {
     next = next.replace(modeSuffixPattern, '').trim();
   }
 
-  return next;
+  return /^(daily|transport|transfer|service|full|half|day|tour|extra|stationary|waiting)$/i.test(next) ? '' : next;
+}
+
+function normalizeTransportPricingModeLabel(value: string | null | undefined) {
+  const text = (value || '').trim();
+  if (/\b(daily\s*full\s*day|daily\s*fd|daily_package|daily\s*package|minimum\s*3|full\s*day)\b/i.test(text)) return 'Full Day';
+  if (/\bhalf\s*day\b/i.test(text)) return 'Half Day';
+  if (/\bday\s*tour\b/i.test(text)) return 'Day Tour';
+  if (/\bextra\s*(km|kilometer|kilometre)\b/i.test(text)) return 'Extra KM';
+  if (/\bdriver\s*overnight\b/i.test(text)) return 'Driver Overnight';
+  if (/\bstationary|waiting\b/i.test(text)) return 'Stationary / Waiting';
+  return text;
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
 }
 
 function formatTransportSupplierBaseName(value: string) {
