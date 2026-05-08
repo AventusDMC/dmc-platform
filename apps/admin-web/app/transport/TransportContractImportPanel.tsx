@@ -17,6 +17,7 @@ type ImportSummary = {
   previewRows?: Array<Record<string, unknown>>;
   routeTransfers?: Array<Record<string, unknown>>;
   fullDay?: Array<Record<string, unknown>>;
+  halfDay?: Array<Record<string, unknown>>;
   addOns?: Array<Record<string, unknown>>;
   contractWarnings?: Array<{
     supplierName: string;
@@ -67,6 +68,10 @@ function getPreviewGroup(row: Record<string, unknown>) {
     return 'addOns';
   }
 
+  if (classification === 'HALF_DAY' || pricingMode === 'Half Day') {
+    return 'halfDay';
+  }
+
   if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE' || pricingMode === 'Full Day') {
     return 'fullDay';
   }
@@ -86,13 +91,15 @@ function getPreviewGroups(summary: ImportSummary | null) {
   const previewRows = getSafeRows(summary.previewRows);
   const routeTransfers = getSafeRows(summary.routeTransfers);
   const fullDay = getSafeRows(summary.fullDay);
+  const halfDay = getSafeRows(summary.halfDay);
   const addOns = getSafeRows(summary.addOns);
-  const hasGroupedRows = [routeTransfers, fullDay, addOns].some((rows) => rows.length > 0);
+  const hasGroupedRows = [routeTransfers, fullDay, halfDay, addOns].some((rows) => rows.length > 0);
   const groups = hasGroupedRows
-    ? [routeTransfers || [], fullDay || [], addOns || []]
+    ? [routeTransfers || [], fullDay || [], halfDay || [], addOns || []]
     : [
         previewRows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
         previewRows.filter((row) => getPreviewGroup(row) === 'fullDay'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'halfDay'),
         previewRows.filter((row) => getPreviewGroup(row) === 'addOns'),
       ];
 
@@ -110,10 +117,16 @@ function getPreviewGroups(summary: ImportSummary | null) {
       rows: groups[1] || [],
     },
     {
+      id: 'halfDay',
+      title: 'Half-day services',
+      helper: 'Half-day disposal rows. These are not route transfers.',
+      rows: groups[2] || [],
+    },
+    {
       id: 'addOns',
       title: 'Add-ons',
       helper: 'Driver overnight, stationary, waiting, and other optional charges.',
-      rows: groups[2] || [],
+      rows: groups[3] || [],
     },
   ];
 }

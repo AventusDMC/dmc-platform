@@ -489,6 +489,55 @@ test('explicit transport pricing modes are preserved over transfer fallback', as
   assert.equal(stores.transportServiceTypes[0].classification, 'HALF_DAY');
 });
 
+test('transport import preview groups route transfer, disposal full day, and disposal half day separately', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const rows = [
+    {
+      ...activeImportRow,
+      serviceCategory: 'Transfers',
+      serviceName: 'Point-to-Point',
+      pricingMode: 'Point-to-Point',
+      routeName: 'Petra to Amman',
+      origin: 'Petra',
+      destination: 'Amman',
+    },
+    {
+      ...activeImportRow,
+      serviceCategory: 'Disposal',
+      serviceName: 'Full Day',
+      pricingMode: 'Full Day',
+      routeName: 'Amman City',
+      origin: 'Amman',
+      destination: 'Amman',
+      cost: 120,
+    },
+    {
+      ...activeImportRow,
+      serviceCategory: 'Disposal',
+      serviceName: 'Half Day',
+      pricingMode: 'Half Day',
+      routeName: 'Amman City',
+      origin: 'Amman',
+      destination: 'Amman',
+      cost: 80,
+    },
+  ];
+  rows.forEach((row) => seedImportRoute(stores, row));
+
+  const preview = await importService.previewTransportContractImport({ buffer: buildWorkbookBuffer(rows), originalname: 'disposal-preview.xlsx' }, { allowCreateSuppliers: true });
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.routeTransfers.length, 1);
+  assert.equal(preview.routeTransfers[0].classification, 'ROUTE_TRANSFER');
+  assert.equal(preview.fullDay.length, 1);
+  assert.equal(preview.fullDay[0].classification, 'FULL_DAY');
+  assert.equal(preview.halfDay.length, 1);
+  assert.equal(preview.halfDay[0].classification, 'HALF_DAY');
+  assert.equal(preview.addOns.length, 0);
+  assert.equal(preview.routeTransfers.some((row) => row.serviceCategory === 'Disposal'), false);
+});
+
 test('transport contract import accepts clean Route and Rate column aliases', async () => {
   const { prisma, stores } = createPrismaMock();
   stores.suppliers.push({ id: 'supplier-existing', name: 'Test Supplier', type: 'transport' });

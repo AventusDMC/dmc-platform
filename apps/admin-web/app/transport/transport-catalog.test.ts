@@ -333,9 +333,11 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(importPanelSource, [
       'Route transfers',
       'Full-day services',
+      'Half-day services',
       'Add-ons',
       'routeTransfers?: Array<Record<string, unknown>>;',
       'fullDay?: Array<Record<string, unknown>>;',
+      'halfDay?: Array<Record<string, unknown>>;',
       'addOns?: Array<Record<string, unknown>>;',
       'function getSafeRows',
       'group.rows?.length',

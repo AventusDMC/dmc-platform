@@ -1502,6 +1502,7 @@ export class VehicleRatesService {
       previewRows: [] as Array<Record<string, unknown>>,
       routeTransfers: [] as Array<Record<string, unknown>>,
       fullDay: [] as Array<Record<string, unknown>>,
+      halfDay: [] as Array<Record<string, unknown>>,
       addOns: [] as Array<Record<string, unknown>>,
       contractWarnings: [] as Array<{
         supplierName: string;
@@ -1634,6 +1635,8 @@ export class VehicleRatesService {
       summary.previewRows.push(previewRow);
       if (classification === 'ADD_ON') {
         summary.addOns.push(previewRow);
+      } else if (classification === 'HALF_DAY') {
+        summary.halfDay.push(previewRow);
       } else if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
         summary.fullDay.push(previewRow);
       } else {
