@@ -43,12 +43,15 @@ export function normalizeTransportRouteText(value: string | null | undefined) {
   return String(value || '')
     .toLowerCase()
     .trim()
-    .replace(/\s*(?:↔|<->|-->|->|=>|→|—|–|-)\s*/g, ' → ')
-    .replace(/\s+/g, ' ');
+    .replace(/\s*\([^)]*\)\s*$/g, '')
+    .replace(/\s*(?:\u2194|<->|-->|->|=>|\u2192|\u2014|\u2013|-|\/|\bto\b)\s*/g, ' -> ')
+    .replace(/\s*->\s*/g, ' -> ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function normalizeTransportRoutePart(value: string | null | undefined) {
-  return normalizeTransportRouteText(value).replace(/\s*→\s*/g, ' ').trim();
+  return normalizeTransportRouteText(value).replace(/\s*->\s*/g, ' ').trim();
 }
 
 export function normalizeTransportRoutePair(fromPlaceName: string, toPlaceName: string) {

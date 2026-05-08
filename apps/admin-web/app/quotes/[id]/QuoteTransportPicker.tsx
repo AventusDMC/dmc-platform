@@ -268,10 +268,6 @@ export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: Rout
     return rate.fromPlaceId === route.fromPlaceId && rate.toPlaceId === route.toPlaceId;
   }
 
-  if (rate.routeId || rate.route?.id) {
-    return false;
-  }
-
   if (rate.route?.fromPlace && rate.route?.toPlace) {
     return transportRoutePairsMatch(
       { fromPlaceName: rate.route.fromPlace.name, toPlaceName: rate.route.toPlace.name },

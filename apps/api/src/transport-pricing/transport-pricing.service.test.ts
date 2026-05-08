@@ -154,3 +154,58 @@ test('transport pricing falls back from selected Coach vehicle to legacy coach-l
   assert.equal(resolved.rule.vehicle.name, 'Medium 30');
   assert.equal(resolved.calculatedCost, 300);
 });
+
+test('vehicle rate lookup keeps route id first and adds normalized route label fallback', async () => {
+  let findFirstArgs: any;
+  const route = {
+    id: 'route-selected',
+    name: 'Petra -> Amman',
+    fromPlaceId: 'petra',
+    toPlaceId: 'amman',
+    fromPlace: { id: 'petra', name: 'Petra' },
+    toPlace: { id: 'amman', name: 'Amman' },
+  };
+  const service = new TransportPricingService({
+    route: {
+      findUnique: async () => route,
+    },
+    vehicleRate: {
+      findFirst: async (args: any) => {
+        findFirstArgs = args;
+        return {
+          id: 'rate-petra-amman',
+          vehicleId: 'vehicle-medium-30',
+          routeId: 'legacy-route-id',
+          routeName: 'Petra to Amman',
+          minPax: 1,
+          maxPax: 30,
+          price: 250,
+          currency: 'USD',
+          active: true,
+          validFrom: new Date('2026-01-01'),
+          validTo: new Date('2026-12-31'),
+          vehicle: { id: 'vehicle-medium-30', name: 'Medium 30', maxPax: 30, luggageCapacity: 30 },
+          serviceType: { id: 'service-transfer', name: 'Private Transfer', code: 'PRIVATE_TRANSFER', classification: 'ROUTE_TRANSFER' },
+          supplier: { id: 'supplier-1', name: 'Alpha' },
+          route: null,
+          fromPlace: null,
+          toPlace: null,
+        };
+      },
+    },
+  } as any);
+
+  await service.findMatchingRate({
+    serviceTypeId: 'service-transfer',
+    routeId: route.id,
+    paxCount: 21,
+  });
+
+  assert.equal(findFirstArgs.where.OR[0].routeId, route.id);
+  assert.deepEqual(findFirstArgs.where.OR[2], {
+    AND: [
+      { routeName: { contains: 'Petra', mode: 'insensitive' } },
+      { routeName: { contains: 'Amman', mode: 'insensitive' } },
+    ],
+  });
+});

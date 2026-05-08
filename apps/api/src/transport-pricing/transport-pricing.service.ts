@@ -736,6 +736,12 @@ export class TransportPricingService {
             fromPlaceId: route.fromPlaceId,
             toPlaceId: route.toPlaceId,
           },
+          {
+            AND: [
+              { routeName: { contains: route.fromPlace.name, mode: 'insensitive' as const } },
+              { routeName: { contains: route.toPlace.name, mode: 'insensitive' as const } },
+            ],
+          },
         ],
       };
     }
@@ -778,6 +784,12 @@ export class TransportPricingService {
           {
             fromPlaceId: fromPlace.id,
             toPlaceId: toPlace.id,
+          },
+          {
+            AND: [
+              { routeName: { contains: fromPlace.name, mode: 'insensitive' as const } },
+              { routeName: { contains: toPlace.name, mode: 'insensitive' as const } },
+            ],
           },
         ],
       };

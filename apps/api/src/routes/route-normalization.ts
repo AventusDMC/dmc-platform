@@ -3,7 +3,8 @@ export function normalizeRouteName(name: string) {
     .trim()
     .toLowerCase()
     .replace(/&/g, ' and ')
-    .replace(/\s*(?:↔|<->|-->|->|=>|→|—|–|-)\s*/g, '_')
+    .replace(/\s*\([^)]*\)\s*$/g, '')
+    .replace(/\s*(?:\u2194|<->|-->|->|=>|\u2192|\u2014|\u2013|-|\/|\bto\b)\s*/g, '_')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .replace(/_+/g, '_');
@@ -21,7 +22,8 @@ export function normalizeRouteDisplayName(name: string | null | undefined, fromP
   const raw = name?.trim() || formatRouteName(fromPlaceName, toPlaceName);
 
   return raw
-    .replace(/\s*(?:↔|<->|-->|->|=>|→|—|–|-)\s*/g, ' → ')
+    .replace(/\s*\([^)]*\)\s*$/g, '')
+    .replace(/\s*(?:\u2194|<->|-->|->|=>|\u2192|\u2014|\u2013|-|\/|\bto\b)\s*/g, ' → ')
     .replace(/\s+/g, ' ')
     .trim();
 }
