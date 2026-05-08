@@ -22,20 +22,20 @@ export function inferVehicleType(vehicle: { name?: string | null; maxPax?: numbe
     return 'SUV';
   }
 
-  if (name.includes('vip') || name.includes('vvip')) {
-    return 'Luxury';
-  }
-
-  if (name.includes('mini bus')) {
+  if (name.includes('mini bus') || name.includes('small 17') || name.includes('coaster')) {
     return 'Mini Bus';
-  }
-
-  if (name.includes('bus') || name.includes('coach') || name.includes('large') || maxPax >= 20) {
-    return 'Coach';
   }
 
   if (name.includes('van')) {
     return 'Van';
+  }
+
+  if (name.includes('vip') || name.includes('vvip')) {
+    return 'Luxury';
+  }
+
+  if (name.includes('bus') || name.includes('coach') || name.includes('large') || maxPax >= 20) {
+    return 'Coach';
   }
 
   if (name.includes('sedan')) {
@@ -63,6 +63,27 @@ export function resolveVehicleTypeLabel(
   });
 }
 
+export function formatTransportVehicleDisplay(
+  vehicle: { id?: string | null; name?: string | null; maxPax?: number | null; vehicleType?: string | { label?: string | null } | null },
+  options: VehicleTypeOption[] = [],
+  settings: { order?: 'canonical-first' | 'supplier-first'; includePax?: boolean; fallback?: string } = {},
+) {
+  const order = settings.order || 'canonical-first';
+  const includePax = settings.includePax ?? true;
+  const fallback = settings.fallback || 'Vehicle';
+  const canonicalType = resolveVehicleTypeLabel(vehicle, options) || fallback;
+  const supplierLabel = String(vehicle.name || '').trim();
+  const pax = Number(vehicle.maxPax || 0);
+  const paxText = includePax && pax > 0 ? ` · ${pax} pax` : '';
+  const hasDistinctSupplierLabel = supplierLabel && supplierLabel.toLowerCase() !== canonicalType.toLowerCase();
+
+  if (order === 'supplier-first') {
+    return hasDistinctSupplierLabel ? `${supplierLabel} · ${canonicalType}` : canonicalType;
+  }
+
+  return `${canonicalType}${paxText}${hasDistinctSupplierLabel ? ` — ${supplierLabel}` : ''}`;
+}
 export function formatLuggageCapacity(value?: number | null) {
   return value && value > 0 ? String(value) : '—';
 }
+

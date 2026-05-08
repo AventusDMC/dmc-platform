@@ -9,6 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
 
 type SupplierService = {
@@ -146,6 +147,8 @@ type QuoteItem = {
     routeName: string;
     vehicle: {
       name: string;
+      vehicleType?: string | null;
+      maxPax?: number | null;
     };
     serviceType: {
       id: string;
@@ -710,7 +713,7 @@ function QuoteServiceRow({
                     <strong>Resolved transport pricing</strong>
                     <p>{currentItem.appliedVehicleRate.routeName}</p>
                     <p>
-                      {currentItem.appliedVehicleRate.vehicle.name} | {currentItem.appliedVehicleRate.serviceType.name}
+                      {formatTransportVehicleDisplay(currentItem.appliedVehicleRate.vehicle)} | {currentItem.appliedVehicleRate.serviceType.name}
                     </p>
                   </div>
                 </div>

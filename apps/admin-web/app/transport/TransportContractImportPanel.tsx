@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
+import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 import { normalizeTransportPricingMode } from '../lib/transport-pricing-modes';
 import { SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../lib/transport-suppliers';
 
@@ -81,6 +82,18 @@ function getPreviewGroup(row: Record<string, unknown>) {
 
 function getSafeRows(rows?: Array<Record<string, unknown>>) {
   return Array.isArray(rows) ? rows : [];
+}
+
+function formatPreviewVehicleLabel(row: Record<string, unknown>) {
+  return formatTransportVehicleDisplay(
+    {
+      name: String(row.vehicleLabel || ''),
+      vehicleType: String(row.vehicleType || ''),
+      maxPax: Number(row.maxPaxPerUnit || 0),
+    },
+    [],
+    { order: 'canonical-first', includePax: true, fallback: 'Vehicle' },
+  );
 }
 
 function getPreviewGroups(summary: ImportSummary | null) {
@@ -396,7 +409,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                           <td>{String(row.row)}</td>
                           <td>{String(row.rateCardGroup || `${formatSupplierName(String(row.supplierName || ''), null)} | ${formatRouteLabel(String(row.routeName || ''))}`)}</td>
                           <td>
-                            {String(row.vehicleType || '')}
+                            {formatPreviewVehicleLabel(row)}
                             {row.vehicleTypeWarning ? <div className="table-subcopy">{String(row.vehicleTypeWarning)}</div> : null}
                           </td>
                           <td>

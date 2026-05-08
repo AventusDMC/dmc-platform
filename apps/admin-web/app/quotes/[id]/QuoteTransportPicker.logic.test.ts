@@ -4,6 +4,7 @@ import {
   getAvailableTransportPricingModesForSelection,
   getCanonicalPickerVehicleType,
   getCanonicalRateVehicleType,
+  formatVehicleOptionLabel,
   transportRateMatchesSelectedRoute,
 } from './QuoteTransportPicker';
 import { normalizeTransportRouteText } from '../../lib/transport-routes';
@@ -49,6 +50,19 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.deepEqual(modes, ['Point-to-Point', 'Full Day']);
     assert.equal(getCanonicalRateVehicleType(rate('Medium 30')), 'Coach');
     assert.equal(getCanonicalRateVehicleType(rate('Large 49')), 'Coach');
+  });
+
+  it('formats picker vehicles with canonical type, pax, and supplier label', () => {
+    const examples = [
+      [{ name: 'Medium 30', maxPax: 30 }, 'Coach · 30 pax — Medium 30'],
+      [{ name: 'Large 49', maxPax: 49 }, 'Coach · 49 pax — Large 49'],
+      [{ name: 'Small 17', maxPax: 17 }, 'Mini Bus · 17 pax — Small 17'],
+      [{ name: 'Van VIP 9', maxPax: 9 }, 'Van · 9 pax — Van VIP 9'],
+    ] as const;
+
+    for (const [vehicle, expected] of examples) {
+      assert.equal(formatVehicleOptionLabel({ vehicle, group: 'Available', isRecommended: false, isTooSmall: false } as any, []), expected);
+    }
   });
 
   it('maps legacy Small 17 rows to Mini Bus pricing modes', () => {

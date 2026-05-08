@@ -7,6 +7,7 @@ import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateCityDistance } from '../../lib/geo';
 import { formatRouteLabel, type RouteOption } from '../../lib/routes';
+import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { getQuoteServiceCategoryKey } from './quote-readiness';
 import {
   assignGeneratedItineraryCities,
@@ -97,6 +98,7 @@ type TransportPricingCandidate = {
   vehicle: {
     id: string;
     name: string;
+    vehicleType?: string | null;
     maxPax: number;
     luggageCapacity?: number | null;
   };
@@ -1714,7 +1716,7 @@ export function QuoteAutoItineraryBuilder({
                 <em>{item.route ? formatRouteLabel(item.route) : 'Needs matching active route'}</em>
                 {item.selectedCandidate ? (
                   <em>
-                    {item.selectedCandidate.vehicle.name} | {item.selectedCandidate.currency} {item.selectedCandidate.price}
+                    {formatTransportVehicleDisplay(item.selectedCandidate.vehicle)} | {item.selectedCandidate.currency} {item.selectedCandidate.price}
                   </em>
                 ) : null}
                 <em>{item.optimizationReason}</em>

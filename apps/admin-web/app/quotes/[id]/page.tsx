@@ -361,6 +361,8 @@ type QuoteItem = {
     routeName: string;
     vehicle: {
       name: string;
+      vehicleType?: string | null;
+      maxPax?: number | null;
     };
     serviceType: {
       id: string;
@@ -1035,6 +1037,8 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
           routeName: item.appliedVehicleRate.routeName,
           vehicle: {
             name: item.appliedVehicleRate.vehicle?.name || 'Vehicle to be confirmed',
+            vehicleType: item.appliedVehicleRate.vehicle?.vehicleType || null,
+            maxPax: item.appliedVehicleRate.vehicle?.maxPax ?? null,
           },
           serviceType: {
             id: item.appliedVehicleRate.serviceType?.id || 'missing-service-type',

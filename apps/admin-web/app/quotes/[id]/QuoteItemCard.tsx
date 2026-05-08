@@ -7,6 +7,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMarginWarning } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import {
   ExternalPackageFormState,
@@ -207,6 +208,8 @@ type QuoteItem = {
     routeName: string;
     vehicle: {
       name: string;
+      vehicleType?: string | null;
+      maxPax?: number | null;
     };
     serviceType: {
       id: string;
@@ -659,7 +662,7 @@ export function QuoteItemCard({
           {reconfirmationWarning ? <p className="form-error">{reconfirmationWarning}</p> : null}
           {currentItem.appliedVehicleRate ? (
             <p>
-              {currentItem.appliedVehicleRate.routeName} | {currentItem.appliedVehicleRate.vehicle.name} |{' '}
+              {currentItem.appliedVehicleRate.routeName} | {formatTransportVehicleDisplay(currentItem.appliedVehicleRate.vehicle)} |{' '}
               {currentItem.appliedVehicleRate.serviceType.name}
             </p>
           ) : null}

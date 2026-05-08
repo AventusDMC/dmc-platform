@@ -8,6 +8,7 @@ import { getErrorMessage, logFetchUrl, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { RouteOption } from '../../lib/routes';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
+import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
 import {
   buildExternalPackagePayload,
@@ -138,6 +139,7 @@ type TransportPricingCandidate = {
   vehicle: {
     id: string;
     name: string;
+    vehicleType?: string | null;
     maxPax: number;
   };
   serviceType: {
@@ -187,6 +189,7 @@ type ResolvedTransportPricing = {
   vehicle: {
     id: string;
     name: string;
+    vehicleType?: string | null;
     maxPax: number;
   };
   serviceType: {
@@ -3772,7 +3775,7 @@ export function QuoteItemsForm({
                       >
                         <span className="quote-transport-suggestion-main">
                           <span className="quote-transport-candidate-copy">
-                            <strong>{candidate.vehicle.name}</strong>
+                            <strong>{formatTransportVehicleDisplay(candidate.vehicle)}</strong>
                             <span>{formatSupplierName(candidate.supplier?.name, candidate.supplier?.id)}</span>
                             <em>{candidate.vehicle.maxPax} pax capacity</em>
                           </span>
@@ -3811,7 +3814,7 @@ export function QuoteItemsForm({
                   <div className="quote-selected-transport-summary">
                     <div>
                       <span>Vehicle</span>
-                      <strong>{resolvedTransportPricing.vehicle.name}</strong>
+                      <strong>{formatTransportVehicleDisplay(resolvedTransportPricing.vehicle)}</strong>
                     </div>
                     <div>
                       <span>Supplier</span>

@@ -5,7 +5,7 @@ import { DrawerPanel } from '../../components/ui';
 import { readJsonResponse } from '../../lib/api';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
-import { resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
+import { formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
 import { formatSupplierName } from '../../lib/transport-formatters';
 import { normalizeTransportRouteText, transportRoutePairsMatch } from '../../lib/transport-routes';
 import { normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../../lib/vehicle-types';
@@ -43,6 +43,8 @@ type VehicleRate = {
   toPlaceId?: string | null;
   routeName: string;
   vehicleType?: string | null;
+  minPax?: number | null;
+  maxPax?: number | null;
   price: number;
   currency: string;
   active: boolean;
@@ -57,6 +59,7 @@ type VehicleRate = {
   vehicle?: {
     name?: string | null;
     vehicleType?: string | null;
+    maxPax?: number | null;
   } | null;
   route?: RouteOption | null;
   serviceType?: {
@@ -438,23 +441,22 @@ function isActiveVehicle(vehicle: Vehicle) {
   return vehicle.active !== false && vehicle.isActive !== false;
 }
 
-function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[]) {
-  const vehicleType = resolveVehicleTypeLabel(entry.vehicle, vehicleTypes);
-  const legacyName = String(entry.vehicle['name'] || '').trim();
-  const displayVehicleType = /\bvv?ip\b/i.test(legacyName) && entry.vehicle.maxPax >= 20 ? 'Luxury' : vehicleType;
-  const legacyDetail = legacyName && normalizeVehicleTypeLabel(legacyName, vehicleTypes) !== displayVehicleType ? ` — ${legacyName}` : '';
-  const availabilityDetail = entry.isTooSmall ? ' — Too small' : '';
-
-  return `${displayVehicleType} · ${entry.vehicle.maxPax} pax${legacyDetail}${availabilityDetail}`;
+export function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[]) {
+  return `${formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)}${entry.isTooSmall ? ' — Too small' : ''}`;
 }
 
 function formatSupplierRateOptionLabel(match: SupplierRateMatch, suppliers: Supplier[], vehicleTypes: VehicleTypeOption[], fallbackRoute: RouteOption | null) {
   const rate = match.rate;
   const supplier = getSupplierDisplay(rate, suppliers);
-  const vehicleType = getRateVehicleTypeForMatch(rate, vehicleTypes) || 'Vehicle';
+  const vehicle = {
+    name: rate.vehicle?.name || rate.vehicleType,
+    vehicleType: rate.vehicleType || rate.vehicle?.vehicleType,
+    maxPax: rate.vehicle?.maxPax ?? rate.maxPax,
+  };
+  const vehicleLabel = formatTransportVehicleDisplay(vehicle, vehicleTypes);
   const route = rate.routeName || rate.route?.name || (fallbackRoute ? formatRoute(fallbackRoute) : 'General / All Routes');
   const pricingMode = getPricingModeForRate(rate);
-  return `${supplier} — ${vehicleType} — ${route} — ${pricingMode}: ${formatRateMoney(getRateCost(rate), rate.currency)}`;
+  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getRateCost(rate), rate.currency)}`;
 }
 
 function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
@@ -806,7 +808,9 @@ export function QuoteTransportPicker({
               <div className="quote-selected-transport-summary">
                 <div>
                   <span>{line.routeLabel}</span>
-                  <strong>{line.vehicleType} ({line.pax} pax) | {line.pricingMode}</strong>
+                  <strong>
+                    {formatTransportVehicleDisplay({ name: line.vehicleLabel, vehicleType: line.vehicleType, maxPax: line.pax }, vehicleTypes)} | {line.pricingMode}
+                  </strong>
                 </div>
                 <strong>
                   {formatMoney(line.costPrice, line.currency)} {'->'} {formatMoney(line.sellingPrice, line.currency)}
@@ -1005,7 +1009,11 @@ export function QuoteTransportPicker({
                             ? noPricingModesDiagnostics.selectedRouteNormalizedLabels.join(', ')
                             : 'None'}
                           <br />
-                          Vehicle: {noPricingModesDiagnostics.selectedVehicleName || 'Unknown'} / vehicleId:{' '}
+                          Vehicle:{' '}
+                          {selectedVehicle
+                            ? formatTransportVehicleDisplay(selectedVehicle, vehicleTypes)
+                            : noPricingModesDiagnostics.selectedVehicleName || 'Unknown'}{' '}
+                          / vehicleId:{' '}
                           {noPricingModesDiagnostics.selectedVehicleId || 'None'}
                           <br />
                           Canonical type: {noPricingModesDiagnostics.selectedCanonicalVehicleType}

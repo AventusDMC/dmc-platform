@@ -5,6 +5,7 @@ import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { RouteOption } from '../lib/routes';
 import { TransportPricingRuleForm } from '../transport-pricing/TransportPricingRuleForm';
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
+import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -12,6 +13,8 @@ const ACTION_API_BASE_URL = '/api';
 type Vehicle = {
   id: string;
   name: string;
+  vehicleType?: string | null;
+  maxPax?: number | null;
 };
 
 type TransportServiceType = {
@@ -45,6 +48,8 @@ type TransportPricingRule = {
   vehicle: {
     id: string;
     name: string;
+    vehicleType?: string | null;
+    maxPax?: number | null;
   };
 };
 
@@ -250,7 +255,7 @@ export async function TransportPricingRulesSection({
                           <tbody>
                             {sortedRules.map((rule) => (
                               <tr key={rule.id}>
-                                <td>{rule.vehicle.name}</td>
+                                <td>{formatTransportVehicleDisplay(rule.vehicle)}</td>
                                 <td>{formatPricingMode(rule.pricingMode)}</td>
                                 <td>{rule.minPax}</td>
                                 <td>{rule.maxPax}</td>

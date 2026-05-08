@@ -13,6 +13,7 @@ import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { isBackendUuid } from '../lib/backend-uuid';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
+import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 import { getCanonicalRouteLabel, normalizeTransportRouteText } from '../lib/transport-routes';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import {
@@ -352,6 +353,10 @@ function getRateVehicleTypeLabel(rate: VehicleRate) {
   return label;
 }
 
+function getRateVehicleDisplayLabel(rate: VehicleRate) {
+  return formatTransportVehicleDisplay(rate.vehicle, [], { order: 'supplier-first', includePax: false, fallback: 'Unassigned vehicle' });
+}
+
 function getRouteOrServiceArea(rates: VehicleRate[]) {
   const labels = rates.map((rate) => formatRouteLabel(rate.route?.name || rate.routeName));
   const uniqueLabels = Array.from(new Set(labels.filter(Boolean)));
@@ -590,7 +595,7 @@ function groupRateLinesByVehicleType(rates: VehicleRate[]) {
   const groups = new Map<string, VehicleRate[]>();
 
   for (const rate of rates) {
-    const vehicleType = getRateVehicleTypeLabel(rate);
+    const vehicleType = getRateVehicleDisplayLabel(rate);
     groups.set(vehicleType, [...(groups.get(vehicleType) || []), rate]);
   }
 
@@ -2226,7 +2231,7 @@ export function VehicleRatesTable({
                             {visibleRateLines.map((rate) => (
                               <Fragment key={rate.id}>
                                 <tr>
-                                  <td>{formatDash(getRateVehicleTypeLabel(rate))}</td>
+                                  <td>{formatDash(getRateVehicleDisplayLabel(rate))}</td>
                                   <td>
                                     {rate.minPax} - {rate.maxPax}
                                   </td>
