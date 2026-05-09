@@ -661,6 +661,8 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteServicePlannerSource, [
       '<button type="button" className="secondary-button" onClick={() => onEdit(item)}>',
+      "{detachingContractItemId === item.id ? 'Detaching...' : 'Detach contract'}",
+      'onDetachContract={handleDetachContract}',
       '{deletingItemId === item.id ? \'Removing...\' : \'Remove\'}',
       'onRemove={handleRemoveItem}',
     ]);

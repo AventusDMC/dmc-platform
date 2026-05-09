@@ -291,6 +291,10 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
 };
 
 type Quote = Omit<QuoteReadinessQuote, 'itineraries' | 'quoteItems' | 'quoteOptions'> & {
+  status?: string;
+  acceptedVersionId?: string | null;
+  booking?: { id: string } | null;
+  invoice?: { id: string } | null;
   quoteCurrency: 'USD' | 'EUR' | 'JOD';
   adults: number;
   children: number;
@@ -1616,11 +1620,14 @@ function AssignedServicesTable({
   items,
   laneOrders,
   currency,
+  canDetachContracts,
   onEdit,
   onRemove,
+  onDetachContract,
   onAdd,
   transportPicker,
   deletingItemId,
+  detachingContractItemId,
   recentlyAddedItemId,
 }: {
   dayId: string;
@@ -1628,11 +1635,14 @@ function AssignedServicesTable({
   items: QuoteItem[];
   laneOrders: ServiceLaneOrders;
   currency: Quote['quoteCurrency'];
+  canDetachContracts: boolean;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
+  onDetachContract: (item: QuoteItem) => void;
   onAdd: (category: ServicePlannerCategory) => void;
   transportPicker?: ReactNode;
   deletingItemId?: string;
+  detachingContractItemId?: string;
   recentlyAddedItemId?: string;
 }) {
   const groupedCategories = SERVICE_PLANNER_TABS.map((category) => ({
@@ -1657,12 +1667,15 @@ function AssignedServicesTable({
             label={group.label}
             orderedItems={orderedItems}
             currency={currency}
+            canDetachContracts={canDetachContracts}
             deletingItemId={deletingItemId}
+            detachingContractItemId={detachingContractItemId}
             recentlyAddedItemId={recentlyAddedItemId}
             onAdd={onAdd}
             transportPicker={group.category === 'transport' ? transportPicker : undefined}
             onEdit={onEdit}
             onRemove={onRemove}
+            onDetachContract={onDetachContract}
           />
         );
       })}
@@ -1677,12 +1690,15 @@ function ServiceLane({
   label,
   orderedItems,
   currency,
+  canDetachContracts,
   deletingItemId,
+  detachingContractItemId,
   recentlyAddedItemId,
   onAdd,
   transportPicker,
   onEdit,
   onRemove,
+  onDetachContract,
 }: {
   dayId: string;
   dayNumber: number;
@@ -1690,12 +1706,15 @@ function ServiceLane({
   label: string;
   orderedItems: QuoteItem[];
   currency: Quote['quoteCurrency'];
+  canDetachContracts: boolean;
   deletingItemId?: string;
+  detachingContractItemId?: string;
   recentlyAddedItemId?: string;
   onAdd: (category: ServicePlannerCategory) => void;
   transportPicker?: ReactNode;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
+  onDetachContract: (item: QuoteItem) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: buildServiceLaneId(dayId, category),
@@ -1744,10 +1763,13 @@ function ServiceLane({
                 dayNumber={dayNumber}
                 category={category}
                 currency={currency}
+                canDetachContracts={canDetachContracts}
                 deletingItemId={deletingItemId}
+                detachingContractItemId={detachingContractItemId}
                 recentlyAddedItemId={recentlyAddedItemId}
                 onEdit={onEdit}
                 onRemove={onRemove}
+                onDetachContract={onDetachContract}
               />
             ))}
           </div>
@@ -1816,20 +1838,26 @@ function SortableServiceCard({
   dayNumber,
   category,
   currency,
+  canDetachContracts,
   deletingItemId,
+  detachingContractItemId,
   recentlyAddedItemId,
   onEdit,
   onRemove,
+  onDetachContract,
 }: {
   item: QuoteItem;
   dayId: string;
   dayNumber: number;
   category: ServicePlannerCategory;
   currency: Quote['quoteCurrency'];
+  canDetachContracts: boolean;
   deletingItemId?: string;
+  detachingContractItemId?: string;
   recentlyAddedItemId?: string;
   onEdit: (item: QuoteItem) => void;
   onRemove: (item: QuoteItem) => void;
+  onDetachContract: (item: QuoteItem) => void;
 }) {
   const isExternalPackage = isExternalPackageItem(item);
   const externalRange = isExternalPackage ? getExternalPackageDayRange(item, dayNumber) : null;
@@ -1945,6 +1973,16 @@ function SortableServiceCard({
         <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
           Edit
         </button>
+        {canDetachContracts && item.contractId ? (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => onDetachContract(item)}
+            disabled={detachingContractItemId === item.id}
+          >
+            {detachingContractItemId === item.id ? 'Detaching...' : 'Detach contract'}
+          </button>
+        ) : null}
         <button
           type="button"
           className="secondary-button secondary-button-danger"
@@ -2385,6 +2423,12 @@ function ScopePlanner({
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);
   const [highlightedEditorPanelKey, setHighlightedEditorPanelKey] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [detachingContractItemId, setDetachingContractItemId] = useState<string | null>(null);
+  const canDetachContracts =
+    plannerProps.quote.status === 'DRAFT' &&
+    !plannerProps.quote.acceptedVersionId &&
+    !plannerProps.quote.booking &&
+    !plannerProps.quote.invoice;
   const daysCompleted = daySummaries.filter((summary) =>
     dayCompletenessRules.every((rule) =>
       summary.items.some((item) => getItemCategory(item) === rule.key),
@@ -2918,6 +2962,41 @@ function ScopePlanner({
     }
   }
 
+  async function handleDetachContract(item: QuoteItem) {
+    const displayName = item.hotel?.name || getItemServiceName(item);
+
+    if (!item.contractId || !canDetachContracts || !window.confirm(`Detach hotel contract from ${displayName}?`)) {
+      return;
+    }
+
+    setDetachingContractItemId(item.id);
+
+    try {
+      const response = await fetch(`${plannerProps.apiBaseUrl}/quotes/${plannerProps.quote.id}/items/${item.id}/detach-contract`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not detach hotel contract.'));
+      }
+
+      const updatedItem = await readJsonResponse<QuoteItem>(response, 'Could not detach hotel contract.');
+      setLocalItems((current) => current.map((entry) => (entry.id === updatedItem.id ? { ...entry, ...updatedItem } : entry)));
+
+      if (activeServicePanel?.kind === 'edit' && activeServicePanel.item.id === item.id) {
+        setActiveServicePanel({ ...activeServicePanel, item: { ...activeServicePanel.item, ...updatedItem } });
+      }
+
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: plannerProps.quote.id } }));
+      router.refresh();
+    } catch (caughtError) {
+      window.alert(caughtError instanceof Error ? caughtError.message : 'Could not detach hotel contract.');
+    } finally {
+      setDetachingContractItemId(null);
+    }
+  }
+
   return (
     <div className="section-stack">
       <section className="workspace-section quote-service-workflow-summary app-card">
@@ -3068,7 +3147,9 @@ function ScopePlanner({
                   items={summary.items}
                   laneOrders={laneOrders}
                   currency={plannerProps.quote.quoteCurrency}
+                  canDetachContracts={canDetachContracts}
                   deletingItemId={deletingItemId || undefined}
+                  detachingContractItemId={detachingContractItemId || undefined}
                   recentlyAddedItemId={recentlyAddedItemId || undefined}
                   onAdd={(category) => openAddPanel(summary.day, category)}
                   transportPicker={
@@ -3098,6 +3179,7 @@ function ScopePlanner({
                     })
                   }
                   onRemove={handleRemoveItem}
+                  onDetachContract={handleDetachContract}
                 />
                 <DayNarrativePanel
                   day={summary.day}
