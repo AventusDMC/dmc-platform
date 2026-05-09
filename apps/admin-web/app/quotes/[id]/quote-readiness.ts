@@ -178,7 +178,7 @@ export type QuoteReadinessModel = {
   unassignedItems: QuoteReadinessItem[];
 };
 
-export type ServicePlannerCategory = 'hotel' | 'transport' | 'guide' | 'activity' | 'meal' | 'externalPackage' | 'other';
+export type ServicePlannerCategory = 'hotel' | 'transport' | 'guide' | 'activity' | 'ticketing' | 'meal' | 'externalPackage' | 'other';
 
 type BuildWorkspaceHref = (step: QuoteReadinessStep, params?: Record<string, string | null | undefined>) => string;
 type QuoteWorkspaceStepTarget = 'overview' | 'itinerary' | 'services' | 'pricing' | 'review';
@@ -697,7 +697,7 @@ export function buildQuoteReadinessModel(
     }
 
     const category = getQuoteServiceCategoryKey(item.service, item);
-    const tracksOperationalDetails = category === 'activity' || category === 'transport';
+    const tracksOperationalDetails = category === 'activity' || category === 'ticketing' || category === 'transport';
     const missingTime = !item.startTime && !item.pickupTime;
     const missingLocation = !item.pickupLocation && !item.meetingPoint;
 

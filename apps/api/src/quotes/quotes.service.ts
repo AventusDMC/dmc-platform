@@ -257,7 +257,7 @@ type CreateQuoteVersionInput = {
   label?: string;
 };
 
-type ImportedItineraryItemType = 'hotel' | 'transport' | 'activity' | 'meal' | 'flight' | 'guide' | 'other' | 'external_package';
+type ImportedItineraryItemType = 'hotel' | 'transport' | 'activity' | 'ticketing' | 'meal' | 'flight' | 'guide' | 'other' | 'external_package';
 
 type CreateQuoteDraftFromImportedItineraryInput = {
   sourceType: 'text';
@@ -297,7 +297,7 @@ type CreateQuoteDraftFromImportedItineraryInput = {
 
 type ImportedDraftItem = CreateQuoteDraftFromImportedItineraryInput['items'][number];
 
-type ServiceMatchCategoryKey = 'hotel' | 'transport' | 'activity' | 'meal' | 'guide' | 'other';
+type ServiceMatchCategoryKey = 'hotel' | 'transport' | 'activity' | 'ticketing' | 'meal' | 'guide' | 'other';
 
 type ServiceMatchCandidate = {
   id: string;
@@ -377,6 +377,7 @@ const MATCH_CATEGORY_KEYWORDS: Record<ServiceMatchCategoryKey, string[]> = {
   hotel: ['hotel', 'camp', 'resort', 'accommodation'],
   transport: ['transfer', 'transport', 'vehicle', 'flight', 'pickup', 'dropoff'],
   activity: ['tour', 'jeep', 'safari', 'hike', 'trek', 'cruise', 'excursion', 'visit', 'experience'],
+  ticketing: ['ticket', 'tickets', 'entrance', 'entry', 'museum', 'park', 'religious', 'site'],
   meal: ['meal', 'lunch', 'dinner', 'breakfast', 'restaurant', 'food'],
   guide: ['guide', 'guided', 'escort'],
   other: [],
@@ -3850,6 +3851,7 @@ export class QuotesService {
       case 'hotel':
       case 'transport':
       case 'activity':
+      case 'ticketing':
       case 'meal':
       case 'flight':
       case 'guide':
@@ -3857,6 +3859,11 @@ export class QuotesService {
       case 'external_package':
       case 'partner_package':
         return 'external_package';
+      case 'ticket':
+      case 'tickets':
+      case 'entrance':
+      case 'entry':
+        return 'ticketing';
       default:
         return 'other';
     }
@@ -4322,6 +4329,8 @@ export class QuotesService {
         return ['transport'];
       case 'activity':
         return ['activity'];
+      case 'ticketing':
+        return ['ticketing'];
       case 'meal':
         return ['meal'];
       case 'guide':
@@ -5627,11 +5636,15 @@ export class QuotesService {
       return 'activity';
     }
 
+    if (normalized === 'ticket' || normalized === 'tickets' || normalized === 'ticketing' || normalized === 'entrance' || normalized === 'entry') {
+      return 'ticketing';
+    }
+
     if (normalized === 'meals' || normalized === 'dining') {
       return 'meal';
     }
 
-    if (['hotel', 'transport', 'activity', 'meal', 'guide', 'other'].includes(normalized)) {
+    if (['hotel', 'transport', 'activity', 'ticketing', 'meal', 'guide', 'other'].includes(normalized)) {
       return normalized;
     }
 

@@ -3,7 +3,9 @@ import assert = require('node:assert/strict');
 import {
   ACTIVITY_SERVICE_TYPE_CODES,
   OPERATIONAL_SERVICE_TYPE_CODES,
+  TICKETING_SERVICE_TYPE_CODES,
   isActivityTaxonomyGroup,
+  isTicketingTaxonomyGroup,
   resolveServiceTaxonomyGroup,
 } from './service-taxonomy';
 
@@ -30,9 +32,8 @@ test('operational assistance labels do not inherit activity execution rules', ()
   assert.equal(isActivityTaxonomyGroup({ category: 'Airport Meet And Assist' }), false);
 });
 
-test('existing activity and entrance labels remain activity classified', () => {
+test('existing activity labels remain activity classified', () => {
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Sightseeing' }), 'activity');
-  assert.equal(resolveServiceTaxonomyGroup({ category: 'Entrance Ticket' }), 'activity');
 });
 
 test('canonical excursion service codes resolve to activity', () => {
@@ -55,4 +56,27 @@ test('excursion activity labels resolve to activity', () => {
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Safari' }), 'activity');
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Cruise' }), 'activity');
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Optional Excursion' }), 'activity');
+});
+
+test('canonical ticketing service codes resolve to ticketing', () => {
+  for (const code of TICKETING_SERVICE_TYPE_CODES) {
+    assert.equal(
+      resolveServiceTaxonomyGroup({
+        category: 'Legacy label',
+        serviceType: { name: 'Any label', code },
+      }),
+      'ticketing',
+    );
+  }
+});
+
+test('ticketing and entrance labels resolve to ticketing', () => {
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Petra Entrance Ticket' }), 'ticketing');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Jerash Entrance' }), 'ticketing');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Pyramids Entry' }), 'ticketing');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Dead Sea Resort Access' }), 'ticketing');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Museum Tickets' }), 'ticketing');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Religious site entry' }), 'ticketing');
+  assert.equal(isTicketingTaxonomyGroup({ category: 'Entrance Ticket' }), true);
+  assert.equal(isActivityTaxonomyGroup({ category: 'Entrance Ticket' }), false);
 });

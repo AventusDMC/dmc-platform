@@ -11,6 +11,7 @@ export type ServiceTaxonomyGroup =
   | 'transport'
   | 'guide'
   | 'activity'
+  | 'ticketing'
   | 'meal'
   | 'externalPackage'
   | 'operationalAssistance'
@@ -38,8 +39,16 @@ export const ACTIVITY_SERVICE_TYPE_CODES = [
   'EXCURSION',
 ] as const;
 
+export const TICKETING_SERVICE_TYPE_CODES = [
+  'ENTRANCE_TICKET',
+  'MUSEUM_TICKET',
+  'PARK_ENTRY',
+  'RELIGIOUS_SITE_ENTRY',
+] as const;
+
 const OPERATIONAL_SERVICE_TYPE_CODE_SET = new Set<string>(OPERATIONAL_SERVICE_TYPE_CODES);
 const ACTIVITY_SERVICE_TYPE_CODE_SET = new Set<string>(ACTIVITY_SERVICE_TYPE_CODES);
+const TICKETING_SERVICE_TYPE_CODE_SET = new Set<string>(TICKETING_SERVICE_TYPE_CODES);
 
 export function normalizeServiceTaxonomyText(value: string | null | undefined) {
   return String(value || '')
@@ -99,14 +108,28 @@ export function resolveServiceTaxonomyGroup(service: ServiceTaxonomyInput): Serv
   }
 
   if (
+    TICKETING_SERVICE_TYPE_CODE_SET.has(normalizedCode) ||
+    normalized.includes('entrance_ticket') ||
+    normalized.includes('museum_ticket') ||
+    normalized.includes('park_entry') ||
+    normalized.includes('religious_site_entry') ||
+    normalized.includes('entrance') ||
+    normalized.includes('entry') ||
+    normalized.includes('ticket') ||
+    normalized.includes('site_access') ||
+    normalized.includes('resort_access') ||
+    normalized.includes('museum')
+  ) {
+    return 'ticketing';
+  }
+
+  if (
     ACTIVITY_SERVICE_TYPE_CODE_SET.has(normalizedCode) ||
     normalized.includes('activity') ||
     normalized.includes('tour') ||
     normalized.includes('excursion') ||
     normalized.includes('experience') ||
     normalized.includes('sightseeing') ||
-    normalized.includes('entrance') ||
-    normalized.includes('ticket') ||
     normalized.includes('jeep') ||
     normalized.includes('boat') ||
     normalized.includes('safari') ||
@@ -136,4 +159,8 @@ export function resolveServiceTaxonomyGroup(service: ServiceTaxonomyInput): Serv
 
 export function isActivityTaxonomyGroup(service: ServiceTaxonomyInput) {
   return resolveServiceTaxonomyGroup(service) === 'activity';
+}
+
+export function isTicketingTaxonomyGroup(service: ServiceTaxonomyInput) {
+  return resolveServiceTaxonomyGroup(service) === 'ticketing';
 }

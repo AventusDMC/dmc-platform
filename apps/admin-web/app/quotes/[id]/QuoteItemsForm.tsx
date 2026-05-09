@@ -515,6 +515,7 @@ const SERVICE_TYPE_BUTTONS = [
   { key: 'transport', label: 'Add Transport' },
   { key: 'guide', label: 'Add Guide' },
   { key: 'activity', label: 'Add Activity' },
+  { key: 'ticketing', label: 'Add Ticket / Entrance' },
   { key: 'meal', label: 'Add Meal' },
   { key: 'externalPackage', label: 'Add External Country Package' },
   { key: 'other', label: 'Add Other' },
@@ -794,7 +795,12 @@ export function QuoteItemsForm({
     ? getServiceTypeKey(initialService)
     : initialServiceTypeKey || (isEditing ? initialItemServiceTypeKey : null);
   const initialServiceDate =
-    (initialActiveServiceType === 'activity' || initialActiveServiceType === 'hotel' || initialActiveServiceType === 'meal') && !itineraryId && travelStartDate
+    (initialActiveServiceType === 'activity' ||
+      initialActiveServiceType === 'ticketing' ||
+      initialActiveServiceType === 'hotel' ||
+      initialActiveServiceType === 'meal') &&
+    !itineraryId &&
+    travelStartDate
       ? travelStartDate.slice(0, 10)
       : '';
   const initialRouteId = [initialValues?.routeId, preferredRouteId].find((candidateRouteId) =>
@@ -1104,13 +1110,15 @@ export function QuoteItemsForm({
       ? 'Choose transport service'
       : activeServiceType === 'activity'
         ? 'Choose activity'
-        : activeServiceType === 'meal'
-          ? 'Choose meal'
-          : activeServiceType === 'guide'
-            ? 'Choose guide service'
-            : activeServiceType === 'externalPackage'
-              ? 'Choose external package'
-              : 'Choose service';
+        : activeServiceType === 'ticketing'
+          ? 'Choose ticket / entrance service'
+          : activeServiceType === 'meal'
+            ? 'Choose meal'
+            : activeServiceType === 'guide'
+              ? 'Choose guide service'
+              : activeServiceType === 'externalPackage'
+                ? 'Choose external package'
+                : 'Choose service';
 
   const selectedHotel = hotels.find((hotel) => hotel.id === hotelId) || null;
   const hotelRatePreviewByHotelId = useMemo(() => {
@@ -2450,9 +2458,11 @@ export function QuoteItemsForm({
                 ? 'Transport selector'
                 : activeServiceType === 'activity'
                   ? 'Activity selector'
-                  : activeServiceType === 'meal'
-                    ? 'Meal service'
-                    : 'Service'}
+                  : activeServiceType === 'ticketing'
+                    ? 'Ticketing service'
+                    : activeServiceType === 'meal'
+                      ? 'Meal service'
+                      : 'Service'}
               <select
                 value={serviceId}
                 onChange={(event) => {

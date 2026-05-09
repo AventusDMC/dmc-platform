@@ -130,7 +130,7 @@ type Booking = {
 type Supplier = {
   id: string;
   name: string;
-  type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
+  type: 'hotel' | 'transport' | 'activity' | 'ticketing' | 'guide' | 'other';
 };
 
 type OperationsDashboardItem = {

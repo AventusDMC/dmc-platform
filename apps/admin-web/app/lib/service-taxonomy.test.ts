@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   OPERATIONAL_SERVICE_TYPE_CODES,
+  TICKETING_SERVICE_TYPE_CODES,
   getPlannerCategoryForService,
   isActivityTaxonomyGroup,
+  isTicketingTaxonomyGroup,
   resolveServiceTaxonomyGroup,
 } from './service-taxonomy';
 
@@ -32,7 +34,24 @@ describe('service taxonomy helper', () => {
   });
 
   it('preserves activity and external package planner classification', () => {
-    assert.equal(getPlannerCategoryForService({ category: 'Entrance Ticket' }), 'activity');
+    assert.equal(getPlannerCategoryForService({ category: 'Sightseeing' }), 'activity');
     assert.equal(getPlannerCategoryForService({ serviceType: { name: 'External Package', code: 'EXTERNAL_PACKAGE' } }), 'externalPackage');
+  });
+
+  it('resolves canonical ticketing codes into a dedicated planner category', () => {
+    for (const code of TICKETING_SERVICE_TYPE_CODES) {
+      assert.equal(
+        getPlannerCategoryForService({
+          category: 'Legacy label',
+          serviceType: { name: 'Any label', code },
+        }),
+        'ticketing',
+      );
+    }
+
+    assert.equal(getPlannerCategoryForService({ category: 'Petra Entrance Ticket' }), 'ticketing');
+    assert.equal(getPlannerCategoryForService({ category: 'Museum Tickets' }), 'ticketing');
+    assert.equal(isTicketingTaxonomyGroup({ category: 'Religious site entry' }), true);
+    assert.equal(isActivityTaxonomyGroup({ category: 'Entrance Ticket' }), false);
   });
 });

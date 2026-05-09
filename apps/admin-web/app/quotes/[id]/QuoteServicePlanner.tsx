@@ -496,6 +496,7 @@ const CATEGORY_LABELS: Record<ServicePlannerCategory, string> = {
   transport: 'Transport',
   guide: 'Guide',
   activity: 'Activity',
+  ticketing: 'Ticketing / Entrance',
   meal: 'Meal',
   externalPackage: 'External Country Package',
   other: 'Other',
@@ -505,17 +506,19 @@ const DAY_WORKFLOW_ACTIONS: Array<{ category: ServicePlannerCategory; label: str
   { category: 'hotel', label: 'Add Confirmed Hotel Stay' },
   { category: 'transport', label: 'Add Transport' },
   { category: 'activity', label: 'Add Activity' },
+  { category: 'ticketing', label: 'Add Ticket / Entrance' },
   { category: 'meal', label: 'Add Meal' },
   { category: 'guide', label: 'Add Guide' },
   { category: 'other', label: 'Add Other' },
   { category: 'externalPackage', label: 'Add External Country Package' },
 ];
 
-const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'guide', 'other', 'externalPackage'];
+const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'ticketing', 'guide', 'other', 'externalPackage'];
 const SERVICE_PLANNER_TAB_LABELS: Record<ServicePlannerCategory, string> = {
   hotel: 'Hotel',
   transport: 'Transport',
   activity: 'Activity',
+  ticketing: 'Ticketing / Entrance',
   meal: 'Meal',
   externalPackage: 'External Country Package',
   // These are unused for the planner tabs, but keep the record exhaustive.
@@ -531,6 +534,7 @@ const SERVICE_PLANNER_ADD_LABELS: Record<ServicePlannerCategory, string> = {
   transport: '+ Add Transport',
   meal: '+ Add Meal',
   activity: '+ Add Activity',
+  ticketing: '+ Add Ticket / Entrance',
   guide: '+ Add Guide',
   other: '+ Add Other',
   externalPackage: '+ Add External Country Package',
@@ -539,6 +543,7 @@ const SERVICE_PLANNER_ICONS: Record<ServicePlannerCategory, string> = {
   hotel: 'H',
   transport: 'T',
   activity: 'A',
+  ticketing: 'K',
   meal: 'M',
   externalPackage: 'E',
   guide: 'G',
@@ -673,7 +678,7 @@ function buildServiceWorkflowState(items: QuoteItem[], quoteType: Quote['quoteTy
   } else if (!hasHotel && hasTransport && !hasActivity) {
     recommendedCategory = 'activity';
     title = 'Add activities next';
-    description = 'Transport is already in place. Add the first activity or entrance-style service when you are ready.';
+    description = 'Transport is already in place. Add the first activity or ticketing service when you are ready.';
   } else if (!hasHotel) {
     recommendedCategory = 'hotel';
     title = 'Start with hotels';
@@ -798,7 +803,9 @@ function getServiceLaneEmptyCopy(category: ServicePlannerCategory) {
     case 'meal':
       return 'No meal service added for this day yet.';
     case 'activity':
-      return 'No activity or entrance-style service added for this day yet.';
+      return 'No activity or excursion service added for this day yet.';
+    case 'ticketing':
+      return 'No ticketing or entrance service added for this day yet.';
     case 'guide':
       return 'No guide service added for this day yet.';
     case 'externalPackage':
@@ -3640,7 +3647,7 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
             </div>
           </div>
           <p className="detail-copy">
-          Pick a day from the left, then add and review hotel, transport, meal, activity, guide, entrance-style, and other service rows in grouped lanes.
+          Pick a day from the left, then add and review hotel, transport, meal, activity, ticketing, guide, and other service rows in grouped lanes.
           </p>
         {props.focusedDayId ? (
           <p className="form-helper">

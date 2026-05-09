@@ -36,7 +36,7 @@ type QuoteUnresolvedBatchActionsProps = {
 };
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
-const CATEGORY_ORDER: ServicePlannerCategory[] = ['hotel', 'transport', 'guide', 'activity', 'meal', 'externalPackage', 'other'];
+const CATEGORY_ORDER: ServicePlannerCategory[] = ['hotel', 'transport', 'guide', 'activity', 'ticketing', 'meal', 'externalPackage', 'other'];
 
 function isImportedPlaceholder(item: QuoteItem) {
   return item.service.supplierId === IMPORTED_SERVICE_SUPPLIER_ID;

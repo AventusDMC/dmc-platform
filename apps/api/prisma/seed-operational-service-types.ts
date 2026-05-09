@@ -3,6 +3,10 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const operationalServiceTypes = [
+  { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+  { name: 'Museum Ticket', code: 'MUSEUM_TICKET' },
+  { name: 'Park Entry', code: 'PARK_ENTRY' },
+  { name: 'Religious Site Entry', code: 'RELIGIOUS_SITE_ENTRY' },
   { name: 'Jeep Tour', code: 'JEEP_TOUR' },
   { name: 'Boat Ride', code: 'BOAT_RIDE' },
   { name: 'Petra by Night', code: 'PETRA_BY_NIGHT' },

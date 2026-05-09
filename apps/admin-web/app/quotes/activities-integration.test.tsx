@@ -70,9 +70,10 @@ describe('activities quote and booking UI integration regression', () => {
   it('keeps activity add/edit affordances and existing quote service handlers wired', () => {
     expectSourceContains(quotePlannerSource, [
       "{ category: 'activity', label: 'Add Activity' }",
+      "{ category: 'ticketing', label: 'Add Ticket / Entrance' }",
       "{ category: 'externalPackage', label: 'Add External Country Package' }",
       "preferredActivityId={category === 'activity' ? selectedActivityId : undefined}",
-      'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}',
+      'preferredServiceId={category !== \'hotel\' && category !== \'transport\' ? selectedPanelService?.id || preferredCatalogService?.id : undefined}',
       '<QuoteItemsForm',
       '<QuoteItemCard',
     ]);
@@ -114,12 +115,12 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
   });
 
-  it('classifies entrance consistently as an activity experience', () => {
+  it('classifies entrance consistently as a ticketing experience', () => {
     expectSourceContains(serviceTaxonomySource, [
       "normalized.includes('entrance')",
-      "return 'activity';",
+      "return 'ticketing';",
     ]);
-    expectSourceContains(quoteReadinessSource, ['getPlannerCategoryForService(service)']);
+    expectSourceContains(quoteReadinessSource, ['getPlannerCategoryForService({ serviceType: service.serviceType })']);
   });
 
   it('keeps Base Program expanded after itinerary generation and refresh', () => {
@@ -190,10 +191,10 @@ describe('activities quote and booking UI integration regression', () => {
       '<AssignedServicesTable',
       '<AddServiceEditorPanel',
       '<EditServiceEditorPanel',
-      "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'guide', 'other', 'externalPackage'];",
+      "const SERVICE_PLANNER_TABS: ServicePlannerCategory[] = ['hotel', 'transport', 'meal', 'activity', 'ticketing', 'guide', 'other', 'externalPackage'];",
       'const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);',
       '<h2>Day-by-day workspace</h2>',
-      'Pick a day from the left, then add and review hotel, transport, meal, activity, guide, entrance-style, and other service rows in grouped lanes.',
+      'Pick a day from the left, then add and review hotel, transport, meal, activity, ticketing, guide, and other service rows in grouped lanes.',
     ]);
     assert.doesNotMatch(quotePlannerSource, /function DayWorkflowAction|openServiceEditorKey|initialActivePanel|<DayWorkflowAction|Route\/Notes|quote-service-day-action`\}/);
     assert.doesNotMatch(bookingCssSource, /quote-service-day-action\[open\]|grid-template-columns: minmax\(0, 1\.45fr\) minmax\(360px, 0\.72fr\)/);
