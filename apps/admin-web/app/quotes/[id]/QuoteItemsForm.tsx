@@ -545,8 +545,30 @@ const EXTERNAL_PACKAGE_SECTION_TABS: Array<{ id: ExternalPackageSection; label: 
   { id: 'internalNotes', label: 'Internal Notes' },
 ];
 
-function getServiceTypeKey(service: Pick<SupplierService, 'category' | 'serviceType'>): ServiceTypeKey {
-  return getPlannerCategoryForService(service) as ServiceTypeKey;
+function hasMealSignal(value: string | null | undefined) {
+  const normalized = normalizeServiceTaxonomyText(value);
+
+  return (
+    normalized.includes('meal') ||
+    normalized.includes('dining') ||
+    normalized.includes('breakfast') ||
+    normalized.includes('lunch') ||
+    normalized.includes('dinner') ||
+    normalized.includes('restaurant') ||
+    normalized.includes('food')
+  );
+}
+
+function getServiceTypeKey(service: Pick<SupplierService, 'category' | 'serviceType'> & { name?: string | null }): ServiceTypeKey {
+  if (service.serviceType) {
+    return getPlannerCategoryForService({ serviceType: service.serviceType }) as ServiceTypeKey;
+  }
+
+  if (hasMealSignal(service.name) || hasMealSignal(service.category)) {
+    return 'meal';
+  }
+
+  return getPlannerCategoryForService({ category: service.category }) as ServiceTypeKey;
 }
 
 function getServiceTypeKeyFromText(value: string | null | undefined): ServiceTypeKey | null {

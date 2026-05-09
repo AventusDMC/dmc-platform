@@ -1,4 +1,4 @@
-import { getPlannerCategoryForService } from '../../lib/service-taxonomy';
+import { getPlannerCategoryForService, normalizeServiceTaxonomyText } from '../../lib/service-taxonomy';
 
 export type QuoteReadinessStep = 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
 export type QuotePricingFocus =
@@ -206,7 +206,7 @@ function titleCase(value: string) {
 }
 
 export function getQuoteServiceCategoryKey(
-  service: Pick<QuoteReadinessService, 'category' | 'serviceType'> | null | undefined,
+  service: (Pick<QuoteReadinessService, 'category' | 'serviceType'> & { name?: string | null }) | null | undefined,
   item?: Pick<
     QuoteReadinessItem,
     | 'externalPackageCountry'
@@ -246,7 +246,29 @@ export function getQuoteServiceCategoryKey(
     return 'other';
   }
 
-  return getPlannerCategoryForService(service) as ServicePlannerCategory;
+  if (service.serviceType) {
+    return getPlannerCategoryForService({ serviceType: service.serviceType }) as ServicePlannerCategory;
+  }
+
+  if (hasLegacyMealSignal(service.name) || hasLegacyMealSignal(service.category)) {
+    return 'meal';
+  }
+
+  return getPlannerCategoryForService({ category: service.category }) as ServicePlannerCategory;
+}
+
+function hasLegacyMealSignal(value: string | null | undefined) {
+  const normalized = normalizeServiceTaxonomyText(value);
+
+  return (
+    normalized.includes('meal') ||
+    normalized.includes('dining') ||
+    normalized.includes('breakfast') ||
+    normalized.includes('lunch') ||
+    normalized.includes('dinner') ||
+    normalized.includes('restaurant') ||
+    normalized.includes('food')
+  );
 }
 
 export function isImportedQuoteService(item: Pick<QuoteReadinessItem, 'service'>) {
