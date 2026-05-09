@@ -1102,6 +1102,7 @@ export function QuoteItemsForm({
     () => (selectedActivity?.rateVariants || []).filter((variant) => variant.active !== false),
     [selectedActivity],
   );
+  const hasActivityRateVariants = activeActivityRateVariants.length > 0;
   const selectedActivityRateVariant =
     activeActivityRateVariants.find((variant) => variant.id === activityRateVariantId) || activeActivityRateVariants[0] || null;
   const isHotelService = selectedService ? getServiceTypeKey(selectedService) === 'hotel' : false;
@@ -2612,7 +2613,7 @@ export function QuoteItemsForm({
             ) : null}
           </div>
 
-          {isEditing && !isExternalPackageService ? (
+          {isEditing && !isExternalPackageService && !(activeServiceType === 'activity' && hasActivityRateVariants) ? (
             <label>
               {activeServiceType === 'transport'
                 ? 'Transport selector'
@@ -3332,7 +3333,7 @@ export function QuoteItemsForm({
                           </select>
                         </label>
 
-                        {activeActivityRateVariants.length > 0 ? (
+                        {hasActivityRateVariants ? (
                           <label>
                             Rate variant
                             <select value={activityRateVariantId} onChange={(event) => setActivityRateVariantId(event.target.value)} required>
@@ -3348,17 +3349,19 @@ export function QuoteItemsForm({
                           </label>
                         ) : null}
 
-                        <label>
-                          Pricing service
-                          <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
-                            <option value="">Select pricing service</option>
-                            {filteredServices.map((service) => (
-                              <option key={service.id} value={service.id}>
-                                {service.name} ({service.currency} {Number(service.baseCost || 0).toFixed(2)})
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        {!hasActivityRateVariants ? (
+                          <label>
+                            Pricing service
+                            <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
+                              <option value="">Select pricing service</option>
+                              {filteredServices.map((service) => (
+                                <option key={service.id} value={service.id}>
+                                  {service.name} ({service.currency} {Number(service.baseCost || 0).toFixed(2)})
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                       </>
                     ) : (
                       <label>
