@@ -236,14 +236,60 @@ function formatChildPolicy(policy: RatePolicyPreview) {
     return `Children ${ageRange} pay ${percent !== null ? `${percent}%` : 'discounted rate'}`;
   }
 
+  if (policyType === 'CHILD_EXTRA_BED') {
+    const amount = optionalNumber(policy.amount);
+    const currency = policy.currency || 'JOD';
+    return `Children ${ageRange} extra bed ${amount !== null ? `${currency} ${amount}` : 'available'}`;
+  }
+
   return '';
+}
+
+function formatImportedChildBand(band: any, fallbackCurrency: string) {
+  const minAge = optionalNumber(band?.minAge);
+  const maxAge = optionalNumber(band?.maxAge);
+  const ageRange = minAge !== null || maxAge !== null ? `${minAge ?? 0}-${maxAge ?? minAge ?? ''}` : 'policy age';
+  const basis = String(band?.chargeBasis || '').trim().toUpperCase();
+  const value = optionalNumber(band?.chargeValue);
+
+  if (basis === 'FREE') {
+    return `Children ${ageRange} free`;
+  }
+
+  if (basis === 'PERCENT_OF_ADULT') {
+    return `Children ${ageRange} pay ${value !== null ? `${value}%` : 'percentage of adult rate'}`;
+  }
+
+  if (basis === 'FIXED_AMOUNT') {
+    return `Children ${ageRange} pay ${value !== null ? `${fallbackCurrency} ${value}` : 'fixed child rate'}`;
+  }
+
+  return band?.notes || band?.label || '';
+}
+
+function mapSourceChildPolicy(source: Record<string, any>, fallbackCurrency: string) {
+  const childPolicy = source.childPolicy && typeof source.childPolicy === 'object' ? source.childPolicy : null;
+  if (!childPolicy) return null;
+
+  if (Array.isArray(childPolicy.rules)) {
+    const rules = childPolicy.rules.map((rule: unknown) => String(rule || '').trim()).filter(Boolean);
+    return rules.length > 0 ? { rules } : null;
+  }
+
+  const bandRules = Array.isArray(childPolicy.bands)
+    ? childPolicy.bands.map((band: any) => formatImportedChildBand(band, fallbackCurrency)).filter(Boolean)
+    : [];
+  const notes = String(childPolicy.notes || '').trim();
+  const rules = [...bandRules, notes].filter(Boolean);
+
+  return rules.length > 0 ? { rules } : null;
 }
 
 function deriveChildPolicy(ratePolicies: RatePolicyPreview[]) {
   const rules = ratePolicies
     .filter((policy) => {
       const policyType = String(policy.policyType || '').trim().toUpperCase();
-      return policyType === 'CHILD_FREE' || policyType === 'CHILD_DISCOUNT';
+      return policyType === 'CHILD_FREE' || policyType === 'CHILD_DISCOUNT' || policyType === 'CHILD_EXTRA_BED';
     })
     .map(formatChildPolicy)
     .filter(Boolean);
@@ -302,7 +348,7 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
         notes: policy.notes || null,
       }))
     : [];
-  const childPolicy = deriveChildPolicy(ratePolicies);
+  const childPolicy = mapSourceChildPolicy(source, String(contract.currency || source.currency || 'JOD')) || deriveChildPolicy(ratePolicies);
 
   return {
     contractType,

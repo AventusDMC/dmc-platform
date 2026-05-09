@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { BadRequestException } from '@nestjs/common';
 import { ContractImportStatus, ContractImportType } from '@prisma/client';
 import { ContractImportsService } from './contract-imports.service';
@@ -380,6 +382,64 @@ test('contract import validation flags invalid meal, supplement, and child polic
   assert.ok(warnings.some((warning) => warning.field === 'supplements.1.type'));
   assert.ok(warnings.some((warning) => warning.field === 'supplements.1.chargeBasis'));
   assert.ok(warnings.some((warning) => warning.field === 'childPolicy.bands.1.chargeBasis'));
+});
+
+test('hotel Excel template extracts ChildPolicy sheet into preview childPolicy', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Key: 'Hotel Name', Value: 'Petra Moon Hotel' },
+      { Key: 'Supplier Name', Value: 'Petra Moon Hotel' },
+      { Key: 'Contract Name', Value: 'Petra Moon 2026' },
+      { Key: 'Currency', Value: 'JOD' },
+    ]),
+    'Meta',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { 'Room Type': 'Standard Room', Occupancy: 'DBL', 'Meal Plan': 'BB', Cost: 100, Currency: 'JOD' },
+    ]),
+    'Rates',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Name: 'Child Policy', Value: 'Children under 6 stay free. Ages 6-11 pay 50% meals.' },
+    ]),
+    'Policies',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Label: 'Child Below 6', 'Min Age': 0, 'Max Age': 5, 'Charge Basis': 'FREE', Notes: 'Stays free' },
+      { Label: 'Child 6-11 Meals', 'Min Age': 6, 'Max Age': 11, 'Charge Basis': 'PERCENT_OF_ADULT', 'Charge Value': 50, Notes: 'Meals at 50%' },
+    ]),
+    'ChildPolicy',
+  );
+  const filePath = join(tmpdir(), `petra-child-policy-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const preview = (createService() as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: 'Petra Moon Hotel',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'petra-child-policy.xlsx',
+  });
+
+  assert.equal(preview.childPolicy.infantMaxAge, 5);
+  assert.equal(preview.childPolicy.childMaxAge, 12);
+  assert.equal(preview.childPolicy.bands.length, 2);
+  assert.equal(preview.childPolicy.bands[0].chargeBasis, 'FREE');
+  assert.equal(preview.childPolicy.bands[1].chargeBasis, 'PERCENT_OF_ADULT');
+  assert.equal(preview.childPolicy.bands[1].chargeValue, 50);
+  assert.match(preview.childPolicy.notes, /Child Policy/);
 });
 
 test('contract import approval normalizes supplement enum aliases without merging gala dinner into extra dinner', async () => {

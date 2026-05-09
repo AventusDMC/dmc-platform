@@ -712,6 +712,7 @@ export class ContractImportsService {
     const ratePolicyResult = this.readRatePoliciesSheet(workbook, contractCurrency);
     warnings.push(...ratePolicyResult.warnings);
     const ratePolicies = ratePolicyResult.policies;
+    const childPolicy = this.readChildPolicySheet(workbook, meta, ratePolicies, policies);
     const taxes: ContractPreview['taxes'] = [];
     if (defaultTaxPercent !== undefined) {
       taxes.push({ name: 'Sales tax', value: defaultTaxPercent, included: defaultTaxIncluded ?? false });
@@ -751,7 +752,7 @@ export class ContractImportsService {
       ratePolicies,
       cancellationPolicy,
       cancellationPolicies: cancellationPolicy ? [cancellationPolicy] : [],
-      childPolicy: null,
+      childPolicy,
       meta: {
         ...meta,
         defaultTaxPercent: defaultTaxPercent ?? null,
@@ -2682,6 +2683,125 @@ export class ContractImportsService {
     return { policies, warnings };
   }
 
+  private readChildPolicySheet(
+    workbook: any,
+    meta: Record<string, string>,
+    ratePolicies: RatePolicyPreview[],
+    policies: ContractPreview['policies'],
+  ): ContractPreview['childPolicy'] {
+    const rows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'ChildPolicy'));
+    const childPolicyNotes = policies
+      .filter((policy) => /child|children|infant|kid|extra\s*bed|meal/i.test(`${policy.name} ${policy.value}`))
+      .map((policy) => `${policy.name}: ${policy.value}`.trim())
+      .filter(Boolean);
+    const metaNotes = [
+      meta.childPolicy,
+      meta.childrenPolicy,
+      meta.childMeals,
+      meta.childExtraBed,
+      meta.infantPolicy,
+    ].filter((value): value is string => Boolean(value));
+    const fallbackNotes = [...metaNotes, ...childPolicyNotes];
+    const bands = rows
+      .map((row, index) => {
+        const label =
+          this.templateCell(row, 'Label') ||
+          this.templateCell(row, 'Band') ||
+          this.templateCell(row, 'Rule') ||
+          this.templateCell(row, 'Name') ||
+          `Child policy band ${index + 1}`;
+        const minAge = this.parseNumber(
+          this.templateCell(row, 'Min Age') ||
+            this.templateCell(row, 'Age From') ||
+            this.templateCell(row, 'From Age') ||
+            this.templateCell(row, 'Minimum Age'),
+        );
+        const maxAge = this.parseNumber(
+          this.templateCell(row, 'Max Age') ||
+            this.templateCell(row, 'Age To') ||
+            this.templateCell(row, 'To Age') ||
+            this.templateCell(row, 'Maximum Age'),
+        );
+        const basis =
+          this.templateCell(row, 'Charge Basis') ||
+          this.templateCell(row, 'Basis') ||
+          this.templateCell(row, 'Charge Type') ||
+          this.templateCell(row, 'Type');
+        const chargeValue = this.parseNumber(
+          this.templateCell(row, 'Charge Value') ||
+            this.templateCell(row, 'Value') ||
+            this.templateCell(row, 'Amount') ||
+            this.templateCell(row, 'Percent'),
+        );
+        const notes =
+          this.templateCell(row, 'Notes') ||
+          this.templateCell(row, 'Description') ||
+          this.templateCell(row, 'Policy') ||
+          null;
+
+        if (minAge === undefined && maxAge === undefined && !basis && !chargeValue && !notes) {
+          return null;
+        }
+
+        return {
+          label,
+          minAge: minAge ?? 0,
+          maxAge: maxAge ?? minAge ?? 12,
+          chargeBasis: this.childChargeBasis(basis),
+          chargeValue: chargeValue ?? null,
+          notes,
+        };
+      })
+      .filter((band): band is NonNullable<typeof band> => Boolean(band));
+
+    const childRatePolicyBands = ratePolicies
+      .filter((policy) => /^CHILD_(FREE|DISCOUNT|EXTRA_BED)$/i.test(policy.policyType))
+      .map((policy) => {
+        const policyType = policy.policyType.toUpperCase();
+        const ageFrom = policy.ageFrom ?? 0;
+        const ageTo = policy.ageTo ?? ageFrom;
+        const label =
+          policyType === 'CHILD_FREE'
+            ? `Children ${ageFrom}-${ageTo} free`
+            : policyType === 'CHILD_DISCOUNT'
+              ? `Children ${ageFrom}-${ageTo} discount`
+              : `Children ${ageFrom}-${ageTo} extra bed`;
+
+        return {
+          label,
+          minAge: ageFrom,
+          maxAge: ageTo,
+          chargeBasis:
+            policyType === 'CHILD_FREE'
+              ? ChildPolicyChargeBasis.FREE
+              : policy.percent !== null && policy.percent !== undefined
+                ? ChildPolicyChargeBasis.PERCENT_OF_ADULT
+                : ChildPolicyChargeBasis.FIXED_AMOUNT,
+          chargeValue: policy.percent ?? policy.amount ?? null,
+          notes: policy.notes || policy.appliesTo || null,
+        };
+      });
+
+    const allBands = bands.length > 0 ? bands : childRatePolicyBands;
+    if (allBands.length === 0 && fallbackNotes.length === 0) {
+      return null;
+    }
+
+    const infantMaxAge =
+      this.parseNumber(meta.infantMaxAge || meta.infantAgeTo || meta.infantMax) ??
+      Math.max(0, ...allBands.filter((band) => /infant|below\s*6|under\s*6/i.test(band.label)).map((band) => band.maxAge), 5);
+    const childMaxAge =
+      this.parseNumber(meta.childMaxAge || meta.childAgeTo || meta.childMax) ??
+      Math.max(infantMaxAge, ...allBands.map((band) => band.maxAge), 12);
+
+    return {
+      infantMaxAge,
+      childMaxAge,
+      notes: fallbackNotes.join(' | ') || null,
+      bands: allBands,
+    };
+  }
+
   private normalizeMetaKey(value: string) {
     const normalized = this.normalizeTemplateHeader(value);
     const aliases: Record<string, string> = {
@@ -2704,6 +2824,16 @@ export class ContractImportsService {
       defaulttaxpct: 'defaultTaxPercent',
       governmenttax: 'defaultTaxPercent',
       governmenttaxpercent: 'defaultTaxPercent',
+      infantmaxage: 'infantMaxAge',
+      infantageto: 'infantAgeTo',
+      infantmax: 'infantMax',
+      childmaxage: 'childMaxAge',
+      childageto: 'childAgeTo',
+      childmax: 'childMax',
+      childpolicy: 'childPolicy',
+      childrenpolicy: 'childrenPolicy',
+      childmeals: 'childMeals',
+      childextrabed: 'childExtraBed',
       governmenttaxpercentage: 'defaultTaxPercent',
       governmenttaxpct: 'defaultTaxPercent',
       taxpercent: 'taxPercent',
