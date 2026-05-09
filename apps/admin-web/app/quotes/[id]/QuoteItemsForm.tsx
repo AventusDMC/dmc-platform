@@ -43,6 +43,8 @@ type SupplierService = {
   ticketRateVariants?: TicketRateVariant[] | null;
 };
 
+type SupportedQuoteCurrency = 'USD' | 'JOD' | 'EUR' | 'ILS';
+
 type TicketRateVariant = {
   id: string;
   label: string;
@@ -55,6 +57,30 @@ type TicketRateVariant = {
   active: boolean;
   sortOrder?: number | null;
 };
+
+const FX_TO_USD: Record<SupportedQuoteCurrency, number> = {
+  USD: 1,
+  EUR: 1.08,
+  JOD: 1.41,
+  ILS: 0.27,
+};
+
+function normalizeQuoteCurrency(value: string | null | undefined): SupportedQuoteCurrency {
+  const currency = String(value || '').trim().toUpperCase();
+
+  return currency in FX_TO_USD ? (currency as SupportedQuoteCurrency) : 'USD';
+}
+
+function convertQuoteMoney(amount: number, fromCurrency: string | null | undefined, toCurrency: string | null | undefined) {
+  const from = normalizeQuoteCurrency(fromCurrency);
+  const to = normalizeQuoteCurrency(toCurrency);
+
+  if (from === to) {
+    return Number(amount.toFixed(2));
+  }
+
+  return Number(((amount * FX_TO_USD[from]) / FX_TO_USD[to]).toFixed(2));
+}
 
 type ActivityCatalogItem = {
   id: string;
@@ -347,6 +373,7 @@ type QuoteItemsFormProps = {
   hotelRates: HotelRate[];
   seasons: Season[];
   quoteType?: QuoteType;
+  quoteCurrency?: string;
   defaultPaxCount: number;
   defaultAdultCount: number;
   defaultChildCount: number;
@@ -776,6 +803,7 @@ export function QuoteItemsForm({
   hotelRates,
   seasons,
   quoteType = 'FIT',
+  quoteCurrency = 'USD',
   defaultPaxCount,
   defaultAdultCount,
   defaultChildCount,
@@ -1277,13 +1305,15 @@ export function QuoteItemsForm({
     ? externalPackage.currency
     : isMealService
       ? mealCurrency
+      : isTicketingService
+        ? normalizeQuoteCurrency(quoteCurrency)
       : selectedActivityRateVariant?.currency ||
-        selectedTicketRateVariant?.currency ||
         selectedActivity?.currency ||
         preferredRateCurrency ||
         selectedHotelRate?.currency ||
         selectedService?.currency ||
         'USD';
+  const ticketNativeCurrency = selectedTicketRateVariant?.currency || selectedService?.currency || 'JOD';
   const activityParticipantTotal = Math.max(
     1,
     Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
@@ -1323,11 +1353,13 @@ export function QuoteItemsForm({
       return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
     }
 
-    if (isTicketingService && selectedTicketRateVariant) {
-      const unitCost = Number(selectedTicketRateVariant.costPrice || 0);
+    if (isTicketingService) {
+      const unitCost = Number(selectedTicketRateVariant?.costPrice ?? baseCost ?? selectedService?.baseCost ?? 0);
       const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
-      const units = selectedTicketRateVariant.pricingBasis === 'PER_GROUP' ? 1 : selectedTicketRateVariant.pricingBasis === 'PER_DAY' ? Math.max(1, Number(dayCount || 1)) : pax;
-      return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
+      const pricingBasis = selectedTicketRateVariant?.pricingBasis || 'PER_PERSON';
+      const units = pricingBasis === 'PER_GROUP' ? 1 : pricingBasis === 'PER_DAY' ? Math.max(1, Number(dayCount || 1)) : pax;
+      const nativeTotal = Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
+      return nativeTotal === null ? null : convertQuoteMoney(nativeTotal, ticketNativeCurrency, quoteCurrency);
     }
 
     return baseCost ? Number(baseCost) : null;
@@ -1346,10 +1378,13 @@ export function QuoteItemsForm({
     participantCount,
     paxCount,
     selectedService?.baseCost,
+    selectedService?.currency,
     selectedActivity?.costPrice,
     selectedActivity?.pricingBasis,
     selectedActivityRateVariant,
     selectedTicketRateVariant,
+    ticketNativeCurrency,
+    quoteCurrency,
     useOverride,
   ]);
   const finalSellPrice = useMemo(() => {
@@ -1375,19 +1410,22 @@ export function QuoteItemsForm({
     if (isTicketingService && selectedTicketRateVariant?.sellPrice !== null && selectedTicketRateVariant?.sellPrice !== undefined) {
       const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
       const units = selectedTicketRateVariant.pricingBasis === 'PER_GROUP' ? 1 : selectedTicketRateVariant.pricingBasis === 'PER_DAY' ? Math.max(1, Number(dayCount || 1)) : pax;
-      return Number((Number(selectedTicketRateVariant.sellPrice || 0) * units).toFixed(2));
+      const nativeSellTotal = Number((Number(selectedTicketRateVariant.sellPrice || 0) * units).toFixed(2));
+      return convertQuoteMoney(nativeSellTotal, ticketNativeCurrency, quoteCurrency);
     }
 
     return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
-  }, [activityParticipantTotal, dayCount, defaultPaxCount, finalCost, isActivityService, isTicketingService, markupAmount, markupPercent, paxCount, selectedActivity, selectedActivityRateVariant, selectedTicketRateVariant, sellPrice]);
+  }, [activityParticipantTotal, dayCount, defaultPaxCount, finalCost, isActivityService, isTicketingService, markupAmount, markupPercent, paxCount, quoteCurrency, selectedActivity, selectedActivityRateVariant, selectedTicketRateVariant, sellPrice, ticketNativeCurrency]);
   const finalMargin =
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
       : null;
   const activityUnitRate = Number(selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice ?? baseCost ?? 0);
+  const activityUnitSellRate = Number(selectedActivityRateVariant?.sellPrice ?? selectedActivity?.sellPrice ?? 0);
+  const activityMaxPaxPerUnit = Number(selectedActivityRateVariant?.maxPaxPerUnit || 0);
   const activityCapacityUnits =
-    selectedActivityRateVariant?.maxPaxPerUnit && selectedActivityRateVariant.maxPaxPerUnit > 0
-      ? Math.ceil(activityParticipantTotal / selectedActivityRateVariant.maxPaxPerUnit)
+    activityMaxPaxPerUnit > 0
+      ? Math.ceil(activityParticipantTotal / activityMaxPaxPerUnit)
       : null;
   const isActivitySelected = Boolean(
     isActivityService &&
@@ -3377,15 +3415,30 @@ export function QuoteItemsForm({
                       </span>
                       {activityCapacityUnits ? (
                         <span>
-                          Units
+                          Required units
                           <strong>{activityCapacityUnits}</strong>
                         </span>
                       ) : null}
+                      {activityCapacityUnits && activityMaxPaxPerUnit ? (
+                        <span>
+                          Capacity logic
+                          <strong>
+                            ceil({activityParticipantTotal} / {activityMaxPaxPerUnit}) = {activityCapacityUnits}
+                          </strong>
+                        </span>
+                      ) : null}
                       <span>
-                        Unit rate
+                        Unit cost
                         <strong>
                           {displayCurrency} {Number.isFinite(activityUnitRate) ? activityUnitRate.toFixed(2) : '0.00'}
-                          {(selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis) === 'PER_GROUP' ? ' group' : ''}
+                          {activityCapacityUnits ? ` x ${activityCapacityUnits}` : (selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis) === 'PER_GROUP' ? ' group' : ''}
+                        </strong>
+                      </span>
+                      <span>
+                        Unit sell
+                        <strong>
+                          {displayCurrency} {Number.isFinite(activityUnitSellRate) ? activityUnitSellRate.toFixed(2) : '0.00'}
+                          {activityCapacityUnits ? ` x ${activityCapacityUnits}` : (selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis) === 'PER_GROUP' ? ' group' : ''}
                         </strong>
                       </span>
                       <span>

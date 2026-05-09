@@ -1429,6 +1429,7 @@ function AddServiceEditorPanel({
         hotelRates={plannerProps.hotelRates}
         seasons={plannerProps.seasons}
         quoteType={plannerProps.quote.quoteType}
+        quoteCurrency={plannerProps.quote.quoteCurrency}
         defaultPaxCount={plannerProps.totalPax}
         defaultAdultCount={plannerProps.quote.adults}
         defaultChildCount={plannerProps.quote.children}
@@ -1643,6 +1644,7 @@ function EditServiceEditorPanel({
       hotelRates={plannerProps.hotelRates}
       seasons={plannerProps.seasons}
       quoteType={plannerProps.quote.quoteType}
+      quoteCurrency={plannerProps.quote.quoteCurrency}
       defaultPaxCount={plannerProps.totalPax}
       defaultAdultCount={plannerProps.quote.adults}
       defaultChildCount={plannerProps.quote.children}

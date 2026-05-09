@@ -834,6 +834,7 @@ export function QuoteItemCard({
           hotelRates={hotelRates}
           seasons={seasons}
           quoteType={quote.quoteType}
+          quoteCurrency={quote.quoteCurrency}
           defaultPaxCount={totalPax}
           defaultAdultCount={quote.adults}
           defaultChildCount={quote.children}

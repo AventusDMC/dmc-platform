@@ -3169,6 +3169,7 @@ export class QuotesService {
     let unitCount: number | null = null;
     let transportUnitCostMultiplier = 1;
     let transportAddOnUnitCost = 0;
+    let activityRequiredUnits: number | null = null;
     const transportPricingDescriptionParts: string[] = [];
     let entranceFeeId: string | null = null;
     let jordanPassCovered = false;
@@ -3473,6 +3474,7 @@ export class QuotesService {
             : Math.max(0, Math.floor(data.participantCount));
 
       if (activity) {
+        const activityPricingPaxCount = Math.max(1, Number(participantCount ?? paxCount));
         const activityRateCurrency =
           (selectedActivityRate as { currency?: string | null } | null | undefined)?.currency ||
           (activity as { currency?: string | null }).currency ||
@@ -3485,6 +3487,7 @@ export class QuotesService {
         supplierCostCurrency = currency;
         if (selectedActivityRate?.maxPaxPerUnit && selectedActivityRate.maxPaxPerUnit > 0) {
           capacityMaxPaxPerUnit = Math.floor(Number(selectedActivityRate.maxPaxPerUnit));
+          activityRequiredUnits = Math.ceil(activityPricingPaxCount / capacityMaxPaxPerUnit);
           structuredServiceRatePricingMode = 'PER_GROUP';
         }
         pricingDescription = [
@@ -3492,6 +3495,7 @@ export class QuotesService {
           selectedActivityRate ? selectedActivityRate.name : null,
           (selectedActivityRate?.pricingBasis ?? activity.pricingBasis) === 'PER_GROUP' ? 'Activity | PER_GROUP' : 'Activity | PER_PERSON',
           selectedActivityRate?.maxPaxPerUnit ? `Capacity ${selectedActivityRate.maxPaxPerUnit} pax/unit` : null,
+          activityRequiredUnits ? `Required units ${activityRequiredUnits}` : null,
           (selectedActivityRate?.durationMinutes ?? activity.durationMinutes)
             ? `${selectedActivityRate?.durationMinutes ?? activity.durationMinutes} minutes`
             : null,
@@ -3662,6 +3666,7 @@ export class QuotesService {
     const requestedSellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
     const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
     const selectedActivitySellPrice = Number(selectedActivityRate?.sellPrice ?? activity?.sellPrice ?? 0);
+    const activityPricingPaxCount = activity ? Math.max(1, Number(participantCount ?? paxCount)) : paxCount;
     const effectiveRequestedSellPriceOverride =
       activity && selectedActivityRate && requestedSellPriceOverride === 0 && selectedActivitySellPrice > 0
         ? null
@@ -3671,7 +3676,7 @@ export class QuotesService {
         ? this.calculateCentralizedQuoteItemPricing({
             service: effectiveService,
             quantity,
-            paxCount,
+            paxCount: activityPricingPaxCount,
             roomCount,
             nightCount,
             dayCount,
@@ -3690,11 +3695,12 @@ export class QuotesService {
     const sellPriceOverride = effectiveRequestedSellPriceOverride ?? activitySellPriceOverride;
 
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
+    const persistedQuantity = activityRequiredUnits ?? transportQuantity;
 
     const basePricing = this.calculateCentralizedQuoteItemPricing({
       service: effectiveService,
       quantity: transportQuantity,
-      paxCount,
+      paxCount: activity ? activityPricingPaxCount : paxCount,
       roomCount,
       nightCount,
       dayCount,
@@ -3770,8 +3776,8 @@ export class QuotesService {
         roomCategoryId,
         occupancyType,
         mealPlan,
-        quantity: transportQuantity,
-        paxCount,
+        quantity: persistedQuantity,
+        paxCount: activity ? activityPricingPaxCount : paxCount,
         roomCount,
         nightCount,
         dayCount,

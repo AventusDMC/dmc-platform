@@ -1694,6 +1694,44 @@ test('ticketing service variant prices selected entrance ticket option', async (
   assert.match(values.data.pricingDescription, /Petra Entrance Ticket \| 2 Days \| Entrance fee/);
 });
 
+test('ticketing service without variants converts entrance fee from JOD into quote currency', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'USD',
+    },
+    service: {
+      name: 'Ajloun Castle & Mar Elias Entrance Ticket',
+      category: 'ticketing',
+      unitType: 'per_person',
+      baseCost: 3,
+      currency: 'JOD',
+      costBaseAmount: 3,
+      costCurrency: 'JOD',
+      serviceType: { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+      entranceFee: {
+        id: 'entrance-ajloun',
+        siteName: 'Ajloun Castle & Mar Elias Entrance Ticket',
+        foreignerFeeJod: 3,
+        includedInJordanPass: true,
+      },
+    },
+    serviceRate: null,
+    item: {
+      paxCount: 21,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.entranceFeeId, 'entrance-ajloun');
+  assert.equal(values.data.costBaseAmount, 3);
+  assert.equal(values.data.costCurrency, 'JOD');
+  assert.equal(values.data.quoteCurrency, 'USD');
+  assert.equal(values.data.totalCost, 88.83);
+  assert.equal(values.data.totalSell, 88.83);
+  assert.equal(values.data.fxFromCurrency, 'JOD');
+  assert.equal(values.data.fxToCurrency, 'USD');
+});
+
 test('ticketing variant can override Jordan Pass eligibility', async () => {
   const values = await resolveServiceRateQuoteItem({
     quote: {
@@ -1861,12 +1899,13 @@ test('activity rate variant capacity pricing calculates required jeep units', as
   });
 
   assert.equal(values.data.activityRateVariantId, 'variant-2h');
-  assert.equal(values.data.quantity, 1);
+  assert.equal(values.data.quantity, 4);
   assert.equal(values.data.paxCount, 21);
   assert.equal(values.data.totalCost, 360);
   assert.equal(values.data.totalSell, 480);
   assert.match(values.data.pricingDescription, /2 Hours/);
   assert.match(values.data.pricingDescription, /Capacity 6 pax\/unit/);
+  assert.match(values.data.pricingDescription, /Required units 4/);
 });
 
 test('activity rate variant sell price is not masked by zero sell override from quote add flow', async () => {
@@ -1906,10 +1945,53 @@ test('activity rate variant sell price is not masked by zero sell override from 
   });
 
   assert.equal(values.data.activityRateVariantId, 'variant-2h');
+  assert.equal(values.data.quantity, 3);
   assert.equal(values.data.costBaseAmount, 75.2);
   assert.equal(values.data.totalCost, 225.6);
   assert.equal(values.data.sellPrice, 360);
   assert.equal(values.data.totalSell, 360);
+});
+
+test('activity rate variant capacity uses participant count when generic pax count is stale', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 0,
+      costBaseAmount: 0,
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    activity: {
+      id: 'activity-1',
+      name: 'Wadi Rum Jeep Tour',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 90,
+      sellPrice: 120,
+    },
+    activityRateVariant: {
+      id: 'variant-2h',
+      activityId: 'activity-1',
+      name: '2 Hours',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 90,
+      sellPrice: 120,
+      maxPaxPerUnit: 6,
+    },
+    item: {
+      activityId: 'activity-1',
+      activityRateVariantId: 'variant-2h',
+      participantCount: 21,
+      paxCount: 1,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.quantity, 4);
+  assert.equal(values.data.paxCount, 21);
+  assert.equal(values.data.participantCount, 21);
+  assert.equal(values.data.totalCost, 360);
+  assert.equal(values.data.totalSell, 480);
 });
 
 test('activity rate variant currency wins over service currency for quote pricing', async () => {

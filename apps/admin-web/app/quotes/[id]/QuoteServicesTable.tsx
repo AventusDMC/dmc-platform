@@ -141,6 +141,18 @@ type QuoteItem = {
   markupPercent: number;
   totalCost: number;
   totalSell: number;
+  activityRateVariant?: {
+    id: string;
+    name: string;
+    durationMinutes: number | null;
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+    currency: string;
+    costPrice: number;
+    sellPrice: number;
+    maxPaxPerUnit: number | null;
+    active: boolean;
+    notes?: string | null;
+  } | null;
   service: SupplierService;
   appliedVehicleRate: {
     id: string;
@@ -264,6 +276,14 @@ function formatMoney(value: number, currency = 'USD') {
 }
 
 function getCapacityPricingHelper(item: QuoteItem, services: SupplierService[]) {
+  const activityMaxPaxPerUnit = Number(item.activityRateVariant?.maxPaxPerUnit || 0);
+  const activityPax = Number(item.participantCount || item.paxCount || 0);
+
+  if (item.activityRateVariant && activityPax > 0 && activityMaxPaxPerUnit > 0) {
+    const units = Math.ceil(activityPax / activityMaxPaxPerUnit);
+    return `${units} unit${units === 1 ? '' : 's'} required (ceil(${activityPax} pax / ${activityMaxPaxPerUnit} pax per unit))`;
+  }
+
   const catalogService = services.find((service) => service.id === item.service.id);
   const serviceRates = item.service.serviceRates?.length ? item.service.serviceRates : catalogService?.serviceRates;
   const rate = serviceRates?.find(
@@ -876,6 +896,7 @@ function QuoteServiceRow({
                 hotelRates={hotelRates}
                 seasons={seasons}
                 quoteType={quote.quoteType}
+                quoteCurrency={quote.quoteCurrency}
                 defaultPaxCount={totalPax}
                 defaultAdultCount={quote.adults}
                 defaultChildCount={quote.children}
