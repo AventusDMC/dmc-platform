@@ -85,6 +85,7 @@ type ContractPreview = {
     name: string;
     city: string;
     category: string;
+    hotelCategoryId?: string | null;
   };
   roomCategories: Array<{ name: string; code?: string | null; description?: string | null; uncertain?: boolean }>;
   seasons: Array<{ name: string; validFrom?: string | null; validTo?: string | null; uncertain?: boolean }>;
@@ -1940,6 +1941,9 @@ export class ContractImportsService {
 
   private async ensureHotel(preview: ContractPreview, supplierId: string) {
     const name = preview.hotel?.name?.trim() || preview.supplier.name.trim();
+    const hotelCategory = preview.hotel?.hotelCategoryId
+      ? await this.prisma.hotelCategory.findUnique({ where: { id: preview.hotel.hotelCategoryId } })
+      : null;
     const existing = await this.prisma.hotel.findFirst({
       where: {
         supplierId,
@@ -1949,7 +1953,8 @@ export class ContractImportsService {
     const data = {
       name,
       city: preview.hotel?.city?.trim() || 'Amman',
-      category: preview.hotel?.category?.trim() || 'Unclassified',
+      category: hotelCategory?.name || preview.hotel?.category?.trim() || existing?.category || 'Unclassified',
+      hotelCategoryId: hotelCategory?.id || existing?.hotelCategoryId || null,
       supplierId,
     };
     return existing
@@ -2351,6 +2356,7 @@ export class ContractImportsService {
             name: this.optionalString(value.hotel.name),
             city: this.optionalString(value.hotel.city) || 'Amman',
             category: this.optionalString(value.hotel.category) || 'Unclassified',
+            hotelCategoryId: this.optionalString(value.hotel.hotelCategoryId) || null,
           }
         : undefined,
       roomCategories: Array.isArray(value.roomCategories)

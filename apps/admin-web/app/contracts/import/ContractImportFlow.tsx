@@ -1,7 +1,9 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
+import { HotelCategoryCombobox } from '../../components/HotelCategoryCombobox';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
+import { HotelCategoryOption } from '../../lib/hotelCategories';
 
 type Supplier = {
   id: string;
@@ -85,6 +87,7 @@ type ContractPreview = {
     name: string;
     city: string;
     category: string;
+    hotelCategoryId?: string | null;
   };
   roomCategories?: Array<{ name: string; code?: string | null; description?: string | null; uncertain?: boolean }>;
   seasons?: Array<{ name: string; validFrom?: string | null; validTo?: string | null; uncertain?: boolean }>;
@@ -123,6 +126,7 @@ type ContractConflict = {
 
 type ContractImportFlowProps = {
   suppliers: Supplier[];
+  hotelCategories: HotelCategoryOption[];
 };
 
 function emptyPreview(contractType: ContractPreview['contractType']): ContractPreview {
@@ -139,6 +143,51 @@ function emptyPreview(contractType: ContractPreview['contractType']): ContractPr
     missingFields: [],
     uncertainFields: [],
   };
+}
+
+function humanizeKey(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function formatPreviewValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => formatPreviewValue(entry))
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, entryValue]) => {
+        const formattedValue = formatPreviewValue(entryValue);
+        return formattedValue ? `${humanizeKey(key)}: ${formattedValue}` : '';
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+  return String(value);
+}
+
+function normalizeCategoryName(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function findHotelCategoryByName(hotelCategories: HotelCategoryOption[], value: unknown): HotelCategoryOption | null {
+  const normalized = normalizeCategoryName(value);
+  if (!normalized || normalized === 'unclassified') return null;
+  return hotelCategories.find((category) => normalizeCategoryName(category.name) === normalized) || null;
 }
 
 function stringifyPolicy(value: unknown, fallback: string) {
@@ -297,7 +346,7 @@ function deriveChildPolicy(ratePolicies: RatePolicyPreview[]) {
   return rules.length > 0 ? { rules } : null;
 }
 
-function mapExtractedToUI(extractedJson: unknown): ContractPreview {
+function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategoryOption[] = []): ContractPreview {
   const source = (extractedJson && typeof extractedJson === 'object' ? extractedJson : {}) as Record<string, any>;
   const contractType = String(source.contractType || 'HOTEL').toUpperCase() as ContractPreview['contractType'];
   const contract = source.contract && typeof source.contract === 'object' ? source.contract : {};
@@ -349,6 +398,11 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
       }))
     : [];
   const childPolicy = mapSourceChildPolicy(source, String(contract.currency || source.currency || 'JOD')) || deriveChildPolicy(ratePolicies);
+  const importedHotelCategoryId = String(hotel.hotelCategoryId || source.hotelCategoryId || '').trim();
+  const importedHotelCategoryName = String(hotel.category || source.category || '').trim();
+  const matchedHotelCategory = importedHotelCategoryId
+    ? hotelCategories.find((category) => category.id === importedHotelCategoryId) || null
+    : findHotelCategoryByName(hotelCategories, importedHotelCategoryName);
 
   return {
     contractType,
@@ -369,7 +423,8 @@ function mapExtractedToUI(extractedJson: unknown): ContractPreview {
         ? {
             name: String(hotel.name || source.hotelName || supplier.name || ''),
             city: String(hotel.city || source.city || 'Amman'),
-            category: String(hotel.category || source.category || 'Unclassified'),
+            category: matchedHotelCategory?.name || importedHotelCategoryName || 'Unclassified',
+            hotelCategoryId: matchedHotelCategory?.id || importedHotelCategoryId || null,
           }
         : undefined,
     roomCategories: Array.isArray(source.roomCategories) ? source.roomCategories : [],
@@ -418,7 +473,7 @@ function normalizeCancellationPolicy(value: unknown): CancellationPolicyPreview 
   };
 }
 
-export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
+export function ContractImportFlow({ suppliers, hotelCategories }: ContractImportFlowProps) {
   const [contractType, setContractType] = useState<ContractPreview['contractType']>('HOTEL');
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
@@ -492,7 +547,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
         throw new Error('Contract analysis did not return extracted preview data.');
       }
 
-      const mappedPreview = mapExtractedToUI(data.extractedJson);
+      const mappedPreview = mapExtractedToUI(data.extractedJson, hotelCategories);
       setContractImport(data);
       setPreview(mappedPreview);
       setMessage('Contract analyzed. Review and edit extracted values before approval.');
@@ -514,7 +569,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
       const response = await fetch(`/api/contract-imports/${contractImport.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: contractImport.extractedJson, mode }),
+        body: JSON.stringify({ data: preview, mode }),
       });
 
       if (!response.ok) {
@@ -529,7 +584,7 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
       }
 
       const data = await readJsonResponse<ContractImport>(response, 'Contract import approve');
-      const mappedPreview = mapExtractedToUI(data.approvedJson || data.extractedJson);
+      const mappedPreview = mapExtractedToUI(data.approvedJson || data.extractedJson, hotelCategories);
       setContractImport(data);
       setPreview(mappedPreview);
       setContractConflict(null);
@@ -563,6 +618,18 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
     setPreview((current) => ({
       ...current,
       hotel: { ...(current.hotel || { name: '', city: '', category: '' }), [field]: value },
+    }));
+  }
+
+  function updateHotelCategoryId(value: string) {
+    const selectedCategory = hotelCategories.find((category) => category.id === value) || null;
+    setPreview((current) => ({
+      ...current,
+      hotel: {
+        ...(current.hotel || { name: '', city: '', category: '' }),
+        hotelCategoryId: value || null,
+        category: selectedCategory?.name || current.hotel?.category || '',
+      },
     }));
   }
 
@@ -863,10 +930,20 @@ export function ContractImportFlow({ suppliers }: ContractImportFlowProps) {
                   City
                   <input value={preview.hotel?.city || ''} onChange={(event) => updateHotel('city', event.target.value)} />
                 </label>
-                <label>
-                  Category
-                  <input value={preview.hotel?.category || ''} onChange={(event) => updateHotel('category', event.target.value)} />
-                </label>
+                <HotelCategoryCombobox
+                  label="Category"
+                  hotelCategories={hotelCategories}
+                  value={preview.hotel?.hotelCategoryId || ''}
+                  onChange={updateHotelCategoryId}
+                  placeholder="Search active categories"
+                />
+                {!preview.hotel?.hotelCategoryId ? (
+                  <p className="form-helper">
+                    {preview.hotel?.category && preview.hotel.category !== 'Unclassified'
+                      ? `Imported category "${preview.hotel.category}" is not linked to a standard category. Select one before approval.`
+                      : 'Select a standard hotel category before approval.'}
+                  </p>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -1081,12 +1158,15 @@ function PreviewList({ title, items, empty }: { title: string; items: Array<Reco
         <div className="summary-strip">
           {items.map((item, index) => (
             <div className="summary-card" key={index}>
-              {Object.entries(item).map(([key, value]) => (
-                <p key={key}>
-                  <span>{key}</span>
-                  <strong>{String(value)}</strong>
-                </p>
-              ))}
+              {Object.entries(item)
+                .map(([key, value]) => [key, formatPreviewValue(value)] as const)
+                .filter(([, value]) => value)
+                .map(([key, value]) => (
+                  <p key={key}>
+                    <span>{humanizeKey(key)}</span>
+                    <strong>{value}</strong>
+                  </p>
+                ))}
             </div>
           ))}
         </div>

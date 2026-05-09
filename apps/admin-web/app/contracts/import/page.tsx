@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { HotelCategoryOption } from '../../lib/hotelCategories';
 import { ContractImportFlow } from './ContractImportFlow';
 
 type Supplier = {
@@ -14,8 +15,14 @@ async function getSuppliers() {
   });
 }
 
+async function getHotelCategories() {
+  return adminPageFetchJson<HotelCategoryOption[]>(`${ADMIN_API_BASE_URL}/hotel-categories?active=true`, 'Contract import hotel categories', {
+    cache: 'no-store',
+  });
+}
+
 export default async function ImportContractPage() {
-  const suppliers = await getSuppliers();
+  const [suppliers, hotelCategories] = await Promise.all([getSuppliers(), getHotelCategories()]);
 
   return (
     <main className="page">
@@ -33,7 +40,7 @@ export default async function ImportContractPage() {
               Import history
             </Link>
           </div>
-          <ContractImportFlow suppliers={suppliers} />
+          <ContractImportFlow suppliers={suppliers} hotelCategories={hotelCategories} />
         </div>
       </section>
     </main>
