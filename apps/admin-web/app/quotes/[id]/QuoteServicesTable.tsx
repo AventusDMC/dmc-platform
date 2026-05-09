@@ -896,7 +896,7 @@ function QuoteServiceRow({
                 hotelRates={hotelRates}
                 seasons={seasons}
                 quoteType={quote.quoteType}
-                quoteCurrency={quote.quoteCurrency}
+                quoteCurrency={currentItem.currency}
                 defaultPaxCount={totalPax}
                 defaultAdultCount={quote.adults}
                 defaultChildCount={quote.children}
