@@ -2695,6 +2695,92 @@ export class QuotesService {
     };
   }
 
+  async detachItemHotelContract(quoteId: string, itemId: string, actor?: CompanyScopedActor) {
+    const actorCompanyId = requireActorCompanyId(actor);
+    const item = (await this.prisma.quoteItem.findFirst({
+      where: {
+        id: itemId,
+        quoteId,
+      },
+      include: {
+        quote: {
+          select: {
+            id: true,
+            status: true,
+            acceptedVersionId: true,
+            clientCompanyId: true,
+            brandCompanyId: true,
+            invoice: { select: { id: true } },
+            bookings: { select: { id: true }, take: 1 },
+          },
+        },
+      },
+    } as any)) as any;
+
+    if (!item) {
+      throw new BadRequestException('Quote item not found');
+    }
+
+    if (item.quote.clientCompanyId !== actorCompanyId && item.quote.brandCompanyId !== actorCompanyId) {
+      throw new BadRequestException('Quote item not found');
+    }
+
+    if (item.quote.status !== QuoteStatus.DRAFT) {
+      throw new BadRequestException('Only draft quote items can detach hotel contracts');
+    }
+
+    if (item.quote.acceptedVersionId || item.quote.invoice || item.quote.bookings?.length) {
+      throw new BadRequestException('Booked or invoiced quote items cannot detach hotel contracts');
+    }
+
+    const linkedBookingService = await this.prisma.bookingService.findFirst({
+      where: { sourceQuoteItemId: item.id },
+      select: { id: true },
+    });
+
+    if (linkedBookingService) {
+      throw new BadRequestException('Booked quote items cannot detach hotel contracts');
+    }
+
+    const updatedItem = await this.prisma.quoteItem.update({
+      where: { id: item.id },
+      data: {
+        contractId: null,
+        seasonName: null,
+        roomCategoryId: null,
+        occupancyType: null,
+        mealPlan: null,
+      },
+      include: {
+        service: {
+          include: {
+            serviceType: true,
+            serviceRates: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+        activity: { include: { supplierCompany: true } },
+        itinerary: true,
+        hotel: true,
+        contract: true,
+        roomCategory: true,
+        appliedVehicleRate: {
+          include: {
+            vehicle: true,
+            serviceType: true,
+            supplier: true,
+          },
+        },
+      },
+    } as any);
+
+    await this.recalculateQuoteTotals(item.quoteId);
+
+    return this.hydrateOneOffExternalPackageItem(updatedItem);
+  }
+
   async assignServiceToItem(quoteId: string, itemId: string, serviceId: string, actor?: CompanyScopedActor) {
     const quote = await this.assertQuoteMutationAccess(quoteId, actor);
     const [item, service] = await Promise.all([

@@ -474,6 +474,8 @@ export function QuoteItemCard({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(isUnmatchedImportedService(item.service));
   const [suggestionsError, setSuggestionsError] = useState('');
   const [assigningServiceId, setAssigningServiceId] = useState('');
+  const [detachingContract, setDetachingContract] = useState(false);
+  const [detachContractError, setDetachContractError] = useState('');
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
   const isExternalPackage = isExternalPackageItem(currentItem);
   const hotelItemSummary = getHotelItemSummary(currentItem);
@@ -598,6 +600,35 @@ export function QuoteItemCard({
     }
   }
 
+  async function handleDetachContract() {
+    if (!currentItem.contractId || !window.confirm('Detach the hotel contract from this draft quote item?')) {
+      return;
+    }
+
+    setDetachingContract(true);
+    setDetachContractError('');
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quote.id}/items/${currentItem.id}/detach-contract`, {
+        method: 'PATCH',
+        headers: buildAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not detach hotel contract.'));
+      }
+
+      const updatedItem = await readJsonResponse<QuoteItem>(response, 'Could not detach hotel contract.');
+      setCurrentItem(updatedItem);
+      window.dispatchEvent(new CustomEvent('dmc:quote-pricing-stale', { detail: { quoteId: quote.id } }));
+      router.refresh();
+    } catch (caughtError) {
+      setDetachContractError(caughtError instanceof Error ? caughtError.message : 'Could not detach hotel contract.');
+    } finally {
+      setDetachingContract(false);
+    }
+  }
+
   return (
     <div>
       <article className="quote-item-row" data-activity-id={currentItem.activityId || currentItem.activity?.id || undefined}>
@@ -714,6 +745,17 @@ export function QuoteItemCard({
             </p>
           ) : null}
           {reconfirmationWarning ? <p className="form-error">{reconfirmationWarning}</p> : null}
+          {detachContractError ? <p className="form-error">{detachContractError}</p> : null}
+          {currentItem.contractId ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleDetachContract}
+              disabled={detachingContract}
+            >
+              {detachingContract ? 'Detaching...' : 'Detach contract from quote item'}
+            </button>
+          ) : null}
           {currentItem.appliedVehicleRate ? (
             <p>
               {currentItem.appliedVehicleRate.routeName} | {formatTransportVehicleDisplay(currentItem.appliedVehicleRate.vehicle)} |{' '}

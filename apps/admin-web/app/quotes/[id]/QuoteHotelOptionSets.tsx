@@ -573,6 +573,7 @@ function HotelOptionSetCard({
           <h3>{optionSet.name}</h3>
           {isSelected ? <p className="detail-copy">Editing: {optionSet.name}</p> : null}
           <p className="detail-copy">{optionSet.notes || 'No notes yet.'}</p>
+          <p className="detail-copy">Deleting accommodation options here only removes option alternatives; it does not detach contracted hotel quote items.</p>
         </div>
         <button className="compact-button" type="button" onClick={deleteOptionSet}>Delete Accommodation Option Set</button>
       </div>

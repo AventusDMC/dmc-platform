@@ -970,6 +970,22 @@ export class QuotesController {
     return this.quotesService.removeItem(itemId, actor);
   }
 
+  @Patch(':id/items/:itemId/detach-contract')
+  @Roles('admin', 'viewer', 'finance')
+  async detachItemHotelContract(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.detachItemHotelContract(id, itemId, actor);
+  }
+
   @Get(':id/options')
   async findOptions(@Param('id') id: string) {
     const quote = await this.quotesService.findOne(id);
