@@ -2370,6 +2370,7 @@ export function QuoteItemsForm({
         throw new Error('Hotel catalog service not found for this stay.');
       }
 
+      const hasManualSellOverride = sellPrice.trim().length > 0;
       const quoteItemPayload = {
         serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId,
         activityId: isActivityService && activityId ? activityId : undefined,
@@ -2414,7 +2415,8 @@ export function QuoteItemsForm({
         overrideReason: useOverride ? overrideReason.trim() || null : null,
         useOverride,
         markupAmount: markupAmount.trim() ? Number(markupAmount) : null,
-        sellPrice: sellPrice.trim() ? Number(sellPrice) : null,
+        sellPrice: isActivityService && activityRateVariantId && !hasManualSellOverride ? null : hasManualSellOverride ? Number(sellPrice) : null,
+        sellPriceOverrideExplicit: hasManualSellOverride,
         markupPercent: Number(markupPercent),
         transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
         vehicleRateId: isTransportService ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,

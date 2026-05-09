@@ -129,6 +129,7 @@ type CreateQuoteItemBody = {
   useOverride?: boolean;
   markupAmount?: number | null;
   sellPrice?: number | null;
+  sellPriceOverrideExplicit?: boolean;
   currency?: string | null;
   markupPercent?: number;
   transportServiceTypeId?: string;
@@ -824,6 +825,7 @@ export class QuotesController {
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
       markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
       sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      sellPriceOverrideExplicit: body.sellPriceOverrideExplicit === undefined ? undefined : Boolean(body.sellPriceOverrideExplicit),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
@@ -916,6 +918,7 @@ export class QuotesController {
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
       markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
       sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      sellPriceOverrideExplicit: body.sellPriceOverrideExplicit === undefined ? undefined : Boolean(body.sellPriceOverrideExplicit),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
@@ -1216,6 +1219,7 @@ export class QuotesController {
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
       markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
       sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      sellPriceOverrideExplicit: body.sellPriceOverrideExplicit === undefined ? undefined : Boolean(body.sellPriceOverrideExplicit),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
@@ -1308,6 +1312,7 @@ export class QuotesController {
       useOverride: body.useOverride === undefined ? undefined : Boolean(body.useOverride),
       markupAmount: body.markupAmount === undefined ? undefined : body.markupAmount === null ? null : Number(body.markupAmount),
       sellPrice: body.sellPrice === undefined ? undefined : body.sellPrice === null ? null : Number(body.sellPrice),
+      sellPriceOverrideExplicit: body.sellPriceOverrideExplicit === undefined ? undefined : Boolean(body.sellPriceOverrideExplicit),
       currency: body.currency === undefined ? undefined : (body.currency || '').trim(),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,

@@ -115,6 +115,10 @@ function getPositiveNumber(value: number | null | undefined, fallback: number) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function hasPositiveValue(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 function getServiceKind(item: PricingDiagnosticQuoteItem) {
   const service = item.service;
   const category = normalize(service?.category);
@@ -196,10 +200,10 @@ function getOverrideStatus(item: PricingDiagnosticQuoteItem) {
   if (item.useOverride && hasValue(item.overrideCost)) {
     statuses.push('Cost override active');
   }
-  if (hasValue(item.sellPrice)) {
+  if (hasPositiveValue(item.sellPrice)) {
     statuses.push('Sell override active');
   }
-  if (hasValue(item.markupAmount)) {
+  if (hasPositiveValue(item.markupAmount)) {
     statuses.push('Markup amount active');
   }
   if (!statuses.length && hasValue(item.markupPercent)) {

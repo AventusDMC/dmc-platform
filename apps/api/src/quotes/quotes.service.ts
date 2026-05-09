@@ -187,6 +187,7 @@ type CreateQuoteItemInput = {
   useOverride?: boolean;
   markupAmount?: number | null;
   sellPrice?: number | null;
+  sellPriceOverrideExplicit?: boolean;
   currency?: string | null;
   markupPercent: number;
   transportServiceTypeId?: string;
@@ -3667,9 +3668,14 @@ export class QuotesService {
     const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
     const selectedActivitySellPrice = Number(selectedActivityRate?.sellPrice ?? activity?.sellPrice ?? 0);
     const activityPricingPaxCount = activity ? Math.max(1, Number(participantCount ?? paxCount)) : paxCount;
+    const hasSelectedActivityVariantSell = Boolean(activity && selectedActivityRate && selectedActivitySellPrice > 0);
+    const manualActivitySellOverride =
+      hasSelectedActivityVariantSell && data.sellPriceOverrideExplicit === true && requestedSellPriceOverride !== null && requestedSellPriceOverride > 0
+        ? requestedSellPriceOverride
+        : null;
     const effectiveRequestedSellPriceOverride =
-      activity && selectedActivityRate && requestedSellPriceOverride === 0 && selectedActivitySellPrice > 0
-        ? null
+      hasSelectedActivityVariantSell
+        ? manualActivitySellOverride
         : requestedSellPriceOverride;
     const activitySellPriceOverride =
       activity && effectiveRequestedSellPriceOverride === null
@@ -3693,6 +3699,7 @@ export class QuotesService {
           }).totalCost
         : null;
     const sellPriceOverride = effectiveRequestedSellPriceOverride ?? activitySellPriceOverride;
+    const persistedSellPriceOverride = effectiveRequestedSellPriceOverride;
 
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
     const persistedQuantity = activityRequiredUnits ?? transportQuantity;
@@ -3784,7 +3791,7 @@ export class QuotesService {
         baseCost: this.isHotelService(effectiveService) ? baseCost : basePricing.totalCost,
         finalCost: pricing.totalCost,
         markupAmount,
-        sellPrice: sellPriceOverride,
+        sellPrice: persistedSellPriceOverride,
         costBaseAmount: supplierCostBaseAmount,
         costCurrency: supplierCostCurrency,
         quoteCurrency,

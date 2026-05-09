@@ -1948,8 +1948,60 @@ test('activity rate variant sell price is not masked by zero sell override from 
   assert.equal(values.data.quantity, 3);
   assert.equal(values.data.costBaseAmount, 75.2);
   assert.equal(values.data.totalCost, 225.6);
-  assert.equal(values.data.sellPrice, 360);
+  assert.equal(values.data.sellPrice, null);
   assert.equal(values.data.totalSell, 360);
+});
+
+test('fresh activity variant add ignores zero sell payload without explicit override flag', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'USD',
+    },
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 0,
+      costBaseAmount: 0,
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    activity: {
+      id: 'activity-1',
+      name: 'Wadi Rum Jeep Tour',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 0,
+      sellPrice: 0,
+      currency: 'JOD',
+    },
+    activityRateVariant: {
+      id: 'variant-2h-rum',
+      activityId: 'activity-1',
+      name: '2h Rum Area',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 40,
+      sellPrice: 50,
+      currency: 'JOD',
+      maxPaxPerUnit: 6,
+    },
+    item: {
+      activityId: 'activity-1',
+      activityRateVariantId: 'variant-2h-rum',
+      participantCount: 21,
+      paxCount: 21,
+      sellPrice: 0,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.activityRateVariantId, 'variant-2h-rum');
+  assert.equal(values.data.quantity, 4);
+  assert.equal(values.data.costBaseAmount, 40);
+  assert.equal(values.data.costCurrency, 'JOD');
+  assert.equal(values.data.quoteCurrency, 'USD');
+  assert.equal(values.data.totalCost, 225.6);
+  assert.equal(values.data.sellPrice, null);
+  assert.equal(values.data.totalSell, 282);
+  assert.equal(Number((values.data.totalSell - values.data.totalCost).toFixed(2)), 56.4);
 });
 
 test('activity rate variant capacity uses participant count when generic pax count is stale', async () => {

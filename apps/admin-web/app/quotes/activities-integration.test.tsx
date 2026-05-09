@@ -12,6 +12,7 @@ const quoteVersionPageSource = readFileSync(new URL('./[id]/versions/[versionId]
 const bookingPageSource = readFileSync(new URL('../bookings/[id]/page.tsx', import.meta.url), 'utf8');
 const bookingCssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
 const serviceTaxonomySource = readFileSync(new URL('../lib/service-taxonomy.ts', import.meta.url), 'utf8');
+const pricingDiagnosticsSource = readFileSync(new URL('./[id]/pricing-diagnostics.ts', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -112,6 +113,22 @@ describe('activities quote and booking UI integration regression', () => {
       'function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[])',
       'Pricing service',
       'activityId: isActivityService && activityId ? activityId : undefined',
+    ]);
+  });
+
+  it('does not submit activity variant sell override unless manually entered', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./[id]/QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const hasManualSellOverride = sellPrice.trim().length > 0;',
+      'sellPrice: isActivityService && activityRateVariantId && !hasManualSellOverride ? null : hasManualSellOverride ? Number(sellPrice) : null',
+      'sellPriceOverrideExplicit: hasManualSellOverride',
+    ]);
+
+    expectSourceContains(pricingDiagnosticsSource, [
+      'function hasPositiveValue(value: number | null | undefined)',
+      'if (hasPositiveValue(item.sellPrice))',
+      'statuses.push(\'Sell override active\');',
     ]);
   });
 
