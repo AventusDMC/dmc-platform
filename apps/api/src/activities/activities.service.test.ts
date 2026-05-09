@@ -13,6 +13,10 @@ function createActivitiesService(overrides: Partial<any> = {}) {
     $transaction: async (callback: any) => callback(prisma),
     activityRateVariant: {
       deleteMany: async () => ({ count: 0 }),
+      findMany: async () => [],
+      update: async ({ data }: any) => ({ id: 'variant-1', ...data }),
+      create: async ({ data }: any) => ({ id: 'variant-2', ...data }),
+      updateMany: async () => ({ count: 0 }),
     },
     activity: {
       create: async ({ data, include }: any) => ({
@@ -148,6 +152,130 @@ test('create activity persists multiple structured rate variants', async () => {
   });
   assert.equal(createdData.rateVariants.create[1].name, 'Full Day');
   assert.equal(createdData.rateVariants.create[1].sortOrder, 1);
+});
+
+test('update activity variants preserves existing variant ids and deactivates removed variants', async () => {
+  const variantActions: any[] = [];
+  const { service } = createActivitiesService({
+    activityRateVariant: {
+      findMany: async () => [{ id: 'variant-1' }, { id: 'variant-removed' }],
+      update: async ({ where, data }: any) => {
+        variantActions.push({ action: 'update', where, data });
+        return { id: where.id, ...data };
+      },
+      create: async ({ data }: any) => {
+        variantActions.push({ action: 'create', data });
+        return { id: 'variant-new', ...data };
+      },
+      updateMany: async ({ where, data }: any) => {
+        variantActions.push({ action: 'updateMany', where, data });
+        return { count: 1 };
+      },
+    },
+    activity: {
+      findUnique: async ({ where, include }: any) => ({
+        id: where.id,
+        name: 'Wadi Rum Jeep Tour',
+        supplierCompanyId: 'supplier-company-1',
+        rateVariants: include?.rateVariants ? [] : undefined,
+      }),
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+  });
+
+  await service.update('activity-1', {
+    rateVariants: [
+      {
+        id: 'variant-1',
+        name: '2 Hours VIP',
+        durationMinutes: 120,
+        pricingBasis: 'PER_GROUP',
+        costPrice: 140,
+        sellPrice: 190,
+        maxPaxPerUnit: 6,
+        active: true,
+      },
+      {
+        name: 'Shared Jeep',
+        durationMinutes: 180,
+        pricingBasis: 'PER_PERSON',
+        costPrice: 20,
+        sellPrice: 35,
+        active: true,
+      },
+    ],
+  });
+
+  assert.deepEqual(variantActions[0], {
+    action: 'update',
+    where: { id: 'variant-1' },
+    data: {
+      name: '2 Hours VIP',
+      durationMinutes: 120,
+      pricingBasis: 'PER_GROUP',
+      costPrice: 140,
+      sellPrice: 190,
+      maxPaxPerUnit: 6,
+      active: true,
+      notes: undefined,
+      sortOrder: 0,
+    },
+  });
+  assert.equal(variantActions[1].action, 'create');
+  assert.equal(variantActions[1].data.activityId, 'activity-1');
+  assert.equal(variantActions[1].data.sortOrder, 1);
+  assert.deepEqual(variantActions[2], {
+    action: 'updateMany',
+    where: { id: { in: ['variant-removed'] } },
+    data: { active: false },
+  });
+});
+
+test('duplicate activity clones variants into inactive review copy', async () => {
+  let createdData: any;
+  const { service } = createActivitiesService({
+    activity: {
+      findUnique: async ({ where, include }: any) => ({
+        id: where.id,
+        name: 'Wadi Rum Jeep Tour',
+        description: 'Desert jeep options',
+        supplierCompanyId: 'supplier-company-1',
+        pricingBasis: 'PER_GROUP',
+        costPrice: 90,
+        sellPrice: 120,
+        durationMinutes: 120,
+        active: true,
+        rateVariants: include?.rateVariants
+          ? [
+              {
+                id: 'variant-1',
+                name: '2 Hours',
+                durationMinutes: 120,
+                pricingBasis: 'PER_GROUP',
+                costPrice: 90,
+                sellPrice: 120,
+                maxPaxPerUnit: 6,
+                active: true,
+                notes: 'Private jeep',
+              },
+            ]
+          : undefined,
+      }),
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'activity-copy', ...data };
+      },
+    },
+  });
+
+  const copy = await service.duplicate('activity-1');
+
+  assert.equal(copy.id, 'activity-copy');
+  assert.equal(createdData.name, 'Wadi Rum Jeep Tour Copy');
+  assert.equal(createdData.active, false);
+  assert.equal(createdData.rateVariants.create.length, 1);
+  assert.equal(createdData.rateVariants.create[0].name, '2 Hours');
+  assert.equal(createdData.rateVariants.create[0].maxPaxPerUnit, 6);
 });
 
 test('create and update activity ignore unsupported UI-only fields', async () => {
@@ -291,4 +419,5 @@ test('activity validation rejects unsupported pricing basis and missing supplier
 test('activities write routes remain protected for admin and operations users', () => {
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ActivitiesController.prototype.create), ['admin', 'operations']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ActivitiesController.prototype.update), ['admin', 'operations']);
+  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ActivitiesController.prototype.duplicate), ['admin', 'operations']);
 });

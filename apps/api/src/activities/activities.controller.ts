@@ -47,6 +47,12 @@ export class ActivitiesController {
     });
   }
 
+  @Post(':id/duplicate')
+  @Roles('admin', 'operations')
+  duplicate(@Param('id') id: string) {
+    return this.activitiesService.duplicate(id);
+  }
+
   @Get()
   findAll() {
     return this.activitiesService.findAll();

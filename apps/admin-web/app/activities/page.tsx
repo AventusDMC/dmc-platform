@@ -5,6 +5,7 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+import { ActivityDuplicateButton } from './ActivityDuplicateButton';
 import { Activity, ActivityActor, canManageActivities, formatActivityMoney, formatActivityPricingBasis } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -141,9 +142,12 @@ export default async function ActivitiesPage() {
                           </td>
                           <td>
                             {canCreateOrEdit ? (
-                              <Link href={`/activities/${activity.id}`} className="secondary-button">
-                                Edit
-                              </Link>
+                              <div className="table-action-group">
+                                <Link href={`/activities/${activity.id}`} className="secondary-button">
+                                  Edit
+                                </Link>
+                                <ActivityDuplicateButton activityId={activity.id} />
+                              </div>
                             ) : (
                               <Link href={`/activities/${activity.id}`} className="secondary-button">
                                 View

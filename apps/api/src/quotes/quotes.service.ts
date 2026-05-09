@@ -135,6 +135,7 @@ type CreateQuoteItemInput = {
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  allowInactiveActivityRateVariantId?: string | null;
   itineraryId?: string;
   serviceDate?: Date | null;
   startTime?: string | null;
@@ -2544,6 +2545,8 @@ export class QuotesService {
         data.activityRateVariantId === undefined
           ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined
           : data.activityRateVariantId,
+      allowInactiveActivityRateVariantId:
+        data.activityRateVariantId === undefined ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined : undefined,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
       serviceDate:
         data.serviceDate === undefined ? (existingItem as { serviceDate?: Date | null }).serviceDate ?? undefined : data.serviceDate,
@@ -3058,7 +3061,11 @@ export class QuotesService {
       throw new BadRequestException('Activity rate variant does not belong to the selected activity');
     }
 
-    if (activityRateVariant && activityRateVariant.active === false) {
+    if (
+      activityRateVariant &&
+      activityRateVariant.active === false &&
+      activityRateVariant.id !== data.allowInactiveActivityRateVariantId
+    ) {
       throw new BadRequestException('Activity rate variant is inactive');
     }
 

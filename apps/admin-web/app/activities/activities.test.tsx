@@ -9,6 +9,8 @@ const formSource = readFileSync(new URL('./ActivityForm.tsx', import.meta.url), 
 const typesSource = readFileSync(new URL('./types.ts', import.meta.url), 'utf8');
 const activitiesProxySource = readFileSync(new URL('../api/activities/route.ts', import.meta.url), 'utf8');
 const activityProxySource = readFileSync(new URL('../api/activities/[id]/route.ts', import.meta.url), 'utf8');
+const activityDuplicateProxySource = readFileSync(new URL('../api/activities/[id]/duplicate/route.ts', import.meta.url), 'utf8');
+const duplicateButtonSource = readFileSync(new URL('./ActivityDuplicateButton.tsx', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -143,6 +145,30 @@ describe('activities catalog admin UI regression', () => {
       'const canCreateOrEdit = canManageActivities(actor);',
       'canCreateOrEdit ? (',
       'your role cannot edit catalog records',
+    ]);
+  });
+
+  it('supports operational activity and variant duplication lifecycle controls', () => {
+    expectSourceContains(listPageSource, [
+      '<ActivityDuplicateButton activityId={activity.id} />',
+    ]);
+    expectSourceContains(duplicateButtonSource, [
+      "fetch(`/api/activities/${activityId}/duplicate`",
+      "method: 'POST'",
+      'router.push(`/activities/${duplicatedActivity.id}`)',
+    ]);
+    expectSourceContains(activityDuplicateProxySource, [
+      "`${API_BASE_URL}/activities/${encodeURIComponent(id)}/duplicate`",
+      "'POST'",
+    ]);
+    expectSourceContains(formSource, [
+      'function duplicateVariant(index: number)',
+      'function moveVariant(index: number, direction: -1 | 1)',
+      'Activity changes saved.',
+      "{variant.active ? 'Active' : 'Inactive'}",
+      'Move up',
+      'Move down',
+      'Duplicate',
     ]);
   });
 

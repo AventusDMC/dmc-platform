@@ -57,14 +57,51 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
     initialValues?.rateVariants?.map(toVariantRow) || [],
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState<ApiValidationError[]>([]);
   const isEditing = Boolean(activityId);
+
+  function updateVariant(index: number, updates: Partial<ActivityRateVariantFormRow>) {
+    setSaveState('idle');
+    setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, ...updates } : row)));
+  }
+
+  function duplicateVariant(index: number) {
+    setSaveState('idle');
+    setRateVariants((current) => {
+      const source = current[index];
+      if (!source) return current;
+
+      const duplicatedVariant = {
+        ...source,
+        id: undefined,
+        name: `${source.name || 'Variant'} Copy`,
+        active: true,
+      };
+
+      return [...current.slice(0, index + 1), duplicatedVariant, ...current.slice(index + 1)];
+    });
+  }
+
+  function moveVariant(index: number, direction: -1 | 1) {
+    setSaveState('idle');
+    setRateVariants((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+
+      const next = [...current];
+      const [row] = next.splice(index, 1);
+      next.splice(nextIndex, 0, row);
+      return next;
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
     setValidationErrors([]);
+    setSaveState('idle');
 
     const normalizedCostPrice = Number(costPrice);
     const normalizedSellPrice = Number(sellPrice);
@@ -121,6 +158,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
     }
 
     setIsSubmitting(true);
+    setSaveState('saving');
 
     try {
       const payload = {
@@ -150,6 +188,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
       }
 
       if (isEditing) {
+        setSaveState('saved');
         router.refresh();
       } else {
         router.push('/activities');
@@ -157,6 +196,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
       }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Could not ${isEditing ? 'update' : 'create'} activity.`);
+      setSaveState('idle');
     } finally {
       setIsSubmitting(false);
     }
@@ -223,7 +263,14 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
             <h3>Rate variants</h3>
             <p className="detail-copy">Use variants for duration or capacity-based options under this activity.</p>
           </div>
-          <button type="button" className="secondary-button" onClick={() => setRateVariants((current) => [...current, toVariantRow()])}>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setSaveState('idle');
+              setRateVariants((current) => [...current, toVariantRow()]);
+            }}
+          >
             Add variant
           </button>
         </div>
@@ -238,9 +285,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Label
                   <input
                     value={variant.name}
-                    onChange={(event) =>
-                      setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, name: event.target.value } : row)))
-                    }
+                    onChange={(event) => updateVariant(index, { name: event.target.value })}
                     placeholder="2 Hours"
                     required
                   />
@@ -249,11 +294,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Duration minutes
                   <input
                     value={variant.durationMinutes}
-                    onChange={(event) =>
-                      setRateVariants((current) =>
-                        current.map((row, rowIndex) => (rowIndex === index ? { ...row, durationMinutes: event.target.value } : row)),
-                      )
-                    }
+                    onChange={(event) => updateVariant(index, { durationMinutes: event.target.value })}
                     type="number"
                     min="0"
                   />
@@ -262,13 +303,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Pricing basis
                   <select
                     value={variant.pricingBasis}
-                    onChange={(event) =>
-                      setRateVariants((current) =>
-                        current.map((row, rowIndex) =>
-                          rowIndex === index ? { ...row, pricingBasis: event.target.value as ActivityPricingBasis } : row,
-                        ),
-                      )
-                    }
+                    onChange={(event) => updateVariant(index, { pricingBasis: event.target.value as ActivityPricingBasis })}
                   >
                     <option value="PER_PERSON">Per person</option>
                     <option value="PER_GROUP">Per group</option>
@@ -278,9 +313,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Cost
                   <input
                     value={variant.costPrice}
-                    onChange={(event) =>
-                      setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, costPrice: event.target.value } : row)))
-                    }
+                    onChange={(event) => updateVariant(index, { costPrice: event.target.value })}
                     type="number"
                     min="0"
                     step="0.01"
@@ -291,9 +324,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Sell
                   <input
                     value={variant.sellPrice}
-                    onChange={(event) =>
-                      setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, sellPrice: event.target.value } : row)))
-                    }
+                    onChange={(event) => updateVariant(index, { sellPrice: event.target.value })}
                     type="number"
                     min="0"
                     step="0.01"
@@ -304,11 +335,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Max pax per unit
                   <input
                     value={variant.maxPaxPerUnit}
-                    onChange={(event) =>
-                      setRateVariants((current) =>
-                        current.map((row, rowIndex) => (rowIndex === index ? { ...row, maxPaxPerUnit: event.target.value } : row)),
-                      )
-                    }
+                    onChange={(event) => updateVariant(index, { maxPaxPerUnit: event.target.value })}
                     type="number"
                     min="1"
                     placeholder="6"
@@ -318,24 +345,38 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   Notes
                   <input
                     value={variant.notes}
-                    onChange={(event) =>
-                      setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, notes: event.target.value } : row)))
-                    }
+                    onChange={(event) => updateVariant(index, { notes: event.target.value })}
                   />
                 </label>
                 <label className="checkbox-row">
                   <input
                     type="checkbox"
                     checked={variant.active}
-                    onChange={(event) =>
-                      setRateVariants((current) => current.map((row, rowIndex) => (rowIndex === index ? { ...row, active: event.target.checked } : row)))
-                    }
+                    onChange={(event) => updateVariant(index, { active: event.target.checked })}
                   />
-                  Active
+                  {variant.active ? 'Active' : 'Inactive'}
                 </label>
-                <button type="button" className="secondary-button" onClick={() => setRateVariants((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
-                  Remove
-                </button>
+                <div className="table-action-group">
+                  <button type="button" className="secondary-button" onClick={() => moveVariant(index, -1)} disabled={index === 0}>
+                    Move up
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => moveVariant(index, 1)} disabled={index === rateVariants.length - 1}>
+                    Move down
+                  </button>
+                  <button type="button" className="secondary-button" onClick={() => duplicateVariant(index)}>
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setSaveState('idle');
+                      setRateVariants((current) => current.filter((_, rowIndex) => rowIndex !== index));
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -345,6 +386,8 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
       <button type="submit" disabled={isSubmitting}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save activity' : 'Create activity')}
       </button>
+      {saveState === 'saving' ? <p className="detail-copy">Saving activity changes...</p> : null}
+      {saveState === 'saved' ? <p className="status-text-success">Activity changes saved.</p> : null}
 
       {error ? <p className="form-error">{error}</p> : null}
       {validationErrors.length > 0 ? (

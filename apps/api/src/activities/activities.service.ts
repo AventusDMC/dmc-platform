@@ -21,6 +21,10 @@ type ActivityRateVariantInput = {
   notes?: string | null;
 };
 
+type ActivityRateVariantRecord = ActivityRateVariantInput & {
+  id: string;
+};
+
 type CreateActivityInput = {
   name: string;
   description?: string | null;
@@ -98,7 +102,7 @@ export class ActivitiesService {
 
     return this.prisma.$transaction(async (tx) => {
       if (data.rateVariants !== undefined) {
-        await (tx as any).activityRateVariant.deleteMany({ where: { activityId: id } });
+        await this.syncRateVariants(tx, id, data.rateVariants);
       }
 
       return (tx as any).activity.update({
@@ -114,7 +118,6 @@ export class ActivitiesService {
           durationMinutes:
             data.durationMinutes === undefined ? undefined : this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
           active: data.active === undefined ? undefined : Boolean(data.active),
-          rateVariants: this.buildCreateRateVariants(data.rateVariants),
         },
         include: {
           supplierCompany: true,
@@ -123,6 +126,41 @@ export class ActivitiesService {
           },
         },
       });
+    });
+  }
+
+  async duplicate(id: string) {
+    const source = await this.findOne(id);
+
+    return (this.prisma as any).activity.create({
+      data: {
+        name: `${source.name} Copy`,
+        description: source.description,
+        supplierCompanyId: source.supplierCompanyId,
+        pricingBasis: source.pricingBasis,
+        costPrice: source.costPrice,
+        sellPrice: source.sellPrice,
+        durationMinutes: source.durationMinutes,
+        active: false,
+        rateVariants: this.buildCreateRateVariants(
+          (source.rateVariants || []).map((variant: ActivityRateVariantRecord) => ({
+            name: variant.name,
+            durationMinutes: variant.durationMinutes,
+            pricingBasis: variant.pricingBasis,
+            costPrice: variant.costPrice,
+            sellPrice: variant.sellPrice,
+            maxPaxPerUnit: variant.maxPaxPerUnit,
+            active: variant.active,
+            notes: variant.notes,
+          })),
+        ),
+      },
+      include: {
+        supplierCompany: true,
+        rateVariants: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
     });
   }
 
@@ -156,18 +194,61 @@ export class ActivitiesService {
     }
 
     return {
-      create: variants.map((variant, index) => ({
-        name: requireTrimmedString(variant.name, `rateVariants[${index}].name`),
-        durationMinutes: this.normalizeOptionalPositiveInteger(variant.durationMinutes, `rateVariants[${index}].durationMinutes`),
-        pricingBasis: this.normalizePricingBasis(variant.pricingBasis),
-        costPrice: ensureValidNumber(variant.costPrice, `rateVariants[${index}].costPrice`, { min: 0 }),
-        sellPrice: ensureValidNumber(variant.sellPrice, `rateVariants[${index}].sellPrice`, { min: 0 }),
-        maxPaxPerUnit: this.normalizeOptionalPositiveInteger(variant.maxPaxPerUnit, `rateVariants[${index}].maxPaxPerUnit`),
-        active: variant.active === undefined ? true : Boolean(variant.active),
-        notes: normalizeOptionalString(variant.notes),
-        sortOrder: index,
-      })),
+      create: variants.map((variant, index) => this.buildRateVariantData(variant, index)),
     };
+  }
+
+  private buildRateVariantData(variant: ActivityRateVariantInput, index: number) {
+    return {
+      name: requireTrimmedString(variant.name, `rateVariants[${index}].name`),
+      durationMinutes: this.normalizeOptionalPositiveInteger(variant.durationMinutes, `rateVariants[${index}].durationMinutes`),
+      pricingBasis: this.normalizePricingBasis(variant.pricingBasis),
+      costPrice: ensureValidNumber(variant.costPrice, `rateVariants[${index}].costPrice`, { min: 0 }),
+      sellPrice: ensureValidNumber(variant.sellPrice, `rateVariants[${index}].sellPrice`, { min: 0 }),
+      maxPaxPerUnit: this.normalizeOptionalPositiveInteger(variant.maxPaxPerUnit, `rateVariants[${index}].maxPaxPerUnit`),
+      active: variant.active === undefined ? true : Boolean(variant.active),
+      notes: normalizeOptionalString(variant.notes),
+      sortOrder: index,
+    };
+  }
+
+  private async syncRateVariants(tx: any, activityId: string, variants: ActivityRateVariantInput[]) {
+    const existingVariants = await tx.activityRateVariant.findMany({
+      where: { activityId },
+      select: { id: true },
+    });
+    const existingIds = new Set(existingVariants.map((variant: { id: string }) => variant.id));
+    const retainedIds = new Set<string>();
+
+    for (const [index, variant] of variants.entries()) {
+      const variantData = this.buildRateVariantData(variant, index);
+
+      if (variant.id && existingIds.has(variant.id)) {
+        retainedIds.add(variant.id);
+        await tx.activityRateVariant.update({
+          where: { id: variant.id },
+          data: variantData,
+        });
+      } else {
+        await tx.activityRateVariant.create({
+          data: {
+            ...variantData,
+            activityId,
+          },
+        });
+      }
+    }
+
+    const removedIds = existingVariants
+      .map((variant: { id: string }) => variant.id)
+      .filter((variantId: string) => !retainedIds.has(variantId));
+
+    if (removedIds.length > 0) {
+      await tx.activityRateVariant.updateMany({
+        where: { id: { in: removedIds } },
+        data: { active: false },
+      });
+    }
   }
 
   private async ensureSupplierCompanyExists(supplierCompanyId: string) {
