@@ -1348,6 +1348,14 @@ function AddServiceEditorPanel({
   onSaved?: (item: QuoteItem) => void;
   onCancel?: () => void;
 }) {
+  const selectedPanelService =
+    selectedServiceId && category !== 'hotel' && category !== 'transport'
+      ? plannerProps.services.find((service) => service.id === selectedServiceId && getQuoteServiceCategoryKey(service) === category)
+      : null;
+  const preferredCatalogService =
+    plannerProps.preferredCatalogServiceId && category !== 'hotel' && category !== 'transport'
+      ? plannerProps.services.find((service) => service.id === plannerProps.preferredCatalogServiceId && getQuoteServiceCategoryKey(service) === category)
+      : null;
   const returnTo = buildQuoteWorkspaceHref(plannerProps.routeContext.quoteId, 'services', {
     day: day.id,
     addCategory: category,
@@ -1393,7 +1401,7 @@ function AddServiceEditorPanel({
         itineraryId={day.id}
         initialServiceTypeKey={category}
         preferredActivityId={category === 'activity' ? selectedActivityId : undefined}
-        preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedServiceId || plannerProps.preferredCatalogServiceId : undefined}
+        preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedPanelService?.id || preferredCatalogService?.id : undefined}
         preferredHotelId={category === 'hotel' ? selectedHotelId || plannerProps.preferredCatalogHotelId : undefined}
         preferredContractId={category === 'hotel' ? plannerProps.preferredCatalogContractId : undefined}
         preferredRoomCategoryId={category === 'hotel' ? plannerProps.preferredCatalogRoomCategoryId : undefined}

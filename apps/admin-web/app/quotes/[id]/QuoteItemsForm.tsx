@@ -751,7 +751,12 @@ export function QuoteItemsForm({
 }: QuoteItemsFormProps) {
   const router = useRouter();
   const isEditing = Boolean(itemId);
-  const initialService = services.find((service) => service.id === (initialValues?.serviceId || preferredServiceId));
+  const requestedInitialServiceId = initialValues?.serviceId || preferredServiceId;
+  const requestedInitialService = services.find((service) => service.id === requestedInitialServiceId);
+  const initialService =
+    requestedInitialService && (isEditing || !initialServiceTypeKey || getServiceTypeKey(requestedInitialService) === initialServiceTypeKey)
+      ? requestedInitialService
+      : undefined;
   const hasInitialExternalPackage = Boolean(
     initialValues?.externalPackage?.packageName ||
       initialValues?.externalPackage?.country ||
@@ -777,7 +782,7 @@ export function QuoteItemsForm({
   const [activeServiceType, setActiveServiceType] = useState<ServiceTypeKey | null>(
     initialActiveServiceType,
   );
-  const [serviceId, setServiceId] = useState(initialValues?.serviceId || preferredServiceId || '');
+  const [serviceId, setServiceId] = useState(initialValues?.serviceId || initialService?.id || '');
   const [activityId, setActivityId] = useState(initialValues?.activityId || preferredActivityId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
   const [markupPercent, setMarkupPercent] = useState(initialValues?.markupPercent || '20');
