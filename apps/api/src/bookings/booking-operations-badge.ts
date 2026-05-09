@@ -1,3 +1,5 @@
+import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
+
 export type OperationsBadgeBreakdown = {
   pendingConfirmations: number;
   missingExecutionDetails: number;
@@ -24,15 +26,7 @@ type BookingOperationService = {
 };
 
 function isActivityService(serviceType: string | null) {
-  const normalized = String(serviceType || '').trim().toLowerCase();
-
-  return (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('experience') ||
-    normalized.includes('sightseeing')
-  );
+  return resolveServiceTaxonomyGroup({ category: serviceType }) === 'activity';
 }
 
 function hasMissingExecutionDetails(service: BookingOperationService) {

@@ -1,3 +1,5 @@
+import { getPlannerCategoryForService } from '../../lib/service-taxonomy';
+
 export type QuoteReadinessStep = 'overview' | 'itinerary' | 'services' | 'pricing' | 'group-pricing' | 'review' | 'preview';
 export type QuotePricingFocus =
   | 'all'
@@ -194,10 +196,6 @@ const QUOTE_STEP_TARGET_TABS: Record<QuoteWorkspaceStep, QuoteWorkspaceStepTarge
 
 const IMPORTED_SERVICE_SUPPLIER_ID = 'import-itinerary-system';
 
-function normalizeCategory(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function titleCase(value: string) {
   return value
     .toLowerCase()
@@ -248,47 +246,7 @@ export function getQuoteServiceCategoryKey(
     return 'other';
   }
 
-  const normalized = normalizeCategory(service.serviceType?.code || service.serviceType?.name || service.category);
-
-  if (normalized.includes('external_package') || normalized.includes('external package') || normalized.includes('partner_package') || normalized.includes('partner package')) {
-    return 'externalPackage';
-  }
-
-  if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-    return 'hotel';
-  }
-
-  if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
-    return 'transport';
-  }
-
-  if (normalized.includes('guide')) {
-    return 'guide';
-  }
-
-  if (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('sightseeing') ||
-    normalized.includes('experience') ||
-    normalized.includes('entrance') ||
-    normalized.includes('ticket')
-  ) {
-    return 'activity';
-  }
-
-  if (
-    normalized.includes('meal') ||
-    normalized.includes('breakfast') ||
-    normalized.includes('lunch') ||
-    normalized.includes('dinner') ||
-    normalized.includes('food')
-  ) {
-    return 'meal';
-  }
-
-  return 'other';
+  return getPlannerCategoryForService(service) as ServicePlannerCategory;
 }
 
 export function isImportedQuoteService(item: Pick<QuoteReadinessItem, 'service'>) {

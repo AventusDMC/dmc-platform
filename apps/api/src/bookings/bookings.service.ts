@@ -19,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
+import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { buildFinanceBadge } from './booking-finance-badge';
 import { buildOperationsBadge } from './booking-operations-badge';
 import { buildRoomingBadge } from './booking-rooming-badge';
@@ -4951,15 +4952,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isActivityService(serviceType?: string | null) {
-    const normalized = serviceType?.trim().toLowerCase() || '';
-
-    return (
-      normalized.includes('activity') ||
-      normalized.includes('tour') ||
-      normalized.includes('excursion') ||
-      normalized.includes('experience') ||
-      normalized.includes('sightseeing')
-    );
+    return resolveServiceTaxonomyGroup({ category: serviceType }) === 'activity';
   }
 
   private getMissingActivityConfirmationData(values: {

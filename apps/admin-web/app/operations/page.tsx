@@ -8,6 +8,7 @@ import { RowDetailsPanel } from '../components/RowDetailsPanel';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { getMarginColor, getMarginMetrics } from '../lib/financials';
+import { resolveServiceTaxonomyGroup } from '../lib/service-taxonomy';
 import {
   buildFinanceTooltip,
   buildOperationsTooltip,
@@ -393,35 +394,13 @@ function formatAuditAction(action: string) {
 }
 
 function mapBookingServiceTypeToSupplierType(serviceType: string): Supplier['type'] | null {
-  const normalized = serviceType.trim().toLowerCase();
+  const group = resolveServiceTaxonomyGroup({ category: serviceType });
 
-  if (!normalized) {
+  if (group === 'other') {
     return null;
   }
 
-  if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-    return 'hotel';
-  }
-
-  if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
-    return 'transport';
-  }
-
-  if (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('experience') ||
-    normalized.includes('sightseeing')
-  ) {
-    return 'activity';
-  }
-
-  if (normalized.includes('guide') || normalized.includes('escort')) {
-    return 'guide';
-  }
-
-  return normalized.includes('other') ? 'other' : null;
+  return group === 'meal' || group === 'externalPackage' || group === 'operationalAssistance' ? 'other' : group;
 }
 
 function isActivityService(serviceType: string) {

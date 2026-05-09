@@ -11,6 +11,7 @@ const quoteItineraryTabSource = readFileSync(new URL('./[id]/QuoteItineraryTab.t
 const quoteVersionPageSource = readFileSync(new URL('./[id]/versions/[versionId]/page.tsx', import.meta.url), 'utf8');
 const bookingPageSource = readFileSync(new URL('../bookings/[id]/page.tsx', import.meta.url), 'utf8');
 const bookingCssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+const serviceTaxonomySource = readFileSync(new URL('../lib/service-taxonomy.ts', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -114,10 +115,11 @@ describe('activities quote and booking UI integration regression', () => {
   });
 
   it('classifies entrance consistently as an activity experience', () => {
-    expectSourceContains(quoteReadinessSource, [
+    expectSourceContains(serviceTaxonomySource, [
       "normalized.includes('entrance')",
       "return 'activity';",
     ]);
+    expectSourceContains(quoteReadinessSource, ['getPlannerCategoryForService(service)']);
   });
 
   it('keeps Base Program expanded after itinerary generation and refresh', () => {

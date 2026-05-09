@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ServiceTypeOption } from '../lib/serviceTypes';
+import { getPlannerCategoryForService } from '../lib/service-taxonomy';
 import { getErrorMessage } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 import { ServicesForm } from '../services/ServicesForm';
@@ -35,47 +36,8 @@ type SupplierOption = {
   name: string;
 };
 
-function normalizeCategory(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function getServiceCategoryKey(service: SupplierService) {
-  const normalized = normalizeCategory(service.serviceType?.code || service.serviceType?.name || service.category);
-
-  if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-    return 'hotel';
-  }
-
-  if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
-    return 'transport';
-  }
-
-  if (normalized.includes('guide')) {
-    return 'guide';
-  }
-
-  if (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('sightseeing') ||
-    normalized.includes('entrance') ||
-    normalized.includes('ticket')
-  ) {
-    return 'activity';
-  }
-
-  if (
-    normalized.includes('meal') ||
-    normalized.includes('dinner') ||
-    normalized.includes('lunch') ||
-    normalized.includes('breakfast') ||
-    normalized.includes('food')
-  ) {
-    return 'meal';
-  }
-
-  return 'other';
+  return getPlannerCategoryForService(service);
 }
 
 function formatMoney(value: number, currency: string) {

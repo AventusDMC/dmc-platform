@@ -10,6 +10,7 @@ import { RouteOption } from '../../lib/routes';
 import { deriveTransportPricingMode, normalizeTransportPricingMode, TransportPricingMode } from '../../lib/transport-pricing-modes';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../../lib/transport-formatters';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
+import { getPlannerCategoryForService, normalizeServiceTaxonomyText } from '../../lib/service-taxonomy';
 import { QuoteHotelRateDraftRow, QuoteHotelRateModal } from './QuoteHotelRateModal';
 import {
   buildExternalPackagePayload,
@@ -21,7 +22,6 @@ import {
   ExternalPackagePricingBasis,
   getExternalPackageCalculatedCost,
   getExternalPackagePricingBasisForService,
-  isExternalPackageCategory,
   validateExternalPackageFormState,
 } from './external-package-ui';
 
@@ -545,102 +545,18 @@ const EXTERNAL_PACKAGE_SECTION_TABS: Array<{ id: ExternalPackageSection; label: 
   { id: 'internalNotes', label: 'Internal Notes' },
 ];
 
-function normalizeCategory(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function getServiceCategorySource(service: Pick<SupplierService, 'category' | 'serviceType'>) {
-  return service.serviceType?.code || service.serviceType?.name || service.category;
-}
-
 function getServiceTypeKey(service: Pick<SupplierService, 'category' | 'serviceType'>): ServiceTypeKey {
-  const normalized = normalizeCategory(getServiceCategorySource(service));
-
-  if (isExternalPackageCategory(getServiceCategorySource(service))) {
-    return 'externalPackage';
-  }
-
-  if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-    return 'hotel';
-  }
-
-  if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
-    return 'transport';
-  }
-
-  if (normalized.includes('guide')) {
-    return 'guide';
-  }
-
-  if (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('sightseeing') ||
-    normalized.includes('entrance') ||
-    normalized.includes('ticket')
-  ) {
-    return 'activity';
-  }
-
-  if (
-    normalized.includes('meal') ||
-    normalized.includes('dinner') ||
-    normalized.includes('lunch') ||
-    normalized.includes('breakfast') ||
-    normalized.includes('food')
-  ) {
-    return 'meal';
-  }
-
-  return 'other';
+  return getPlannerCategoryForService(service) as ServiceTypeKey;
 }
 
 function getServiceTypeKeyFromText(value: string | null | undefined): ServiceTypeKey | null {
-  const normalized = normalizeCategory(value || '');
+  const normalized = normalizeServiceTaxonomyText(value);
 
   if (!normalized) {
     return null;
   }
 
-  if (isExternalPackageCategory(value)) {
-    return 'externalPackage';
-  }
-
-  if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-    return 'hotel';
-  }
-
-  if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
-    return 'transport';
-  }
-
-  if (normalized.includes('guide')) {
-    return 'guide';
-  }
-
-  if (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('sightseeing') ||
-    normalized.includes('entrance') ||
-    normalized.includes('ticket')
-  ) {
-    return 'activity';
-  }
-
-  if (
-    normalized.includes('meal') ||
-    normalized.includes('dinner') ||
-    normalized.includes('lunch') ||
-    normalized.includes('breakfast') ||
-    normalized.includes('food')
-  ) {
-    return 'meal';
-  }
-
-  return 'other';
+  return getPlannerCategoryForService({ category: value }) as ServiceTypeKey;
 }
 
 function isImportedPlaceholderService(service: Pick<SupplierService, 'supplierId'>) {

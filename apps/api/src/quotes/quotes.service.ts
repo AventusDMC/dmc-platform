@@ -21,6 +21,12 @@ import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { blockDelete, requireSupportedCurrency } from '../common/crud.helpers';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
+import {
+  resolveServiceTaxonomyGroup,
+  getServiceTaxonomySource,
+  normalizeServiceTaxonomyText,
+  type ServiceTaxonomyInput,
+} from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { PromotionsService } from '../promotions/promotions.service';
@@ -4243,48 +4249,8 @@ export class QuotesService {
     category: string;
     serviceType?: { name: string; code: string | null } | null;
   }): ServiceMatchCategoryKey {
-    const normalized = this.getNormalizedServiceCategory(service);
-
-    if (normalized.includes('hotel') || normalized.includes('accommodation')) {
-      return 'hotel';
-    }
-
-    if (
-      normalized.includes('transport') ||
-      normalized.includes('transfer') ||
-      normalized.includes('vehicle') ||
-      normalized.includes('flight')
-    ) {
-      return 'transport';
-    }
-
-    if (normalized.includes('guide')) {
-      return 'guide';
-    }
-
-    if (
-      normalized.includes('activity') ||
-      normalized.includes('tour') ||
-      normalized.includes('excursion') ||
-      normalized.includes('sightseeing') ||
-      normalized.includes('entrance') ||
-      normalized.includes('ticket')
-    ) {
-      return 'activity';
-    }
-
-    if (
-      normalized.includes('meal') ||
-      normalized.includes('restaurant') ||
-      normalized.includes('lunch') ||
-      normalized.includes('dinner') ||
-      normalized.includes('breakfast') ||
-      normalized.includes('food')
-    ) {
-      return 'meal';
-    }
-
-    return 'other';
+    const group = resolveServiceTaxonomyGroup(service);
+    return group === 'externalPackage' || group === 'operationalAssistance' ? 'other' : group;
   }
 
   private normalizeMatchText(value: string) {
@@ -5465,58 +5431,28 @@ export class QuotesService {
     return { unitCost, descriptions };
   }
 
-  private isHotelService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    const normalizedCategory = this.getNormalizedServiceCategory(service);
-
-    return normalizedCategory === 'hotel' || normalizedCategory === 'accommodation';
+  private isHotelService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'hotel';
   }
 
-  private isTransportService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    const normalizedCategory = this.getNormalizedServiceCategory(service);
-
-    return (
-      normalizedCategory.includes('transport') ||
-      normalizedCategory.includes('transfer') ||
-      normalizedCategory.includes('vehicle')
-    );
+  private isTransportService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'transport';
   }
 
-  private isGuideService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    return this.getNormalizedServiceCategory(service).includes('guide');
+  private isGuideService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'guide';
   }
 
-  private isActivityService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    const normalizedCategory = this.getNormalizedServiceCategory(service);
-
-    return (
-      normalizedCategory.includes('activity') ||
-      normalizedCategory.includes('tour') ||
-      normalizedCategory.includes('excursion') ||
-      normalizedCategory.includes('experience') ||
-      normalizedCategory.includes('sightseeing') ||
-      normalizedCategory.includes('entrance') ||
-      normalizedCategory.includes('ticket')
-    );
+  private isActivityService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'activity';
   }
 
-  private isMealService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    const normalizedCategory = this.getNormalizedServiceCategory(service);
-
-    return (
-      normalizedCategory === 'meal' ||
-      normalizedCategory === 'dining' ||
-      normalizedCategory.includes('meal') ||
-      normalizedCategory.includes('dinner') ||
-      normalizedCategory.includes('lunch') ||
-      normalizedCategory.includes('breakfast') ||
-      normalizedCategory.includes('food')
-    );
+  private isMealService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'meal';
   }
 
-  private isExternalPackageService(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    const normalizedCategory = this.getNormalizedServiceCategory(service).replace(/[\s-]+/g, '_');
-
-    return normalizedCategory === 'external_package' || normalizedCategory.includes('external_package') || normalizedCategory.includes('partner_package');
+  private isExternalPackageService(service: ServiceTaxonomyInput) {
+    return resolveServiceTaxonomyGroup(service) === 'externalPackage';
   }
 
   private normalizeStructuredServiceRatePricingMode(value: string | null | undefined): StructuredServiceRatePricingMode | null {
@@ -5586,27 +5522,8 @@ export class QuotesService {
   }
 
   private getPlannerServiceType(service: { category: string; serviceType?: { name: string; code: string | null } | null }) {
-    if (this.isHotelService(service)) {
-      return 'hotel';
-    }
-
-    if (this.isTransportService(service)) {
-      return 'transport';
-    }
-
-    if (this.isMealService(service)) {
-      return 'meal';
-    }
-
-    if (this.isActivityService(service)) {
-      return 'activity';
-    }
-
-    if (this.isGuideService(service)) {
-      return 'guide';
-    }
-
-    return 'other';
+    const group = resolveServiceTaxonomyGroup(service);
+    return group === 'externalPackage' || group === 'operationalAssistance' ? 'other' : group;
   }
 
   private normalizePlannerServiceType(value: string | null | undefined) {
@@ -5639,7 +5556,7 @@ export class QuotesService {
     category: string;
     serviceType?: { name: string; code: string | null } | null;
   }) {
-    return (service.serviceType?.code || service.serviceType?.name || service.category).trim().toLowerCase();
+    return normalizeServiceTaxonomyText(getServiceTaxonomySource(service));
   }
 
   private normalizeExternalPackagePricingBasis(value: CreateQuoteItemInput['pricingBasis']) {
@@ -6889,14 +6806,12 @@ export class QuotesService {
         });
         const serviceDate = resolvedServiceDate ? resolvedServiceDate.toISOString() : null;
         const normalizedServiceType = item.service?.category?.trim() || 'other';
-        const normalizedCategory = normalizedServiceType.toLowerCase();
-        const operationType = this.inferBookingOperationServiceType(normalizedCategory, item.service?.name);
-        const isActivityService =
-          normalizedCategory.includes('activity') ||
-          normalizedCategory.includes('tour') ||
-          normalizedCategory.includes('excursion') ||
-          normalizedCategory.includes('experience') ||
-          normalizedCategory.includes('sightseeing');
+        const serviceTaxonomy = {
+          category: [normalizedServiceType, item.service?.name].filter(Boolean).join(' '),
+          serviceType: null,
+        };
+        const operationType = this.inferBookingOperationServiceType(serviceTaxonomy);
+        const isActivityService = this.isActivityService(serviceTaxonomy);
         const hasResolvedOperationalData = Boolean(supplierId || supplierName) && (totalCost > 0 || totalSell > 0);
 
         const resolvedAdultCount =
@@ -7042,25 +6957,27 @@ export class QuotesService {
     );
   }
 
-  private inferBookingOperationServiceType(category?: string | null, serviceName?: string | null): BookingOperationServiceType {
-    const normalized = `${category || ''} ${serviceName || ''}`.trim().toLowerCase();
+  private inferBookingOperationServiceType(service: ServiceTaxonomyInput): BookingOperationServiceType {
+    const group = resolveServiceTaxonomyGroup(service);
 
-    if (normalized.includes('transport') || normalized.includes('transfer') || normalized.includes('vehicle')) {
+    if (group === 'transport') {
       return BookingOperationServiceType.TRANSPORT;
     }
 
-    if (normalized.includes('guide') || normalized.includes('escort')) {
+    if (group === 'guide') {
       return BookingOperationServiceType.GUIDE;
     }
 
-    if (normalized.includes('hotel') || normalized.includes('accommodation')) {
+    if (group === 'hotel') {
       return BookingOperationServiceType.HOTEL;
     }
 
-    if (normalized.includes('external') || normalized.includes('package')) {
+    if (group === 'externalPackage') {
       return BookingOperationServiceType.EXTERNAL_PACKAGE;
     }
 
+    // Phase 1 keeps the existing booking operation enum. Operational assistance is
+    // classified canonically above, but stored in the existing generic bucket.
     return BookingOperationServiceType.ACTIVITY;
   }
 

@@ -9,6 +9,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
+import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
 
@@ -425,15 +426,7 @@ function getReconfirmationWarning(reconfirmationDueAt: string | null) {
 }
 
 function isActivityService(item: Pick<QuoteItem, 'service'>) {
-  const normalized = (item.service.serviceType?.code || item.service.serviceType?.name || item.service.category).trim().toLowerCase();
-
-  return (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('experience') ||
-    normalized.includes('sightseeing')
-  );
+  return isActivityTaxonomyGroup(item.service);
 }
 
 function buildWarnings(item: QuoteItem) {

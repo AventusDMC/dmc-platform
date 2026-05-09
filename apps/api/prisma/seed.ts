@@ -258,7 +258,13 @@ async function seedServiceTypes(prisma: PrismaService) {
     { name: 'Sightseeing', code: 'ACTIVITY' },
     { name: 'Guiding', code: 'GUIDE' },
     { name: 'Dining', code: 'MEAL' },
-    { name: 'Meet And Assist', code: 'MEET' },
+    { name: 'Meet And Assist', code: 'MEET_ASSIST' },
+    { name: 'Border Assistance', code: 'BORDER_ASSISTANCE' },
+    { name: 'Fast Track', code: 'FAST_TRACK' },
+    { name: 'Porterage', code: 'PORTERAGE' },
+    { name: 'Visa Assistance', code: 'VISA_ASSISTANCE' },
+    { name: 'Airport Assistance', code: 'AIRPORT_ASSISTANCE' },
+    { name: 'Escort Services', code: 'ESCORT' },
     { name: 'External Package', code: 'EXTERNAL_PACKAGE' },
   ];
 

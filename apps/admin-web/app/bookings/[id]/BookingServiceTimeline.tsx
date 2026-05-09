@@ -3,6 +3,7 @@
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
+import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 
@@ -89,15 +90,7 @@ function formatAuditAction(action: string) {
 }
 
 function isActivityService(serviceType: string) {
-  const normalized = serviceType.trim().toLowerCase();
-
-  return (
-    normalized.includes('activity') ||
-    normalized.includes('tour') ||
-    normalized.includes('excursion') ||
-    normalized.includes('experience') ||
-    normalized.includes('sightseeing')
-  );
+  return isActivityTaxonomyGroup({ category: serviceType });
 }
 
 function getReconfirmationWarning(service: Pick<BookingService, 'reconfirmationRequired' | 'reconfirmationDueAt' | 'confirmationStatus'>) {
