@@ -3255,6 +3255,9 @@ export class QuotesService {
         baseCost = Number((baseCost * transportUnitCostMultiplier + transportAddOnUnitCost).toFixed(2));
       }
 
+      supplierCostBaseAmount = baseCost;
+      supplierCostCurrency = currency;
+
       if (transportPricingDescriptionParts.length > 0) {
         pricingDescription = [pricingDescription, ...transportPricingDescriptionParts].filter(Boolean).join(' | ');
       }

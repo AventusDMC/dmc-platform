@@ -628,6 +628,8 @@ describe('quote detail page regression', () => {
       'appliedVehicleRateId = displayVehicleRate.id;',
       'transportUnitCostMultiplier = selectedDays;',
       "transportPricingDescriptionParts.push('Supplier minimum 3 full days may apply');",
+      'supplierCostBaseAmount = baseCost;',
+      'supplierCostCurrency = currency;',
     ]);
     assert.equal(quotesServiceSource.includes('Daily FD minimum applied'), false);
     assert.equal(quotesServiceSource.includes('Math.max(selectedDays, 3)'), false);
