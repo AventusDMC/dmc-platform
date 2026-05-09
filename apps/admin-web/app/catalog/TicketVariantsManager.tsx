@@ -11,6 +11,7 @@ export type TicketRateVariant = {
   sellPrice?: number | null;
   currency: string;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  includedInJordanPass?: boolean | null;
   notes?: string | null;
   active: boolean;
   sortOrder?: number | null;
@@ -23,6 +24,7 @@ type TicketVariantFormRow = {
   sellPrice: string;
   currency: string;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  includedInJordanPass: boolean | null;
   notes: string;
   active: boolean;
 };
@@ -41,6 +43,7 @@ function toRow(variant?: TicketRateVariant): TicketVariantFormRow {
     sellPrice: variant?.sellPrice === undefined || variant?.sellPrice === null ? '' : String(variant.sellPrice),
     currency: variant?.currency || 'JOD',
     pricingBasis: variant?.pricingBasis || 'PER_PERSON',
+    includedInJordanPass: variant?.includedInJordanPass ?? null,
     notes: variant?.notes || '',
     active: variant?.active ?? true,
   };
@@ -110,6 +113,7 @@ export function TicketVariantsManager({ apiBaseUrl, serviceId, initialVariants }
           sellPrice,
           currency: row.currency.trim().toUpperCase(),
           pricingBasis: row.pricingBasis,
+          includedInJordanPass: row.includedInJordanPass,
           notes: row.notes.trim() || null,
           active: row.active,
         };
@@ -177,6 +181,21 @@ export function TicketVariantsManager({ apiBaseUrl, serviceId, initialVariants }
           <label>
             Notes
             <input value={row.notes} onChange={(event) => updateRow(index, { notes: event.target.value })} />
+          </label>
+          <label>
+            Jordan Pass
+            <select
+              value={row.includedInJordanPass === null ? '' : row.includedInJordanPass ? 'yes' : 'no'}
+              onChange={(event) =>
+                updateRow(index, {
+                  includedInJordanPass: event.target.value === '' ? null : event.target.value === 'yes',
+                })
+              }
+            >
+              <option value="">Use product setting</option>
+              <option value="yes">Included</option>
+              <option value="no">Not included</option>
+            </select>
           </label>
           <label className="checkbox-row">
             <input type="checkbox" checked={row.active} onChange={(event) => updateRow(index, { active: event.target.checked })} />

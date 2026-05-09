@@ -1556,21 +1556,21 @@ model SupplierService {
 }
 
 model TicketRateVariant {
-  id           String                 @id @default(uuid()) @db.Uuid
-  serviceId    String                 @db.Uuid
-  label        String
-  costPrice    Float
-  sellPrice    Float?
-  currency     String                 @default("JOD")
-  pricingBasis ServiceRatePricingMode @default(PER_PERSON)
+  id                   String                 @id @default(uuid()) @db.Uuid
+  serviceId            String                 @db.Uuid
+  label                String
+  costPrice            Float
+  sellPrice            Float?
+  currency             String                 @default("JOD")
+  pricingBasis         ServiceRatePricingMode @default(PER_PERSON)
   includedInJordanPass Boolean?
-  notes        String?
-  active       Boolean                @default(true)
-  sortOrder    Int                    @default(0)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  quoteItems   QuoteItem[]
-  service      SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  notes                String?
+  active               Boolean                @default(true)
+  sortOrder            Int                    @default(0)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  quoteItems           QuoteItem[]
+  service              SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
 
   @@index([serviceId, active, sortOrder])
   @@map("ticket_rate_variants")

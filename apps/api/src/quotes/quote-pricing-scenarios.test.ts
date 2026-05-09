@@ -137,6 +137,7 @@ function createServiceRateQuoteService(values: {
   quote?: Record<string, any>;
   activity?: Record<string, any> | null;
   activityRateVariant?: Record<string, any> | null;
+  ticketRateVariant?: Record<string, any> | null;
 }) {
   return createQuotesService({
     quote: {
@@ -179,6 +180,7 @@ function createServiceRateQuoteService(values: {
               serviceType: { name: 'Other Support', code: 'OTHER' },
               entranceFee: null,
               serviceRates: values.serviceRate ? [values.serviceRate] : [],
+              ticketRateVariants: values.ticketRateVariant ? [values.ticketRateVariant] : [],
               ...values.service,
             }
           : null,
@@ -219,6 +221,28 @@ function createServiceRateQuoteService(values: {
               }
             : null,
     },
+    ticketRateVariant: {
+      findUnique: async ({ where }: any) =>
+        values.ticketRateVariant === null
+          ? null
+          : values.ticketRateVariant
+            ? {
+                id: where.id,
+                serviceId: 'service-1',
+                label: '2 Days',
+                costPrice: 55,
+                sellPrice: null,
+                currency: 'JOD',
+                pricingBasis: 'PER_PERSON',
+                includedInJordanPass: true,
+                active: true,
+                ...values.ticketRateVariant,
+              }
+            : null,
+    },
+    quoteItem: {
+      count: async () => 0,
+    },
     itinerary: { findUnique: async () => null },
     quoteItineraryDay: { findUnique: async () => null },
     quoteOption: { findUnique: async () => null },
@@ -232,6 +256,7 @@ async function resolveServiceRateQuoteItem(values: {
   quote?: Record<string, any>;
   activity?: Record<string, any> | null;
   activityRateVariant?: Record<string, any> | null;
+  ticketRateVariant?: Record<string, any> | null;
 }) {
   const service = createServiceRateQuoteService({
     service: values.service || {},
@@ -239,6 +264,7 @@ async function resolveServiceRateQuoteItem(values: {
     quote: values.quote,
     activity: values.activity,
     activityRateVariant: values.activityRateVariant,
+    ticketRateVariant: values.ticketRateVariant,
   });
 
   return (service as any).resolveQuoteItemValues({
@@ -1623,6 +1649,95 @@ test('generic service without ServiceRate falls back to SupplierService base cos
   assert.equal(values.data.totalSell, 60);
 });
 
+test('ticketing service variant prices selected entrance ticket option', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'JOD',
+    },
+    service: {
+      name: 'Petra Entrance Ticket',
+      category: 'ticketing',
+      unitType: 'per_person',
+      baseCost: 50,
+      currency: 'JOD',
+      costBaseAmount: 50,
+      costCurrency: 'JOD',
+      serviceType: { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+      entranceFee: {
+        id: 'entrance-petra',
+        siteName: 'Petra Entrance Ticket',
+        foreignerFeeJod: 50,
+        includedInJordanPass: true,
+      },
+    },
+    serviceRate: null,
+    ticketRateVariant: {
+      id: 'ticket-variant-2-days',
+      label: '2 Days',
+      costPrice: 55,
+      currency: 'JOD',
+      pricingBasis: 'PER_PERSON',
+      includedInJordanPass: true,
+    },
+    item: {
+      ticketRateVariantId: 'ticket-variant-2-days',
+      paxCount: 4,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.ticketRateVariantId, 'ticket-variant-2-days');
+  assert.equal(values.data.costBaseAmount, 55);
+  assert.equal(values.data.costCurrency, 'JOD');
+  assert.equal(values.data.totalCost, 220);
+  assert.equal(values.data.totalSell, 220);
+  assert.match(values.data.pricingDescription, /Petra Entrance Ticket \| 2 Days \| Entrance fee/);
+});
+
+test('ticketing variant can override Jordan Pass eligibility', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'JOD',
+      jordanPassType: 'EXPLORER',
+    },
+    service: {
+      name: 'Petra Entrance Ticket',
+      category: 'ticketing',
+      unitType: 'per_person',
+      baseCost: 50,
+      currency: 'JOD',
+      costBaseAmount: 50,
+      costCurrency: 'JOD',
+      serviceType: { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+      entranceFee: {
+        id: 'entrance-petra',
+        siteName: 'Petra Entrance Ticket',
+        foreignerFeeJod: 50,
+        includedInJordanPass: true,
+      },
+    },
+    serviceRate: null,
+    ticketRateVariant: {
+      id: 'ticket-variant-same-day',
+      label: 'Same-Day Visitor',
+      costPrice: 90,
+      currency: 'JOD',
+      pricingBasis: 'PER_PERSON',
+      includedInJordanPass: false,
+    },
+    item: {
+      ticketRateVariantId: 'ticket-variant-same-day',
+      paxCount: 2,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.ticketRateVariantId, 'ticket-variant-same-day');
+  assert.equal(values.data.jordanPassCovered, false);
+  assert.equal(values.data.jordanPassSavingsJod, 0);
+  assert.equal(values.data.totalCost, 180);
+});
+
 test('meal pricing ignores generic ServiceRate and keeps custom meal cost', async () => {
   const values = await resolveServiceRateQuoteItem({
     service: {
@@ -1752,6 +1867,49 @@ test('activity rate variant capacity pricing calculates required jeep units', as
   assert.equal(values.data.totalSell, 480);
   assert.match(values.data.pricingDescription, /2 Hours/);
   assert.match(values.data.pricingDescription, /Capacity 6 pax\/unit/);
+});
+
+test('activity rate variant sell price is not masked by zero sell override from quote add flow', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 0,
+      costBaseAmount: 0,
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    activity: {
+      id: 'activity-1',
+      name: 'Wadi Rum Jeep Tour',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 75.2,
+      sellPrice: 0,
+    },
+    activityRateVariant: {
+      id: 'variant-2h',
+      activityId: 'activity-1',
+      name: '2 Hours',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 75.2,
+      sellPrice: 120,
+      maxPaxPerUnit: 6,
+    },
+    item: {
+      activityId: 'activity-1',
+      activityRateVariantId: 'variant-2h',
+      participantCount: 18,
+      paxCount: 18,
+      sellPrice: 0,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.activityRateVariantId, 'variant-2h');
+  assert.equal(values.data.costBaseAmount, 75.2);
+  assert.equal(values.data.totalCost, 225.6);
+  assert.equal(values.data.sellPrice, 360);
+  assert.equal(values.data.totalSell, 360);
 });
 
 test('activity rate variant currency wins over service currency for quote pricing', async () => {

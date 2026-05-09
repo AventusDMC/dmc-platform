@@ -41,6 +41,7 @@ type SupplierService = {
     sellPrice?: number | null;
     currency: string;
     pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+    includedInJordanPass?: boolean | null;
     notes?: string | null;
     active: boolean;
     sortOrder?: number | null;

@@ -16,6 +16,13 @@ function createServicesService(overrides?: Partial<any>) {
       update: async ({ where, data }: any) => ({ id: where.id, ...data }),
       delete: async ({ where }: any) => ({ id: where.id }),
     },
+    $transaction: async (callback: any) => callback(prisma),
+    ticketRateVariant: {
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      create: async ({ data }: any) => ({ id: 'ticket-variant-1', ...data }),
+      updateMany: async () => ({ count: 0 }),
+    },
     ...overrides,
   };
 
@@ -146,6 +153,84 @@ test('activity catalog write routes still require admin or operations roles', ()
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ServicesController.prototype.create), ['admin', 'operations']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ServicesController.prototype.update), ['admin', 'operations']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, ServicesController.prototype.createRate), ['admin', 'operations']);
+});
+
+test('update service preserves ticket variants and deactivates removed variants', async () => {
+  const variantActions: any[] = [];
+  const { service } = createServicesService({
+    ticketRateVariant: {
+      findMany: async () => [{ id: 'variant-1' }, { id: 'variant-removed' }],
+      update: async ({ where, data }: any) => {
+        variantActions.push({ action: 'update', where, data });
+        return { id: where.id, ...data };
+      },
+      create: async ({ data }: any) => {
+        variantActions.push({ action: 'create', data });
+        return { id: 'variant-new', ...data };
+      },
+      updateMany: async ({ where, data }: any) => {
+        variantActions.push({ action: 'updateMany', where, data });
+        return { count: 1 };
+      },
+    },
+    supplierService: {
+      findUnique: async () => ({
+        id: 'service-1',
+        supplierId: 'supplier-1',
+        name: 'Petra Entrance Ticket',
+        category: 'ticketing',
+        serviceTypeId: 'type-ticket',
+        serviceType: { id: 'type-ticket', name: 'Entrance Ticket', code: 'ENTRANCE_TICKET', isActive: true },
+        unitType: 'per_person',
+        baseCost: 50,
+        currency: 'JOD',
+        costBaseAmount: 50,
+        costCurrency: 'JOD',
+        serviceRates: [],
+        ticketRateVariants: [],
+        _count: { quoteItems: 0 },
+      }),
+      update: async ({ where, data, include }: any) => ({ id: where.id, ...data, serviceType: null, ticketRateVariants: include.ticketRateVariants ? [] : undefined }),
+    },
+  });
+
+  await service.update('service-1', {
+    ticketRateVariants: [
+      {
+        id: 'variant-1',
+        label: '2 Days',
+        costPrice: 55,
+        sellPrice: null,
+        currency: 'JOD',
+        pricingBasis: 'PER_PERSON',
+        includedInJordanPass: true,
+        active: true,
+      },
+      {
+        label: 'Same-Day Visitor',
+        costPrice: 90,
+        currency: 'JOD',
+        pricingBasis: 'PER_PERSON',
+        includedInJordanPass: false,
+        active: true,
+      },
+    ],
+  });
+
+  assert.equal(variantActions[0].action, 'update');
+  assert.deepEqual(variantActions[0].where, { id: 'variant-1' });
+  assert.equal(variantActions[0].data.label, '2 Days');
+  assert.equal(variantActions[0].data.includedInJordanPass, true);
+  assert.equal(variantActions[0].data.sortOrder, 0);
+  assert.equal(variantActions[1].action, 'create');
+  assert.equal(variantActions[1].data.label, 'Same-Day Visitor');
+  assert.equal(variantActions[1].data.serviceId, 'service-1');
+  assert.equal(variantActions[1].data.includedInJordanPass, false);
+  assert.deepEqual(variantActions[2], {
+    action: 'updateMany',
+    where: { id: { in: ['variant-removed'] } },
+    data: { active: false },
+  });
 });
 
 test('updateRate updates structured service rate fields', async () => {

@@ -3499,38 +3499,39 @@ export class QuotesService {
           .filter(Boolean)
           .join(' | ');
       }
+    }
 
-      const entranceFee = (effectiveService as any).entranceFee as
-        | { id: string; siteName: string; foreignerFeeJod: number; includedInJordanPass: boolean }
-        | null
-        | undefined;
+    const entranceFee = (effectiveService as any).entranceFee as
+      | { id: string; siteName: string; foreignerFeeJod: number; includedInJordanPass: boolean }
+      | null
+      | undefined;
 
-      if (!activity && entranceFee) {
-        const ticketUnitCost = Number(selectedTicketRate?.costPrice ?? entranceFee.foreignerFeeJod);
-        const ticketCurrency = (selectedTicketRate?.currency || 'JOD').trim().toUpperCase();
-        const coverage = await this.resolveJordanPassEntranceCoverage({
-          quoteId: quote.id,
-          optionId: data.optionId || null,
-          jordanPassType: (quote as any).jordanPassType || 'NONE',
-          entranceFee: {
-            ...entranceFee,
-            siteName: selectedTicketRate ? `${entranceFee.siteName} ${selectedTicketRate.label}` : entranceFee.siteName,
-            foreignerFeeJod: ticketUnitCost,
-          },
-        });
+    if (!activity && entranceFee) {
+      const ticketUnitCost = Number(selectedTicketRate?.costPrice ?? entranceFee.foreignerFeeJod);
+      const ticketCurrency = (selectedTicketRate?.currency || 'JOD').trim().toUpperCase();
+      const coverage = await this.resolveJordanPassEntranceCoverage({
+        quoteId: quote.id,
+        optionId: data.optionId || null,
+        jordanPassType: (quote as any).jordanPassType || 'NONE',
+        entranceFee: {
+          ...entranceFee,
+          siteName: selectedTicketRate ? `${entranceFee.siteName} ${selectedTicketRate.label}` : entranceFee.siteName,
+          foreignerFeeJod: ticketUnitCost,
+          includedInJordanPass: selectedTicketRate?.includedInJordanPass ?? entranceFee.includedInJordanPass,
+        },
+      });
 
-        entranceFeeId = entranceFee.id;
-        jordanPassCovered = coverage.covered;
-        jordanPassSavingsJod = coverage.covered ? ticketUnitCost : 0;
-        baseCost = coverage.covered ? 0 : ticketUnitCost;
-        currency = ticketCurrency;
-        supplierCostBaseAmount = baseCost;
-        supplierCostCurrency = ticketCurrency;
-        structuredServiceRatePricingMode = selectedTicketRate?.pricingBasis ?? structuredServiceRatePricingMode;
-        pricingDescription = coverage.covered
-          ? `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Covered by Jordan Pass`
-          : `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Entrance fee`;
-      }
+      entranceFeeId = entranceFee.id;
+      jordanPassCovered = coverage.covered;
+      jordanPassSavingsJod = coverage.covered ? ticketUnitCost : 0;
+      baseCost = coverage.covered ? 0 : ticketUnitCost;
+      currency = ticketCurrency;
+      supplierCostBaseAmount = baseCost;
+      supplierCostCurrency = ticketCurrency;
+      structuredServiceRatePricingMode = selectedTicketRate?.pricingBasis ?? structuredServiceRatePricingMode;
+      pricingDescription = coverage.covered
+        ? `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Covered by Jordan Pass`
+        : `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Entrance fee`;
     }
 
     if (this.isMealService(effectiveService)) {
@@ -3660,8 +3661,13 @@ export class QuotesService {
     const markupAmount = this.normalizeOptionalNonNegativeNumber(data.markupAmount, 'Markup amount');
     const requestedSellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
     const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
+    const selectedActivitySellPrice = Number(selectedActivityRate?.sellPrice ?? activity?.sellPrice ?? 0);
+    const effectiveRequestedSellPriceOverride =
+      activity && selectedActivityRate && requestedSellPriceOverride === 0 && selectedActivitySellPrice > 0
+        ? null
+        : requestedSellPriceOverride;
     const activitySellPriceOverride =
-      activity && requestedSellPriceOverride === null
+      activity && effectiveRequestedSellPriceOverride === null
         ? this.calculateCentralizedQuoteItemPricing({
             service: effectiveService,
             quantity,
@@ -3669,11 +3675,11 @@ export class QuotesService {
             roomCount,
             nightCount,
             dayCount,
-            unitCost: Number(selectedActivityRate?.sellPrice ?? activity.sellPrice),
+            unitCost: selectedActivitySellPrice,
             markupPercent: 0,
             quoteCurrency,
             supplierPricing: {
-              costBaseAmount: Number(selectedActivityRate?.sellPrice ?? activity.sellPrice),
+              costBaseAmount: selectedActivitySellPrice,
               costCurrency: supplierCostCurrency,
             },
             activityPricingBasis: selectedActivityRate?.pricingBasis ?? activity.pricingBasis,
@@ -3681,7 +3687,7 @@ export class QuotesService {
             capacityMaxPaxPerUnit,
           }).totalCost
         : null;
-    const sellPriceOverride = requestedSellPriceOverride ?? activitySellPriceOverride;
+    const sellPriceOverride = effectiveRequestedSellPriceOverride ?? activitySellPriceOverride;
 
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
 
@@ -6442,7 +6448,8 @@ export class QuotesService {
         continue;
       }
 
-      let covered = passType !== 'NONE' && item.entranceFee.includedInJordanPass;
+      const variantIncludedInJordanPass = (item as any).ticketRateVariant?.includedInJordanPass;
+      let covered = passType !== 'NONE' && (variantIncludedInJordanPass ?? item.entranceFee.includedInJordanPass);
 
       if (covered && this.isPetraEntranceSite(item.entranceFee.siteName)) {
         const key = item.optionId || 'base';
