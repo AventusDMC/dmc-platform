@@ -54,6 +54,19 @@ type QuoteOptionSet = {
   hotelOptions?: QuoteHotelOption[];
 };
 
+type HotelOptionFormState = {
+  city: string;
+  hotelId: string;
+  roomCategoryId: string;
+  hotelNameSnapshot: string;
+  roomType: string;
+  mealPlan: string;
+  mealPlanCode: MealPlanCode;
+  nights: string;
+  isPrimary: boolean;
+  notes: string;
+};
+
 type QuoteHotelOptionSetsProps = {
   apiBaseUrl: string;
   quoteId: string;
@@ -64,6 +77,42 @@ type QuoteHotelOptionSetsProps = {
 const HOTEL_OPTION_SET_CATEGORIES = ['3 Star', '4 Star STD', '4 Star DLX', 'Custom'];
 const MEAL_PLAN_OPTIONS = ['RO', 'BB', 'HB', 'FB', 'AI'] as const;
 type MealPlanCode = (typeof MEAL_PLAN_OPTIONS)[number];
+
+function createEmptyHotelOptionForm(): HotelOptionFormState {
+  return {
+    city: '',
+    hotelId: '',
+    roomCategoryId: '',
+    hotelNameSnapshot: '',
+    roomType: 'Standard',
+    mealPlan: 'BB',
+    mealPlanCode: 'BB',
+    nights: '1',
+    isPrimary: false,
+    notes: '',
+  };
+}
+
+function buildHotelOptionFormFromRow(option: QuoteHotelOption): HotelOptionFormState {
+  const mealPlanCode = MEAL_PLAN_OPTIONS.includes(option.mealPlanCode as MealPlanCode)
+    ? (option.mealPlanCode as MealPlanCode)
+    : MEAL_PLAN_OPTIONS.includes(option.mealPlan as MealPlanCode)
+      ? (option.mealPlan as MealPlanCode)
+      : 'BB';
+
+  return {
+    city: option.city || '',
+    hotelId: option.hotelId || '',
+    roomCategoryId: option.roomCategoryId || '',
+    hotelNameSnapshot: option.hotelNameSnapshot || '',
+    roomType: option.roomCategory?.name || option.roomType || 'Standard',
+    mealPlan: mealPlanCode,
+    mealPlanCode,
+    nights: String(option.nights || 1),
+    isPrimary: option.isPrimary,
+    notes: option.notes || '',
+  };
+}
 
 function getOptionSetSectionId(optionSetId: string) {
   return `hotel-option-set-${optionSetId}`;
@@ -296,18 +345,9 @@ function HotelOptionSetCard({
 }) {
   const router = useRouter();
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    city: '',
-    hotelId: '',
-    roomCategoryId: '',
-    hotelNameSnapshot: '',
-    roomType: 'Standard',
-    mealPlan: 'BB',
-    mealPlanCode: 'BB' as MealPlanCode,
-    nights: '1',
-    isPrimary: false,
-    notes: '',
-  });
+  const [form, setForm] = useState<HotelOptionFormState>(createEmptyHotelOptionForm);
+  const [editingHotelOptionId, setEditingHotelOptionId] = useState('');
+  const [editForm, setEditForm] = useState<HotelOptionFormState>(createEmptyHotelOptionForm);
   const hotelsByCity = useMemo(() => {
     return hotels.reduce<Record<string, Hotel[]>>((groups, hotel) => {
       const city = hotel.city || 'City pending';
@@ -327,6 +367,12 @@ function HotelOptionSetCard({
     [selectedHotel],
   );
   const showManualRoomType = !selectedHotel || activeRoomCategories.length === 0;
+  const selectedEditHotel = useMemo(() => hotels.find((entry) => entry.id === editForm.hotelId) || null, [editForm.hotelId, hotels]);
+  const activeEditRoomCategories = useMemo(
+    () => (selectedEditHotel?.roomCategories || []).filter((category) => category.isActive),
+    [selectedEditHotel],
+  );
+  const showManualEditRoomType = !selectedEditHotel || activeEditRoomCategories.length === 0;
 
   function selectHotel(hotelId: string) {
     const hotel = hotels.find((entry) => entry.id === hotelId);
@@ -359,15 +405,63 @@ function HotelOptionSetCard({
     });
   }
 
+  function selectEditHotel(hotelId: string) {
+    const hotel = hotels.find((entry) => entry.id === hotelId);
+    const activeCategories = (hotel?.roomCategories || []).filter((category) => category.isActive);
+    const firstCategory = activeCategories[0];
+    setEditForm({
+      ...editForm,
+      hotelId,
+      city: hotel?.city || editForm.city,
+      hotelNameSnapshot: hotel?.name || editForm.hotelNameSnapshot,
+      roomCategoryId: firstCategory?.id || '',
+      roomType: firstCategory?.name || (hotel ? 'Standard' : editForm.roomType),
+    });
+  }
+
+  function selectEditRoomCategory(roomCategoryId: string) {
+    const roomCategory = activeEditRoomCategories.find((category) => category.id === roomCategoryId);
+    setEditForm({
+      ...editForm,
+      roomCategoryId,
+      roomType: roomCategory?.name || editForm.roomType,
+    });
+  }
+
+  function selectEditMealPlan(mealPlanCode: MealPlanCode) {
+    setEditForm({
+      ...editForm,
+      mealPlanCode,
+      mealPlan: mealPlanCode,
+    });
+  }
+
+  function startEditingHotelAlternative(option: QuoteHotelOption) {
+    setError('');
+    setEditingHotelOptionId(option.id);
+    setEditForm(buildHotelOptionFormFromRow(option));
+  }
+
+  function cancelEditingHotelAlternative() {
+    setEditingHotelOptionId('');
+    setEditForm(createEmptyHotelOptionForm());
+  }
+
+  function buildHotelAlternativePayload(values: HotelOptionFormState) {
+    return {
+      ...values,
+      hotelId: values.hotelId || null,
+      roomCategoryId: values.hotelId && values.roomCategoryId ? values.roomCategoryId : null,
+      mealPlanCode: values.mealPlanCode,
+      mealPlan: values.mealPlanCode,
+    };
+  }
+
   async function addHotelAlternative() {
     setError('');
     try {
       const payload = {
-        ...form,
-        hotelId: form.hotelId || null,
-        roomCategoryId: form.hotelId && form.roomCategoryId ? form.roomCategoryId : null,
-        mealPlanCode: form.mealPlanCode,
-        mealPlan: form.mealPlanCode,
+        ...buildHotelAlternativePayload(form),
       };
       const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/options/${optionSet.id}/hotel-options`, {
         method: 'POST',
@@ -379,7 +473,7 @@ function HotelOptionSetCard({
         throw new Error(await readError(response, 'Could not add accommodation option.'));
       }
 
-      setForm({ city: '', hotelId: '', roomCategoryId: '', hotelNameSnapshot: '', roomType: 'Standard', mealPlan: 'BB', mealPlanCode: 'BB', nights: '1', isPrimary: false, notes: '' });
+      setForm(createEmptyHotelOptionForm());
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not add accommodation option.');
@@ -399,6 +493,30 @@ function HotelOptionSetCard({
         throw new Error(await readError(response, 'Could not update accommodation option.'));
       }
 
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not update accommodation option.');
+    }
+  }
+
+  async function updateHotelAlternative() {
+    if (!editingHotelOptionId) {
+      return;
+    }
+
+    setError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/options/${optionSet.id}/hotel-options/${editingHotelOptionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildHotelAlternativePayload(editForm)),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readError(response, 'Could not update accommodation option.'));
+      }
+
+      cancelEditingHotelAlternative();
       router.refresh();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not update accommodation option.');
@@ -520,20 +638,98 @@ function HotelOptionSetCard({
                   </tr>
                 </thead>
                 <tbody>
-                  {options.map((option) => (
-                    <tr key={option.id}>
-                      <td>{option.hotelNameSnapshot}</td>
-                      <td>{option.roomCategory?.name || option.roomType}</td>
-                      <td>{option.mealPlanCode || option.mealPlan}</td>
-                      <td>{option.nights}</td>
-                      <td>{option.isPrimary ? 'Primary' : 'Alternative'}</td>
-                      <td>{option.notes || '-'}</td>
-                      <td>
-                        <button className="compact-button" type="button" onClick={() => patchHotelAlternative(option.id, { isPrimary: true })}>Mark primary</button>
-                        <button className="compact-button" type="button" onClick={() => deleteHotelAlternative(option.id)}>Delete</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {options.map((option) => {
+                    const isEditing = editingHotelOptionId === option.id;
+
+                    return (
+                      <tr key={option.id}>
+                        <td>
+                          {isEditing ? (
+                            <div className="form-field-stack">
+                              <select value={editForm.hotelId} onChange={(event) => selectEditHotel(event.target.value)} aria-label="Edit hotel catalog">
+                                <option value="">Manual / hotel or similar</option>
+                                {Object.entries(hotelsByCity).map(([hotelCity, entries]) => (
+                                  <optgroup key={hotelCity} label={hotelCity}>
+                                    {entries.map((hotel) => (
+                                      <option key={hotel.id} value={hotel.id}>{hotel.name} ({hotel.category})</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              <input value={editForm.city} onChange={(event) => setEditForm({ ...editForm, city: event.target.value })} aria-label="Edit city" placeholder="City" />
+                              <input value={editForm.hotelNameSnapshot} onChange={(event) => setEditForm({ ...editForm, hotelNameSnapshot: event.target.value })} aria-label="Edit accommodation option" placeholder="Hotel name / similar" />
+                            </div>
+                          ) : (
+                            option.hotelNameSnapshot
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            showManualEditRoomType ? (
+                              <input value={editForm.roomType} onChange={(event) => setEditForm({ ...editForm, roomType: event.target.value })} aria-label="Edit room type" placeholder="Standard" />
+                            ) : (
+                              <select value={editForm.roomCategoryId} onChange={(event) => selectEditRoomCategory(event.target.value)} aria-label="Edit room category">
+                                {activeEditRoomCategories.map((category) => (
+                                  <option key={category.id} value={category.id}>{category.name}{category.code ? ` (${category.code})` : ''}</option>
+                                ))}
+                              </select>
+                            )
+                          ) : (
+                            option.roomCategory?.name || option.roomType
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select value={editForm.mealPlanCode} onChange={(event) => selectEditMealPlan(event.target.value as MealPlanCode)} aria-label="Edit meal plan">
+                              {MEAL_PLAN_OPTIONS.map((mealPlan) => (
+                                <option key={mealPlan} value={mealPlan}>{mealPlan}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            option.mealPlanCode || option.mealPlan
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input type="number" min="1" value={editForm.nights} onChange={(event) => setEditForm({ ...editForm, nights: event.target.value })} aria-label="Edit nights" />
+                          ) : (
+                            option.nights
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select value={editForm.isPrimary ? 'yes' : 'no'} onChange={(event) => setEditForm({ ...editForm, isPrimary: event.target.value === 'yes' })} aria-label="Edit primary status">
+                              <option value="no">Alternative</option>
+                              <option value="yes">Primary</option>
+                            </select>
+                          ) : (
+                            option.isPrimary ? 'Primary' : 'Alternative'
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <textarea value={editForm.notes} onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })} aria-label="Edit notes" placeholder="Notes" />
+                          ) : (
+                            option.notes || '-'
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <>
+                              <button className="compact-button" type="button" onClick={updateHotelAlternative}>Save</button>
+                              <button className="compact-button" type="button" onClick={cancelEditingHotelAlternative}>Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              <button className="compact-button" type="button" onClick={() => startEditingHotelAlternative(option)}>Edit</button>
+                              <button className="compact-button" type="button" onClick={() => patchHotelAlternative(option.id, { isPrimary: true })}>Mark primary</button>
+                              <button className="compact-button" type="button" onClick={() => deleteHotelAlternative(option.id)}>Delete</button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

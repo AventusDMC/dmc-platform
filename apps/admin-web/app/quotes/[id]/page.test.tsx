@@ -137,6 +137,15 @@ describe('quote detail page regression', () => {
       'isSelected={optionSet.id === selectedOptionSetId}',
       'Editing: {optionSet.name}',
       'Add accommodation option',
+      'const [editingHotelOptionId, setEditingHotelOptionId] = useState',
+      'function startEditingHotelAlternative(option: QuoteHotelOption)',
+      'function updateHotelAlternative()',
+      'method: \'PATCH\'',
+      'setEditingHotelOptionId(option.id);',
+      'buildHotelAlternativePayload(editForm)',
+      '<button className="compact-button" type="button" onClick={() => startEditingHotelAlternative(option)}>Edit</button>',
+      '<input type="number" min="1" value={editForm.nights}',
+      '<textarea value={editForm.notes}',
     ]);
 
     expectSourceContains(cssSource, [
