@@ -69,6 +69,22 @@ type CancellationPolicyPreview = {
   rules?: CancellationRulePreview[];
 };
 
+type ChildPolicyPreviewValue = {
+  rules?: string[];
+  items?: Array<{ label: string; description: string }>;
+  infantMaxAge?: number | null;
+  childMaxAge?: number | null;
+  notes?: string | null;
+  bands?: Array<{
+    label?: string | null;
+    minAge?: number | null;
+    maxAge?: number | null;
+    chargeBasis?: string | null;
+    chargeValue?: number | null;
+    notes?: string | null;
+  }>;
+};
+
 type ContractPreview = {
   contractType: 'HOTEL' | 'TRANSPORT' | 'ACTIVITY';
   supplier: {
@@ -98,7 +114,7 @@ type ContractPreview = {
   policies: Array<{ name: string; value: string; uncertain?: boolean }>;
   ratePolicies?: RatePolicyPreview[];
   cancellationPolicy?: CancellationPolicyPreview | null;
-  childPolicy?: { rules: string[] } | null;
+  childPolicy?: ChildPolicyPreviewValue | null;
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -175,6 +191,18 @@ function formatPreviewValue(value: unknown): string {
       .join(', ');
   }
   return String(value);
+}
+
+function formatEnumLabel(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return humanizeKey(raw.toLowerCase().replace(/_/g, ' '));
+}
+
+function formatMoney(value: unknown, currency?: string | null): string {
+  const amount = optionalNumber(value);
+  if (amount === null) return '';
+  return [currency, amount.toLocaleString(undefined, { maximumFractionDigits: 2 })].filter(Boolean).join(' ');
 }
 
 function normalizeCategoryName(value: unknown): string {
@@ -294,26 +322,38 @@ function formatChildPolicy(policy: RatePolicyPreview) {
   return '';
 }
 
-function formatImportedChildBand(band: any, fallbackCurrency: string) {
+function childBandDescription(band: any, fallbackCurrency: string): string {
   const minAge = optionalNumber(band?.minAge);
   const maxAge = optionalNumber(band?.maxAge);
-  const ageRange = minAge !== null || maxAge !== null ? `${minAge ?? 0}-${maxAge ?? minAge ?? ''}` : 'policy age';
+  const ageRange = minAge !== null || maxAge !== null ? `${minAge ?? 0}-${maxAge ?? minAge ?? ''}` : '';
   const basis = String(band?.chargeBasis || '').trim().toUpperCase();
   const value = optionalNumber(band?.chargeValue);
+  const agePrefix = ageRange ? `Children ${ageRange} ` : '';
+  const notes = String(band?.notes || '').trim();
 
   if (basis === 'FREE') {
-    return `Children ${ageRange} free`;
+    return notes || `${agePrefix}free`.trim();
   }
 
   if (basis === 'PERCENT_OF_ADULT') {
-    return `Children ${ageRange} pay ${value !== null ? `${value}%` : 'percentage of adult rate'}`;
+    return notes || `${agePrefix}pay ${value !== null ? `${value}%` : 'percentage of adult rate'}`.trim();
   }
 
   if (basis === 'FIXED_AMOUNT') {
-    return `Children ${ageRange} pay ${value !== null ? `${fallbackCurrency} ${value}` : 'fixed child rate'}`;
+    return notes || `${agePrefix}pay ${value !== null ? `${fallbackCurrency} ${value}` : 'fixed child rate'}`.trim();
   }
 
-  return band?.notes || band?.label || '';
+  return notes || String(band?.label || '').trim();
+}
+
+function childBandLabel(band: any): string {
+  const label = String(band?.label || '').trim();
+  if (label) return label;
+  const basis = String(band?.chargeBasis || '').trim().toUpperCase();
+  if (basis === 'FIXED_AMOUNT') return 'Extra bed';
+  if (basis === 'PERCENT_OF_ADULT') return 'Child charge';
+  if (basis === 'FREE') return 'Existing bedding';
+  return 'Child policy';
 }
 
 function mapSourceChildPolicy(source: Record<string, any>, fallbackCurrency: string) {
@@ -322,16 +362,28 @@ function mapSourceChildPolicy(source: Record<string, any>, fallbackCurrency: str
 
   if (Array.isArray(childPolicy.rules)) {
     const rules = childPolicy.rules.map((rule: unknown) => String(rule || '').trim()).filter(Boolean);
-    return rules.length > 0 ? { rules } : null;
+    const items = rules.map((rule: string) => ({ label: inferChildPolicyLabel(rule), description: rule }));
+    return rules.length > 0 ? { ...childPolicy, rules, items } : null;
   }
 
-  const bandRules = Array.isArray(childPolicy.bands)
-    ? childPolicy.bands.map((band: any) => formatImportedChildBand(band, fallbackCurrency)).filter(Boolean)
+  const bandItems = Array.isArray(childPolicy.bands)
+    ? childPolicy.bands
+        .map((band: any) => ({ label: childBandLabel(band), description: childBandDescription(band, fallbackCurrency) }))
+        .filter((item: { label: string; description: string }) => item.description)
     : [];
   const notes = String(childPolicy.notes || '').trim();
-  const rules = [...bandRules, notes].filter(Boolean);
+  const noteItems = notes ? [{ label: 'Notes', description: notes }] : [];
+  const items = [...bandItems, ...noteItems];
+  const rules = items.map((item) => item.description).filter(Boolean);
 
-  return rules.length > 0 ? { rules } : null;
+  return rules.length > 0 ? { ...childPolicy, rules, items } : null;
+}
+
+function inferChildPolicyLabel(rule: string): string {
+  if (/extra\s*bed/i.test(rule)) return 'Extra bed';
+  if (/meal/i.test(rule)) return 'Meals';
+  if (/free|existing bedding|sharing/i.test(rule)) return 'Existing bedding';
+  return 'Child policy';
 }
 
 function deriveChildPolicy(ratePolicies: RatePolicyPreview[]) {
@@ -1018,9 +1070,9 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
             </div>
           ) : null}
 
-          <PreviewList title="Meal plans" items={preview.mealPlans || []} empty="No meal plans extracted." />
+          <MealPlansPreview mealPlans={preview.mealPlans || []} />
           <TaxesPreview taxes={preview.taxes} />
-          <PreviewList title="Supplements and add-ons" items={preview.supplements} empty="No supplements extracted." />
+          <SupplementsPreview supplements={preview.supplements} currency={preview.contract.currency} />
           <section>
             <div className="section-header">
               <h3>Rate policies</h3>
@@ -1049,7 +1101,16 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                   <tbody>
                     {(preview.ratePolicies || []).map((policy, index) => (
                       <tr key={index}>
-                        <td><input value={policy.policyType} onChange={(event) => updateRatePolicy(index, 'policyType', event.target.value.toUpperCase())} /></td>
+                        <td>
+                          <select value={policy.policyType} onChange={(event) => updateRatePolicy(index, 'policyType', event.target.value)}>
+                            <option value="CHILD_FREE">Child free</option>
+                            <option value="CHILD_DISCOUNT">Child discount</option>
+                            <option value="CHILD_EXTRA_BED">Child extra bed</option>
+                            <option value="MEAL_SUPPLEMENT">Meal supplement</option>
+                            <option value="MINIMUM_STAY">Minimum stay</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </td>
                         <td><input value={policy.appliesTo || ''} onChange={(event) => updateRatePolicy(index, 'appliesTo', event.target.value)} /></td>
                         <td><input value={String(policy.ageFrom ?? '')} onChange={(event) => updateRatePolicy(index, 'ageFrom', event.target.value)} inputMode="numeric" /></td>
                         <td><input value={String(policy.ageTo ?? '')} onChange={(event) => updateRatePolicy(index, 'ageTo', event.target.value)} inputMode="numeric" /></td>
@@ -1058,8 +1119,8 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                         <td><input value={policy.currency || ''} onChange={(event) => updateRatePolicy(index, 'currency', event.target.value.toUpperCase())} /></td>
                         <td>
                           <select value={policy.pricingBasis || 'PER_ROOM'} onChange={(event) => updateRatePolicy(index, 'pricingBasis', event.target.value)}>
-                            <option value="PER_ROOM">PER_ROOM</option>
-                            <option value="PER_PERSON">PER_PERSON</option>
+                            <option value="PER_ROOM">Per room</option>
+                            <option value="PER_PERSON">Per person</option>
                           </select>
                         </td>
                         <td><input value={policy.mealPlan || ''} onChange={(event) => updateRatePolicy(index, 'mealPlan', event.target.value.toUpperCase())} /></td>
@@ -1142,7 +1203,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
             ) : null}
           </section>
           <ChildPolicyPreview value={preview.childPolicy} />
-          <PreviewList title="Policies" items={preview.policies} empty="No policies extracted." />
+          <PoliciesPreview policies={preview.policies} />
         </section>
       ) : null}
     </div>
@@ -1196,21 +1257,127 @@ function TaxesPreview({ taxes }: { taxes: ContractPreview['taxes'] }) {
   );
 }
 
-function ChildPolicyPreview({ value }: { value?: { rules: string[] } | null }) {
+function MealPlansPreview({ mealPlans }: { mealPlans: NonNullable<ContractPreview['mealPlans']> }) {
+  return (
+    <section>
+      <h3>Meal plans</h3>
+      {mealPlans.length === 0 ? <p className="empty-state">No meal plans extracted.</p> : null}
+      {mealPlans.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Meal plan</th>
+                <th>Default</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mealPlans.map((mealPlan, index) => (
+                <tr key={`${mealPlan.code}-${index}`}>
+                  <td>{mealPlan.code || 'Meal plan'}</td>
+                  <td>{mealPlan.isDefault ? 'Yes' : 'No'}</td>
+                  <td>{mealPlan.notes || 'No notes'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SupplementsPreview({ supplements, currency }: { supplements: ContractPreview['supplements']; currency: string }) {
+  return (
+    <section>
+      <h3>Supplements and add-ons</h3>
+      {supplements.length === 0 ? <p className="empty-state">No supplements extracted.</p> : null}
+      {supplements.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Supplement</th>
+                <th>Amount</th>
+                <th>Pricing basis</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {supplements.map((supplement, index) => (
+                <tr key={`${supplement.name}-${index}`}>
+                  <td>{supplement.name || 'Supplement'}</td>
+                  <td>{formatMoney(supplement.amount, currency) || 'No amount'}</td>
+                  <td>{formatEnumLabel(supplement.pricingBasis) || 'Not specified'}</td>
+                  <td>{supplement.notes || 'No notes'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function PoliciesPreview({ policies }: { policies: ContractPreview['policies'] }) {
+  return (
+    <section>
+      <h3>Policies</h3>
+      {policies.length === 0 ? <p className="empty-state">No policies extracted.</p> : null}
+      {policies.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Policy type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {policies.map((policy, index) => (
+                <tr key={`${policy.name}-${index}`}>
+                  <td>{policy.name || 'Policy'}</td>
+                  <td>{policy.value || 'No description'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ChildPolicyPreview({ value }: { value?: ChildPolicyPreviewValue | null }) {
+  const items =
+    value?.items?.length
+      ? value.items
+      : value?.rules?.map((rule) => ({ label: inferChildPolicyLabel(rule), description: rule })) || [];
+
   return (
     <section>
       <h3>Child policy</h3>
-      {!value?.rules?.length ? <p className="empty-state">No child policy extracted.</p> : null}
-      {value?.rules?.length ? (
-        <div className="summary-strip">
-          {value.rules.map((rule) => (
-            <div className="summary-card" key={rule}>
-              <p>
-                <span>Rule</span>
-                <strong>{rule}</strong>
-              </p>
-            </div>
-          ))}
+      {items.length === 0 ? <p className="empty-state">No child policy extracted.</p> : null}
+      {items.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Policy area</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={`${item.label}-${index}`}>
+                  <td>{item.label}</td>
+                  <td>{item.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : null}
     </section>
