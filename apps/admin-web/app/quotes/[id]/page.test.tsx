@@ -425,6 +425,22 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(calculationBlock, /AbortController|signal:|controller\.abort|AbortError/);
   });
 
+  it('preserves a hotel catalog service id when editing saved hotel room counts', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const initialItemServiceTypeKey = hasInitialExternalPackage',
+      ': initialValues?.hotelId',
+      ": 'hotel'",
+      ': initialServiceTypeKey || (isEditing ? initialItemServiceTypeKey : null);',
+      'const resolvedHotelServiceId =',
+      'selectedService?.id || filteredServices[0]?.id || serviceId',
+      "throw new Error('Hotel catalog service not found for this stay.');",
+      'serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId',
+      'roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount)',
+    ]);
+  });
+
   it('keeps Smart Transport Picker suggestions to the smallest fitting capacity', () => {
     const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
 

@@ -842,9 +842,14 @@ export function QuoteItemsForm({
       initialValues?.externalPackage?.netCost ||
       initialValues?.externalPackage?.clientItineraryText,
   );
+  const initialItemServiceTypeKey = hasInitialExternalPackage
+    ? 'externalPackage'
+    : initialValues?.hotelId
+      ? 'hotel'
+      : null;
   const initialActiveServiceType = initialService
     ? getServiceTypeKey(initialService)
-    : initialServiceTypeKey || (isEditing && hasInitialExternalPackage ? 'externalPackage' : null);
+    : initialServiceTypeKey || (isEditing ? initialItemServiceTypeKey : null);
   const initialServiceDate =
     (initialActiveServiceType === 'activity' || initialActiveServiceType === 'hotel' || initialActiveServiceType === 'meal') && !itineraryId && travelStartDate
       ? travelStartDate.slice(0, 10)
@@ -2246,8 +2251,17 @@ export function QuoteItemsForm({
         isTransportService
           ? findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || serviceId
           : serviceId;
+      const resolvedHotelServiceId =
+        isHotelService
+          ? selectedService?.id || filteredServices[0]?.id || serviceId
+          : serviceId;
+
+      if (isHotelService && !resolvedHotelServiceId) {
+        throw new Error('Hotel catalog service not found for this stay.');
+      }
+
       const quoteItemPayload = {
-        serviceId: resolvedTransportServiceId,
+        serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId,
         activityId: isActivityService && activityId ? activityId : undefined,
         itineraryId,
         serviceDate:
