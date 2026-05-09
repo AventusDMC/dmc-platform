@@ -947,7 +947,7 @@ test('EXTERNAL_PACKAGE accepts supported currencies and rejects missing or unsup
   );
   await assert.rejects(
     () => resolveExternalPackage({ pricingBasis: 'PER_PERSON', netCost: 250, currency: 'GBP' }),
-    /costCurrency must be one of USD, EUR, or JOD/,
+    /costCurrency must be one of USD, EUR, JOD, or ILS/,
   );
 });
 
@@ -1752,6 +1752,57 @@ test('activity rate variant capacity pricing calculates required jeep units', as
   assert.equal(values.data.totalSell, 480);
   assert.match(values.data.pricingDescription, /2 Hours/);
   assert.match(values.data.pricingDescription, /Capacity 6 pax\/unit/);
+});
+
+test('activity rate variant currency wins over service currency for quote pricing', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'USD',
+    },
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 0,
+      costBaseAmount: 0,
+      currency: 'USD',
+      costCurrency: 'USD',
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    activity: {
+      id: 'activity-1',
+      name: 'Wadi Rum Jeep Tour',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 90,
+      sellPrice: 120,
+    },
+    activityRateVariant: {
+      id: 'variant-ils',
+      activityId: 'activity-1',
+      name: 'Sunset Jeep',
+      pricingBasis: 'PER_GROUP',
+      currency: 'ILS',
+      costPrice: 300,
+      sellPrice: 420,
+      maxPaxPerUnit: 5,
+    },
+    item: {
+      activityId: 'activity-1',
+      activityRateVariantId: 'variant-ils',
+      participantCount: 11,
+      paxCount: 11,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.activityRateVariantId, 'variant-ils');
+  assert.equal(values.data.currency, 'USD');
+  assert.equal(values.data.costCurrency, 'ILS');
+  assert.equal(values.data.costBaseAmount, 300);
+  assert.equal(values.data.totalCost, 243);
+  assert.equal(values.data.totalSell, 340.2);
+  assert.equal(values.data.fxFromCurrency, 'ILS');
+  assert.equal(values.data.fxToCurrency, 'USD');
 });
 
 test('capacity max does not change per-person pricing', () => {

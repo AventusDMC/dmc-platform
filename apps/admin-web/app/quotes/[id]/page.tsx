@@ -107,6 +107,17 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  ticketRateVariants?: Array<{
+    id: string;
+    label: string;
+    costPrice: number;
+    sellPrice?: number | null;
+    currency: string;
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+    notes?: string | null;
+    active: boolean;
+    sortOrder?: number | null;
+  }> | null;
   serviceRates?: Array<{
     id?: string | null;
     pricingMode?: string | null;
@@ -131,12 +142,14 @@ type ActivityCatalogItem = {
   costPrice: number;
   sellPrice: number;
   durationMinutes: number | null;
+  currency?: string | null;
   active: boolean;
   rateVariants?: Array<{
     id: string;
     name: string;
     durationMinutes: number | null;
     pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+    currency: string;
     costPrice: number;
     sellPrice: number;
     maxPaxPerUnit: number | null;
@@ -295,6 +308,7 @@ type QuoteItem = {
   id: string;
   itineraryId: string | null;
   activityId?: string | null;
+  ticketRateVariantId?: string | null;
   activity?: {
     id: string;
     name: string;

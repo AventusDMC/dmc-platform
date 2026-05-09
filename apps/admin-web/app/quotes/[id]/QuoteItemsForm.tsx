@@ -40,6 +40,19 @@ type SupplierService = {
   unitType: string;
   baseCost: number;
   currency: string;
+  ticketRateVariants?: TicketRateVariant[] | null;
+};
+
+type TicketRateVariant = {
+  id: string;
+  label: string;
+  costPrice: number;
+  sellPrice?: number | null;
+  currency: string;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  notes?: string | null;
+  active: boolean;
+  sortOrder?: number | null;
 };
 
 type ActivityCatalogItem = {
@@ -57,6 +70,7 @@ type ActivityCatalogItem = {
   costPrice: number;
   sellPrice: number;
   durationMinutes: number | null;
+  currency?: string | null;
   active: boolean;
   rateVariants?: ActivityRateVariant[] | null;
 };
@@ -66,6 +80,7 @@ type ActivityRateVariant = {
   name: string;
   durationMinutes: number | null;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  currency: string;
   costPrice: number;
   sellPrice: number;
   maxPaxPerUnit: number | null;
@@ -266,6 +281,7 @@ type QuoteItemInitialValues = {
   serviceId: string;
   activityId?: string;
   activityRateVariantId?: string;
+  ticketRateVariantId?: string;
   quantity: string;
   markupPercent: string;
   paxCount: string;
@@ -827,6 +843,7 @@ export function QuoteItemsForm({
   const [serviceId, setServiceId] = useState(initialValues?.serviceId || initialService?.id || '');
   const [activityId, setActivityId] = useState(initialValues?.activityId || preferredActivityId || '');
   const [activityRateVariantId, setActivityRateVariantId] = useState(initialValues?.activityRateVariantId || '');
+  const [ticketRateVariantId, setTicketRateVariantId] = useState(initialValues?.ticketRateVariantId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
   const [markupPercent, setMarkupPercent] = useState(initialValues?.markupPercent || '20');
   const [markupAmount, setMarkupAmount] = useState(initialValues?.markupAmount || '');
@@ -1062,6 +1079,7 @@ export function QuoteItemsForm({
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
   const isActivityService = selectedService ? getServiceTypeKey(selectedService) === 'activity' : false;
+  const isTicketingService = selectedService ? getServiceTypeKey(selectedService) === 'ticketing' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
   const externalPackageValidationErrors = useMemo(() => validateExternalPackageFormState(externalPackage), [externalPackage]);
@@ -1073,6 +1091,12 @@ export function QuoteItemsForm({
         : []
     : [];
   const hasTransportRouteSelection = Boolean(routeId);
+  const activeTicketRateVariants = useMemo(
+    () => (selectedService?.ticketRateVariants || []).filter((variant) => variant.active !== false),
+    [selectedService],
+  );
+  const selectedTicketRateVariant =
+    activeTicketRateVariants.find((variant) => variant.id === ticketRateVariantId) || activeTicketRateVariants[0] || null;
   const showTransportRouteRequired = isTransportService && Boolean(transportServiceTypeId) && !hasTransportRouteSelection;
   const isTransportVehicleSelected = Boolean(
     isTransportService &&
@@ -1252,7 +1276,13 @@ export function QuoteItemsForm({
     ? externalPackage.currency
     : isMealService
       ? mealCurrency
-      : preferredRateCurrency || selectedHotelRate?.currency || selectedService?.currency || 'USD';
+      : selectedActivityRateVariant?.currency ||
+        selectedTicketRateVariant?.currency ||
+        selectedActivity?.currency ||
+        preferredRateCurrency ||
+        selectedHotelRate?.currency ||
+        selectedService?.currency ||
+        'USD';
   const activityParticipantTotal = Math.max(
     1,
     Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
@@ -1292,6 +1322,13 @@ export function QuoteItemsForm({
       return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
     }
 
+    if (isTicketingService && selectedTicketRateVariant) {
+      const unitCost = Number(selectedTicketRateVariant.costPrice || 0);
+      const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
+      const units = selectedTicketRateVariant.pricingBasis === 'PER_GROUP' ? 1 : selectedTicketRateVariant.pricingBasis === 'PER_DAY' ? Math.max(1, Number(dayCount || 1)) : pax;
+      return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
+    }
+
     return baseCost ? Number(baseCost) : null;
   }, [
     adultCount,
@@ -1302,6 +1339,7 @@ export function QuoteItemsForm({
     isActivityService,
     isExternalPackageService,
     isMealService,
+    isTicketingService,
     mealCost,
     overrideCost,
     participantCount,
@@ -1310,6 +1348,7 @@ export function QuoteItemsForm({
     selectedActivity?.costPrice,
     selectedActivity?.pricingBasis,
     selectedActivityRateVariant,
+    selectedTicketRateVariant,
     useOverride,
   ]);
   const finalSellPrice = useMemo(() => {
@@ -1332,8 +1371,14 @@ export function QuoteItemsForm({
       return Number((Number(selectedActivityRateVariant?.sellPrice ?? selectedActivity.sellPrice ?? 0) * units).toFixed(2));
     }
 
+    if (isTicketingService && selectedTicketRateVariant?.sellPrice !== null && selectedTicketRateVariant?.sellPrice !== undefined) {
+      const pax = Math.max(1, Number(paxCount || defaultPaxCount || 1));
+      const units = selectedTicketRateVariant.pricingBasis === 'PER_GROUP' ? 1 : selectedTicketRateVariant.pricingBasis === 'PER_DAY' ? Math.max(1, Number(dayCount || 1)) : pax;
+      return Number((Number(selectedTicketRateVariant.sellPrice || 0) * units).toFixed(2));
+    }
+
     return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
-  }, [activityParticipantTotal, finalCost, isActivityService, markupAmount, markupPercent, selectedActivity, selectedActivityRateVariant, sellPrice]);
+  }, [activityParticipantTotal, dayCount, defaultPaxCount, finalCost, isActivityService, isTicketingService, markupAmount, markupPercent, paxCount, selectedActivity, selectedActivityRateVariant, selectedTicketRateVariant, sellPrice]);
   const finalMargin =
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
@@ -1460,6 +1505,17 @@ export function QuoteItemsForm({
       setActivityRateVariantId(activeActivityRateVariants[0].id);
     }
   }, [activeActivityRateVariants, activityRateVariantId, selectedActivity]);
+
+  useEffect(() => {
+    if (!selectedService || activeTicketRateVariants.length === 0) {
+      setTicketRateVariantId('');
+      return;
+    }
+
+    if (!activeTicketRateVariants.some((variant) => variant.id === ticketRateVariantId)) {
+      setTicketRateVariantId(activeTicketRateVariants[0].id);
+    }
+  }, [activeTicketRateVariants, selectedService, ticketRateVariantId]);
 
   useEffect(() => {
     if (!selectedService) {
@@ -2225,6 +2281,10 @@ export function QuoteItemsForm({
         throw new Error('Override cost is required when override is enabled.');
       }
 
+      if (isTicketingService && activeTicketRateVariants.length > 0 && !ticketRateVariantId) {
+        throw new Error('Ticket items require a rate variant.');
+      }
+
       if (markupAmount.trim() && Number(markupAmount) < 0) {
         throw new Error('Markup amount must be zero or greater.');
       }
@@ -2274,6 +2334,7 @@ export function QuoteItemsForm({
         serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId,
         activityId: isActivityService && activityId ? activityId : undefined,
         activityRateVariantId: isActivityService && activityRateVariantId ? activityRateVariantId : undefined,
+        ticketRateVariantId: isTicketingService && ticketRateVariantId ? ticketRateVariantId : undefined,
         itineraryId,
         serviceDate:
           (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
@@ -2680,6 +2741,32 @@ export function QuoteItemsForm({
                   </label>
                 </div>
               )}
+            </section>
+          ) : null}
+
+          {hasPrimarySelection && isTicketingService && activeTicketRateVariants.length > 0 ? (
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Ticket variant</p>
+                  <h3>Select ticket option</h3>
+                  <p className="detail-copy">Choose the operational ticket variant before confirming pricing.</p>
+                </div>
+                {selectedTicketRateVariant ? <span className="page-tab-badge">Variant selected</span> : null}
+              </div>
+
+              <div className="quote-transport-step-fields">
+                <label>
+                  Variant
+                  <select value={ticketRateVariantId} onChange={(event) => setTicketRateVariantId(event.target.value)} required>
+                    {activeTicketRateVariants.map((variant) => (
+                      <option key={variant.id} value={variant.id}>
+                        {variant.label} - {variant.currency} {Number(variant.costPrice || 0).toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </section>
           ) : null}
 
@@ -3213,6 +3300,7 @@ export function QuoteItemsForm({
                               {activeActivityRateVariants.map((variant) => (
                                 <option key={variant.id} value={variant.id}>
                                   {variant.name}
+                                  {variant.currency ? ` - ${variant.currency}` : ''}
                                   {variant.durationMinutes ? ` - ${variant.durationMinutes} min` : ''}
                                   {variant.maxPaxPerUnit ? ` - max ${variant.maxPaxPerUnit} pax/unit` : ''}
                                 </option>

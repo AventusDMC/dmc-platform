@@ -46,6 +46,7 @@ type SupplierService = {
   baseCost: number;
   currency: string;
   createdAt?: string;
+  ticketRateVariants?: TicketRateVariant[] | null;
   serviceRates?: Array<{
     id?: string | null;
     pricingMode?: string | null;
@@ -53,6 +54,18 @@ type SupplierService = {
     costBaseAmount?: number | null;
     costCurrency?: string | null;
   }> | null;
+};
+
+type TicketRateVariant = {
+  id: string;
+  label: string;
+  costPrice: number;
+  sellPrice?: number | null;
+  currency: string;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+  notes?: string | null;
+  active: boolean;
+  sortOrder?: number | null;
 };
 
 type ActivityCatalogItem = {
@@ -70,6 +83,7 @@ type ActivityCatalogItem = {
   costPrice: number;
   sellPrice: number;
   durationMinutes: number | null;
+  currency?: string | null;
   active: boolean;
   rateVariants?: ActivityRateVariant[] | null;
 };
@@ -79,6 +93,7 @@ type ActivityRateVariant = {
   name: string;
   durationMinutes: number | null;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  currency: string;
   costPrice: number;
   sellPrice: number;
   maxPaxPerUnit: number | null;
@@ -400,6 +415,7 @@ type QuoteItemInitialValues = {
   serviceId: string;
   activityId?: string;
   activityRateVariantId?: string;
+  ticketRateVariantId?: string;
   quantity: string;
   markupPercent: string;
   markupAmount?: string;
@@ -606,6 +622,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     serviceId: item.serviceId || '',
     activityId: item.activityId || '',
     activityRateVariantId: item.activityRateVariantId || '',
+    ticketRateVariantId: item.ticketRateVariantId || '',
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
     markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),

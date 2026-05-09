@@ -1,8 +1,21 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
 type ServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_VEHICLE' | 'PER_DAY' | 'per_vehicle';
+type TicketVariantPricingBasis = 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
 import { Roles } from '../auth/auth.decorators';
 import { ServicesService } from './services.service';
+
+type TicketRateVariantBody = {
+  id?: string | null;
+  label: string;
+  costPrice: number;
+  sellPrice?: number | null;
+  currency: string;
+  pricingBasis: TicketVariantPricingBasis;
+  includedInJordanPass?: boolean | null;
+  notes?: string | null;
+  active?: boolean;
+};
 
 type CreateSupplierServiceBody = {
   supplierId: string;
@@ -21,6 +34,7 @@ type CreateSupplierServiceBody = {
   tourismFeeAmount?: number | null;
   tourismFeeCurrency?: string | null;
   tourismFeeMode?: TourismFeeMode | null;
+  ticketRateVariants?: TicketRateVariantBody[];
 };
 
 type UpdateSupplierServiceBody = Partial<CreateSupplierServiceBody>;
@@ -73,6 +87,7 @@ export class ServicesController {
       serviceChargePercent: body.serviceChargePercent === undefined ? undefined : Number(body.serviceChargePercent),
       tourismFeeAmount:
         body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
+      ticketRateVariants: body.ticketRateVariants === undefined ? undefined : this.normalizeTicketRateVariants(body.ticketRateVariants),
     });
   }
 
@@ -88,6 +103,7 @@ export class ServicesController {
       serviceChargePercent: body.serviceChargePercent === undefined ? undefined : Number(body.serviceChargePercent),
       tourismFeeAmount:
         body.tourismFeeAmount === undefined || body.tourismFeeAmount === null ? body.tourismFeeAmount : Number(body.tourismFeeAmount),
+      ticketRateVariants: body.ticketRateVariants === undefined ? undefined : this.normalizeTicketRateVariants(body.ticketRateVariants),
     });
   }
 
@@ -143,5 +159,13 @@ export class ServicesController {
   @Roles('admin', 'operations')
   removeRate(@Param('rateId') rateId: string) {
     return this.servicesService.removeRate(rateId);
+  }
+
+  private normalizeTicketRateVariants(variants: TicketRateVariantBody[]) {
+    return variants.map((variant) => ({
+      ...variant,
+      costPrice: Number(variant.costPrice),
+      sellPrice: variant.sellPrice === undefined || variant.sellPrice === null ? variant.sellPrice : Number(variant.sellPrice),
+    }));
   }
 }

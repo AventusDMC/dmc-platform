@@ -292,7 +292,7 @@ test('quote pricing rejects invalid quote or supplier currency codes clearly', (
           quoteCurrency: 'GBP',
         }),
       ),
-    /quoteCurrency must be one of USD, EUR, or JOD/,
+    /quoteCurrency must be one of USD, EUR, JOD, or ILS/,
   );
   assert.throws(
     () =>
@@ -304,7 +304,7 @@ test('quote pricing rejects invalid quote or supplier currency codes clearly', (
           },
         }),
       ),
-    /costCurrency must be one of USD, EUR, or JOD/,
+    /costCurrency must be one of USD, EUR, JOD, or ILS/,
   );
 });
 

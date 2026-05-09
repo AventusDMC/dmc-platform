@@ -57,8 +57,8 @@ describe('activities catalog admin UI regression', () => {
       'active',
     ]);
 
-    assert.doesNotMatch(formSource, /\bcountry:|setCountry|defaultStartTime|operationNotes|\bcurrency,/);
-    assert.doesNotMatch(typesSource, /\bcurrency\?:|defaultStartTime|operationNotes/);
+    assert.doesNotMatch(formSource, /\bcountry:|setCountry|defaultStartTime|operationNotes/);
+    assert.doesNotMatch(typesSource, /defaultStartTime|operationNotes/);
   });
 
   it('loads existing activity detail and wires edit form to PATCH updates', () => {
@@ -166,6 +166,8 @@ describe('activities catalog admin UI regression', () => {
       'function moveVariant(index: number, direction: -1 | 1)',
       'Activity changes saved.',
       "{variant.active ? 'Active' : 'Inactive'}",
+      '<CurrencySelect',
+      'currency: variant.currency',
       'Move up',
       'Move down',
       'Duplicate',

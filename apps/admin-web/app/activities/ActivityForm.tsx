@@ -3,6 +3,8 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiValidationError, getApiError } from '../lib/api';
+import { CurrencySelect } from '../components/CurrencySelect';
+import { normalizeSupportedCurrency, type SupportedCurrency } from '../lib/currencyOptions';
 import { Activity, ActivityCompany, ActivityPricingBasis, ActivityRateVariant } from './types';
 
 type ActivityFormProps = {
@@ -21,6 +23,7 @@ type ActivityRateVariantFormRow = {
   id?: string;
   name: string;
   durationMinutes: string;
+  currency: SupportedCurrency;
   costPrice: string;
   sellPrice: string;
   pricingBasis: ActivityPricingBasis;
@@ -34,6 +37,7 @@ function toVariantRow(variant?: Partial<ActivityRateVariant>): ActivityRateVaria
     id: variant?.id,
     name: variant?.name || '',
     durationMinutes: toStringValue(variant?.durationMinutes),
+    currency: normalizeSupportedCurrency(variant?.currency),
     costPrice: toStringValue(variant?.costPrice),
     sellPrice: toStringValue(variant?.sellPrice),
     pricingBasis: variant?.pricingBasis || 'PER_GROUP',
@@ -149,6 +153,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
         name: variant.name.trim(),
         durationMinutes: variantDuration,
         pricingBasis: variant.pricingBasis,
+        currency: variant.currency,
         costPrice: variantCost,
         sellPrice: variantSell,
         maxPaxPerUnit: variantMaxPax,
@@ -308,6 +313,14 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                     <option value="PER_PERSON">Per person</option>
                     <option value="PER_GROUP">Per group</option>
                   </select>
+                </label>
+                <label>
+                  Currency
+                  <CurrencySelect
+                    value={variant.currency}
+                    onChange={(value) => updateVariant(index, { currency: (value || 'USD') as SupportedCurrency })}
+                    required
+                  />
                 </label>
                 <label>
                   Cost

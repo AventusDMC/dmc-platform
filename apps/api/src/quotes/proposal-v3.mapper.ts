@@ -1380,7 +1380,7 @@ function buildDefaultNotes(quote: ProposalV3Quote) {
 
 function getProposalCurrency(quote: ProposalV3Quote) {
   const currency = quote.quoteCurrency?.trim().toUpperCase() || 'USD';
-  return ['USD', 'EUR', 'JOD'].includes(currency) ? currency : 'USD';
+  return ['USD', 'EUR', 'JOD', 'ILS'].includes(currency) ? currency : 'USD';
 }
 
 function buildClientFacingTitle(quote: ProposalV3Quote, destinationLine: string) {

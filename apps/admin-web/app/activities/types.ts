@@ -18,6 +18,7 @@ export type Activity = {
   costPrice: number;
   sellPrice: number;
   durationMinutes: number | null;
+  currency?: string | null;
   active: boolean;
   rateVariants?: ActivityRateVariant[];
 };
@@ -26,6 +27,7 @@ export type ActivityRateVariant = {
   id?: string;
   name: string;
   durationMinutes: number | null;
+  currency: string;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;

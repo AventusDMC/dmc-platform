@@ -34,6 +34,17 @@ type SupplierService = {
   baseCost: number;
   currency: string;
   serviceRates: ServiceRate[];
+  ticketRateVariants?: Array<{
+    id: string;
+    label: string;
+    costPrice: number;
+    sellPrice?: number | null;
+    currency: string;
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
+    notes?: string | null;
+    active: boolean;
+    sortOrder?: number | null;
+  }> | null;
 };
 
 type SupplierOption = {

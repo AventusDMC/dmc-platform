@@ -79,6 +79,7 @@ type CreateQuoteItemBody = {
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  ticketRateVariantId?: string | null;
   itineraryId?: string;
   serviceDate?: string | null;
   startTime?: string | null;
@@ -765,6 +766,7 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -856,6 +858,7 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -1155,6 +1158,7 @@ export class QuotesController {
       serviceId: body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,
@@ -1246,6 +1250,7 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       startTime: body.startTime === undefined ? undefined : body.startTime || null,

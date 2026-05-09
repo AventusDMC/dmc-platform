@@ -9,6 +9,7 @@ import { getErrorMessage } from '../lib/api';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 import { ServicesForm } from '../services/ServicesForm';
 import { ServiceRatesManager } from './ServiceRatesManager';
+import { TicketVariantsManager, type TicketRateVariant } from './TicketVariantsManager';
 import { type ServiceRate } from './types';
 
 type SupplierService = {
@@ -22,6 +23,7 @@ type SupplierService = {
   baseCost: number;
   currency: string;
   serviceRates: ServiceRate[];
+  ticketRateVariants?: TicketRateVariant[] | null;
 };
 
 type ServicesCatalogBrowserProps = {
@@ -67,6 +69,7 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
   const [categoryFilter, setCategoryFilter] = useState('');
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [ratesServiceId, setRatesServiceId] = useState<string | null>(null);
+  const [ticketVariantsServiceId, setTicketVariantsServiceId] = useState<string | null>(null);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
@@ -247,6 +250,15 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
                 >
                   Rates
                 </button>
+                {getServiceCategoryKey(service) === 'ticketing' ? (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setTicketVariantsServiceId((current) => (current === service.id ? null : service.id))}
+                  >
+                    Variants
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="secondary-button"
@@ -264,6 +276,13 @@ export function ServicesCatalogBrowser({ apiBaseUrl, services, serviceTypes, sup
                   initialRates={service.serviceRates || []}
                   showTourismFee={getServiceCategoryKey(service) === 'hotel'}
                   defaultOpen
+                />
+              ) : null}
+              {ticketVariantsServiceId === service.id ? (
+                <TicketVariantsManager
+                  apiBaseUrl={apiBaseUrl}
+                  serviceId={service.id}
+                  initialVariants={service.ticketRateVariants || []}
                 />
               ) : null}
             </article>

@@ -120,6 +120,7 @@ test('create activity persists multiple structured rate variants', async () => {
       {
         name: '2 Hours',
         durationMinutes: 120,
+        currency: 'JOD',
         pricingBasis: 'PER_GROUP',
         costPrice: 90,
         sellPrice: 120,
@@ -129,6 +130,7 @@ test('create activity persists multiple structured rate variants', async () => {
       {
         name: 'Full Day',
         durationMinutes: 480,
+        currency: 'USD',
         pricingBasis: 'PER_GROUP',
         costPrice: 260,
         sellPrice: 340,
@@ -143,6 +145,7 @@ test('create activity persists multiple structured rate variants', async () => {
     name: '2 Hours',
     durationMinutes: 120,
     pricingBasis: 'PER_GROUP',
+    currency: 'JOD',
     costPrice: 90,
     sellPrice: 120,
     maxPaxPerUnit: 6,
@@ -151,6 +154,7 @@ test('create activity persists multiple structured rate variants', async () => {
     sortOrder: 0,
   });
   assert.equal(createdData.rateVariants.create[1].name, 'Full Day');
+  assert.equal(createdData.rateVariants.create[1].currency, 'USD');
   assert.equal(createdData.rateVariants.create[1].sortOrder, 1);
 });
 
@@ -190,6 +194,7 @@ test('update activity variants preserves existing variant ids and deactivates re
         name: '2 Hours VIP',
         durationMinutes: 120,
         pricingBasis: 'PER_GROUP',
+        currency: 'ILS',
         costPrice: 140,
         sellPrice: 190,
         maxPaxPerUnit: 6,
@@ -199,6 +204,7 @@ test('update activity variants preserves existing variant ids and deactivates re
         name: 'Shared Jeep',
         durationMinutes: 180,
         pricingBasis: 'PER_PERSON',
+        currency: 'JOD',
         costPrice: 20,
         sellPrice: 35,
         active: true,
@@ -213,6 +219,7 @@ test('update activity variants preserves existing variant ids and deactivates re
       name: '2 Hours VIP',
       durationMinutes: 120,
       pricingBasis: 'PER_GROUP',
+      currency: 'ILS',
       costPrice: 140,
       sellPrice: 190,
       maxPaxPerUnit: 6,
@@ -251,6 +258,7 @@ test('duplicate activity clones variants into inactive review copy', async () =>
                 id: 'variant-1',
                 name: '2 Hours',
                 durationMinutes: 120,
+                currency: 'EUR',
                 pricingBasis: 'PER_GROUP',
                 costPrice: 90,
                 sellPrice: 120,
@@ -275,6 +283,7 @@ test('duplicate activity clones variants into inactive review copy', async () =>
   assert.equal(createdData.active, false);
   assert.equal(createdData.rateVariants.create.length, 1);
   assert.equal(createdData.rateVariants.create[0].name, '2 Hours');
+  assert.equal(createdData.rateVariants.create[0].currency, 'EUR');
   assert.equal(createdData.rateVariants.create[0].maxPaxPerUnit, 6);
 });
 

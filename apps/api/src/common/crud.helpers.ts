@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'JOD'] as const;
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'JOD', 'ILS'] as const;
+const SUPPORTED_CURRENCY_MESSAGE = 'USD, EUR, JOD, or ILS';
 
 export function normalizeOptionalString(value?: string | null) {
   if (value === undefined) {
@@ -52,13 +53,13 @@ export function requireSupportedCurrency(value: string, fieldLabel: string) {
   const trimmed = requireTrimmedString(value, fieldLabel);
 
   if (trimmed !== trimmed.toUpperCase()) {
-    throw new BadRequestException(`${fieldLabel} must be one of USD, EUR, or JOD`);
+    throw new BadRequestException(`${fieldLabel} must be one of ${SUPPORTED_CURRENCY_MESSAGE}`);
   }
 
   const normalized = trimmed.toUpperCase();
 
   if (!SUPPORTED_CURRENCIES.includes(normalized as (typeof SUPPORTED_CURRENCIES)[number])) {
-    throw new BadRequestException(`${fieldLabel} must be one of USD, EUR, or JOD`);
+    throw new BadRequestException(`${fieldLabel} must be one of ${SUPPORTED_CURRENCY_MESSAGE}`);
   }
 
   return normalized;

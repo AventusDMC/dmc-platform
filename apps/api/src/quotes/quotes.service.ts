@@ -136,6 +136,8 @@ type CreateQuoteItemInput = {
   activityId?: string | null;
   activityRateVariantId?: string | null;
   allowInactiveActivityRateVariantId?: string | null;
+  ticketRateVariantId?: string | null;
+  allowInactiveTicketRateVariantId?: string | null;
   itineraryId?: string;
   serviceDate?: Date | null;
   startTime?: string | null;
@@ -2184,6 +2186,7 @@ export class QuotesService {
           },
         },
         activityRateVariant: true,
+        ticketRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2240,6 +2243,9 @@ export class QuotesService {
             serviceRates: {
               orderBy: { createdAt: 'desc' },
               take: 1,
+            },
+            ticketRateVariants: {
+              orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
             },
           },
         },
@@ -2547,6 +2553,12 @@ export class QuotesService {
           : data.activityRateVariantId,
       allowInactiveActivityRateVariantId:
         data.activityRateVariantId === undefined ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined : undefined,
+      ticketRateVariantId:
+        data.ticketRateVariantId === undefined
+          ? (existingItem as { ticketRateVariantId?: string | null }).ticketRateVariantId ?? undefined
+          : data.ticketRateVariantId,
+      allowInactiveTicketRateVariantId:
+        data.ticketRateVariantId === undefined ? (existingItem as { ticketRateVariantId?: string | null }).ticketRateVariantId ?? undefined : undefined,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
       serviceDate:
         data.serviceDate === undefined ? (existingItem as { serviceDate?: Date | null }).serviceDate ?? undefined : data.serviceDate,
@@ -2769,10 +2781,14 @@ export class QuotesService {
               orderBy: { createdAt: 'desc' },
               take: 1,
             },
+            ticketRateVariants: {
+              orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+            },
           },
         },
         activity: { include: { supplierCompany: true } },
         activityRateVariant: true,
+        ticketRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2842,6 +2858,7 @@ export class QuotesService {
           },
         },
         activityRateVariant: true,
+        ticketRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2989,7 +3006,7 @@ export class QuotesService {
     const normalizedServiceId = hasSyntheticExternalPackageServiceId ? null : data.serviceId || null;
     const isOneOffExternalPackage = !normalizedServiceId && hasExternalPackageFields;
 
-    const [quote, service, activity, activityRateVariant, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
+    const [quote, service, activity, activityRateVariant, ticketRateVariant, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
@@ -3002,6 +3019,9 @@ export class QuotesService {
               serviceRates: {
                 orderBy: { createdAt: 'desc' },
                 take: 1,
+              },
+              ticketRateVariants: {
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
               },
             },
           })
@@ -3020,6 +3040,11 @@ export class QuotesService {
       data.activityRateVariantId
         ? (this.prisma as any).activityRateVariant.findUnique({
             where: { id: data.activityRateVariantId },
+          })
+        : Promise.resolve(null),
+      data.ticketRateVariantId
+        ? (this.prisma as any).ticketRateVariant.findUnique({
+            where: { id: data.ticketRateVariantId },
           })
         : Promise.resolve(null),
       data.itineraryId
@@ -3067,6 +3092,22 @@ export class QuotesService {
       activityRateVariant.id !== data.allowInactiveActivityRateVariantId
     ) {
       throw new BadRequestException('Activity rate variant is inactive');
+    }
+
+    if (data.ticketRateVariantId && !ticketRateVariant) {
+      throw new BadRequestException('Ticket rate variant not found');
+    }
+
+    if (ticketRateVariant && ticketRateVariant.serviceId !== normalizedServiceId) {
+      throw new BadRequestException('Ticket rate variant does not belong to the selected ticket product');
+    }
+
+    if (
+      ticketRateVariant &&
+      ticketRateVariant.active === false &&
+      ticketRateVariant.id !== data.allowInactiveTicketRateVariantId
+    ) {
+      throw new BadRequestException('Ticket rate variant is inactive');
     }
 
     if (activity && !this.isActivityService(effectiveService)) {
@@ -3147,6 +3188,7 @@ export class QuotesService {
     let capacityMaxPaxPerUnit: number | null = null;
     let structuredServiceRatePricingMode: StructuredServiceRatePricingMode | null = null;
     const selectedActivityRate = activity ? activityRateVariant || this.getDefaultActivityRateVariant(activity) : null;
+    const selectedTicketRate = ticketRateVariant || this.getDefaultTicketRateVariant(effectiveService);
 
     const serviceRate = (effectiveService as any).serviceRates?.[0] as
       | {
@@ -3431,8 +3473,14 @@ export class QuotesService {
             : Math.max(0, Math.floor(data.participantCount));
 
       if (activity) {
+        const activityRateCurrency =
+          (selectedActivityRate as { currency?: string | null } | null | undefined)?.currency ||
+          (activity as { currency?: string | null }).currency ||
+          data.currency?.trim().toUpperCase() ||
+          effectiveService.currency ||
+          'USD';
         baseCost = Number(selectedActivityRate?.costPrice ?? activity.costPrice);
-        currency = data.currency?.trim().toUpperCase() || effectiveService.currency || 'USD';
+        currency = activityRateCurrency;
         supplierCostBaseAmount = Number(selectedActivityRate?.costPrice ?? activity.costPrice);
         supplierCostCurrency = currency;
         if (selectedActivityRate?.maxPaxPerUnit && selectedActivityRate.maxPaxPerUnit > 0) {
@@ -3458,23 +3506,30 @@ export class QuotesService {
         | undefined;
 
       if (!activity && entranceFee) {
+        const ticketUnitCost = Number(selectedTicketRate?.costPrice ?? entranceFee.foreignerFeeJod);
+        const ticketCurrency = (selectedTicketRate?.currency || 'JOD').trim().toUpperCase();
         const coverage = await this.resolveJordanPassEntranceCoverage({
           quoteId: quote.id,
           optionId: data.optionId || null,
           jordanPassType: (quote as any).jordanPassType || 'NONE',
-          entranceFee,
+          entranceFee: {
+            ...entranceFee,
+            siteName: selectedTicketRate ? `${entranceFee.siteName} ${selectedTicketRate.label}` : entranceFee.siteName,
+            foreignerFeeJod: ticketUnitCost,
+          },
         });
 
         entranceFeeId = entranceFee.id;
         jordanPassCovered = coverage.covered;
-        jordanPassSavingsJod = coverage.covered ? entranceFee.foreignerFeeJod : 0;
-        baseCost = coverage.covered ? 0 : entranceFee.foreignerFeeJod;
-        currency = 'JOD';
+        jordanPassSavingsJod = coverage.covered ? ticketUnitCost : 0;
+        baseCost = coverage.covered ? 0 : ticketUnitCost;
+        currency = ticketCurrency;
         supplierCostBaseAmount = baseCost;
-        supplierCostCurrency = 'JOD';
+        supplierCostCurrency = ticketCurrency;
+        structuredServiceRatePricingMode = selectedTicketRate?.pricingBasis ?? structuredServiceRatePricingMode;
         pricingDescription = coverage.covered
-          ? `${entranceFee.siteName} | Covered by Jordan Pass`
-          : `${entranceFee.siteName} | Entrance fee`;
+          ? `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Covered by Jordan Pass`
+          : `${entranceFee.siteName}${selectedTicketRate ? ` | ${selectedTicketRate.label}` : ''} | Entrance fee`;
       }
     }
 
@@ -3589,7 +3644,7 @@ export class QuotesService {
       };
     }
 
-    if (data.currency !== undefined) {
+    if (data.currency !== undefined && !activity) {
       supplierCostCurrency = data.currency?.trim().toUpperCase() || supplierCostCurrency;
     }
 
@@ -3604,24 +3659,32 @@ export class QuotesService {
     const markupPercent = this.normalizeOptionalNonNegativeNumber(data.markupPercent, 'Markup percent') ?? 0;
     const markupAmount = this.normalizeOptionalNonNegativeNumber(data.markupAmount, 'Markup amount');
     const requestedSellPriceOverride = this.normalizeOptionalNonNegativeNumber(data.sellPrice, 'Sell price');
+    const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
     const activitySellPriceOverride =
       activity && requestedSellPriceOverride === null
-        ? Number(
-            (
-              Number(selectedActivityRate?.sellPrice ?? activity.sellPrice) *
-              (selectedActivityRate?.maxPaxPerUnit && selectedActivityRate.maxPaxPerUnit > 0
-                ? Math.ceil(Math.max(1, paxCount) / Math.floor(Number(selectedActivityRate.maxPaxPerUnit)))
-                : (selectedActivityRate?.pricingBasis ?? activity.pricingBasis) === 'PER_GROUP'
-                  ? 1
-                  : Math.max(1, paxCount))
-            ).toFixed(2),
-          )
+        ? this.calculateCentralizedQuoteItemPricing({
+            service: effectiveService,
+            quantity,
+            paxCount,
+            roomCount,
+            nightCount,
+            dayCount,
+            unitCost: Number(selectedActivityRate?.sellPrice ?? activity.sellPrice),
+            markupPercent: 0,
+            quoteCurrency,
+            supplierPricing: {
+              costBaseAmount: Number(selectedActivityRate?.sellPrice ?? activity.sellPrice),
+              costCurrency: supplierCostCurrency,
+            },
+            activityPricingBasis: selectedActivityRate?.pricingBasis ?? activity.pricingBasis,
+            structuredServiceRatePricingMode,
+            capacityMaxPaxPerUnit,
+          }).totalCost
         : null;
     const sellPriceOverride = requestedSellPriceOverride ?? activitySellPriceOverride;
 
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
 
-    const quoteCurrency = this.normalizeCurrencyCode((quote as any).quoteCurrency ?? 'USD');
     const basePricing = this.calculateCentralizedQuoteItemPricing({
       service: effectiveService,
       quantity: transportQuantity,
@@ -3683,6 +3746,7 @@ export class QuotesService {
         serviceId: normalizedServiceId,
         activityId: activity?.id ?? null,
         activityRateVariantId: selectedActivityRate?.id ?? null,
+        ticketRateVariantId: selectedTicketRate?.id ?? null,
         itineraryId: itemLegacyItinerary?.id || null,
         serviceDate,
         startTime,
@@ -3751,6 +3815,7 @@ export class QuotesService {
           },
         },
         activityRateVariant: true,
+        ticketRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -4734,6 +4799,7 @@ export class QuotesService {
           },
         },
         activityRateVariant: true,
+        ticketRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -5618,6 +5684,11 @@ export class QuotesService {
     return variants.find((variant) => variant.active !== false) || null;
   }
 
+  private getDefaultTicketRateVariant(service: unknown) {
+    const variants = (service as { ticketRateVariants?: Array<any> } | null | undefined)?.ticketRateVariants || [];
+    return variants.find((variant) => variant.active !== false) || null;
+  }
+
   private isGenericServiceRateEligibleService(
     service: {
       category: string;
@@ -6301,7 +6372,7 @@ export class QuotesService {
     quoteId: string;
     optionId: string | null;
     jordanPassType: string;
-    entranceFee: { id: string; siteName: string; includedInJordanPass: boolean };
+    entranceFee: { id: string; siteName: string; includedInJordanPass: boolean; foreignerFeeJod?: number };
   }) {
     const passType = this.normalizeJordanPassType(values.jordanPassType);
 
@@ -6347,6 +6418,7 @@ export class QuotesService {
       },
       include: {
         entranceFee: true,
+        ticketRateVariant: true,
         service: {
           include: {
             serviceType: true,
@@ -6381,7 +6453,10 @@ export class QuotesService {
         }
       }
 
-      const unitCost = covered ? 0 : item.entranceFee.foreignerFeeJod;
+      const ticketUnitCost = Number((item as any).ticketRateVariant?.costPrice ?? item.entranceFee.foreignerFeeJod);
+      const ticketCurrency = ((item as any).ticketRateVariant?.currency || 'JOD').trim().toUpperCase();
+      const ticketLabel = (item as any).ticketRateVariant?.label ? ` | ${(item as any).ticketRateVariant.label}` : '';
+      const unitCost = covered ? 0 : ticketUnitCost;
       const pricing = this.calculateCentralizedQuoteItemPricing({
         service: item.service,
         quantity: item.quantity,
@@ -6394,29 +6469,29 @@ export class QuotesService {
         quoteCurrency: this.normalizeCurrencyCode(quote.quoteCurrency),
         supplierPricing: {
           costBaseAmount: unitCost,
-          costCurrency: 'JOD',
+          costCurrency: ticketCurrency,
           salesTaxPercent: item.salesTaxPercent ?? 0,
           salesTaxIncluded: item.salesTaxIncluded ?? false,
           serviceChargePercent: item.serviceChargePercent ?? 0,
           serviceChargeIncluded: item.serviceChargeIncluded ?? false,
           tourismFeeAmount: item.tourismFeeAmount ?? 0,
-          tourismFeeCurrency: item.tourismFeeCurrency ?? 'JOD',
+          tourismFeeCurrency: item.tourismFeeCurrency ?? ticketCurrency,
           tourismFeeMode: item.tourismFeeMode ?? null,
         },
-        legacyCurrency: 'JOD',
+        legacyCurrency: ticketCurrency,
       });
 
       await this.prisma.quoteItem.update({
         where: { id: item.id },
         data: {
           jordanPassCovered: covered,
-          jordanPassSavingsJod: covered ? item.entranceFee.foreignerFeeJod : 0,
+          jordanPassSavingsJod: covered ? ticketUnitCost : 0,
           pricingDescription: covered
-            ? `${item.entranceFee.siteName} | Covered by Jordan Pass`
-            : `${item.entranceFee.siteName} | Entrance fee`,
+            ? `${item.entranceFee.siteName}${ticketLabel} | Covered by Jordan Pass`
+            : `${item.entranceFee.siteName}${ticketLabel} | Entrance fee`,
           baseCost: pricing.totalCost,
           costBaseAmount: unitCost,
-          costCurrency: 'JOD',
+          costCurrency: ticketCurrency,
           currency: pricing.quoteCurrency,
           quoteCurrency: pricing.quoteCurrency,
           fxRate: pricing.fxRate,
@@ -7536,10 +7611,14 @@ export class QuotesService {
                 orderBy: { createdAt: 'desc' },
                 take: 1,
               },
+              ticketRateVariants: {
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+              },
             },
           },
           activity: { include: { supplierCompany: true } },
           activityRateVariant: true,
+          ticketRateVariant: true,
           itinerary: true,
           hotel: true,
           contract: true,
@@ -7582,10 +7661,14 @@ export class QuotesService {
                         orderBy: { createdAt: 'desc' },
                         take: 1,
                       },
+                      ticketRateVariants: {
+                        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                      },
                     },
                   },
                   activity: { include: { supplierCompany: true } },
                   activityRateVariant: true,
+                  ticketRateVariant: true,
                   itinerary: true,
                   hotel: true,
                   contract: true,
@@ -7622,10 +7705,14 @@ export class QuotesService {
                     orderBy: { createdAt: 'desc' },
                     take: 1,
                   },
+                  ticketRateVariants: {
+                    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                  },
                 },
               },
               activity: { include: { supplierCompany: true } },
               activityRateVariant: true,
+              ticketRateVariant: true,
               itinerary: true,
               hotel: true,
               contract: true,
@@ -10825,7 +10912,7 @@ export class QuotesService {
 
   private formatProposalMoney(amount: number, currency = 'USD') {
     const safeAmount = Number.isFinite(amount) ? amount : 0;
-    const safeCurrency = ['USD', 'EUR', 'JOD'].includes((currency || '').trim().toUpperCase())
+    const safeCurrency = ['USD', 'EUR', 'JOD', 'ILS'].includes((currency || '').trim().toUpperCase())
       ? currency.trim().toUpperCase()
       : 'USD';
     const formattedAmount = new Intl.NumberFormat('en-US', {
@@ -10947,13 +11034,13 @@ export class QuotesService {
 
   private getProposalCurrency(items: Array<{ currency: string | null | undefined }>) {
     const candidate = items.find((item) => item.currency?.trim())?.currency?.trim().toUpperCase();
-    return ['USD', 'EUR', 'JOD'].includes(candidate || '') ? candidate! : 'USD';
+    return ['USD', 'EUR', 'JOD', 'ILS'].includes(candidate || '') ? candidate! : 'USD';
   }
 
   private normalizeCurrencyCode(currency: string | null | undefined) {
     const normalized = currency?.trim().toUpperCase() || 'USD';
 
-    return ['USD', 'EUR', 'JOD'].includes(normalized) ? normalized : 'USD';
+    return ['USD', 'EUR', 'JOD', 'ILS'].includes(normalized) ? normalized : 'USD';
   }
 
   private validateInputCurrencyCode(currency: string | null | undefined, fieldLabel: string) {

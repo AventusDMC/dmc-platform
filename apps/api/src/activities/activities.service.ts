@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   ensureValidNumber,
   normalizeOptionalString,
+  requireSupportedCurrency,
   requireTrimmedString,
   throwIfNotFound,
 } from '../common/crud.helpers';
@@ -13,6 +14,7 @@ type ActivityRateVariantInput = {
   id?: string;
   name: string;
   durationMinutes?: number | null;
+  currency?: string | null;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;
@@ -34,6 +36,7 @@ type CreateActivityInput = {
   sellPrice: number;
   durationMinutes?: number | null;
   active?: boolean;
+  currency?: string | null;
   rateVariants?: ActivityRateVariantInput[];
 };
 
@@ -71,6 +74,7 @@ export class ActivitiesService {
 
   async create(data: CreateActivityInput) {
     await this.ensureSupplierCompanyExists(data.supplierCompanyId);
+    const defaultVariantCurrency = this.getDefaultActivityCurrency(data);
 
     return (this.prisma as any).activity.create({
       data: {
@@ -82,7 +86,7 @@ export class ActivitiesService {
         sellPrice: ensureValidNumber(data.sellPrice, 'sellPrice', { min: 0 }),
         durationMinutes: this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
         active: data.active === undefined ? true : Boolean(data.active),
-        rateVariants: this.buildCreateRateVariants(data.rateVariants),
+        rateVariants: this.buildCreateRateVariants(data.rateVariants, defaultVariantCurrency),
       },
       include: {
         supplierCompany: true,
@@ -94,7 +98,7 @@ export class ActivitiesService {
   }
 
   async update(id: string, data: UpdateActivityInput) {
-    await this.findOne(id);
+    const existingActivity = await this.findOne(id);
 
     if (data.supplierCompanyId !== undefined) {
       await this.ensureSupplierCompanyExists(data.supplierCompanyId);
@@ -102,7 +106,7 @@ export class ActivitiesService {
 
     return this.prisma.$transaction(async (tx) => {
       if (data.rateVariants !== undefined) {
-        await this.syncRateVariants(tx, id, data.rateVariants);
+        await this.syncRateVariants(tx, id, data.rateVariants, this.getDefaultActivityCurrency(data, existingActivity));
       }
 
       return (tx as any).activity.update({
@@ -146,6 +150,7 @@ export class ActivitiesService {
           (source.rateVariants || []).map((variant: ActivityRateVariantRecord) => ({
             name: variant.name,
             durationMinutes: variant.durationMinutes,
+            currency: variant.currency,
             pricingBasis: variant.pricingBasis,
             costPrice: variant.costPrice,
             sellPrice: variant.sellPrice,
@@ -153,6 +158,7 @@ export class ActivitiesService {
             active: variant.active,
             notes: variant.notes,
           })),
+          this.getDefaultActivityCurrency(source),
         ),
       },
       include: {
@@ -188,21 +194,22 @@ export class ActivitiesService {
     return Math.floor(normalized);
   }
 
-  private buildCreateRateVariants(variants: ActivityRateVariantInput[] | undefined) {
+  private buildCreateRateVariants(variants: ActivityRateVariantInput[] | undefined, defaultCurrency: string) {
     if (variants === undefined) {
       return undefined;
     }
 
     return {
-      create: variants.map((variant, index) => this.buildRateVariantData(variant, index)),
+      create: variants.map((variant, index) => this.buildRateVariantData(variant, index, defaultCurrency)),
     };
   }
 
-  private buildRateVariantData(variant: ActivityRateVariantInput, index: number) {
+  private buildRateVariantData(variant: ActivityRateVariantInput, index: number, defaultCurrency: string) {
     return {
       name: requireTrimmedString(variant.name, `rateVariants[${index}].name`),
       durationMinutes: this.normalizeOptionalPositiveInteger(variant.durationMinutes, `rateVariants[${index}].durationMinutes`),
       pricingBasis: this.normalizePricingBasis(variant.pricingBasis),
+      currency: this.normalizeVariantCurrency(variant.currency, defaultCurrency, `rateVariants[${index}].currency`),
       costPrice: ensureValidNumber(variant.costPrice, `rateVariants[${index}].costPrice`, { min: 0 }),
       sellPrice: ensureValidNumber(variant.sellPrice, `rateVariants[${index}].sellPrice`, { min: 0 }),
       maxPaxPerUnit: this.normalizeOptionalPositiveInteger(variant.maxPaxPerUnit, `rateVariants[${index}].maxPaxPerUnit`),
@@ -212,7 +219,7 @@ export class ActivitiesService {
     };
   }
 
-  private async syncRateVariants(tx: any, activityId: string, variants: ActivityRateVariantInput[]) {
+  private async syncRateVariants(tx: any, activityId: string, variants: ActivityRateVariantInput[], defaultCurrency: string) {
     const existingVariants = await tx.activityRateVariant.findMany({
       where: { activityId },
       select: { id: true },
@@ -221,7 +228,7 @@ export class ActivitiesService {
     const retainedIds = new Set<string>();
 
     for (const [index, variant] of variants.entries()) {
-      const variantData = this.buildRateVariantData(variant, index);
+      const variantData = this.buildRateVariantData(variant, index, defaultCurrency);
 
       if (variant.id && existingIds.has(variant.id)) {
         retainedIds.add(variant.id);
@@ -264,5 +271,13 @@ export class ActivitiesService {
     if (!company) {
       throw new BadRequestException('Supplier company not found');
     }
+  }
+
+  private getDefaultActivityCurrency(activity: { currency?: string | null } | null | undefined, fallback?: { currency?: string | null }) {
+    return this.normalizeVariantCurrency(activity?.currency ?? fallback?.currency ?? 'USD', 'USD', 'currency');
+  }
+
+  private normalizeVariantCurrency(value: string | null | undefined, defaultCurrency: string, fieldLabel: string) {
+    return requireSupportedCurrency(value?.trim() || defaultCurrency, fieldLabel);
   }
 }

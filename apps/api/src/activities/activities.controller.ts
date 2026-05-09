@@ -8,6 +8,7 @@ type ActivityRateVariantBody = {
   id?: string;
   name: string;
   durationMinutes?: number | null;
+  currency?: string | null;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;

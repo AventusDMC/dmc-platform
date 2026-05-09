@@ -197,6 +197,6 @@ test('service rate currency validation rejects unsupported codes', async () => {
         costCurrency: 'usd',
         pricingMode: 'PER_PERSON',
       }),
-    (error: unknown) => error instanceof BadRequestException && /USD, EUR, or JOD/.test(error.message),
+    (error: unknown) => error instanceof BadRequestException && /USD, EUR, JOD, or ILS/.test(error.message),
   );
 });

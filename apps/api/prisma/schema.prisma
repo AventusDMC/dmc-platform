@@ -257,19 +257,19 @@ model CompanyBranding {
 }
 
 model Activity {
-  id                String               @id @default(uuid()) @db.Uuid
+  id                String                @id @default(uuid()) @db.Uuid
   name              String
   description       String?
-  supplierCompanyId String               @db.Uuid
-  supplierId        String?              @db.Uuid
+  supplierCompanyId String                @db.Uuid
+  supplierId        String?               @db.Uuid
   pricingBasis      ActivityPricingBasis
   costPrice         Float
   sellPrice         Float
   durationMinutes   Int?
-  active            Boolean              @default(true)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  supplierCompany   Company              @relation(fields: [supplierCompanyId], references: [id])
+  active            Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  supplierCompany   Company               @relation(fields: [supplierCompanyId], references: [id])
   rateVariants      ActivityRateVariant[]
   bookingServices   BookingService[]
   quoteItems        QuoteItem[]
@@ -280,21 +280,22 @@ model Activity {
 }
 
 model ActivityRateVariant {
-  id                String               @id @default(uuid()) @db.Uuid
-  activityId        String               @db.Uuid
-  name              String
-  durationMinutes   Int?
-  pricingBasis      ActivityPricingBasis
-  costPrice         Float
-  sellPrice         Float
-  maxPaxPerUnit     Int?
-  active            Boolean              @default(true)
-  notes             String?
-  sortOrder         Int                  @default(0)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  activity          Activity             @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  quoteItems        QuoteItem[]
+  id              String               @id @default(uuid()) @db.Uuid
+  activityId      String               @db.Uuid
+  name            String
+  durationMinutes Int?
+  pricingBasis    ActivityPricingBasis
+  currency        String               @default("USD")
+  costPrice       Float
+  sellPrice       Float
+  maxPaxPerUnit   Int?
+  active          Boolean              @default(true)
+  notes           String?
+  sortOrder       Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  activity        Activity             @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  quoteItems      QuoteItem[]
 
   @@index([activityId, active, sortOrder])
   @@map("activity_rate_variants")
@@ -939,6 +940,7 @@ model QuoteItem {
   serviceId                        String?                 @db.Uuid
   activityId                       String?                 @db.Uuid
   activityRateVariantId            String?                 @db.Uuid
+  ticketRateVariantId              String?                 @db.Uuid
   quantity                         Int                     @default(1)
   paxCount                         Int?
   participantCount                 Int?
@@ -1023,6 +1025,7 @@ model QuoteItem {
   quoteItineraryDayItems           QuoteItineraryDayItem[]
   roomCategory                     HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
   service                          SupplierService?        @relation(fields: [serviceId], references: [id])
+  ticketRateVariant                TicketRateVariant?      @relation(fields: [ticketRateVariantId], references: [id])
 
   @@index([contractId])
   @@index([activityId])
@@ -1032,6 +1035,7 @@ model QuoteItem {
   @@index([quoteId, itineraryId, sortOrder])
   @@index([quoteId, optionId])
   @@index([roomCategoryId])
+  @@index([ticketRateVariantId])
   @@map("quote_items")
 }
 
@@ -1520,34 +1524,56 @@ model ServiceType {
 }
 
 model SupplierService {
-  id                    String          @id @default(uuid()) @db.Uuid
+  id                    String              @id @default(uuid()) @db.Uuid
   supplierId            String
-  resolvedSupplierId    String?         @db.Uuid
+  resolvedSupplierId    String?             @db.Uuid
   name                  String
   category              String
   unitType              ServiceUnitType
   baseCost              Float
   currency              String
-  costBaseAmount        Float           @default(0)
-  costCurrency          String          @default("USD")
-  salesTaxPercent       Float           @default(0)
-  salesTaxIncluded      Boolean         @default(false)
-  serviceChargePercent  Float           @default(0)
-  serviceChargeIncluded Boolean         @default(false)
+  costBaseAmount        Float               @default(0)
+  costCurrency          String              @default("USD")
+  salesTaxPercent       Float               @default(0)
+  salesTaxIncluded      Boolean             @default(false)
+  serviceChargePercent  Float               @default(0)
+  serviceChargeIncluded Boolean             @default(false)
   tourismFeeAmount      Float?
   tourismFeeCurrency    String?
   tourismFeeMode        TourismFeeMode?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-  serviceTypeId         String?         @db.Uuid
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  serviceTypeId         String?             @db.Uuid
   serviceRates          ServiceRate[]
+  ticketRateVariants    TicketRateVariant[]
   entranceFee           EntranceFee?
   quoteBlocks           QuoteBlock[]
   quoteItems            QuoteItem[]
-  serviceType           ServiceType?    @relation(fields: [serviceTypeId], references: [id])
+  serviceType           ServiceType?        @relation(fields: [serviceTypeId], references: [id])
 
   @@index([serviceTypeId])
   @@map("supplier_services")
+}
+
+model TicketRateVariant {
+  id           String                 @id @default(uuid()) @db.Uuid
+  serviceId    String                 @db.Uuid
+  label        String
+  costPrice    Float
+  sellPrice    Float?
+  currency     String                 @default("JOD")
+  pricingBasis ServiceRatePricingMode @default(PER_PERSON)
+  includedInJordanPass Boolean?
+  notes        String?
+  active       Boolean                @default(true)
+  sortOrder    Int                    @default(0)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  quoteItems   QuoteItem[]
+  service      SupplierService        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId, active, sortOrder])
+  @@map("ticket_rate_variants")
 }
 
 model EntranceFee {

@@ -1,4 +1,4 @@
-export type SupportedCurrency = 'USD' | 'JOD' | 'EUR';
+export type SupportedCurrency = 'USD' | 'JOD' | 'EUR' | 'ILS';
 export type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
 
 type SupplierChargeConfig = {
@@ -38,6 +38,7 @@ const FX_TO_USD: Record<SupportedCurrency, number> = {
   USD: 1,
   EUR: 1.08,
   JOD: 1.41,
+  ILS: 0.27,
 };
 
 function isSupportedCurrency(value: string | null | undefined): value is SupportedCurrency {
@@ -56,7 +57,7 @@ function normalizeCurrency(
   }
 
   if (!(currency in FX_TO_USD)) {
-    throw new Error(`${fieldName} must be one of USD, EUR, or JOD`);
+    throw new Error(`${fieldName} must be one of USD, EUR, JOD, or ILS`);
   }
 
   return currency;
