@@ -14,6 +14,7 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "seed:demo": "npm --workspace @dmc/api run prisma:seed",
+    "seed:service-taxonomy": "npm --workspace @dmc/api run seed:service-taxonomy",
     "seed:demo:reset": "npm --workspace @dmc/api run prisma:seed:reset",
     "import:grand-hyatt-2026": "tsx scripts/import-grand-hyatt-amman-2026.ts",
     "import:alpha-fleet": "tsx scripts/import-alpha-fleet.ts",

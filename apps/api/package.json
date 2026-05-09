@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "seed:service-taxonomy": "ts-node prisma/seed-operational-service-types.ts",
     "prisma:seed:demo-quote": "ts-node prisma/seed-demo-quote.ts",
     "prisma:seed:reset": "prisma db seed -- --reset-demo",
     "reset:client-test-data": "ts-node ../../scripts/reset-client-test-data.ts",
