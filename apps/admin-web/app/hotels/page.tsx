@@ -288,6 +288,15 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
           }
         >
           <section className="section-stack">
+            <nav className="commercial-actions-row" aria-label="Hotel import actions">
+              <Link className="commercial-action-link" href="/contracts/import">
+                Import Hotel Contract
+              </Link>
+              <Link className="commercial-action-link" href="/contracts/import/history">
+                View Import History
+              </Link>
+            </nav>
+
             {isCommercialTab ? (
               <>
                 <section className="commercial-subheader">

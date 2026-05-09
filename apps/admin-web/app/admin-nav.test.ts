@@ -73,6 +73,8 @@ test('product catalog navigation uses canonical catalog destinations', () => {
     catalogGroup.children.map((child) => [child.label, child.href]),
     [
       ['Hotels', '/hotels'],
+      ['Import Contract', '/contracts/import'],
+      ['Import History', '/contracts/import/history'],
       ['Activities', '/activities'],
       ['Transport', '/transport'],
       ['Routes', '/routes'],
@@ -86,6 +88,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
   assert.equal(catalogGroup.children.find((child) => child.label === 'Transport Pricing')?.href, '/transport?tab=pricing-rules');
   assert.equal(getActiveNavGroup('/routes', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/suppliers', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/contracts/import', 'admin').label, 'Product Catalog');
 });
 
 test('every admin navigation link resolves to an existing app page', () => {
