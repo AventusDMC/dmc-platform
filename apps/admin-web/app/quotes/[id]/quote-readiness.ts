@@ -28,6 +28,7 @@ export type QuoteReadinessItem = {
   id: string;
   serviceId?: string | null;
   activityId?: string | null;
+  activityRateVariantId?: string | null;
   itineraryId: string | null;
   serviceDate: string | null;
   startTime: string | null;

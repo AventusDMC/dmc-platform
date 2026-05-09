@@ -270,12 +270,34 @@ model Activity {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   supplierCompany   Company              @relation(fields: [supplierCompanyId], references: [id])
+  rateVariants      ActivityRateVariant[]
   bookingServices   BookingService[]
   quoteItems        QuoteItem[]
 
   @@index([active, name])
   @@index([supplierCompanyId])
   @@map("activities")
+}
+
+model ActivityRateVariant {
+  id                String               @id @default(uuid()) @db.Uuid
+  activityId        String               @db.Uuid
+  name              String
+  durationMinutes   Int?
+  pricingBasis      ActivityPricingBasis
+  costPrice         Float
+  sellPrice         Float
+  maxPaxPerUnit     Int?
+  active            Boolean              @default(true)
+  notes             String?
+  sortOrder         Int                  @default(0)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  activity          Activity             @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  quoteItems        QuoteItem[]
+
+  @@index([activityId, active, sortOrder])
+  @@map("activity_rate_variants")
 }
 
 model Contact {
@@ -916,6 +938,7 @@ model QuoteItem {
   quoteId                          String                  @db.Uuid
   serviceId                        String?                 @db.Uuid
   activityId                       String?                 @db.Uuid
+  activityRateVariantId            String?                 @db.Uuid
   quantity                         Int                     @default(1)
   paxCount                         Int?
   participantCount                 Int?
@@ -990,6 +1013,7 @@ model QuoteItem {
   externalClientDescription        String?
   appliedVehicleRate               VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
   activity                         Activity?               @relation(fields: [activityId], references: [id])
+  activityRateVariant              ActivityRateVariant?    @relation(fields: [activityRateVariantId], references: [id])
   contract                         HotelContract?          @relation(fields: [contractId], references: [id])
   entranceFee                      EntranceFee?            @relation(fields: [entranceFeeId], references: [id])
   hotel                            Hotel?                  @relation(fields: [hotelId], references: [id])
@@ -1002,6 +1026,7 @@ model QuoteItem {
 
   @@index([contractId])
   @@index([activityId])
+  @@index([activityRateVariantId])
   @@index([entranceFeeId])
   @@index([hotelId])
   @@index([quoteId, itineraryId, sortOrder])

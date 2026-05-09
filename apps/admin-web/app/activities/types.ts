@@ -19,6 +19,19 @@ export type Activity = {
   sellPrice: number;
   durationMinutes: number | null;
   active: boolean;
+  rateVariants?: ActivityRateVariant[];
+};
+
+export type ActivityRateVariant = {
+  id?: string;
+  name: string;
+  durationMinutes: number | null;
+  costPrice: number;
+  sellPrice: number;
+  pricingBasis: ActivityPricingBasis;
+  maxPaxPerUnit: number | null;
+  active: boolean;
+  notes?: string | null;
 };
 
 export type ActivityActor = {

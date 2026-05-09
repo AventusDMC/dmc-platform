@@ -132,6 +132,17 @@ type ActivityCatalogItem = {
   sellPrice: number;
   durationMinutes: number | null;
   active: boolean;
+  rateVariants?: Array<{
+    id: string;
+    name: string;
+    durationMinutes: number | null;
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+    costPrice: number;
+    sellPrice: number;
+    maxPaxPerUnit: number | null;
+    active: boolean;
+    notes?: string | null;
+  }> | null;
 };
 
 type Hotel = {

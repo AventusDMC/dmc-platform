@@ -58,6 +58,19 @@ type ActivityCatalogItem = {
   sellPrice: number;
   durationMinutes: number | null;
   active: boolean;
+  rateVariants?: ActivityRateVariant[] | null;
+};
+
+type ActivityRateVariant = {
+  id: string;
+  name: string;
+  durationMinutes: number | null;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  costPrice: number;
+  sellPrice: number;
+  maxPaxPerUnit: number | null;
+  active: boolean;
+  notes?: string | null;
 };
 
 type Hotel = {
@@ -252,6 +265,7 @@ type QuoteBlock = {
 type QuoteItemInitialValues = {
   serviceId: string;
   activityId?: string;
+  activityRateVariantId?: string;
   quantity: string;
   markupPercent: string;
   paxCount: string;
@@ -812,6 +826,7 @@ export function QuoteItemsForm({
   );
   const [serviceId, setServiceId] = useState(initialValues?.serviceId || initialService?.id || '');
   const [activityId, setActivityId] = useState(initialValues?.activityId || preferredActivityId || '');
+  const [activityRateVariantId, setActivityRateVariantId] = useState(initialValues?.activityRateVariantId || '');
   const [quantity, setQuantity] = useState(initialValues?.quantity || '1');
   const [markupPercent, setMarkupPercent] = useState(initialValues?.markupPercent || '20');
   const [markupAmount, setMarkupAmount] = useState(initialValues?.markupAmount || '');
@@ -1037,6 +1052,12 @@ export function QuoteItemsForm({
   const selectedService = services.find((service) => service.id === serviceId) || (activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
   const activeActivities = activities.filter((activity) => activity.active !== false);
   const selectedActivity = activeActivities.find((activity) => activity.id === activityId) || null;
+  const activeActivityRateVariants = useMemo(
+    () => (selectedActivity?.rateVariants || []).filter((variant) => variant.active !== false),
+    [selectedActivity],
+  );
+  const selectedActivityRateVariant =
+    activeActivityRateVariants.find((variant) => variant.id === activityRateVariantId) || activeActivityRateVariants[0] || null;
   const isHotelService = selectedService ? getServiceTypeKey(selectedService) === 'hotel' : false;
   const isTransportService = selectedService ? getServiceTypeKey(selectedService) === 'transport' : false;
   const isGuideService = selectedService ? getServiceTypeKey(selectedService) === 'guide' : false;
@@ -1256,12 +1277,18 @@ export function QuoteItemsForm({
     }
 
     if (isActivityService) {
-      const unitCost = Number(selectedActivity?.costPrice ?? baseCost ?? 0);
+      const unitCost = Number(selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice ?? baseCost ?? 0);
       const participants = Math.max(
         1,
         Number(participantCount || 0) || Number(adultCount || 0) + Number(childCount || 0) || defaultPaxCount || 1,
       );
-      const units = selectedActivity?.pricingBasis === 'PER_GROUP' ? 1 : participants;
+      const maxPaxPerUnit = Number(selectedActivityRateVariant?.maxPaxPerUnit || 0);
+      const units =
+        maxPaxPerUnit > 0
+          ? Math.ceil(participants / maxPaxPerUnit)
+          : (selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis) === 'PER_GROUP'
+            ? 1
+            : participants;
       return Number.isFinite(unitCost) ? Number((unitCost * units).toFixed(2)) : null;
     }
 
@@ -1282,6 +1309,7 @@ export function QuoteItemsForm({
     selectedService?.baseCost,
     selectedActivity?.costPrice,
     selectedActivity?.pricingBasis,
+    selectedActivityRateVariant,
     useOverride,
   ]);
   const finalSellPrice = useMemo(() => {
@@ -1294,18 +1322,33 @@ export function QuoteItemsForm({
     }
 
     if (isActivityService && selectedActivity) {
-      const units = selectedActivity.pricingBasis === 'PER_GROUP' ? 1 : activityParticipantTotal;
-      return Number((Number(selectedActivity.sellPrice || 0) * units).toFixed(2));
+      const maxPaxPerUnit = Number(selectedActivityRateVariant?.maxPaxPerUnit || 0);
+      const units =
+        maxPaxPerUnit > 0
+          ? Math.ceil(activityParticipantTotal / maxPaxPerUnit)
+          : (selectedActivityRateVariant?.pricingBasis ?? selectedActivity.pricingBasis) === 'PER_GROUP'
+            ? 1
+            : activityParticipantTotal;
+      return Number((Number(selectedActivityRateVariant?.sellPrice ?? selectedActivity.sellPrice ?? 0) * units).toFixed(2));
     }
 
     return finalCost === null ? null : Number((finalCost * (1 + Number(markupPercent || '0') / 100)).toFixed(2));
-  }, [activityParticipantTotal, finalCost, isActivityService, markupAmount, markupPercent, selectedActivity, sellPrice]);
+  }, [activityParticipantTotal, finalCost, isActivityService, markupAmount, markupPercent, selectedActivity, selectedActivityRateVariant, sellPrice]);
   const finalMargin =
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
       : null;
-  const activityUnitRate = Number(selectedActivity?.costPrice ?? baseCost ?? 0);
-  const isActivitySelected = Boolean(isActivityService && serviceId && selectedService && (activeActivities.length === 0 || activityId));
+  const activityUnitRate = Number(selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice ?? baseCost ?? 0);
+  const activityCapacityUnits =
+    selectedActivityRateVariant?.maxPaxPerUnit && selectedActivityRateVariant.maxPaxPerUnit > 0
+      ? Math.ceil(activityParticipantTotal / selectedActivityRateVariant.maxPaxPerUnit)
+      : null;
+  const isActivitySelected = Boolean(
+    isActivityService &&
+      serviceId &&
+      selectedService &&
+      (activeActivities.length === 0 || (activityId && (activeActivityRateVariants.length === 0 || selectedActivityRateVariant))),
+  );
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const activityIssues =
@@ -1408,6 +1451,17 @@ export function QuoteItemsForm({
   }, [activeServiceType, isEditing, selectedActivity, serviceId, services]);
 
   useEffect(() => {
+    if (!selectedActivity || activeActivityRateVariants.length === 0) {
+      setActivityRateVariantId('');
+      return;
+    }
+
+    if (!activeActivityRateVariants.some((variant) => variant.id === activityRateVariantId)) {
+      setActivityRateVariantId(activeActivityRateVariants[0].id);
+    }
+  }, [activeActivityRateVariants, activityRateVariantId, selectedActivity]);
+
+  useEffect(() => {
     if (!selectedService) {
       setBaseCost('');
       return;
@@ -1428,7 +1482,7 @@ export function QuoteItemsForm({
     }
 
     if (isActivityService && selectedActivity) {
-      setBaseCost(String(selectedActivity.costPrice));
+      setBaseCost(String(selectedActivityRateVariant?.costPrice ?? selectedActivity.costPrice));
       return;
     }
 
@@ -1493,6 +1547,7 @@ export function QuoteItemsForm({
     overnight,
     selectedHotelRate,
     selectedActivity,
+    selectedActivityRateVariant,
     selectedService,
   ]);
 
@@ -2193,6 +2248,10 @@ export function QuoteItemsForm({
           throw new Error('Activity items require participant counts.');
         }
 
+        if (activeActivityRateVariants.length > 0 && !activityRateVariantId) {
+          throw new Error('Activity items require a rate variant.');
+        }
+
         if (reconfirmationRequired && !reconfirmationDueAt) {
           throw new Error('Set a reconfirmation due date when reconfirmation is required.');
         }
@@ -2214,6 +2273,7 @@ export function QuoteItemsForm({
       const quoteItemPayload = {
         serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId,
         activityId: isActivityService && activityId ? activityId : undefined,
+        activityRateVariantId: isActivityService && activityRateVariantId ? activityRateVariantId : undefined,
         itineraryId,
         serviceDate:
           (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
@@ -3129,6 +3189,7 @@ export function QuoteItemsForm({
                               const nextActivityId = event.target.value;
                               const nextActivity = activeActivities.find((activity) => activity.id === nextActivityId) || null;
                               setActivityId(nextActivityId);
+                              setActivityRateVariantId(nextActivity?.rateVariants?.find((variant) => variant.active !== false)?.id || '');
                               if (nextActivity) {
                                 const pairedService = findPairedActivityService(nextActivity, services);
                                 setServiceId(pairedService?.id || '');
@@ -3144,6 +3205,21 @@ export function QuoteItemsForm({
                             ))}
                           </select>
                         </label>
+
+                        {activeActivityRateVariants.length > 0 ? (
+                          <label>
+                            Rate variant
+                            <select value={activityRateVariantId} onChange={(event) => setActivityRateVariantId(event.target.value)} required>
+                              {activeActivityRateVariants.map((variant) => (
+                                <option key={variant.id} value={variant.id}>
+                                  {variant.name}
+                                  {variant.durationMinutes ? ` - ${variant.durationMinutes} min` : ''}
+                                  {variant.maxPaxPerUnit ? ` - max ${variant.maxPaxPerUnit} pax/unit` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
 
                         <label>
                           Pricing service
@@ -3200,15 +3276,27 @@ export function QuoteItemsForm({
                         Activity
                         <strong>{selectedActivity?.name || selectedService?.name || 'Selected activity'}</strong>
                       </span>
+                      {selectedActivityRateVariant ? (
+                        <span>
+                          Variant
+                          <strong>{selectedActivityRateVariant.name}</strong>
+                        </span>
+                      ) : null}
                       <span>
                         Participants
                         <strong>{activityParticipantTotal}</strong>
                       </span>
+                      {activityCapacityUnits ? (
+                        <span>
+                          Units
+                          <strong>{activityCapacityUnits}</strong>
+                        </span>
+                      ) : null}
                       <span>
                         Unit rate
                         <strong>
                           {displayCurrency} {Number.isFinite(activityUnitRate) ? activityUnitRate.toFixed(2) : '0.00'}
-                          {selectedActivity?.pricingBasis === 'PER_GROUP' ? ' group' : ''}
+                          {(selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis) === 'PER_GROUP' ? ' group' : ''}
                         </strong>
                       </span>
                       <span>

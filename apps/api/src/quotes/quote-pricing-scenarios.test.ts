@@ -136,6 +136,7 @@ function createServiceRateQuoteService(values: {
   serviceRate?: Record<string, any> | null;
   quote?: Record<string, any>;
   activity?: Record<string, any> | null;
+  activityRateVariant?: Record<string, any> | null;
 }) {
   return createQuotesService({
     quote: {
@@ -199,6 +200,25 @@ function createServiceRateQuoteService(values: {
               }
             : null,
     },
+    activityRateVariant: {
+      findUnique: async ({ where }: any) =>
+        values.activityRateVariant === null
+          ? null
+          : values.activityRateVariant
+            ? {
+                id: where.id,
+                activityId: 'activity-1',
+                name: '2 Hours',
+                pricingBasis: 'PER_GROUP',
+                costPrice: 90,
+                sellPrice: 120,
+                durationMinutes: 120,
+                maxPaxPerUnit: 6,
+                active: true,
+                ...values.activityRateVariant,
+              }
+            : null,
+    },
     itinerary: { findUnique: async () => null },
     quoteItineraryDay: { findUnique: async () => null },
     quoteOption: { findUnique: async () => null },
@@ -211,12 +231,14 @@ async function resolveServiceRateQuoteItem(values: {
   item?: Record<string, any>;
   quote?: Record<string, any>;
   activity?: Record<string, any> | null;
+  activityRateVariant?: Record<string, any> | null;
 }) {
   const service = createServiceRateQuoteService({
     service: values.service || {},
     serviceRate: values.serviceRate,
     quote: values.quote,
     activity: values.activity,
+    activityRateVariant: values.activityRateVariant,
   });
 
   return (service as any).resolveQuoteItemValues({
@@ -1686,6 +1708,50 @@ test('catalog-backed activity ignores generic ServiceRate and keeps Activity pri
   assert.equal(values.data.costBaseAmount, 35);
   assert.equal(values.data.totalCost, 140);
   assert.equal(values.data.totalSell, 210);
+});
+
+test('activity rate variant capacity pricing calculates required jeep units', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    service: {
+      name: 'Activity anchor',
+      category: 'Activity',
+      unitType: 'per_group',
+      baseCost: 0,
+      costBaseAmount: 0,
+      serviceType: { name: 'Activity', code: 'ACTIVITY' },
+    },
+    activity: {
+      id: 'activity-1',
+      name: 'Wadi Rum Jeep Tour',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 90,
+      sellPrice: 120,
+    },
+    activityRateVariant: {
+      id: 'variant-2h',
+      activityId: 'activity-1',
+      name: '2 Hours',
+      pricingBasis: 'PER_GROUP',
+      costPrice: 90,
+      sellPrice: 120,
+      maxPaxPerUnit: 6,
+    },
+    item: {
+      activityId: 'activity-1',
+      activityRateVariantId: 'variant-2h',
+      participantCount: 21,
+      paxCount: 21,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.activityRateVariantId, 'variant-2h');
+  assert.equal(values.data.quantity, 1);
+  assert.equal(values.data.paxCount, 21);
+  assert.equal(values.data.totalCost, 360);
+  assert.equal(values.data.totalSell, 480);
+  assert.match(values.data.pricingDescription, /2 Hours/);
+  assert.match(values.data.pricingDescription, /Capacity 6 pax\/unit/);
 });
 
 test('capacity max does not change per-person pricing', () => {

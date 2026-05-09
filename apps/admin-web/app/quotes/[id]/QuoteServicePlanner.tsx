@@ -71,6 +71,19 @@ type ActivityCatalogItem = {
   sellPrice: number;
   durationMinutes: number | null;
   active: boolean;
+  rateVariants?: ActivityRateVariant[] | null;
+};
+
+type ActivityRateVariant = {
+  id: string;
+  name: string;
+  durationMinutes: number | null;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  costPrice: number;
+  sellPrice: number;
+  maxPaxPerUnit: number | null;
+  active: boolean;
+  notes?: string | null;
 };
 
 type Hotel = {
@@ -386,6 +399,7 @@ type ServiceLaneOrders = Record<string, string[]>;
 type QuoteItemInitialValues = {
   serviceId: string;
   activityId?: string;
+  activityRateVariantId?: string;
   quantity: string;
   markupPercent: string;
   markupAmount?: string;
@@ -591,6 +605,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
   return {
     serviceId: item.serviceId || '',
     activityId: item.activityId || '',
+    activityRateVariantId: item.activityRateVariantId || '',
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
     markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),

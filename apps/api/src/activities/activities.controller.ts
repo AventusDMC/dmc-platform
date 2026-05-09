@@ -4,6 +4,18 @@ import { ActivitiesService } from './activities.service';
 
 type ActivityPricingBasis = 'PER_PERSON' | 'PER_GROUP';
 
+type ActivityRateVariantBody = {
+  id?: string;
+  name: string;
+  durationMinutes?: number | null;
+  costPrice: number;
+  sellPrice: number;
+  pricingBasis: ActivityPricingBasis;
+  maxPaxPerUnit?: number | null;
+  active?: boolean;
+  notes?: string | null;
+};
+
 type CreateActivityBody = {
   name: string;
   description?: string | null;
@@ -13,6 +25,7 @@ type CreateActivityBody = {
   sellPrice: number;
   durationMinutes?: number | null;
   active?: boolean;
+  rateVariants?: ActivityRateVariantBody[];
 };
 
 type UpdateActivityBody = Partial<CreateActivityBody>;
@@ -30,6 +43,7 @@ export class ActivitiesController {
       sellPrice: Number(body.sellPrice),
       durationMinutes:
         body.durationMinutes === undefined || body.durationMinutes === null ? body.durationMinutes : Number(body.durationMinutes),
+      rateVariants: this.normalizeRateVariants(body.rateVariants),
     });
   }
 
@@ -52,6 +66,27 @@ export class ActivitiesController {
       sellPrice: body.sellPrice === undefined ? undefined : Number(body.sellPrice),
       durationMinutes:
         body.durationMinutes === undefined || body.durationMinutes === null ? body.durationMinutes : Number(body.durationMinutes),
+      rateVariants: body.rateVariants === undefined ? undefined : this.normalizeRateVariants(body.rateVariants),
     });
+  }
+
+  private normalizeRateVariants(variants: ActivityRateVariantBody[] | undefined) {
+    if (!Array.isArray(variants)) {
+      return variants;
+    }
+
+    return variants.map((variant) => ({
+      ...variant,
+      durationMinutes:
+        variant.durationMinutes === undefined || variant.durationMinutes === null
+          ? variant.durationMinutes
+          : Number(variant.durationMinutes),
+      costPrice: Number(variant.costPrice),
+      sellPrice: Number(variant.sellPrice),
+      maxPaxPerUnit:
+        variant.maxPaxPerUnit === undefined || variant.maxPaxPerUnit === null
+          ? variant.maxPaxPerUnit
+          : Number(variant.maxPaxPerUnit),
+    }));
   }
 }

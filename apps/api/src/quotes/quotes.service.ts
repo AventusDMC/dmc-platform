@@ -134,6 +134,7 @@ type CreateQuoteItemInput = {
   optionId?: string;
   serviceId?: string | null;
   activityId?: string | null;
+  activityRateVariantId?: string | null;
   itineraryId?: string;
   serviceDate?: Date | null;
   startTime?: string | null;
@@ -2181,6 +2182,7 @@ export class QuotesService {
             supplierCompany: true,
           },
         },
+        activityRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2538,6 +2540,10 @@ export class QuotesService {
       serviceId: data.serviceId === undefined ? existingItem.serviceId : data.serviceId,
       activityId:
         data.activityId === undefined ? (existingItem as { activityId?: string | null }).activityId ?? undefined : data.activityId,
+      activityRateVariantId:
+        data.activityRateVariantId === undefined
+          ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined
+          : data.activityRateVariantId,
       itineraryId: data.itineraryId === undefined ? existingItem.itineraryId || undefined : data.itineraryId,
       serviceDate:
         data.serviceDate === undefined ? (existingItem as { serviceDate?: Date | null }).serviceDate ?? undefined : data.serviceDate,
@@ -2763,6 +2769,7 @@ export class QuotesService {
           },
         },
         activity: { include: { supplierCompany: true } },
+        activityRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2831,6 +2838,7 @@ export class QuotesService {
             supplierCompany: true,
           },
         },
+        activityRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -2978,7 +2986,7 @@ export class QuotesService {
     const normalizedServiceId = hasSyntheticExternalPackageServiceId ? null : data.serviceId || null;
     const isOneOffExternalPackage = !normalizedServiceId && hasExternalPackageFields;
 
-    const [quote, service, activity, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
+    const [quote, service, activity, activityRateVariant, legacyItinerary, quoteItineraryDay, option] = await Promise.all([
       this.prisma.quote.findUnique({
         where: { id: data.quoteId },
       }),
@@ -3000,7 +3008,15 @@ export class QuotesService {
             where: { id: data.activityId },
             include: {
               supplierCompany: true,
+              rateVariants: {
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+              },
             },
+          })
+        : Promise.resolve(null),
+      data.activityRateVariantId
+        ? (this.prisma as any).activityRateVariant.findUnique({
+            where: { id: data.activityRateVariantId },
           })
         : Promise.resolve(null),
       data.itineraryId
@@ -3032,6 +3048,18 @@ export class QuotesService {
 
     if (data.activityId && !activity) {
       throw new BadRequestException('Activity not found');
+    }
+
+    if (data.activityRateVariantId && !activityRateVariant) {
+      throw new BadRequestException('Activity rate variant not found');
+    }
+
+    if (activityRateVariant && activityRateVariant.activityId !== data.activityId) {
+      throw new BadRequestException('Activity rate variant does not belong to the selected activity');
+    }
+
+    if (activityRateVariant && activityRateVariant.active === false) {
+      throw new BadRequestException('Activity rate variant is inactive');
     }
 
     if (activity && !this.isActivityService(effectiveService)) {
@@ -3111,6 +3139,7 @@ export class QuotesService {
     let externalPackageData: Record<string, unknown> = {};
     let capacityMaxPaxPerUnit: number | null = null;
     let structuredServiceRatePricingMode: StructuredServiceRatePricingMode | null = null;
+    const selectedActivityRate = activity ? activityRateVariant || this.getDefaultActivityRateVariant(activity) : null;
 
     const serviceRate = (effectiveService as any).serviceRates?.[0] as
       | {
@@ -3395,14 +3424,22 @@ export class QuotesService {
             : Math.max(0, Math.floor(data.participantCount));
 
       if (activity) {
-        baseCost = Number(activity.costPrice);
+        baseCost = Number(selectedActivityRate?.costPrice ?? activity.costPrice);
         currency = data.currency?.trim().toUpperCase() || effectiveService.currency || 'USD';
-        supplierCostBaseAmount = Number(activity.costPrice);
+        supplierCostBaseAmount = Number(selectedActivityRate?.costPrice ?? activity.costPrice);
         supplierCostCurrency = currency;
+        if (selectedActivityRate?.maxPaxPerUnit && selectedActivityRate.maxPaxPerUnit > 0) {
+          capacityMaxPaxPerUnit = Math.floor(Number(selectedActivityRate.maxPaxPerUnit));
+          structuredServiceRatePricingMode = 'PER_GROUP';
+        }
         pricingDescription = [
           activity.name,
-          activity.pricingBasis === 'PER_GROUP' ? 'Activity | PER_GROUP' : 'Activity | PER_PERSON',
-          activity.durationMinutes ? `${activity.durationMinutes} minutes` : null,
+          selectedActivityRate ? selectedActivityRate.name : null,
+          (selectedActivityRate?.pricingBasis ?? activity.pricingBasis) === 'PER_GROUP' ? 'Activity | PER_GROUP' : 'Activity | PER_PERSON',
+          selectedActivityRate?.maxPaxPerUnit ? `Capacity ${selectedActivityRate.maxPaxPerUnit} pax/unit` : null,
+          (selectedActivityRate?.durationMinutes ?? activity.durationMinutes)
+            ? `${selectedActivityRate?.durationMinutes ?? activity.durationMinutes} minutes`
+            : null,
         ]
           .filter(Boolean)
           .join(' | ');
@@ -3564,8 +3601,12 @@ export class QuotesService {
       activity && requestedSellPriceOverride === null
         ? Number(
             (
-              Number(activity.sellPrice) *
-              (activity.pricingBasis === 'PER_GROUP' ? 1 : Math.max(1, paxCount))
+              Number(selectedActivityRate?.sellPrice ?? activity.sellPrice) *
+              (selectedActivityRate?.maxPaxPerUnit && selectedActivityRate.maxPaxPerUnit > 0
+                ? Math.ceil(Math.max(1, paxCount) / Math.floor(Number(selectedActivityRate.maxPaxPerUnit)))
+                : (selectedActivityRate?.pricingBasis ?? activity.pricingBasis) === 'PER_GROUP'
+                  ? 1
+                  : Math.max(1, paxCount))
             ).toFixed(2),
           )
         : null;
@@ -3598,7 +3639,7 @@ export class QuotesService {
       transportPricingMode,
       hotelRatePricingBasis,
       externalPackagePricingBasis: typeof externalPackageData.externalPricingBasis === 'string' ? externalPackageData.externalPricingBasis : null,
-      activityPricingBasis: activity?.pricingBasis ?? null,
+      activityPricingBasis: selectedActivityRate?.pricingBasis ?? activity?.pricingBasis ?? null,
       structuredServiceRatePricingMode,
       unitCount,
       capacityMaxPaxPerUnit,
@@ -3634,6 +3675,7 @@ export class QuotesService {
         optionId: data.optionId || null,
         serviceId: normalizedServiceId,
         activityId: activity?.id ?? null,
+        activityRateVariantId: selectedActivityRate?.id ?? null,
         itineraryId: itemLegacyItinerary?.id || null,
         serviceDate,
         startTime,
@@ -3701,6 +3743,7 @@ export class QuotesService {
             supplierCompany: true,
           },
         },
+        activityRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -4683,6 +4726,7 @@ export class QuotesService {
             supplierCompany: true,
           },
         },
+        activityRateVariant: true,
         itinerary: true,
         hotel: true,
         contract: true,
@@ -5560,6 +5604,11 @@ export class QuotesService {
     }
 
     return null;
+  }
+
+  private getDefaultActivityRateVariant(activity: unknown) {
+    const variants = (activity as { rateVariants?: Array<any> } | null | undefined)?.rateVariants || [];
+    return variants.find((variant) => variant.active !== false) || null;
   }
 
   private isGenericServiceRateEligibleService(
@@ -7483,6 +7532,7 @@ export class QuotesService {
             },
           },
           activity: { include: { supplierCompany: true } },
+          activityRateVariant: true,
           itinerary: true,
           hotel: true,
           contract: true,
@@ -7528,6 +7578,7 @@ export class QuotesService {
                     },
                   },
                   activity: { include: { supplierCompany: true } },
+                  activityRateVariant: true,
                   itinerary: true,
                   hotel: true,
                   contract: true,
@@ -7567,6 +7618,7 @@ export class QuotesService {
                 },
               },
               activity: { include: { supplierCompany: true } },
+              activityRateVariant: true,
               itinerary: true,
               hotel: true,
               contract: true,

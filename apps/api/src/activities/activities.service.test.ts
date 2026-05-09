@@ -10,6 +10,10 @@ function createActivitiesService(overrides: Partial<any> = {}) {
     company: {
       findUnique: async ({ where }: any) => ({ id: where.id }),
     },
+    $transaction: async (callback: any) => callback(prisma),
+    activityRateVariant: {
+      deleteMany: async () => ({ count: 0 }),
+    },
     activity: {
       create: async ({ data, include }: any) => ({
         id: 'activity-1',
@@ -25,6 +29,7 @@ function createActivitiesService(overrides: Partial<any> = {}) {
           costPrice: 35,
           sellPrice: 55,
           active: true,
+          rateVariants: args.include?.rateVariants ? [] : undefined,
           supplierCompany: args.include?.supplierCompany ? { id: 'supplier-company-1', name: 'Petra Experiences' } : undefined,
         },
       ],
@@ -39,6 +44,7 @@ function createActivitiesService(overrides: Partial<any> = {}) {
               costPrice: 35,
               sellPrice: 55,
               active: true,
+              rateVariants: include?.rateVariants ? [] : undefined,
               supplierCompany: include?.supplierCompany ? { id: 'supplier-company-1', name: 'Petra Experiences' } : undefined,
             },
       update: async ({ where, data, include }: any) => ({
@@ -86,6 +92,62 @@ test('create activity persists supplier company pricing and active state', async
   assert.equal(createdData.sellPrice, 55);
   assert.equal(createdData.durationMinutes, 120);
   assert.equal(createdData.active, true);
+});
+
+test('create activity persists multiple structured rate variants', async () => {
+  let createdData: any;
+  const { service } = createActivitiesService({
+    activity: {
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'activity-1', ...data };
+      },
+    },
+  });
+
+  await service.create({
+    name: 'Wadi Rum Jeep Tour',
+    supplierCompanyId: 'supplier-company-1',
+    pricingBasis: 'PER_GROUP',
+    costPrice: 90,
+    sellPrice: 120,
+    durationMinutes: 120,
+    rateVariants: [
+      {
+        name: '2 Hours',
+        durationMinutes: 120,
+        pricingBasis: 'PER_GROUP',
+        costPrice: 90,
+        sellPrice: 120,
+        maxPaxPerUnit: 6,
+        active: true,
+      },
+      {
+        name: 'Full Day',
+        durationMinutes: 480,
+        pricingBasis: 'PER_GROUP',
+        costPrice: 260,
+        sellPrice: 340,
+        maxPaxPerUnit: 6,
+        notes: 'Lunch stop not included',
+      },
+    ],
+  });
+
+  assert.equal(createdData.rateVariants.create.length, 2);
+  assert.deepEqual(createdData.rateVariants.create[0], {
+    name: '2 Hours',
+    durationMinutes: 120,
+    pricingBasis: 'PER_GROUP',
+    costPrice: 90,
+    sellPrice: 120,
+    maxPaxPerUnit: 6,
+    active: true,
+    notes: undefined,
+    sortOrder: 0,
+  });
+  assert.equal(createdData.rateVariants.create[1].name, 'Full Day');
+  assert.equal(createdData.rateVariants.create[1].sortOrder, 1);
 });
 
 test('create and update activity ignore unsupported UI-only fields', async () => {
