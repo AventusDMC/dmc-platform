@@ -1,6 +1,7 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
 import {
+  ACTIVITY_SERVICE_TYPE_CODES,
   OPERATIONAL_SERVICE_TYPE_CODES,
   isActivityTaxonomyGroup,
   resolveServiceTaxonomyGroup,
@@ -32,4 +33,26 @@ test('operational assistance labels do not inherit activity execution rules', ()
 test('existing activity and entrance labels remain activity classified', () => {
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Sightseeing' }), 'activity');
   assert.equal(resolveServiceTaxonomyGroup({ category: 'Entrance Ticket' }), 'activity');
+});
+
+test('canonical excursion service codes resolve to activity', () => {
+  for (const code of ACTIVITY_SERVICE_TYPE_CODES) {
+    assert.equal(
+      resolveServiceTaxonomyGroup({
+        category: 'Legacy label',
+        serviceType: { name: 'Any label', code },
+      }),
+      'activity',
+    );
+  }
+});
+
+test('excursion activity labels resolve to activity', () => {
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Jeep Tour' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Boat Ride' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Petra by Night' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Sound & Light Show' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Safari' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Cruise' }), 'activity');
+  assert.equal(resolveServiceTaxonomyGroup({ category: 'Optional Excursion' }), 'activity');
 });

@@ -3,6 +3,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const operationalServiceTypes = [
+  { name: 'Jeep Tour', code: 'JEEP_TOUR' },
+  { name: 'Boat Ride', code: 'BOAT_RIDE' },
+  { name: 'Petra by Night', code: 'PETRA_BY_NIGHT' },
+  { name: 'Optional Excursion', code: 'OPTIONAL_EXCURSION' },
+  { name: 'Sound & Light Show', code: 'SOUND_LIGHT_SHOW' },
+  { name: 'Safari', code: 'SAFARI' },
+  { name: 'Cruise', code: 'CRUISE' },
+  { name: 'Excursion', code: 'EXCURSION' },
   { name: 'Meet And Assist', code: 'MEET_ASSIST' },
   { name: 'Border Assistance', code: 'BORDER_ASSISTANCE' },
   { name: 'Fast Track', code: 'FAST_TRACK' },

@@ -26,7 +26,20 @@ export const OPERATIONAL_SERVICE_TYPE_CODES = [
   'ESCORT',
 ] as const;
 
+export const ACTIVITY_SERVICE_TYPE_CODES = [
+  'ACTIVITY',
+  'JEEP_TOUR',
+  'BOAT_RIDE',
+  'PETRA_BY_NIGHT',
+  'OPTIONAL_EXCURSION',
+  'SOUND_LIGHT_SHOW',
+  'SAFARI',
+  'CRUISE',
+  'EXCURSION',
+] as const;
+
 const OPERATIONAL_SERVICE_TYPE_CODE_SET = new Set<string>(OPERATIONAL_SERVICE_TYPE_CODES);
+const ACTIVITY_SERVICE_TYPE_CODE_SET = new Set<string>(ACTIVITY_SERVICE_TYPE_CODES);
 
 export function normalizeServiceTaxonomyText(value: string | null | undefined) {
   return String(value || '')
@@ -62,6 +75,7 @@ export function isOperationalAssistanceService(service: ServiceTaxonomyInput) {
 }
 
 export function resolveServiceTaxonomyGroup(service: ServiceTaxonomyInput): ServiceTaxonomyGroup {
+  const normalizedCode = String(service.serviceType?.code || '').trim().toUpperCase();
   const normalized = normalizeServiceTaxonomyText(getServiceTaxonomySource(service));
 
   if (isOperationalAssistanceService(service)) {
@@ -85,13 +99,22 @@ export function resolveServiceTaxonomyGroup(service: ServiceTaxonomyInput): Serv
   }
 
   if (
+    ACTIVITY_SERVICE_TYPE_CODE_SET.has(normalizedCode) ||
     normalized.includes('activity') ||
     normalized.includes('tour') ||
     normalized.includes('excursion') ||
     normalized.includes('experience') ||
     normalized.includes('sightseeing') ||
     normalized.includes('entrance') ||
-    normalized.includes('ticket')
+    normalized.includes('ticket') ||
+    normalized.includes('jeep') ||
+    normalized.includes('boat') ||
+    normalized.includes('safari') ||
+    normalized.includes('cruise') ||
+    normalized.includes('petra_by_night') ||
+    normalized.includes('sound_light') ||
+    normalized.includes('sound_and_light') ||
+    normalized.includes('light_show')
   ) {
     return 'activity';
   }
