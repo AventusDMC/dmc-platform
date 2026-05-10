@@ -176,10 +176,14 @@ async function getContracts() {
   });
 }
 
-async function getRates() {
-  return adminPageFetchJson<HotelRate[]>(`${API_BASE_URL}/hotel-rates`, 'Hotel contract workspace rates', {
+async function getRates(contractId: string) {
+  return adminPageFetchJson<HotelRate[]>(
+    `${API_BASE_URL}/hotel-rates?contractId=${encodeURIComponent(contractId)}`,
+    'Hotel contract workspace rates',
+    {
     cache: 'no-store',
-  });
+    },
+  );
 }
 
 async function getSeasons() {
@@ -218,15 +222,18 @@ export default async function HotelContractDetailPage({ params }: PageProps) {
   const [hotels, contracts, allRates, seasons, supplements, mealPlans, cancellationPolicy] = await Promise.all([
     getHotels(),
     getContracts(),
-    getRates(),
+    getRates(contract.id),
     getSeasons(),
     getSupplements(contract.id),
     getMealPlans(contract.id),
     getCancellationPolicy(contract.id),
   ]);
-  const rates = allRates.filter((rate) => rate.contractId === contract.id);
-  const activeSupplements = supplements.filter((supplement) => supplement.isActive).length;
-  const activeMealPlans = mealPlans.filter((mealPlan) => mealPlan.isActive).length;
+  const rates = Array.isArray(allRates) ? allRates.filter((rate) => rate.contractId === contract.id) : [];
+  const safeRoomCategories = Array.isArray(contract.hotel?.roomCategories) ? contract.hotel.roomCategories : [];
+  const safeSupplements = Array.isArray(supplements) ? supplements : [];
+  const safeMealPlans = Array.isArray(mealPlans) ? mealPlans : [];
+  const activeSupplements = safeSupplements.filter((supplement) => supplement.isActive).length;
+  const activeMealPlans = safeMealPlans.filter((mealPlan) => mealPlan.isActive).length;
 
   return (
     <main className="page hotel-contract-detail-page">
@@ -250,9 +257,9 @@ export default async function HotelContractDetailPage({ params }: PageProps) {
               items={[
                 { id: 'status', label: 'Status', value: getContractStatus(contract), helper: contract.readinessStatus || 'draft' },
                 { id: 'rates', label: 'Rates', value: String(rates.length), helper: 'Contract rows' },
-                { id: 'rooms', label: 'Room categories', value: String(contract.hotel.roomCategories.length), helper: 'Hotel inventory' },
-                { id: 'supplements', label: 'Supplements', value: String(supplements.length), helper: `${activeSupplements} active` },
-                { id: 'meal-plans', label: 'Meal plans', value: String(mealPlans.length), helper: `${activeMealPlans} active` },
+                { id: 'rooms', label: 'Room categories', value: String(safeRoomCategories.length), helper: 'Hotel inventory' },
+                { id: 'supplements', label: 'Supplements', value: String(safeSupplements.length), helper: `${activeSupplements} active` },
+                { id: 'meal-plans', label: 'Meal plans', value: String(safeMealPlans.length), helper: `${activeMealPlans} active` },
               ]}
             />
           }
@@ -264,8 +271,8 @@ export default async function HotelContractDetailPage({ params }: PageProps) {
             contracts={contracts}
             rates={rates}
             seasons={seasons}
-            supplements={supplements}
-            mealPlans={mealPlans}
+            supplements={safeSupplements}
+            mealPlans={safeMealPlans}
             cancellationPolicy={cancellationPolicy || contract.cancellationPolicy || null}
           />
         </WorkspaceShell>

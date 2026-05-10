@@ -37,8 +37,8 @@ export class HotelRatesController {
   constructor(private readonly hotelRatesService: HotelRatesService) {}
 
   @Get()
-  findAll() {
-    return this.hotelRatesService.findAll();
+  findAll(@Query('contractId') contractId?: string) {
+    return this.hotelRatesService.findAll({ contractId: contractId || null });
   }
 
   @Public()

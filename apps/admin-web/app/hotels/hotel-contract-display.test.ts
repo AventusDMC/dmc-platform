@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
   formatCancellationRule,
@@ -100,5 +101,16 @@ describe('hotel contract display fallbacks', () => {
       amountLabel: 'No amount',
       basisLabel: 'per night',
     });
+  });
+
+  it('keeps contract detail rendering scoped and bounded for imported payloads', () => {
+    const pageSource = readFileSync(new URL('./contracts/[contractId]/page.tsx', import.meta.url), 'utf8');
+    const workspaceSource = readFileSync(new URL('./contracts/[contractId]/HotelContractWorkspace.tsx', import.meta.url), 'utf8');
+
+    assert.match(pageSource, /hotel-rates\?contractId=\$\{encodeURIComponent\(contractId\)\}/);
+    assert.match(workspaceSource, /MAX_CONTRACT_DETAIL_ROWS = 250/);
+    assert.match(workspaceSource, /toSafeArray\(cancellationPolicy\?\.rules\)/);
+    assert.match(workspaceSource, /displayedRates\.map/);
+    assert.doesNotMatch(workspaceSource, /sortedRates\.map/);
   });
 });

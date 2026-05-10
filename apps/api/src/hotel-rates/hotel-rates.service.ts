@@ -32,6 +32,10 @@ type CreateHotelRateInput = {
 
 type UpdateHotelRateInput = Partial<CreateHotelRateInput>;
 
+type FindHotelRatesOptions = {
+  contractId?: string | null;
+};
+
 type LookupHotelRateInput = {
   hotelId: string;
   contractId?: string | null;
@@ -83,8 +87,13 @@ type ContractSupplementPolicy = {
 export class HotelRatesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  findAll(options: FindHotelRatesOptions = {}) {
     return this.prisma.hotelRate.findMany({
+      where: options.contractId
+        ? {
+            contractId: options.contractId,
+          }
+        : undefined,
       include: {
         contract: {
           include: {

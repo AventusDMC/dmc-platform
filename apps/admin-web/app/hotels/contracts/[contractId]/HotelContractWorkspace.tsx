@@ -141,6 +141,23 @@ type HotelContractWorkspaceProps = {
 
 const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER', 'EXTRA_BED'] as const;
 const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
+const MAX_CONTRACT_DETAIL_ROWS = 250;
+
+function toSafeArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function limitRows<T>(value: T[]) {
+  return value.slice(0, MAX_CONTRACT_DETAIL_ROWS);
+}
+
+function roomCategoryLabel(roomCategory: { name?: string | null; code?: string | null } | null | undefined) {
+  if (!roomCategory?.name) {
+    return 'Unassigned room category';
+  }
+
+  return roomCategory.code ? `${roomCategory.name} (${roomCategory.code})` : roomCategory.name;
+}
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
@@ -220,27 +237,40 @@ export function HotelContractWorkspace({
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
   const [drawer, setDrawer] = useState<DrawerState>(null);
-  const activeRoomCategories = contract.hotel.roomCategories.filter((roomCategory) => roomCategory.isActive);
+  const safeRates = useMemo(() => toSafeArray(rates).filter((rate) => rate.contractId === contract.id), [contract.id, rates]);
+  const safeSupplements = useMemo(() => toSafeArray(supplements), [supplements]);
+  const safeMealPlans = useMemo(() => toSafeArray(mealPlans), [mealPlans]);
+  const safeCancellationRules = useMemo(() => toSafeArray(cancellationPolicy?.rules), [cancellationPolicy]);
+  const roomCategories = useMemo(() => toSafeArray(contract.hotel?.roomCategories), [contract.hotel?.roomCategories]);
+  const activeRoomCategories = roomCategories.filter((roomCategory) => roomCategory.isActive);
   const sortedRates = useMemo(
     () =>
-      [...rates].sort(
+      [...safeRates].sort(
         (left, right) =>
-          left.roomCategory.name.localeCompare(right.roomCategory.name) ||
-          left.seasonName.localeCompare(right.seasonName) ||
-          left.occupancyType.localeCompare(right.occupancyType) ||
-          left.mealPlan.localeCompare(right.mealPlan),
+          roomCategoryLabel(left.roomCategory).localeCompare(roomCategoryLabel(right.roomCategory)) ||
+          String(left.seasonName || '').localeCompare(String(right.seasonName || '')) ||
+          String(left.occupancyType || '').localeCompare(String(right.occupancyType || '')) ||
+          String(left.mealPlan || '').localeCompare(String(right.mealPlan || '')),
       ),
-    [rates],
+    [safeRates],
   );
-  const usedRoomCategoryIds = new Set(rates.map((rate) => rate.roomCategoryId).concat(supplements.map((supplement) => supplement.roomCategoryId || '')));
-  const usedRoomCategories = contract.hotel.roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id));
+  const displayedRates = limitRows(sortedRates);
+  const displayedSupplements = limitRows(safeSupplements);
+  const displayedMealPlans = limitRows(safeMealPlans);
+  const displayedCancellationRules = limitRows(safeCancellationRules);
+  const usedRoomCategoryIds = new Set(
+    safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || '')),
+  );
+  const usedRoomCategories = roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id));
   const visibleRoomCategories = usedRoomCategories.length > 0 ? usedRoomCategories : activeRoomCategories;
-  const selectedRate = drawer?.type === 'rate' && drawer.rateId ? rates.find((rate) => rate.id === drawer.rateId) || null : null;
+  const selectedRate = drawer?.type === 'rate' && drawer.rateId ? safeRates.find((rate) => rate.id === drawer.rateId) || null : null;
   const selectedSupplement =
-    drawer?.type === 'supplement' && drawer.supplementId ? supplements.find((supplement) => supplement.id === drawer.supplementId) || null : null;
+    drawer?.type === 'supplement' && drawer.supplementId
+      ? safeSupplements.find((supplement) => supplement.id === drawer.supplementId) || null
+      : null;
   const seasonRows = Array.from(
     new Map(
-      rates.map((rate) => [
+      safeRates.map((rate) => [
         `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
         {
           name: rate.seasonName,
@@ -252,7 +282,7 @@ export function HotelContractWorkspace({
   );
   const taxProfiles = Array.from(
     new Map(
-      rates.map((rate) => [
+      safeRates.map((rate) => [
         [
           rate.salesTaxPercent ?? 0,
           rate.salesTaxIncluded ? 'included' : 'excluded',
@@ -475,6 +505,9 @@ export function HotelContractWorkspace({
           <p className="empty-state">No rates for this contract yet. Add the first rate to start pricing this contract.</p>
         ) : (
           <div className="table-wrap">
+            {sortedRates.length > displayedRates.length ? (
+              <p className="table-subcopy">Showing the first {displayedRates.length} rates to keep the contract detail responsive.</p>
+            ) : null}
             <table className="data-table contract-rates-table">
               <thead>
                 <tr>
@@ -490,11 +523,11 @@ export function HotelContractWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {sortedRates.map((rate) => (
+                {displayedRates.map((rate) => (
                   <tr key={rate.id}>
                     <td>
-                      <strong>{rate.roomCategory.name}</strong>
-                      {rate.roomCategory.code ? <div className="table-subcopy">{rate.roomCategory.code}</div> : null}
+                      <strong>{rate.roomCategory?.name || 'Unassigned room category'}</strong>
+                      {rate.roomCategory?.code ? <div className="table-subcopy">{rate.roomCategory.code}</div> : null}
                     </td>
                     <td>{rate.occupancyType}</td>
                     <td>{rate.mealPlan}</td>
@@ -535,10 +568,13 @@ export function HotelContractWorkspace({
             </button>
           </div>
 
-          {supplements.length === 0 ? (
+          {safeSupplements.length === 0 ? (
             <p className="empty-state">No supplements configured for this contract yet.</p>
           ) : (
             <div className="table-wrap">
+              {safeSupplements.length > displayedSupplements.length ? (
+                <p className="table-subcopy">Showing the first {displayedSupplements.length} supplements to keep the contract detail responsive.</p>
+              ) : null}
               <table className="data-table">
                 <thead>
                   <tr>
@@ -550,18 +586,14 @@ export function HotelContractWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {supplements.map((supplement) => (
+                  {displayedSupplements.map((supplement) => (
                     <tr key={supplement.id}>
                       <td>
                         <strong>{formatSupplementType(supplement.type)}</strong>
                         <div className="table-subcopy">{supplement.isMandatory ? 'Mandatory' : 'Optional'}</div>
                       </td>
                       <td>
-                        {supplement.roomCategory
-                          ? supplement.roomCategory.code
-                            ? `${supplement.roomCategory.name} (${supplement.roomCategory.code})`
-                            : supplement.roomCategory.name
-                          : 'All room categories'}
+                        {supplement.roomCategory ? roomCategoryLabel(supplement.roomCategory) : 'All room categories'}
                       </td>
                       <td>
                         {formatSupplementCharge(supplement).amountLabel}
@@ -604,7 +636,7 @@ export function HotelContractWorkspace({
             <div className="contract-list-stack">
               {taxProfiles.map((rate) => (
                 <div key={`${rate.id}-tax`} className="contract-list-row contract-list-row-wide">
-                  <strong>{rate.roomCategory.name}</strong>
+                  <strong>{rate.roomCategory?.name || 'Unassigned room category'}</strong>
                   <span>
                     Sales tax {Number(rate.salesTaxPercent || 0).toFixed(2)}% {rate.salesTaxIncluded ? 'included' : 'excluded'}
                   </span>
@@ -640,7 +672,13 @@ export function HotelContractWorkspace({
                 <span>No-show: {formatNoShow(cancellationPolicy)}</span>
                 <span>{cancellationPolicy.notes || 'No cancellation notes'}</span>
               </div>
-              {cancellationPolicy.rules.map((rule) => (
+              {safeCancellationRules.length > displayedCancellationRules.length ? (
+                <div className="contract-list-row contract-list-row-wide">
+                  <strong>Additional rules hidden</strong>
+                  <span>Showing the first {displayedCancellationRules.length} rules to keep the contract detail responsive.</span>
+                </div>
+              ) : null}
+              {displayedCancellationRules.map((rule) => (
                 <div key={rule.id} className="contract-list-row contract-list-row-wide">
                   <strong>{rule.isActive ? 'Active rule' : 'Inactive rule'}</strong>
                   <span>{formatCancellationRule(rule)}</span>
@@ -662,11 +700,11 @@ export function HotelContractWorkspace({
               Manage board
             </Link>
           </div>
-          {mealPlans.length === 0 ? (
+          {safeMealPlans.length === 0 ? (
             <p className="empty-state">No meal plans configured for this contract yet.</p>
           ) : (
             <div className="contract-chip-list">
-              {mealPlans.map((mealPlan) => (
+              {displayedMealPlans.map((mealPlan) => (
                 <span key={mealPlan.id} className="contract-chip">
                   <strong>{mealPlan.code}</strong>
                   <small>{mealPlan.isActive ? 'Active' : 'Inactive'}</small>

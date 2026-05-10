@@ -179,6 +179,22 @@ test('create persists hotel pricingMode and structured tax/service/tourism field
   assert.equal(result.tourismFeeCurrency, 'JOD');
 });
 
+test('findAll can scope rates to a single hotel contract', async () => {
+  let receivedWhere: any = null;
+  const service = new HotelRatesService({
+    hotelRate: {
+      findMany: async (args: any) => {
+        receivedWhere = args.where;
+        return [];
+      },
+    },
+  } as any);
+
+  await service.findAll({ contractId: 'contract-corp-amman' });
+
+  assert.deepEqual(receivedWhere, { contractId: 'contract-corp-amman' });
+});
+
 test('create rejects invalid negative tax and service charge percentages', async () => {
   const service = createHotelRatesService();
   const baseRate: any = {
