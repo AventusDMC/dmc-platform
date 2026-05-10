@@ -3252,7 +3252,7 @@ export class QuotesService {
         );
       }
 
-      const hotelRate = await this.prisma.hotelRate.findFirst({
+      const hotelRateCandidates = await this.prisma.hotelRate.findMany({
         where: {
           contractId: data.contractId,
           ...(serviceDate
@@ -3273,11 +3273,23 @@ export class QuotesService {
           contract: {
             include: {
               hotel: true,
+              supplements: true,
             },
           },
           roomCategory: true,
         },
+        orderBy: [{ createdAt: 'desc' }],
       });
+      const requestedMealPlan = data.mealPlan;
+      const hotelRate =
+        hotelRateCandidates.find((rate) => rate.mealPlan === requestedMealPlan) ||
+        (requestedMealPlan === HotelMealPlan.HB
+          ? hotelRateCandidates.find(
+              (rate) =>
+                rate.mealPlan === HotelMealPlan.BB &&
+                this.hasHbSupplementForHotelRate(rate.contract?.supplements, rate.roomCategoryId),
+            ) || null
+          : null);
 
       if (!hotelRate) {
         throw new BadRequestException('Matching hotel rate not found');
@@ -3299,14 +3311,29 @@ export class QuotesService {
       tourismFeeCurrency = (hotelRate as any).tourismFeeCurrency ?? null;
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
       hotelRatePricingBasis = (hotelRate as any).pricingBasis ?? null;
-      pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${hotelRate.mealPlan}`;
+      const derivedHbSupplementTotal =
+        requestedMealPlan === HotelMealPlan.HB && hotelRate.mealPlan === HotelMealPlan.BB
+          ? this.calculateHbSupplementTotal(hotelRate.contract?.supplements, hotelRate.roomCategoryId, paxCount, roomCount, nightCount)
+          : 0;
+      if (derivedHbSupplementTotal > 0) {
+        const hotelUnits = this.getHotelPricingUnits({
+          paxCount,
+          roomCount,
+          nightCount,
+          unitType: effectiveService.unitType,
+          hotelRatePricingBasis,
+        });
+        baseCost = Number(((baseCost * hotelUnits + derivedHbSupplementTotal) / hotelUnits).toFixed(2));
+        supplierCostBaseAmount = Number(((supplierCostBaseAmount * hotelUnits + derivedHbSupplementTotal) / hotelUnits).toFixed(2));
+      }
+      pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${requestedMealPlan}`;
       hotelId = data.hotelId;
       contractId = hotelRate.contract.id;
       seasonId = season?.id || data.seasonId || null;
       seasonName = hotelRate.seasonName;
       roomCategoryId = hotelRate.roomCategoryId;
       occupancyType = hotelRate.occupancyType;
-      mealPlan = hotelRate.mealPlan;
+      mealPlan = requestedMealPlan;
     }
 
     if (this.isTransportService(effectiveService)) {
@@ -5100,6 +5127,53 @@ export class QuotesService {
       totalCost,
       totalSell,
     };
+  }
+
+  private hasHbSupplementForHotelRate(supplements: unknown, roomCategoryId?: string | null) {
+    return Array.isArray(supplements)
+      ? supplements.some((supplement) => this.isHbSupplementForRoom(supplement, roomCategoryId))
+      : false;
+  }
+
+  private calculateHbSupplementTotal(
+    supplements: unknown,
+    roomCategoryId: string | null | undefined,
+    paxCount: number,
+    roomCount: number,
+    nightCount: number,
+  ) {
+    if (!Array.isArray(supplements)) {
+      return 0;
+    }
+
+    return Number(
+      supplements
+        .filter((supplement) => this.isHbSupplementForRoom(supplement, roomCategoryId))
+        .reduce((sum, supplement: any) => {
+          const amount = Number(supplement.amount || 0);
+          if (!Number.isFinite(amount) || amount <= 0) {
+            return sum;
+          }
+
+          const basis = String(supplement.chargeBasis || '').trim().toUpperCase();
+          const nights = Math.max(1, nightCount);
+          const pax = Math.max(1, paxCount);
+          const rooms = Math.max(1, roomCount);
+          const multiplier = basis === 'PER_ROOM' ? rooms * nights : basis === 'PER_STAY' ? 1 : basis === 'PER_NIGHT' ? nights : pax * nights;
+          return sum + amount * multiplier;
+        }, 0)
+        .toFixed(2),
+    );
+  }
+
+  private isHbSupplementForRoom(supplement: any, roomCategoryId?: string | null) {
+    if (!supplement || supplement.isActive === false) {
+      return false;
+    }
+
+    const type = String(supplement.type || '').trim().toUpperCase();
+    const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+    return type === 'EXTRA_DINNER' && appliesToRoom;
   }
 
   private getHotelPricingUnits(values: {

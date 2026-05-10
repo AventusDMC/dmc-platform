@@ -147,6 +147,17 @@ type HotelContract = {
     mealPlan?: string | null;
     notes?: string | null;
   }> | null;
+  supplements?: Array<{
+    id: string;
+    roomCategoryId?: string | null;
+    type: string;
+    chargeBasis: string;
+    amount: number;
+    currency: string;
+    isMandatory?: boolean | null;
+    isActive?: boolean | null;
+    notes?: string | null;
+  }> | null;
 };
 
 type HotelRate = {
@@ -800,6 +811,16 @@ function formatHotelRatePricingBasis(value: HotelRate['pricingBasis']) {
   return value === 'PER_PERSON' ? 'per person/night' : 'per room/night';
 }
 
+function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null) {
+  return Boolean(
+    contract?.supplements?.some((supplement) => {
+      const type = String(supplement.type || '').trim().toUpperCase();
+      const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+      return supplement.isActive !== false && type === 'EXTRA_DINNER' && appliesToRoom;
+    }),
+  );
+}
+
 export function QuoteItemsForm({
   apiBaseUrl,
   quoteId,
@@ -1261,7 +1282,14 @@ export function QuoteItemsForm({
   const roomCategoryFilteredRates = seasonFilteredRates.filter((rate) => rate.roomCategoryId === roomCategoryId);
   const occupancyOptions = Array.from(new Set(roomCategoryFilteredRates.map((rate) => rate.occupancyType))).sort();
   const occupancyFilteredRates = roomCategoryFilteredRates.filter((rate) => rate.occupancyType === occupancyType);
-  const mealPlanOptions = Array.from(new Set(occupancyFilteredRates.map((rate) => rate.mealPlan))).sort();
+  const mealPlanOptions = Array.from(
+    new Set([
+      ...occupancyFilteredRates.map((rate) => rate.mealPlan),
+      ...(contractHasHbSupplement(selectedHotelContract, roomCategoryId) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')
+        ? (['HB'] as const)
+        : []),
+    ]),
+  ).sort();
   const selectedHotelRate =
     hotelRates.find(
       (rate) =>
@@ -1271,14 +1299,26 @@ export function QuoteItemsForm({
         rate.occupancyType === occupancyType &&
         rate.mealPlan === mealPlan,
     ) || null;
+  const selectedHotelBaseRate =
+    selectedHotelRate ||
+    (mealPlan === 'HB' && contractHasHbSupplement(selectedHotelContract, roomCategoryId)
+      ? hotelRates.find(
+          (rate) =>
+            rate.contractId === contractId &&
+            rate.seasonName === effectiveSeasonName &&
+            rate.roomCategoryId === roomCategoryId &&
+            rate.occupancyType === occupancyType &&
+            rate.mealPlan === 'BB',
+        ) || null
+      : null);
   const hotelCheckInDate = isHotelService ? serviceDate || travelStartDate?.slice(0, 10) || '' : '';
   const hotelCheckOutDate = hotelCheckInDate ? addDaysToDateString(hotelCheckInDate, Math.max(1, Number(nightCount || 1))) : '';
   const hotelPreviewNights = Math.max(1, Number(nightCount || 1));
   const hotelPreviewRooms = Math.max(1, Number(roomCount || 1));
   const hotelPreviewPax = Math.max(1, Number(paxCount || 1));
-  const hotelPreviewPricingBasis = selectedHotelRate?.pricingBasis || 'PER_ROOM';
-  const hotelPreviewUnitRate = selectedHotelRate
-    ? Number(selectedHotelRate.cost || 0)
+  const hotelPreviewPricingBasis = selectedHotelBaseRate?.pricingBasis || 'PER_ROOM';
+  const hotelPreviewUnitRate = selectedHotelBaseRate
+    ? Number(selectedHotelBaseRate.cost || 0)
     : manualHotelRateDraft
       ? Number(manualHotelRateDraft.cost || 0)
       : 0;
@@ -1312,7 +1352,7 @@ export function QuoteItemsForm({
       mealPlan &&
       hotelCheckInDate &&
       hotelCheckOutDate &&
-      (selectedHotelRate || manualHotelRateDraft) &&
+      (selectedHotelBaseRate || manualHotelRateDraft) &&
       Number.isFinite(hotelPreviewUnitRate) &&
       hotelPreviewUnitRate > 0,
   );
@@ -1325,7 +1365,7 @@ export function QuoteItemsForm({
       : selectedActivityRateVariant?.currency ||
         selectedActivity?.currency ||
         preferredRateCurrency ||
-        selectedHotelRate?.currency ||
+        selectedHotelBaseRate?.currency ||
         selectedService?.currency ||
         'USD';
   const ticketNativeCurrency = selectedTicketRateVariant?.currency || selectedService?.currency || 'JOD';
@@ -1588,7 +1628,7 @@ export function QuoteItemsForm({
     }
 
     if (isHotelService) {
-      setBaseCost(selectedHotelRate ? String(selectedHotelRate.cost) : '');
+      setBaseCost(selectedHotelBaseRate ? String(selectedHotelBaseRate.cost) : '');
       return;
     }
 
@@ -1665,7 +1705,7 @@ export function QuoteItemsForm({
     mealCurrency,
     mealName,
     overnight,
-    selectedHotelRate,
+    selectedHotelBaseRate,
     selectedActivity,
     selectedActivityRateVariant,
     selectedService,
@@ -2191,14 +2231,14 @@ export function QuoteItemsForm({
     }
   }
 
-  const activeHotelSourceRate = selectedHotelRate
+  const activeHotelSourceRate = selectedHotelBaseRate
     ? {
-        roomCategoryLabel: selectedHotelRate.roomCategory.name,
+        roomCategoryLabel: selectedHotelBaseRate.roomCategory.name,
         mealPlan,
         occupancyType,
-        cost: String(selectedHotelRate.cost),
-        currency: selectedHotelRate.currency,
-        note: `${effectiveSeasonName || 'Contract rate'} | ${formatHotelRatePricingBasis(selectedHotelRate.pricingBasis)}`,
+        cost: String(selectedHotelBaseRate.cost),
+        currency: selectedHotelBaseRate.currency,
+        note: `${effectiveSeasonName || 'Contract rate'} | ${formatHotelRatePricingBasis(selectedHotelBaseRate.pricingBasis)}`,
       }
     : hotelRateReference
       ? {
@@ -2296,7 +2336,7 @@ export function QuoteItemsForm({
           throw new Error('Complete the hotel pricing selection.');
         }
 
-        if (!hotelCostCalculation && !selectedHotelRate && !manualHotelRateDraft) {
+        if (!hotelCostCalculation && !selectedHotelBaseRate && !manualHotelRateDraft) {
           throw new Error('Matching hotel rate not found for the selected combination.');
         }
       }
@@ -3626,7 +3666,7 @@ export function QuoteItemsForm({
                   <h3>Choose contract/rate</h3>
                   <p className="detail-copy">Select the contracted room rate. Preview totals use the selected rate as a unit rate.</p>
                 </div>
-                {selectedHotelRate ? <span className="page-tab-badge">Rate selected</span> : null}
+                {selectedHotelBaseRate ? <span className="page-tab-badge">Rate selected</span> : null}
               </div>
 
               <div className="quote-transport-step-fields">
@@ -4304,7 +4344,7 @@ export function QuoteItemsForm({
                 !selectedService ||
                 showTransportRouteRequired ||
                 (isTransportService && !isTransportVehicleSelected) ||
-                (isHotelService && !selectedHotelRate && !manualHotelRateDraft)
+                (isHotelService && !selectedHotelBaseRate && !manualHotelRateDraft)
               }
             >
               {isSubmitting ? 'Saving...' : isTransportService ? 'Add Transport' : submitLabel}
@@ -4316,7 +4356,7 @@ export function QuoteItemsForm({
             </div>
           ) : null}
 
-          {hasPrimarySelection && isHotelService && !selectedHotelRate && !manualHotelRateDraft ? (
+          {hasPrimarySelection && isHotelService && !selectedHotelBaseRate && !manualHotelRateDraft ? (
             <p className="form-error">No hotel rate matches the selected contract, season, room category, occupancy, and meal plan.</p>
           ) : null}
           {hasPrimarySelection && isTransportService && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (

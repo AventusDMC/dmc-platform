@@ -80,6 +80,7 @@ type ContractSupplementPolicy = {
   chargeBasis?: string | null;
   isMandatory?: boolean | null;
   isActive?: boolean | null;
+  roomCategoryId?: string | null;
   notes?: string | null;
 };
 
@@ -340,7 +341,7 @@ export class HotelRatesService {
       .map((rate) => ({
         rate,
         occupancyScore: this.matchDimensionScore(rate.occupancyType, occupancy, (value) => this.normalizeOccupancyType(value)),
-        mealPlanScore: this.matchDimensionScore(rate.mealPlan, mealPlan, (value) => this.normalizeMealPlan(value)),
+        mealPlanScore: this.matchMealPlanScore(rate.mealPlan, mealPlan, rate.contract?.supplements, rate.roomCategoryId),
       }))
       .filter((match) => match.occupancyScore !== null && match.mealPlanScore !== null);
 
@@ -420,7 +421,7 @@ export class HotelRatesService {
         adults,
         childrenAges,
         roomCount,
-        this.getRatePolicies(rate, data.selectedSupplementIds),
+        this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId),
         occupancy,
         mealPlan,
         nightIndex === 0,
@@ -604,6 +605,25 @@ export class HotelRatesService {
     }
   }
 
+  private matchMealPlanScore(
+    value: HotelMealPlan | string | null | undefined,
+    requested: HotelMealPlan,
+    supplements: unknown,
+    roomCategoryId?: string | null,
+  ) {
+    const exactScore = this.matchDimensionScore(value, requested, (entry) => this.normalizeMealPlan(entry));
+    if (exactScore !== null) {
+      return exactScore;
+    }
+
+    try {
+      const baseMealPlan = this.normalizeMealPlan(value || '');
+      return this.hasDerivedMealPlanSupplement(supplements, requested, baseMealPlan, roomCategoryId) ? 0 : null;
+    } catch {
+      return null;
+    }
+  }
+
   private hasAmbiguousTopRate(rates: Array<{ occupancyScore: number; mealPlanScore: number; seasonSpecificityMs: number; createdAtMs: number; cost: number }>) {
     if (rates.length < 2) {
       return false;
@@ -631,13 +651,28 @@ export class HotelRatesService {
     });
   }
 
-  private getRatePolicies(rate: { contract?: { ratePolicies?: unknown; supplements?: unknown } | null }, selectedSupplementIds?: string[] | null) {
+  private getRatePolicies(
+    rate: { contract?: { ratePolicies?: unknown; supplements?: unknown } | null },
+    selectedSupplementIds?: string[] | null,
+    requestedMealPlan?: HotelMealPlan,
+    baseMealPlan?: HotelMealPlan,
+    roomCategoryId?: string | null,
+  ) {
     const policies = rate.contract?.ratePolicies;
     const ratePolicies = Array.isArray(policies) ? (policies as RatePolicy[]) : [];
-    return [...ratePolicies, ...this.getIncludedSupplementPolicies(rate.contract?.supplements, selectedSupplementIds)];
+    return [
+      ...ratePolicies,
+      ...this.getIncludedSupplementPolicies(rate.contract?.supplements, selectedSupplementIds, requestedMealPlan, baseMealPlan, roomCategoryId),
+    ];
   }
 
-  private getIncludedSupplementPolicies(supplements: unknown, selectedSupplementIds?: string[] | null): RatePolicy[] {
+  private getIncludedSupplementPolicies(
+    supplements: unknown,
+    selectedSupplementIds?: string[] | null,
+    requestedMealPlan?: HotelMealPlan,
+    baseMealPlan?: HotelMealPlan,
+    roomCategoryId?: string | null,
+  ): RatePolicy[] {
     if (!Array.isArray(supplements)) {
       return [];
     }
@@ -646,7 +681,12 @@ export class HotelRatesService {
     return supplements
       .filter((supplement): supplement is ContractSupplementPolicy => Boolean(supplement))
       .filter((supplement) => supplement.isActive !== false)
-      .filter((supplement) => supplement.isMandatory === true || (supplement.id ? selectedIds.has(String(supplement.id)) : false))
+      .filter(
+        (supplement) =>
+          supplement.isMandatory === true ||
+          (supplement.id ? selectedIds.has(String(supplement.id)) : false) ||
+          this.isDerivedMealPlanSupplement(supplement, requestedMealPlan, baseMealPlan, roomCategoryId),
+      )
       .map((supplement): RatePolicy | null => {
         const policyType = this.contractSupplementPolicyType(supplement.type);
         if (!policyType) {
@@ -661,6 +701,29 @@ export class HotelRatesService {
         };
       })
       .filter((policy): policy is RatePolicy => Boolean(policy));
+  }
+
+  private hasDerivedMealPlanSupplement(supplements: unknown, requestedMealPlan: HotelMealPlan, baseMealPlan: HotelMealPlan, roomCategoryId?: string | null) {
+    return Array.isArray(supplements)
+      ? supplements.some((supplement) =>
+          this.isDerivedMealPlanSupplement(supplement as ContractSupplementPolicy, requestedMealPlan, baseMealPlan, roomCategoryId),
+        )
+      : false;
+  }
+
+  private isDerivedMealPlanSupplement(
+    supplement: ContractSupplementPolicy,
+    requestedMealPlan?: HotelMealPlan,
+    baseMealPlan?: HotelMealPlan,
+    roomCategoryId?: string | null,
+  ) {
+    if (!requestedMealPlan || !baseMealPlan || requestedMealPlan === baseMealPlan || supplement.isActive === false) {
+      return false;
+    }
+
+    const normalizedType = String(supplement.type || '').trim().toUpperCase();
+    const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+    return requestedMealPlan === HotelMealPlan.HB && baseMealPlan === HotelMealPlan.BB && normalizedType === 'EXTRA_DINNER' && appliesToRoom;
   }
 
   private contractSupplementPolicyType(type: string | null | undefined) {

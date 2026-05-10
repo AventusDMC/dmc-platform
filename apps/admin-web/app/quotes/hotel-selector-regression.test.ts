@@ -42,4 +42,15 @@ describe('quote hotel selector catalog loading', () => {
       '<option value="">Select hotel</option>',
     ]);
   });
+
+  it('shows HB when a selected contract has an HB supplement even if rates are BB based', () => {
+    expectSourceContains(quoteItemsFormSource, [
+      'function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null)',
+      "type === 'EXTRA_DINNER'",
+      "...occupancyFilteredRates.map((rate) => rate.mealPlan)",
+      "contractHasHbSupplement(selectedHotelContract, roomCategoryId) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')",
+      "selectedHotelBaseRate",
+      "rate.mealPlan === 'BB'",
+    ]);
+  });
 });

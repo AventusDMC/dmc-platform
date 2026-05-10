@@ -1130,6 +1130,95 @@ test('invalid quote date values are rejected instead of silently shifting pricin
   );
 });
 
+test('HB selection can price from a BB base rate plus an HB supplement', async () => {
+  const service = createHotelRatesServiceWithLookupRates([
+    createLookupRate({
+      cost: 45,
+      pricingBasis: 'PER_PERSON',
+      mealPlan: 'BB',
+      supplements: [
+        {
+          id: 'hb-supplement',
+          type: 'EXTRA_DINNER',
+          amount: 10,
+          chargeBasis: 'PER_PERSON',
+          isActive: true,
+          isMandatory: false,
+        },
+      ],
+    }),
+  ]);
+
+  const result = await service.calculateHotelCost({
+    hotelId: 'hotel-1',
+    checkInDate: '2026-06-01',
+    checkOutDate: '2026-06-03',
+    occupancy: 'DBL',
+    mealPlan: 'HB',
+    pax: 2,
+    adults: 2,
+    childrenAges: [],
+    roomCategoryId: 'room-1',
+  });
+
+  assert.equal(result.adultsCost, 180);
+  assert.equal(result.supplementsCost, 40);
+  assert.equal(result.totalCost, 220);
+});
+
+test('direct HB rates are selected without adding optional HB supplement again', async () => {
+  const service = createHotelRatesServiceWithLookupRates([
+    createLookupRate({
+      id: 'bb-rate',
+      cost: 45,
+      pricingBasis: 'PER_PERSON',
+      mealPlan: 'BB',
+      supplements: [
+        {
+          id: 'hb-supplement',
+          type: 'EXTRA_DINNER',
+          amount: 10,
+          chargeBasis: 'PER_PERSON',
+          isActive: true,
+          isMandatory: false,
+        },
+      ],
+    }),
+    createLookupRate({
+      id: 'hb-rate',
+      cost: 60,
+      pricingBasis: 'PER_PERSON',
+      mealPlan: 'HB',
+      supplements: [
+        {
+          id: 'hb-supplement',
+          type: 'EXTRA_DINNER',
+          amount: 10,
+          chargeBasis: 'PER_PERSON',
+          isActive: true,
+          isMandatory: false,
+        },
+      ],
+    }),
+  ]);
+
+  const result = await service.calculateHotelCost({
+    hotelId: 'hotel-1',
+    checkInDate: '2026-06-01',
+    checkOutDate: '2026-06-03',
+    occupancy: 'DBL',
+    mealPlan: 'HB',
+    pax: 2,
+    adults: 2,
+    childrenAges: [],
+    roomCategoryId: 'room-1',
+  });
+
+  assert.equal(result.adultsCost, 240);
+  assert.equal(result.supplementsCost, 0);
+  assert.equal(result.totalCost, 240);
+});
+
 test('overlapping equal-range rates choose the newer imported rate before lower price', async () => {
   const service = createHotelRatesServiceWithLookupRates([
     createLookupRate({
