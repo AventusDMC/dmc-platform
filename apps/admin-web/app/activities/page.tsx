@@ -5,6 +5,7 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+import { CreatePetraHikingButton } from './CreatePetraHikingButton';
 import { ActivityDuplicateButton } from './ActivityDuplicateButton';
 import { Activity, ActivityActor, canManageActivities, formatActivityMoney, formatActivityPricingBasis } from './types';
 
@@ -41,6 +42,7 @@ export default async function ActivitiesPage() {
   const activeCount = activities.filter((activity) => activity.active).length;
   const inactiveCount = activities.length - activeCount;
   const canCreateOrEdit = canManageActivities(actor);
+  const petraHiking = activities.find((activity) => activity.code === 'PETRA_HIKING_EXPERIENCES');
 
   return (
     <main className="page">
@@ -66,6 +68,12 @@ export default async function ActivitiesPage() {
                 { id: 'total', label: 'Activities', value: String(activities.length), helper: 'Catalog rows' },
                 { id: 'active', label: 'Active', value: String(activeCount), helper: 'Available for new quotes' },
                 { id: 'inactive', label: 'Inactive', value: String(inactiveCount), helper: 'Visible for existing references' },
+                {
+                  id: 'petra-hiking',
+                  label: 'Petra Hiking',
+                  value: petraHiking ? 'Available' : 'Missing',
+                  helper: 'Trail activity master',
+                },
               ]}
             />
           }
@@ -77,9 +85,12 @@ export default async function ActivitiesPage() {
               description="Activities stay separate from hotels and transport while remaining available to mixed DMC quotes."
               actions={
                 canCreateOrEdit ? (
-                  <Link href="/activities/new" className="dashboard-toolbar-link">
-                    Add activity
-                  </Link>
+                  <div className="table-action-group">
+                    <CreatePetraHikingButton exists={Boolean(petraHiking)} />
+                    <Link href="/activities/new" className="dashboard-toolbar-link">
+                      Add activity
+                    </Link>
+                  </div>
                 ) : null
               }
             />
@@ -112,6 +123,10 @@ export default async function ActivitiesPage() {
                     <thead>
                       <tr>
                         <th>Name</th>
+                        <th>Code</th>
+                        <th>Category</th>
+                        <th>City</th>
+                        <th>Region</th>
                         <th>Supplier location</th>
                         <th>Supplier company</th>
                         <th>Pricing basis</th>
@@ -127,6 +142,10 @@ export default async function ActivitiesPage() {
                             <strong>{activity.name}</strong>
                             {activity.description ? <p className="table-cell-copy">{activity.description}</p> : null}
                           </td>
+                          <td>{activity.code || 'No code'}</td>
+                          <td>{activity.category || 'Category pending'}</td>
+                          <td>{activity.city || 'City pending'}</td>
+                          <td>{activity.region || 'Region pending'}</td>
                           <td>
                             {[activity.supplierCompany?.city, activity.supplierCompany?.country]
                               .filter(Boolean)

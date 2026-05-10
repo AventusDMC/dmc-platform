@@ -10,7 +10,9 @@ const typesSource = readFileSync(new URL('./types.ts', import.meta.url), 'utf8')
 const activitiesProxySource = readFileSync(new URL('../api/activities/route.ts', import.meta.url), 'utf8');
 const activityProxySource = readFileSync(new URL('../api/activities/[id]/route.ts', import.meta.url), 'utf8');
 const activityDuplicateProxySource = readFileSync(new URL('../api/activities/[id]/duplicate/route.ts', import.meta.url), 'utf8');
+const petraHikingEnsureProxySource = readFileSync(new URL('../api/activities/petra-hiking/ensure/route.ts', import.meta.url), 'utf8');
 const duplicateButtonSource = readFileSync(new URL('./ActivityDuplicateButton.tsx', import.meta.url), 'utf8');
+const petraHikingButtonSource = readFileSync(new URL('./CreatePetraHikingButton.tsx', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -23,17 +25,75 @@ describe('activities catalog admin UI regression', () => {
     expectSourceContains(listPageSource, [
       'title="Activities"',
       '<th>Name</th>',
+      '<th>Code</th>',
+      '<th>Category</th>',
+      '<th>City</th>',
+      '<th>Region</th>',
       '<th>Supplier location</th>',
       '<th>Supplier company</th>',
       '<th>Pricing basis</th>',
       '<th>Sell price</th>',
       '<th>Status</th>',
       '<strong>{activity.name}</strong>',
+      "activity.code || 'No code'",
+      "activity.category || 'Category pending'",
+      "activity.city || 'City pending'",
+      "activity.region || 'Region pending'",
       'activity.description',
       'activity.supplierCompany?.name || activity.supplierCompanyId',
       'formatActivityPricingBasis(activity.pricingBasis)',
       'formatActivityMoney(activity.sellPrice)',
       "activity.active ? 'Active' : 'Inactive'",
+    ]);
+  });
+
+  it('surfaces Petra Hiking Experiences ensure action and Activity Master governance fields', () => {
+    expectSourceContains(listPageSource, [
+      "const petraHiking = activities.find((activity) => activity.code === 'PETRA_HIKING_EXPERIENCES');",
+      "label: 'Petra Hiking'",
+      "value: petraHiking ? 'Available' : 'Missing'",
+      '<CreatePetraHikingButton exists={Boolean(petraHiking)} />',
+    ]);
+    expectSourceContains(petraHikingButtonSource, [
+      "fetch('/api/activities/petra-hiking/ensure'",
+      "exists ? 'Refresh Petra Hiking Experiences' : 'Create Petra Hiking Experiences'",
+      'router.refresh();',
+    ]);
+    expectSourceContains(petraHikingEnsureProxySource, [
+      '`${API_BASE_URL}/activities/petra-hiking/ensure`',
+      "'POST'",
+    ]);
+  });
+
+  it('renders read-only activity variant operational metadata on detail pages', () => {
+    expectSourceContains(detailPageSource, [
+      'Operational metadata',
+      "activity.code || 'No code'",
+      "activity.category || 'Category pending'",
+      "activity.city || 'City pending'",
+      "activity.region || 'Region pending'",
+      'Operational trail options',
+      'variant.difficulty',
+      'formatGuideRequirement(variant.guideRequirement)',
+      'formatDuration(variant.durationMinutes)',
+      'variant.startPoint',
+      'variant.endPoint',
+      'variant.suitability',
+      'variant.fitnessNotes',
+      'variant.waterNotes',
+      'variant.seasonalNotes',
+      'variant.inclusions',
+      'variant.exclusions',
+    ]);
+    expectSourceContains(typesSource, [
+      'code?: string | null;',
+      'category?: string | null;',
+      'city?: string | null;',
+      'region?: string | null;',
+      'difficulty?: string | null;',
+      'guideRequirement?: string | null;',
+      'startPoint?: string | null;',
+      'seasonalNotes?: string | null;',
     ]);
   });
 

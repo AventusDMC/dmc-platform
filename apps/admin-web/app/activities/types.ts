@@ -10,8 +10,12 @@ export type ActivityCompany = {
 
 export type Activity = {
   id: string;
+  code?: string | null;
   name: string;
   description: string | null;
+  category?: string | null;
+  city?: string | null;
+  region?: string | null;
   supplierCompanyId: string;
   supplierCompany?: ActivityCompany | null;
   pricingBasis: ActivityPricingBasis;
@@ -34,6 +38,17 @@ export type ActivityRateVariant = {
   maxPaxPerUnit: number | null;
   active: boolean;
   notes?: string | null;
+  difficulty?: string | null;
+  guideRequired?: boolean | null;
+  guideRequirement?: string | null;
+  startPoint?: string | null;
+  endPoint?: string | null;
+  suitability?: string | null;
+  fitnessNotes?: string | null;
+  waterNotes?: string | null;
+  seasonalNotes?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
 };
 
 export type ActivityActor = {
