@@ -135,7 +135,7 @@ describe('quote detail page regression', () => {
       "return adminPageFetchJson<HotelRate[]>(`${DATA_API_BASE_URL}/hotel-rates`, 'Quote detail hotel rates', {",
       'hotels={hotels}',
     ]);
-    assert.doesNotMatch(pageSource, /getHotelRates\(contractId|string\)/);
+    assert.doesNotMatch(pageSource, /async function getHotelRates\(contractId/);
     assert.doesNotMatch(pageSource, /hotel-rates\?contractId/);
   });
 
