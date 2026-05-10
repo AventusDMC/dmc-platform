@@ -510,6 +510,87 @@ test('contract import currency validation falls back safely when missing and fla
   assert.ok(warnings.some((warning) => warning.field === 'supplements.1.currency'));
 });
 
+test('contract import treats percent supplement currency markers as metadata instead of currency codes', async () => {
+  const { service, state } = createHotelApprovalHarness({
+    extractedJson: baseApprovedData({
+      contract: { currency: 'JOD' },
+      supplements: [
+        { name: 'HB supplement', type: 'EXTRA_DINNER', chargeBasis: 'PER_PERSON', amount: 18, currency: 'JOD' },
+        { name: 'Extra bed supplement', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 25, currency: 'USD' },
+        { name: 'Suite upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 30, currency: 'PERCENT' },
+        { name: 'Club room upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 15, currency: '%' },
+      ],
+      ratePolicies: [{ policyType: 'CHILD_EXTRA_BED', amount: null, percent: 50, currency: 'PERCENT', pricingBasis: 'PER_ROOM' }],
+    }),
+  });
+  const preview = normalizeApproved(service, baseApprovedData({
+    contract: { currency: 'JOD' },
+    supplements: [
+      { name: 'Suite upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 30, currency: 'PERCENT' },
+      { name: 'Club room upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 15, currency: '%' },
+    ],
+    ratePolicies: [{ policyType: 'CHILD_EXTRA_BED', amount: null, percent: 50, currency: 'PERCENT', pricingBasis: 'PER_ROOM' }],
+  }));
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(warnings.some((warning) => warning.field.includes('.currency')), false);
+  assert.equal(preview.supplements[0].currency, 'JOD');
+  assert.equal(preview.supplements[1].currency, 'JOD');
+  assert.equal(preview.ratePolicies[0].currency, 'JOD');
+
+  await service.approve('import-1', undefined, approvalActor);
+
+  assert.deepEqual(
+    state.supplementCreates.map((supplement: any) => supplement.currency),
+    ['JOD', 'USD', 'JOD', 'JOD'],
+  );
+});
+
+test('hotel Excel template keeps percent supplement currency cells out of currency validation', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Key: 'hotelName', Value: 'Petra Contract Hotel' },
+      { Key: 'currency', Value: 'EUR' },
+    ]),
+    'Meta',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ 'Room Type': 'Deluxe', Occupancy: 'DBL', 'Meal Plan': 'BB', Cost: 100, Currency: 'EUR' }]),
+    'Rates',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Name: 'HB supplement', Type: 'EXTRA_DINNER', 'Charge Basis': 'PER_PERSON', Amount: 18, Currency: 'JOD' },
+      { Name: 'Extra bed supplement', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 25, Currency: 'USD' },
+      { Name: 'Room upgrade percentage', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 10, Currency: 'PERCENT' },
+      { Name: 'Club upgrade percentage', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 5, Currency: '%' },
+    ]),
+    'Supplements',
+  );
+  const filePath = join(tmpdir(), `petra-percent-supplements-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: 'Petra Contract Hotel',
+    filePath,
+    fileName: 'petra-percent-supplements.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.deepEqual(
+    preview.supplements.map((supplement: any) => supplement.currency),
+    ['JOD', 'USD', 'EUR', 'EUR'],
+  );
+  assert.equal(warnings.some((warning) => /Unsupported supplement currency/.test(warning.message)), false);
+});
+
 test('contract import approval blocks invalid rows before persistence and returns row field context', async () => {
   let hotelRateCreateCount = 0;
   const service = createService({

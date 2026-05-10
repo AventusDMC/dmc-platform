@@ -695,16 +695,21 @@ export class ContractImportsService {
         description: this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || null,
       }))
       .filter((category) => category.name);
-    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => ({
-      name: this.templateCell(row, 'Name') || this.templateCell(row, 'Supplement') || this.templateCell(row, 'Type') || 'Supplement',
-      type: this.templateCell(row, 'Type') || null,
-      chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
-      amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
-      currency: this.templateCell(row, 'Currency') || contractCurrency,
-      pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
-      isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
-      notes: this.templateCell(row, 'Notes') || undefined,
-    }));
+    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => {
+      const normalizedCurrency = this.normalizeSupplementCurrency(this.templateCell(row, 'Currency'), contractCurrency);
+      const notes = this.templateCell(row, 'Notes');
+
+      return {
+        name: this.templateCell(row, 'Name') || this.templateCell(row, 'Supplement') || this.templateCell(row, 'Type') || 'Supplement',
+        type: this.templateCell(row, 'Type') || null,
+        chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
+        amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
+        currency: normalizedCurrency.currency,
+        pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
+        isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
+        notes: [notes, normalizedCurrency.note].filter(Boolean).join(' ') || undefined,
+      };
+    });
     const policies: ContractPreview['policies'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')).map((row: Record<string, string>) => ({
       name: this.templateCell(row, 'Name') || this.templateCell(row, 'Policy') || 'Policy',
       value: this.templateCell(row, 'Value') || this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || '',
@@ -2389,11 +2394,16 @@ export class ContractImportsService {
           })),
       taxes: Array.isArray(value.taxes) ? value.taxes : [],
       supplements: Array.isArray(value.supplements)
-        ? value.supplements.map((supplement: any) => ({
-            ...supplement,
-            amount: this.parseNumber(supplement.amount) ?? null,
-            pricingBasis: this.normalizePricingBasis(supplement.pricingBasis),
-          }))
+        ? value.supplements.map((supplement: any) => {
+            const normalizedCurrency = this.normalizeSupplementCurrency(supplement.currency, value.contract?.currency || 'JOD');
+            return {
+              ...supplement,
+              amount: this.parseNumber(supplement.amount) ?? null,
+              currency: normalizedCurrency.currency,
+              pricingBasis: this.normalizePricingBasis(supplement.pricingBasis),
+              notes: [this.optionalString(supplement.notes), normalizedCurrency.note].filter(Boolean).join(' ') || undefined,
+            };
+          })
         : [],
       policies: Array.isArray(value.policies) ? value.policies : [],
       ratePolicies: Array.isArray(value.ratePolicies)
@@ -2404,7 +2414,7 @@ export class ContractImportsService {
             ageTo: this.parseNumber(policy.ageTo) ?? null,
             amount: this.parseNumber(policy.amount) ?? null,
             percent: this.parseNumber(policy.percent) ?? null,
-            currency: this.optionalString(policy.currency) || value.contract?.currency || 'JOD',
+            currency: this.normalizeSupplementCurrency(policy.currency, value.contract?.currency || 'JOD').currency,
             pricingBasis: this.normalizePricingBasis(policy.pricingBasis) || 'PER_ROOM',
             mealPlan: this.optionalString(policy.mealPlan) || null,
             notes: this.optionalString(policy.notes) || null,
@@ -2678,7 +2688,7 @@ export class ContractImportsService {
           ageTo: ageTo ?? null,
           amount: amount ?? null,
           percent: percent ?? null,
-          currency: this.templateCell(row, 'Currency') || fallbackCurrency,
+          currency: this.normalizeSupplementCurrency(this.templateCell(row, 'Currency'), fallbackCurrency).currency,
           pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
           mealPlan: this.templateCell(row, 'Meal Plan') || null,
           notes: this.templateCell(row, 'Notes') || null,
@@ -3119,6 +3129,23 @@ export class ContractImportsService {
 
   private isSupportedCurrency(value: string | null | undefined) {
     return SUPPORTED_CONTRACT_CURRENCIES.includes(String(value || '').trim().toUpperCase());
+  }
+
+  private isPercentCurrencyMarker(value: unknown) {
+    return ['PERCENT', 'PERCENTAGE', '%'].includes(String(value || '').trim().toUpperCase());
+  }
+
+  private normalizeSupplementCurrency(value: unknown, fallbackCurrency: string) {
+    const normalized = String(value || '').trim().toUpperCase();
+
+    if (!normalized || this.isPercentCurrencyMarker(normalized)) {
+      return {
+        currency: fallbackCurrency,
+        note: this.isPercentCurrencyMarker(normalized) ? 'Currency cell marked as percentage; stored using contract currency.' : '',
+      };
+    }
+
+    return { currency: normalized, note: '' };
   }
 
   private isoDate(value: Date) {
