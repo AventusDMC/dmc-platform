@@ -6,6 +6,7 @@ import {
   formatChildPolicyValue,
   formatPricingBasis,
   formatSupplementCharge,
+  formatSupplementLabel,
   formatSupplementType,
   getCancellationFallback,
   getCancellationRules,
@@ -101,6 +102,13 @@ describe('hotel contract display fallbacks', () => {
       amountLabel: 'No amount',
       basisLabel: 'per night',
     });
+  });
+
+  it('uses preserved supplement labels ahead of generic enum buckets', () => {
+    assert.equal(formatSupplementLabel({ type: 'EXTRA_DINNER', notes: 'HB Supplement' }), 'HB Supplement');
+    assert.equal(formatSupplementLabel({ type: 'EXTRA_BED', notes: 'Junior Suite Supplement | imported note' }), 'Junior Suite Supplement');
+    assert.equal(formatSupplementLabel({ type: 'EXTRA_BED', notes: 'Single Supplement' }), 'Single Supplement');
+    assert.equal(formatSupplementLabel({ type: 'EXTRA_BED', notes: 'Currency cell marked as percentage; stored using contract currency.' }), 'Extra Bed');
   });
 
   it('keeps contract detail rendering scoped and bounded for imported payloads', () => {

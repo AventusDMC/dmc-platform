@@ -9,7 +9,7 @@ import {
   formatCancellationRule,
   formatPricingBasis,
   formatSupplementCharge,
-  formatSupplementType,
+  formatSupplementLabel,
 } from '../../hotel-contract-display';
 import { normalizeSupportedCurrency, type SupportedCurrency } from '../../../lib/currencyOptions';
 
@@ -81,6 +81,7 @@ type Season = {
 
 type Supplement = {
   id: string;
+  name?: string | null;
   roomCategoryId: string | null;
   type: 'EXTRA_BREAKFAST' | 'EXTRA_LUNCH' | 'EXTRA_DINNER' | 'GALA_DINNER' | 'EXTRA_BED' | string | null;
   chargeBasis: 'PER_PERSON' | 'PER_ROOM' | 'PER_STAY' | 'PER_NIGHT' | string | null;
@@ -589,7 +590,7 @@ export function HotelContractWorkspace({
                   {displayedSupplements.map((supplement) => (
                     <tr key={supplement.id}>
                       <td>
-                        <strong>{formatSupplementType(supplement.type)}</strong>
+                        <strong>{formatSupplementLabel(supplement)}</strong>
                         <div className="table-subcopy">{supplement.isMandatory ? 'Mandatory' : 'Optional'}</div>
                       </td>
                       <td>

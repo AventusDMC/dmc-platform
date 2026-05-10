@@ -8,7 +8,7 @@ import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
 import { HotelContractSupplementForm } from './HotelContractSupplementForm';
 import { normalizeSupportedCurrency } from '../lib/currencyOptions';
-import { formatSupplementCharge, formatSupplementType } from './hotel-contract-display';
+import { formatSupplementCharge, formatSupplementLabel, formatSupplementType } from './hotel-contract-display';
 
 type RoomCategoryOption = {
   id: string;
@@ -18,6 +18,7 @@ type RoomCategoryOption = {
 
 type Supplement = {
   id: string;
+  name?: string | null;
   roomCategoryId: string | null;
   type: 'EXTRA_BREAKFAST' | 'EXTRA_LUNCH' | 'EXTRA_DINNER' | 'GALA_DINNER' | 'EXTRA_BED' | string | null;
   chargeBasis: 'PER_PERSON' | 'PER_ROOM' | 'PER_STAY' | 'PER_NIGHT' | string | null;
@@ -104,7 +105,7 @@ export function HotelContractSupplementsTable({
           {supplements.map((supplement) => (
             <tr key={supplement.id}>
               <td>
-                <strong>{formatSupplementType(supplement.type)}</strong>
+                <strong>{formatSupplementLabel(supplement)}</strong>
                 <div className="table-subcopy">{supplement.isMandatory ? 'Mandatory' : 'Optional'}</div>
               </td>
               <td>

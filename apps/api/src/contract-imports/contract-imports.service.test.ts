@@ -467,6 +467,32 @@ test('contract import approval normalizes supplement enum aliases without mergin
   );
 });
 
+test('contract import approval preserves mixed supplement labels in notes for display', async () => {
+  const { service, state } = createHotelApprovalHarness({
+    extractedJson: baseApprovedData({
+      supplements: [
+        { name: 'HB Supplement', chargeBasis: 'PER_PERSON', amount: 10, currency: 'JOD' },
+        { name: 'Extra Bed', chargeBasis: 'PER_NIGHT', amount: 35, currency: 'JOD' },
+        { name: 'Junior Suite Supplement', chargeBasis: 'PER_NIGHT', amount: 30, currency: 'JOD' },
+        { name: 'Executive Suite Supplement', chargeBasis: 'PER_NIGHT', amount: 50, currency: 'JOD' },
+        { name: 'Family Room Supplement', chargeBasis: 'PER_NIGHT', amount: 110, currency: 'JOD' },
+        { name: 'Single Supplement', chargeBasis: 'PER_NIGHT', amount: 100, currency: 'JOD' },
+      ],
+    }),
+  });
+
+  await service.approve('import-1', undefined, approvalActor);
+
+  assert.deepEqual(
+    state.supplementCreates.map((supplement: any) => supplement.type),
+    ['EXTRA_DINNER', 'EXTRA_BED', 'EXTRA_BED', 'EXTRA_BED', 'EXTRA_BED', 'EXTRA_BED'],
+  );
+  assert.deepEqual(
+    state.supplementCreates.map((supplement: any) => supplement.notes),
+    ['HB Supplement', 'Extra Bed', 'Junior Suite Supplement', 'Executive Suite Supplement', 'Family Room Supplement', 'Single Supplement'],
+  );
+});
+
 test('contract import approval inherits missing rate and supplement currency from contract and preserves explicit currencies', async () => {
   const { service, state } = createHotelApprovalHarness({
     extractedJson: baseApprovedData({

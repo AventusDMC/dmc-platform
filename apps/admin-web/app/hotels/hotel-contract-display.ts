@@ -27,10 +27,12 @@ export type DisplayCancellationPolicy = {
 } | null | undefined;
 
 export type DisplaySupplement = {
+  name?: string | null;
   type?: string | null;
   chargeBasis?: string | null;
   amount?: number | string | null;
   currency?: string | null;
+  notes?: string | null;
 };
 
 export const CHILD_POLICY_TYPES = ['CHILD_FREE', 'CHILD_DISCOUNT', 'CHILD_EXTRA_BED', 'CHILD_EXTRA_MEAL'];
@@ -171,6 +173,21 @@ function humanizeEnum(value: unknown, fallback: string) {
 
 export function formatSupplementType(value: unknown) {
   return humanizeEnum(value, 'Supplement');
+}
+
+export function formatSupplementLabel(supplement: DisplaySupplement) {
+  const explicitName = String(supplement.name || '').trim();
+  if (explicitName && !/^supplement$/i.test(explicitName)) {
+    return explicitName;
+  }
+
+  const notes = String(supplement.notes || '').trim();
+  const noteLabel = notes.split('|')[0]?.trim();
+  if (noteLabel && !/^supplement$/i.test(noteLabel) && !/^currency cell marked as percentage/i.test(noteLabel)) {
+    return noteLabel;
+  }
+
+  return formatSupplementType(supplement.type);
 }
 
 export function formatChargeBasis(value: unknown) {

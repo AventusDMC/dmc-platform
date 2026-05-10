@@ -697,17 +697,18 @@ export class ContractImportsService {
       .filter((category) => category.name);
     const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => {
       const normalizedCurrency = this.normalizeSupplementCurrency(this.templateCell(row, 'Currency'), contractCurrency);
+      const name = this.templateSupplementName(row);
       const notes = this.templateCell(row, 'Notes');
 
       return {
-        name: this.templateCell(row, 'Name') || this.templateCell(row, 'Supplement') || this.templateCell(row, 'Type') || 'Supplement',
-        type: this.templateCell(row, 'Type') || null,
+        name,
+        type: this.templateCell(row, 'Type') || name || null,
         chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
         amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
         currency: normalizedCurrency.currency,
         pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
         isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
-        notes: [notes, normalizedCurrency.note].filter(Boolean).join(' ') || undefined,
+        notes: [this.supplementLabelNote(name), notes, normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
       };
     });
     const policies: ContractPreview['policies'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')).map((row: Record<string, string>) => ({
@@ -2043,7 +2044,7 @@ export class ContractImportsService {
       currency: supplement.currency || fallbackCurrency,
       isMandatory: Boolean(supplement.isMandatory),
       isActive: true,
-      notes: supplement.notes || supplement.name || null,
+      notes: supplement.notes || this.supplementLabelNote(supplement.name) || null,
     };
 
     if (existing) {
@@ -2396,12 +2397,14 @@ export class ContractImportsService {
       supplements: Array.isArray(value.supplements)
         ? value.supplements.map((supplement: any) => {
             const normalizedCurrency = this.normalizeSupplementCurrency(supplement.currency, value.contract?.currency || 'JOD');
+            const name = this.supplementDisplayName(supplement);
             return {
               ...supplement,
+              name,
               amount: this.parseNumber(supplement.amount) ?? null,
               currency: normalizedCurrency.currency,
               pricingBasis: this.normalizePricingBasis(supplement.pricingBasis),
-              notes: [this.optionalString(supplement.notes), normalizedCurrency.note].filter(Boolean).join(' ') || undefined,
+              notes: [this.supplementLabelNote(name), this.optionalString(supplement.notes), normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
             };
           })
         : [],
@@ -2469,9 +2472,59 @@ export class ContractImportsService {
     if (normalized.includes('BREAKFAST')) return HotelContractSupplementType.EXTRA_BREAKFAST;
     if (normalized.includes('LUNCH')) return HotelContractSupplementType.EXTRA_LUNCH;
     if (normalized.includes('GALA')) return HotelContractSupplementType.GALA_DINNER;
-    if (normalized.includes('DINNER') || normalized.includes('HALF')) return HotelContractSupplementType.EXTRA_DINNER;
+    if (normalized.includes('DINNER') || normalized.includes('HALF') || /\bHB\b/.test(normalized)) return HotelContractSupplementType.EXTRA_DINNER;
     if (normalized.includes('BED')) return HotelContractSupplementType.EXTRA_BED;
     return null;
+  }
+
+  private supplementDisplayName(supplement: { name?: unknown; type?: unknown; notes?: unknown }) {
+    const name = this.optionalString(supplement.name);
+    if (name && !/^supplement$/i.test(name)) {
+      return name;
+    }
+
+    return this.optionalString(supplement.type) || this.optionalString(supplement.notes).split('|')[0]?.trim() || 'Supplement';
+  }
+
+  private supplementLabelNote(name: unknown) {
+    const label = this.optionalString(name);
+    return label && !/^supplement$/i.test(label) ? label : '';
+  }
+
+  private templateSupplementName(row: Record<string, string>) {
+    const direct =
+      this.templateCell(row, 'Name') ||
+      this.templateCell(row, 'Supplement') ||
+      this.templateCell(row, 'Supplement Name') ||
+      this.templateCell(row, 'Description') ||
+      this.templateCell(row, 'Category') ||
+      this.templateCell(row, 'Item') ||
+      this.templateCell(row, 'Label') ||
+      this.templateCell(row, 'Room Upgrade') ||
+      this.templateCell(row, 'Room Type') ||
+      this.templateCell(row, 'Type');
+    if (direct) {
+      return direct;
+    }
+
+    const ignoredHeaders = new Set([
+      'type',
+      'chargebasis',
+      'basis',
+      'amount',
+      'cost',
+      'currency',
+      'pricingbasis',
+      'mandatory',
+      'notes',
+    ]);
+    const fallback = Object.entries(row).find(([key, value]) => {
+      const normalizedKey = this.normalizeTemplateHeader(key);
+      const text = this.optionalString(value);
+      return text && !ignoredHeaders.has(normalizedKey) && !Number.isFinite(Number(text));
+    });
+
+    return fallback?.[1] || 'Supplement';
   }
 
   private hotelChargeBasis(value: unknown) {
