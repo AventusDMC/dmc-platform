@@ -821,13 +821,30 @@ function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?
   );
 }
 
-function calculateHbSupplementPreviewTotal(contract: HotelContract | null, roomCategoryId: string | null | undefined, pax: number, rooms: number, nights: number) {
+function calculateHotelSupplementPreviewTotal(
+  contract: HotelContract | null,
+  roomCategoryId: string | null | undefined,
+  mealPlan: string,
+  baseMealPlan: string | null | undefined,
+  pax: number,
+  rooms: number,
+  nights: number,
+) {
   return Number(
     (contract?.supplements || [])
       .filter((supplement) => {
-        const type = String(supplement.type || '').trim().toUpperCase();
+        if (supplement.isActive === false) {
+          return false;
+        }
         const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
-        return supplement.isActive !== false && type === 'EXTRA_DINNER' && appliesToRoom;
+        if (!appliesToRoom) {
+          return false;
+        }
+        if (supplement.isMandatory === true) {
+          return true;
+        }
+        const type = String(supplement.type || '').trim().toUpperCase();
+        return mealPlan === 'HB' && baseMealPlan === 'BB' && type === 'EXTRA_DINNER';
       })
       .reduce((sum, supplement) => {
         const amount = Number(supplement.amount || 0);
@@ -1344,15 +1361,17 @@ export function QuoteItemsForm({
     : manualHotelRateDraft
       ? Number(manualHotelRateDraft.cost || 0)
       : 0;
-  const isSupplementDerivedHotelMealPlan = mealPlan === 'HB' && selectedHotelBaseRate?.mealPlan === 'BB' && !selectedHotelRate;
-  const hotelPreviewSupplementTotal = isSupplementDerivedHotelMealPlan
-    ? calculateHbSupplementPreviewTotal(selectedHotelContract, roomCategoryId, hotelPreviewPax, hotelPreviewRooms, hotelPreviewNights)
-    : 0;
-  const hotelPreviewMultiplier = hotelPreviewPricingBasis === 'PER_PERSON' ? hotelPreviewPax : hotelPreviewRooms;
-  const hotelPreviewMultiplierLabel =
-    hotelPreviewPricingBasis === 'PER_PERSON'
-      ? `${hotelPreviewPax} pax`
-      : `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
+  const hotelPreviewSupplementTotal = calculateHotelSupplementPreviewTotal(
+    selectedHotelContract,
+    roomCategoryId,
+    mealPlan,
+    selectedHotelBaseRate?.mealPlan,
+    hotelPreviewPax,
+    hotelPreviewRooms,
+    hotelPreviewNights,
+  );
+  const hotelPreviewMultiplier = hotelPreviewRooms;
+  const hotelPreviewMultiplierLabel = `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
   const hotelCalculatedTotalCost = hotelCostCalculation
     ? Number(hotelCostCalculation.totalCost || 0)
     : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal).toFixed(2));

@@ -3183,6 +3183,8 @@ export class QuotesService {
     let occupancyType: HotelOccupancyType | null = null;
     let mealPlan: HotelMealPlan | null = null;
     let hotelRatePricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null = null;
+    let hotelRoomRateCost = 0;
+    let hotelSupplementTotal = 0;
     let participantCount: number | null = null;
     let adultCount: number | null = null;
     let childCount: number | null = null;
@@ -3309,22 +3311,19 @@ export class QuotesService {
       tourismFeeAmount = (hotelRate as any).tourismFeeAmount ?? null;
       tourismFeeCurrency = (hotelRate as any).tourismFeeCurrency ?? null;
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
-      hotelRatePricingBasis = (hotelRate as any).pricingBasis ?? null;
-      const derivedHbSupplementTotal =
-        requestedMealPlan === HotelMealPlan.HB && hotelRate.mealPlan === HotelMealPlan.BB
-          ? this.calculateHbSupplementTotal(hotelRate.contract?.supplements, hotelRate.roomCategoryId, paxCount, roomCount, nightCount)
-          : 0;
-      if (derivedHbSupplementTotal > 0) {
-        const hotelUnits = this.getHotelPricingUnits({
-          paxCount,
-          roomCount,
-          nightCount,
-          unitType: effectiveService.unitType,
-          hotelRatePricingBasis,
-        });
-        baseCost = Number(((baseCost * hotelUnits + derivedHbSupplementTotal) / hotelUnits).toFixed(2));
-        supplierCostBaseAmount = Number(((supplierCostBaseAmount * hotelUnits + derivedHbSupplementTotal) / hotelUnits).toFixed(2));
-      }
+      hotelRoomRateCost = hotelRate.cost;
+      hotelSupplementTotal = this.calculateHotelSupplementTotal(
+        hotelRate.contract?.supplements,
+        hotelRate.roomCategoryId,
+        requestedMealPlan,
+        hotelRate.mealPlan,
+        paxCount,
+        roomCount,
+        nightCount,
+      );
+      baseCost = Number((hotelRate.cost * roomCount * nightCount + hotelSupplementTotal).toFixed(2));
+      supplierCostBaseAmount = Number((((hotelRate as any).costBaseAmount ?? hotelRate.cost) * roomCount * nightCount + hotelSupplementTotal).toFixed(2));
+      hotelRatePricingBasis = 'TOTAL';
       pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${requestedMealPlan}`;
       hotelId = data.hotelId;
       contractId = hotelRate.contract.id;
@@ -3814,7 +3813,7 @@ export class QuotesService {
         roomCount,
         nightCount,
         dayCount,
-        baseCost: this.isHotelService(effectiveService) ? baseCost : basePricing.totalCost,
+        baseCost: basePricing.totalCost,
         finalCost: pricing.totalCost,
         markupAmount,
         sellPrice: persistedSellPriceOverride,
@@ -3837,7 +3836,10 @@ export class QuotesService {
         useOverride,
         ...externalPackageData,
         currency: quoteCurrency,
-        pricingDescription,
+        pricingDescription:
+          this.isHotelService(effectiveService) && hotelRoomRateCost > 0
+            ? `${pricingDescription} | Room ${currency} ${hotelRoomRateCost.toFixed(2)} x ${roomCount} room${roomCount === 1 ? '' : 's'} x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
+            : pricingDescription,
         appliedVehicleRateId,
         entranceFeeId,
         jordanPassCovered,
@@ -5134,9 +5136,11 @@ export class QuotesService {
       : false;
   }
 
-  private calculateHbSupplementTotal(
+  private calculateHotelSupplementTotal(
     supplements: unknown,
     roomCategoryId: string | null | undefined,
+    requestedMealPlan: HotelMealPlan,
+    baseMealPlan: HotelMealPlan,
     paxCount: number,
     roomCount: number,
     nightCount: number,
@@ -5147,7 +5151,15 @@ export class QuotesService {
 
     return Number(
       supplements
-        .filter((supplement) => this.isHbSupplementForRoom(supplement, roomCategoryId))
+        .filter((supplement: any) => {
+          if (!supplement || supplement.isActive === false) {
+            return false;
+          }
+          if (supplement.isMandatory === true) {
+            return this.supplementAppliesToRoom(supplement, roomCategoryId);
+          }
+          return requestedMealPlan === HotelMealPlan.HB && baseMealPlan === HotelMealPlan.BB && this.isHbSupplementForRoom(supplement, roomCategoryId);
+        })
         .reduce((sum, supplement: any) => {
           const amount = Number(supplement.amount || 0);
           if (!Number.isFinite(amount) || amount <= 0) {
@@ -5171,8 +5183,11 @@ export class QuotesService {
     }
 
     const type = String(supplement.type || '').trim().toUpperCase();
-    const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
-    return type === 'EXTRA_DINNER' && appliesToRoom;
+    return type === 'EXTRA_DINNER' && this.supplementAppliesToRoom(supplement, roomCategoryId);
+  }
+
+  private supplementAppliesToRoom(supplement: any, roomCategoryId?: string | null) {
+    return !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
   }
 
   private getHotelPricingUnits(values: {
@@ -5184,6 +5199,9 @@ export class QuotesService {
   }) {
     const nights = Math.max(1, values.nightCount);
     const basis = String(values.hotelRatePricingBasis || '').trim().toUpperCase();
+    if (basis === 'TOTAL') {
+      return 1;
+    }
     const isPerPerson = basis === 'PER_PERSON' || (!basis && values.unitType === ServiceUnitType.per_person);
 
     return isPerPerson ? Math.max(1, values.paxCount) * nights : Math.max(1, values.roomCount) * nights;
@@ -5386,6 +5404,7 @@ export class QuotesService {
       markupPercent: values.markupPercent,
       transportPricingMode: values.transportPricingMode,
       unitCount: values.unitCount,
+      hotelRatePricingBasis: values.hotelRatePricingBasis,
       externalPackagePricingBasis: values.externalPackagePricingBasis,
       structuredServiceRatePricingMode: values.structuredServiceRatePricingMode,
       capacityMaxPaxPerUnit: values.capacityMaxPaxPerUnit,
