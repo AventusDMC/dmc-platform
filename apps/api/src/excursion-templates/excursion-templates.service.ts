@@ -161,8 +161,20 @@ export class ExcursionTemplatesService {
   }
 
   async ensurePetraFullDayTemplate() {
-    const existing = await (this.prisma as any).excursionTemplate.findUnique({ where: { code: 'PETRA_FULL_DAY' } });
-    const data = await this.buildPetraFullDayTemplateData();
+    return this.ensureTemplate('PETRA_FULL_DAY', () => this.buildPetraFullDayTemplateData());
+  }
+
+  async ensureJerashAmmanFullDayTemplate() {
+    return this.ensureTemplate('JERASH_AMMAN_FULL_DAY', () => this.buildJerashAmmanFullDayTemplateData());
+  }
+
+  async ensureDeadSeaEscapeTemplate() {
+    return this.ensureTemplate('DEAD_SEA_ESCAPE', () => this.buildDeadSeaEscapeTemplateData());
+  }
+
+  private async ensureTemplate(code: string, buildData: () => Promise<CreateExcursionTemplateInput>) {
+    const existing = await (this.prisma as any).excursionTemplate.findUnique({ where: { code } });
+    const data = await buildData();
     return existing ? this.update(existing.id, data) : this.create(data);
   }
 
@@ -214,6 +226,135 @@ export class ExcursionTemplatesService {
           supplierServiceId: dining?.id ?? null,
           isOptional: true,
           operationalNotes: 'Optional dining component; resolve through meal/dining service catalog when available.',
+        },
+      ],
+    };
+  }
+
+  private async buildJerashAmmanFullDayTemplateData(): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['amman'], ['jerash']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const jerashTicket = await this.findSupplierServiceByText(['jerash'], ['ticket', 'entrance']);
+    const guide = await this.findSupplierServiceByText(['jerash', 'amman'], ['guide', 'interpretation']);
+    const jerashActivity = await this.findActivityByText(['jerash', 'amman'], ['guide', 'guided', 'interpretation', 'city']);
+    const ammanTicket = await this.findSupplierServiceByText(['citadel', 'roman theatre', 'roman theater'], ['amman', 'ticket', 'entrance']);
+    const dining = await this.findSupplierServiceByText(['lunch', 'meal', 'restaurant'], ['amman', 'jerash']);
+
+    return {
+      name: 'Jerash & Amman Operational Excursion',
+      code: 'JERASH_AMMAN_FULL_DAY',
+      description:
+        'Reusable operational excursion template for a full-day Jerash and Amman program assembled from transport, ticketing, guide/activity, and dining components.',
+      defaultDepartureCity: 'Amman',
+      durationMinutes: 480,
+      operationalNotes:
+        'Composite template only. Link Jerash and Amman ticketing, interpretation, dining, and transport records as operational catalogs mature.',
+      active: true,
+      components: [
+        {
+          componentType: 'TRANSPORT',
+          label: 'Amman to Jerash and Amman city transport',
+          routeId: route?.id ?? null,
+          transportServiceTypeId: transportServiceType?.id ?? null,
+          suggestedDepartureCity: 'Amman',
+          suggestedArrivalCity: 'Jerash / Amman',
+          durationMinutes: route?.durationMinutes ?? null,
+          operationalNotes:
+            'Suggested route is Amman to Jerash to Amman city return. Use existing transport pricing logic where a matching route exists.',
+        },
+        {
+          componentType: 'TICKET',
+          label: 'Jerash entrance ticket',
+          supplierServiceId: jerashTicket?.id ?? null,
+          operationalNotes: jerashTicket
+            ? 'Linked to existing Jerash entrance ticket service.'
+            : 'Placeholder component: link an existing Jerash entrance ticket when available.',
+        },
+        {
+          componentType: jerashActivity ? 'ACTIVITY' : 'GUIDE',
+          label: jerashActivity ? 'Jerash and Amman interpretation' : 'Jerash local guide / Amman city interpretation',
+          activityId: jerashActivity?.id ?? null,
+          supplierServiceId: jerashActivity ? null : guide?.id ?? null,
+          operationalNotes: jerashActivity || guide
+            ? 'Interpretation component linked to an existing catalog record.'
+            : 'Placeholder component: link Jerash guide and Amman city interpretation when available.',
+        },
+        {
+          componentType: 'TICKET',
+          label: 'Amman Citadel / Roman Theatre ticket',
+          supplierServiceId: ammanTicket?.id ?? null,
+          operationalNotes: ammanTicket
+            ? 'Linked to existing Amman Citadel / Roman Theatre ticket service.'
+            : 'Placeholder component: link Amman Citadel or Roman Theatre ticketing if used operationally.',
+        },
+        {
+          componentType: 'DINING',
+          label: 'Lunch in Amman or Jerash area',
+          supplierServiceId: dining?.id ?? null,
+          isOptional: true,
+          operationalNotes: dining
+            ? 'Optional dining component linked to an existing meal service.'
+            : 'Optional placeholder dining component for Amman/Jerash lunch.',
+        },
+      ],
+    };
+  }
+
+  private async buildDeadSeaEscapeTemplateData(): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['amman'], ['dead sea']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const dayAccessService = await this.findSupplierServiceByText(['dead sea'], ['beach', 'club', 'resort', 'day access']);
+    const dayAccessActivity = await this.findActivityByText(['dead sea'], ['beach', 'club', 'resort', 'day access']);
+    const spaActivity = await this.findActivityByText(['dead sea'], ['spa', 'mud']);
+    const spaService = await this.findSupplierServiceByText(['dead sea'], ['spa', 'mud']);
+    const dining = await this.findSupplierServiceByText(['lunch', 'meal', 'restaurant'], ['dead sea']);
+
+    return {
+      name: 'Dead Sea Escape Operational Excursion',
+      code: 'DEAD_SEA_ESCAPE',
+      description:
+        'Reusable operational excursion template for a Dead Sea day program assembled from transport, day access/activity, optional spa, and dining components.',
+      defaultDepartureCity: 'Amman',
+      durationMinutes: 480,
+      operationalNotes:
+        'Composite template only. Use existing transport and activity/dining records; leave unresolved components as operational placeholders until catalog records exist.',
+      active: true,
+      components: [
+        {
+          componentType: 'TRANSPORT',
+          label: 'Amman to Dead Sea return transport',
+          routeId: route?.id ?? null,
+          transportServiceTypeId: transportServiceType?.id ?? null,
+          suggestedDepartureCity: 'Amman',
+          suggestedArrivalCity: 'Dead Sea',
+          durationMinutes: route?.durationMinutes ?? null,
+          operationalNotes: 'Use existing transport pricing logic for Amman to Dead Sea return service.',
+        },
+        {
+          componentType: dayAccessActivity ? 'ACTIVITY' : 'DINING',
+          label: dayAccessActivity ? 'Dead Sea beach club / resort day access' : 'Dead Sea beach club / resort day access',
+          activityId: dayAccessActivity?.id ?? null,
+          supplierServiceId: dayAccessActivity ? null : dayAccessService?.id ?? null,
+          operationalNotes: dayAccessActivity || dayAccessService
+            ? 'Linked to an existing Dead Sea beach club or resort day access record.'
+            : 'Placeholder component: link beach club or resort day access when available.',
+        },
+        {
+          componentType: 'ACTIVITY',
+          label: 'Spa or mud experience',
+          activityId: spaActivity?.id ?? null,
+          supplierServiceId: spaActivity ? null : spaService?.id ?? null,
+          isOptional: true,
+          operationalNotes: spaActivity || spaService
+            ? 'Optional spa/mud component linked to an existing catalog record.'
+            : 'Optional placeholder component for Dead Sea spa or mud experience.',
+        },
+        {
+          componentType: 'DINING',
+          label: 'Lunch at Dead Sea area',
+          supplierServiceId: dining?.id ?? null,
+          isOptional: true,
+          operationalNotes: dining ? 'Optional dining component linked to an existing meal service.' : 'Optional placeholder dining component.',
         },
       ],
     };

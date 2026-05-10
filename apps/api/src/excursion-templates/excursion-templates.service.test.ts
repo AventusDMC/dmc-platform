@@ -214,10 +214,148 @@ test('Petra Full Day seed template is composite and links existing modules when 
   assert.equal(createdData.components.create[3].isOptional, true);
 });
 
+test('Jerash and Amman seed template preserves component order and placeholder notes', async () => {
+  let createdData: any;
+  const services = [
+    { id: 'service-jerash-ticket', name: 'Jerash Entrance Ticket' },
+    { id: 'service-amman-ticket', name: 'Amman Citadel Roman Theatre Entrance Ticket' },
+    { id: 'service-lunch', name: 'Amman Lunch Restaurant' },
+  ];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'template-jerash-amman', ...data };
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => services,
+    },
+    activity: {
+      findMany: async () => [],
+    },
+    route: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'route-amman-jerash', name: 'Amman to Jerash to Amman', durationMinutes: 180 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-full-day', name: 'Full Day', classification: 'FULL_DAY' }],
+    },
+  });
+
+  await service.ensureJerashAmmanFullDayTemplate();
+
+  assert.equal(createdData.code, 'JERASH_AMMAN_FULL_DAY');
+  assert.equal(createdData.defaultDepartureCity, 'Amman');
+  assert.equal(createdData.durationMinutes, 480);
+  assert.deepEqual(
+    createdData.components.create.map((component: any) => component.componentType),
+    ['TRANSPORT', 'TICKET', 'GUIDE', 'TICKET', 'DINING'],
+  );
+  assert.equal(createdData.components.create[0].routeId, 'route-amman-jerash');
+  assert.equal(createdData.components.create[1].supplierServiceId, 'service-jerash-ticket');
+  assert.equal(createdData.components.create[2].label, 'Jerash local guide / Amman city interpretation');
+  assert.match(createdData.components.create[2].operationalNotes, /Placeholder component/);
+  assert.equal(createdData.components.create[3].supplierServiceId, 'service-amman-ticket');
+  assert.equal(createdData.components.create[4].isOptional, true);
+});
+
+test('Dead Sea Escape seed template preserves component order and optional components', async () => {
+  let createdData: any;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'template-dead-sea', ...data };
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-day-access', name: 'Dead Sea Resort Day Access' }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'activity-spa', name: 'Dead Sea Mud Spa Experience' }],
+    },
+    route: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'route-amman-dead-sea', name: 'Amman to Dead Sea to Amman', durationMinutes: 120 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-full-day', name: 'Full Day', classification: 'FULL_DAY' }],
+    },
+  });
+
+  await service.ensureDeadSeaEscapeTemplate();
+
+  assert.equal(createdData.code, 'DEAD_SEA_ESCAPE');
+  assert.equal(createdData.durationMinutes, 480);
+  assert.deepEqual(
+    createdData.components.create.map((component: any) => component.componentType),
+    ['TRANSPORT', 'DINING', 'ACTIVITY', 'DINING'],
+  );
+  assert.equal(createdData.components.create[0].routeId, 'route-amman-dead-sea');
+  assert.equal(createdData.components.create[1].supplierServiceId, 'service-day-access');
+  assert.equal(createdData.components.create[2].activityId, 'activity-spa');
+  assert.equal(createdData.components.create[2].isOptional, true);
+  assert.equal(createdData.components.create[3].isOptional, true);
+});
+
+test('ensure endpoints update existing templates by code instead of creating duplicates', async () => {
+  let createCalls = 0;
+  let updateCalls = 0;
+  let deletedComponentsFor: string | undefined;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) =>
+        where.code === 'JERASH_AMMAN_FULL_DAY' || where.id === 'template-existing'
+          ? { id: 'template-existing', code: 'JERASH_AMMAN_FULL_DAY', components: [] }
+          : null,
+      create: async () => {
+        createCalls += 1;
+        return { id: 'new-template' };
+      },
+      update: async ({ where, data }: any) => {
+        updateCalls += 1;
+        return { id: where.id, ...data };
+      },
+    },
+    excursionTemplateComponent: {
+      deleteMany: async ({ where }: any) => {
+        deletedComponentsFor = where.templateId;
+        return { count: 5 };
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+  });
+
+  await service.ensureJerashAmmanFullDayTemplate();
+
+  assert.equal(createCalls, 0);
+  assert.equal(updateCalls, 1);
+  assert.equal(deletedComponentsFor, 'template-existing');
+});
+
 test('excursion template writes are restricted to admin and operations users', () => {
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.create), ['admin', 'operations']);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.update), ['admin', 'operations']);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensurePetraFullDayTemplate), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureJerashAmmanFullDayTemplate), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureDeadSeaEscapeTemplate), [
     'admin',
     'operations',
   ]);

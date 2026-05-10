@@ -33,6 +33,8 @@ export default async function ExcursionTemplatesPage() {
 
   const activeCount = templates.filter((template) => template.active).length;
   const petraFullDay = templates.find((template) => template.code === 'PETRA_FULL_DAY');
+  const jerashAmman = templates.find((template) => template.code === 'JERASH_AMMAN_FULL_DAY');
+  const deadSeaEscape = templates.find((template) => template.code === 'DEAD_SEA_ESCAPE');
 
   return (
     <main className="page">
@@ -63,6 +65,18 @@ export default async function ExcursionTemplatesPage() {
                   value: petraFullDay ? 'Available' : 'Missing',
                   helper: 'First composite proof',
                 },
+                {
+                  id: 'jerash-amman',
+                  label: 'Jerash & Amman',
+                  value: jerashAmman ? 'Available' : 'Missing',
+                  helper: 'Full-day operations',
+                },
+                {
+                  id: 'dead-sea',
+                  label: 'Dead Sea Escape',
+                  value: deadSeaEscape ? 'Available' : 'Missing',
+                  helper: 'Day access operations',
+                },
               ]}
             />
           }
@@ -75,6 +89,16 @@ export default async function ExcursionTemplatesPage() {
               actions={
                 <div className="table-action-group">
                   <CreatePetraFullDayButton exists={Boolean(petraFullDay)} />
+                  <CreatePetraFullDayButton
+                    exists={Boolean(jerashAmman)}
+                    label="Jerash & Amman Template"
+                    endpoint="/api/excursion-templates/jerash-amman-full-day/ensure"
+                  />
+                  <CreatePetraFullDayButton
+                    exists={Boolean(deadSeaEscape)}
+                    label="Dead Sea Escape Template"
+                    endpoint="/api/excursion-templates/dead-sea-escape/ensure"
+                  />
                   {petraFullDay ? (
                     <Link href="/excursion-templates/petra-full-day" className="dashboard-toolbar-link">
                       Open Petra Full Day

@@ -68,6 +68,18 @@ export class ExcursionTemplatesController {
     return this.excursionTemplatesService.ensurePetraFullDayTemplate();
   }
 
+  @Post('jerash-amman-full-day/ensure')
+  @Roles('admin', 'operations')
+  ensureJerashAmmanFullDayTemplate() {
+    return this.excursionTemplatesService.ensureJerashAmmanFullDayTemplate();
+  }
+
+  @Post('dead-sea-escape/ensure')
+  @Roles('admin', 'operations')
+  ensureDeadSeaEscapeTemplate() {
+    return this.excursionTemplatesService.ensureDeadSeaEscapeTemplate();
+  }
+
   @Patch(':id')
   @Roles('admin', 'operations')
   update(@Param('id') id: string, @Body() body: UpdateExcursionTemplateBody) {
