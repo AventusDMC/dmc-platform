@@ -154,6 +154,27 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('renders read-only operational intelligence in the quote itinerary day planner', () => {
+    expectSourceContains(pageSource, [
+      'excursionTemplateId: item?.excursionTemplateId ?? null',
+      'excursionTemplateComponentId: item?.excursionTemplateComponentId ?? null',
+      'excursionTemplateComponentOptional: item?.excursionTemplateComponentOptional ?? null',
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'function buildQuoteOperationalIntelligence',
+      'function QuoteOperationalIntelligencePanel',
+      '<h4>Day readiness overview</h4>',
+      'Missing required components',
+      'Pricing warnings',
+      'Timing summary',
+      'Operational warnings',
+      'Optional components not selected',
+      'buildQuoteOperationalIntelligence(summary.day, summary.items, plannerProps.excursionTemplates)',
+      '<QuoteOperationalIntelligencePanel model={operationalIntelligence} />',
+    ]);
+  });
+
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
     expectSourceContains(pageSource, [
       "activeTab === 'itinerary'",

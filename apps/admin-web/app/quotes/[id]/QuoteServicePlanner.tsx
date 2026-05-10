@@ -250,6 +250,9 @@ type ParsedDayContent = {
 type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   serviceId?: string | null;
   service: SupplierService | null;
+  excursionTemplateId?: string | null;
+  excursionTemplateComponentId?: string | null;
+  excursionTemplateComponentOptional?: boolean | null;
   activity?: {
     id: string;
     name: string;
@@ -1013,6 +1016,111 @@ function getActivityItemDisplayName(item: QuoteItem) {
 
 function getActivityItemVariantLabel(item: QuoteItem) {
   return item.activityRateVariant?.name?.trim() || '';
+}
+
+type OperationalCoverageKey = 'transport' | 'ticket' | 'activity' | 'guide' | 'dining' | 'hotel';
+
+const OPERATIONAL_COVERAGE_LABELS: Record<OperationalCoverageKey, string> = {
+  transport: 'Transport',
+  ticket: 'Ticket',
+  activity: 'Activity',
+  guide: 'Guide',
+  dining: 'Dining',
+  hotel: 'Hotel',
+};
+
+const OPERATIONAL_COVERAGE_KEYS: OperationalCoverageKey[] = ['transport', 'ticket', 'activity', 'guide', 'dining', 'hotel'];
+
+function getOperationalCoverageKeyForItem(item: QuoteItem): OperationalCoverageKey | null {
+  const category = getItemCategory(item);
+  if (category === 'transport') return 'transport';
+  if (category === 'ticketing') return 'ticket';
+  if (category === 'activity') return 'activity';
+  if (category === 'guide') return 'guide';
+  if (category === 'meal') return 'dining';
+  if (category === 'hotel') return 'hotel';
+  return null;
+}
+
+function getOperationalCoverageKeyForComponent(componentType: string): OperationalCoverageKey | null {
+  if (componentType === 'TRANSPORT') return 'transport';
+  if (componentType === 'TICKET') return 'ticket';
+  if (componentType === 'ACTIVITY') return 'activity';
+  if (componentType === 'GUIDE') return 'guide';
+  if (componentType === 'DINING') return 'dining';
+  return null;
+}
+
+function getOperationalItemName(item: QuoteItem) {
+  if (item.hotel?.name) return item.hotel.name;
+  if (item.activity?.name) return item.activity.name;
+  return getItemServiceName(item);
+}
+
+function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteItem[], templates: ExcursionTemplate[]) {
+  const coverage = OPERATIONAL_COVERAGE_KEYS.map((key) => ({
+    key,
+    label: OPERATIONAL_COVERAGE_LABELS[key],
+    count: items.filter((item) => getOperationalCoverageKeyForItem(item) === key).length,
+  }));
+  const pricingWarnings = items
+    .filter((item) => Number(item.totalCost ?? 0) <= 0 || Number(item.totalSell ?? 0) <= 0)
+    .map((item) => `${getOperationalItemName(item)} has missing or zero pricing.`);
+  const templateById = new Map(templates.map((template) => [template.id, template]));
+  const componentItemIds = new Set(items.map((item) => item.excursionTemplateComponentId).filter(Boolean));
+  const templateIds = Array.from(new Set(items.map((item) => item.excursionTemplateId).filter(Boolean) as string[]));
+  const missingRequiredComponents: string[] = [];
+  const optionalComponentsNotSelected: string[] = [];
+  const timingLines: string[] = [];
+  const warnings: string[] = [];
+
+  for (const templateId of templateIds) {
+    const template = templateById.get(templateId);
+    if (!template) {
+      continue;
+    }
+
+    if (template.operationalWarnings?.trim()) {
+      warnings.push(`${template.name}: ${template.operationalWarnings.trim()}`);
+    }
+    if (template.seasonalRestrictions?.trim()) {
+      warnings.push(`${template.name}: ${template.seasonalRestrictions.trim()}`);
+    }
+
+    for (const component of [...(template.components || [])].filter((entry) => entry.active !== false).sort((a, b) => a.sortOrder - b.sortOrder)) {
+      const selected = componentItemIds.has(component.id);
+      const coverageKey = getOperationalCoverageKeyForComponent(component.componentType);
+      const label = `${template.name} / ${component.label}`;
+      const timingParts = [
+        component.requiredArrivalTime ? `arrival ${component.requiredArrivalTime}` : null,
+        component.estimatedDurationMinutes ? `${component.estimatedDurationMinutes} min` : null,
+        component.pickupNotes ? `pickup: ${component.pickupNotes}` : null,
+        component.operationalDependency ? `dependency: ${component.operationalDependency}` : null,
+      ].filter(Boolean);
+
+      if (timingParts.length > 0) {
+        timingLines.push(`${label}: ${timingParts.join(' | ')}`);
+      }
+
+      if (!selected && component.isOptional) {
+        optionalComponentsNotSelected.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);
+      }
+
+      if (!selected && !component.isOptional) {
+        missingRequiredComponents.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);
+      }
+    }
+  }
+
+  return {
+    dayId: day.id,
+    coverage,
+    missingRequiredComponents,
+    pricingWarnings,
+    timingLines,
+    warnings,
+    optionalComponentsNotSelected,
+  };
 }
 
 function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string, supplierName?: string | null) {
@@ -3190,6 +3298,7 @@ function ScopePlanner({
           (summary.inferredCity && summary.day.title && summary.day.title !== summary.inferredCity
             ? summary.day.title
             : 'Build the day by adding the core services below.');
+        const operationalIntelligence = buildQuoteOperationalIntelligence(summary.day, summary.items, plannerProps.excursionTemplates);
 
         return (
           <article
@@ -3309,6 +3418,8 @@ function ScopePlanner({
                     ))}
                   </div>
                 </section>
+
+                <QuoteOperationalIntelligencePanel model={operationalIntelligence} />
 
                 {summary.suggestions.length > 0 ? (
                   <section className="quote-service-side-section quote-service-suggestions-section" hidden>
@@ -3728,6 +3839,86 @@ function ExcursionTemplateInsertPanel({
       )}
       {error ? <p className="form-error">{error}</p> : null}
     </article>
+  );
+}
+
+function QuoteOperationalIntelligencePanel({
+  model,
+}: {
+  model: ReturnType<typeof buildQuoteOperationalIntelligence>;
+}) {
+  const hasTemplateSignals =
+    model.missingRequiredComponents.length > 0 ||
+    model.timingLines.length > 0 ||
+    model.warnings.length > 0 ||
+    model.optionalComponentsNotSelected.length > 0;
+
+  return (
+    <section className="quote-service-side-section quote-operational-intelligence-panel">
+      <div className="workspace-section-head">
+        <div>
+          <p className="eyebrow">Operational Intelligence</p>
+          <h4>Day readiness overview</h4>
+        </div>
+      </div>
+      <div className="quote-service-day-checklist">
+        {model.coverage.map((entry) => (
+          <div key={entry.key} className={`quote-service-check ${entry.count > 0 ? 'quote-service-check-complete' : 'quote-service-check-missing'}`}>
+            <span>{entry.label}</span>
+            <strong>{entry.count > 0 ? `${entry.count} added` : 'Missing'}</strong>
+          </div>
+        ))}
+      </div>
+
+      {model.missingRequiredComponents.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Missing required components</strong>
+          {model.missingRequiredComponents.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {model.pricingWarnings.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Pricing warnings</strong>
+          {model.pricingWarnings.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {model.timingLines.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Timing summary</strong>
+          {model.timingLines.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {model.warnings.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Operational warnings</strong>
+          {model.warnings.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {model.optionalComponentsNotSelected.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Optional components not selected</strong>
+          {model.optionalComponentsNotSelected.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {!hasTemplateSignals && model.pricingWarnings.length === 0 ? (
+        <p className="form-helper">No excursion-template operational warnings or component gaps detected for this day.</p>
+      ) : null}
+    </section>
   );
 }
 
