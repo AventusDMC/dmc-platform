@@ -79,6 +79,9 @@ type CreateQuoteItemBody = {
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  excursionTemplateId?: string | null;
+  excursionTemplateComponentId?: string | null;
+  excursionTemplateComponentOptional?: boolean | null;
   ticketRateVariantId?: string | null;
   itineraryId?: string;
   serviceDate?: string | null;
@@ -142,6 +145,15 @@ type CreateQuoteItemBody = {
 };
 
 type UpdateQuoteItemBody = Partial<CreateQuoteItemBody>;
+
+type ExpandExcursionTemplateBody = {
+  itineraryId?: string | null;
+  serviceDate?: string | null;
+  selectedOptionalComponentIds?: string[];
+  paxCount?: number;
+  quantity?: number;
+  markupPercent?: number;
+};
 
 type AssignQuoteItemServiceBody = {
   serviceId: string;
@@ -767,6 +779,11 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      excursionTemplateId: body.excursionTemplateId === undefined ? undefined : body.excursionTemplateId || null,
+      excursionTemplateComponentId:
+        body.excursionTemplateComponentId === undefined ? undefined : body.excursionTemplateComponentId || null,
+      excursionTemplateComponentOptional:
+        body.excursionTemplateComponentOptional === undefined ? undefined : Boolean(body.excursionTemplateComponentOptional),
       ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -840,6 +857,32 @@ export class QuotesController {
     }, actor);
   }
 
+  @Post(':id/excursion-templates/:templateId/expand')
+  @Roles('admin', 'viewer', 'finance')
+  async expandExcursionTemplate(
+    @Param('id') id: string,
+    @Param('templateId') templateId: string,
+    @Body() body: ExpandExcursionTemplateBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.expandExcursionTemplateIntoQuote({
+      quoteId: id,
+      excursionTemplateId: templateId,
+      itineraryId: body.itineraryId || undefined,
+      serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
+      selectedOptionalComponentIds: Array.isArray(body.selectedOptionalComponentIds) ? body.selectedOptionalComponentIds : [],
+      paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
+      quantity: body.quantity === undefined ? undefined : Number(body.quantity),
+      markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
+    }, actor);
+  }
+
   @Patch(':id/items/:itemId')
   @Roles('admin', 'viewer', 'finance')
   async updateItem(
@@ -860,6 +903,11 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      excursionTemplateId: body.excursionTemplateId === undefined ? undefined : body.excursionTemplateId || null,
+      excursionTemplateComponentId:
+        body.excursionTemplateComponentId === undefined ? undefined : body.excursionTemplateComponentId || null,
+      excursionTemplateComponentOptional:
+        body.excursionTemplateComponentOptional === undefined ? undefined : Boolean(body.excursionTemplateComponentOptional),
       ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -1161,6 +1209,11 @@ export class QuotesController {
       serviceId: body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      excursionTemplateId: body.excursionTemplateId === undefined ? undefined : body.excursionTemplateId || null,
+      excursionTemplateComponentId:
+        body.excursionTemplateComponentId === undefined ? undefined : body.excursionTemplateComponentId || null,
+      excursionTemplateComponentOptional:
+        body.excursionTemplateComponentOptional === undefined ? undefined : Boolean(body.excursionTemplateComponentOptional),
       ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
@@ -1254,6 +1307,11 @@ export class QuotesController {
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
+      excursionTemplateId: body.excursionTemplateId === undefined ? undefined : body.excursionTemplateId || null,
+      excursionTemplateComponentId:
+        body.excursionTemplateComponentId === undefined ? undefined : body.excursionTemplateComponentId || null,
+      excursionTemplateComponentOptional:
+        body.excursionTemplateComponentOptional === undefined ? undefined : Boolean(body.excursionTemplateComponentOptional),
       ticketRateVariantId: body.ticketRateVariantId === undefined ? undefined : body.ticketRateVariantId || null,
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,

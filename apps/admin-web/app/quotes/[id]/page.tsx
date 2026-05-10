@@ -34,6 +34,7 @@ import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
 import { CancelQuoteButton } from './CancelQuoteButton';
 import { ReviseQuoteButton } from './ReviseQuoteButton';
+import type { ExcursionTemplate } from '../../excursion-templates/types';
 import { HotelCategoryOption } from '../../lib/hotelCategories';
 import { RouteOption } from '../../lib/routes';
 import { formatNightCountLabel } from '../../lib/formatters';
@@ -816,6 +817,12 @@ async function getServices(): Promise<SupplierService[]> {
 
 async function getActivities(): Promise<ActivityCatalogItem[]> {
   return adminPageFetchJson<ActivityCatalogItem[]>(`${DATA_API_BASE_URL}/activities`, 'Quote detail activities', {
+    cache: 'no-store',
+  });
+}
+
+async function getExcursionTemplates(): Promise<ExcursionTemplate[]> {
+  return adminPageFetchJson<ExcursionTemplate[]>(`${DATA_API_BASE_URL}/excursion-templates`, 'Quote detail excursion templates', {
     cache: 'no-store',
   });
 }
@@ -1629,6 +1636,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     quoteSettled,
     servicesSettled,
     activitiesSettled,
+    excursionTemplatesSettled,
     transportServiceTypesSettled,
     routesSettled,
     vehiclesSettled,
@@ -1651,6 +1659,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     shouldLoadActivityCatalogData
       ? safeQuoteDetailFetch('activities', [] as ActivityCatalogItem[], getActivities)
       : skippedQuoteDetailFetch('activities', [] as ActivityCatalogItem[]),
+    shouldLoadActivityCatalogData
+      ? safeQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[], getExcursionTemplates)
+      : skippedQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[]),
     safeQuoteDetailFetch('transport service types', [] as TransportServiceType[], getTransportServiceTypes),
     safeQuoteDetailTransportFetch('routes', [] as RouteOption[], getRoutes),
     safeQuoteDetailTransportFetch('vehicles', [] as TransportVehicle[], getVehicles),
@@ -1675,6 +1686,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteResult = unwrapSettledQuoteDetail<QuoteFetchResult>(quoteSettled, { status: 'error', message: 'Quote could not be loaded' }, 'quote');
   const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
   const activitiesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<ActivityCatalogItem[]>>(activitiesSettled, { status: 'error', label: 'activities', data: [], message: 'Activities unavailable' }, 'activities');
+  const excursionTemplatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<ExcursionTemplate[]>>(excursionTemplatesSettled, { status: 'error', label: 'excursion templates', data: [], message: 'Excursion templates unavailable' }, 'excursion templates');
   const transportServiceTypesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportServiceType[]>>(transportServiceTypesSettled, { status: 'error', label: 'transport service types', data: [], message: 'Transport service types unavailable' }, 'transport service types');
   const routesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<RouteOption[]>>(routesSettled, { status: 'error', label: 'routes', data: [], message: 'Routes unavailable' }, 'routes');
   const vehiclesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<TransportVehicle[]>>(vehiclesSettled, { status: 'error', label: 'vehicles', data: [], message: 'Vehicles unavailable' }, 'vehicles');
@@ -1693,6 +1705,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteItineraryResult = unwrapSettledQuoteDetail<QuoteItineraryFetchResult>(quoteItinerarySettled, { status: 'error', itinerary: { quoteId: id, days: [] }, message: 'Itinerary unavailable' }, 'itinerary');
   const services = servicesResult.data;
   const activities = activitiesResult.data;
+  const excursionTemplates = excursionTemplatesResult.data;
   const transportServiceTypes = transportServiceTypesResult.data;
   const routes = routesResult.data;
   const vehicles = vehiclesResult.data;
@@ -1994,6 +2007,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       quoteBlocks={quoteBlocks}
       services={services}
       activities={activities}
+      excursionTemplates={excursionTemplates}
       transportServiceTypes={transportServiceTypes}
       routes={routes}
       vehicles={vehicles}

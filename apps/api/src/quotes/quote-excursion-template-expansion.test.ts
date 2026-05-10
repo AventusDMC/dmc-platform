@@ -1,0 +1,174 @@
+import { test } from 'node:test';
+import * as assert from 'node:assert/strict';
+import { QuotesService } from './quotes.service';
+import { QuotePricingService } from './quote-pricing.service';
+
+function createService(template: any, duplicateComponentIds: string[] = []) {
+  const createdPayloads: any[] = [];
+  const prisma = {
+    excursionTemplate: {
+      findUnique: async () => template,
+    },
+    quoteItem: {
+      findFirst: async ({ where }: any) =>
+        duplicateComponentIds.includes(where.excursionTemplateComponentId)
+          ? { id: `quote-item-${where.excursionTemplateComponentId}` }
+          : null,
+    },
+    quoteItineraryDay: {
+      findUnique: async ({ where }: any) => (where.id === 'day-1' ? { id: 'day-1', quoteId: 'quote-1' } : null),
+    },
+    supplierService: {
+      findMany: async () => [],
+    },
+  };
+
+  const service = new QuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    { evaluate: async () => null } as any,
+    new QuotePricingService(),
+  );
+
+  (service as any).assertQuoteMutationAccess = async () => ({
+    id: 'quote-1',
+    adults: 18,
+    children: 3,
+    roomCount: 10,
+    nightCount: 1,
+  });
+  (service as any).createItem = async (payload: any) => {
+    createdPayloads.push(payload);
+    return {
+      id: `quote-item-${payload.excursionTemplateComponentId}`,
+      ...payload,
+    };
+  };
+
+  return { service, createdPayloads };
+}
+
+function createTemplate() {
+  return {
+    id: 'template-1',
+    active: true,
+    components: [
+      {
+        id: 'component-transport',
+        componentType: 'TRANSPORT',
+        label: 'Transport',
+        sortOrder: 20,
+        isOptional: false,
+        active: true,
+        supplierServiceId: 'transport-service-1',
+        routeId: 'route-1',
+        transportServiceTypeId: 'transport-type-1',
+        supplierService: { id: 'transport-service-1', name: 'Transport service', serviceType: { name: 'Transport' } },
+      },
+      {
+        id: 'component-dining',
+        componentType: 'DINING',
+        label: 'Optional lunch',
+        sortOrder: 40,
+        isOptional: true,
+        active: true,
+        supplierServiceId: 'dining-service-1',
+        supplierService: { id: 'dining-service-1', name: 'Lunch service', serviceType: { name: 'Meal' } },
+      },
+      {
+        id: 'component-ticket',
+        componentType: 'TICKET',
+        label: 'Ticket',
+        sortOrder: 10,
+        isOptional: false,
+        active: true,
+        supplierServiceId: 'ticket-service-1',
+        supplierService: { id: 'ticket-service-1', name: 'Ticket service', serviceType: { name: 'Ticket' } },
+      },
+      {
+        id: 'component-activity',
+        componentType: 'ACTIVITY',
+        label: 'Optional activity',
+        sortOrder: 30,
+        isOptional: true,
+        active: true,
+        activityId: 'activity-1',
+        supplierServiceId: 'activity-service-1',
+        activity: { id: 'activity-1', name: 'Activity master record' },
+        supplierService: { id: 'activity-service-1', name: 'Activity service', serviceType: { name: 'Activity' } },
+      },
+    ],
+  };
+}
+
+test('expands an excursion template into ordered normal quote item payloads', async () => {
+  const { service, createdPayloads } = createService(createTemplate());
+
+  const result = await service.expandExcursionTemplateIntoQuote(
+    {
+      quoteId: 'quote-1',
+      excursionTemplateId: 'template-1',
+      itineraryId: 'day-1',
+      selectedOptionalComponentIds: ['component-activity'],
+      paxCount: 21,
+      quantity: 1,
+      markupPercent: 0,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.deepEqual(
+    createdPayloads.map((payload) => payload.excursionTemplateComponentId),
+    ['component-ticket', 'component-transport', 'component-activity'],
+  );
+  assert.equal(result.createdItems.length, 3);
+  assert.equal(createdPayloads[0].serviceId, 'ticket-service-1');
+  assert.equal(createdPayloads[0].quantity, 21);
+  assert.equal(createdPayloads[1].routeId, 'route-1');
+  assert.equal(createdPayloads[1].transportServiceTypeId, 'transport-type-1');
+  assert.equal(createdPayloads[2].activityId, 'activity-1');
+  assert.equal(createdPayloads[2].participantCount, 21);
+  assert.equal(createdPayloads[2].excursionTemplateComponentOptional, true);
+  assert.ok(createdPayloads.every((payload) => payload.excursionTemplateId === 'template-1'));
+  assert.ok(createdPayloads.every((payload) => payload.itineraryId === 'day-1'));
+});
+
+test('does not auto-select optional components or duplicate existing component insertions', async () => {
+  const { service, createdPayloads } = createService(createTemplate(), ['component-transport']);
+
+  const result = await service.expandExcursionTemplateIntoQuote(
+    {
+      quoteId: 'quote-1',
+      excursionTemplateId: 'template-1',
+      itineraryId: 'day-1',
+      selectedOptionalComponentIds: [],
+      paxCount: 21,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.deepEqual(
+    createdPayloads.map((payload) => payload.excursionTemplateComponentId),
+    ['component-ticket'],
+  );
+  assert.deepEqual(result.skippedDuplicates, [{ componentId: 'component-transport', quoteItemId: 'quote-item-component-transport' }]);
+});
+
+test('rejects optional component ids that do not belong to the active template', async () => {
+  const { service } = createService(createTemplate());
+
+  await assert.rejects(
+    () =>
+      service.expandExcursionTemplateIntoQuote(
+        {
+          quoteId: 'quote-1',
+          excursionTemplateId: 'template-1',
+          itineraryId: 'day-1',
+          selectedOptionalComponentIds: ['component-not-on-template'],
+        },
+        { companyId: 'company-1' } as any,
+      ),
+    /Selected optional excursion components are not available/,
+  );
+});

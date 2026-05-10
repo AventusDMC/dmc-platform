@@ -136,6 +136,9 @@ type CreateQuoteItemInput = {
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
+  excursionTemplateId?: string | null;
+  excursionTemplateComponentId?: string | null;
+  excursionTemplateComponentOptional?: boolean | null;
   allowInactiveActivityRateVariantId?: string | null;
   ticketRateVariantId?: string | null;
   allowInactiveTicketRateVariantId?: string | null;
@@ -214,6 +217,17 @@ type ReorderQuoteItemsInput = {
 type MoveQuoteItemInput = {
   day: number;
   serviceType: string;
+};
+
+type ExpandExcursionTemplateInput = {
+  quoteId: string;
+  excursionTemplateId: string;
+  itineraryId?: string | null;
+  serviceDate?: Date | null;
+  selectedOptionalComponentIds?: string[];
+  paxCount?: number;
+  quantity?: number;
+  markupPercent?: number;
 };
 
 type GenerateQuoteScenariosInput = {
@@ -2553,6 +2567,18 @@ export class QuotesService {
         data.activityRateVariantId === undefined
           ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined
           : data.activityRateVariantId,
+      excursionTemplateId:
+        data.excursionTemplateId === undefined
+          ? (existingItem as { excursionTemplateId?: string | null }).excursionTemplateId ?? undefined
+          : data.excursionTemplateId,
+      excursionTemplateComponentId:
+        data.excursionTemplateComponentId === undefined
+          ? (existingItem as { excursionTemplateComponentId?: string | null }).excursionTemplateComponentId ?? undefined
+          : data.excursionTemplateComponentId,
+      excursionTemplateComponentOptional:
+        data.excursionTemplateComponentOptional === undefined
+          ? (existingItem as { excursionTemplateComponentOptional?: boolean | null }).excursionTemplateComponentOptional ?? undefined
+          : data.excursionTemplateComponentOptional,
       allowInactiveActivityRateVariantId:
         data.activityRateVariantId === undefined ? (existingItem as { activityRateVariantId?: string | null }).activityRateVariantId ?? undefined : undefined,
       ticketRateVariantId:
@@ -2717,6 +2743,248 @@ export class QuotesService {
       ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
     };
+  }
+
+  async expandExcursionTemplateIntoQuote(data: ExpandExcursionTemplateInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(data.quoteId, actor, {
+      select: {
+        id: true,
+        adults: true,
+        children: true,
+        roomCount: true,
+        nightCount: true,
+      },
+    });
+    const template = await (this.prisma as any).excursionTemplate.findUnique({
+      where: { id: data.excursionTemplateId },
+      include: {
+        components: {
+          include: {
+            activity: {
+              include: {
+                supplierCompany: true,
+                rateVariants: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+              },
+            },
+            supplierService: {
+              include: {
+                serviceType: true,
+                entranceFee: true,
+                serviceRates: { orderBy: { createdAt: 'desc' }, take: 1 },
+                ticketRateVariants: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+              },
+            },
+            route: true,
+            transportServiceType: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+
+    if (!template || template.active === false) {
+      throw new BadRequestException('Excursion template not found');
+    }
+
+    if (data.itineraryId) {
+      const day = await this.prisma.quoteItineraryDay.findUnique({ where: { id: data.itineraryId } });
+      if (!day || day.quoteId !== quote.id) {
+        throw new BadRequestException('Itinerary day does not belong to the selected quote');
+      }
+    }
+
+    const selectedOptionalIds = new Set(data.selectedOptionalComponentIds || []);
+    const optionalComponentIds = new Set(
+      (template.components || [])
+        .filter((component: any) => component.active !== false && component.isOptional)
+        .map((component: any) => component.id),
+    );
+    const invalidOptionalIds = Array.from(selectedOptionalIds).filter((componentId) => !optionalComponentIds.has(componentId));
+    if (invalidOptionalIds.length > 0) {
+      throw new BadRequestException('Selected optional excursion components are not available on this template');
+    }
+
+    const selectedComponents = (template.components || [])
+      .filter((component: any) => component.active !== false)
+      .filter((component: any) => !component.isOptional || selectedOptionalIds.has(component.id))
+      .sort((a: any, b: any) => a.sortOrder - b.sortOrder);
+
+    if (selectedComponents.length === 0) {
+      throw new BadRequestException('No excursion template components selected for insertion');
+    }
+
+    const createdItems = [];
+    const skippedDuplicates = [];
+
+    for (const component of selectedComponents) {
+      const existing = await (this.prisma as any).quoteItem.findFirst({
+        where: {
+          quoteId: quote.id,
+          itineraryId: data.itineraryId || null,
+          excursionTemplateComponentId: component.id,
+          serviceDate: data.serviceDate || null,
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        skippedDuplicates.push({ componentId: component.id, quoteItemId: existing.id });
+        continue;
+      }
+
+      const payload = await this.buildExcursionTemplateQuoteItemPayload({
+        quote,
+        template,
+        component,
+        itineraryId: data.itineraryId || undefined,
+        serviceDate: data.serviceDate ?? null,
+        paxCount: data.paxCount,
+        quantity: data.quantity,
+        markupPercent: data.markupPercent,
+      });
+      createdItems.push(await this.createItem(payload, actor));
+    }
+
+    return {
+      templateId: template.id,
+      quoteId: quote.id,
+      createdItems,
+      skippedDuplicates,
+    };
+  }
+
+  private async buildExcursionTemplateQuoteItemPayload(values: {
+    quote: { id: string; adults?: number | null; children?: number | null };
+    template: { id: string };
+    component: any;
+    itineraryId?: string;
+    serviceDate?: Date | null;
+    paxCount?: number;
+    quantity?: number;
+    markupPercent?: number;
+  }): Promise<CreateQuoteItemInput> {
+    const paxCount = Math.max(
+      1,
+      Math.floor(Number((values.paxCount ?? Number(values.quote.adults ?? 0) + Number(values.quote.children ?? 0)) || 1)),
+    );
+    const common = {
+      quoteId: values.quote.id,
+      itineraryId: values.itineraryId,
+      serviceDate: values.serviceDate ?? null,
+      paxCount,
+      quantity: Math.max(1, Math.floor(Number(values.quantity ?? 1))),
+      markupPercent: Number(values.markupPercent ?? 0),
+      excursionTemplateId: values.template.id,
+      excursionTemplateComponentId: values.component.id,
+      excursionTemplateComponentOptional: Boolean(values.component.isOptional),
+    };
+
+    if (values.component.componentType === 'TRANSPORT') {
+      const service = values.component.supplierService || (await this.findFallbackSupplierServiceForExcursionComponent('TRANSPORT'));
+      if (!service) {
+        throw new BadRequestException(`Excursion component "${values.component.label}" requires a linked transport service`);
+      }
+      if (!values.component.routeId || !values.component.transportServiceTypeId) {
+        throw new BadRequestException(`Excursion transport component "${values.component.label}" requires route and transport service type links`);
+      }
+
+      return {
+        ...common,
+        serviceId: service.id,
+        routeId: values.component.routeId,
+        transportServiceTypeId: values.component.transportServiceTypeId,
+      };
+    }
+
+    if (values.component.componentType === 'ACTIVITY' || values.component.componentType === 'GUIDE') {
+      const service =
+        values.component.supplierService ||
+        (values.component.activity
+          ? await this.findActivityBridgeSupplierService(values.component.activity)
+          : await this.findFallbackSupplierServiceForExcursionComponent(values.component.componentType));
+      if (!service) {
+        throw new BadRequestException(`Excursion component "${values.component.label}" requires a linked ${values.component.componentType.toLowerCase()} record`);
+      }
+
+      return {
+        ...common,
+        serviceId: service.id,
+        activityId: values.component.activityId || undefined,
+        participantCount: paxCount,
+        adultCount: Math.max(0, Math.floor(Number(values.quote.adults ?? paxCount))),
+        childCount: Math.max(0, Math.floor(Number(values.quote.children ?? 0))),
+        guideType: values.component.componentType === 'GUIDE' ? 'local' : undefined,
+        guideDuration: values.component.componentType === 'GUIDE' ? 'full_day' : undefined,
+      };
+    }
+
+    if (values.component.componentType === 'TICKET') {
+      if (!values.component.supplierService) {
+        throw new BadRequestException(`Excursion ticket component "${values.component.label}" requires a linked ticket record`);
+      }
+
+      return {
+        ...common,
+        serviceId: values.component.supplierService.id,
+        quantity: paxCount,
+        paxCount,
+      };
+    }
+
+    if (values.component.componentType === 'DINING') {
+      if (!values.component.supplierService) {
+        throw new BadRequestException(`Excursion dining component "${values.component.label}" requires a linked dining service`);
+      }
+
+      return {
+        ...common,
+        serviceId: values.component.supplierService.id,
+        customServiceName: values.component.label,
+        paxCount,
+      };
+    }
+
+    throw new BadRequestException(`Unsupported excursion component type: ${values.component.componentType}`);
+  }
+
+  private async findActivityBridgeSupplierService(activity: { name?: string | null }) {
+    const services = await this.findFallbackSupplierServicesForExcursionComponents('ACTIVITY');
+    const normalizedActivityName = (activity.name || '').trim().toLowerCase();
+
+    return (
+      services.find((service) => service.name.trim().toLowerCase() === normalizedActivityName) ||
+      services.find((service) => normalizedActivityName && service.name.trim().toLowerCase().includes(normalizedActivityName)) ||
+      services[0] ||
+      null
+    );
+  }
+
+  private async findFallbackSupplierServiceForExcursionComponent(componentType: 'TRANSPORT' | 'ACTIVITY' | 'GUIDE') {
+    const services = await this.findFallbackSupplierServicesForExcursionComponents(componentType);
+    return services[0] || null;
+  }
+
+  private async findFallbackSupplierServicesForExcursionComponents(componentType: 'TRANSPORT' | 'ACTIVITY' | 'GUIDE') {
+    const services = await this.prisma.supplierService.findMany({
+      include: {
+        serviceType: true,
+        entranceFee: true,
+        serviceRates: { orderBy: { createdAt: 'desc' }, take: 1 },
+        ticketRateVariants: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+
+    if (componentType === 'TRANSPORT') {
+      return services.filter((service) => this.isTransportService(service));
+    }
+
+    if (componentType === 'GUIDE') {
+      return services.filter((service) => this.isGuideService(service));
+    }
+
+    return services.filter((service) => this.isActivityService(service));
   }
 
   async detachItemHotelContract(quoteId: string, itemId: string, actor?: CompanyScopedActor) {
@@ -3811,6 +4079,10 @@ export class QuotesService {
         serviceId: normalizedServiceId,
         activityId: activity?.id ?? null,
         activityRateVariantId: selectedActivityRate?.id ?? null,
+        excursionTemplateId: data.excursionTemplateId || null,
+        excursionTemplateComponentId: data.excursionTemplateComponentId || null,
+        excursionTemplateComponentOptional:
+          data.excursionTemplateComponentOptional === undefined ? null : Boolean(data.excursionTemplateComponentOptional),
         ticketRateVariantId: selectedTicketRate?.id ?? null,
         itineraryId: itemLegacyItinerary?.id || null,
         serviceDate,

@@ -18,6 +18,7 @@ const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', 
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
 const rowDetailsPanelSource = readFileSync(new URL('../../components/RowDetailsPanel.tsx', import.meta.url), 'utf8');
 const quoteDetailApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/route.ts', import.meta.url), 'utf8');
+const quoteExcursionExpandApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/excursion-templates/[templateId]/expand/route.ts', import.meta.url), 'utf8');
 const quoteCancelApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/cancel/route.ts', import.meta.url), 'utf8');
 const transportPricingModesSource = readFileSync(new URL('../../lib/transport-pricing-modes.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
@@ -122,6 +123,30 @@ describe('quote detail page regression', () => {
       "shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates) : skippedQuoteDetailFetch('hotel rates', [] as HotelRate[])",
       "const shouldLoadHotelCategories = activeTab === 'pricing';",
       "skippedQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[])",
+    ]);
+  });
+
+  it('wires excursion templates into the quote service planner without auto-selecting optional components', () => {
+    expectSourceContains(pageSource, [
+      'async function getExcursionTemplates()',
+      "safeQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[], getExcursionTemplates)",
+      'const excursionTemplates = excursionTemplatesResult.data;',
+      'excursionTemplates={excursionTemplates}',
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'function ExcursionTemplateInsertPanel',
+      '<h3>Add Excursion Template</h3>',
+      'selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds)',
+      'component.isOptional ? (',
+      'checked={checked}',
+      "window.dispatchEvent(new CustomEvent('dmc:quote-services-stale'",
+    ]);
+
+    expectSourceContains(quoteExcursionExpandApiRouteSource, [
+      '/quotes/${encodeURIComponent(id)}/excursion-templates/${encodeURIComponent(templateId)}/expand',
+      'buildActorHeaders(request)',
+      'Could not reach API server while adding excursion template to quote.',
     ]);
   });
 

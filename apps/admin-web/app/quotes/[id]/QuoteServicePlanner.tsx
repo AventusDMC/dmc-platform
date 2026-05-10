@@ -29,6 +29,7 @@ import {
   type QuoteReadinessStep,
   type ServicePlannerCategory,
 } from './quote-readiness';
+import type { ExcursionTemplate } from '../../excursion-templates/types';
 
 type SupplierService = {
   id: string;
@@ -368,6 +369,7 @@ type QuoteServicePlannerProps = {
   quoteBlocks: QuoteBlock[];
   services: SupplierService[];
   activities: ActivityCatalogItem[];
+  excursionTemplates: ExcursionTemplate[];
   transportServiceTypes: TransportServiceType[];
   routes: RouteOption[];
   vehicles: TransportVehicle[];
@@ -3554,6 +3556,151 @@ function ScopePlanner({
   );
 }
 
+function ExcursionTemplateInsertPanel({
+  apiBaseUrl,
+  quoteId,
+  itineraryId,
+  templates,
+  totalPax,
+}: {
+  apiBaseUrl: string;
+  quoteId: string;
+  itineraryId?: string | null;
+  templates: ExcursionTemplate[];
+  totalPax: number;
+}) {
+  const router = useRouter();
+  const activeTemplates = templates.filter((template) => template.active !== false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || '');
+  const [selectedOptionalComponentIds, setSelectedOptionalComponentIds] = useState<Set<string>>(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const selectedTemplate = activeTemplates.find((template) => template.id === selectedTemplateId) || null;
+  const components = (selectedTemplate?.components || [])
+    .filter((component) => component.active !== false)
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+
+  useEffect(() => {
+    setSelectedOptionalComponentIds(new Set());
+  }, [selectedTemplateId]);
+
+  async function handleInsert() {
+    if (!selectedTemplate) {
+      return;
+    }
+
+    if (!itineraryId) {
+      setError('Create or select an itinerary day before inserting an excursion template.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/excursion-templates/${selectedTemplate.id}/expand`, {
+        method: 'POST',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          itineraryId,
+          selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds),
+          paxCount: totalPax,
+          quantity: 1,
+          markupPercent: 0,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await getErrorMessage(response, 'Could not add excursion template to quote.'));
+      }
+      await readJsonResponse(response, 'Could not add excursion template to quote.');
+      window.dispatchEvent(new CustomEvent('dmc:quote-services-stale', { detail: { quoteId } }));
+      router.refresh();
+    } catch (insertError) {
+      setError(insertError instanceof Error ? insertError.message : 'Could not add excursion template to quote.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (activeTemplates.length === 0) {
+    return null;
+  }
+
+  return (
+    <article className="planner-smart-panel excursion-template-insert-panel">
+      <div className="workspace-section-head">
+        <div>
+          <p className="eyebrow">Excursion Templates</p>
+          <h3>Add Excursion Template</h3>
+        </div>
+        <button type="button" className="primary-button" disabled={isSubmitting || !selectedTemplate || !itineraryId} onClick={handleInsert}>
+          {isSubmitting ? 'Adding...' : 'Add selected components'}
+        </button>
+      </div>
+      <div className="form-grid compact-form-grid">
+        <label>
+          Template
+          <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+            {activeTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Target day
+          <input value={itineraryId ? 'Selected itinerary day' : 'No itinerary day selected'} readOnly />
+        </label>
+      </div>
+      {components.length > 0 ? (
+        <div className="quote-template-component-preview">
+          {components.map((component) => {
+            const checked = selectedOptionalComponentIds.has(component.id);
+            return (
+              <label key={component.id} className="quote-template-component-row">
+                <span className="status-pill">{component.componentType}</span>
+                <span className="quote-template-component-main">
+                  <strong>{component.label}</strong>
+                  <span className="form-helper">
+                    {component.isOptional ? 'Optional' : 'Required'}
+                    {component.activity?.name ? ` | ${component.activity.name}` : ''}
+                    {component.supplierService?.name ? ` | ${component.supplierService.name}` : ''}
+                    {component.route?.name ? ` | ${component.route.name}` : ''}
+                  </span>
+                </span>
+                {component.isOptional ? (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      setSelectedOptionalComponentIds((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) {
+                          next.add(component.id);
+                        } else {
+                          next.delete(component.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    aria-label={`Include optional component ${component.label}`}
+                  />
+                ) : (
+                  <span className="status-pill status-pill-muted">Included</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="form-helper">This template has no active components.</p>
+      )}
+      {error ? <p className="form-error">{error}</p> : null}
+    </article>
+  );
+}
+
 export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
   const incomingPlannerDays = getPlannerDays(props.quote, props.quoteItinerary);
   const [localItineraries, setLocalItineraries] = useState(incomingPlannerDays);
@@ -3731,6 +3878,13 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           hotels={props.hotels}
           hotelContracts={props.hotelContracts}
           hotelRates={props.hotelRates}
+          totalPax={props.totalPax}
+        />
+        <ExcursionTemplateInsertPanel
+          apiBaseUrl={props.apiBaseUrl}
+          quoteId={props.quote.id}
+          itineraryId={activeDayId}
+          templates={props.excursionTemplates}
           totalPax={props.totalPax}
         />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
