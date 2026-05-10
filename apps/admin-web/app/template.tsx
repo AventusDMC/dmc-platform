@@ -11,7 +11,7 @@ type RootTemplateProps = {
 
 const PUBLIC_ROUTE_PREFIXES = ['/portal', '/invoice', '/proposal', '/q'];
 const PUBLIC_ROUTE_PATHS = new Set(['/login', '/signup', '/accept-invite']);
-const PROTECTED_ADMIN_ROUTE_PREFIXES = ['/admin', '/quotes', '/quote-engine', '/bookings', '/finance', '/catalog'];
+const PROTECTED_ADMIN_ROUTE_PREFIXES = ['/admin', '/quotes', '/quote-engine', '/bookings', '/finance', '/catalog', '/excursion-templates'];
 
 function normalizePathname(value: string | null) {
   const pathname = value?.trim() || '/';

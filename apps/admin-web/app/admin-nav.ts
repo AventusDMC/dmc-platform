@@ -51,6 +51,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     match: [
       '/catalog',
       '/activities',
+      '/excursion-templates',
       '/services',
       '/transport',
       '/service-types',
@@ -75,6 +76,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       { label: 'Import Contract', href: '/contracts/import' },
       { label: 'Import History', href: '/contracts/import/history' },
       { label: 'Activities', href: '/activities' },
+      { label: 'Excursion Templates', href: '/excursion-templates' },
       { label: 'Transport', href: '/transport' },
       { label: 'Routes', href: '/routes' },
       { label: 'Services', href: '/catalog?tab=services' },

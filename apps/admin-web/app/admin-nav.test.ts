@@ -62,7 +62,9 @@ test('admin navigation exposes first-class Activities catalog', () => {
 
   assert.ok(catalogGroup);
   assert.ok(catalogGroup.children.some((child) => child.label === 'Activities' && child.href === '/activities'));
+  assert.ok(catalogGroup.children.some((child) => child.label === 'Excursion Templates' && child.href === '/excursion-templates'));
   assert.equal(getActiveNavGroup('/activities', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/excursion-templates/petra-full-day', 'admin').label, 'Product Catalog');
 });
 
 test('product catalog navigation uses canonical catalog destinations', () => {
@@ -76,6 +78,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Import Contract', '/contracts/import'],
       ['Import History', '/contracts/import/history'],
       ['Activities', '/activities'],
+      ['Excursion Templates', '/excursion-templates'],
       ['Transport', '/transport'],
       ['Routes', '/routes'],
       ['Services', '/catalog?tab=services'],
@@ -84,6 +87,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
     ],
   );
   assert.equal(getActiveNavGroup('/activities', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/excursion-templates', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/transport', 'admin').label, 'Product Catalog');
   assert.equal(catalogGroup.children.find((child) => child.label === 'Transport Pricing')?.href, '/transport?tab=pricing-rules');
   assert.equal(getActiveNavGroup('/routes', 'admin').label, 'Product Catalog');
@@ -249,7 +253,10 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
 });
 
 test('root template classifies admin workspaces as protected shell routes', () => {
-  assert.match(templateSource, /const PROTECTED_ADMIN_ROUTE_PREFIXES = \['\/admin', '\/quotes', '\/quote-engine', '\/bookings', '\/finance', '\/catalog'\]/);
+  assert.match(
+    templateSource,
+    /const PROTECTED_ADMIN_ROUTE_PREFIXES = \['\/admin', '\/quotes', '\/quote-engine', '\/bookings', '\/finance', '\/catalog', '\/excursion-templates'\]/,
+  );
   assert.match(templateSource, /pathname === '\/admin\/dashboard'/);
   assert.match(templateSource, /const isPublicRoute = !isProtectedAdminRoute && isPublicPath\(pathname\);/);
   assert.match(templateSource, /<AdminChromeNav mode="primary" sessionRole=\{session\?\.role\} \/>/);
