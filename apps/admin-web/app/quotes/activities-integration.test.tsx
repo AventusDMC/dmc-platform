@@ -137,6 +137,19 @@ describe('activities quote and booking UI integration regression', () => {
     assert.doesNotMatch(quoteItemsFormSource, /Pricing service[\s\S]*filteredServices\.map\(\(service\)/);
   });
 
+  it('renders saved Activity Master card names instead of hidden bridge service names', () => {
+    expectSourceContains(quotePlannerSource, [
+      'function getActivityItemDisplayName(item: QuoteItem)',
+      "return item.activity?.name?.trim() || getItemServiceName(item);",
+      'function getActivityItemVariantLabel(item: QuoteItem)',
+      'const activityVariantLabel = getActivityItemVariantLabel(item);',
+      "item.activityId ? getActivityItemDisplayName(item) : getItemServiceName(item)",
+      '{activityVariantLabel ? <em className=\"quote-service-time-badge\">{activityVariantLabel}</em> : null}',
+    ]);
+
+    assert.doesNotMatch(quotePlannerSource, /const displayName = isExternalPackage \? getExternalPackageName\(item\) : item\.hotel\?\.name \|\| getItemServiceName\(item\);/);
+  });
+
   it('does not submit activity variant sell override unless manually entered', () => {
     const quoteItemsFormSource = readFileSync(new URL('./[id]/QuoteItemsForm.tsx', import.meta.url), 'utf8');
 

@@ -249,6 +249,25 @@ type ParsedDayContent = {
 type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   serviceId?: string | null;
   service: SupplierService | null;
+  activity?: {
+    id: string;
+    name: string;
+    description: string | null;
+    durationMinutes?: number | null;
+    active?: boolean;
+  } | null;
+  activityRateVariant?: {
+    id: string;
+    name: string;
+    durationMinutes: number | null;
+    pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+    currency: string;
+    costPrice: number;
+    sellPrice: number;
+    maxPaxPerUnit: number | null;
+    active: boolean;
+    notes?: string | null;
+  } | null;
   hotel: {
     name: string;
   } | null;
@@ -984,6 +1003,14 @@ function getItemServiceName(item: QuoteItem) {
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
+}
+
+function getActivityItemDisplayName(item: QuoteItem) {
+  return item.activity?.name?.trim() || getItemServiceName(item);
+}
+
+function getActivityItemVariantLabel(item: QuoteItem) {
+  return item.activityRateVariant?.name?.trim() || '';
 }
 
 function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string, supplierName?: string | null) {
@@ -1915,7 +1942,8 @@ function SortableServiceCard({
 }) {
   const isExternalPackage = isExternalPackageItem(item);
   const externalRange = isExternalPackage ? getExternalPackageDayRange(item, dayNumber) : null;
-  const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || getItemServiceName(item);
+  const activityVariantLabel = getActivityItemVariantLabel(item);
+  const displayName = isExternalPackage ? getExternalPackageName(item) : item.hotel?.name || (item.activityId ? getActivityItemDisplayName(item) : getItemServiceName(item));
   const itemProfit = calculateProfit(item.totalSell, item.totalCost);
   const itemMarginPercent = calculateMarginPercent(item.totalSell, item.totalCost);
   const itemMarginWarning = getItemMarginWarning(item.totalSell, item.totalCost);
@@ -1966,6 +1994,7 @@ function SortableServiceCard({
           <div className="quote-service-mini-card-title-copy">
             <span>{SERVICE_PLANNER_TAB_LABELS[category]}</span>
             <h5>{displayName}</h5>
+            {activityVariantLabel ? <em className="quote-service-time-badge">{activityVariantLabel}</em> : null}
             {serviceTimeLabel ? <em className="quote-service-time-badge">{serviceTimeLabel}</em> : null}
           </div>
           <strong className="quote-service-card-price">{hasExternalMatrix ? 'Matrix pricing' : formatLiveMoney(item.totalSell, itemCurrency)}</strong>
