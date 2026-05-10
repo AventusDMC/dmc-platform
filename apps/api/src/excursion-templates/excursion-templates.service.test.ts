@@ -20,6 +20,10 @@ function createExcursionTemplatesService(overrides: Partial<any> = {}) {
     },
     excursionTemplateComponent: {
       deleteMany: async () => ({ count: 0 }),
+      create: async ({ data }: any) => ({ id: 'component-created', ...data }),
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      findFirst: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
     },
     supplierService: {
       findUnique: async ({ where }: any) => ({ id: where.id }),
@@ -344,6 +348,81 @@ test('ensure endpoints update existing templates by code instead of creating dup
   assert.equal(deletedComponentsFor, 'template-existing');
 });
 
+test('component editing reorders active components and soft removes without deleting rows', async () => {
+  const updates: any[] = [];
+  let deleteCalls = 0;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        components: [
+          { id: 'component-a', componentType: 'TRANSPORT', active: true },
+          { id: 'component-b', componentType: 'TICKET', active: true },
+        ],
+      }),
+    },
+    excursionTemplateComponent: {
+      deleteMany: async () => {
+        deleteCalls += 1;
+        return { count: 0 };
+      },
+      findFirst: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'component-a' }, { id: 'component-b' }],
+      update: async ({ where, data }: any) => {
+        updates.push({ where, data });
+        return { id: where.id, ...data };
+      },
+    },
+  });
+
+  await service.reorderComponents('template-1', { componentIds: ['component-b', 'component-a'] });
+  await service.updateComponent('template-1', 'component-b', { isOptional: true });
+  await service.removeComponent('template-1', 'component-a');
+
+  assert.equal(deleteCalls, 0);
+  assert.deepEqual(updates[0], { where: { id: 'component-b' }, data: { sortOrder: 0 } });
+  assert.deepEqual(updates[1], { where: { id: 'component-a' }, data: { sortOrder: 1 } });
+  assert.deepEqual(updates[2], { where: { id: 'component-b' }, data: { isOptional: true } });
+  assert.equal(updates[3].where.id, 'component-a');
+  assert.equal(updates[3].data.active, false);
+  assert.match(updates[3].data.operationalNotes, /Soft removed/);
+});
+
+test('add component links existing catalog records and appends to active sequence', async () => {
+  let createdComponent: any;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        components: [{ id: 'component-existing', active: true }],
+      }),
+    },
+    excursionTemplateComponent: {
+      create: async ({ data }: any) => {
+        createdComponent = data;
+        return { id: 'component-new', ...data };
+      },
+      findFirst: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+  });
+
+  await service.addComponent('template-1', {
+    componentType: 'ACTIVITY',
+    label: 'Wadi Rum Stargazing Experience',
+    activityId: 'activity-stargazing',
+    isOptional: true,
+  });
+
+  assert.equal(createdComponent.templateId, 'template-1');
+  assert.equal(createdComponent.componentType, 'ACTIVITY');
+  assert.equal(createdComponent.activityId, 'activity-stargazing');
+  assert.equal(createdComponent.sortOrder, 1);
+  assert.equal(createdComponent.active, true);
+  assert.equal(createdComponent.isOptional, true);
+});
+
 test('excursion template writes are restricted to admin and operations users', () => {
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.create), ['admin', 'operations']);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.update), ['admin', 'operations']);
@@ -356,6 +435,19 @@ test('excursion template writes are restricted to admin and operations users', (
     'operations',
   ]);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureDeadSeaEscapeTemplate), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.addComponent), ['admin', 'operations']);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.reorderComponents), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.updateComponent), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.removeComponent), [
     'admin',
     'operations',
   ]);

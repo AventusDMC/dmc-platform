@@ -6,6 +6,7 @@ export type ExcursionTemplateComponent = {
   label: string;
   sortOrder: number;
   isOptional: boolean;
+  active?: boolean;
   operationalNotes?: string | null;
   supplierServiceId?: string | null;
   activityId?: string | null;
@@ -38,6 +39,19 @@ export type ExcursionTemplateComponent = {
     code?: string | null;
     classification?: string | null;
   } | null;
+};
+
+export type ExcursionTemplateCatalogs = {
+  routes: Array<{ id: string; name: string; durationMinutes?: number | null }>;
+  transportServiceTypes: Array<{ id: string; name: string; code?: string | null; classification?: string | null }>;
+  activities: Array<{ id: string; name: string; active?: boolean; durationMinutes?: number | null }>;
+  services: Array<{
+    id: string;
+    name: string;
+    category?: string | null;
+    serviceType?: { name?: string | null; code?: string | null } | null;
+    ticketRateVariants?: Array<{ id: string }> | null;
+  }>;
 };
 
 export type ExcursionTemplate = {

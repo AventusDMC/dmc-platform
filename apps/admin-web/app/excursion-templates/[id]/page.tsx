@@ -3,8 +3,8 @@ import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { adminPageFetchJson } from '../../lib/admin-server';
-import { ExcursionTemplateDetail } from '../ExcursionTemplateDetail';
-import { ExcursionTemplate, SuggestedTransportResponse } from '../types';
+import { ExcursionTemplateEditor } from '../ExcursionTemplateEditor';
+import { ExcursionTemplate, ExcursionTemplateCatalogs } from '../types';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,20 +19,21 @@ async function getTemplate(id: string) {
   });
 }
 
-async function getSuggestedTransport(id: string) {
-  return adminPageFetchJson<SuggestedTransportResponse>(
-    `/api/excursion-templates/${encodeURIComponent(id)}/suggested-transport?pax=21`,
-    'Excursion suggested transport',
-    { cache: 'no-store' },
-  ).catch((error) => {
-    console.error('[excursion-templates] suggested transport unavailable', error);
-    return null;
-  });
+async function getCatalogs(): Promise<ExcursionTemplateCatalogs> {
+  const [routes, transportServiceTypes, activities, services] = await Promise.all([
+    adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes', 'Excursion route catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Excursion transport type catalog', {
+      cache: 'no-store',
+    }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['activities']>('/api/activities', 'Excursion activity catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['services']>('/api/services', 'Excursion service catalog', { cache: 'no-store' }),
+  ]);
+  return { routes, transportServiceTypes, activities, services };
 }
 
 export default async function ExcursionTemplatePage({ params }: ExcursionTemplatePageProps) {
   const { id } = await params;
-  const [template, suggestedTransport] = await Promise.all([getTemplate(id), getSuggestedTransport(id)]);
+  const [template, catalogs] = await Promise.all([getTemplate(id), getCatalogs()]);
 
   if (!template) {
     notFound();
@@ -44,7 +45,7 @@ export default async function ExcursionTemplatePage({ params }: ExcursionTemplat
         <WorkspaceShell
           eyebrow="Product Catalog"
           title={template.name}
-          description="Read-only operational view for a composite excursion template."
+          description="Controlled operational editor for a composite excursion template."
           switcher={
             <ModuleSwitcher
               ariaLabel="Catalog modules"
@@ -67,7 +68,7 @@ export default async function ExcursionTemplatePage({ params }: ExcursionTemplat
             />
           }
         >
-          <ExcursionTemplateDetail template={template} suggestedTransport={suggestedTransport} />
+          <ExcursionTemplateEditor template={template} catalogs={catalogs} />
         </WorkspaceShell>
       </section>
     </main>

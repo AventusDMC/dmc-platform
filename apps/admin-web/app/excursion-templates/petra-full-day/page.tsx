@@ -3,8 +3,8 @@ import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { SummaryStrip } from '../../components/SummaryStrip';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { adminPageFetchJson } from '../../lib/admin-server';
-import { ExcursionTemplateDetail } from '../ExcursionTemplateDetail';
-import { ExcursionTemplate, SuggestedTransportResponse } from '../types';
+import { ExcursionTemplateEditor } from '../ExcursionTemplateEditor';
+import { ExcursionTemplate, ExcursionTemplateCatalogs } from '../types';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,15 +15,16 @@ async function getPetraFullDayTemplate() {
   });
 }
 
-async function getSuggestedTransport(id: string) {
-  return adminPageFetchJson<SuggestedTransportResponse>(
-    `/api/excursion-templates/${encodeURIComponent(id)}/suggested-transport?pax=21`,
-    'Petra Full Day suggested transport',
-    { cache: 'no-store' },
-  ).catch((error) => {
-    console.error('[excursion-templates] Petra Full Day suggested transport unavailable', error);
-    return null;
-  });
+async function getCatalogs(): Promise<ExcursionTemplateCatalogs> {
+  const [routes, transportServiceTypes, activities, services] = await Promise.all([
+    adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes', 'Petra route catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Petra transport type catalog', {
+      cache: 'no-store',
+    }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['activities']>('/api/activities', 'Petra activity catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['services']>('/api/services', 'Petra service catalog', { cache: 'no-store' }),
+  ]);
+  return { routes, transportServiceTypes, activities, services };
 }
 
 export default async function PetraFullDayTemplatePage() {
@@ -33,7 +34,7 @@ export default async function PetraFullDayTemplatePage() {
     notFound();
   }
 
-  const suggestedTransport = await getSuggestedTransport(template.id);
+  const catalogs = await getCatalogs();
 
   return (
     <main className="page">
@@ -64,7 +65,7 @@ export default async function PetraFullDayTemplatePage() {
             />
           }
         >
-          <ExcursionTemplateDetail template={template} suggestedTransport={suggestedTransport} />
+          <ExcursionTemplateEditor template={template} catalogs={catalogs} />
         </WorkspaceShell>
       </section>
     </main>

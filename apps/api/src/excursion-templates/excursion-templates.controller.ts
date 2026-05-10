@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Roles } from '../auth/auth.decorators';
 import { ExcursionTemplatesService } from './excursion-templates.service';
 
@@ -9,6 +9,7 @@ type ExcursionTemplateComponentBody = {
   label: string;
   sortOrder?: number | null;
   isOptional?: boolean;
+  active?: boolean;
   operationalNotes?: string | null;
   supplierServiceId?: string | null;
   activityId?: string | null;
@@ -31,6 +32,10 @@ type CreateExcursionTemplateBody = {
 };
 
 type UpdateExcursionTemplateBody = Partial<CreateExcursionTemplateBody>;
+
+type ReorderComponentsBody = {
+  componentIds: string[];
+};
 
 @Controller('excursion-templates')
 export class ExcursionTemplatesController {
@@ -80,6 +85,30 @@ export class ExcursionTemplatesController {
     return this.excursionTemplatesService.ensureDeadSeaEscapeTemplate();
   }
 
+  @Post(':id/components')
+  @Roles('admin', 'operations')
+  addComponent(@Param('id') id: string, @Body() body: ExcursionTemplateComponentBody) {
+    return this.excursionTemplatesService.addComponent(id, this.normalizeComponentBody(body));
+  }
+
+  @Patch(':id/components/reorder')
+  @Roles('admin', 'operations')
+  reorderComponents(@Param('id') id: string, @Body() body: ReorderComponentsBody) {
+    return this.excursionTemplatesService.reorderComponents(id, body);
+  }
+
+  @Patch(':id/components/:componentId')
+  @Roles('admin', 'operations')
+  updateComponent(@Param('id') id: string, @Param('componentId') componentId: string, @Body() body: Partial<ExcursionTemplateComponentBody>) {
+    return this.excursionTemplatesService.updateComponent(id, componentId, this.normalizeComponentBody(body));
+  }
+
+  @Delete(':id/components/:componentId')
+  @Roles('admin', 'operations')
+  removeComponent(@Param('id') id: string, @Param('componentId') componentId: string) {
+    return this.excursionTemplatesService.removeComponent(id, componentId);
+  }
+
   @Patch(':id')
   @Roles('admin', 'operations')
   update(@Param('id') id: string, @Body() body: UpdateExcursionTemplateBody) {
@@ -101,6 +130,17 @@ export class ExcursionTemplatesController {
                 : Number(component.durationMinutes),
           }))
         : body.components,
+    };
+  }
+
+  private normalizeComponentBody<T extends Partial<ExcursionTemplateComponentBody>>(component: T): T {
+    return {
+      ...component,
+      sortOrder: component.sortOrder === undefined || component.sortOrder === null ? component.sortOrder : Number(component.sortOrder),
+      durationMinutes:
+        component.durationMinutes === undefined || component.durationMinutes === null
+          ? component.durationMinutes
+          : Number(component.durationMinutes),
     };
   }
 }

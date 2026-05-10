@@ -10,6 +10,7 @@ type ExcursionTemplateComponentInput = {
   label: string;
   sortOrder?: number | null;
   isOptional?: boolean;
+  active?: boolean;
   operationalNotes?: string | null;
   supplierServiceId?: string | null;
   activityId?: string | null;
@@ -32,6 +33,10 @@ type CreateExcursionTemplateInput = {
 };
 
 type UpdateExcursionTemplateInput = Partial<CreateExcursionTemplateInput>;
+
+type ReorderExcursionTemplateComponentsInput = {
+  componentIds: string[];
+};
 
 const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'GUIDE', 'DINING'];
 
@@ -114,7 +119,9 @@ export class ExcursionTemplatesService {
 
   async getSuggestedTransport(id: string, pax = 1) {
     const template = await this.findOne(id);
-    const transportComponents = (template.components || []).filter((component: any) => component.componentType === 'TRANSPORT');
+    const transportComponents = (template.components || []).filter(
+      (component: any) => component.componentType === 'TRANSPORT' && component.active !== false,
+    );
     const suggestions = [];
 
     for (const component of transportComponents) {
@@ -170,6 +177,99 @@ export class ExcursionTemplatesService {
 
   async ensureDeadSeaEscapeTemplate() {
     return this.ensureTemplate('DEAD_SEA_ESCAPE', () => this.buildDeadSeaEscapeTemplateData());
+  }
+
+  async addComponent(templateId: string, data: ExcursionTemplateComponentInput) {
+    const template = await this.findOne(templateId);
+    const component = (await this.normalizeComponents([
+      {
+        ...data,
+        sortOrder: data.sortOrder ?? (template.components || []).filter((entry: any) => entry.active !== false).length,
+      },
+    ]))[0];
+    this.validateAddedComponentHasLinkedRecord(component);
+
+    await (this.prisma as any).excursionTemplateComponent.create({
+      data: {
+        ...component,
+        templateId,
+      },
+    });
+
+    return this.findOne(templateId);
+  }
+
+  async updateComponent(templateId: string, componentId: string, data: Partial<ExcursionTemplateComponentInput>) {
+    await this.ensureComponentBelongsToTemplate(templateId, componentId);
+    const updateData: Record<string, unknown> = {};
+
+    if (data.label !== undefined) {
+      updateData.label = requireTrimmedString(data.label, 'label');
+    }
+    if (data.isOptional !== undefined) {
+      updateData.isOptional = Boolean(data.isOptional);
+    }
+    if (data.active !== undefined) {
+      updateData.active = Boolean(data.active);
+    }
+    if (data.operationalNotes !== undefined) {
+      updateData.operationalNotes = normalizeOptionalString(data.operationalNotes);
+    }
+    if (data.durationMinutes !== undefined) {
+      updateData.durationMinutes = this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes');
+    }
+
+    await (this.prisma as any).excursionTemplateComponent.update({
+      where: { id: componentId },
+      data: updateData,
+    });
+
+    return this.findOne(templateId);
+  }
+
+  async removeComponent(templateId: string, componentId: string) {
+    await this.ensureComponentBelongsToTemplate(templateId, componentId);
+    await (this.prisma as any).excursionTemplateComponent.update({
+      where: { id: componentId },
+      data: {
+        active: false,
+        operationalNotes: 'Soft removed from operational template. Historical row preserved.',
+      },
+    });
+
+    return this.findOne(templateId);
+  }
+
+  async reorderComponents(templateId: string, data: ReorderExcursionTemplateComponentsInput) {
+    await this.findOne(templateId);
+    const componentIds = Array.isArray(data.componentIds) ? data.componentIds.map((id) => requireTrimmedString(id, 'componentIds[]')) : [];
+
+    if (componentIds.length === 0 || new Set(componentIds).size !== componentIds.length) {
+      throw new BadRequestException('componentIds must contain unique component ids');
+    }
+
+    const components = await (this.prisma as any).excursionTemplateComponent.findMany({
+      where: { templateId, active: true },
+      select: { id: true },
+    });
+    const activeIds = components.map((component: any) => component.id);
+    const missing = activeIds.filter((id: string) => !componentIds.includes(id));
+    const unknown = componentIds.filter((id) => !activeIds.includes(id));
+
+    if (missing.length > 0 || unknown.length > 0) {
+      throw new BadRequestException('componentIds must match the active template components');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const [index, id] of componentIds.entries()) {
+        await (tx as any).excursionTemplateComponent.update({
+          where: { id },
+          data: { sortOrder: index },
+        });
+      }
+    });
+
+    return this.findOne(templateId);
   }
 
   private async ensureTemplate(code: string, buildData: () => Promise<CreateExcursionTemplateInput>) {
@@ -397,6 +497,7 @@ export class ExcursionTemplatesService {
           label: requireTrimmedString(component.label, `components[${index}].label`),
           sortOrder: component.sortOrder === undefined || component.sortOrder === null ? index : Math.floor(Number(component.sortOrder)),
           isOptional: component.isOptional === undefined ? false : Boolean(component.isOptional),
+          active: component.active === undefined ? true : Boolean(component.active),
           operationalNotes: normalizeOptionalString(component.operationalNotes),
           supplierServiceId: normalizeOptionalString(component.supplierServiceId),
           activityId: normalizeOptionalString(component.activityId),
@@ -419,8 +520,8 @@ export class ExcursionTemplatesService {
   }
 
   private async validateComponentReferences(componentType: ExcursionComponentType, component: ExcursionTemplateComponentInput, index: number) {
-    if (component.activityId && componentType !== 'ACTIVITY') {
-      throw new BadRequestException(`components[${index}].activityId is only allowed for ACTIVITY components`);
+    if (component.activityId && componentType !== 'ACTIVITY' && componentType !== 'GUIDE') {
+      throw new BadRequestException(`components[${index}].activityId is only allowed for ACTIVITY or GUIDE components`);
     }
     if ((component.routeId || component.transportServiceTypeId) && componentType !== 'TRANSPORT') {
       throw new BadRequestException(`components[${index}] transport references are only allowed for TRANSPORT components`);
@@ -465,6 +566,28 @@ export class ExcursionTemplatesService {
     const serviceType = await this.prisma.transportServiceType.findUnique({ where: { id }, select: { id: true } });
     if (!serviceType) {
       throw new BadRequestException(`components[${index}].transportServiceTypeId was not found`);
+    }
+  }
+
+  private async ensureComponentBelongsToTemplate(templateId: string, componentId: string) {
+    const component = await (this.prisma as any).excursionTemplateComponent.findFirst({
+      where: { id: componentId, templateId },
+      select: { id: true },
+    });
+    if (!component) {
+      throw new BadRequestException('Excursion template component was not found');
+    }
+  }
+
+  private validateAddedComponentHasLinkedRecord(component: ExcursionTemplateComponentInput) {
+    if (component.componentType === 'TRANSPORT' && (!component.routeId || !component.transportServiceTypeId)) {
+      throw new BadRequestException('TRANSPORT components must link an existing route and transport service type');
+    }
+    if ((component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') && !component.activityId) {
+      throw new BadRequestException('ACTIVITY and GUIDE components must link an existing Activity Master record');
+    }
+    if ((component.componentType === 'TICKET' || component.componentType === 'DINING') && !component.supplierServiceId) {
+      throw new BadRequestException('TICKET and DINING components must link an existing service catalog record');
     }
   }
 

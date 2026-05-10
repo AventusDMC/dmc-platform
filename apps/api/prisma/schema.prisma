@@ -1745,6 +1745,7 @@ model ExcursionTemplateComponent {
   label                  String
   sortOrder              Int
   isOptional             Boolean                @default(false)
+  active                 Boolean                @default(true)
   operationalNotes       String?
   supplierServiceId      String?                @db.Uuid
   activityId             String?                @db.Uuid
@@ -1762,6 +1763,7 @@ model ExcursionTemplateComponent {
   transportServiceType   TransportServiceType?  @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
 
   @@index([templateId, sortOrder])
+  @@index([templateId, active, sortOrder])
   @@index([componentType])
   @@index([supplierServiceId])
   @@index([activityId])
