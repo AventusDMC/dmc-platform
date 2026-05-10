@@ -48,6 +48,8 @@ type AqabaActivityDefinition = {
     name: string;
     durationMinutes?: number | null;
     pricingBasis?: 'PER_PERSON' | 'PER_GROUP';
+    costPrice?: number;
+    sellPrice?: number;
     maxPaxPerUnit?: number | null;
     notes?: string | null;
   }>;
@@ -704,11 +706,11 @@ export class ExcursionTemplatesService {
       durationMinutes: variant.durationMinutes ?? null,
       pricingBasis: variant.pricingBasis || definition.pricingBasis,
       currency: 'JOD',
-      costPrice: 0,
-      sellPrice: 0,
+      costPrice: variant.costPrice ?? 0,
+      sellPrice: variant.sellPrice ?? variant.costPrice ?? 0,
       maxPaxPerUnit: variant.maxPaxPerUnit ?? null,
       active: true,
-      notes: [variant.notes, PRICING_PENDING_NOTE].filter(Boolean).join(' '),
+      notes: [variant.notes, variant.costPrice === undefined ? PRICING_PENDING_NOTE : null].filter(Boolean).join(' '),
       sortOrder: index,
     };
   }
@@ -747,8 +749,40 @@ export class ExcursionTemplatesService {
         pricingBasis: 'PER_PERSON',
         description: 'Aqaba beach club day-pass experience operated by Sindbad.',
         durationMinutes: 480,
-        notes: 'City: Aqaba. Supplier: Sindbad. Includes beach club access where operationally applicable.',
-        variants: ['1 Day Pass', '3 Day Pass', '4 Day Pass', '6 Day Pass', '8 Day Pass'].map((name) => ({ name })),
+        notes: 'City: Aqaba. Supplier: Sindbad.',
+        variants: [
+          {
+            name: 'Day Pass Adult',
+            costPrice: 15,
+            sellPrice: 15,
+            notes: 'Includes beach club access, transportation, towels.',
+          },
+          {
+            name: 'Day Pass Child',
+            costPrice: 10,
+            sellPrice: 10,
+            notes: 'Includes beach club access, transportation, towels.',
+          },
+          { name: '3 Day Pass' },
+          { name: '4 Day Pass' },
+          { name: '6 Day Pass' },
+          { name: '8 Day Pass' },
+        ],
+      },
+      {
+        name: 'Aqaba Water Sports',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba water sports experiences operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad.',
+        variants: [
+          { name: 'Banana Boat', durationMinutes: 7, costPrice: 8, sellPrice: 8, notes: 'Minimum 3 persons.' },
+          { name: 'Inner Tubes', durationMinutes: 7, costPrice: 9, sellPrice: 9, maxPaxPerUnit: 2, notes: 'Up to 2 persons.' },
+          { name: 'Fly Fish', durationMinutes: 7, costPrice: 9, sellPrice: 9, maxPaxPerUnit: 3, notes: 'Up to 3 persons.' },
+          { name: 'Water Ski', durationMinutes: 7, costPrice: 18, sellPrice: 18 },
+          { name: 'Wakeboarding', durationMinutes: 7, costPrice: 18, sellPrice: 18 },
+          { name: 'Knee Boarding', durationMinutes: 7, costPrice: 18, sellPrice: 18 },
+          { name: 'Guest on boat during banana/tubes/ski', costPrice: 5, sellPrice: 5 },
+        ],
       },
       {
         name: 'Jet Ski',
@@ -756,10 +790,26 @@ export class ExcursionTemplatesService {
         description: 'Aqaba jet ski experience operated by Sindbad.',
         notes: 'City: Aqaba. Supplier: Sindbad. Double rider variants represent shared ride options.',
         variants: [
-          { name: '15 min', durationMinutes: 15 },
-          { name: '30 min', durationMinutes: 30 },
-          { name: '15 min double rider', durationMinutes: 15, notes: 'Double rider variant.' },
-          { name: '30 min double rider', durationMinutes: 30, notes: 'Double rider variant.' },
+          { name: '15 min', durationMinutes: 15, costPrice: 30, sellPrice: 30 },
+          { name: '30 min', durationMinutes: 30, costPrice: 50, sellPrice: 50 },
+          {
+            name: '15 min double rider',
+            durationMinutes: 15,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 45,
+            sellPrice: 45,
+            maxPaxPerUnit: 2,
+            notes: 'Price per 2 persons.',
+          },
+          {
+            name: '30 min double rider',
+            durationMinutes: 30,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 75,
+            sellPrice: 75,
+            maxPaxPerUnit: 2,
+            notes: 'Price per 2 persons.',
+          },
         ],
       },
       {
@@ -767,7 +817,12 @@ export class ExcursionTemplatesService {
         pricingBasis: 'PER_PERSON',
         description: 'Aqaba parasailing experience operated by Sindbad.',
         notes: 'City: Aqaba. Supplier: Sindbad.',
-        variants: ['Single', 'Tandem', 'Triple'].map((name) => ({ name })),
+        variants: [
+          { name: 'Single', durationMinutes: 15, costPrice: 40, sellPrice: 40, notes: '10-15 min.' },
+          { name: 'Tandem', durationMinutes: 15, costPrice: 60, sellPrice: 60, notes: '10-15 min.' },
+          { name: 'Triple', durationMinutes: 15, costPrice: 80, sellPrice: 80, notes: '10-15 min.' },
+          { name: 'Guest on boat', costPrice: 10, sellPrice: 10 },
+        ],
       },
       {
         name: 'Snorkeling Cruise',
@@ -777,6 +832,22 @@ export class ExcursionTemplatesService {
         variants: [
           { name: 'Discovery Glass Bottom Boat' },
           { name: '4 Hour Snorkeling Cruise BBQ', durationMinutes: 240, notes: 'Includes BBQ operationally where applicable.' },
+          {
+            name: 'Red Sea Experience Special Package Adult',
+            durationMinutes: 240,
+            costPrice: 30,
+            sellPrice: 30,
+            notes: 'Includes snorkeling kit, towel, open soft drinks and water, Sayadiyah on the beach.',
+          },
+          {
+            name: 'Red Sea Experience Special Package Child',
+            durationMinutes: 240,
+            costPrice: 19,
+            sellPrice: 19,
+            notes: 'Includes snorkeling kit, towel, open soft drinks and water, Sayadiyah on the beach.',
+          },
+          { name: 'BBQ Lunch Supplement', costPrice: 10, sellPrice: 10, notes: 'Supplement for Red Sea Experience Special Package.' },
+          { name: 'Snorkeling', costPrice: 30, sellPrice: 30 },
         ],
       },
       {
@@ -794,25 +865,108 @@ export class ExcursionTemplatesService {
         pricingBasis: 'PER_PERSON',
         description: 'Aqaba scuba diving and diving course experiences operated by Sindbad.',
         notes: 'City: Aqaba. Supplier: Sindbad. Instructor/dive inclusions should be confirmed against final catalog terms.',
-        variants: ['DSD 1 Dive', 'DSD 2 Dives', 'Leisure Diving', 'Open Water Course'].map((name) => ({ name })),
+        variants: [
+          { name: 'Discover Scuba Diving', costPrice: 50, sellPrice: 50 },
+          { name: 'DSD 1 Dive', costPrice: 50, sellPrice: 50 },
+          { name: 'DSD 2 Dives', costPrice: 90, sellPrice: 90 },
+          { name: 'Leisure Diving 2 Dives', costPrice: 60, sellPrice: 60, notes: 'Certified divers only.' },
+          { name: 'Scuba Diver Course', costPrice: 200, sellPrice: 200 },
+          { name: 'Open Water Course', costPrice: 300, sellPrice: 300 },
+        ],
       },
       {
         name: 'Private Boat Rental',
         pricingBasis: 'PER_GROUP',
         description: 'Aqaba private boat rental options operated by Sindbad.',
-        notes: 'City: Aqaba. Supplier: Sindbad. Capacity to be confirmed per vessel before quoting.',
-        variants: ['Sindbad Motor Boat', 'Glass Bottom Boat', 'Scuba Boat', 'Fishing Boat'].map((name) => ({
-          name,
-          pricingBasis: 'PER_GROUP',
-          notes: 'Capacity pending from confirmed vessel terms.',
-        })),
+        notes: 'City: Aqaba. Supplier: Sindbad.',
+        variants: [
+          {
+            name: 'Sindbad Motor Boat',
+            durationMinutes: 120,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 200,
+            sellPrice: 200,
+            maxPaxPerUnit: 50,
+            notes: 'Capacity 50. Extra sailing hour 80 JOD. Extra anchoring hour 30 JOD.',
+          },
+          {
+            name: 'Discovery Glass Bottom Boat',
+            durationMinutes: 120,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 200,
+            sellPrice: 200,
+            maxPaxPerUnit: 45,
+            notes: 'Capacity 45. Extra sailing hour 80 JOD. Extra anchoring hour 30 JOD.',
+          },
+          {
+            name: 'Scuba Diving Boat',
+            durationMinutes: 120,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 200,
+            sellPrice: 200,
+            maxPaxPerUnit: 35,
+            notes: 'Capacity 35. Extra sailing hour 80 JOD. Extra anchoring hour 30 JOD.',
+          },
+          {
+            name: 'Al Azem Fishing Boat',
+            durationMinutes: 120,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 200,
+            sellPrice: 200,
+            maxPaxPerUnit: 7,
+            notes: 'Capacity 7. Extra sailing hour 80 JOD. Extra anchoring hour 30 JOD.',
+          },
+          {
+            name: 'Aladdin Sailing Ketch',
+            durationMinutes: 120,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 300,
+            sellPrice: 300,
+            maxPaxPerUnit: 90,
+            notes: 'Capacity 70-90. Extra sailing hour 90 JOD. Extra anchoring hour 40 JOD.',
+          },
+          {
+            name: 'Speed Boat up to 6 persons',
+            durationMinutes: 15,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 35,
+            sellPrice: 35,
+            maxPaxPerUnit: 6,
+            notes: 'Boat charter.',
+          },
+          {
+            name: 'Speed Boat up to 12 persons',
+            durationMinutes: 15,
+            pricingBasis: 'PER_GROUP',
+            costPrice: 50,
+            sellPrice: 50,
+            maxPaxPerUnit: 12,
+            notes: 'Boat charter.',
+          },
+        ],
       },
       {
         name: 'Aqaba Beach Kitchen Experience',
         pricingBasis: 'PER_PERSON',
         description: 'Aqaba beach kitchen cultural dining/activity experience operated by Sindbad.',
-        notes: 'City: Aqaba. Supplier: Sindbad. Inclusions/exclusions and cancellation terms pending from source catalog confirmation.',
-        variants: [{ name: 'Standard Experience' }],
+        notes:
+          'City: Aqaba. Supplier: Sindbad. Includes fish/vegetable market visit, cooking experience, lunch, transportation from hotel to local market and Berenice Beach Club, day pass, soft drink and water.',
+        variants: [
+          {
+            name: '4 guests and over',
+            costPrice: 40,
+            sellPrice: 40,
+            notes:
+              'Per person. Includes fish/vegetable market visit, cooking experience, lunch, transportation, Berenice day pass, soft drink and water.',
+          },
+          {
+            name: '8 guests and over',
+            costPrice: 35,
+            sellPrice: 35,
+            notes:
+              'Per person. Includes fish/vegetable market visit, cooking experience, lunch, transportation, Berenice day pass, soft drink and water.',
+          },
+        ],
       },
     ];
   }

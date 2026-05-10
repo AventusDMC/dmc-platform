@@ -436,7 +436,7 @@ test('add component links existing catalog records and appends to active sequenc
   assert.equal(createdComponent.isOptional, true);
 });
 
-test('Sindbad Aqaba ensure creates Activity Master records with variant-driven pricing placeholders', async () => {
+test('Sindbad Aqaba ensure creates Activity Master records with confirmed supplier variant pricing', async () => {
   const createdActivities: any[] = [];
   const createdTemplates: any[] = [];
   const { service } = createExcursionTemplatesService({
@@ -472,23 +472,72 @@ test('Sindbad Aqaba ensure creates Activity Master records with variant-driven p
 
   const result = await service.ensureSindbadAqabaCatalog();
 
-  assert.equal(result.activities.length, 8);
-  assert.equal(createdActivities.length, 8);
+  const variant = (activity: any, name: string) => activity.rateVariants.create.find((item: any) => item.name === name);
+
+  assert.equal(result.activities.length, 9);
+  assert.equal(createdActivities.length, 9);
   const berenice = createdActivities.find((activity) => activity.name === 'Berenice Beach Club');
   assert.ok(berenice);
   assert.equal(berenice.pricingBasis, 'PER_PERSON');
-  assert.deepEqual(
-    berenice.rateVariants.create.map((variant: any) => variant.name),
-    ['1 Day Pass', '3 Day Pass', '4 Day Pass', '6 Day Pass', '8 Day Pass'],
-  );
+  assert.equal(variant(berenice, 'Day Pass Adult').costPrice, 15);
+  assert.equal(variant(berenice, 'Day Pass Adult').sellPrice, 15);
+  assert.equal(variant(berenice, 'Day Pass Child').costPrice, 10);
+  assert.equal(variant(berenice, 'Day Pass Child').currency, 'JOD');
+  assert.equal(variant(berenice, '3 Day Pass').costPrice, 0);
+  assert.match(variant(berenice, '3 Day Pass').notes, /Pricing pending/);
+
+  const waterSports = createdActivities.find((activity) => activity.name === 'Aqaba Water Sports');
+  assert.ok(waterSports);
+  assert.equal(variant(waterSports, 'Banana Boat').costPrice, 8);
+  assert.equal(variant(waterSports, 'Banana Boat').durationMinutes, 7);
+  assert.match(variant(waterSports, 'Banana Boat').notes, /Minimum 3 persons/);
+  assert.equal(variant(waterSports, 'Inner Tubes').costPrice, 9);
+  assert.equal(variant(waterSports, 'Inner Tubes').maxPaxPerUnit, 2);
+  assert.equal(variant(waterSports, 'Fly Fish').maxPaxPerUnit, 3);
+  assert.equal(variant(waterSports, 'Guest on boat during banana/tubes/ski').costPrice, 5);
+
+  const jetSki = createdActivities.find((activity) => activity.name === 'Jet Ski');
+  assert.equal(variant(jetSki, '15 min').costPrice, 30);
+  assert.equal(variant(jetSki, '15 min').durationMinutes, 15);
+  assert.equal(variant(jetSki, '15 min double rider').costPrice, 45);
+  assert.equal(variant(jetSki, '15 min double rider').pricingBasis, 'PER_GROUP');
+  assert.equal(variant(jetSki, '15 min double rider').maxPaxPerUnit, 2);
+  assert.match(variant(jetSki, '15 min double rider').notes, /Price per 2 persons/);
+
+  const parasailing = createdActivities.find((activity) => activity.name === 'Parasailing');
+  assert.equal(variant(parasailing, 'Single').costPrice, 40);
+  assert.equal(variant(parasailing, 'Single').durationMinutes, 15);
+  assert.equal(variant(parasailing, 'Guest on boat').costPrice, 10);
+
+  const snorkeling = createdActivities.find((activity) => activity.name === 'Snorkeling Cruise');
+  assert.equal(variant(snorkeling, 'Red Sea Experience Special Package Adult').costPrice, 30);
+  assert.equal(variant(snorkeling, 'Red Sea Experience Special Package Adult').durationMinutes, 240);
+  assert.equal(variant(snorkeling, 'BBQ Lunch Supplement').costPrice, 10);
+  assert.equal(variant(snorkeling, 'Discovery Glass Bottom Boat').costPrice, 0);
+  assert.match(variant(snorkeling, 'Discovery Glass Bottom Boat').notes, /Pricing pending/);
+
+  const diving = createdActivities.find((activity) => activity.name === 'Discover Scuba Diving');
+  assert.equal(variant(diving, 'Discover Scuba Diving').costPrice, 50);
+  assert.equal(variant(diving, 'DSD 2 Dives').costPrice, 90);
+  assert.equal(variant(diving, 'Leisure Diving 2 Dives').costPrice, 60);
+  assert.match(variant(diving, 'Leisure Diving 2 Dives').notes, /Certified divers only/);
+
   const privateBoat = createdActivities.find((activity) => activity.name === 'Private Boat Rental');
   assert.equal(privateBoat.pricingBasis, 'PER_GROUP');
-  assert.deepEqual(
-    privateBoat.rateVariants.create.map((variant: any) => variant.name),
-    ['Sindbad Motor Boat', 'Glass Bottom Boat', 'Scuba Boat', 'Fishing Boat'],
-  );
-  assert.equal(privateBoat.rateVariants.create[0].costPrice, 0);
-  assert.match(privateBoat.description, /Pricing pending/);
+  assert.equal(variant(privateBoat, 'Sindbad Motor Boat').costPrice, 200);
+  assert.equal(variant(privateBoat, 'Sindbad Motor Boat').durationMinutes, 120);
+  assert.equal(variant(privateBoat, 'Sindbad Motor Boat').maxPaxPerUnit, 50);
+  assert.match(variant(privateBoat, 'Sindbad Motor Boat').notes, /Extra sailing hour 80 JOD/);
+  assert.equal(variant(privateBoat, 'Aladdin Sailing Ketch').costPrice, 300);
+  assert.equal(variant(privateBoat, 'Aladdin Sailing Ketch').maxPaxPerUnit, 90);
+  assert.match(variant(privateBoat, 'Aladdin Sailing Ketch').notes, /Capacity 70-90/);
+  assert.equal(variant(privateBoat, 'Speed Boat up to 6 persons').costPrice, 35);
+  assert.equal(variant(privateBoat, 'Speed Boat up to 6 persons').durationMinutes, 15);
+
+  const beachKitchen = createdActivities.find((activity) => activity.name === 'Aqaba Beach Kitchen Experience');
+  assert.equal(variant(beachKitchen, '4 guests and over').costPrice, 40);
+  assert.equal(variant(beachKitchen, '8 guests and over').costPrice, 35);
+  assert.match(beachKitchen.description, /fish\/vegetable market visit/);
   assert.deepEqual(
     createdTemplates.map((template) => template.code),
     ['AQABA_SNORKELING_DAY', 'AQABA_SUNSET_CRUISE', 'AQABA_DISCOVER_SCUBA', 'AQABA_PRIVATE_BOAT_DAY'],
@@ -553,7 +602,7 @@ test('Sindbad Aqaba ensure updates existing activity variants and templates with
   await service.ensureSindbadAqabaCatalog();
 
   assert.equal(activityCreateCalls, 0);
-  assert.equal(activityUpdateCalls, 8);
+  assert.equal(activityUpdateCalls, 9);
   assert.equal(templateCreateCalls, 0);
   assert.equal(templateUpdateCalls, 4);
 });
