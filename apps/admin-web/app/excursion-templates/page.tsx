@@ -5,6 +5,7 @@ import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
+import { CreatePetraFullDayButton } from './CreatePetraFullDayButton';
 import { ExcursionTemplate } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ export default async function ExcursionTemplatesPage() {
                 {
                   id: 'petra',
                   label: 'Petra Full Day',
-                  value: petraFullDay ? 'Ready' : 'Missing',
+                  value: petraFullDay ? 'Available' : 'Missing',
                   helper: 'First composite proof',
                 },
               ]}
@@ -72,9 +73,14 @@ export default async function ExcursionTemplatesPage() {
               title="Operational excursion templates"
               description="Read-only phase one view for reusable composite itineraries. Templates preserve links to source modules."
               actions={
-                <Link href="/excursion-templates/petra-full-day" className="dashboard-toolbar-link">
-                  Open Petra Full Day
-                </Link>
+                <div className="table-action-group">
+                  <CreatePetraFullDayButton exists={Boolean(petraFullDay)} />
+                  {petraFullDay ? (
+                    <Link href="/excursion-templates/petra-full-day" className="dashboard-toolbar-link">
+                      Open Petra Full Day
+                    </Link>
+                  ) : null}
+                </div>
               }
             />
 
