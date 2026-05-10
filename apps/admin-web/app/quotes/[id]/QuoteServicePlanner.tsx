@@ -3218,6 +3218,16 @@ function ScopePlanner({
               </div>
             </div>
 
+            <ExcursionTemplateInsertPanel
+              apiBaseUrl={plannerProps.apiBaseUrl}
+              quoteId={plannerProps.quote.id}
+              itineraryId={summary.day.id}
+              serviceDate={getItineraryDayServiceDate(plannerProps.quote, summary.day)}
+              templates={plannerProps.excursionTemplates}
+              totalPax={plannerProps.totalPax}
+              onInserted={refreshScopeItemsFromQuote}
+            />
+
             <div className="quote-service-day-layout quote-service-day-layout-visual">
               <section className="quote-service-current-services quote-service-day-main">
                 <div className="workspace-section-head">
@@ -3556,18 +3566,36 @@ function ScopePlanner({
   );
 }
 
+function getItineraryDayServiceDate(quote: Quote, day: QuoteReadinessDay) {
+  if (!quote.travelStartDate) {
+    return null;
+  }
+
+  const startDate = new Date(quote.travelStartDate);
+  if (Number.isNaN(startDate.getTime())) {
+    return null;
+  }
+
+  startDate.setUTCDate(startDate.getUTCDate() + Math.max(0, day.dayNumber - 1));
+  return startDate.toISOString().slice(0, 10);
+}
+
 function ExcursionTemplateInsertPanel({
   apiBaseUrl,
   quoteId,
   itineraryId,
+  serviceDate,
   templates,
   totalPax,
+  onInserted,
 }: {
   apiBaseUrl: string;
   quoteId: string;
   itineraryId?: string | null;
+  serviceDate?: string | null;
   templates: ExcursionTemplate[];
   totalPax: number;
+  onInserted: () => Promise<void> | void;
 }) {
   const router = useRouter();
   const activeTemplates = templates.filter((template) => template.active !== false);
@@ -3603,6 +3631,7 @@ function ExcursionTemplateInsertPanel({
         headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           itineraryId,
+          serviceDate,
           selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds),
           paxCount: totalPax,
           quantity: 1,
@@ -3613,6 +3642,7 @@ function ExcursionTemplateInsertPanel({
         throw new Error(await getErrorMessage(response, 'Could not add excursion template to quote.'));
       }
       await readJsonResponse(response, 'Could not add excursion template to quote.');
+      await onInserted();
       window.dispatchEvent(new CustomEvent('dmc:quote-services-stale', { detail: { quoteId } }));
       router.refresh();
     } catch (insertError) {
@@ -3622,10 +3652,6 @@ function ExcursionTemplateInsertPanel({
     }
   }
 
-  if (activeTemplates.length === 0) {
-    return null;
-  }
-
   return (
     <article className="planner-smart-panel excursion-template-insert-panel">
       <div className="workspace-section-head">
@@ -3633,26 +3659,30 @@ function ExcursionTemplateInsertPanel({
           <p className="eyebrow">Excursion Templates</p>
           <h3>Add Excursion Template</h3>
         </div>
-        <button type="button" className="primary-button" disabled={isSubmitting || !selectedTemplate || !itineraryId} onClick={handleInsert}>
+        <button type="button" className="primary-button" disabled={isSubmitting || !selectedTemplate || !itineraryId || activeTemplates.length === 0} onClick={handleInsert}>
           {isSubmitting ? 'Adding...' : 'Add selected components'}
         </button>
       </div>
-      <div className="form-grid compact-form-grid">
-        <label>
-          Template
-          <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
-            {activeTemplates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Target day
-          <input value={itineraryId ? 'Selected itinerary day' : 'No itinerary day selected'} readOnly />
-        </label>
-      </div>
+      {activeTemplates.length === 0 ? (
+        <p className="form-helper">No active excursion templates are available. Create or activate an excursion template before adding one to this day.</p>
+      ) : (
+        <div className="form-grid compact-form-grid">
+          <label>
+            Template
+            <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
+              {activeTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Target day
+            <input value={itineraryId ? (serviceDate ? `Selected itinerary day | ${serviceDate}` : 'Selected itinerary day') : 'No itinerary day selected'} readOnly />
+          </label>
+        </div>
+      )}
       {components.length > 0 ? (
         <div className="quote-template-component-preview">
           {components.map((component) => {
@@ -3878,13 +3908,6 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           hotels={props.hotels}
           hotelContracts={props.hotelContracts}
           hotelRates={props.hotelRates}
-          totalPax={props.totalPax}
-        />
-        <ExcursionTemplateInsertPanel
-          apiBaseUrl={props.apiBaseUrl}
-          quoteId={props.quote.id}
-          itineraryId={activeDayId}
-          templates={props.excursionTemplates}
           totalPax={props.totalPax}
         />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">

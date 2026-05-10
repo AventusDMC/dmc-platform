@@ -137,10 +137,14 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteServicePlannerSource, [
       'function ExcursionTemplateInsertPanel',
       '<h3>Add Excursion Template</h3>',
+      'serviceDate={getItineraryDayServiceDate(plannerProps.quote, summary.day)}',
+      'onInserted={refreshScopeItemsFromQuote}',
       'selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds)',
+      'serviceDate,',
       'component.isOptional ? (',
       'checked={checked}',
       "window.dispatchEvent(new CustomEvent('dmc:quote-services-stale'",
+      'No active excursion templates are available.',
     ]);
 
     expectSourceContains(quoteExcursionExpandApiRouteSource, [
