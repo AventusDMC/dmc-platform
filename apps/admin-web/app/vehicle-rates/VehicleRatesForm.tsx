@@ -36,9 +36,11 @@ type VehicleRatesFormProps = {
   routes: RouteOption[];
   rateId?: string;
   submitLabel?: string;
+  lockRateCardContext?: boolean;
   initialValues?: {
     vehicleId: string;
     serviceTypeId: string;
+    supplierId?: string | null;
     routeId: string;
     fromPlaceId: string;
     toPlaceId: string;
@@ -47,6 +49,7 @@ type VehicleRatesFormProps = {
     maxPax: string;
     price: string;
     currency: SupportedCurrency;
+    notes?: string | null;
     active?: boolean;
     validFrom: string;
     validTo: string;
@@ -78,6 +81,7 @@ export function VehicleRatesForm({
   routes,
   rateId,
   submitLabel,
+  lockRateCardContext = false,
   initialValues,
 }: VehicleRatesFormProps) {
   const router = useRouter();
@@ -85,6 +89,7 @@ export function VehicleRatesForm({
   const [availablePlaces, setAvailablePlaces] = useState(places);
   const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || vehicles[0]?.id || '');
   const [serviceTypeId, setServiceTypeId] = useState(initialValues?.serviceTypeId || canonicalServiceTypes[0]?.id || '');
+  const [supplierId] = useState(initialValues?.supplierId || '');
   const [routeId, setRouteId] = useState(initialValues?.routeId || '');
   const [fromPlaceId, setFromPlaceId] = useState(initialValues?.fromPlaceId || '');
   const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
@@ -93,6 +98,7 @@ export function VehicleRatesForm({
   const [maxPax, setMaxPax] = useState(initialValues?.maxPax || '1');
   const [price, setPrice] = useState(initialValues?.price || '');
   const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
+  const [notes, setNotes] = useState(initialValues?.notes || '');
   const [active, setActive] = useState(initialValues?.active ?? true);
   const [validFrom, setValidFrom] = useState(initialValues?.validFrom || '');
   const [validTo, setValidTo] = useState(initialValues?.validTo || '');
@@ -174,6 +180,7 @@ export function VehicleRatesForm({
         body: JSON.stringify({
           vehicleId,
           serviceTypeId,
+          supplierId: supplierId || null,
           routeId: routeId || null,
           fromPlaceId: routeId ? null : fromPlaceId || null,
           toPlaceId: routeId ? null : toPlaceId || null,
@@ -182,6 +189,7 @@ export function VehicleRatesForm({
           maxPax: Number(maxPax),
           price: Number(price),
           currency,
+          notes: notes.trim() || null,
           active,
           validFrom,
           validTo,
@@ -201,6 +209,7 @@ export function VehicleRatesForm({
         setMaxPax('1');
         setPrice('');
         setCurrency('USD');
+        setNotes('');
         setActive(true);
         setValidFrom('');
         setValidTo('');
@@ -220,7 +229,7 @@ export function VehicleRatesForm({
       <div className="form-row">
         <label>
           Vehicle
-          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={vehicles.length === 0} required>
+          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={vehicles.length === 0 || lockRateCardContext} required>
             {vehicles.length === 0 ? (
               <option value="">Create a vehicle first</option>
             ) : (
@@ -268,6 +277,7 @@ export function VehicleRatesForm({
         }}
         placeholder="Search active routes"
         maxResults={50}
+        disabled={lockRateCardContext}
       />
 
       <div className="form-row">
@@ -281,6 +291,7 @@ export function VehicleRatesForm({
           onChange={setFromPlaceId}
           onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
           placeholder="Search a place"
+          disabled={lockRateCardContext}
         />
         <PlaceComboboxWithCreate
           apiBaseUrl={apiBaseUrl}
@@ -292,6 +303,7 @@ export function VehicleRatesForm({
           onChange={setToPlaceId}
           onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}
           placeholder="Search a place"
+          disabled={lockRateCardContext}
         />
       </div>
 
@@ -303,19 +315,19 @@ export function VehicleRatesForm({
           value={routeName}
           onChange={(event) => setRouteName(event.target.value)}
           placeholder="Airport - Hotel"
-          disabled={Boolean(routeId || (fromPlaceId && toPlaceId))}
+          disabled={lockRateCardContext || Boolean(routeId || (fromPlaceId && toPlaceId))}
         />
       </label>
 
       <div className="form-row form-row-4">
         <label>
           Min pax
-          <input value={minPax} onChange={(event) => setMinPax(event.target.value)} type="number" min="1" required />
+          <input value={minPax} onChange={(event) => setMinPax(event.target.value)} type="number" min="1" disabled={lockRateCardContext} required />
         </label>
 
         <label>
           Max pax
-          <input value={maxPax} onChange={(event) => setMaxPax(event.target.value)} type="number" min="1" required />
+          <input value={maxPax} onChange={(event) => setMaxPax(event.target.value)} type="number" min="1" disabled={lockRateCardContext} required />
         </label>
 
         <label>
@@ -325,24 +337,29 @@ export function VehicleRatesForm({
 
         <label>
           Currency
-          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} required />
+          <CurrencySelect value={currency} onChange={(value) => setCurrency((value || 'USD') as SupportedCurrency)} disabled={lockRateCardContext} required />
         </label>
       </div>
 
       <div className="form-row">
         <label>
           Valid from
-          <input value={validFrom} onChange={(event) => setValidFrom(event.target.value)} type="date" required />
+          <input value={validFrom} onChange={(event) => setValidFrom(event.target.value)} type="date" disabled={lockRateCardContext} required />
         </label>
 
         <label>
           Valid to
-          <input value={validTo} onChange={(event) => setValidTo(event.target.value)} type="date" required />
+          <input value={validTo} onChange={(event) => setValidTo(event.target.value)} type="date" disabled={lockRateCardContext} required />
         </label>
       </div>
 
+      <label>
+        Notes
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Optional supplier row note" />
+      </label>
+
       <label className="checkbox-label">
-        <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
+        <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} disabled={lockRateCardContext} />
         Active
       </label>
 

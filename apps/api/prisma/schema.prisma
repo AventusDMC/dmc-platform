@@ -1861,6 +1861,7 @@ model VehicleRate {
   maxPax        Int
   price         Float
   currency      String
+  notes         String?
   active        Boolean              @default(true)
   validFrom     DateTime
   validTo       DateTime

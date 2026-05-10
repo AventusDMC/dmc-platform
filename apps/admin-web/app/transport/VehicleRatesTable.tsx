@@ -61,6 +61,7 @@ export type VehicleRate = {
   maxPax: number;
   price: number;
   currency: string;
+  notes?: string | null;
   active: boolean;
   validFrom: string;
   validTo: string;
@@ -782,6 +783,17 @@ function getRateCardDuplicateKey(data: { supplierId?: string | null; supplierNam
   const supplierKey = data.supplierId || normalizeSupplierKey(data.supplierName) || 'unassigned supplier';
   const routeKey = data.routeId || normalizeTransportRouteText(data.routeName || '') || 'unassigned route';
   return [supplierKey, routeKey, data.currency.trim().toUpperCase(), data.validFrom.slice(0, 10), data.validTo.slice(0, 10)].join('|');
+}
+
+function withRateCardSupplier(rate: VehicleRate, rateCard: SupplierRateCard): VehicleRate {
+  const supplierId = rate.supplierId || rate.supplier?.id || rateCard.supplierId || '';
+
+  return {
+    ...rate,
+    supplierId: supplierId || null,
+    supplierName: rate.supplierName || rate.supplier?.name || rateCard.supplierName,
+    supplier: rate.supplier || (supplierId ? { id: supplierId, name: rateCard.supplierName } : null),
+  };
 }
 
 export function VehicleRatesTable({
@@ -2182,15 +2194,15 @@ export function VehicleRatesTable({
                                         <td>{rate.minPax} - {rate.maxPax}</td>
                                         <td>{rate.currency} {rate.price.toFixed(2)}</td>
                                         <td>{formatDate(rate.validFrom)} - {formatDate(rate.validTo)}</td>
-                                        <td>{formatDash(rate.discountNotes || rate.guideSeatPolicy)}</td>
+                                        <td>{formatDash(rate.notes || rate.discountNotes || rate.guideSeatPolicy)}</td>
                                         <td>
                                           <div className="table-action-row">
                                             {isLocalVehicleSectionRate(rate) ? null : (
                                               <>
-                                                <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
+                                                <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate: withRateCardSupplier(rate, rateCard) })}>
                                                   Edit
                                                 </button>
-                                                <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />
+                                                <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate: withRateCardSupplier(rate, rateCard) })} />
                                               </>
                                             )}
                                             <button
@@ -2301,7 +2313,7 @@ export function VehicleRatesTable({
                                   </td>
                                   <td>{rate.price.toFixed(2)}</td>
                                   <td>{rate.currency}</td>
-                                  <td>{formatDash(rate.discountNotes || rate.guideSeatPolicy)}</td>
+                                  <td>{formatDash(rate.notes || rate.discountNotes || rate.guideSeatPolicy)}</td>
                                   <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
                                   <td>
                                     {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
@@ -2311,10 +2323,10 @@ export function VehicleRatesTable({
                                     <div className="table-action-row">
                                       {isLocalVehicleSectionRate(rate) ? null : (
                                         <>
-                                          <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate })}>
+                                          <button type="button" className="compact-button" onClick={() => setActiveForm({ mode: 'edit-line', rate: withRateCardSupplier(rate, rateCard) })}>
                                             Edit
                                           </button>
-                                          <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />
+                                          <DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate: withRateCardSupplier(rate, rateCard) })} />
                                         </>
                                       )}
                                       <button
@@ -2672,9 +2684,11 @@ export function VehicleRatesTable({
                 routes={routes}
                 rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}
                 submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}
+                lockRateCardContext={activeForm.mode === 'duplicate-line'}
                 initialValues={{
                   vehicleId: activeForm.rate.vehicleId,
                   serviceTypeId: activeForm.rate.serviceTypeId,
+                  supplierId: activeForm.rate.supplierId || activeForm.rate.supplier?.id || null,
                   routeId: activeForm.rate.routeId || '',
                   fromPlaceId: activeForm.rate.fromPlaceId || '',
                   toPlaceId: activeForm.rate.toPlaceId || '',
@@ -2683,6 +2697,7 @@ export function VehicleRatesTable({
                   maxPax: String(activeForm.rate.maxPax),
                   price: String(activeForm.rate.price),
                   currency: normalizeSupportedCurrency(activeForm.rate.currency),
+                  notes: activeForm.rate.notes || '',
                   active: activeForm.rate.active,
                   validFrom: activeForm.rate.validFrom.slice(0, 10),
                   validTo: activeForm.rate.validTo.slice(0, 10),

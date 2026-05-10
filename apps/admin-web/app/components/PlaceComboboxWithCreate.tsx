@@ -21,6 +21,7 @@ type PlaceComboboxWithCreateProps = {
   onChange: (value: string) => void;
   onPlaceCreated: (place: PlaceOption) => Promise<void> | void;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 export function PlaceComboboxWithCreate({
@@ -33,6 +34,7 @@ export function PlaceComboboxWithCreate({
   onChange,
   onPlaceCreated,
   placeholder,
+  disabled = false,
 }: PlaceComboboxWithCreateProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -107,8 +109,8 @@ export function PlaceComboboxWithCreate({
 
   return (
     <div className="place-field">
-      <PlaceCombobox label={label} places={places} value={value} onChange={onChange} placeholder={placeholder} />
-      <div className="inline-create-action-row">
+      <PlaceCombobox label={label} places={places} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled} />
+      {!disabled ? <div className="inline-create-action-row">
         <button
           type="button"
           className="secondary-button inline-create-trigger"
@@ -124,7 +126,7 @@ export function PlaceComboboxWithCreate({
         >
           {isCreateOpen ? 'Cancel place' : '+ Create place'}
         </button>
-      </div>
+      </div> : null}
 
       {isCreateOpen ? (
         <div className="inline-create-panel">

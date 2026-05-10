@@ -133,12 +133,39 @@ describe('transport catalog supplier rate-card UX', () => {
 
   it('keeps existing edit duplicate and delete actions rendered', () => {
     expectSourceContains(tableSource, [
-      "onClick={() => setActiveForm({ mode: 'edit-line', rate })}",
-      "<DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate })} />",
+      "onClick={() => setActiveForm({ mode: 'edit-line', rate: withRateCardSupplier(rate, rateCard) })}",
+      "<DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate: withRateCardSupplier(rate, rateCard) })} />",
       'onClick={() => handleDelete(rate)}',
       '<VehicleRatesForm',
       "rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}",
       "submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}",
+    ]);
+  });
+
+  it('duplicates supplier pricing rows inside the same grouped rate-card context', () => {
+    expectSourceContains(tableSource, [
+      'function withRateCardSupplier(rate: VehicleRate, rateCard: SupplierRateCard): VehicleRate',
+      "const supplierId = rate.supplierId || rate.supplier?.id || rateCard.supplierId || '';",
+      'supplierId: supplierId || null,',
+      'supplierName: rate.supplierName || rate.supplier?.name || rateCard.supplierName',
+      "lockRateCardContext={activeForm.mode === 'duplicate-line'}",
+      "supplierId: activeForm.rate.supplierId || activeForm.rate.supplier?.id || null",
+      "routeId: activeForm.rate.routeId || ''",
+      "vehicleId: activeForm.rate.vehicleId",
+      "currency: normalizeSupportedCurrency(activeForm.rate.currency)",
+      "notes: activeForm.rate.notes || ''",
+      "validFrom: activeForm.rate.validFrom.slice(0, 10)",
+      "validTo: activeForm.rate.validTo.slice(0, 10)",
+    ]);
+
+    expectSourceContains(vehicleRatesFormSource, [
+      'lockRateCardContext?: boolean;',
+      'supplierId?: string | null;',
+      "const [supplierId] = useState(initialValues?.supplierId || '');",
+      'supplierId: supplierId || null,',
+      'notes: notes.trim() || null,',
+      'disabled={vehicles.length === 0 || lockRateCardContext}',
+      'disabled={lockRateCardContext}',
     ]);
   });
 

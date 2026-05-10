@@ -9,9 +9,10 @@ type PlaceComboboxProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 };
 
-export function PlaceCombobox({ label, places, value, onChange, placeholder }: PlaceComboboxProps) {
+export function PlaceCombobox({ label, places, value, onChange, placeholder, disabled = false }: PlaceComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 
@@ -48,7 +49,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder }: P
             onChange('');
             setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => setIsOpen(!disabled)}
           onBlur={() => {
             window.setTimeout(() => {
               setIsOpen(false);
@@ -57,8 +58,9 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder }: P
           }}
           placeholder={placeholder}
           autoComplete="off"
+          disabled={disabled}
         />
-        {value ? (
+        {value && !disabled ? (
           <button
             type="button"
             className="secondary-button search-combobox-clear"

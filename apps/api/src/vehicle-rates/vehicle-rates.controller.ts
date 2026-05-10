@@ -17,6 +17,7 @@ type CreateVehicleRateBody = {
   maxPax: number;
   price: number;
   currency: string;
+  notes?: string | null;
   active?: boolean;
   validFrom: string;
   validTo: string;
@@ -153,6 +154,7 @@ export class VehicleRatesController {
       maxPax: Number(body.maxPax),
       price: Number(body.price),
       currency: body.currency,
+      notes: body.notes === undefined ? undefined : body.notes || null,
       active: body.active,
       validFrom: new Date(body.validFrom),
       validTo: new Date(body.validTo),
@@ -189,6 +191,7 @@ export class VehicleRatesController {
       maxPax: body.maxPax === undefined ? undefined : Number(body.maxPax),
       price: body.price === undefined ? undefined : Number(body.price),
       currency: body.currency,
+      notes: body.notes === undefined ? undefined : body.notes || null,
       active: body.active,
       validFrom: body.validFrom === undefined ? undefined : new Date(body.validFrom),
       validTo: body.validTo === undefined ? undefined : new Date(body.validTo),

@@ -23,6 +23,7 @@ type CreateVehicleRateInput = {
   maxPax: number;
   price: number;
   currency: string;
+  notes?: string | null;
   active?: boolean;
   validFrom: Date;
   validTo: Date;
@@ -40,6 +41,7 @@ type UpdateVehicleRateInput = {
   maxPax?: number;
   price?: number;
   currency?: string;
+  notes?: string | null;
   active?: boolean;
   validFrom?: Date;
   validTo?: Date;
@@ -973,6 +975,7 @@ export class VehicleRatesService {
         maxPax: data.maxPax,
         price: ensureValidNumber(data.price, 'price', { min: 0 }),
         currency: data.currency.trim().toUpperCase(),
+        notes: data.notes?.trim() || null,
         active: data.active ?? true,
         validFrom: data.validFrom,
         validTo: data.validTo,
@@ -1012,6 +1015,7 @@ export class VehicleRatesService {
       maxPax: existing.maxPax,
       price: existing.price,
       currency: existing.currency,
+      notes: existing.notes,
       active: existing.active,
       validFrom: existing.validFrom,
       validTo: existing.validTo,
@@ -1121,6 +1125,7 @@ export class VehicleRatesService {
         maxPax,
         price: data.price === undefined ? undefined : ensureValidNumber(data.price, 'price', { min: 0 }),
         currency: data.currency === undefined ? undefined : data.currency.trim().toUpperCase(),
+        notes: data.notes === undefined ? undefined : data.notes?.trim() || null,
         active,
         validFrom,
         validTo,

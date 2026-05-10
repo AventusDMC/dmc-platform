@@ -11,6 +11,7 @@ type RouteComboboxProps = {
   placeholder?: string;
   emptyText?: string;
   maxResults?: number;
+  disabled?: boolean;
 };
 
 function formatRouteOptionTitle(route: RouteOption) {
@@ -21,7 +22,7 @@ function formatRouteOptionDetail(route: RouteOption) {
   return [route.name && route.name !== formatRouteOptionTitle(route) ? route.name : null, route.routeType, route.notes].filter(Boolean).join(' | ');
 }
 
-export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.', maxResults = 50 }: RouteComboboxProps) {
+export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.', maxResults = 50, disabled = false }: RouteComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
 
@@ -66,7 +67,7 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
             onChange('');
             setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(true)}
+          onFocus={() => setIsOpen(!disabled)}
           onBlur={() => {
             window.setTimeout(() => {
               setIsOpen(false);
@@ -75,8 +76,9 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
           }}
           placeholder={placeholder}
           autoComplete="off"
+          disabled={disabled}
         />
-        {value ? (
+        {value && !disabled ? (
           <button
             type="button"
             className="secondary-button search-combobox-clear"
