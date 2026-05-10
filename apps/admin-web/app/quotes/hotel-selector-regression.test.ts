@@ -46,11 +46,18 @@ describe('quote hotel selector catalog loading', () => {
   it('shows HB when a selected contract has an HB supplement even if rates are BB based', () => {
     expectSourceContains(quoteItemsFormSource, [
       'function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null)',
+      'function calculateHbSupplementPreviewTotal(contract: HotelContract | null, roomCategoryId: string | null | undefined, pax: number, rooms: number, nights: number)',
       "type === 'EXTRA_DINNER'",
       "...occupancyFilteredRates.map((rate) => rate.mealPlan)",
       "contractHasHbSupplement(selectedHotelContract, roomCategoryId) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')",
       "selectedHotelBaseRate",
       "rate.mealPlan === 'BB'",
+      "const isSupplementDerivedHotelMealPlan = mealPlan === 'HB' && selectedHotelBaseRate?.mealPlan === 'BB' && !selectedHotelRate;",
+      'const hotelPreviewSupplementTotal = isSupplementDerivedHotelMealPlan',
+      'hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal',
+      'setHotelCostCalculation(null);',
+      'if (isHotelService) {',
+      'return Number.isFinite(hotelEffectiveTotalCost) ? hotelEffectiveTotalCost : null;',
     ]);
   });
 });

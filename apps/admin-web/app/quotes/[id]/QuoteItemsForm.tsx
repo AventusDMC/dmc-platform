@@ -821,6 +821,28 @@ function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?
   );
 }
 
+function calculateHbSupplementPreviewTotal(contract: HotelContract | null, roomCategoryId: string | null | undefined, pax: number, rooms: number, nights: number) {
+  return Number(
+    (contract?.supplements || [])
+      .filter((supplement) => {
+        const type = String(supplement.type || '').trim().toUpperCase();
+        const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+        return supplement.isActive !== false && type === 'EXTRA_DINNER' && appliesToRoom;
+      })
+      .reduce((sum, supplement) => {
+        const amount = Number(supplement.amount || 0);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return sum;
+        }
+
+        const basis = String(supplement.chargeBasis || '').trim().toUpperCase();
+        const multiplier = basis === 'PER_ROOM' ? rooms * nights : basis === 'PER_STAY' ? 1 : basis === 'PER_NIGHT' ? nights : pax * nights;
+        return sum + amount * multiplier;
+      }, 0)
+      .toFixed(2),
+  );
+}
+
 export function QuoteItemsForm({
   apiBaseUrl,
   quoteId,
@@ -1322,6 +1344,10 @@ export function QuoteItemsForm({
     : manualHotelRateDraft
       ? Number(manualHotelRateDraft.cost || 0)
       : 0;
+  const isSupplementDerivedHotelMealPlan = mealPlan === 'HB' && selectedHotelBaseRate?.mealPlan === 'BB' && !selectedHotelRate;
+  const hotelPreviewSupplementTotal = isSupplementDerivedHotelMealPlan
+    ? calculateHbSupplementPreviewTotal(selectedHotelContract, roomCategoryId, hotelPreviewPax, hotelPreviewRooms, hotelPreviewNights)
+    : 0;
   const hotelPreviewMultiplier = hotelPreviewPricingBasis === 'PER_PERSON' ? hotelPreviewPax : hotelPreviewRooms;
   const hotelPreviewMultiplierLabel =
     hotelPreviewPricingBasis === 'PER_PERSON'
@@ -1329,7 +1355,7 @@ export function QuoteItemsForm({
       : `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
   const hotelCalculatedTotalCost = hotelCostCalculation
     ? Number(hotelCostCalculation.totalCost || 0)
-    : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights).toFixed(2));
+    : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal).toFixed(2));
   const hotelEffectiveTotalCost = useOverride && overrideCost.trim()
     ? Number(overrideCost)
     : hotelCalculatedTotalCost;
@@ -1392,6 +1418,10 @@ export function QuoteItemsForm({
       return Number(overrideCost);
     }
 
+    if (isHotelService) {
+      return Number.isFinite(hotelEffectiveTotalCost) ? hotelEffectiveTotalCost : null;
+    }
+
     if (isActivityService) {
       const unitCost = Number(selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice ?? baseCost ?? 0);
       const participants = Math.max(
@@ -1426,8 +1456,10 @@ export function QuoteItemsForm({
     externalPackage,
     isActivityService,
     isExternalPackageService,
+    isHotelService,
     isMealService,
     isTicketingService,
+    hotelEffectiveTotalCost,
     mealCost,
     overrideCost,
     participantCount,
@@ -1761,6 +1793,7 @@ export function QuoteItemsForm({
       return;
     }
 
+    setHotelCostCalculation(null);
     if (hotelCostDebounceRef.current) {
       clearTimeout(hotelCostDebounceRef.current);
     }
@@ -3800,6 +3833,12 @@ export function QuoteItemsForm({
                   <span>Multiplier</span>
                   <strong>{hotelPreviewMultiplierLabel}</strong>
                 </div>
+                {hotelPreviewSupplementTotal > 0 ? (
+                  <div>
+                    <span>Meal supplements</span>
+                    <strong>{displayCurrency} {hotelPreviewSupplementTotal.toFixed(2)}</strong>
+                  </div>
+                ) : null}
                 <div>
                   <span>Total cost</span>
                   <strong>{displayCurrency} {hotelCalculatedTotalCost.toFixed(2)}</strong>
@@ -3841,9 +3880,15 @@ export function QuoteItemsForm({
                     <strong>{displayCurrency} {hotelPreviewUnitRate.toFixed(2)}</strong>
                   </div>
                   <div>
-                    <span>Multiplier</span>
-                    <strong>{hotelPreviewMultiplierLabel}</strong>
+                  <span>Multiplier</span>
+                  <strong>{hotelPreviewMultiplierLabel}</strong>
                   </div>
+                  {hotelPreviewSupplementTotal > 0 ? (
+                    <div>
+                      <span>Meal supplements</span>
+                      <strong>{displayCurrency} {hotelPreviewSupplementTotal.toFixed(2)}</strong>
+                    </div>
+                  ) : null}
                   <div>
                     <span>Total cost</span>
                     <strong>{displayCurrency} {hotelEffectiveTotalCost.toFixed(2)}</strong>

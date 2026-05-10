@@ -3263,7 +3263,6 @@ export class QuotesService {
             : { seasonName: requestedSeasonName }),
           roomCategoryId: data.roomCategoryId,
           occupancyType: data.occupancyType,
-          mealPlan: data.mealPlan,
           hotelId: data.hotelId,
           contract: {
             hotelId: data.hotelId,

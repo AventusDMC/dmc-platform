@@ -1340,6 +1340,97 @@ test('quote hotel supplement cost appears in summary total and still uses sellin
   );
 });
 
+test('quote save accepts HB derived from BB rate plus HB supplement without direct HB rate row', async () => {
+  let capturedHotelRateWhere: any = null;
+  const service = createQuotesService({
+    quote: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'quote-1'
+          ? {
+              id: 'quote-1',
+              quoteCurrency: 'USD',
+              adults: 2,
+              children: 0,
+              roomCount: 1,
+              nightCount: 2,
+              travelStartDate: null,
+              createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            }
+          : null,
+      findFirst: async () => null,
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'hotel-service'
+          ? {
+              id: 'hotel-service',
+              name: 'Confirmed Hotel Stay',
+              category: 'Hotel',
+              unitType: 'per_person',
+              baseCost: 0,
+              currency: 'USD',
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              serviceType: { name: 'Hotel', code: 'HOTEL' },
+              serviceRates: [],
+              ticketRateVariants: [],
+            }
+          : null,
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+    hotelRate: {
+      findMany: async ({ where }: any) => {
+        capturedHotelRateWhere = where;
+        return [
+          createHotelLookupRate({
+            cost: 45,
+            pricingBasis: 'PER_PERSON',
+            supplements: [
+              {
+                id: 'hb-supplement',
+                type: 'EXTRA_DINNER',
+                amount: 10,
+                chargeBasis: 'PER_PERSON',
+                isActive: true,
+                isMandatory: false,
+              },
+            ],
+          }),
+        ];
+      },
+    },
+  });
+
+  const result = await (service as any).resolveQuoteItemValues({
+    quoteId: 'quote-1',
+    serviceId: 'hotel-service',
+    serviceDate: new Date('2026-06-01T09:00:00.000Z'),
+    hotelId: 'hotel-1',
+    contractId: 'contract-1',
+    seasonName: 'Imported',
+    roomCategoryId: 'room-1',
+    occupancyType: 'DBL',
+    mealPlan: 'HB',
+    quantity: 1,
+    paxCount: 2,
+    roomCount: 1,
+    nightCount: 2,
+    markupPercent: 0,
+  });
+
+  assert.equal(capturedHotelRateWhere.mealPlan, undefined);
+  assert.equal(result.data.mealPlan, 'HB');
+  assert.equal(result.data.baseCost, 55);
+  assert.equal(result.data.totalCost, 220);
+  assert.match(result.data.pricingDescription, /HB$/);
+});
+
 test('hotel supplements follow tax-inclusive and tax-exclusive quote settings without double tax', async () => {
   const hotelRates = new HotelRatesService({
     hotelRate: {
