@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { HotelMealPlan, HotelOccupancyType, HotelRatePricingBasis } from '@prisma/client';
 import { ensureValidNumber, normalizeOptionalSupportedCurrency, requireSupportedCurrency, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 type TourismFeeMode = 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM';
 type HotelRatePricingMode = 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT';
@@ -86,6 +87,8 @@ type ContractSupplementPolicy = {
 
 @Injectable()
 export class HotelRatesService {
+  private readonly hotelPricingResolver = new HotelPricingResolver();
+
   constructor(private readonly prisma: PrismaService) {}
 
   findAll(options: FindHotelRatesOptions = {}) {
@@ -402,7 +405,15 @@ export class HotelRatesService {
       throw new BadRequestException('checkOutDate must be after checkInDate');
     }
 
-    const breakdown: Array<{ date: string; adultsCost: number; childrenCost: number; supplementsCost: number; cost: number }> = [];
+    const breakdown: Array<{
+      date: string;
+      adultsCost: number;
+      childrenCost: number;
+      supplementsCost: number;
+      cost: number;
+      lines?: Array<{ kind: string; label: string; basis: string; unitAmount: number; quantity: number; total: number }>;
+      warnings?: string[];
+    }> = [];
 
     let nightIndex = 0;
     for (let current = new Date(checkInDate); current < checkOutDate; current = this.addDays(current, 1)) {
@@ -415,24 +426,65 @@ export class HotelRatesService {
         roomCategoryId: data.roomCategoryId || null,
         pax,
       });
-      const pricedNight = this.calculateNightlyGuestCost(
-        rate.cost,
-        rate.pricingBasis,
-        adults,
-        childrenAges,
-        roomCount,
-        this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId),
-        occupancy,
-        mealPlan,
-        nightIndex === 0,
-      );
-      breakdown.push({
-        date: this.formatDateOnly(current),
-        adultsCost: pricedNight.adultsCost,
-        childrenCost: pricedNight.childrenCost,
-        supplementsCost: pricedNight.supplementsCost,
-        cost: pricedNight.totalCost,
-      });
+      const canUseMasterResolver = childrenAges.length === 0 && !Array.isArray(rate.contract?.ratePolicies);
+      if (canUseMasterResolver) {
+        const pricedNight = this.hotelPricingResolver.resolve({
+          pax,
+          rooms: roomCount,
+          nights: 1,
+          adults,
+          children: 0,
+          selectedMealPlan: mealPlan,
+          baseMealPlan: this.normalizeMealPlan(rate.mealPlan),
+          selectedRoomCategoryId: rate.roomCategoryId,
+          rates: [
+            {
+              id: rate.id,
+              label: `${rate.roomCategory?.name || 'Room'} ${rate.occupancyType} ${rate.mealPlan}`,
+              amount: rate.cost,
+              basis: rate.pricingBasis,
+              mealPlan: rate.mealPlan,
+              roomCategoryId: rate.roomCategoryId,
+              occupancyType: rate.occupancyType,
+              isSelected: true,
+            },
+          ],
+          supplements: this.toHotelPricingSupplements(rate.contract?.supplements, data.selectedSupplementIds),
+        });
+        breakdown.push({
+          date: this.formatDateOnly(current),
+          adultsCost: pricedNight.baseCost,
+          childrenCost: 0,
+          supplementsCost: pricedNight.supplementCost,
+          cost: pricedNight.totalCost,
+          lines: pricedNight.breakdown,
+          warnings: pricedNight.warnings,
+        });
+      } else {
+        const pricedNight = this.calculateNightlyGuestCost(
+          rate.cost,
+          rate.pricingBasis,
+          adults,
+          childrenAges,
+          roomCount,
+          this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId),
+          occupancy,
+          mealPlan,
+          nightIndex === 0,
+        );
+        breakdown.push({
+          date: this.formatDateOnly(current),
+          adultsCost: pricedNight.adultsCost,
+          childrenCost: pricedNight.childrenCost,
+          supplementsCost: pricedNight.supplementsCost,
+          cost: pricedNight.totalCost,
+          lines: [
+            { kind: 'base', label: 'Room/person base', basis: String(rate.pricingBasis || ''), unitAmount: rate.cost, quantity: 1, total: pricedNight.adultsCost + pricedNight.childrenCost },
+            { kind: 'supplement', label: 'Supplements', basis: 'POLICY', unitAmount: pricedNight.supplementsCost, quantity: 1, total: pricedNight.supplementsCost },
+          ].filter((line) => line.total > 0),
+          warnings: [],
+        });
+      }
       nightIndex += 1;
     }
 
@@ -701,6 +753,26 @@ export class HotelRatesService {
         };
       })
       .filter((policy): policy is RatePolicy => Boolean(policy));
+  }
+
+  private toHotelPricingSupplements(supplements: unknown, selectedSupplementIds?: string[] | null) {
+    if (!Array.isArray(supplements)) {
+      return [];
+    }
+
+    const selectedIds = new Set((selectedSupplementIds || []).map((id) => String(id)));
+    return supplements.map((supplement: ContractSupplementPolicy) => ({
+      id: supplement.id ?? null,
+      label: supplement.notes ?? supplement.type ?? null,
+      type: supplement.type ?? null,
+      amount: Number(supplement.amount || 0),
+      basis: supplement.chargeBasis ?? null,
+      chargeBasis: supplement.chargeBasis ?? null,
+      roomCategoryId: supplement.roomCategoryId ?? null,
+      isMandatory: supplement.isMandatory ?? false,
+      isActive: supplement.isActive ?? true,
+      isSelected: supplement.id ? selectedIds.has(String(supplement.id)) : false,
+    }));
   }
 
   private hasDerivedMealPlanSupplement(supplements: unknown, requestedMealPlan: HotelMealPlan, baseMealPlan: HotelMealPlan, roomCategoryId?: string | null) {

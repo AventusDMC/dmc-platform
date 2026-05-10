@@ -156,6 +156,12 @@ describe('pricing diagnostics', () => {
     assert.ok(quoteServicePlannerSource.includes('buildPricingDiagnostics(item)'));
   });
 
+  it('renders quote item cards from saved totals instead of recalculating hotel totals', () => {
+    assert.ok(quoteItemCardSource.includes('Sell {formatMoney(currentItem.totalSell, currentItem.currency)}'));
+    assert.ok(quoteItemCardSource.includes('Cost {formatMoney(currentItem.totalCost, currentItem.currency)}'));
+    assert.ok(quoteItemCardSource.includes('<strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>'));
+  });
+
   it('surfaces pricing policy dry-run rows in admin diagnostics', () => {
     const diagnostics = buildPricingDiagnostics({
       totalCost: 100,

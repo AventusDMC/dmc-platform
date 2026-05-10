@@ -55,6 +55,7 @@ describe('quote hotel selector catalog loading', () => {
       'const hotelPreviewSupplementTotal = calculateHotelSupplementPreviewTotal(',
       "hotelPreviewPricingBasis === 'PER_PERSON'",
       'hotelPreviewPax',
+      'const hotelPricingBreakdownLines = hotelCostCalculation?.breakdown.flatMap',
       'hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal',
       'setHotelCostCalculation(null);',
       'if (isHotelService) {',

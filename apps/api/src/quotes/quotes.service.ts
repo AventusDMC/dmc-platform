@@ -36,6 +36,7 @@ import { buildProposalPricingViewModel } from './proposal-pricing';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
 import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
+import { HotelPricingResolver } from '../hotel-pricing/hotel-pricing.resolver';
 
 
 const GUIDE_RATES = {
@@ -3314,18 +3315,35 @@ export class QuotesService {
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
       hotelRoomRateCost = hotelRate.cost;
       hotelBaseRatePricingBasis = hotelRate.pricingBasis;
-      hotelSupplementTotal = this.calculateHotelSupplementTotal(
-        hotelRate.contract?.supplements,
-        hotelRate.roomCategoryId,
-        requestedMealPlan,
-        hotelRate.mealPlan,
-        paxCount,
-        roomCount,
-        nightCount,
+      const hotelPricing = new HotelPricingResolver().resolve({
+        pax: paxCount,
+        rooms: roomCount,
+        nights: nightCount,
+        adults: quote.adults,
+        children: quote.children,
+        selectedMealPlan: requestedMealPlan,
+        baseMealPlan: hotelRate.mealPlan,
+        selectedRoomCategoryId: hotelRate.roomCategoryId,
+        rates: [
+          {
+            id: hotelRate.id,
+            label: `${hotelRate.roomCategory.name} ${hotelRate.occupancyType} ${hotelRate.mealPlan}`,
+            amount: hotelRate.cost,
+            basis: hotelRate.pricingBasis,
+            mealPlan: hotelRate.mealPlan,
+            roomCategoryId: hotelRate.roomCategoryId,
+            occupancyType: hotelRate.occupancyType,
+            isSelected: true,
+          },
+        ],
+        supplements: this.toHotelPricingSupplements(hotelRate.contract?.supplements),
+      });
+      hotelSupplementTotal = hotelPricing.supplementCost;
+      baseCost = hotelPricing.totalCost;
+      supplierCostBaseAmount = Number(
+        (((hotelRate as any).costBaseAmount ?? hotelRate.cost) * this.getHotelRateBaseMultiplier(hotelRate.pricingBasis, paxCount, roomCount, nightCount) +
+          hotelSupplementTotal).toFixed(2),
       );
-      const hotelBaseMultiplier = this.getHotelRateBaseMultiplier(hotelRate.pricingBasis, paxCount, roomCount, nightCount);
-      baseCost = Number((hotelRate.cost * hotelBaseMultiplier + hotelSupplementTotal).toFixed(2));
-      supplierCostBaseAmount = Number((((hotelRate as any).costBaseAmount ?? hotelRate.cost) * hotelBaseMultiplier + hotelSupplementTotal).toFixed(2));
       hotelRatePricingBasis = 'TOTAL';
       pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${requestedMealPlan}`;
       hotelId = data.hotelId;
@@ -5195,6 +5213,24 @@ export class QuotesService {
 
   private supplementAppliesToRoom(supplement: any, roomCategoryId?: string | null) {
     return !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+  }
+
+  private toHotelPricingSupplements(supplements: unknown) {
+    if (!Array.isArray(supplements)) {
+      return [];
+    }
+
+    return supplements.map((supplement: any) => ({
+      id: supplement.id ?? null,
+      label: supplement.notes ?? supplement.type ?? null,
+      type: supplement.type ?? null,
+      amount: Number(supplement.amount || 0),
+      basis: supplement.chargeBasis ?? supplement.basis ?? null,
+      chargeBasis: supplement.chargeBasis ?? null,
+      roomCategoryId: supplement.roomCategoryId ?? null,
+      isMandatory: supplement.isMandatory ?? false,
+      isActive: supplement.isActive ?? true,
+    }));
   }
 
   private getHotelRateBaseMultiplier(

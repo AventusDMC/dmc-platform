@@ -274,11 +274,28 @@ type ResolvedTransportPricing = {
 };
 
 type HotelCostCalculation = {
+  baseCost?: number;
+  supplementCost?: number;
   totalCost: number;
+  totalSell?: number;
+  profit?: number;
+  margin?: number;
   nights: number;
   breakdown: Array<{
     date: string;
+    adultsCost?: number;
+    childrenCost?: number;
+    supplementsCost?: number;
     cost: number;
+    lines?: Array<{
+      kind: string;
+      label: string;
+      basis: string;
+      unitAmount: number;
+      quantity: number;
+      total: number;
+    }>;
+    warnings?: string[];
   }>;
 };
 
@@ -1381,6 +1398,13 @@ export function QuoteItemsForm({
   const hotelCalculatedTotalCost = hotelCostCalculation
     ? Number(hotelCostCalculation.totalCost || 0)
     : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal).toFixed(2));
+  const hotelPricingBreakdownLines = hotelCostCalculation?.breakdown.flatMap((night) =>
+    (night.lines || []).map((line) => ({
+      ...line,
+      date: night.date,
+    })),
+  ) || [];
+  const hotelPricingWarnings = hotelCostCalculation?.breakdown.flatMap((night) => night.warnings || []) || [];
   const hotelEffectiveTotalCost = useOverride && overrideCost.trim()
     ? Number(overrideCost)
     : hotelCalculatedTotalCost;
@@ -3928,6 +3952,35 @@ export function QuoteItemsForm({
                   </div>
                 </div>
               </div>
+
+              {hotelPricingBreakdownLines.length > 0 ? (
+                <div className="quote-selected-transport-card">
+                  <div className="quote-selected-transport-summary">
+                    {hotelPricingBreakdownLines.map((line, index) => (
+                      <div key={`${line.date}-${line.label}-${index}`}>
+                        <span>{line.label}</span>
+                        <strong>
+                          {displayCurrency} {Number(line.unitAmount || 0).toFixed(2)} x {Number(line.quantity || 0).toFixed(2)} = {displayCurrency}{' '}
+                          {Number(line.total || 0).toFixed(2)}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {hotelPricingWarnings.length > 0 ? (
+                <div className="quote-selected-transport-card">
+                  <div className="quote-selected-transport-summary">
+                    {hotelPricingWarnings.map((warning, index) => (
+                      <div key={`${warning}-${index}`}>
+                        <span>Pricing review</span>
+                        <strong>{warning}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <details className="quote-advanced-settings" open={useOverride || Boolean(manualHotelRateDraft)}>
                 <summary>More options</summary>
