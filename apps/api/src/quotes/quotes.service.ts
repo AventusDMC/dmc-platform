@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   BookingOperationServiceStatus,
   BookingOperationServiceType,
+  BookingRoomOccupancy,
   BookingServiceLifecycleStatus,
   BookingServiceStatus,
   BookingDayStatus,
@@ -242,6 +243,18 @@ type QuotePassengerInput = {
   mobilityNotes?: string | null;
   emergencyContact?: string | null;
   remarks?: string | null;
+};
+
+type QuoteRoomingGroupInput = {
+  itineraryDayId?: string | null;
+  hotelQuoteItemId?: string | null;
+  roomType?: string | null;
+  occupancyType?: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown' | null;
+  notes?: string | null;
+  temporaryRoomLabel?: string | null;
+  guideRoom?: boolean;
+  leaderRoom?: boolean;
+  sortOrder?: number | null;
 };
 
 type GenerateQuoteScenariosInput = {
@@ -2285,6 +2298,250 @@ export class QuotesService {
     });
 
     return { id: passengerId };
+  }
+
+  async findRoomingGroups(quoteId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    return this.findRoomingGroupsForQuote(quote.id);
+  }
+
+  async createRoomingGroup(quoteId: string, data: QuoteRoomingGroupInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const itineraryDayId = requireTrimmedString(String(data.itineraryDayId ?? ''), 'itineraryDayId');
+    const hotelQuoteItemId = requireTrimmedString(String(data.hotelQuoteItemId ?? ''), 'hotelQuoteItemId');
+    await this.assertRoomingGroupScope(quote.id, itineraryDayId, hotelQuoteItemId);
+
+    const latestGroup = await (this.prisma as any).roomingGroup.findFirst({
+      where: { quoteId: quote.id, itineraryDayId, hotelQuoteItemId },
+      select: { sortOrder: true },
+      orderBy: { sortOrder: 'desc' },
+    });
+
+    const roomingGroup = await (this.prisma as any).roomingGroup.create({
+      data: {
+        quoteId: quote.id,
+        itineraryDayId,
+        hotelQuoteItemId,
+        ...this.normalizeQuoteRoomingGroupInput(data, Number(latestGroup?.sortOrder ?? -1) + 1),
+      },
+      include: this.quoteRoomingGroupIncludeArgs(),
+    });
+
+    return roomingGroup;
+  }
+
+  async updateRoomingGroup(quoteId: string, roomingGroupId: string, data: QuoteRoomingGroupInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const existing = await (this.prisma as any).roomingGroup.findFirst({
+      where: { id: roomingGroupId, quoteId: quote.id },
+      select: {
+        id: true,
+        itineraryDayId: true,
+        hotelQuoteItemId: true,
+        sortOrder: true,
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Rooming group not found');
+    }
+
+    const itineraryDayId = data.itineraryDayId === undefined ? existing.itineraryDayId : requireTrimmedString(String(data.itineraryDayId ?? ''), 'itineraryDayId');
+    const hotelQuoteItemId = data.hotelQuoteItemId === undefined ? existing.hotelQuoteItemId : requireTrimmedString(String(data.hotelQuoteItemId ?? ''), 'hotelQuoteItemId');
+    await this.assertRoomingGroupScope(quote.id, itineraryDayId, hotelQuoteItemId);
+
+    return (this.prisma as any).roomingGroup.update({
+      where: { id: roomingGroupId },
+      data: {
+        itineraryDayId,
+        hotelQuoteItemId,
+        ...this.normalizeQuoteRoomingGroupUpdateInput(data),
+      },
+      include: this.quoteRoomingGroupIncludeArgs(),
+    });
+  }
+
+  async deleteRoomingGroup(quoteId: string, roomingGroupId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const existing = await (this.prisma as any).roomingGroup.findFirst({
+      where: { id: roomingGroupId, quoteId: quote.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Rooming group not found');
+    }
+
+    await (this.prisma as any).roomingGroup.delete({ where: { id: roomingGroupId } });
+    return { id: roomingGroupId };
+  }
+
+  async assignPassengerToRoomingGroup(quoteId: string, roomingGroupId: string, quotePassengerId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const passengerId = requireTrimmedString(String(quotePassengerId ?? ''), 'quotePassengerId');
+
+    return (this.prisma as any).$transaction(async (tx: any) => {
+      const [roomingGroup, passenger] = await Promise.all([
+        tx.roomingGroup.findFirst({
+          where: { id: roomingGroupId, quoteId: quote.id },
+          select: { id: true, quoteId: true, itineraryDayId: true, hotelQuoteItemId: true },
+        }),
+        tx.quotePassenger.findFirst({
+          where: { id: passengerId, quoteId: quote.id },
+          select: { id: true },
+        }),
+      ]);
+
+      if (!roomingGroup) {
+        throw new NotFoundException('Rooming group not found');
+      }
+
+      if (!passenger) {
+        throw new NotFoundException('Quote passenger not found');
+      }
+
+      await tx.roomingAssignment.deleteMany({
+        where: {
+          quotePassengerId: passengerId,
+          roomingGroup: {
+            quoteId: quote.id,
+            itineraryDayId: roomingGroup.itineraryDayId,
+            hotelQuoteItemId: roomingGroup.hotelQuoteItemId,
+          },
+        },
+      });
+
+      await tx.roomingAssignment.create({
+        data: {
+          roomingGroupId,
+          quotePassengerId: passengerId,
+        },
+      });
+
+      return tx.roomingGroup.findUnique({
+        where: { id: roomingGroupId },
+        include: this.quoteRoomingGroupIncludeArgs(),
+      });
+    });
+  }
+
+  async removePassengerFromRoomingGroup(quoteId: string, roomingGroupId: string, quotePassengerId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const roomingGroup = await (this.prisma as any).roomingGroup.findFirst({
+      where: { id: roomingGroupId, quoteId: quote.id },
+      select: { id: true },
+    });
+
+    if (!roomingGroup) {
+      throw new NotFoundException('Rooming group not found');
+    }
+
+    await (this.prisma as any).roomingAssignment.deleteMany({
+      where: {
+        roomingGroupId,
+        quotePassengerId,
+      },
+    });
+
+    return { roomingGroupId, quotePassengerId };
+  }
+
+  private quoteRoomingGroupIncludeArgs() {
+    return {
+      itineraryDay: {
+        select: { id: true, dayNumber: true, title: true },
+      },
+      hotelQuoteItem: {
+        select: {
+          id: true,
+          hotelId: true,
+          roomCategoryId: true,
+          pricingDescription: true,
+          occupancyType: true,
+          roomCount: true,
+          hotel: { select: { id: true, name: true } },
+          contract: { select: { id: true, name: true } },
+          roomCategory: { select: { id: true, name: true } },
+        },
+      },
+      assignments: {
+        include: {
+          quotePassenger: true,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      },
+    };
+  }
+
+  private async findRoomingGroupsForQuote(quoteId: string) {
+    return (this.prisma as any).roomingGroup.findMany({
+      where: { quoteId },
+      include: this.quoteRoomingGroupIncludeArgs(),
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  private async assertRoomingGroupScope(quoteId: string, itineraryDayId: string, hotelQuoteItemId: string) {
+    const [day, hotelItem, dayAssignment] = await Promise.all([
+      (this.prisma as any).quoteItineraryDay.findFirst({
+        where: { id: itineraryDayId, quoteId },
+        select: { id: true },
+      }),
+      (this.prisma as any).quoteItem.findFirst({
+        where: { id: hotelQuoteItemId, quoteId },
+        select: { id: true, hotelId: true },
+      }),
+      (this.prisma as any).quoteItineraryDayItem.findFirst({
+        where: { dayId: itineraryDayId, quoteServiceId: hotelQuoteItemId, isActive: true },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!day) {
+      throw new BadRequestException('Itinerary day does not belong to the selected quote');
+    }
+
+    if (!hotelItem || !hotelItem.hotelId) {
+      throw new BadRequestException('Hotel quote item does not belong to the selected quote');
+    }
+
+    if (!dayAssignment) {
+      throw new BadRequestException('Hotel quote item is not assigned to the selected itinerary day');
+    }
+  }
+
+  private normalizeQuoteRoomingGroupInput(data: QuoteRoomingGroupInput, defaultSortOrder: number) {
+    return {
+      roomType: normalizeOptionalString(data.roomType),
+      occupancyType: this.normalizeQuoteRoomOccupancy(data.occupancyType),
+      notes: normalizeOptionalString(data.notes),
+      temporaryRoomLabel: normalizeOptionalString(data.temporaryRoomLabel),
+      guideRoom: Boolean(data.guideRoom),
+      leaderRoom: Boolean(data.leaderRoom),
+      sortOrder: data.sortOrder === undefined || data.sortOrder === null ? defaultSortOrder : Math.max(0, Math.floor(Number(data.sortOrder) || 0)),
+    };
+  }
+
+  private normalizeQuoteRoomingGroupUpdateInput(data: QuoteRoomingGroupInput) {
+    const payload: Record<string, unknown> = {};
+    if (data.roomType !== undefined) payload.roomType = normalizeOptionalString(data.roomType);
+    if (data.occupancyType !== undefined) payload.occupancyType = this.normalizeQuoteRoomOccupancy(data.occupancyType);
+    if (data.notes !== undefined) payload.notes = normalizeOptionalString(data.notes);
+    if (data.temporaryRoomLabel !== undefined) payload.temporaryRoomLabel = normalizeOptionalString(data.temporaryRoomLabel);
+    if (data.guideRoom !== undefined) payload.guideRoom = Boolean(data.guideRoom);
+    if (data.leaderRoom !== undefined) payload.leaderRoom = Boolean(data.leaderRoom);
+    if (data.sortOrder !== undefined) payload.sortOrder = Math.max(0, Math.floor(Number(data.sortOrder) || 0));
+    return payload;
+  }
+
+  private normalizeQuoteRoomOccupancy(value: QuoteRoomingGroupInput['occupancyType']) {
+    const normalized = String(value || 'unknown').trim().toLowerCase() as BookingRoomOccupancy;
+    const allowedValues = Object.values(BookingRoomOccupancy) as BookingRoomOccupancy[];
+    if (!allowedValues.includes(normalized)) {
+      throw new BadRequestException('Invalid occupancy type');
+    }
+
+    return normalized;
   }
 
   private normalizeQuotePassengerCreateInput(data: QuotePassengerInput) {

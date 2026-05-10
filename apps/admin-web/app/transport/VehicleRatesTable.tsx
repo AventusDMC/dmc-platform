@@ -26,9 +26,9 @@ import {
 } from '../lib/manual-supplier-rate-cards';
 import {
   deriveTransportPricingMode,
-  normalizeTransportPricingMode,
+  getTransportPricingModeClassification,
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
-  TRANSPORT_PRICING_MODES,
+  TRANSPORT_RATE_CARD_PRICING_MODES,
   type TransportPricingMode as PricingMode,
 } from '../lib/transport-pricing-modes';
 import {
@@ -224,24 +224,8 @@ const DISCOUNT_APPLIES_TO_OPTIONS: DiscountAppliesTo[] = [
 const SERVICE_CATEGORIES: ServiceCategory[] = ['Transfers', 'Disposal', 'Add-ons'];
 const vehicleTypeLabelCache = new Map<string, string>();
 
-function getPricingModeClassification(pricingMode: PricingMode) {
-  if (pricingMode === 'Half Day') {
-    return 'HALF_DAY';
-  }
-
-  if (pricingMode === 'Full Day' || pricingMode === 'Day Tour') {
-    return 'FULL_DAY';
-  }
-
-  if (pricingMode === 'Add-on / Supplement' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Driver Overnight') {
-    return 'ADD_ON';
-  }
-
-  return 'ROUTE_TRANSFER';
-}
-
 function createEmptyPricingModeRates() {
-  return TRANSPORT_PRICING_MODES.reduce<Record<string, string>>((rates, mode) => {
+  return TRANSPORT_RATE_CARD_PRICING_MODES.reduce<Record<string, string>>((rates, mode) => {
     rates[mode] = '';
     return rates;
   }, {});
@@ -1209,7 +1193,7 @@ export function VehicleRatesTable({
       serviceType: {
         name: pricingMode,
         code: pricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-        classification: getPricingModeClassification(pricingMode),
+        classification: getTransportPricingModeClassification(pricingMode),
       },
       contractDiscountPercent: rate.contractDiscountPercent,
       grossRate: rate.grossRate,
@@ -1469,7 +1453,7 @@ export function VehicleRatesTable({
       return;
     }
 
-    const enteredRates = TRANSPORT_PRICING_MODES.map((mode) => ({
+    const enteredRates = TRANSPORT_RATE_CARD_PRICING_MODES.map((mode) => ({
       pricingMode: mode,
       amount: Number(vehicleSectionDraft.rates[mode]),
       rawAmount: vehicleSectionDraft.rates[mode],
@@ -1511,7 +1495,7 @@ export function VehicleRatesTable({
       serviceType: {
         name: entry.pricingMode,
         code: entry.pricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-        classification: getPricingModeClassification(entry.pricingMode),
+        classification: getTransportPricingModeClassification(entry.pricingMode),
       },
       route: selectedRoute,
     }));
@@ -1583,7 +1567,7 @@ export function VehicleRatesTable({
             serviceType: {
               name: manualPricingMode,
               code: manualPricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-              classification: getPricingModeClassification(manualPricingMode),
+              classification: getTransportPricingModeClassification(manualPricingMode),
             },
             grossRate,
             contractDiscountPercent: Number.isFinite(discountPercent) ? discountPercent : 0,
@@ -2111,7 +2095,7 @@ export function VehicleRatesTable({
                       </label>
                       {vehicleSectionAlreadyExists ? <p className="form-error">This vehicle type already exists inside this supplier rate card.</p> : null}
                       <div className="transport-rate-card-summary">
-                        {TRANSPORT_PRICING_MODES.map((mode) => (
+                        {TRANSPORT_RATE_CARD_PRICING_MODES.map((mode) => (
                           <label key={mode}>
                             {mode}
                             <input
@@ -2505,7 +2489,7 @@ export function VehicleRatesTable({
                   <label>
                     Pricing Mode
                     <select value={manualPricingMode} onChange={(event) => setManualPricingMode(event.target.value as PricingMode)}>
-                      {TRANSPORT_PRICING_MODES.map((mode) => (
+                      {TRANSPORT_RATE_CARD_PRICING_MODES.map((mode) => (
                         <option key={mode} value={mode}>
                           {mode}
                         </option>

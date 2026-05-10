@@ -612,6 +612,14 @@ async function seedTransportServiceTypes(prisma: PrismaService) {
     { name: 'Departure Transfer', code: 'DEP' },
     { name: 'Intercity Transfer', code: 'INT' },
     { name: 'Excursion Transfer', code: 'EXC' },
+    { name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+    { name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
+    { name: 'Half Day', code: 'HALF_DAY', classification: 'HALF_DAY' },
+    { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+    { name: 'Day Tour', code: 'DAY_TOUR', classification: 'FULL_DAY' },
+    { name: 'Stationary / Waiting', code: 'STATIONARY_WAITING', classification: 'ADD_ON' },
+    { name: 'Extra Hour', code: 'EXTRA_HOUR', classification: 'ADD_ON' },
+    { name: 'Extra KM', code: 'EXTRA_KM', classification: 'ADD_ON' },
   ];
 
   const records = await Promise.all(

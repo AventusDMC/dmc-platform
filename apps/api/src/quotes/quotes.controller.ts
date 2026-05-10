@@ -12,7 +12,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common';
-import { HotelMealPlan, HotelOccupancyType, QuoteOptionKind, QuoteStatus } from '@prisma/client';
+import { BookingRoomOccupancy, HotelMealPlan, HotelOccupancyType, QuoteOptionKind, QuoteStatus } from '@prisma/client';
 import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { ProposalV3Service } from './proposal-v3.service';
@@ -82,6 +82,22 @@ type QuotePassengerBody = {
   mobilityNotes?: string | null;
   emergencyContact?: string | null;
   remarks?: string | null;
+};
+
+type QuoteRoomingGroupBody = {
+  itineraryDayId?: string | null;
+  hotelQuoteItemId?: string | null;
+  roomType?: string | null;
+  occupancyType?: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown' | null;
+  notes?: string | null;
+  temporaryRoomLabel?: string | null;
+  guideRoom?: boolean;
+  leaderRoom?: boolean;
+  sortOrder?: number | null;
+};
+
+type QuoteRoomingAssignmentBody = {
+  quotePassengerId?: string | null;
 };
 
 type UpdateQuoteStatusBody = {
@@ -848,6 +864,100 @@ export class QuotesController {
     }
 
     return this.quotesService.removePassenger(id, passengerId, actor);
+  }
+
+  @Get(':id/rooming')
+  async findRoomingGroups(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.findRoomingGroups(id, actor);
+  }
+
+  @Post(':id/rooming')
+  @Roles('admin', 'operations', 'viewer')
+  async createRoomingGroup(
+    @Param('id') id: string,
+    @Body() body: QuoteRoomingGroupBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.createRoomingGroup(id, body, actor);
+  }
+
+  @Patch(':id/rooming/:roomingGroupId')
+  @Roles('admin', 'operations', 'viewer')
+  async updateRoomingGroup(
+    @Param('id') id: string,
+    @Param('roomingGroupId') roomingGroupId: string,
+    @Body() body: QuoteRoomingGroupBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.updateRoomingGroup(id, roomingGroupId, body, actor);
+  }
+
+  @Delete(':id/rooming/:roomingGroupId')
+  @Roles('admin', 'operations', 'viewer')
+  async deleteRoomingGroup(
+    @Param('id') id: string,
+    @Param('roomingGroupId') roomingGroupId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.deleteRoomingGroup(id, roomingGroupId, actor);
+  }
+
+  @Post(':id/rooming/:roomingGroupId/assignments')
+  @Roles('admin', 'operations', 'viewer')
+  async assignPassengerToRoomingGroup(
+    @Param('id') id: string,
+    @Param('roomingGroupId') roomingGroupId: string,
+    @Body() body: QuoteRoomingAssignmentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.assignPassengerToRoomingGroup(id, roomingGroupId, body.quotePassengerId || '', actor);
+  }
+
+  @Delete(':id/rooming/:roomingGroupId/assignments/:quotePassengerId')
+  @Roles('admin', 'operations', 'viewer')
+  async removePassengerFromRoomingGroup(
+    @Param('id') id: string,
+    @Param('roomingGroupId') roomingGroupId: string,
+    @Param('quotePassengerId') quotePassengerId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.removePassengerFromRoomingGroup(id, roomingGroupId, quotePassengerId, actor);
   }
 
   @Post(':id/items')

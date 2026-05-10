@@ -1044,6 +1044,7 @@ model QuoteItem {
   option                             QuoteOption?            @relation(fields: [optionId], references: [id], onDelete: Cascade)
   quote                              Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   quoteItineraryDayItems             QuoteItineraryDayItem[]
+  roomingGroups                      RoomingGroup[]
   roomCategory                       HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
   service                            SupplierService?        @relation(fields: [serviceId], references: [id])
   ticketRateVariant                  TicketRateVariant?      @relation(fields: [ticketRateVariantId], references: [id])
@@ -1063,18 +1064,19 @@ model QuoteItem {
 }
 
 model QuoteItineraryDay {
-  id        String                   @id @default(uuid()) @db.Uuid
-  quoteId   String                   @db.Uuid
-  dayNumber Int
-  title     String
-  notes     String?
-  sortOrder Int                      @default(0)
-  isActive  Boolean                  @default(true)
-  createdAt DateTime                 @default(now())
-  updatedAt DateTime                 @updatedAt
-  quote     Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  dayItems  QuoteItineraryDayItem[]
-  auditLogs QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
+  id            String                   @id @default(uuid()) @db.Uuid
+  quoteId       String                   @db.Uuid
+  dayNumber     Int
+  title         String
+  notes         String?
+  sortOrder     Int                      @default(0)
+  isActive      Boolean                  @default(true)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  quote         Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  dayItems      QuoteItineraryDayItem[]
+  auditLogs     QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
+  roomingGroups RoomingGroup[]
 
   @@unique([quoteId, dayNumber])
   @@index([quoteId, isActive, sortOrder])
@@ -1205,25 +1207,63 @@ model QuoteScenario {
 }
 
 model QuotePassenger {
-  id               String    @id @default(uuid()) @db.Uuid
-  quoteId          String    @db.Uuid
-  firstName        String
-  lastName         String
-  gender           String?
-  dateOfBirth      DateTime?
-  nationality      String?
-  passportNumber   String?
-  passportExpiry   DateTime?
-  dietaryNotes     String?
-  mobilityNotes    String?
-  emergencyContact String?
-  remarks          String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  quote            Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(uuid()) @db.Uuid
+  quoteId            String              @db.Uuid
+  firstName          String
+  lastName           String
+  gender             String?
+  dateOfBirth        DateTime?
+  nationality        String?
+  passportNumber     String?
+  passportExpiry     DateTime?
+  dietaryNotes       String?
+  mobilityNotes      String?
+  emergencyContact   String?
+  remarks            String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  quote              Quote               @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  roomingAssignments RoomingAssignment[]
 
   @@index([quoteId, lastName, firstName])
   @@map("quote_passengers")
+}
+
+model RoomingGroup {
+  id                 String               @id @default(uuid()) @db.Uuid
+  quoteId            String               @db.Uuid
+  itineraryDayId     String               @db.Uuid
+  hotelQuoteItemId   String               @db.Uuid
+  roomType           String?
+  occupancyType      BookingRoomOccupancy @default(unknown)
+  notes              String?
+  temporaryRoomLabel String?
+  guideRoom          Boolean              @default(false)
+  leaderRoom         Boolean              @default(false)
+  sortOrder          Int                  @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  quote              Quote                @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  itineraryDay       QuoteItineraryDay    @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
+  hotelQuoteItem     QuoteItem            @relation(fields: [hotelQuoteItemId], references: [id], onDelete: Cascade)
+  assignments        RoomingAssignment[]
+
+  @@index([quoteId, itineraryDayId, hotelQuoteItemId, sortOrder])
+  @@index([hotelQuoteItemId])
+  @@map("rooming_groups")
+}
+
+model RoomingAssignment {
+  id               String         @id @default(uuid()) @db.Uuid
+  roomingGroupId   String         @db.Uuid
+  quotePassengerId String         @db.Uuid
+  createdAt        DateTime       @default(now())
+  roomingGroup     RoomingGroup   @relation(fields: [roomingGroupId], references: [id], onDelete: Cascade)
+  quotePassenger   QuotePassenger @relation(fields: [quotePassengerId], references: [id], onDelete: Cascade)
+
+  @@unique([roomingGroupId, quotePassengerId])
+  @@index([quotePassengerId])
+  @@map("rooming_assignments")
 }
 
 model QuoteVersion {
@@ -1298,6 +1338,7 @@ model Quote {
   quoteItems                 QuoteItem[]
   quoteOptions               QuoteOption[]
   passengers                 QuotePassenger[]
+  roomingGroups              RoomingGroup[]
   pricingSlabs               QuotePricingSlab[]
   scenarios                  QuoteScenario[]
   versions                   QuoteVersion[]           @relation("QuoteVersions")

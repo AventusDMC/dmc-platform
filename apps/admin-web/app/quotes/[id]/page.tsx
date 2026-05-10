@@ -24,6 +24,7 @@ import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
 import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
+import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { QuoteStatusForm } from './QuoteStatusForm';
 import { SupportTextForm } from './SupportTextForm';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
@@ -668,6 +669,12 @@ type QuoteItineraryFetchResult = {
   message?: string;
 };
 
+type QuoteRoomingFetchResult = {
+  status: 'ok' | 'error';
+  roomingGroups: QuoteRoomingGroup[];
+  message?: string;
+};
+
 type QuoteVersionsFetchResult = {
   status: 'ok' | 'error';
   versions: QuoteVersion[];
@@ -1146,6 +1153,29 @@ function formatMoney(amount: number | null | undefined, currency = 'USD') {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult> {
+  try {
+    const roomingGroups = await adminPageFetchJson<QuoteRoomingGroup[]>(`${DATA_API_BASE_URL}/quotes/${id}/rooming`, 'Quote detail rooming', {
+      cache: 'no-store',
+      allow404: true,
+    });
+
+    return {
+      status: 'ok',
+      roomingGroups: Array.isArray(roomingGroups) ? roomingGroups : [],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown rooming fetch failure';
+    console.error(`[QuoteDetailsPage] Quote rooming fetch failed for ${id}: ${message}`);
+
+    return {
+      status: 'error',
+      message,
+      roomingGroups: [],
+    };
+  }
 }
 
 function formatDateTime(value: string) {
@@ -1662,6 +1692,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     supportTextTemplatesSettled,
     quoteBlocksSettled,
     quoteItinerarySettled,
+    quoteRoomingSettled,
   ] = await Promise.allSettled([
     getQuote(id),
     safeQuoteDetailFetch('services', [] as SupplierService[], getServices),
@@ -1691,6 +1722,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     safeQuoteDetailFetch('support text templates', [] as SupportTextTemplate[], getSupportTextTemplates),
     safeQuoteDetailFetch('quote blocks', [] as QuoteBlock[], getQuoteBlocks),
     getQuoteItinerary(id),
+    getQuoteRooming(id),
   ]);
   const quoteResult = unwrapSettledQuoteDetail<QuoteFetchResult>(quoteSettled, { status: 'error', message: 'Quote could not be loaded' }, 'quote');
   const servicesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupplierService[]>>(servicesSettled, { status: 'error', label: 'services', data: [], message: 'Services unavailable' }, 'services');
@@ -1712,6 +1744,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const supportTextTemplatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupportTextTemplate[]>>(supportTextTemplatesSettled, { status: 'error', label: 'support text templates', data: [], message: 'Support text templates unavailable' }, 'support text templates');
   const quoteBlocksResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<QuoteBlock[]>>(quoteBlocksSettled, { status: 'error', label: 'quote blocks', data: [], message: 'Quote blocks unavailable' }, 'quote blocks');
   const quoteItineraryResult = unwrapSettledQuoteDetail<QuoteItineraryFetchResult>(quoteItinerarySettled, { status: 'error', itinerary: { quoteId: id, days: [] }, message: 'Itinerary unavailable' }, 'itinerary');
+  const quoteRoomingResult = unwrapSettledQuoteDetail<QuoteRoomingFetchResult>(quoteRoomingSettled, { status: 'error', roomingGroups: [], message: 'Rooming unavailable' }, 'rooming');
   const services = servicesResult.data;
   const activities = activitiesResult.data;
   const excursionTemplates = excursionTemplatesResult.data;
@@ -1798,6 +1831,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       role: user.role,
     }));
   const quoteItinerary = quoteItineraryResult.itinerary;
+  const quoteRoomingGroups = quoteRoomingResult.roomingGroups;
 
   const totalPax = quote.adults + quote.children;
   const quoteExpired = isQuoteExpired(quote);
@@ -2390,6 +2424,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 quoteId={quote.id}
                 expectedPax={totalPax}
                 passengers={quote.passengers}
+              />
+              <QuoteRoomingPanel
+                apiBaseUrl={ACTION_API_BASE_URL}
+                quoteId={quote.id}
+                passengers={quote.passengers}
+                itinerary={quoteItinerary}
+                roomingGroups={quoteRoomingGroups}
               />
               {renderQuoteServicePlanner()}
               {guidedStepFooter}

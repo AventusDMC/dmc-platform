@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { blockDelete, throwIfNotFound } from '../common/crud.helpers';
+import type { CanonicalTransportPricingMode } from '../common/transport-pricing-mode-normalization';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CreateTransportServiceTypeInput = {
@@ -14,7 +15,9 @@ type UpdateTransportServiceTypeInput = Partial<CreateTransportServiceTypeInput>;
 export class TransportServiceTypesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  async findAll() {
+    await this.ensureCorePricingModeServiceTypes();
+
     return this.prisma.transportServiceType.findMany({
       orderBy: {
         createdAt: 'desc',
@@ -68,5 +71,41 @@ export class TransportServiceTypesService {
     return this.prisma.transportServiceType.delete({
       where: { id },
     });
+  }
+
+  private async ensureCorePricingModeServiceTypes() {
+    const entries: Array<{
+      name: CanonicalTransportPricingMode;
+      code: string;
+      classification: 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'ADD_ON';
+    }> = [
+      { name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+      { name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
+      { name: 'Half Day', code: 'HALF_DAY', classification: 'HALF_DAY' },
+      { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+      { name: 'Day Tour', code: 'DAY_TOUR', classification: 'FULL_DAY' },
+      { name: 'Stationary / Waiting', code: 'STATIONARY_WAITING', classification: 'ADD_ON' },
+      { name: 'Extra Hour', code: 'EXTRA_HOUR', classification: 'ADD_ON' },
+      { name: 'Extra KM', code: 'EXTRA_KM', classification: 'ADD_ON' },
+    ];
+
+    for (const entry of entries) {
+      const existing = await this.prisma.transportServiceType.findFirst({
+        where: {
+          OR: [
+            { name: { equals: entry.name, mode: 'insensitive' } },
+            { code: { equals: entry.code, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (existing) {
+        continue;
+      }
+
+      await this.prisma.transportServiceType.create({
+        data: entry as any,
+      });
+    }
   }
 }
