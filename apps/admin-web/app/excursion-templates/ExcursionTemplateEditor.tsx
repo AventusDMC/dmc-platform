@@ -10,6 +10,13 @@ type ExcursionTemplateEditorProps = {
   catalogs: ExcursionTemplateCatalogs;
 };
 
+type FillMissingMetadataResponse = {
+  updatedTemplateFields: number;
+  updatedComponentFields: number;
+  skippedExistingFields: number;
+  message: string;
+};
+
 const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'GUIDE', 'DINING'];
 
 function catalogText(value: unknown): string {
@@ -62,7 +69,9 @@ async function parseMutationResponse(response: Response, fallback: string) {
 export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplateEditorProps) {
   const router = useRouter();
   const [error, setError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isFillingMetadata, setIsFillingMetadata] = useState(false);
   const [componentType, setComponentType] = useState<ExcursionComponentType>('TRANSPORT');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [selectedTransportServiceTypeId, setSelectedTransportServiceTypeId] = useState('');
@@ -81,6 +90,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
 
   async function mutate(url: string, init: RequestInit, fallback: string) {
     setError('');
+    setStatusMessage('');
     setIsSaving(true);
     try {
       await parseMutationResponse(await fetch(url, init), fallback);
@@ -89,6 +99,24 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       setError(caughtError instanceof Error ? caughtError.message : fallback);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function fillMissingMetadata() {
+    setError('');
+    setStatusMessage('');
+    setIsFillingMetadata(true);
+    try {
+      const result = (await parseMutationResponse(
+        await fetch(`/api/excursion-templates/${template.id}/fill-missing-metadata`, { method: 'POST' }),
+        'Could not fill missing operational metadata.',
+      )) as FillMissingMetadataResponse | null;
+      setStatusMessage(result?.message || 'No blank metadata fields needed filling.');
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not fill missing operational metadata.');
+    } finally {
+      setIsFillingMetadata(false);
     }
   }
 
@@ -179,14 +207,6 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
-  function fillMissingMetadata() {
-    void mutate(
-      `/api/excursion-templates/${template.id}/fill-missing-metadata`,
-      { method: 'POST' },
-      'Could not fill missing operational metadata.',
-    );
-  }
-
   function addComponent(formData: FormData) {
     const type = String(formData.get('componentType') || 'TRANSPORT') as ExcursionComponentType;
     const selectedRoute = catalogs.routes.find((route) => route.id === selectedRouteId);
@@ -241,6 +261,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   return (
     <section className="section-stack">
       {error ? <p className="form-error">{error}</p> : null}
+      {statusMessage ? <p className="form-success">{statusMessage}</p> : null}
 
       <section className="workspace-section">
         <form action={saveMetadata} className="entity-form">
@@ -329,8 +350,8 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       <section className="workspace-section">
         <h3>Components</h3>
         <div className="table-action-row">
-          <button type="button" className="secondary-button" disabled={isSaving} onClick={fillMissingMetadata}>
-            Fill Missing Metadata
+          <button type="button" className="secondary-button" disabled={isSaving || isFillingMetadata} onClick={fillMissingMetadata}>
+            {isFillingMetadata ? 'Filling...' : 'Fill Missing Metadata'}
           </button>
           <p className="form-helper">Fills only blank operational fields with safe defaults. Existing values and pricing are preserved.</p>
         </div>

@@ -381,26 +381,45 @@ export class ExcursionTemplatesService {
   async fillMissingOperationalMetadata(templateId: string) {
     const template = await this.findOne(templateId);
     const templateUpdate: Record<string, unknown> = {};
+    let skippedExistingFields = 0;
 
     if (this.isBlankValue(template.operationalWarnings)) {
       templateUpdate.operationalWarnings = 'Operational details to confirm before use.';
+    } else {
+      skippedExistingFields += 1;
     }
 
-    const componentUpdates: Array<{ id: string; data: Record<string, unknown> }> = [];
+    const componentUpdates: Array<{ id: string; data: Record<string, unknown>; skippedExistingFields: number }> = [];
 
     for (const component of template.components || []) {
       if (component.active === false) {
         continue;
       }
 
-      const data = this.buildMissingComponentOperationalMetadata(template, component);
+      const { data, skippedExistingFields: componentSkippedExistingFields } = this.buildMissingComponentOperationalMetadata(template, component);
+      skippedExistingFields += componentSkippedExistingFields;
       if (Object.keys(data).length > 0) {
-        componentUpdates.push({ id: component.id, data });
+        componentUpdates.push({ id: component.id, data, skippedExistingFields: componentSkippedExistingFields });
       }
     }
 
+    const updatedTemplateFields = Object.keys(templateUpdate).length;
+    const updatedComponentFields = componentUpdates.reduce((total, update) => total + Object.keys(update.data).length, 0);
+    const message =
+      updatedTemplateFields + updatedComponentFields === 0
+        ? 'No blank metadata fields needed filling.'
+        : `Filled ${updatedTemplateFields + updatedComponentFields} blank operational metadata field${
+            updatedTemplateFields + updatedComponentFields === 1 ? '' : 's'
+          }.`;
+
     if (Object.keys(templateUpdate).length === 0 && componentUpdates.length === 0) {
-      return this.findOne(templateId);
+      return {
+        template: await this.findOne(templateId),
+        updatedTemplateFields,
+        updatedComponentFields,
+        skippedExistingFields,
+        message,
+      };
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -419,11 +438,18 @@ export class ExcursionTemplatesService {
       }
     });
 
-    return this.findOne(templateId);
+    return {
+      template: await this.findOne(templateId),
+      updatedTemplateFields,
+      updatedComponentFields,
+      skippedExistingFields,
+      message,
+    };
   }
 
   private buildMissingComponentOperationalMetadata(template: any, component: any) {
     const data: Record<string, unknown> = {};
+    let skippedExistingFields = 0;
     const componentType = component.componentType as ExcursionComponentType;
 
     if (component.estimatedDurationMinutes === null || component.estimatedDurationMinutes === undefined) {
@@ -431,6 +457,8 @@ export class ExcursionTemplatesService {
       if (duration !== null) {
         data.estimatedDurationMinutes = duration;
       }
+    } else {
+      skippedExistingFields += 1;
     }
 
     if (this.isBlankValue(component.requiredArrivalTime)) {
@@ -438,6 +466,8 @@ export class ExcursionTemplatesService {
       if (arrivalTime) {
         data.requiredArrivalTime = arrivalTime;
       }
+    } else {
+      skippedExistingFields += 1;
     }
 
     if (component.supplierConfirmationRequired === null || component.supplierConfirmationRequired === undefined) {
@@ -445,21 +475,29 @@ export class ExcursionTemplatesService {
       if (supplierConfirmationRequired !== null) {
         data.supplierConfirmationRequired = supplierConfirmationRequired;
       }
+    } else {
+      skippedExistingFields += 1;
     }
 
     if (component.voucherRequired === null || component.voucherRequired === undefined) {
       data.voucherRequired = true;
+    } else {
+      skippedExistingFields += 1;
     }
 
     if (this.isBlankValue(component.pickupNotes)) {
       data.pickupNotes = this.resolveComponentPickupNotes(template, componentType);
+    } else {
+      skippedExistingFields += 1;
     }
 
     if (this.isBlankValue(component.operationalDependency)) {
       data.operationalDependency = this.resolveComponentOperationalDependency(componentType);
+    } else {
+      skippedExistingFields += 1;
     }
 
-    return data;
+    return { data, skippedExistingFields };
   }
 
   private resolveComponentEstimatedDuration(component: any) {

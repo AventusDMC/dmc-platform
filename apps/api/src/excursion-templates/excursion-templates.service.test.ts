@@ -284,7 +284,7 @@ test('fillMissingOperationalMetadata preserves existing values and fills only bl
     },
   });
 
-  await service.fillMissingOperationalMetadata('template-1');
+  const result = await service.fillMissingOperationalMetadata('template-1');
 
   assert.deepEqual(templateUpdates, [
     {
@@ -315,6 +315,10 @@ test('fillMissingOperationalMetadata preserves existing values and fills only bl
     },
   ]);
   assert.equal(componentUpdates.some((update) => update.where.id === 'component-dining'), false);
+  assert.equal(result.updatedTemplateFields, 1);
+  assert.equal(result.updatedComponentFields, 10);
+  assert.equal(result.skippedExistingFields, 6);
+  assert.match(result.message, /Filled 11 blank operational metadata fields/);
 });
 
 test('fillMissingOperationalMetadata is idempotent when operational metadata is already filled', async () => {
@@ -353,10 +357,14 @@ test('fillMissingOperationalMetadata is idempotent when operational metadata is 
     },
   });
 
-  await service.fillMissingOperationalMetadata('template-1');
+  const result = await service.fillMissingOperationalMetadata('template-1');
 
   assert.equal(templateUpdateCount, 0);
   assert.equal(componentUpdateCount, 0);
+  assert.equal(result.updatedTemplateFields, 0);
+  assert.equal(result.updatedComponentFields, 0);
+  assert.equal(result.skippedExistingFields, 7);
+  assert.equal(result.message, 'No blank metadata fields needed filling.');
 });
 
 test('Petra Full Day seed template is composite and links existing modules when found', async () => {

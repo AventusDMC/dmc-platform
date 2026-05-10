@@ -17,6 +17,10 @@ describe('excursion template admin UI', () => {
       'function fillMissingMetadata()',
       '`/api/excursion-templates/${template.id}/fill-missing-metadata`',
       'Fill Missing Metadata',
+      'Filling...',
+      'setStatusMessage(result?.message ||',
+      'No blank metadata fields needed filling.',
+      '{statusMessage ? <p className="form-success">{statusMessage}</p> : null}',
       'Fills only blank operational fields with safe defaults. Existing values and pricing are preserved.',
     ]);
 
