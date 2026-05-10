@@ -90,7 +90,11 @@ describe('activities quote and booking UI integration regression', () => {
   it('loads Activity catalog into services tab and submits paired activityId with serviceId', () => {
     expectSourceContains(quotePageSource, [
       'async function getActivities()',
-      "activeTab === 'services' || resolvedSearchParams?.addCategory === 'activity'",
+      "activeTab === 'itinerary'",
+      "activeTab === 'hotels'",
+      "activeTab === 'transport'",
+      "activeTab === 'services'",
+      "resolvedSearchParams?.addCategory === 'activity'",
       "safeQuoteDetailFetch('activities', [] as ActivityCatalogItem[], getActivities)",
       'activities={activities}',
     ]);
@@ -117,6 +121,20 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
 
     assert.doesNotMatch(quoteItemsFormSource, /Activity service[\s\S]*Select activity service/);
+  });
+
+  it('shows Activity Master options in Add Activity without re-enabling legacy SupplierService activity rows', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./[id]/QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const activeActivities = useMemo(() => getActivityMasterOptions(activities), [activities]);',
+      '{activeActivities.map((activity) => (',
+      '<option key={activity.id} value={activity.id}>',
+      '{activity.name}',
+    ]);
+
+    assert.doesNotMatch(quoteItemsFormSource, /Select activity service/);
+    assert.doesNotMatch(quoteItemsFormSource, /Pricing service[\s\S]*filteredServices\.map\(\(service\)/);
   });
 
   it('does not submit activity variant sell override unless manually entered', () => {

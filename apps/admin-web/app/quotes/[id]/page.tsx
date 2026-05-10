@@ -1617,7 +1617,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         resolvedSearchParams?.catalogRateCurrency ||
         resolvedSearchParams?.catalogRateNote,
     );
-  const shouldLoadActivityCatalogData = activeTab === 'services' || resolvedSearchParams?.addCategory === 'activity';
+  const shouldLoadActivityCatalogData =
+    activeTab === 'itinerary' ||
+    activeTab === 'hotels' ||
+    activeTab === 'transport' ||
+    activeTab === 'services' ||
+    resolvedSearchParams?.addCategory === 'activity';
   const shouldLoadHotelCategories = activeTab === 'pricing';
   const [
     quoteSettled,
