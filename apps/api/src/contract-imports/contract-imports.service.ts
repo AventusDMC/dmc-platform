@@ -695,22 +695,30 @@ export class ContractImportsService {
         description: this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || null,
       }))
       .filter((category) => category.name);
-    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')).map((row: Record<string, string>) => {
-      const normalizedCurrency = this.normalizeSupplementCurrency(this.templateCell(row, 'Currency'), contractCurrency);
-      const name = this.templateSupplementName(row);
-      const notes = this.templateCell(row, 'Notes');
+    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements'))
+      .flatMap((row: Record<string, string>) => {
+        const rawCurrency = this.templateCell(row, 'Currency');
+        const normalizedCurrency = this.normalizeSupplementCurrency(rawCurrency, contractCurrency);
+        const name = this.templateSupplementName(row);
+        const notes = this.templateCell(row, 'Notes');
 
-      return {
-        name,
-        type: this.templateCell(row, 'Type') || name || null,
-        chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
-        amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
-        currency: normalizedCurrency.currency,
-        pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
-        isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
-        notes: [this.supplementLabelNote(name), notes, normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
-      };
-    });
+        if (this.isDerivedPercentSupplementRow(name, rawCurrency, notes)) {
+          return [];
+        }
+
+        return [
+          {
+            name,
+            type: this.templateCell(row, 'Type') || name || null,
+            chargeBasis: this.templateCell(row, 'Charge Basis') || this.templateCell(row, 'Basis') || null,
+            amount: this.parseNumber(this.templateCell(row, 'Amount') || this.templateCell(row, 'Cost')) ?? null,
+            currency: normalizedCurrency.currency,
+            pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
+            isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
+            notes: [this.supplementLabelNote(name), notes, normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
+          },
+        ];
+      });
     const policies: ContractPreview['policies'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')).map((row: Record<string, string>) => ({
       name: this.templateCell(row, 'Name') || this.templateCell(row, 'Policy') || 'Policy',
       value: this.templateCell(row, 'Value') || this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || '',
@@ -2395,9 +2403,13 @@ export class ContractImportsService {
           })),
       taxes: Array.isArray(value.taxes) ? value.taxes : [],
       supplements: Array.isArray(value.supplements)
-        ? value.supplements.map((supplement: any) => {
+        ? value.supplements
+            .map((supplement: any) => {
             const normalizedCurrency = this.normalizeSupplementCurrency(supplement.currency, value.contract?.currency || 'JOD');
             const name = this.supplementDisplayName(supplement);
+            if (this.isDerivedPercentSupplementRow(name, supplement.currency, supplement.notes)) {
+              return null;
+            }
             return {
               ...supplement,
               name,
@@ -2407,6 +2419,7 @@ export class ContractImportsService {
               notes: [this.supplementLabelNote(name), this.optionalString(supplement.notes), normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
             };
           })
+            .filter((supplement: any) => Boolean(supplement))
         : [],
       policies: Array.isArray(value.policies) ? value.policies : [],
       ratePolicies: Array.isArray(value.ratePolicies)
@@ -2525,6 +2538,17 @@ export class ContractImportsService {
     });
 
     return fallback?.[1] || 'Supplement';
+  }
+
+  private isDerivedPercentSupplementRow(name: unknown, currency: unknown, notes?: unknown) {
+    const label = this.optionalString(name);
+    const rawCurrency = this.optionalString(currency).replace(/\s+/g, '').toUpperCase();
+    const noteText = this.optionalString(notes);
+    if (rawCurrency !== 'PERCENT' && rawCurrency !== 'PERCENTAGE' && rawCurrency !== '%') {
+      return false;
+    }
+
+    return !label || /^supplement$/i.test(label) || /occupancy|derived|delta/i.test(noteText);
   }
 
   private hotelChargeBasis(value: unknown) {

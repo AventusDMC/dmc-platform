@@ -545,6 +545,7 @@ test('contract import treats percent supplement currency markers as metadata ins
         { name: 'Extra bed supplement', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 25, currency: 'USD' },
         { name: 'Suite upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 30, currency: 'PERCENT' },
         { name: 'Club room upgrade', type: 'EXTRA_BED', chargeBasis: 'PER_NIGHT', amount: 15, currency: '%' },
+        { name: 'Supplement', type: null, chargeBasis: 'PER_NIGHT', amount: 100, currency: 'PERCENT' },
       ],
       ratePolicies: [{ policyType: 'CHILD_EXTRA_BED', amount: null, percent: 50, currency: 'PERCENT', pricingBasis: 'PER_ROOM' }],
     }),
@@ -570,6 +571,7 @@ test('contract import treats percent supplement currency markers as metadata ins
     state.supplementCreates.map((supplement: any) => supplement.currency),
     ['JOD', 'USD', 'JOD', 'JOD'],
   );
+  assert.equal(state.supplementCreates.some((supplement: any) => supplement.amount === 100), false);
 });
 
 test('hotel Excel template keeps percent supplement currency cells out of currency validation', () => {
@@ -595,6 +597,7 @@ test('hotel Excel template keeps percent supplement currency cells out of curren
       { Name: 'Extra bed supplement', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 25, Currency: 'USD' },
       { Name: 'Room upgrade percentage', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 10, Currency: 'PERCENT' },
       { Name: 'Club upgrade percentage', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 5, Currency: '%' },
+      { Name: 'Supplement', Type: '', 'Charge Basis': 'PER_NIGHT', Amount: 100, Currency: 'PERCENT' },
     ]),
     'Supplements',
   );
@@ -613,6 +616,10 @@ test('hotel Excel template keeps percent supplement currency cells out of curren
   assert.deepEqual(
     preview.supplements.map((supplement: any) => supplement.currency),
     ['JOD', 'USD', 'EUR', 'EUR'],
+  );
+  assert.deepEqual(
+    preview.supplements.map((supplement: any) => supplement.name),
+    ['HB supplement', 'Extra bed supplement', 'Room upgrade percentage', 'Club upgrade percentage'],
   );
   assert.equal(warnings.some((warning) => /Unsupported supplement currency/.test(warning.message)), false);
 });

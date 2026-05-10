@@ -1605,6 +1605,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const activeTab = resolveActiveQuoteTab(resolvedSearchParams?.tab);
   const activeStep = resolveActiveQuoteStep(resolvedSearchParams?.step, activeTab);
   const shouldLoadHotelPlanningData =
+    activeTab === 'itinerary' ||
     activeTab === 'hotels' ||
     resolvedSearchParams?.addCategory === 'hotel' ||
     Boolean(

@@ -113,6 +113,7 @@ describe('quote detail page regression', () => {
   it('defers heavy hotel planning data until the hotels workflow needs it', () => {
     expectSourceContains(pageSource, [
       'const shouldLoadHotelPlanningData =',
+      "activeTab === 'itinerary'",
       "activeTab === 'hotels'",
       "resolvedSearchParams?.addCategory === 'hotel'",
       'resolvedSearchParams?.catalogHotelId',
@@ -122,6 +123,20 @@ describe('quote detail page regression', () => {
       "const shouldLoadHotelCategories = activeTab === 'pricing';",
       "skippedQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[])",
     ]);
+  });
+
+  it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
+    expectSourceContains(pageSource, [
+      "activeTab === 'itinerary'",
+      "shouldLoadHotelPlanningData ? safeQuoteDetailFetch('hotels', [] as Hotel[], getHotels) : skippedQuoteDetailFetch('hotels', [] as Hotel[])",
+      "shouldLoadHotelPlanningData",
+      "safeQuoteDetailFetch('hotel contracts', [] as HotelContract[], getHotelContracts)",
+      "safeQuoteDetailFetch('hotel rates', [] as HotelRate[], getHotelRates)",
+      "return adminPageFetchJson<HotelRate[]>(`${DATA_API_BASE_URL}/hotel-rates`, 'Quote detail hotel rates', {",
+      'hotels={hotels}',
+    ]);
+    assert.doesNotMatch(pageSource, /getHotelRates\(contractId|string\)/);
+    assert.doesNotMatch(pageSource, /hotel-rates\?contractId/);
   });
 
   it('uses hotel option set pills as ID-based navigation to editable sections', () => {
