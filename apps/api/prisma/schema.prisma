@@ -257,22 +257,23 @@ model CompanyBranding {
 }
 
 model Activity {
-  id                String                @id @default(uuid()) @db.Uuid
-  name              String
-  description       String?
-  supplierCompanyId String                @db.Uuid
-  supplierId        String?               @db.Uuid
-  pricingBasis      ActivityPricingBasis
-  costPrice         Float
-  sellPrice         Float
-  durationMinutes   Int?
-  active            Boolean               @default(true)
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  supplierCompany   Company               @relation(fields: [supplierCompanyId], references: [id])
-  rateVariants      ActivityRateVariant[]
-  bookingServices   BookingService[]
-  quoteItems        QuoteItem[]
+  id                  String                       @id @default(uuid()) @db.Uuid
+  name                String
+  description         String?
+  supplierCompanyId   String                       @db.Uuid
+  supplierId          String?                      @db.Uuid
+  pricingBasis        ActivityPricingBasis
+  costPrice           Float
+  sellPrice           Float
+  durationMinutes     Int?
+  active              Boolean                      @default(true)
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  supplierCompany     Company                      @relation(fields: [supplierCompanyId], references: [id])
+  rateVariants        ActivityRateVariant[]
+  bookingServices     BookingService[]
+  excursionComponents ExcursionTemplateComponent[]
+  quoteItems          QuoteItem[]
 
   @@index([active, name])
   @@index([supplierCompanyId])
@@ -1486,22 +1487,23 @@ model Role {
 }
 
 model Route {
-  id              String                 @id @default(uuid()) @db.Uuid
-  fromPlaceId     String                 @db.Uuid
-  toPlaceId       String                 @db.Uuid
-  name            String
-  normalizedKey   String                 @unique
-  routeType       String?
-  durationMinutes Int?
-  distanceKm      Float?
-  notes           String?
-  isActive        Boolean                @default(true)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  fromPlace       Place                  @relation("RouteFromPlace", fields: [fromPlaceId], references: [id])
-  toPlace         Place                  @relation("RouteToPlace", fields: [toPlaceId], references: [id])
-  vehicleRates    VehicleRate[]
-  pricingRules    TransportPricingRule[]
+  id                  String                       @id @default(uuid()) @db.Uuid
+  fromPlaceId         String                       @db.Uuid
+  toPlaceId           String                       @db.Uuid
+  name                String
+  normalizedKey       String                       @unique
+  routeType           String?
+  durationMinutes     Int?
+  distanceKm          Float?
+  notes               String?
+  isActive            Boolean                      @default(true)
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  fromPlace           Place                        @relation("RouteFromPlace", fields: [fromPlaceId], references: [id])
+  toPlace             Place                        @relation("RouteToPlace", fields: [toPlaceId], references: [id])
+  vehicleRates        VehicleRate[]
+  pricingRules        TransportPricingRule[]
+  excursionComponents ExcursionTemplateComponent[]
 
   @@index([fromPlaceId])
   @@index([isActive, name])
@@ -1524,32 +1526,33 @@ model ServiceType {
 }
 
 model SupplierService {
-  id                    String              @id @default(uuid()) @db.Uuid
+  id                    String                       @id @default(uuid()) @db.Uuid
   supplierId            String
-  resolvedSupplierId    String?             @db.Uuid
+  resolvedSupplierId    String?                      @db.Uuid
   name                  String
   category              String
   unitType              ServiceUnitType
   baseCost              Float
   currency              String
-  costBaseAmount        Float               @default(0)
-  costCurrency          String              @default("USD")
-  salesTaxPercent       Float               @default(0)
-  salesTaxIncluded      Boolean             @default(false)
-  serviceChargePercent  Float               @default(0)
-  serviceChargeIncluded Boolean             @default(false)
+  costBaseAmount        Float                        @default(0)
+  costCurrency          String                       @default("USD")
+  salesTaxPercent       Float                        @default(0)
+  salesTaxIncluded      Boolean                      @default(false)
+  serviceChargePercent  Float                        @default(0)
+  serviceChargeIncluded Boolean                      @default(false)
   tourismFeeAmount      Float?
   tourismFeeCurrency    String?
   tourismFeeMode        TourismFeeMode?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  serviceTypeId         String?             @db.Uuid
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  serviceTypeId         String?                      @db.Uuid
   serviceRates          ServiceRate[]
   ticketRateVariants    TicketRateVariant[]
   entranceFee           EntranceFee?
   quoteBlocks           QuoteBlock[]
+  excursionComponents   ExcursionTemplateComponent[]
   quoteItems            QuoteItem[]
-  serviceType           ServiceType?        @relation(fields: [serviceTypeId], references: [id])
+  serviceType           ServiceType?                 @relation(fields: [serviceTypeId], references: [id])
 
   @@index([serviceTypeId])
   @@map("supplier_services")
@@ -1705,16 +1708,66 @@ model TransportPricingRule {
 }
 
 model TransportServiceType {
-  id             String                         @id @default(uuid()) @db.Uuid
-  name           String
-  code           String                         @unique
-  classification TransportServiceClassification @default(ROUTE_TRANSFER)
-  createdAt      DateTime                       @default(now())
-  updatedAt      DateTime                       @updatedAt
-  vehicleRates   VehicleRate[]
-  pricingRules   TransportPricingRule[]
+  id                  String                         @id @default(uuid()) @db.Uuid
+  name                String
+  code                String                         @unique
+  classification      TransportServiceClassification @default(ROUTE_TRANSFER)
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  vehicleRates        VehicleRate[]
+  excursionComponents ExcursionTemplateComponent[]
+  pricingRules        TransportPricingRule[]
 
   @@map("transport_service_types")
+}
+
+model ExcursionTemplate {
+  id                   String                       @id @default(uuid()) @db.Uuid
+  name                 String
+  code                 String?                      @unique
+  description          String?
+  defaultDepartureCity String?
+  durationMinutes      Int?
+  operationalNotes     String?
+  active               Boolean                      @default(true)
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  components           ExcursionTemplateComponent[]
+
+  @@index([active, name])
+  @@map("excursion_templates")
+}
+
+model ExcursionTemplateComponent {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  templateId             String                 @db.Uuid
+  componentType          ExcursionComponentType
+  label                  String
+  sortOrder              Int
+  isOptional             Boolean                @default(false)
+  operationalNotes       String?
+  supplierServiceId      String?                @db.Uuid
+  activityId             String?                @db.Uuid
+  routeId                String?                @db.Uuid
+  transportServiceTypeId String?                @db.Uuid
+  suggestedDepartureCity String?
+  suggestedArrivalCity   String?
+  durationMinutes        Int?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  activity               Activity?              @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  route                  Route?                 @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  supplierService        SupplierService?       @relation(fields: [supplierServiceId], references: [id], onDelete: SetNull)
+  template               ExcursionTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  transportServiceType   TransportServiceType?  @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, sortOrder])
+  @@index([componentType])
+  @@index([supplierServiceId])
+  @@index([activityId])
+  @@index([routeId])
+  @@index([transportServiceTypeId])
+  @@map("excursion_template_components")
 }
 
 model User {
@@ -2071,6 +2124,14 @@ enum HotelContractChargeBasis {
   PER_ROOM
   PER_STAY
   PER_NIGHT
+}
+
+enum ExcursionComponentType {
+  TRANSPORT
+  TICKET
+  ACTIVITY
+  GUIDE
+  DINING
 }
 
 enum HotelCancellationPenaltyType {

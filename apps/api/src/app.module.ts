@@ -35,6 +35,8 @@ import { ContractSupplementsController } from './contract-supplements/contract-s
 import { ContractSupplementsService } from './contract-supplements/contract-supplements.service';
 import { ContactsController } from './contacts/contacts.controller';
 import { ContactsService } from './contacts/contacts.service';
+import { ExcursionTemplatesController } from './excursion-templates/excursion-templates.controller';
+import { ExcursionTemplatesService } from './excursion-templates/excursion-templates.service';
 import { GalleryController } from './gallery/gallery.controller';
 import { GalleryService } from './gallery/gallery.service';
 import { HotelCategoriesController } from './hotel-categories/hotel-categories.controller';
@@ -133,6 +135,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     InvoicesController,
     InvoicePortalController,
     ExportsController,
+    ExcursionTemplatesController,
     QuoteBlocksController,
     QuoteEngineController,
     QuotesController,
@@ -189,6 +192,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ImportItineraryService,
     InvoicesService,
     ExportsService,
+    ExcursionTemplatesService,
     QuoteBlocksService,
     QuoteEngineService,
     ProposalV3Service,
