@@ -39,6 +39,18 @@ function getReferenceLabel(component: ExcursionTemplate['components'][number]) {
   return component.activity?.name || component.supplierService?.name || 'Catalog link pending';
 }
 
+function parseBooleanFormValue(value: FormDataEntryValue | null) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+}
+
+function booleanSelectValue(value: boolean | null | undefined) {
+  if (value === true) return 'true';
+  if (value === false) return 'false';
+  return '';
+}
+
 async function parseMutationResponse(response: Response, fallback: string) {
   if (!response.ok) {
     const apiError = await getApiError(response, fallback);
@@ -91,6 +103,16 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
           durationMinutes: Number(formData.get('durationHours') || 0) * 60,
           defaultDepartureCity: formData.get('defaultDepartureCity'),
           operationalNotes: formData.get('operationalNotes'),
+          operatingDays: formData.get('operatingDays'),
+          recommendedDepartureTime: formData.get('recommendedDepartureTime'),
+          estimatedReturnTime: formData.get('estimatedReturnTime'),
+          minimumPax: formData.get('minimumPax') ? Number(formData.get('minimumPax')) : null,
+          maximumPax: formData.get('maximumPax') ? Number(formData.get('maximumPax')) : null,
+          weatherSensitive: parseBooleanFormValue(formData.get('weatherSensitive')),
+          childFriendly: parseBooleanFormValue(formData.get('childFriendly')),
+          wheelchairAccessible: parseBooleanFormValue(formData.get('wheelchairAccessible')),
+          seasonalRestrictions: formData.get('seasonalRestrictions'),
+          operationalWarnings: formData.get('operationalWarnings'),
           active: formData.get('active') === 'on',
         }),
       },
@@ -130,6 +152,25 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
+  function saveComponentOperations(componentId: string, formData: FormData) {
+    void mutate(
+      `/api/excursion-templates/${template.id}/components/${componentId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requiredArrivalTime: formData.get('requiredArrivalTime'),
+          supplierConfirmationRequired: parseBooleanFormValue(formData.get('supplierConfirmationRequired')),
+          voucherRequired: parseBooleanFormValue(formData.get('voucherRequired')),
+          pickupNotes: formData.get('pickupNotes'),
+          operationalDependency: formData.get('operationalDependency'),
+          estimatedDurationMinutes: formData.get('estimatedDurationMinutes') ? Number(formData.get('estimatedDurationMinutes')) : null,
+        }),
+      },
+      'Could not save component operations metadata.',
+    );
+  }
+
   function removeComponent(componentId: string) {
     void mutate(
       `/api/excursion-templates/${template.id}/components/${componentId}`,
@@ -149,6 +190,12 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       componentType: type,
       isOptional: formData.get('isOptional') === 'on',
       operationalNotes: formData.get('operationalNotes'),
+      requiredArrivalTime: formData.get('requiredArrivalTime'),
+      supplierConfirmationRequired: parseBooleanFormValue(formData.get('supplierConfirmationRequired')),
+      voucherRequired: parseBooleanFormValue(formData.get('voucherRequired')),
+      pickupNotes: formData.get('pickupNotes'),
+      operationalDependency: formData.get('operationalDependency'),
+      estimatedDurationMinutes: formData.get('estimatedDurationMinutes') ? Number(formData.get('estimatedDurationMinutes')) : null,
     };
     const payload =
       type === 'TRANSPORT'
@@ -211,6 +258,60 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
             Operational notes
             <textarea name="operationalNotes" rows={3} defaultValue={template.operationalNotes || ''} />
           </label>
+          <div className="form-grid">
+            <label>
+              Operating days
+              <input name="operatingDays" defaultValue={template.operatingDays || ''} placeholder="Daily, Mon-Sat, seasonal" />
+            </label>
+            <label>
+              Recommended departure time
+              <input name="recommendedDepartureTime" defaultValue={template.recommendedDepartureTime || ''} placeholder="08:00" />
+            </label>
+            <label>
+              Estimated return time
+              <input name="estimatedReturnTime" defaultValue={template.estimatedReturnTime || ''} placeholder="18:00" />
+            </label>
+            <label>
+              Minimum pax
+              <input name="minimumPax" type="number" min="0" defaultValue={template.minimumPax ?? ''} />
+            </label>
+            <label>
+              Maximum pax
+              <input name="maximumPax" type="number" min="0" defaultValue={template.maximumPax ?? ''} />
+            </label>
+            <label>
+              Weather sensitive
+              <select name="weatherSensitive" defaultValue={booleanSelectValue(template.weatherSensitive)}>
+                <option value="">Not set</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label>
+              Child friendly
+              <select name="childFriendly" defaultValue={booleanSelectValue(template.childFriendly)}>
+                <option value="">Not set</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label>
+              Wheelchair accessible
+              <select name="wheelchairAccessible" defaultValue={booleanSelectValue(template.wheelchairAccessible)}>
+                <option value="">Not set</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Seasonal restrictions
+            <textarea name="seasonalRestrictions" rows={2} defaultValue={template.seasonalRestrictions || ''} />
+          </label>
+          <label>
+            Operational warnings
+            <textarea name="operationalWarnings" rows={2} defaultValue={template.operationalWarnings || ''} />
+          </label>
           <button type="submit" disabled={isSaving}>
             Save metadata
           </button>
@@ -241,6 +342,50 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                   <td>
                     <strong>{component.label}</strong>
                     {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
+                    <form action={(formData) => saveComponentOperations(component.id, formData)} className="form-field-stack">
+                      <div className="form-grid">
+                        <label>
+                          Arrival time
+                          <input name="requiredArrivalTime" defaultValue={component.requiredArrivalTime || ''} placeholder="HH:MM" />
+                        </label>
+                        <label>
+                          Est. duration min
+                          <input
+                            name="estimatedDurationMinutes"
+                            type="number"
+                            min="0"
+                            defaultValue={component.estimatedDurationMinutes ?? ''}
+                          />
+                        </label>
+                        <label>
+                          Supplier confirmation
+                          <select name="supplierConfirmationRequired" defaultValue={booleanSelectValue(component.supplierConfirmationRequired)}>
+                            <option value="">Not set</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                        <label>
+                          Voucher
+                          <select name="voucherRequired" defaultValue={booleanSelectValue(component.voucherRequired)}>
+                            <option value="">Not set</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>
+                        Pickup notes
+                        <input name="pickupNotes" defaultValue={component.pickupNotes || ''} />
+                      </label>
+                      <label>
+                        Operational dependency
+                        <input name="operationalDependency" defaultValue={component.operationalDependency || ''} />
+                      </label>
+                      <button type="submit" className="secondary-button" disabled={isSaving}>
+                        Save ops
+                      </button>
+                    </form>
                   </td>
                   <td>{getReferenceLabel(component)}</td>
                   <td>
@@ -353,6 +498,40 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
           <label>
             Operational notes
             <textarea name="operationalNotes" rows={2} />
+          </label>
+          <div className="form-grid">
+            <label>
+              Required arrival time
+              <input name="requiredArrivalTime" placeholder="HH:MM" />
+            </label>
+            <label>
+              Estimated duration minutes
+              <input name="estimatedDurationMinutes" type="number" min="0" />
+            </label>
+            <label>
+              Supplier confirmation required
+              <select name="supplierConfirmationRequired" defaultValue="">
+                <option value="">Not set</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label>
+              Voucher required
+              <select name="voucherRequired" defaultValue="">
+                <option value="">Not set</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Pickup notes
+            <input name="pickupNotes" />
+          </label>
+          <label>
+            Operational dependency
+            <input name="operationalDependency" />
           </label>
           <button type="submit" disabled={isSaving}>
             Add component

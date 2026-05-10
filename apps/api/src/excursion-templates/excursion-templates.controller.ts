@@ -18,6 +18,12 @@ type ExcursionTemplateComponentBody = {
   suggestedDepartureCity?: string | null;
   suggestedArrivalCity?: string | null;
   durationMinutes?: number | null;
+  requiredArrivalTime?: string | null;
+  supplierConfirmationRequired?: boolean | null;
+  voucherRequired?: boolean | null;
+  pickupNotes?: string | null;
+  operationalDependency?: string | null;
+  estimatedDurationMinutes?: number | null;
 };
 
 type CreateExcursionTemplateBody = {
@@ -27,6 +33,16 @@ type CreateExcursionTemplateBody = {
   defaultDepartureCity?: string | null;
   durationMinutes?: number | null;
   operationalNotes?: string | null;
+  operatingDays?: string | null;
+  recommendedDepartureTime?: string | null;
+  estimatedReturnTime?: string | null;
+  minimumPax?: number | null;
+  maximumPax?: number | null;
+  weatherSensitive?: boolean | null;
+  childFriendly?: boolean | null;
+  wheelchairAccessible?: boolean | null;
+  seasonalRestrictions?: string | null;
+  operationalWarnings?: string | null;
   active?: boolean;
   components?: ExcursionTemplateComponentBody[];
 };
@@ -132,6 +148,8 @@ export class ExcursionTemplatesController {
       ...body,
       durationMinutes:
         body.durationMinutes === undefined || body.durationMinutes === null ? body.durationMinutes : Number(body.durationMinutes),
+      minimumPax: body.minimumPax === undefined || body.minimumPax === null ? body.minimumPax : Number(body.minimumPax),
+      maximumPax: body.maximumPax === undefined || body.maximumPax === null ? body.maximumPax : Number(body.maximumPax),
       components: Array.isArray(body.components)
         ? body.components.map((component) => ({
             ...component,
@@ -140,6 +158,10 @@ export class ExcursionTemplatesController {
               component.durationMinutes === undefined || component.durationMinutes === null
                 ? component.durationMinutes
                 : Number(component.durationMinutes),
+            estimatedDurationMinutes:
+              component.estimatedDurationMinutes === undefined || component.estimatedDurationMinutes === null
+                ? component.estimatedDurationMinutes
+                : Number(component.estimatedDurationMinutes),
           }))
         : body.components,
     };
@@ -153,6 +175,10 @@ export class ExcursionTemplatesController {
         component.durationMinutes === undefined || component.durationMinutes === null
           ? component.durationMinutes
           : Number(component.durationMinutes),
+      estimatedDurationMinutes:
+        component.estimatedDurationMinutes === undefined || component.estimatedDurationMinutes === null
+          ? component.estimatedDurationMinutes
+          : Number(component.estimatedDurationMinutes),
     };
   }
 }

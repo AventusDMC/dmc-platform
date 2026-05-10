@@ -19,6 +19,12 @@ type ExcursionTemplateComponentInput = {
   suggestedDepartureCity?: string | null;
   suggestedArrivalCity?: string | null;
   durationMinutes?: number | null;
+  requiredArrivalTime?: string | null;
+  supplierConfirmationRequired?: boolean | null;
+  voucherRequired?: boolean | null;
+  pickupNotes?: string | null;
+  operationalDependency?: string | null;
+  estimatedDurationMinutes?: number | null;
 };
 
 type CreateExcursionTemplateInput = {
@@ -28,6 +34,16 @@ type CreateExcursionTemplateInput = {
   defaultDepartureCity?: string | null;
   durationMinutes?: number | null;
   operationalNotes?: string | null;
+  operatingDays?: string | null;
+  recommendedDepartureTime?: string | null;
+  estimatedReturnTime?: string | null;
+  minimumPax?: number | null;
+  maximumPax?: number | null;
+  weatherSensitive?: boolean | null;
+  childFriendly?: boolean | null;
+  wheelchairAccessible?: boolean | null;
+  seasonalRestrictions?: string | null;
+  operationalWarnings?: string | null;
   active?: boolean;
   components?: ExcursionTemplateComponentInput[];
 };
@@ -99,6 +115,16 @@ export class ExcursionTemplatesService {
         defaultDepartureCity: normalizeOptionalString(data.defaultDepartureCity),
         durationMinutes: this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
         operationalNotes: normalizeOptionalString(data.operationalNotes),
+        operatingDays: normalizeOptionalString(data.operatingDays),
+        recommendedDepartureTime: normalizeOptionalString(data.recommendedDepartureTime),
+        estimatedReturnTime: normalizeOptionalString(data.estimatedReturnTime),
+        minimumPax: this.normalizeOptionalPositiveInteger(data.minimumPax, 'minimumPax'),
+        maximumPax: this.normalizeOptionalPositiveInteger(data.maximumPax, 'maximumPax'),
+        weatherSensitive: this.normalizeOptionalBoolean(data.weatherSensitive),
+        childFriendly: this.normalizeOptionalBoolean(data.childFriendly),
+        wheelchairAccessible: this.normalizeOptionalBoolean(data.wheelchairAccessible),
+        seasonalRestrictions: normalizeOptionalString(data.seasonalRestrictions),
+        operationalWarnings: normalizeOptionalString(data.operationalWarnings),
         active: data.active === undefined ? true : Boolean(data.active),
         components: {
           create: components,
@@ -128,6 +154,19 @@ export class ExcursionTemplatesService {
           durationMinutes:
             data.durationMinutes === undefined ? undefined : this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
           operationalNotes: data.operationalNotes === undefined ? undefined : normalizeOptionalString(data.operationalNotes),
+          operatingDays: data.operatingDays === undefined ? undefined : normalizeOptionalString(data.operatingDays),
+          recommendedDepartureTime:
+            data.recommendedDepartureTime === undefined ? undefined : normalizeOptionalString(data.recommendedDepartureTime),
+          estimatedReturnTime: data.estimatedReturnTime === undefined ? undefined : normalizeOptionalString(data.estimatedReturnTime),
+          minimumPax: data.minimumPax === undefined ? undefined : this.normalizeOptionalPositiveInteger(data.minimumPax, 'minimumPax'),
+          maximumPax: data.maximumPax === undefined ? undefined : this.normalizeOptionalPositiveInteger(data.maximumPax, 'maximumPax'),
+          weatherSensitive: data.weatherSensitive === undefined ? undefined : this.normalizeOptionalBoolean(data.weatherSensitive),
+          childFriendly: data.childFriendly === undefined ? undefined : this.normalizeOptionalBoolean(data.childFriendly),
+          wheelchairAccessible:
+            data.wheelchairAccessible === undefined ? undefined : this.normalizeOptionalBoolean(data.wheelchairAccessible),
+          seasonalRestrictions:
+            data.seasonalRestrictions === undefined ? undefined : normalizeOptionalString(data.seasonalRestrictions),
+          operationalWarnings: data.operationalWarnings === undefined ? undefined : normalizeOptionalString(data.operationalWarnings),
           active: data.active === undefined ? undefined : Boolean(data.active),
           components: components === undefined ? undefined : { create: components },
         },
@@ -263,6 +302,27 @@ export class ExcursionTemplatesService {
     }
     if (data.durationMinutes !== undefined) {
       updateData.durationMinutes = this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes');
+    }
+    if (data.requiredArrivalTime !== undefined) {
+      updateData.requiredArrivalTime = normalizeOptionalString(data.requiredArrivalTime);
+    }
+    if (data.supplierConfirmationRequired !== undefined) {
+      updateData.supplierConfirmationRequired = this.normalizeOptionalBoolean(data.supplierConfirmationRequired);
+    }
+    if (data.voucherRequired !== undefined) {
+      updateData.voucherRequired = this.normalizeOptionalBoolean(data.voucherRequired);
+    }
+    if (data.pickupNotes !== undefined) {
+      updateData.pickupNotes = normalizeOptionalString(data.pickupNotes);
+    }
+    if (data.operationalDependency !== undefined) {
+      updateData.operationalDependency = normalizeOptionalString(data.operationalDependency);
+    }
+    if (data.estimatedDurationMinutes !== undefined) {
+      updateData.estimatedDurationMinutes = this.normalizeOptionalPositiveInteger(
+        data.estimatedDurationMinutes,
+        'estimatedDurationMinutes',
+      );
     }
 
     await (this.prisma as any).excursionTemplateComponent.update({
@@ -1097,6 +1157,15 @@ export class ExcursionTemplatesService {
           suggestedDepartureCity: normalizeOptionalString(component.suggestedDepartureCity),
           suggestedArrivalCity: normalizeOptionalString(component.suggestedArrivalCity),
           durationMinutes: this.normalizeOptionalPositiveInteger(component.durationMinutes, `components[${index}].durationMinutes`),
+          requiredArrivalTime: normalizeOptionalString(component.requiredArrivalTime),
+          supplierConfirmationRequired: this.normalizeOptionalBoolean(component.supplierConfirmationRequired),
+          voucherRequired: this.normalizeOptionalBoolean(component.voucherRequired),
+          pickupNotes: normalizeOptionalString(component.pickupNotes),
+          operationalDependency: normalizeOptionalString(component.operationalDependency),
+          estimatedDurationMinutes: this.normalizeOptionalPositiveInteger(
+            component.estimatedDurationMinutes,
+            `components[${index}].estimatedDurationMinutes`,
+          ),
         };
       }),
     );
@@ -1191,6 +1260,13 @@ export class ExcursionTemplatesService {
       throw new BadRequestException(`${fieldLabel} must be zero or greater`);
     }
     return Math.floor(normalized);
+  }
+
+  private normalizeOptionalBoolean(value: boolean | null | undefined | '') {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    return Boolean(value);
   }
 
   private async findSupplierServiceByText(primaryTerms: string[], secondaryTerms: string[] = []) {

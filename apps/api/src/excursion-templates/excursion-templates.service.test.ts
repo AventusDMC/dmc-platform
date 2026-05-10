@@ -83,12 +83,28 @@ test('create excursion template persists ordered operational components without 
     defaultDepartureCity: 'Amman',
     durationMinutes: 720,
     operationalNotes: 'Reusable operations template',
+    operatingDays: 'Daily',
+    recommendedDepartureTime: '08:00',
+    estimatedReturnTime: '20:00',
+    minimumPax: 2,
+    maximumPax: 24,
+    weatherSensitive: true,
+    childFriendly: true,
+    wheelchairAccessible: false,
+    seasonalRestrictions: 'Avoid flash-flood weather.',
+    operationalWarnings: 'Confirm site access before departure.',
     components: [
       {
         componentType: 'TRANSPORT',
         label: 'Round-trip transport',
         routeId: 'route-amman-petra',
         transportServiceTypeId: 'service-full-day',
+        requiredArrivalTime: '08:00',
+        supplierConfirmationRequired: true,
+        voucherRequired: true,
+        pickupNotes: 'Hotel lobby pickup.',
+        operationalDependency: 'Requires confirmed vehicle assignment.',
+        estimatedDurationMinutes: 360,
       },
       {
         componentType: 'TICKET',
@@ -112,12 +128,28 @@ test('create excursion template persists ordered operational components without 
   assert.equal(createdData.name, 'Petra Full Day Operational Excursion');
   assert.equal(createdData.defaultDepartureCity, 'Amman');
   assert.equal(createdData.durationMinutes, 720);
+  assert.equal(createdData.operatingDays, 'Daily');
+  assert.equal(createdData.recommendedDepartureTime, '08:00');
+  assert.equal(createdData.estimatedReturnTime, '20:00');
+  assert.equal(createdData.minimumPax, 2);
+  assert.equal(createdData.maximumPax, 24);
+  assert.equal(createdData.weatherSensitive, true);
+  assert.equal(createdData.childFriendly, true);
+  assert.equal(createdData.wheelchairAccessible, false);
+  assert.match(createdData.seasonalRestrictions, /flash-flood/);
+  assert.match(createdData.operationalWarnings, /site access/);
   assert.deepEqual(
     createdData.components.create.map((component: any) => component.componentType),
     ['TRANSPORT', 'TICKET', 'ACTIVITY', 'DINING'],
   );
   assert.equal(createdData.components.create[0].routeId, 'route-amman-petra');
   assert.equal(createdData.components.create[0].transportServiceTypeId, 'service-full-day');
+  assert.equal(createdData.components.create[0].requiredArrivalTime, '08:00');
+  assert.equal(createdData.components.create[0].supplierConfirmationRequired, true);
+  assert.equal(createdData.components.create[0].voucherRequired, true);
+  assert.equal(createdData.components.create[0].pickupNotes, 'Hotel lobby pickup.');
+  assert.equal(createdData.components.create[0].operationalDependency, 'Requires confirmed vehicle assignment.');
+  assert.equal(createdData.components.create[0].estimatedDurationMinutes, 360);
   assert.equal(createdData.components.create[1].supplierServiceId, 'service-petra-ticket');
   assert.equal(createdData.components.create[2].activityId, 'activity-petra-guide');
   assert.equal(createdData.components.create[3].isOptional, true);
@@ -448,13 +480,32 @@ test('component editing reorders active components and soft removes without dele
   });
 
   await service.reorderComponents('template-1', { componentIds: ['component-b', 'component-a'] });
-  await service.updateComponent('template-1', 'component-b', { isOptional: true });
+  await service.updateComponent('template-1', 'component-b', {
+    isOptional: true,
+    requiredArrivalTime: '09:15',
+    supplierConfirmationRequired: true,
+    voucherRequired: true,
+    pickupNotes: 'Meet at visitor center.',
+    operationalDependency: 'Ticket must be issued first.',
+    estimatedDurationMinutes: 45,
+  });
   await service.removeComponent('template-1', 'component-a');
 
   assert.equal(deleteCalls, 0);
   assert.deepEqual(updates[0], { where: { id: 'component-b' }, data: { sortOrder: 0 } });
   assert.deepEqual(updates[1], { where: { id: 'component-a' }, data: { sortOrder: 1 } });
-  assert.deepEqual(updates[2], { where: { id: 'component-b' }, data: { isOptional: true } });
+  assert.deepEqual(updates[2], {
+    where: { id: 'component-b' },
+    data: {
+      isOptional: true,
+      requiredArrivalTime: '09:15',
+      supplierConfirmationRequired: true,
+      voucherRequired: true,
+      pickupNotes: 'Meet at visitor center.',
+      operationalDependency: 'Ticket must be issued first.',
+      estimatedDurationMinutes: 45,
+    },
+  });
   assert.equal(updates[3].where.id, 'component-a');
   assert.equal(updates[3].data.active, false);
   assert.match(updates[3].data.operationalNotes, /Soft removed/);
@@ -485,6 +536,12 @@ test('add component links existing catalog records and appends to active sequenc
     label: 'Wadi Rum Stargazing Experience',
     activityId: 'activity-stargazing',
     isOptional: true,
+    requiredArrivalTime: '20:00',
+    supplierConfirmationRequired: true,
+    voucherRequired: false,
+    pickupNotes: 'Pickup from camp reception.',
+    operationalDependency: 'Weather clearance required.',
+    estimatedDurationMinutes: 90,
   });
 
   assert.equal(createdComponent.templateId, 'template-1');
@@ -493,6 +550,12 @@ test('add component links existing catalog records and appends to active sequenc
   assert.equal(createdComponent.sortOrder, 1);
   assert.equal(createdComponent.active, true);
   assert.equal(createdComponent.isOptional, true);
+  assert.equal(createdComponent.requiredArrivalTime, '20:00');
+  assert.equal(createdComponent.supplierConfirmationRequired, true);
+  assert.equal(createdComponent.voucherRequired, false);
+  assert.equal(createdComponent.pickupNotes, 'Pickup from camp reception.');
+  assert.equal(createdComponent.operationalDependency, 'Weather clearance required.');
+  assert.equal(createdComponent.estimatedDurationMinutes, 90);
 });
 
 test('Sindbad Aqaba ensure creates Activity Master records with confirmed supplier variant pricing', async () => {

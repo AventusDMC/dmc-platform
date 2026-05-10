@@ -51,6 +51,12 @@ function getComponentScope(component: ExcursionTemplateComponent) {
   return component.supplierService?.serviceType?.name || component.supplierService?.category || component.activity?.name || 'Operational catalog';
 }
 
+function formatBooleanFlag(value: boolean | null | undefined) {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return 'Not set';
+}
+
 export function ExcursionTemplateDetail({ template, suggestedTransport }: ExcursionTemplateDetailProps) {
   const orderedComponents = [...(template.components || [])].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -68,6 +74,40 @@ export function ExcursionTemplateDetail({ template, suggestedTransport }: Excurs
       />
 
       {template.operationalNotes ? <p className="form-helper">{template.operationalNotes}</p> : null}
+      <section className="workspace-section">
+        <div className="summary-grid">
+          <div className="summary-card">
+            <span>Operating days</span>
+            <strong>{template.operatingDays || 'Not set'}</strong>
+          </div>
+          <div className="summary-card">
+            <span>Departure / return</span>
+            <strong>
+              {template.recommendedDepartureTime || 'Not set'} / {template.estimatedReturnTime || 'Not set'}
+            </strong>
+          </div>
+          <div className="summary-card">
+            <span>Pax range</span>
+            <strong>
+              {template.minimumPax || 'Min pending'}-{template.maximumPax || 'Max pending'}
+            </strong>
+          </div>
+          <div className="summary-card">
+            <span>Weather sensitive</span>
+            <strong>{formatBooleanFlag(template.weatherSensitive)}</strong>
+          </div>
+          <div className="summary-card">
+            <span>Child friendly</span>
+            <strong>{formatBooleanFlag(template.childFriendly)}</strong>
+          </div>
+          <div className="summary-card">
+            <span>Wheelchair accessible</span>
+            <strong>{formatBooleanFlag(template.wheelchairAccessible)}</strong>
+          </div>
+        </div>
+        {template.seasonalRestrictions ? <p className="form-helper">Seasonal restrictions: {template.seasonalRestrictions}</p> : null}
+        {template.operationalWarnings ? <p className="form-helper">Operational warnings: {template.operationalWarnings}</p> : null}
+      </section>
 
       <TableSectionShell
         title="Ordered components"
@@ -97,6 +137,7 @@ export function ExcursionTemplateDetail({ template, suggestedTransport }: Excurs
                   <th>Linked record</th>
                   <th>Scope</th>
                   <th>Duration</th>
+                  <th>Operations</th>
                   <th>Optional</th>
                 </tr>
               </thead>
@@ -113,7 +154,14 @@ export function ExcursionTemplateDetail({ template, suggestedTransport }: Excurs
                     </td>
                     <td>{getComponentReference(component)}</td>
                     <td>{getComponentScope(component)}</td>
-                    <td>{formatDuration(component.durationMinutes || component.route?.durationMinutes)}</td>
+                    <td>{formatDuration(component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes)}</td>
+                    <td>
+                      {component.requiredArrivalTime ? <p className="table-cell-copy">Arrival: {component.requiredArrivalTime}</p> : null}
+                      <p className="table-cell-copy">Supplier confirmation: {formatBooleanFlag(component.supplierConfirmationRequired)}</p>
+                      <p className="table-cell-copy">Voucher: {formatBooleanFlag(component.voucherRequired)}</p>
+                      {component.pickupNotes ? <p className="table-cell-copy">Pickup: {component.pickupNotes}</p> : null}
+                      {component.operationalDependency ? <p className="table-cell-copy">Dependency: {component.operationalDependency}</p> : null}
+                    </td>
                     <td>
                       <span className={component.isOptional ? 'status-pill status-pill-muted' : 'status-pill status-pill-success'}>
                         {component.isOptional ? 'Optional' : 'Required'}
