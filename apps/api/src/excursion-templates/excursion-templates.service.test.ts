@@ -214,6 +214,151 @@ test('suggested transport resolves candidate rates through existing transport pr
   assert.equal(result.suggestions[0].candidates[0].id, 'rule-1');
 });
 
+test('fillMissingOperationalMetadata preserves existing values and fills only blank component metadata', async () => {
+  const templateUpdates: any[] = [];
+  const componentUpdates: any[] = [];
+  const components = [
+    {
+      id: 'component-transport',
+      componentType: 'TRANSPORT',
+      label: 'Transport',
+      active: true,
+      isOptional: false,
+      durationMinutes: 180,
+      estimatedDurationMinutes: null,
+      requiredArrivalTime: '',
+      supplierConfirmationRequired: null,
+      voucherRequired: null,
+      pickupNotes: '',
+      operationalDependency: null,
+      route: { durationMinutes: 240 },
+    },
+    {
+      id: 'component-dining',
+      componentType: 'DINING',
+      label: 'Lunch',
+      active: true,
+      isOptional: true,
+      estimatedDurationMinutes: 75,
+      requiredArrivalTime: '13:00',
+      supplierConfirmationRequired: false,
+      voucherRequired: false,
+      pickupNotes: 'Existing dining pickup note.',
+      operationalDependency: 'Existing dining dependency.',
+    },
+    {
+      id: 'component-ticket',
+      componentType: 'TICKET',
+      label: 'Ticket',
+      active: true,
+      isOptional: false,
+      estimatedDurationMinutes: null,
+      requiredArrivalTime: null,
+      supplierConfirmationRequired: null,
+      voucherRequired: null,
+      pickupNotes: null,
+      operationalDependency: '',
+    },
+  ];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async () => ({
+        id: 'template-1',
+        code: 'TEST_TEMPLATE',
+        name: 'Test Template',
+        defaultDepartureCity: 'Amman',
+        recommendedDepartureTime: '08:00',
+        operationalWarnings: '',
+        components,
+      }),
+      update: async ({ where, data }: any) => {
+        templateUpdates.push({ where, data });
+        return { id: where.id, ...data };
+      },
+    },
+    excursionTemplateComponent: {
+      update: async ({ where, data }: any) => {
+        componentUpdates.push({ where, data });
+        return { id: where.id, ...data };
+      },
+    },
+  });
+
+  await service.fillMissingOperationalMetadata('template-1');
+
+  assert.deepEqual(templateUpdates, [
+    {
+      where: { id: 'template-1' },
+      data: { operationalWarnings: 'Operational details to confirm before use.' },
+    },
+  ]);
+  assert.deepEqual(componentUpdates, [
+    {
+      where: { id: 'component-transport' },
+      data: {
+        estimatedDurationMinutes: 180,
+        requiredArrivalTime: '08:00',
+        supplierConfirmationRequired: true,
+        voucherRequired: true,
+        pickupNotes: 'Pickup from Amman to confirm.',
+        operationalDependency: 'Requires confirmed route, vehicle, supplier, pickup time, and pax count.',
+      },
+    },
+    {
+      where: { id: 'component-ticket' },
+      data: {
+        requiredArrivalTime: 'To confirm',
+        voucherRequired: true,
+        pickupNotes: 'Ticket handoff or entry process to confirm.',
+        operationalDependency: 'Requires confirmed visit date, pax count, and ticketing rules.',
+      },
+    },
+  ]);
+  assert.equal(componentUpdates.some((update) => update.where.id === 'component-dining'), false);
+});
+
+test('fillMissingOperationalMetadata is idempotent when operational metadata is already filled', async () => {
+  let templateUpdateCount = 0;
+  let componentUpdateCount = 0;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async () => ({
+        id: 'template-1',
+        code: 'TEST_TEMPLATE',
+        name: 'Test Template',
+        operationalWarnings: 'Already confirmed.',
+        components: [
+          {
+            id: 'component-activity',
+            componentType: 'ACTIVITY',
+            label: 'Activity',
+            active: true,
+            estimatedDurationMinutes: 90,
+            requiredArrivalTime: '10:00',
+            supplierConfirmationRequired: true,
+            voucherRequired: true,
+            pickupNotes: 'Existing pickup.',
+            operationalDependency: 'Existing dependency.',
+          },
+        ],
+      }),
+      update: async () => {
+        templateUpdateCount += 1;
+      },
+    },
+    excursionTemplateComponent: {
+      update: async () => {
+        componentUpdateCount += 1;
+      },
+    },
+  });
+
+  await service.fillMissingOperationalMetadata('template-1');
+
+  assert.equal(templateUpdateCount, 0);
+  assert.equal(componentUpdateCount, 0);
+});
+
 test('Petra Full Day seed template is composite and links existing modules when found', async () => {
   let createdData: any;
   const services = [

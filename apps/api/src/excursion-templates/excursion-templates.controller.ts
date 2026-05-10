@@ -113,6 +113,12 @@ export class ExcursionTemplatesController {
     return this.excursionTemplatesService.ensureSindbadAqabaCatalog();
   }
 
+  @Post(':id/fill-missing-metadata')
+  @Roles('admin', 'operations')
+  fillMissingOperationalMetadata(@Param('id') id: string) {
+    return this.excursionTemplatesService.fillMissingOperationalMetadata(id);
+  }
+
   @Post(':id/components')
   @Roles('admin', 'operations')
   addComponent(@Param('id') id: string, @Body() body: ExcursionTemplateComponentBody) {

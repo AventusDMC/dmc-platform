@@ -179,6 +179,14 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
+  function fillMissingMetadata() {
+    void mutate(
+      `/api/excursion-templates/${template.id}/fill-missing-metadata`,
+      { method: 'POST' },
+      'Could not fill missing operational metadata.',
+    );
+  }
+
   function addComponent(formData: FormData) {
     const type = String(formData.get('componentType') || 'TRANSPORT') as ExcursionComponentType;
     const selectedRoute = catalogs.routes.find((route) => route.id === selectedRouteId);
@@ -320,6 +328,12 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
 
       <section className="workspace-section">
         <h3>Components</h3>
+        <div className="table-action-row">
+          <button type="button" className="secondary-button" disabled={isSaving} onClick={fillMissingMetadata}>
+            Fill Missing Metadata
+          </button>
+          <p className="form-helper">Fills only blank operational fields with safe defaults. Existing values and pricing are preserved.</p>
+        </div>
         <div className="table-scroll">
           <table>
             <thead>

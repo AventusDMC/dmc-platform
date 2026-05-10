@@ -378,6 +378,155 @@ export class ExcursionTemplatesService {
     return this.findOne(templateId);
   }
 
+  async fillMissingOperationalMetadata(templateId: string) {
+    const template = await this.findOne(templateId);
+    const templateUpdate: Record<string, unknown> = {};
+
+    if (this.isBlankValue(template.operationalWarnings)) {
+      templateUpdate.operationalWarnings = 'Operational details to confirm before use.';
+    }
+
+    const componentUpdates: Array<{ id: string; data: Record<string, unknown> }> = [];
+
+    for (const component of template.components || []) {
+      if (component.active === false) {
+        continue;
+      }
+
+      const data = this.buildMissingComponentOperationalMetadata(template, component);
+      if (Object.keys(data).length > 0) {
+        componentUpdates.push({ id: component.id, data });
+      }
+    }
+
+    if (Object.keys(templateUpdate).length === 0 && componentUpdates.length === 0) {
+      return this.findOne(templateId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(templateUpdate).length > 0) {
+        await (tx as any).excursionTemplate.update({
+          where: { id: templateId },
+          data: templateUpdate,
+        });
+      }
+
+      for (const update of componentUpdates) {
+        await (tx as any).excursionTemplateComponent.update({
+          where: { id: update.id },
+          data: update.data,
+        });
+      }
+    });
+
+    return this.findOne(templateId);
+  }
+
+  private buildMissingComponentOperationalMetadata(template: any, component: any) {
+    const data: Record<string, unknown> = {};
+    const componentType = component.componentType as ExcursionComponentType;
+
+    if (component.estimatedDurationMinutes === null || component.estimatedDurationMinutes === undefined) {
+      const duration = this.resolveComponentEstimatedDuration(component);
+      if (duration !== null) {
+        data.estimatedDurationMinutes = duration;
+      }
+    }
+
+    if (this.isBlankValue(component.requiredArrivalTime)) {
+      const arrivalTime = this.resolveComponentRequiredArrivalTime(template, componentType);
+      if (arrivalTime) {
+        data.requiredArrivalTime = arrivalTime;
+      }
+    }
+
+    if (component.supplierConfirmationRequired === null || component.supplierConfirmationRequired === undefined) {
+      const supplierConfirmationRequired = this.resolveComponentSupplierConfirmationRequired(componentType);
+      if (supplierConfirmationRequired !== null) {
+        data.supplierConfirmationRequired = supplierConfirmationRequired;
+      }
+    }
+
+    if (component.voucherRequired === null || component.voucherRequired === undefined) {
+      data.voucherRequired = true;
+    }
+
+    if (this.isBlankValue(component.pickupNotes)) {
+      data.pickupNotes = this.resolveComponentPickupNotes(template, componentType);
+    }
+
+    if (this.isBlankValue(component.operationalDependency)) {
+      data.operationalDependency = this.resolveComponentOperationalDependency(componentType);
+    }
+
+    return data;
+  }
+
+  private resolveComponentEstimatedDuration(component: any) {
+    const duration =
+      component.estimatedDurationMinutes ??
+      component.durationMinutes ??
+      component.route?.durationMinutes ??
+      component.activity?.durationMinutes ??
+      null;
+    const normalized = Number(duration);
+    return Number.isFinite(normalized) && normalized > 0 ? Math.floor(normalized) : null;
+  }
+
+  private resolveComponentRequiredArrivalTime(template: any, componentType: ExcursionComponentType) {
+    if (componentType === 'TRANSPORT' && !this.isBlankValue(template.recommendedDepartureTime)) {
+      return String(template.recommendedDepartureTime).trim();
+    }
+
+    return 'To confirm';
+  }
+
+  private resolveComponentSupplierConfirmationRequired(componentType: ExcursionComponentType) {
+    if (componentType === 'TRANSPORT' || componentType === 'ACTIVITY' || componentType === 'GUIDE' || componentType === 'DINING') {
+      return true;
+    }
+
+    return null;
+  }
+
+  private resolveComponentPickupNotes(template: any, componentType: ExcursionComponentType) {
+    if (componentType === 'TRANSPORT') {
+      return template.defaultDepartureCity
+        ? `Pickup from ${template.defaultDepartureCity} to confirm.`
+        : 'Pickup location to confirm.';
+    }
+
+    if (componentType === 'TICKET') {
+      return 'Ticket handoff or entry process to confirm.';
+    }
+
+    if (componentType === 'DINING') {
+      return 'Restaurant arrival or pickup details to confirm.';
+    }
+
+    return 'Meeting point or pickup details to confirm.';
+  }
+
+  private resolveComponentOperationalDependency(componentType: ExcursionComponentType) {
+    if (componentType === 'TRANSPORT') {
+      return 'Requires confirmed route, vehicle, supplier, pickup time, and pax count.';
+    }
+
+    if (componentType === 'TICKET') {
+      return 'Requires confirmed visit date, pax count, and ticketing rules.';
+    }
+
+    if (componentType === 'DINING') {
+      return 'Requires confirmed meal time, pax count, and supplier availability.';
+    }
+
+    return 'Requires confirmed supplier availability, guide assignment, visit time, and pax count.';
+  }
+
+  private isBlankValue(value: unknown) {
+    return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+  }
+
   private async ensureTemplate(code: string, buildData: () => Promise<CreateExcursionTemplateInput>) {
     const existing = await (this.prisma as any).excursionTemplate.findUnique({ where: { code } });
     const data = await buildData();
