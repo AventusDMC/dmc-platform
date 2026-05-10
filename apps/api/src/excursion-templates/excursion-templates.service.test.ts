@@ -323,6 +323,64 @@ test('Dead Sea Escape seed template preserves component order and optional compo
   assert.equal(createdData.components.create[3].isOptional, true);
 });
 
+test('Wadi Rum Full Day seed template links Activity Master records and preserves optional component order', async () => {
+  let createdData: any;
+  const activities = [
+    { id: 'activity-jeep', name: 'Wadi Rum Jeep Tour' },
+    { id: 'activity-camel', name: 'Wadi Rum Camel Ride' },
+    { id: 'activity-sunset', name: 'Wadi Rum Sunset Experience' },
+    { id: 'activity-stargazing', name: 'Wadi Rum Stargazing Experience' },
+  ];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'template-wadi-rum', ...data };
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-bedouin-dinner', name: 'Wadi Rum Bedouin Dinner' }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => activities,
+    },
+    route: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'route-amman-wadi-rum', name: 'Amman to Wadi Rum', durationMinutes: 300 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-full-day', name: 'Full Day', classification: 'FULL_DAY' }],
+    },
+  });
+
+  await service.ensureWadiRumFullDayTemplate();
+
+  assert.equal(createdData.code, 'WADI_RUM_FULL_DAY');
+  assert.equal(createdData.name, 'Wadi Rum Full Day');
+  assert.equal(createdData.defaultDepartureCity, 'Amman or Aqaba');
+  assert.equal(createdData.durationMinutes, 720);
+  assert.deepEqual(
+    createdData.components.create.map((component: any) => component.componentType),
+    ['TRANSPORT', 'ACTIVITY', 'ACTIVITY', 'DINING', 'ACTIVITY', 'ACTIVITY'],
+  );
+  assert.equal(createdData.components.create[0].routeId, 'route-amman-wadi-rum');
+  assert.equal(createdData.components.create[0].transportServiceTypeId, 'service-full-day');
+  assert.equal(createdData.components.create[1].activityId, 'activity-jeep');
+  assert.equal(createdData.components.create[1].isOptional, false);
+  assert.equal(createdData.components.create[2].activityId, 'activity-camel');
+  assert.equal(createdData.components.create[2].isOptional, true);
+  assert.equal(createdData.components.create[3].supplierServiceId, 'service-bedouin-dinner');
+  assert.equal(createdData.components.create[3].isOptional, true);
+  assert.equal(createdData.components.create[4].activityId, 'activity-sunset');
+  assert.equal(createdData.components.create[4].isOptional, true);
+  assert.equal(createdData.components.create[5].activityId, 'activity-stargazing');
+  assert.equal(createdData.components.create[5].isOptional, true);
+});
+
 test('ensure endpoints update existing templates by code instead of creating duplicates', async () => {
   let createCalls = 0;
   let updateCalls = 0;
@@ -330,8 +388,8 @@ test('ensure endpoints update existing templates by code instead of creating dup
   const { service } = createExcursionTemplatesService({
     excursionTemplate: {
       findUnique: async ({ where }: any) =>
-        where.code === 'JERASH_AMMAN_FULL_DAY' || where.id === 'template-existing'
-          ? { id: 'template-existing', code: 'JERASH_AMMAN_FULL_DAY', components: [] }
+        where.code === 'JERASH_AMMAN_FULL_DAY' || where.code === 'WADI_RUM_FULL_DAY' || where.id === 'template-existing'
+          ? { id: 'template-existing', code: where.code || 'JERASH_AMMAN_FULL_DAY', components: [] }
           : null,
       create: async () => {
         createCalls += 1;
@@ -355,9 +413,10 @@ test('ensure endpoints update existing templates by code instead of creating dup
   });
 
   await service.ensureJerashAmmanFullDayTemplate();
+  await service.ensureWadiRumFullDayTemplate();
 
   assert.equal(createCalls, 0);
-  assert.equal(updateCalls, 1);
+  assert.equal(updateCalls, 2);
   assert.equal(deletedComponentsFor, 'template-existing');
 });
 
@@ -619,6 +678,10 @@ test('excursion template writes are restricted to admin and operations users', (
     'operations',
   ]);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureDeadSeaEscapeTemplate), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureWadiRumFullDayTemplate), [
     'admin',
     'operations',
   ]);

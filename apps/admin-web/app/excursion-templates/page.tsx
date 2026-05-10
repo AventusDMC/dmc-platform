@@ -35,6 +35,7 @@ export default async function ExcursionTemplatesPage() {
   const petraFullDay = templates.find((template) => template.code === 'PETRA_FULL_DAY');
   const jerashAmman = templates.find((template) => template.code === 'JERASH_AMMAN_FULL_DAY');
   const deadSeaEscape = templates.find((template) => template.code === 'DEAD_SEA_ESCAPE');
+  const wadiRumFullDay = templates.find((template) => template.code === 'WADI_RUM_FULL_DAY');
 
   return (
     <main className="page">
@@ -77,6 +78,12 @@ export default async function ExcursionTemplatesPage() {
                   value: deadSeaEscape ? 'Available' : 'Missing',
                   helper: 'Day access operations',
                 },
+                {
+                  id: 'wadi-rum',
+                  label: 'Wadi Rum Full Day',
+                  value: wadiRumFullDay ? 'Available' : 'Missing',
+                  helper: 'Desert operations',
+                },
               ]}
             />
           }
@@ -98,6 +105,11 @@ export default async function ExcursionTemplatesPage() {
                     exists={Boolean(deadSeaEscape)}
                     label="Dead Sea Escape Template"
                     endpoint="/api/excursion-templates/dead-sea-escape/ensure"
+                  />
+                  <CreatePetraFullDayButton
+                    exists={Boolean(wadiRumFullDay)}
+                    label="Wadi Rum Full Day Template"
+                    endpoint="/api/excursion-templates/wadi-rum-full-day/ensure"
                   />
                   {petraFullDay ? (
                     <Link href="/excursion-templates/petra-full-day" className="dashboard-toolbar-link">

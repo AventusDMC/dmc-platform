@@ -85,6 +85,12 @@ export class ExcursionTemplatesController {
     return this.excursionTemplatesService.ensureDeadSeaEscapeTemplate();
   }
 
+  @Post('wadi-rum-full-day/ensure')
+  @Roles('admin', 'operations')
+  ensureWadiRumFullDayTemplate() {
+    return this.excursionTemplatesService.ensureWadiRumFullDayTemplate();
+  }
+
   @Post('aqaba-sindbad/ensure')
   @Roles('admin', 'operations')
   ensureSindbadAqabaCatalog() {

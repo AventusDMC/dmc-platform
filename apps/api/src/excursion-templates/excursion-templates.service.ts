@@ -198,6 +198,10 @@ export class ExcursionTemplatesService {
     return this.ensureTemplate('DEAD_SEA_ESCAPE', () => this.buildDeadSeaEscapeTemplateData());
   }
 
+  async ensureWadiRumFullDayTemplate() {
+    return this.ensureTemplate('WADI_RUM_FULL_DAY', () => this.buildWadiRumFullDayTemplateData());
+  }
+
   async ensureSindbadAqabaCatalog() {
     const supplier = await this.ensureSindbadCompany();
     const activities: Record<string, any> = {};
@@ -497,6 +501,82 @@ export class ExcursionTemplatesService {
           supplierServiceId: dining?.id ?? null,
           isOptional: true,
           operationalNotes: dining ? 'Optional dining component linked to an existing meal service.' : 'Optional placeholder dining component.',
+        },
+      ],
+    };
+  }
+
+  private async buildWadiRumFullDayTemplateData(): Promise<CreateExcursionTemplateInput> {
+    const route =
+      (await this.findRouteByText(['wadi rum'], ['amman'])) ||
+      (await this.findRouteByText(['wadi rum'], ['aqaba'])) ||
+      (await this.findRouteByText(['rum'], ['amman', 'aqaba']));
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const jeepTour = await this.findActivityByText(['wadi rum'], ['jeep tour']);
+    const camelRide = await this.findActivityByText(['wadi rum'], ['camel ride']);
+    const sunsetExperience = await this.findActivityByText(['wadi rum'], ['sunset']);
+    const stargazing = await this.findActivityByText(['wadi rum'], ['stargazing']);
+    const dining =
+      (await this.findSupplierServiceByText(['wadi rum'], ['bedouin', 'lunch', 'dinner'])) ||
+      (await this.findSupplierServiceByText(['bedouin'], ['lunch', 'dinner'])) ||
+      (await this.findSupplierServiceByText(['lunch', 'dinner', 'meal'], ['wadi rum']));
+
+    return {
+      name: 'Wadi Rum Full Day',
+      code: 'WADI_RUM_FULL_DAY',
+      description:
+        'Reusable operational excursion template for a full-day Wadi Rum program assembled from transport, Activity Master experiences, and optional dining.',
+      defaultDepartureCity: 'Amman or Aqaba',
+      durationMinutes: 720,
+      operationalNotes:
+        'Composite template only. Duration is normally 10-12 hours depending departure city and operating plan. Use existing Activity Master records; do not duplicate flat tours.',
+      active: true,
+      components: [
+        {
+          componentType: 'TRANSPORT',
+          label: 'Transport to Wadi Rum',
+          routeId: route?.id ?? null,
+          transportServiceTypeId: transportServiceType?.id ?? null,
+          suggestedDepartureCity: 'Amman or Aqaba',
+          suggestedArrivalCity: 'Wadi Rum',
+          durationMinutes: route?.durationMinutes ?? null,
+          operationalNotes: route
+            ? 'Use existing transport pricing logic for the selected departure city and pax.'
+            : 'Placeholder component: link Amman/Aqaba to Wadi Rum route when available.',
+        },
+        {
+          ...this.buildActivityComponent('Wadi Rum Jeep Tour', jeepTour),
+          isOptional: false,
+          operationalNotes: jeepTour
+            ? `Linked to Activity Master: ${jeepTour.name}.`
+            : 'Placeholder component: link Wadi Rum Jeep Tour Activity Master when available.',
+        },
+        {
+          ...this.buildActivityComponent('Optional Camel Ride', camelRide),
+          isOptional: true,
+          operationalNotes: camelRide
+            ? `Optional component linked to Activity Master: ${camelRide.name}.`
+            : 'Optional placeholder component: link Wadi Rum Camel Ride Activity Master when available.',
+        },
+        {
+          ...this.buildDiningComponent('Optional Bedouin lunch/dinner', dining),
+          operationalNotes: dining
+            ? 'Optional Bedouin lunch/dinner linked to existing dining/service catalog record.'
+            : 'Optional placeholder dining component: Bedouin lunch or dinner in Wadi Rum.',
+        },
+        {
+          ...this.buildActivityComponent('Optional Sunset Experience', sunsetExperience),
+          isOptional: true,
+          operationalNotes: sunsetExperience
+            ? `Optional component linked to Activity Master: ${sunsetExperience.name}.`
+            : 'Optional placeholder component: link Wadi Rum sunset Activity Master when available.',
+        },
+        {
+          ...this.buildActivityComponent('Optional Stargazing', stargazing),
+          isOptional: true,
+          operationalNotes: stargazing
+            ? `Optional component linked to Activity Master: ${stargazing.name}.`
+            : 'Optional placeholder component: link Wadi Rum Stargazing Experience Activity Master when available.',
         },
       ],
     };
