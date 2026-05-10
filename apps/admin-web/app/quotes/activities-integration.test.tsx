@@ -111,9 +111,12 @@ describe('activities quote and booking UI integration regression', () => {
       'preferredActivityId?: string;',
       'const [activityId, setActivityId]',
       'function findPairedActivityService(activity: ActivityCatalogItem, services: SupplierService[])',
-      'Pricing service',
+      'function getActivityServiceBridge(activity: ActivityCatalogItem | null, services: SupplierService[])',
+      'Create an Activity Master record before adding it to the quote.',
       'activityId: isActivityService && activityId ? activityId : undefined',
     ]);
+
+    assert.doesNotMatch(quoteItemsFormSource, /Activity service[\s\S]*Select activity service/);
   });
 
   it('does not submit activity variant sell override unless manually entered', () => {

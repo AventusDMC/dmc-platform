@@ -663,6 +663,18 @@ function findPairedActivityService(activity: ActivityCatalogItem, services: Supp
   );
 }
 
+function getActivityMasterOptions(activities: ActivityCatalogItem[]) {
+  return activities.filter((activity) => activity.active !== false);
+}
+
+function getActivityServiceBridge(activity: ActivityCatalogItem | null, services: SupplierService[]) {
+  if (!activity) {
+    return services.find((service) => getServiceTypeKey(service) === 'activity') || null;
+  }
+
+  return findPairedActivityService(activity, services);
+}
+
 function formatDisplayLabel(value: string) {
   return value
     .trim()
@@ -1095,9 +1107,11 @@ export function QuoteItemsForm({
       })
     : [];
 
-  const selectedService = services.find((service) => service.id === serviceId) || (activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
-  const activeActivities = activities.filter((activity) => activity.active !== false);
+  const activeActivities = useMemo(() => getActivityMasterOptions(activities), [activities]);
   const selectedActivity = activeActivities.find((activity) => activity.id === activityId) || null;
+  const selectedService =
+    services.find((service) => service.id === serviceId) ||
+    (activeServiceType === 'activity' ? getActivityServiceBridge(selectedActivity || activeActivities[0] || null, services) || undefined : activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
   const activeActivityRateVariants = useMemo(
     () => (selectedActivity?.rateVariants || []).filter((variant) => variant.active !== false),
     [selectedActivity],
@@ -1428,11 +1442,12 @@ export function QuoteItemsForm({
     activityMaxPaxPerUnit > 0
       ? Math.ceil(activityParticipantTotal / activityMaxPaxPerUnit)
       : null;
+  const isLegacyActivityEdit = Boolean(isEditing && isActivityService && !activityId);
   const isActivitySelected = Boolean(
     isActivityService &&
       serviceId &&
       selectedService &&
-      (activeActivities.length === 0 || (activityId && (activeActivityRateVariants.length === 0 || selectedActivityRateVariant))),
+      (isLegacyActivityEdit || (activeActivities.length > 0 && activityId && (activeActivityRateVariants.length === 0 || selectedActivityRateVariant))),
   );
   const resolvedActivityServiceDate = isActivityService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
   const resolvedMealServiceDate = isMealService && !serviceDate ? resolveDerivedServiceDate(travelStartDate, itineraryDayNumber) : null;
@@ -1517,18 +1532,27 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (activeServiceType === 'activity') {
+      const pairedService = getActivityServiceBridge(selectedActivity || activeActivities[0] || null, services);
+      const nextServiceId = pairedService?.id || '';
+      if (serviceId !== nextServiceId) {
+        setServiceId(nextServiceId);
+      }
+      return;
+    }
+
     if (!filteredServices.some((service) => service.id === serviceId)) {
       // Preserve API order so the first real hotel template remains the default when multiple templates exist.
       setServiceId(filteredServices[0]?.id || '');
     }
-  }, [activeServiceType, filteredServices, isEditing, serviceId]);
+  }, [activeActivities, activeServiceType, filteredServices, isEditing, selectedActivity, serviceId, services]);
 
   useEffect(() => {
     if (isEditing || activeServiceType !== 'activity' || !selectedActivity) {
       return;
     }
 
-    const pairedService = findPairedActivityService(selectedActivity, services);
+    const pairedService = getActivityServiceBridge(selectedActivity, services);
 
     if (pairedService && !serviceId) {
       setServiceId(pairedService.id);
@@ -2561,17 +2585,20 @@ export function QuoteItemsForm({
       {!isEditing ? (
         <div className="service-type-buttons">
           {SERVICE_TYPE_BUTTONS.map((button) => {
-            const count = services.filter((service) => {
-              if (getServiceTypeKey(service) !== button.key) {
-                return false;
-              }
+            const count =
+              button.key === 'activity'
+                ? activeActivities.length
+                : services.filter((service) => {
+                    if (getServiceTypeKey(service) !== button.key) {
+                      return false;
+                    }
 
-              if (button.key === 'hotel') {
-                return !isImportedPlaceholderService(service);
-              }
+                    if (button.key === 'hotel') {
+                      return !isImportedPlaceholderService(service);
+                    }
 
-              return true;
-            }).length;
+                    return true;
+                  }).length;
             const isActive = activeServiceType === button.key;
 
             return (
@@ -3301,83 +3328,50 @@ export function QuoteItemsForm({
                   {selectedService ? <span className="page-tab-badge">Activity selected</span> : null}
                 </div>
 
-                {activeActivities.length === 0 && filteredServices.length === 0 ? (
+                {activeActivities.length === 0 ? (
                   <div className="quote-service-empty-state">
                     <strong>No activities available</strong>
-                    <p>Create an activity catalog service before adding it to the quote.</p>
+                    <p>Create an Activity Master record before adding it to the quote.</p>
                   </div>
                 ) : (
                   <div className="quote-transport-step-fields">
-                    {activeActivities.length > 0 ? (
-                      <>
-                        <label>
-                          Activity
-                          <select
-                            value={activityId}
-                            onChange={(event) => {
-                              const nextActivityId = event.target.value;
-                              const nextActivity = activeActivities.find((activity) => activity.id === nextActivityId) || null;
-                              setActivityId(nextActivityId);
-                              setActivityRateVariantId(nextActivity?.rateVariants?.find((variant) => variant.active !== false)?.id || '');
-                              if (nextActivity) {
-                                const pairedService = findPairedActivityService(nextActivity, services);
-                                setServiceId(pairedService?.id || '');
-                              }
-                            }}
-                            required
-                          >
-                            <option value="">Select activity</option>
-                            {activeActivities.map((activity) => (
-                              <option key={activity.id} value={activity.id}>
-                                {activity.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                    <label>
+                      Activity
+                      <select
+                        value={activityId}
+                        onChange={(event) => {
+                          const nextActivityId = event.target.value;
+                          const nextActivity = activeActivities.find((activity) => activity.id === nextActivityId) || null;
+                          setActivityId(nextActivityId);
+                          setActivityRateVariantId(nextActivity?.rateVariants?.find((variant) => variant.active !== false)?.id || '');
+                          setServiceId(getActivityServiceBridge(nextActivity, services)?.id || '');
+                        }}
+                        required
+                      >
+                        <option value="">Select activity</option>
+                        {activeActivities.map((activity) => (
+                          <option key={activity.id} value={activity.id}>
+                            {activity.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-                        {hasActivityRateVariants ? (
-                          <label>
-                            Rate variant
-                            <select value={activityRateVariantId} onChange={(event) => setActivityRateVariantId(event.target.value)} required>
-                              {activeActivityRateVariants.map((variant) => (
-                                <option key={variant.id} value={variant.id}>
-                                  {variant.name}
-                                  {variant.currency ? ` - ${variant.currency}` : ''}
-                                  {variant.durationMinutes ? ` - ${variant.durationMinutes} min` : ''}
-                                  {variant.maxPaxPerUnit ? ` - max ${variant.maxPaxPerUnit} pax/unit` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : null}
-
-                        {!hasActivityRateVariants ? (
-                          <label>
-                            Pricing service
-                            <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
-                              <option value="">Select pricing service</option>
-                              {filteredServices.map((service) => (
-                                <option key={service.id} value={service.id}>
-                                  {service.name} ({service.currency} {Number(service.baseCost || 0).toFixed(2)})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : null}
-                      </>
-                    ) : (
+                    {hasActivityRateVariants ? (
                       <label>
-                        Activity service
-                        <select value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
-                          <option value="">Select activity service</option>
-                          {filteredServices.map((service) => (
-                            <option key={service.id} value={service.id}>
-                              {service.name}
+                        Rate variant
+                        <select value={activityRateVariantId} onChange={(event) => setActivityRateVariantId(event.target.value)} required>
+                          {activeActivityRateVariants.map((variant) => (
+                            <option key={variant.id} value={variant.id}>
+                              {variant.name}
+                              {variant.currency ? ` - ${variant.currency}` : ''}
+                              {variant.durationMinutes ? ` - ${variant.durationMinutes} min` : ''}
+                              {variant.maxPaxPerUnit ? ` - max ${variant.maxPaxPerUnit} pax/unit` : ''}
                             </option>
                           ))}
                         </select>
                       </label>
-                    )}
+                    ) : null}
 
                     <label>
                       Date
@@ -3470,7 +3464,7 @@ export function QuoteItemsForm({
                 <button
                   type="submit"
                   className="quote-transport-add-button"
-                  disabled={isSubmitting || filteredServices.length === 0 || !isActivitySelected}
+                  disabled={isSubmitting || !isActivitySelected}
                 >
                   {isSubmitting ? 'Saving...' : 'Add Activity'}
                 </button>

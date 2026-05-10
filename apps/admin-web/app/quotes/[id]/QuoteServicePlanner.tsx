@@ -1207,6 +1207,10 @@ function getSmartSuggestionCandidates(category: ServicePlannerCategory, plannerP
       .sort((left, right) => compareSmartSuggestions(left, right, usageCounts));
   }
 
+  if (category === 'activity') {
+    return [];
+  }
+
   return plannerProps.services
     .filter((service) => getQuoteServiceCategoryKey(service) === category)
     .map((service, index) => ({
