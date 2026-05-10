@@ -14,6 +14,7 @@ const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSu
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quotePassengersPanelSource = readFileSync(new URL('./QuotePassengersPanel.tsx', import.meta.url), 'utf8');
+const quoteRoomingPanelSource = readFileSync(new URL('./QuoteRoomingPanel.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
@@ -196,6 +197,32 @@ describe('quote detail page regression', () => {
       '`${apiBaseUrl}/quotes/${quoteId}/passengers`',
       '`${apiBaseUrl}/quotes/${quoteId}/passengers/${editingPassengerId}`',
       '`${apiBaseUrl}/quotes/${quoteId}/passengers/${passenger.id}`',
+    ]);
+  });
+
+  it('renders manual quote rooming foundation on the itinerary page', () => {
+    expectSourceContains(pageSource, [
+      "import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';",
+      'type QuoteRoomingFetchResult =',
+      'async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult>',
+      "`${DATA_API_BASE_URL}/quotes/${id}/rooming`",
+      'const quoteRoomingGroups = quoteRoomingResult.roomingGroups;',
+      '<QuoteRoomingPanel',
+      'roomingGroups={quoteRoomingGroups}',
+    ]);
+
+    expectSourceContains(quoteRoomingPanelSource, [
+      'Rooming foundation',
+      'Manual rooming by itinerary day and hotel stay.',
+      'Create room group',
+      'Assign passenger',
+      'Unassigned passengers',
+      'function getOccupancyCapacity',
+      'function formatOccupancyCount',
+      '`${apiBaseUrl}/quotes/${quoteId}/rooming`',
+      '`${apiBaseUrl}/quotes/${quoteId}/rooming/${group.id}/assignments`',
+      '`${apiBaseUrl}/quotes/${quoteId}/rooming/${group.id}/assignments/${quotePassengerId}`',
+      '`${apiBaseUrl}/quotes/${quoteId}/rooming/${group.id}`',
     ]);
   });
 
