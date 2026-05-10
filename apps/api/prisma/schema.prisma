@@ -258,8 +258,12 @@ model CompanyBranding {
 
 model Activity {
   id                  String                       @id @default(uuid()) @db.Uuid
+  code                String?                      @unique
   name                String
   description         String?
+  category            String?
+  city                String?
+  region              String?
   supplierCompanyId   String                       @db.Uuid
   supplierId          String?                      @db.Uuid
   pricingBasis        ActivityPricingBasis
@@ -276,27 +280,40 @@ model Activity {
   quoteItems          QuoteItem[]
 
   @@index([active, name])
+  @@index([code])
+  @@index([city, active])
   @@index([supplierCompanyId])
   @@map("activities")
 }
 
 model ActivityRateVariant {
-  id              String               @id @default(uuid()) @db.Uuid
-  activityId      String               @db.Uuid
-  name            String
-  durationMinutes Int?
-  pricingBasis    ActivityPricingBasis
-  currency        String               @default("USD")
-  costPrice       Float
-  sellPrice       Float
-  maxPaxPerUnit   Int?
-  active          Boolean              @default(true)
-  notes           String?
-  sortOrder       Int                  @default(0)
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  activity        Activity             @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  quoteItems      QuoteItem[]
+  id               String                    @id @default(uuid()) @db.Uuid
+  activityId       String                    @db.Uuid
+  name             String
+  durationMinutes  Int?
+  pricingBasis     ActivityPricingBasis
+  currency         String                    @default("USD")
+  costPrice        Float
+  sellPrice        Float
+  maxPaxPerUnit    Int?
+  active           Boolean                   @default(true)
+  notes            String?
+  difficulty       String?
+  guideRequired    Boolean?
+  guideRequirement ActivityGuideRequirement?
+  startPoint       String?
+  endPoint         String?
+  suitability      String?
+  fitnessNotes     String?
+  waterNotes       String?
+  seasonalNotes    String?
+  inclusions       String?
+  exclusions       String?
+  sortOrder        Int                       @default(0)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  activity         Activity                  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  quoteItems       QuoteItem[]
 
   @@index([activityId, active, sortOrder])
   @@map("activity_rate_variants")
@@ -2100,6 +2117,13 @@ enum ServiceRatePricingMode {
 enum ActivityPricingBasis {
   PER_PERSON
   PER_GROUP
+}
+
+enum ActivityGuideRequirement {
+  LOCAL_GUIDE_REQUIRED
+  OFFICIAL_ACCOMPANYING_GUIDE_ALLOWED
+  BOTH_ACCEPTED
+  LOCAL_GUIDE_PLUS_ACCOMPANYING_GUIDE
 }
 
 enum TourismFeeMode {

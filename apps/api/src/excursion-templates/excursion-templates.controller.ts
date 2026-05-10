@@ -85,6 +85,12 @@ export class ExcursionTemplatesController {
     return this.excursionTemplatesService.ensureDeadSeaEscapeTemplate();
   }
 
+  @Post('aqaba-sindbad/ensure')
+  @Roles('admin', 'operations')
+  ensureSindbadAqabaCatalog() {
+    return this.excursionTemplatesService.ensureSindbadAqabaCatalog();
+  }
+
   @Post(':id/components')
   @Roles('admin', 'operations')
   addComponent(@Param('id') id: string, @Body() body: ExcursionTemplateComponentBody) {

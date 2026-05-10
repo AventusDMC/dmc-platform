@@ -3,6 +3,11 @@ import { Roles } from '../auth/auth.decorators';
 import { ActivitiesService } from './activities.service';
 
 type ActivityPricingBasis = 'PER_PERSON' | 'PER_GROUP';
+type ActivityGuideRequirement =
+  | 'LOCAL_GUIDE_REQUIRED'
+  | 'OFFICIAL_ACCOMPANYING_GUIDE_ALLOWED'
+  | 'BOTH_ACCEPTED'
+  | 'LOCAL_GUIDE_PLUS_ACCOMPANYING_GUIDE';
 
 type ActivityRateVariantBody = {
   id?: string;
@@ -15,6 +20,17 @@ type ActivityRateVariantBody = {
   maxPaxPerUnit?: number | null;
   active?: boolean;
   notes?: string | null;
+  difficulty?: string | null;
+  guideRequired?: boolean | null;
+  guideRequirement?: ActivityGuideRequirement | null;
+  startPoint?: string | null;
+  endPoint?: string | null;
+  suitability?: string | null;
+  fitnessNotes?: string | null;
+  waterNotes?: string | null;
+  seasonalNotes?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
 };
 
 type CreateActivityBody = {
@@ -26,6 +42,10 @@ type CreateActivityBody = {
   sellPrice: number;
   durationMinutes?: number | null;
   active?: boolean;
+  code?: string | null;
+  category?: string | null;
+  city?: string | null;
+  region?: string | null;
   rateVariants?: ActivityRateVariantBody[];
 };
 
@@ -52,6 +72,12 @@ export class ActivitiesController {
   @Roles('admin', 'operations')
   duplicate(@Param('id') id: string) {
     return this.activitiesService.duplicate(id);
+  }
+
+  @Post('petra-hiking/ensure')
+  @Roles('admin', 'operations')
+  ensurePetraHikingExperiences() {
+    return this.activitiesService.ensurePetraHikingExperiences();
   }
 
   @Get()

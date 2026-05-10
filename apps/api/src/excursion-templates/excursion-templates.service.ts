@@ -38,7 +38,24 @@ type ReorderExcursionTemplateComponentsInput = {
   componentIds: string[];
 };
 
+type AqabaActivityDefinition = {
+  name: string;
+  pricingBasis: 'PER_PERSON' | 'PER_GROUP';
+  description: string;
+  durationMinutes?: number | null;
+  notes: string;
+  variants: Array<{
+    name: string;
+    durationMinutes?: number | null;
+    pricingBasis?: 'PER_PERSON' | 'PER_GROUP';
+    maxPaxPerUnit?: number | null;
+    notes?: string | null;
+  }>;
+};
+
 const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'GUIDE', 'DINING'];
+const PRICING_PENDING_NOTE =
+  'Pricing pending from Sindbad Aqaba source catalog. Operational record created with 0 cost/sell until commercial values are confirmed.';
 
 @Injectable()
 export class ExcursionTemplatesService {
@@ -177,6 +194,29 @@ export class ExcursionTemplatesService {
 
   async ensureDeadSeaEscapeTemplate() {
     return this.ensureTemplate('DEAD_SEA_ESCAPE', () => this.buildDeadSeaEscapeTemplateData());
+  }
+
+  async ensureSindbadAqabaCatalog() {
+    const supplier = await this.ensureSindbadCompany();
+    const activities: Record<string, any> = {};
+
+    for (const definition of this.getSindbadAqabaActivityDefinitions()) {
+      activities[definition.name] = await this.ensureAqabaActivity(supplier.id, definition);
+    }
+
+    const templates = await Promise.all([
+      this.ensureTemplate('AQABA_SNORKELING_DAY', () => this.buildAqabaSnorkelingDayTemplateData(activities)),
+      this.ensureTemplate('AQABA_SUNSET_CRUISE', () => this.buildAqabaSunsetCruiseTemplateData(activities)),
+      this.ensureTemplate('AQABA_DISCOVER_SCUBA', () => this.buildAqabaDiscoverScubaTemplateData(activities)),
+      this.ensureTemplate('AQABA_PRIVATE_BOAT_DAY', () => this.buildAqabaPrivateBoatTemplateData(activities)),
+    ]);
+
+    return {
+      supplier,
+      activities: Object.values(activities),
+      templates,
+      unresolvedPricing: Object.keys(activities).map((name) => ({ activity: name, reason: PRICING_PENDING_NOTE })),
+    };
   }
 
   async addComponent(templateId: string, data: ExcursionTemplateComponentInput) {
@@ -458,6 +498,323 @@ export class ExcursionTemplatesService {
         },
       ],
     };
+  }
+
+  private async buildAqabaSnorkelingDayTemplateData(activities: Record<string, any>): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['aqaba'], ['city', 'south beach', 'berenice']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const lunch = await this.findSupplierServiceByText(['lunch', 'meal', 'restaurant'], ['aqaba', 'sindbad', 'berenice']);
+
+    return {
+      name: 'Aqaba Snorkeling Day Operational Excursion',
+      code: 'AQABA_SNORKELING_DAY',
+      description: 'Composite Aqaba snorkeling day assembled from transport, Berenice access, snorkeling cruise, and optional lunch.',
+      defaultDepartureCity: 'Aqaba',
+      durationMinutes: 480,
+      operationalNotes: 'Created from Sindbad Aqaba activities catalog as linked operational components; pricing remains on Activity Master variants.',
+      active: true,
+      components: [
+        this.buildAqabaTransportComponent('Aqaba snorkeling day transport', route, transportServiceType),
+        this.buildActivityComponent('Berenice Beach Club', activities['Berenice Beach Club']),
+        this.buildActivityComponent('Snorkeling Cruise', activities['Snorkeling Cruise']),
+        this.buildDiningComponent('Optional lunch', lunch),
+      ],
+    };
+  }
+
+  private async buildAqabaSunsetCruiseTemplateData(activities: Record<string, any>): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['aqaba'], ['city', 'marina', 'port']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const dinner = await this.findSupplierServiceByText(['bbq', 'dinner', 'meal'], ['aqaba', 'sindbad']);
+
+    return {
+      name: 'Aqaba Sunset Cruise Operational Excursion',
+      code: 'AQABA_SUNSET_CRUISE',
+      description: 'Composite Aqaba sunset cruise assembled from transport, sunset cruise activity, and optional BBQ dinner.',
+      defaultDepartureCity: 'Aqaba',
+      durationMinutes: 240,
+      operationalNotes: 'Created from Sindbad Aqaba activities catalog as linked operational components; BBQ can use activity variant or dining service if available.',
+      active: true,
+      components: [
+        this.buildAqabaTransportComponent('Aqaba sunset cruise transport', route, transportServiceType),
+        this.buildActivityComponent('Sunset Cruise', activities['Sunset Cruise']),
+        this.buildDiningComponent('Optional BBQ dinner', dinner),
+      ],
+    };
+  }
+
+  private async buildAqabaDiscoverScubaTemplateData(activities: Record<string, any>): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['aqaba'], ['city', 'south beach', 'dive']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const lunch = await this.findSupplierServiceByText(['lunch', 'meal', 'restaurant'], ['aqaba', 'sindbad']);
+
+    return {
+      name: 'Aqaba Discover Scuba Operational Excursion',
+      code: 'AQABA_DISCOVER_SCUBA',
+      description: 'Composite Aqaba scuba day assembled from transport, Discover Scuba Diving activity/instructor component, and optional lunch.',
+      defaultDepartureCity: 'Aqaba',
+      durationMinutes: 480,
+      operationalNotes: 'Created from Sindbad Aqaba activities catalog as linked operational components.',
+      active: true,
+      components: [
+        this.buildAqabaTransportComponent('Aqaba scuba day transport', route, transportServiceType),
+        this.buildActivityComponent('Discover Scuba Diving', activities['Discover Scuba Diving']),
+        {
+          ...this.buildActivityComponent('Instructor / scuba activity', activities['Discover Scuba Diving']),
+          operationalNotes: 'Instructor/activity component linked to Discover Scuba Diving Activity Master record.',
+        },
+        this.buildDiningComponent('Optional lunch', lunch),
+      ],
+    };
+  }
+
+  private async buildAqabaPrivateBoatTemplateData(activities: Record<string, any>): Promise<CreateExcursionTemplateInput> {
+    const route = await this.findRouteByText(['aqaba'], ['city', 'marina', 'port']);
+    const transportServiceType = await this.findTransportServiceTypeByText(['full', 'day']);
+    const bbq = await this.findSupplierServiceByText(['bbq', 'meal', 'dinner'], ['aqaba', 'sindbad']);
+
+    return {
+      name: 'Aqaba Private Boat Day Operational Excursion',
+      code: 'AQABA_PRIVATE_BOAT_DAY',
+      description: 'Composite Aqaba private boat day assembled from transport, private boat rental, and optional snorkeling/BBQ components.',
+      defaultDepartureCity: 'Aqaba',
+      durationMinutes: 480,
+      operationalNotes: 'Created from Sindbad Aqaba activities catalog as linked operational components.',
+      active: true,
+      components: [
+        this.buildAqabaTransportComponent('Aqaba private boat transport', route, transportServiceType),
+        this.buildActivityComponent('Private Boat Rental', activities['Private Boat Rental']),
+        { ...this.buildActivityComponent('Optional snorkeling supplement', activities['Snorkeling Cruise']), isOptional: true },
+        this.buildDiningComponent('Optional BBQ supplement', bbq),
+      ],
+    };
+  }
+
+  private buildAqabaTransportComponent(label: string, route: any, transportServiceType: any): ExcursionTemplateComponentInput {
+    return {
+      componentType: 'TRANSPORT',
+      label,
+      routeId: route?.id ?? null,
+      transportServiceTypeId: transportServiceType?.id ?? null,
+      suggestedDepartureCity: 'Aqaba',
+      suggestedArrivalCity: 'Aqaba',
+      durationMinutes: route?.durationMinutes ?? null,
+      operationalNotes: route
+        ? 'Use existing transport pricing logic for Aqaba operational movement.'
+        : 'Placeholder component: link an Aqaba city/marina/beach route when available.',
+    };
+  }
+
+  private buildActivityComponent(label: string, activity: any): ExcursionTemplateComponentInput {
+    return {
+      componentType: 'ACTIVITY',
+      label,
+      activityId: activity?.id ?? null,
+      operationalNotes: activity ? `Linked to Activity Master: ${activity.name}.` : `Placeholder component: ${label} Activity Master record not found.`,
+    };
+  }
+
+  private buildDiningComponent(label: string, dining: any): ExcursionTemplateComponentInput {
+    return {
+      componentType: 'DINING',
+      label,
+      supplierServiceId: dining?.id ?? null,
+      isOptional: true,
+      operationalNotes: dining ? 'Linked to existing dining/service catalog record.' : `Optional placeholder dining component: ${label}.`,
+    };
+  }
+
+  private async ensureSindbadCompany() {
+    const existing = await this.prisma.company.findFirst({
+      where: { name: { equals: 'Sindbad', mode: 'insensitive' } as any },
+    } as any);
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.company.create({
+      data: {
+        name: 'Sindbad',
+        type: 'supplier',
+        country: 'Jordan',
+        city: 'Aqaba',
+      } as any,
+    });
+  }
+
+  private async ensureAqabaActivity(supplierCompanyId: string, definition: AqabaActivityDefinition) {
+    const existing = await (this.prisma as any).activity.findFirst({
+      where: {
+        name: { equals: definition.name, mode: 'insensitive' },
+        supplierCompanyId,
+      },
+      include: {
+        rateVariants: true,
+      },
+    });
+    const payload = {
+      name: definition.name,
+      description: `${definition.description} ${definition.notes} ${PRICING_PENDING_NOTE}`,
+      supplierCompanyId,
+      pricingBasis: definition.pricingBasis,
+      costPrice: 0,
+      sellPrice: 0,
+      durationMinutes: definition.durationMinutes ?? null,
+      active: true,
+    };
+
+    if (!existing) {
+      return (this.prisma as any).activity.create({
+        data: {
+          ...payload,
+          rateVariants: {
+            create: definition.variants.map((variant, index) => this.buildAqabaVariantData(definition, variant, index)),
+          },
+        },
+        include: {
+          rateVariants: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.syncAqabaActivityVariants(tx, existing.id, definition);
+      return (tx as any).activity.update({
+        where: { id: existing.id },
+        data: payload,
+        include: {
+          rateVariants: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      });
+    });
+  }
+
+  private buildAqabaVariantData(
+    definition: AqabaActivityDefinition,
+    variant: AqabaActivityDefinition['variants'][number],
+    index: number,
+  ) {
+    return {
+      name: variant.name,
+      durationMinutes: variant.durationMinutes ?? null,
+      pricingBasis: variant.pricingBasis || definition.pricingBasis,
+      currency: 'JOD',
+      costPrice: 0,
+      sellPrice: 0,
+      maxPaxPerUnit: variant.maxPaxPerUnit ?? null,
+      active: true,
+      notes: [variant.notes, PRICING_PENDING_NOTE].filter(Boolean).join(' '),
+      sortOrder: index,
+    };
+  }
+
+  private async syncAqabaActivityVariants(tx: any, activityId: string, definition: AqabaActivityDefinition) {
+    const existingVariants = await tx.activityRateVariant.findMany({
+      where: { activityId },
+      select: { id: true, name: true },
+    });
+    const existingByName = new Map<string, { id: string; name: string }>(
+      existingVariants.map((variant: any) => [String(variant.name).toLowerCase(), variant]),
+    );
+    const retainedIds = new Set<string>();
+
+    for (const [index, variant] of definition.variants.entries()) {
+      const existing = existingByName.get(variant.name.toLowerCase());
+      const data = this.buildAqabaVariantData(definition, variant, index);
+      if (existing) {
+        retainedIds.add(existing.id);
+        await tx.activityRateVariant.update({ where: { id: existing.id }, data });
+      } else {
+        await tx.activityRateVariant.create({ data: { ...data, activityId } });
+      }
+    }
+
+    const removedIds = existingVariants.map((variant: any) => variant.id).filter((id: string) => !retainedIds.has(id));
+    if (removedIds.length > 0) {
+      await tx.activityRateVariant.updateMany({ where: { id: { in: removedIds } }, data: { active: false } });
+    }
+  }
+
+  private getSindbadAqabaActivityDefinitions(): AqabaActivityDefinition[] {
+    return [
+      {
+        name: 'Berenice Beach Club',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba beach club day-pass experience operated by Sindbad.',
+        durationMinutes: 480,
+        notes: 'City: Aqaba. Supplier: Sindbad. Includes beach club access where operationally applicable.',
+        variants: ['1 Day Pass', '3 Day Pass', '4 Day Pass', '6 Day Pass', '8 Day Pass'].map((name) => ({ name })),
+      },
+      {
+        name: 'Jet Ski',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba jet ski experience operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad. Double rider variants represent shared ride options.',
+        variants: [
+          { name: '15 min', durationMinutes: 15 },
+          { name: '30 min', durationMinutes: 30 },
+          { name: '15 min double rider', durationMinutes: 15, notes: 'Double rider variant.' },
+          { name: '30 min double rider', durationMinutes: 30, notes: 'Double rider variant.' },
+        ],
+      },
+      {
+        name: 'Parasailing',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba parasailing experience operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad.',
+        variants: ['Single', 'Tandem', 'Triple'].map((name) => ({ name })),
+      },
+      {
+        name: 'Snorkeling Cruise',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba snorkeling and glass-bottom boat cruise experiences operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad. BBQ inclusion applies only to the 4 Hour Snorkeling Cruise BBQ variant.',
+        variants: [
+          { name: 'Discovery Glass Bottom Boat' },
+          { name: '4 Hour Snorkeling Cruise BBQ', durationMinutes: 240, notes: 'Includes BBQ operationally where applicable.' },
+        ],
+      },
+      {
+        name: 'Sunset Cruise',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba sunset cruise experiences operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad.',
+        variants: [
+          { name: 'Sunset Cruise' },
+          { name: 'Sunset BBQ Cruise', notes: 'BBQ included operationally where applicable.' },
+        ],
+      },
+      {
+        name: 'Discover Scuba Diving',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba scuba diving and diving course experiences operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad. Instructor/dive inclusions should be confirmed against final catalog terms.',
+        variants: ['DSD 1 Dive', 'DSD 2 Dives', 'Leisure Diving', 'Open Water Course'].map((name) => ({ name })),
+      },
+      {
+        name: 'Private Boat Rental',
+        pricingBasis: 'PER_GROUP',
+        description: 'Aqaba private boat rental options operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad. Capacity to be confirmed per vessel before quoting.',
+        variants: ['Sindbad Motor Boat', 'Glass Bottom Boat', 'Scuba Boat', 'Fishing Boat'].map((name) => ({
+          name,
+          pricingBasis: 'PER_GROUP',
+          notes: 'Capacity pending from confirmed vessel terms.',
+        })),
+      },
+      {
+        name: 'Aqaba Beach Kitchen Experience',
+        pricingBasis: 'PER_PERSON',
+        description: 'Aqaba beach kitchen cultural dining/activity experience operated by Sindbad.',
+        notes: 'City: Aqaba. Supplier: Sindbad. Inclusions/exclusions and cancellation terms pending from source catalog confirmation.',
+        variants: [{ name: 'Standard Experience' }],
+      },
+    ];
   }
 
   private templateInclude() {

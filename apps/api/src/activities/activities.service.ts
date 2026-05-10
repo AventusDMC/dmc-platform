@@ -9,6 +9,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 type ActivityPricingBasis = 'PER_PERSON' | 'PER_GROUP';
+type ActivityGuideRequirement =
+  | 'LOCAL_GUIDE_REQUIRED'
+  | 'OFFICIAL_ACCOMPANYING_GUIDE_ALLOWED'
+  | 'BOTH_ACCEPTED'
+  | 'LOCAL_GUIDE_PLUS_ACCOMPANYING_GUIDE';
 
 type ActivityRateVariantInput = {
   id?: string;
@@ -21,6 +26,17 @@ type ActivityRateVariantInput = {
   maxPaxPerUnit?: number | null;
   active?: boolean;
   notes?: string | null;
+  difficulty?: string | null;
+  guideRequired?: boolean | null;
+  guideRequirement?: ActivityGuideRequirement | null;
+  startPoint?: string | null;
+  endPoint?: string | null;
+  suitability?: string | null;
+  fitnessNotes?: string | null;
+  waterNotes?: string | null;
+  seasonalNotes?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
 };
 
 type ActivityRateVariantRecord = ActivityRateVariantInput & {
@@ -37,6 +53,10 @@ type CreateActivityInput = {
   durationMinutes?: number | null;
   active?: boolean;
   currency?: string | null;
+  code?: string | null;
+  category?: string | null;
+  city?: string | null;
+  region?: string | null;
   rateVariants?: ActivityRateVariantInput[];
 };
 
@@ -79,7 +99,11 @@ export class ActivitiesService {
     return (this.prisma as any).activity.create({
       data: {
         name: requireTrimmedString(data.name, 'name'),
+        code: normalizeOptionalString(data.code),
         description: normalizeOptionalString(data.description),
+        category: normalizeOptionalString(data.category),
+        city: normalizeOptionalString(data.city),
+        region: normalizeOptionalString(data.region),
         supplierCompanyId: requireTrimmedString(data.supplierCompanyId, 'supplierCompanyId'),
         pricingBasis: this.normalizePricingBasis(data.pricingBasis),
         costPrice: ensureValidNumber(data.costPrice, 'costPrice', { min: 0 }),
@@ -113,7 +137,11 @@ export class ActivitiesService {
         where: { id },
         data: {
           name: data.name === undefined ? undefined : requireTrimmedString(data.name, 'name'),
+          code: data.code === undefined ? undefined : normalizeOptionalString(data.code),
           description: data.description === undefined ? undefined : normalizeOptionalString(data.description),
+          category: data.category === undefined ? undefined : normalizeOptionalString(data.category),
+          city: data.city === undefined ? undefined : normalizeOptionalString(data.city),
+          region: data.region === undefined ? undefined : normalizeOptionalString(data.region),
           supplierCompanyId:
             data.supplierCompanyId === undefined ? undefined : requireTrimmedString(data.supplierCompanyId, 'supplierCompanyId'),
           pricingBasis: data.pricingBasis === undefined ? undefined : this.normalizePricingBasis(data.pricingBasis),
@@ -139,7 +167,11 @@ export class ActivitiesService {
     return (this.prisma as any).activity.create({
       data: {
         name: `${source.name} Copy`,
+        code: null,
         description: source.description,
+        category: source.category,
+        city: source.city,
+        region: source.region,
         supplierCompanyId: source.supplierCompanyId,
         pricingBasis: source.pricingBasis,
         costPrice: source.costPrice,
@@ -157,6 +189,17 @@ export class ActivitiesService {
             maxPaxPerUnit: variant.maxPaxPerUnit,
             active: variant.active,
             notes: variant.notes,
+            difficulty: variant.difficulty,
+            guideRequired: variant.guideRequired,
+            guideRequirement: variant.guideRequirement,
+            startPoint: variant.startPoint,
+            endPoint: variant.endPoint,
+            suitability: variant.suitability,
+            fitnessNotes: variant.fitnessNotes,
+            waterNotes: variant.waterNotes,
+            seasonalNotes: variant.seasonalNotes,
+            inclusions: variant.inclusions,
+            exclusions: variant.exclusions,
           })),
           this.getDefaultActivityCurrency(source),
         ),
@@ -167,6 +210,62 @@ export class ActivitiesService {
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
         },
       },
+    });
+  }
+
+  async ensurePetraHikingExperiences() {
+    const supplier = await this.ensurePetraGuidesCompany();
+    const definition = this.getPetraHikingDefinition();
+    const existing = await (this.prisma as any).activity.findFirst({
+      where: {
+        OR: [{ code: definition.code }, { name: { equals: definition.name, mode: 'insensitive' } }],
+      },
+      include: { rateVariants: true },
+    });
+    const payload = {
+      code: definition.code,
+      name: definition.name,
+      description: definition.description,
+      category: definition.category,
+      city: definition.city,
+      region: definition.region,
+      supplierCompanyId: supplier.id,
+      pricingBasis: 'PER_GROUP',
+      costPrice: 0,
+      sellPrice: 0,
+      durationMinutes: null,
+      active: true,
+    };
+
+    if (!existing) {
+      return (this.prisma as any).activity.create({
+        data: {
+          ...payload,
+          rateVariants: {
+            create: definition.variants.map((variant, index) => this.buildPetraHikingVariantData(variant, index)),
+          },
+        },
+        include: {
+          supplierCompany: true,
+          rateVariants: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.syncPetraHikingVariants(tx, existing.id, definition.variants);
+      return (tx as any).activity.update({
+        where: { id: existing.id },
+        data: payload,
+        include: {
+          supplierCompany: true,
+          rateVariants: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      });
     });
   }
 
@@ -205,7 +304,7 @@ export class ActivitiesService {
   }
 
   private buildRateVariantData(variant: ActivityRateVariantInput, index: number, defaultCurrency: string) {
-    return {
+    const data: Record<string, unknown> = {
       name: requireTrimmedString(variant.name, `rateVariants[${index}].name`),
       durationMinutes: this.normalizeOptionalPositiveInteger(variant.durationMinutes, `rateVariants[${index}].durationMinutes`),
       pricingBasis: this.normalizePricingBasis(variant.pricingBasis),
@@ -217,6 +316,29 @@ export class ActivitiesService {
       notes: normalizeOptionalString(variant.notes),
       sortOrder: index,
     };
+    const optionalTextFields = [
+      'difficulty',
+      'startPoint',
+      'endPoint',
+      'suitability',
+      'fitnessNotes',
+      'waterNotes',
+      'seasonalNotes',
+      'inclusions',
+      'exclusions',
+    ] as const;
+    for (const field of optionalTextFields) {
+      if (variant[field] !== undefined) {
+        data[field] = normalizeOptionalString(variant[field]);
+      }
+    }
+    if (variant.guideRequired !== undefined && variant.guideRequired !== null) {
+      data.guideRequired = Boolean(variant.guideRequired);
+    }
+    if (variant.guideRequirement !== undefined) {
+      data.guideRequirement = this.normalizeGuideRequirement(variant.guideRequirement);
+    }
+    return data;
   }
 
   private async syncRateVariants(tx: any, activityId: string, variants: ActivityRateVariantInput[], defaultCurrency: string) {
@@ -279,5 +401,190 @@ export class ActivitiesService {
 
   private normalizeVariantCurrency(value: string | null | undefined, defaultCurrency: string, fieldLabel: string) {
     return requireSupportedCurrency(value?.trim() || defaultCurrency, fieldLabel);
+  }
+
+  private normalizeGuideRequirement(value: ActivityGuideRequirement | null | undefined) {
+    if (value === null || value === undefined || String(value).trim() === '') {
+      return null;
+    }
+    const normalized = String(value).trim().toUpperCase() as ActivityGuideRequirement;
+    const allowed: ActivityGuideRequirement[] = [
+      'LOCAL_GUIDE_REQUIRED',
+      'OFFICIAL_ACCOMPANYING_GUIDE_ALLOWED',
+      'BOTH_ACCEPTED',
+      'LOCAL_GUIDE_PLUS_ACCOMPANYING_GUIDE',
+    ];
+    if (!allowed.includes(normalized)) {
+      throw new BadRequestException('guideRequirement is not supported');
+    }
+    return normalized;
+  }
+
+  private async ensurePetraGuidesCompany() {
+    const existing = await this.prisma.company.findFirst({
+      where: { name: { equals: 'Local Petra Guides / Official Guides', mode: 'insensitive' } as any },
+    } as any);
+    if (existing) {
+      return existing;
+    }
+    return this.prisma.company.create({
+      data: {
+        name: 'Local Petra Guides / Official Guides',
+        type: 'supplier',
+        country: 'Jordan',
+        city: 'Petra',
+      } as any,
+    });
+  }
+
+  private buildPetraHikingVariantData(variant: ActivityRateVariantInput, index: number) {
+    return this.buildRateVariantData(
+      {
+        ...variant,
+        pricingBasis: 'PER_GROUP',
+        currency: 'JOD',
+        costPrice: 0,
+        sellPrice: 0,
+        active: true,
+      },
+      index,
+      'JOD',
+    );
+  }
+
+  private async syncPetraHikingVariants(tx: any, activityId: string, variants: ActivityRateVariantInput[]) {
+    const existingVariants = await tx.activityRateVariant.findMany({
+      where: { activityId },
+      select: { id: true, name: true },
+    });
+    const existingByName = new Map<string, { id: string; name: string }>(
+      existingVariants.map((variant: any) => [String(variant.name).toLowerCase(), variant]),
+    );
+    const retainedIds = new Set<string>();
+
+    for (const [index, variant] of variants.entries()) {
+      const existing = existingByName.get(variant.name.toLowerCase());
+      const data = this.buildPetraHikingVariantData(variant, index);
+      if (existing) {
+        retainedIds.add(existing.id);
+        await tx.activityRateVariant.update({ where: { id: existing.id }, data });
+      } else {
+        await tx.activityRateVariant.create({ data: { ...data, activityId } });
+      }
+    }
+
+    const removedIds = existingVariants.map((variant: any) => variant.id).filter((id: string) => !retainedIds.has(id));
+    if (removedIds.length > 0) {
+      await tx.activityRateVariant.updateMany({ where: { id: { in: removedIds } }, data: { active: false } });
+    }
+  }
+
+  private getPetraHikingDefinition() {
+    const common = {
+      pricingBasis: 'PER_GROUP' as const,
+      currency: 'JOD',
+      costPrice: 0,
+      sellPrice: 0,
+      guideRequired: true,
+      inclusions: 'Guided hiking experience. Entrance tickets are excluded and remain ticketing records.',
+      exclusions: 'Petra entrance ticket, meals, water, transport, gratuities, and personal expenses unless separately included.',
+      waterNotes: 'Guests must carry sufficient drinking water; more water is required in warm weather.',
+      seasonalNotes: 'Weather, daylight, heat, flash-flood risk, and Petra authority guidance must be checked before operation.',
+    };
+    return {
+      code: 'PETRA_HIKING_EXPERIENCES',
+      name: 'Petra Hiking Experiences',
+      category: 'Hiking / Adventure / Historical',
+      city: 'Petra',
+      region: 'South Jordan',
+      description:
+        'Operational Activity Master for Petra hiking trail experiences. Variants hold trail-specific guide requirements and operational notes. Tickets are not included.',
+      variants: [
+        {
+          ...common,
+          name: 'Monastery Trail',
+          durationMinutes: 180,
+          difficulty: 'Moderate',
+          guideRequirement: 'BOTH_ACCEPTED' as const,
+          startPoint: 'Petra main trail / basin area',
+          endPoint: 'Monastery viewpoint',
+          suitability: 'Daytime; sunset suitability depends on return timing and daylight.',
+          fitnessNotes: 'Requires stair climbing and moderate endurance.',
+          notes: 'Guide required. Local Petra guide or official accompanying guide accepted.',
+        },
+        {
+          ...common,
+          name: 'Back Trail',
+          durationMinutes: 240,
+          difficulty: 'Moderate to challenging',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Little Petra / back trail access',
+          endPoint: 'Monastery or Petra basin',
+          suitability: 'Best in morning; avoid poor weather or low visibility.',
+          fitnessNotes: 'Requires good walking fitness and uneven-terrain confidence.',
+          notes: 'Local Petra guide required.',
+        },
+        {
+          ...common,
+          name: 'High Place of Sacrifice Trail',
+          durationMinutes: 180,
+          difficulty: 'Moderate to challenging',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Petra main trail',
+          endPoint: 'High Place of Sacrifice / Wadi Farasa route',
+          suitability: 'Morning recommended; exposed sections can be hot.',
+          fitnessNotes: 'Steep ascent and uneven steps require steady mobility.',
+          notes: 'Local Petra guide required.',
+        },
+        {
+          ...common,
+          name: 'Treasury Viewpoint Trail',
+          durationMinutes: 120,
+          difficulty: 'Moderate',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Treasury area',
+          endPoint: 'Treasury viewpoint',
+          suitability: 'Sunrise and morning light can be suitable where access is permitted.',
+          fitnessNotes: 'Short but steep viewpoint access; not suitable for guests with vertigo concerns.',
+          notes: 'Local Petra guide required. Access permissions must be checked locally.',
+        },
+        {
+          ...common,
+          name: 'Little Petra to Monastery Trail',
+          durationMinutes: 300,
+          difficulty: 'Challenging',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Little Petra',
+          endPoint: 'Monastery / Petra basin',
+          suitability: 'Morning start required; avoid high heat and unstable weather.',
+          fitnessNotes: 'Long hike requiring strong fitness and appropriate footwear.',
+          notes: 'Local Petra guide required.',
+        },
+        {
+          ...common,
+          name: 'Al Kubtha Trail',
+          durationMinutes: 180,
+          difficulty: 'Moderate to challenging',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Royal Tombs area',
+          endPoint: 'Al Kubtha / Treasury overlook',
+          suitability: 'Morning or late afternoon depending on heat and daylight.',
+          fitnessNotes: 'Steep uphill trail with exposed sections.',
+          notes: 'Local Petra guide required.',
+        },
+        {
+          ...common,
+          name: 'Jabal Haroun Trail',
+          durationMinutes: 480,
+          difficulty: 'Strenuous',
+          guideRequirement: 'LOCAL_GUIDE_REQUIRED' as const,
+          startPoint: 'Petra area trailhead',
+          endPoint: 'Jabal Haroun',
+          suitability: 'Early morning only; weather and daylight critical.',
+          fitnessNotes: 'Demanding full-day hike for fit guests only.',
+          notes: 'Local Petra guide required. Operation depends on weather, route condition, and local permissions.',
+        },
+      ],
+    };
   }
 }

@@ -31,7 +31,20 @@ function createExcursionTemplatesService(overrides: Partial<any> = {}) {
     },
     activity: {
       findUnique: async ({ where }: any) => ({ id: where.id }),
+      findFirst: async () => null,
+      create: async ({ data }: any) => ({ id: 'activity-created', ...data, rateVariants: data.rateVariants?.create || [] }),
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
       findMany: async () => [],
+    },
+    activityRateVariant: {
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      create: async ({ data }: any) => ({ id: 'variant-created', ...data }),
+      updateMany: async () => ({ count: 0 }),
+    },
+    company: {
+      findFirst: async () => ({ id: 'company-sindbad', name: 'Sindbad' }),
+      create: async ({ data }: any) => ({ id: 'company-sindbad', ...data }),
     },
     route: {
       findUnique: async ({ where }: any) => ({ id: where.id }),
@@ -423,6 +436,128 @@ test('add component links existing catalog records and appends to active sequenc
   assert.equal(createdComponent.isOptional, true);
 });
 
+test('Sindbad Aqaba ensure creates Activity Master records with variant-driven pricing placeholders', async () => {
+  const createdActivities: any[] = [];
+  const createdTemplates: any[] = [];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) => (where.id ? { id: where.id, components: [] } : null),
+      create: async ({ data }: any) => {
+        createdTemplates.push(data);
+        return { id: `template-${createdTemplates.length}`, ...data };
+      },
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        createdActivities.push(data);
+        return { id: `activity-${createdActivities.length}`, name: data.name, ...data };
+      },
+      findMany: async () => [],
+    },
+    route: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'route-aqaba-city', name: 'Aqaba City Center - Aqaba South Beach', durationMinutes: 30 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'service-full-day', name: 'Full Day', classification: 'FULL_DAY' }],
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+  });
+
+  const result = await service.ensureSindbadAqabaCatalog();
+
+  assert.equal(result.activities.length, 8);
+  assert.equal(createdActivities.length, 8);
+  const berenice = createdActivities.find((activity) => activity.name === 'Berenice Beach Club');
+  assert.ok(berenice);
+  assert.equal(berenice.pricingBasis, 'PER_PERSON');
+  assert.deepEqual(
+    berenice.rateVariants.create.map((variant: any) => variant.name),
+    ['1 Day Pass', '3 Day Pass', '4 Day Pass', '6 Day Pass', '8 Day Pass'],
+  );
+  const privateBoat = createdActivities.find((activity) => activity.name === 'Private Boat Rental');
+  assert.equal(privateBoat.pricingBasis, 'PER_GROUP');
+  assert.deepEqual(
+    privateBoat.rateVariants.create.map((variant: any) => variant.name),
+    ['Sindbad Motor Boat', 'Glass Bottom Boat', 'Scuba Boat', 'Fishing Boat'],
+  );
+  assert.equal(privateBoat.rateVariants.create[0].costPrice, 0);
+  assert.match(privateBoat.description, /Pricing pending/);
+  assert.deepEqual(
+    createdTemplates.map((template) => template.code),
+    ['AQABA_SNORKELING_DAY', 'AQABA_SUNSET_CRUISE', 'AQABA_DISCOVER_SCUBA', 'AQABA_PRIVATE_BOAT_DAY'],
+  );
+  assert.deepEqual(
+    createdTemplates[0].components.create.map((component: any) => component.componentType),
+    ['TRANSPORT', 'ACTIVITY', 'ACTIVITY', 'DINING'],
+  );
+});
+
+test('Sindbad Aqaba ensure updates existing activity variants and templates without duplicates', async () => {
+  let activityCreateCalls = 0;
+  let activityUpdateCalls = 0;
+  let templateCreateCalls = 0;
+  let templateUpdateCalls = 0;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) =>
+        where.id
+          ? { id: where.id, components: [] }
+          : { id: `existing-${where.code}`, code: where.code, components: [] },
+      create: async () => {
+        templateCreateCalls += 1;
+        return { id: 'template-new' };
+      },
+      update: async ({ where, data }: any) => {
+        templateUpdateCalls += 1;
+        return { id: where.id, ...data };
+      },
+    },
+    excursionTemplateComponent: {
+      deleteMany: async () => ({ count: 0 }),
+      findFirst: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findFirst: async ({ where }: any) => ({ id: `existing-${where.name.equals}`, name: where.name.equals, rateVariants: [] }),
+      create: async () => {
+        activityCreateCalls += 1;
+        return { id: 'activity-new' };
+      },
+      update: async ({ where, data }: any) => {
+        activityUpdateCalls += 1;
+        return { id: where.id, ...data };
+      },
+      findMany: async () => [],
+    },
+    activityRateVariant: {
+      findMany: async () => [{ id: 'variant-old', name: 'Old Variant' }],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      create: async ({ data }: any) => ({ id: 'variant-new', ...data }),
+      updateMany: async () => ({ count: 1 }),
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+  });
+
+  await service.ensureSindbadAqabaCatalog();
+
+  assert.equal(activityCreateCalls, 0);
+  assert.equal(activityUpdateCalls, 8);
+  assert.equal(templateCreateCalls, 0);
+  assert.equal(templateUpdateCalls, 4);
+});
+
 test('excursion template writes are restricted to admin and operations users', () => {
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.create), ['admin', 'operations']);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.update), ['admin', 'operations']);
@@ -448,6 +583,10 @@ test('excursion template writes are restricted to admin and operations users', (
     'operations',
   ]);
   assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.removeComponent), [
+    'admin',
+    'operations',
+  ]);
+  assert.deepEqual((Reflect as any).getMetadata(ROLES_KEY, ExcursionTemplatesController.prototype.ensureSindbadAqabaCatalog), [
     'admin',
     'operations',
   ]);
