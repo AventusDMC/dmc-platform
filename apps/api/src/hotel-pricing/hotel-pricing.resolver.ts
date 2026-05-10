@@ -40,6 +40,7 @@ export type HotelPricingSupplement = {
   amount: number;
   basis?: HotelSupplementBasis | null;
   chargeBasis?: HotelSupplementBasis | null;
+  pricingBasis?: HotelSupplementBasis | null;
   mealPlan?: string | null;
   roomCategoryId?: string | null;
   isMandatory?: boolean | null;
@@ -160,11 +161,14 @@ export class HotelPricingResolver {
 
   normalizeSupplementBasis(value: HotelSupplementBasis | null | undefined) {
     const basis = String(value || '').trim().toUpperCase();
-    if (basis === 'PER_PERSON') {
+    if (['PER_PERSON', 'PER_PAX', 'PER_GUEST', 'PERSON', 'PAX', 'PER_PERSON_PER_NIGHT', 'PER_NIGHT_PER_PERSON'].includes(basis)) {
       return 'PER_PERSON_NIGHT';
     }
-    if (basis === 'PER_ROOM') {
+    if (['PER_ROOM', 'PER_ROOM_PER_NIGHT', 'PER_NIGHT_PER_ROOM'].includes(basis)) {
       return 'PER_ROOM_NIGHT';
+    }
+    if (['ONE_TIME', 'ONCE'].includes(basis)) {
+      return 'PER_STAY';
     }
     return basis || 'PER_PERSON_NIGHT';
   }
@@ -261,7 +265,7 @@ export class HotelPricingResolver {
       warnings: string[];
     },
   ): HotelPricingBreakdownLine | null {
-    const basis = this.normalizeSupplementBasis(supplement.basis ?? supplement.chargeBasis);
+    const basis = this.normalizeSupplementBasis(supplement.basis ?? supplement.chargeBasis ?? supplement.pricingBasis);
     const amount = Number(supplement.amount || 0);
     const quantity = this.supplementQuantity(basis, context);
     if (quantity <= 0 || amount <= 0) {

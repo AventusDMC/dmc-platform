@@ -42,6 +42,38 @@ test('PER_PERSON_NIGHT plus derived HB supplement prices both by pax night', () 
   assert.equal(result.totalCost, 1155);
 });
 
+test('derived HB supplement accepts legacy PER_PERSON chargeBasis without falling back to once', () => {
+  const result = resolver.resolve({
+    pax: 21,
+    rooms: 10,
+    nights: 1,
+    selectedMealPlan: 'HB',
+    baseMealPlan: 'BB',
+    rates: [{ amount: 45, basis: 'PER_PERSON', mealPlan: 'BB' }],
+    supplements: [{ type: 'EXTRA_DINNER', amount: 10, chargeBasis: 'PER_PERSON', isActive: true }],
+  });
+
+  assert.equal(result.baseCost, 945);
+  assert.equal(result.supplementCost, 210);
+  assert.equal(result.totalCost, 1155);
+  assert.equal(result.breakdown.find((line) => line.kind === 'meal_supplement')?.basis, 'PER_PERSON_NIGHT');
+});
+
+test('derived HB supplement accepts legacy pricingBasis when chargeBasis is absent', () => {
+  const result = resolver.resolve({
+    pax: 21,
+    rooms: 10,
+    nights: 1,
+    selectedMealPlan: 'HB',
+    baseMealPlan: 'BB',
+    rates: [{ amount: 45, basis: 'PER_PERSON_NIGHT', mealPlan: 'BB' }],
+    supplements: [{ type: 'EXTRA_DINNER', amount: 10, pricingBasis: 'PER_PERSON_PER_NIGHT', isActive: true }],
+  });
+
+  assert.equal(result.supplementCost, 210);
+  assert.equal(result.totalCost, 1155);
+});
+
 test('PER_ROOM_NIGHT plus HB per-person supplement keeps independent bases', () => {
   const result = resolver.resolve({
     pax: 21,

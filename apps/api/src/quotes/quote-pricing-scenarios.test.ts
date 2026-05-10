@@ -1514,6 +1514,7 @@ test('quote save calculates PER_PERSON HB stay from per-person base plus per-per
   assert.equal(result.data.baseCost, 1155);
   assert.equal(result.data.totalCost, 1155);
   assert.equal(result.data.totalSell, 1386);
+  assert.match(result.data.pricingDescription, /Supplements USD 210\.00/);
 });
 
 test('hotel supplements follow tax-inclusive and tax-exclusive quote settings without double tax', async () => {
