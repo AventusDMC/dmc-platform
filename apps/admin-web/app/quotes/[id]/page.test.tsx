@@ -13,6 +13,7 @@ const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
+const quotePassengersPanelSource = readFileSync(new URL('./QuotePassengersPanel.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
@@ -172,6 +173,29 @@ describe('quote detail page regression', () => {
       'Optional components not selected',
       'buildQuoteOperationalIntelligence(summary.day, summary.items, plannerProps.excursionTemplates)',
       '<QuoteOperationalIntelligencePanel model={operationalIntelligence} />',
+    ]);
+  });
+
+  it('renders quote-scoped passenger management on the itinerary page', () => {
+    expectSourceContains(pageSource, [
+      "import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';",
+      'passengers: QuotePassenger[];',
+      'passengers: Array.isArray(quote.passengers) ? quote.passengers : []',
+      '<QuotePassengersPanel',
+      'expectedPax={totalPax}',
+      'passengers={quote.passengers}',
+    ]);
+
+    expectSourceContains(quotePassengersPanelSource, [
+      'Quote passenger list',
+      'Passenger records',
+      'Expected pax',
+      'Add passenger',
+      'Update passenger',
+      'Remove',
+      '`${apiBaseUrl}/quotes/${quoteId}/passengers`',
+      '`${apiBaseUrl}/quotes/${quoteId}/passengers/${editingPassengerId}`',
+      '`${apiBaseUrl}/quotes/${quoteId}/passengers/${passenger.id}`',
     ]);
   });
 

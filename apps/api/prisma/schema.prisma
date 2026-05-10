@@ -1204,6 +1204,28 @@ model QuoteScenario {
   @@map("quote_scenarios")
 }
 
+model QuotePassenger {
+  id               String    @id @default(uuid()) @db.Uuid
+  quoteId          String    @db.Uuid
+  firstName        String
+  lastName         String
+  gender           String?
+  dateOfBirth      DateTime?
+  nationality      String?
+  passportNumber   String?
+  passportExpiry   DateTime?
+  dietaryNotes     String?
+  mobilityNotes    String?
+  emergencyContact String?
+  remarks          String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  quote            Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId, lastName, firstName])
+  @@map("quote_passengers")
+}
+
 model QuoteVersion {
   id                String    @id @default(uuid()) @db.Uuid
   quoteId           String    @db.Uuid
@@ -1275,6 +1297,7 @@ model Quote {
   itineraryAuditLogs         QuoteItineraryAuditLog[]
   quoteItems                 QuoteItem[]
   quoteOptions               QuoteOption[]
+  passengers                 QuotePassenger[]
   pricingSlabs               QuotePricingSlab[]
   scenarios                  QuoteScenario[]
   versions                   QuoteVersion[]           @relation("QuoteVersions")

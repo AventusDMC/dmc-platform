@@ -23,6 +23,7 @@ import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
+import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
 import { QuoteStatusForm } from './QuoteStatusForm';
 import { SupportTextForm } from './SupportTextForm';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
@@ -530,6 +531,7 @@ type Quote = {
   brandCompany?: Company;
   contact: Contact;
   quoteItems: QuoteItem[];
+  passengers: QuotePassenger[];
   quoteOptions: QuoteOption[];
   itineraries: Itinerary[];
   scenarios: {
@@ -1118,6 +1120,7 @@ function normalizeQuoteDetail(quote: Quote): Quote {
     company: quote.company || { id: 'missing-company', name: 'Company unavailable' },
     contact: quote.contact || { id: 'missing-contact', companyId: '', firstName: 'Contact', lastName: 'Unavailable' },
     quoteItems: Array.isArray(quote.quoteItems) ? quote.quoteItems.map((item) => normalizeQuoteItem(item)) : [],
+    passengers: Array.isArray(quote.passengers) ? quote.passengers : [],
     quoteOptions: Array.isArray(quote.quoteOptions)
       ? quote.quoteOptions.map((option) => ({
           ...option,
@@ -2382,6 +2385,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
           {activeTab === 'itinerary' ? (
             <div className="section-stack">
+              <QuotePassengersPanel
+                apiBaseUrl={ACTION_API_BASE_URL}
+                quoteId={quote.id}
+                expectedPax={totalPax}
+                passengers={quote.passengers}
+              />
               {renderQuoteServicePlanner()}
               {guidedStepFooter}
             </div>

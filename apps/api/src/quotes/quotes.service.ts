@@ -19,7 +19,7 @@ import { randomBytes } from 'crypto';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
-import { blockDelete, requireSupportedCurrency } from '../common/crud.helpers';
+import { blockDelete, normalizeOptionalString, requireSupportedCurrency, requireTrimmedString } from '../common/crud.helpers';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import {
   resolveServiceTaxonomyGroup,
@@ -228,6 +228,20 @@ type ExpandExcursionTemplateInput = {
   paxCount?: number;
   quantity?: number;
   markupPercent?: number;
+};
+
+type QuotePassengerInput = {
+  firstName?: string | null;
+  lastName?: string | null;
+  gender?: string | null;
+  dateOfBirth?: Date | null;
+  nationality?: string | null;
+  passportNumber?: string | null;
+  passportExpiry?: Date | null;
+  dietaryNotes?: string | null;
+  mobilityNotes?: string | null;
+  emergencyContact?: string | null;
+  remarks?: string | null;
 };
 
 type GenerateQuoteScenariosInput = {
@@ -2219,6 +2233,104 @@ export class QuotesService {
     } as any);
 
     return items.map((item: any) => this.hydrateOneOffExternalPackageItem(item));
+  }
+
+  async findPassengers(quoteId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    return (this.prisma as any).quotePassenger.findMany({
+      where: { quoteId: quote.id },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createPassenger(quoteId: string, data: QuotePassengerInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    return (this.prisma as any).quotePassenger.create({
+      data: {
+        quoteId: quote.id,
+        ...this.normalizeQuotePassengerCreateInput(data),
+      },
+    });
+  }
+
+  async updatePassenger(quoteId: string, passengerId: string, data: QuotePassengerInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const existing = await (this.prisma as any).quotePassenger.findFirst({
+      where: { id: passengerId, quoteId: quote.id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Quote passenger not found');
+    }
+
+    return (this.prisma as any).quotePassenger.update({
+      where: { id: passengerId },
+      data: this.normalizeQuotePassengerUpdateInput(data),
+    });
+  }
+
+  async removePassenger(quoteId: string, passengerId: string, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const existing = await (this.prisma as any).quotePassenger.findFirst({
+      where: { id: passengerId, quoteId: quote.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Quote passenger not found');
+    }
+
+    await (this.prisma as any).quotePassenger.delete({
+      where: { id: passengerId },
+    });
+
+    return { id: passengerId };
+  }
+
+  private normalizeQuotePassengerCreateInput(data: QuotePassengerInput) {
+    return {
+      firstName: requireTrimmedString(String(data.firstName ?? ''), 'firstName'),
+      lastName: requireTrimmedString(String(data.lastName ?? ''), 'lastName'),
+      gender: normalizeOptionalString(data.gender),
+      dateOfBirth: this.normalizeQuotePassengerDate(data.dateOfBirth),
+      nationality: normalizeOptionalString(data.nationality),
+      passportNumber: normalizeOptionalString(data.passportNumber),
+      passportExpiry: this.normalizeQuotePassengerDate(data.passportExpiry),
+      dietaryNotes: normalizeOptionalString(data.dietaryNotes),
+      mobilityNotes: normalizeOptionalString(data.mobilityNotes),
+      emergencyContact: normalizeOptionalString(data.emergencyContact),
+      remarks: normalizeOptionalString(data.remarks),
+    };
+  }
+
+  private normalizeQuotePassengerUpdateInput(data: QuotePassengerInput) {
+    const payload: Record<string, unknown> = {};
+
+    if (data.firstName !== undefined) payload.firstName = requireTrimmedString(String(data.firstName ?? ''), 'firstName');
+    if (data.lastName !== undefined) payload.lastName = requireTrimmedString(String(data.lastName ?? ''), 'lastName');
+    if (data.gender !== undefined) payload.gender = normalizeOptionalString(data.gender);
+    if (data.dateOfBirth !== undefined) payload.dateOfBirth = this.normalizeQuotePassengerDate(data.dateOfBirth);
+    if (data.nationality !== undefined) payload.nationality = normalizeOptionalString(data.nationality);
+    if (data.passportNumber !== undefined) payload.passportNumber = normalizeOptionalString(data.passportNumber);
+    if (data.passportExpiry !== undefined) payload.passportExpiry = this.normalizeQuotePassengerDate(data.passportExpiry);
+    if (data.dietaryNotes !== undefined) payload.dietaryNotes = normalizeOptionalString(data.dietaryNotes);
+    if (data.mobilityNotes !== undefined) payload.mobilityNotes = normalizeOptionalString(data.mobilityNotes);
+    if (data.emergencyContact !== undefined) payload.emergencyContact = normalizeOptionalString(data.emergencyContact);
+    if (data.remarks !== undefined) payload.remarks = normalizeOptionalString(data.remarks);
+
+    return payload;
+  }
+
+  private normalizeQuotePassengerDate(value: Date | null | undefined) {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+      throw new BadRequestException('Invalid passenger date');
+    }
+
+    return value;
   }
 
   async reorderItems(quoteId: string, data: ReorderQuoteItemsInput, actor?: CompanyScopedActor) {
@@ -8003,6 +8115,7 @@ export class QuotesService {
       agent,
       pricingSlabs,
       quoteItems,
+      passengers,
       itineraries,
       quoteItineraryDays,
       quoteOptions,
@@ -8073,6 +8186,10 @@ export class QuotesService {
           },
         },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
+      }), [] as any[]),
+      safeLoad('passengers', () => (prismaClient as any).quotePassenger.findMany({
+        where: { quoteId: quote.id },
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { createdAt: 'asc' }],
       }), [] as any[]),
       safeLoad('itineraries', () => prismaClient.itinerary.findMany({
         where: { quoteId: quote.id },
@@ -8196,6 +8313,7 @@ export class QuotesService {
       agent,
       pricingSlabs,
       quoteItems,
+      passengers,
       itineraries,
       quoteItineraryDays: quoteItineraryDays.map((day: any) => ({
         ...day,

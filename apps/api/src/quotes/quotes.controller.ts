@@ -70,6 +70,20 @@ type UpdateQuoteBody = Partial<CreateQuoteBody> & {
   status?: QuoteStatus;
 };
 
+type QuotePassengerBody = {
+  firstName?: string | null;
+  lastName?: string | null;
+  gender?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  passportNumber?: string | null;
+  passportExpiry?: string | null;
+  dietaryNotes?: string | null;
+  mobilityNotes?: string | null;
+  emergencyContact?: string | null;
+  remarks?: string | null;
+};
+
 type UpdateQuoteStatusBody = {
   status: QuoteStatus;
   acceptedVersionId?: string | null;
@@ -220,6 +234,22 @@ export class QuotesController {
   @Get()
   findAll(@Actor() actor: AuthenticatedActor) {
     return this.quotesService.findAll(actor);
+  }
+
+  private normalizeQuotePassengerBody(body: QuotePassengerBody) {
+    return {
+      firstName: body.firstName,
+      lastName: body.lastName,
+      gender: body.gender,
+      dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : body.dateOfBirth === null ? null : undefined,
+      nationality: body.nationality,
+      passportNumber: body.passportNumber,
+      passportExpiry: body.passportExpiry ? new Date(body.passportExpiry) : body.passportExpiry === null ? null : undefined,
+      dietaryNotes: body.dietaryNotes,
+      mobilityNotes: body.mobilityNotes,
+      emergencyContact: body.emergencyContact,
+      remarks: body.remarks,
+    };
   }
 
   @Public()
@@ -758,6 +788,66 @@ export class QuotesController {
     }
 
     return this.quotesService.findItems(id);
+  }
+
+  @Get(':id/passengers')
+  async findPassengers(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.findPassengers(id, actor);
+  }
+
+  @Post(':id/passengers')
+  @Roles('admin', 'operations', 'viewer')
+  async createPassenger(
+    @Param('id') id: string,
+    @Body() body: QuotePassengerBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.createPassenger(id, this.normalizeQuotePassengerBody(body), actor);
+  }
+
+  @Patch(':id/passengers/:passengerId')
+  @Roles('admin', 'operations', 'viewer')
+  async updatePassenger(
+    @Param('id') id: string,
+    @Param('passengerId') passengerId: string,
+    @Body() body: QuotePassengerBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.updatePassenger(id, passengerId, this.normalizeQuotePassengerBody(body), actor);
+  }
+
+  @Delete(':id/passengers/:passengerId')
+  @Roles('admin', 'operations', 'viewer')
+  async removePassenger(
+    @Param('id') id: string,
+    @Param('passengerId') passengerId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.removePassenger(id, passengerId, actor);
   }
 
   @Post(':id/items')
