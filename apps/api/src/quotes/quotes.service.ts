@@ -3185,6 +3185,7 @@ export class QuotesService {
     let hotelRatePricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null = null;
     let hotelRoomRateCost = 0;
     let hotelSupplementTotal = 0;
+    let hotelBaseRatePricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null = null;
     let participantCount: number | null = null;
     let adultCount: number | null = null;
     let childCount: number | null = null;
@@ -3312,6 +3313,7 @@ export class QuotesService {
       tourismFeeCurrency = (hotelRate as any).tourismFeeCurrency ?? null;
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
       hotelRoomRateCost = hotelRate.cost;
+      hotelBaseRatePricingBasis = hotelRate.pricingBasis;
       hotelSupplementTotal = this.calculateHotelSupplementTotal(
         hotelRate.contract?.supplements,
         hotelRate.roomCategoryId,
@@ -3321,8 +3323,9 @@ export class QuotesService {
         roomCount,
         nightCount,
       );
-      baseCost = Number((hotelRate.cost * roomCount * nightCount + hotelSupplementTotal).toFixed(2));
-      supplierCostBaseAmount = Number((((hotelRate as any).costBaseAmount ?? hotelRate.cost) * roomCount * nightCount + hotelSupplementTotal).toFixed(2));
+      const hotelBaseMultiplier = this.getHotelRateBaseMultiplier(hotelRate.pricingBasis, paxCount, roomCount, nightCount);
+      baseCost = Number((hotelRate.cost * hotelBaseMultiplier + hotelSupplementTotal).toFixed(2));
+      supplierCostBaseAmount = Number((((hotelRate as any).costBaseAmount ?? hotelRate.cost) * hotelBaseMultiplier + hotelSupplementTotal).toFixed(2));
       hotelRatePricingBasis = 'TOTAL';
       pricingDescription = `${hotelRate.contract.name} | ${hotelRate.seasonName} | ${hotelRate.roomCategory.name} | ${hotelRate.occupancyType} | ${requestedMealPlan}`;
       hotelId = data.hotelId;
@@ -3838,7 +3841,11 @@ export class QuotesService {
         currency: quoteCurrency,
         pricingDescription:
           this.isHotelService(effectiveService) && hotelRoomRateCost > 0
-            ? `${pricingDescription} | Room ${currency} ${hotelRoomRateCost.toFixed(2)} x ${roomCount} room${roomCount === 1 ? '' : 's'} x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
+            ? `${pricingDescription} | Rate ${currency} ${hotelRoomRateCost.toFixed(2)} x ${
+                String(hotelBaseRatePricingBasis || '').toUpperCase() === 'PER_PERSON'
+                  ? `${paxCount} pax`
+                  : `${roomCount} room${roomCount === 1 ? '' : 's'}`
+              } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
             : pricingDescription,
         appliedVehicleRateId,
         entranceFeeId,
@@ -5188,6 +5195,19 @@ export class QuotesService {
 
   private supplementAppliesToRoom(supplement: any, roomCategoryId?: string | null) {
     return !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+  }
+
+  private getHotelRateBaseMultiplier(
+    pricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null | undefined,
+    paxCount: number,
+    roomCount: number,
+    nightCount: number,
+  ) {
+    const basis = String(pricingBasis || '').trim().toUpperCase();
+    const nights = Math.max(1, nightCount);
+    const pax = Math.max(1, paxCount);
+    const rooms = Math.max(1, roomCount);
+    return basis === 'PER_PERSON' ? pax * nights : rooms * nights;
   }
 
   private getHotelPricingUnits(values: {

@@ -53,6 +53,8 @@ describe('quote hotel selector catalog loading', () => {
       "selectedHotelBaseRate",
       "rate.mealPlan === 'BB'",
       'const hotelPreviewSupplementTotal = calculateHotelSupplementPreviewTotal(',
+      "hotelPreviewPricingBasis === 'PER_PERSON'",
+      'hotelPreviewPax',
       'hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal',
       'setHotelCostCalculation(null);',
       'if (isHotelService) {',

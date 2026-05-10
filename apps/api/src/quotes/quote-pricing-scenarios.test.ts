@@ -1426,12 +1426,12 @@ test('quote save accepts HB derived from BB rate plus HB supplement without dire
 
   assert.equal(capturedHotelRateWhere.mealPlan, undefined);
   assert.equal(result.data.mealPlan, 'HB');
-  assert.equal(result.data.baseCost, 130);
-  assert.equal(result.data.totalCost, 130);
+  assert.equal(result.data.baseCost, 220);
+  assert.equal(result.data.totalCost, 220);
   assert.match(result.data.pricingDescription, /DBL \| HB/);
 });
 
-test('quote save calculates 11 room HB stay from room base plus per-person supplement', async () => {
+test('quote save calculates PER_PERSON HB stay from per-person base plus per-person supplement', async () => {
   const service = createQuotesService({
     quote: {
       findUnique: async ({ where }: any) =>
@@ -1439,9 +1439,9 @@ test('quote save calculates 11 room HB stay from room base plus per-person suppl
           ? {
               id: 'quote-1',
               quoteCurrency: 'USD',
-              adults: 22,
+              adults: 21,
               children: 0,
-              roomCount: 11,
+              roomCount: 10,
               nightCount: 1,
               travelStartDate: null,
               createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -1505,15 +1505,15 @@ test('quote save calculates 11 room HB stay from room base plus per-person suppl
     occupancyType: 'DBL',
     mealPlan: 'HB',
     quantity: 1,
-    paxCount: 22,
-    roomCount: 11,
+    paxCount: 21,
+    roomCount: 10,
     nightCount: 1,
     markupPercent: 20,
   });
 
-  assert.equal(result.data.baseCost, 715);
-  assert.equal(result.data.totalCost, 715);
-  assert.equal(result.data.totalSell, 858);
+  assert.equal(result.data.baseCost, 1155);
+  assert.equal(result.data.totalCost, 1155);
+  assert.equal(result.data.totalSell, 1386);
 });
 
 test('hotel supplements follow tax-inclusive and tax-exclusive quote settings without double tax', async () => {

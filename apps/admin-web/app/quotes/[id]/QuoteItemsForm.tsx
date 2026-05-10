@@ -1370,8 +1370,14 @@ export function QuoteItemsForm({
     hotelPreviewRooms,
     hotelPreviewNights,
   );
-  const hotelPreviewMultiplier = hotelPreviewRooms;
-  const hotelPreviewMultiplierLabel = `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
+  const hotelPreviewMultiplier =
+    hotelPreviewPricingBasis === 'PER_PERSON'
+      ? hotelPreviewPax
+      : hotelPreviewRooms;
+  const hotelPreviewMultiplierLabel =
+    hotelPreviewPricingBasis === 'PER_PERSON'
+      ? `${hotelPreviewPax} pax`
+      : `${hotelPreviewRooms} room${hotelPreviewRooms === 1 ? '' : 's'}`;
   const hotelCalculatedTotalCost = hotelCostCalculation
     ? Number(hotelCostCalculation.totalCost || 0)
     : Number((hotelPreviewUnitRate * hotelPreviewMultiplier * hotelPreviewNights + hotelPreviewSupplementTotal).toFixed(2));
