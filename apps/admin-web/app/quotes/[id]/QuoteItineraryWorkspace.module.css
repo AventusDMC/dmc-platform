@@ -1,0 +1,84 @@
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.main {
+  min-width: 0;
+}
+
+.operationalSidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-left: 4px solid var(--ops-status, #1f9acf);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.08);
+}
+
+.operationalSidebarCritical {
+  --ops-status: #b91c1c;
+}
+
+.operationalSidebarWarning {
+  --ops-status: #b7791f;
+}
+
+.operationalSidebarReady {
+  --ops-status: #138a54;
+}
+
+.operationalSidebarHead h3 {
+  margin: 0.15rem 0 0;
+  color: var(--ops-status);
+  font-size: 1.05rem;
+}
+
+.operationalSidebarList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.operationalSidebarList > div {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.65rem;
+  background: #f8fafc;
+}
+
+.operationalSidebarList span {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.operationalSidebarList strong {
+  color: #111827;
+  font-size: 0.98rem;
+}
+
+.operationalSidebarList em {
+  color: #667085;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 750;
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .operationalSidebar {
+    position: static;
+  }
+}

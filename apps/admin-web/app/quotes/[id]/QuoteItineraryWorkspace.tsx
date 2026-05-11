@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
 import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
+import styles from './QuoteItineraryWorkspace.module.css';
 
 type QuoteItineraryWorkspaceReadiness = {
   statusLabel: string;
@@ -46,14 +47,21 @@ export function QuoteItineraryWorkspace({
   servicePlanner,
   guidedStepFooter,
 }: QuoteItineraryWorkspaceProps) {
+  const operationalSidebarToneClass =
+    operationalSidebarTone === 'critical'
+      ? styles.operationalSidebarCritical
+      : operationalSidebarTone === 'warning'
+        ? styles.operationalSidebarWarning
+        : styles.operationalSidebarReady;
+
   return (
-    <div className="quote-itinerary-ops-layout">
-      <aside className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}>
-        <div className="quote-operational-sidebar-head">
+    <div className={`${styles.workspace} quote-itinerary-ops-layout`}>
+      <aside className={`${styles.operationalSidebar} ${operationalSidebarToneClass} quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}>
+        <div className={`${styles.operationalSidebarHead} quote-operational-sidebar-head`}>
           <p className="eyebrow">Operational Readiness</p>
           <h3>{readiness.statusLabel}</h3>
         </div>
-        <div className="quote-operational-sidebar-list">
+        <div className={`${styles.operationalSidebarList} quote-operational-sidebar-list`}>
           <div>
             <span>Passengers</span>
             <strong>{assignedPassengerCount}/{quote.passengers.length} assigned</strong>
@@ -82,7 +90,7 @@ export function QuoteItineraryWorkspace({
         </div>
       </aside>
 
-      <div className="section-stack quote-itinerary-ops-main">
+      <div className={`${styles.main} section-stack quote-itinerary-ops-main`}>
         <details className="quote-operational-collapsible quote-operational-collapsible-passengers" open>
           <summary>
             <div>

@@ -10,6 +10,7 @@ const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
+const quoteItineraryWorkspaceCssSource = readFileSync(new URL('./QuoteItineraryWorkspace.module.css', import.meta.url), 'utf8');
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
@@ -280,7 +281,10 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteItineraryWorkspaceSource, [
-      'className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}',
+      "import styles from './QuoteItineraryWorkspace.module.css';",
+      'className={`${styles.operationalSidebar} ${operationalSidebarToneClass} quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}',
+      'quote-itinerary-ops-layout',
+      'quote-itinerary-ops-main',
       '<p className="eyebrow">Operational Readiness</p>',
       '<span>Passengers</span>',
       '<span>Rooming</span>',
@@ -289,6 +293,17 @@ describe('quote detail page regression', () => {
       '<span>Day coverage</span>',
       'quote-operational-collapsible-passengers',
       'quote-operational-collapsible-rooming',
+    ]);
+
+    expectSourceContains(quoteItineraryWorkspaceCssSource, [
+      '.workspace',
+      'grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);',
+      '.main',
+      '.operationalSidebar',
+      '.operationalSidebarCritical',
+      '.operationalSidebarWarning',
+      '.operationalSidebarReady',
+      '@media (max-width: 980px)',
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
@@ -300,14 +315,13 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(cssSource, [
-      '.quote-itinerary-ops-layout',
-      '.quote-operational-sidebar',
       '.quote-operational-collapsible',
-      '.quote-operational-sidebar-critical',
-      '.quote-operational-sidebar-warning',
-      '.quote-operational-sidebar-ready',
       '.quote-service-planner .quote-service-lane-head span::before',
     ]);
+
+    assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-layout\s*\{/m);
+    assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-main\s*\{/m);
+    assert.doesNotMatch(cssSource, /^\.quote-operational-sidebar\s*\{/m);
   });
 
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
