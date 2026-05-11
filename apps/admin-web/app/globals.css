@@ -16698,6 +16698,93 @@ body {
   color: var(--accent-strong);
 }
 
+.status-pill-muted {
+  border-color: rgba(107, 114, 128, 0.2);
+  background: #f8fafc;
+  color: #4b5563;
+}
+
+.excursion-template-insert-panel,
+.quote-passengers-panel,
+.quote-rooming-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-template-component-row {
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.quote-template-component-main {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.quote-template-component-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.quote-template-component-meta > span:not(.status-pill),
+.quote-template-component-warning {
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.25rem 0.55rem;
+}
+
+.quote-template-component-warning {
+  display: block;
+  border-color: rgba(183, 121, 31, 0.24);
+  background: #fff8e8;
+  color: #7c4a03;
+  border-radius: var(--radius-md);
+}
+
+.quote-rooming-readiness-card,
+.quote-rooming-export-summary,
+.quote-rooming-edit-form,
+.quote-rooming-group {
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.quote-rooming-edit-form {
+  padding: 1rem;
+}
+
+.quote-rooming-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-rooming-group {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.quote-rooming-group .table-wrap {
+  box-shadow: none;
+}
+
+.quote-operational-warning-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.quote-operational-warning-list .form-error {
+  margin: 0;
+}
+
 .empty-state,
 .ui-empty-state,
 .quote-service-empty-state,

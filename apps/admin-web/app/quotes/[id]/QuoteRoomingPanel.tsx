@@ -191,12 +191,34 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
   const [notes, setNotes] = useState('');
   const [guideRoom, setGuideRoom] = useState(false);
   const [leaderRoom, setLeaderRoom] = useState(false);
+  const [editingRoomingGroupId, setEditingRoomingGroupId] = useState<string | null>(null);
   const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const selectedHotelOption = hotelOptions.find((option) => `${option.dayId}|${option.hotelQuoteItemId}` === selectedHotelKey) || hotelOptions[0] || null;
 
-  async function createRoomingGroup(event: FormEvent<HTMLFormElement>) {
+  function resetRoomingForm() {
+    setRoomType('');
+    setTemporaryRoomLabel('');
+    setNotes('');
+    setGuideRoom(false);
+    setLeaderRoom(false);
+    setEditingRoomingGroupId(null);
+  }
+
+  function startEditRoomingGroup(group: QuoteRoomingGroup) {
+    setEditingRoomingGroupId(group.id);
+    setSelectedHotelKey(`${group.itineraryDayId}|${group.hotelQuoteItemId}`);
+    setRoomType(group.roomType || '');
+    setOccupancyType(group.occupancyType);
+    setTemporaryRoomLabel(group.temporaryRoomLabel || '');
+    setNotes(group.notes || '');
+    setGuideRoom(group.guideRoom);
+    setLeaderRoom(group.leaderRoom);
+    setError('');
+  }
+
+  async function saveRoomingGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedHotelOption) {
       setError('Assign a hotel stay to an itinerary day before creating rooming groups.');
@@ -207,8 +229,12 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
     setError('');
 
     try {
-      const response = await fetch(`${apiBaseUrl}/quotes/${quoteId}/rooming`, {
-        method: 'POST',
+      const response = await fetch(
+        editingRoomingGroupId
+          ? `${apiBaseUrl}/quotes/${quoteId}/rooming/${editingRoomingGroupId}`
+          : `${apiBaseUrl}/quotes/${quoteId}/rooming`,
+        {
+        method: editingRoomingGroupId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itineraryDayId: selectedHotelOption.dayId,
@@ -223,17 +249,13 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
       });
 
       if (!response.ok) {
-        throw new Error(await getErrorMessage(response, 'Could not create room group.'));
+        throw new Error(await getErrorMessage(response, editingRoomingGroupId ? 'Could not update room group.' : 'Could not create room group.'));
       }
 
-      setRoomType('');
-      setTemporaryRoomLabel('');
-      setNotes('');
-      setGuideRoom(false);
-      setLeaderRoom(false);
+      resetRoomingForm();
       router.refresh();
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Could not create room group.');
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not save room group.');
     } finally {
       setIsSaving(false);
     }
@@ -317,7 +339,7 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
 
       {error ? <p className="form-error">{error}</p> : null}
 
-      <section className="detail-card">
+      <section className="detail-card quote-rooming-readiness-card">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">Operational intelligence</p>
@@ -335,18 +357,29 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
           <div><span>Single supplement</span><strong>{roomingIntelligence.singleSupplementAwareness}</strong></div>
         </div>
         <div className="quote-operational-warning-list">
-          {roomingIntelligence.warnings.emptyRoomGroups.length > 0 ? <p className="form-error">Empty room groups: {roomingIntelligence.warnings.emptyRoomGroups.length}</p> : null}
-          {roomingIntelligence.warnings.incompleteRoomGroups.length > 0 ? <p className="form-error">Incomplete occupancy: {roomingIntelligence.warnings.incompleteRoomGroups.length}</p> : null}
-          {roomingIntelligence.warnings.overCapacityRoomGroups.length > 0 ? <p className="form-error">Over-capacity room groups: {roomingIntelligence.warnings.overCapacityRoomGroups.length}</p> : null}
+          {roomingIntelligence.warnings.overCapacityRoomGroups.length > 0 ? <p className="form-error">Critical: {roomingIntelligence.warnings.overCapacityRoomGroups.length} over-capacity room group{roomingIntelligence.warnings.overCapacityRoomGroups.length === 1 ? '' : 's'} need reassignment.</p> : null}
+          {roomingIntelligence.warnings.emptyRoomGroups.length > 0 ? <p className="form-error">Room setup: {roomingIntelligence.warnings.emptyRoomGroups.length} empty room group{roomingIntelligence.warnings.emptyRoomGroups.length === 1 ? '' : 's'}.</p> : null}
+          {roomingIntelligence.warnings.incompleteRoomGroups.length > 0 ? <p className="form-error">Occupancy review: {roomingIntelligence.warnings.incompleteRoomGroups.length} incomplete room group{roomingIntelligence.warnings.incompleteRoomGroups.length === 1 ? '' : 's'}.</p> : null}
           {roomingIntelligence.warnings.unassignedPassengers.length > 0 ? (
             <p className="form-error">
-              Unassigned passengers: {roomingIntelligence.warnings.unassignedPassengers.map(getPassengerName).join(', ')}
+              Passenger assignment: {roomingIntelligence.warnings.unassignedPassengers.map(getPassengerName).join(', ')}
             </p>
           ) : null}
         </div>
       </section>
 
-      <form className="entity-form compact-form" onSubmit={createRoomingGroup}>
+      <form className="entity-form compact-form quote-rooming-edit-form" onSubmit={saveRoomingGroup}>
+        <div className="workspace-section-head">
+          <div>
+            <p className="eyebrow">{editingRoomingGroupId ? 'Edit Rooming' : 'Add Rooming'}</p>
+            <h3>{editingRoomingGroupId ? 'Update room group' : 'Create room group'}</h3>
+          </div>
+          {editingRoomingGroupId ? (
+            <button type="button" className="compact-button" onClick={resetRoomingForm}>
+              Cancel edit
+            </button>
+          ) : null}
+        </div>
         <div className="form-row">
           <label>
             Hotel stay
@@ -393,7 +426,7 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
           </label>
         </div>
         <button type="submit" disabled={isSaving || !selectedHotelOption}>
-          {isSaving ? 'Creating...' : 'Create room group'}
+          {isSaving ? 'Saving...' : editingRoomingGroupId ? 'Save rooming changes' : 'Create room group'}
         </button>
       </form>
 
@@ -453,14 +486,19 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
                   <p className="eyebrow">{getGroupHotelLabel(group)}</p>
                   <h3>{group.temporaryRoomLabel || group.roomType || 'Room group'}</h3>
                   <p className="detail-copy">
-                    {getOccupancyLabel(group.occupancyType)} | Occupancy {formatOccupancyCount(group)}
+                    {getOccupancyLabel(group.occupancyType)} | {formatOccupancyCount(group)}
                     {group.guideRoom ? ' | Guide room' : ''}
                     {group.leaderRoom ? ' | Leader room' : ''}
                   </p>
                 </div>
-                <button type="button" className="compact-button compact-button-danger" onClick={() => deleteRoomingGroup(group)}>
-                  Delete
-                </button>
+                <div className="table-action-row">
+                  <button type="button" className="compact-button" onClick={() => startEditRoomingGroup(group)}>
+                    Edit Rooming
+                  </button>
+                  <button type="button" className="compact-button compact-button-danger" onClick={() => deleteRoomingGroup(group)}>
+                    Delete
+                  </button>
+                </div>
               </div>
 
               {group.notes ? <p className="table-subcopy">{group.notes}</p> : null}

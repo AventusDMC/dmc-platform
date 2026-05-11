@@ -836,6 +836,29 @@ function getExternalPackageDayRange(item: QuoteItem, fallbackDayNumber?: number 
   };
 }
 
+function getExcursionComponentIcon(componentType: string) {
+  if (componentType === 'TRANSPORT') return 'Vehicle';
+  if (componentType === 'TICKET') return 'Ticket';
+  if (componentType === 'ACTIVITY') return 'Activity';
+  if (componentType === 'GUIDE') return 'Guide';
+  if (componentType === 'DINING') return 'Dining';
+  return 'Component';
+}
+
+function formatExcursionComponentDuration(component: ExcursionTemplate['components'][number]) {
+  const duration = component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes || null;
+  if (!duration) return null;
+  if (duration >= 60 && duration % 60 === 0) return `${duration / 60} hr`;
+  if (duration > 60) return `${Math.floor(duration / 60)} hr ${duration % 60} min`;
+  return `${duration} min`;
+}
+
+function formatExcursionBooleanFlag(value: boolean | null | undefined, trueLabel: string, falseLabel: string) {
+  if (value === true) return trueLabel;
+  if (value === false) return falseLabel;
+  return 'To confirm';
+}
+
 function buildServiceLaneId(dayId: string, category: ServicePlannerCategory) {
   return `${dayId}::${category}`;
 }
@@ -3799,17 +3822,31 @@ function ExcursionTemplateInsertPanel({
         <div className="quote-template-component-preview">
           {components.map((component) => {
             const checked = selectedOptionalComponentIds.has(component.id);
+            const durationLabel = formatExcursionComponentDuration(component);
+            const timingLabel = [component.requiredArrivalTime ? `Arrival ${component.requiredArrivalTime}` : null, durationLabel].filter(Boolean).join(' | ');
             return (
               <label key={component.id} className="quote-template-component-row">
-                <span className="status-pill">{component.componentType}</span>
+                <span className="status-pill">{getExcursionComponentIcon(component.componentType)}</span>
                 <span className="quote-template-component-main">
                   <strong>{component.label}</strong>
-                  <span className="form-helper">
-                    {component.isOptional ? 'Optional' : 'Required'}
-                    {component.activity?.name ? ` | ${component.activity.name}` : ''}
-                    {component.supplierService?.name ? ` | ${component.supplierService.name}` : ''}
-                    {component.route?.name ? ` | ${component.route.name}` : ''}
+                  <span className="quote-template-component-meta">
+                    <span className={component.isOptional ? 'status-pill status-pill-muted' : 'status-pill status-pill-success'}>
+                      {component.isOptional ? 'Optional' : 'Required'}
+                    </span>
+                    {timingLabel ? <span>{timingLabel}</span> : null}
+                    <span>{formatExcursionBooleanFlag(component.supplierConfirmationRequired, 'Supplier confirmation required', 'Supplier confirmation not required')}</span>
+                    <span>{formatExcursionBooleanFlag(component.voucherRequired, 'Voucher required', 'Voucher not required')}</span>
                   </span>
+                  <span className="form-helper">
+                    {component.activity?.name || component.supplierService?.name || component.route?.name || 'Linked operational record to confirm'}
+                  </span>
+                  {component.pickupNotes || component.operationalDependency ? (
+                    <span className="quote-template-component-warning">
+                      {[component.pickupNotes ? `Pickup: ${component.pickupNotes}` : null, component.operationalDependency ? `Dependency: ${component.operationalDependency}` : null]
+                        .filter(Boolean)
+                        .join(' | ')}
+                    </span>
+                  ) : null}
                 </span>
                 {component.isOptional ? (
                   <input
