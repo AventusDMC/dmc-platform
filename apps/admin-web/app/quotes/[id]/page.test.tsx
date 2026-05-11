@@ -9,6 +9,7 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteItineraryWorkspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
@@ -136,6 +137,7 @@ describe('quote detail page regression', () => {
       "safeQuoteDetailFetch('excursion templates', [] as ExcursionTemplate[], getExcursionTemplates)",
       'const excursionTemplates = excursionTemplatesResult.data;',
       'excursionTemplates={excursionTemplates}',
+      'servicePlanner={renderQuoteServicePlanner()}',
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
@@ -187,9 +189,18 @@ describe('quote detail page regression', () => {
 
   it('renders quote-scoped passenger management on the itinerary page', () => {
     expectSourceContains(pageSource, [
-      "import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';",
+      "import type { QuotePassenger } from './QuotePassengersPanel';",
+      '<QuoteItineraryWorkspace',
       'passengers: QuotePassenger[];',
       'passengers: Array.isArray(quote.passengers) ? quote.passengers : []',
+      'quote={quote}',
+      'totalPax={totalPax}',
+    ]);
+
+    expectSourceContains(quoteItineraryWorkspaceSource, [
+      "import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';",
+      'export function QuoteItineraryWorkspace',
+      'quote-operational-collapsible-passengers',
       '<QuotePassengersPanel',
       'expectedPax={totalPax}',
       'passengers={quote.passengers}',
@@ -210,11 +221,17 @@ describe('quote detail page regression', () => {
 
   it('renders manual quote rooming foundation on the itinerary page', () => {
     expectSourceContains(pageSource, [
-      "import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';",
+      "import type { QuoteRoomingGroup } from './QuoteRoomingPanel';",
       'type QuoteRoomingFetchResult =',
       'async function getQuoteRooming(id: string): Promise<QuoteRoomingFetchResult>',
       "`${DATA_API_BASE_URL}/quotes/${id}/rooming`",
       'const quoteRoomingGroups = quoteRoomingResult.roomingGroups;',
+      'quoteRoomingGroups={quoteRoomingGroups}',
+    ]);
+
+    expectSourceContains(quoteItineraryWorkspaceSource, [
+      "import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';",
+      'quote-operational-collapsible-rooming',
       '<QuoteRoomingPanel',
       'roomingGroups={quoteRoomingGroups}',
       'singleSupplement={quote.singleSupplement}',
@@ -255,6 +272,14 @@ describe('quote detail page regression', () => {
 
   it('adds sticky operational summary and collapsible itinerary workspace sections', () => {
     expectSourceContains(pageSource, [
+      '<QuoteItineraryWorkspace',
+      'operationalSidebarTone={operationalSidebarTone}',
+      'readiness={readiness}',
+      'servicePlanner={renderQuoteServicePlanner()}',
+      'guidedStepFooter={guidedStepFooter}',
+    ]);
+
+    expectSourceContains(quoteItineraryWorkspaceSource, [
       'className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}',
       '<p className="eyebrow">Operational Readiness</p>',
       '<span>Passengers</span>',

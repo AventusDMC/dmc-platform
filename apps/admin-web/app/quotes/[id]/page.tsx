@@ -23,8 +23,8 @@ import { QuoteInvoiceSection } from './QuoteInvoiceSection';
 import { QuoteBuilderEmptyState } from './QuoteBuilderEmptyState';
 import { QuoteBuilderStatusBadge } from './QuoteBuilderStatusBadge';
 import { QuotePricingSummaryCard } from './QuotePricingSummaryCard';
-import { QuotePassengersPanel, type QuotePassenger } from './QuotePassengersPanel';
-import { QuoteRoomingPanel, type QuoteRoomingGroup } from './QuoteRoomingPanel';
+import type { QuotePassenger } from './QuotePassengersPanel';
+import type { QuoteRoomingGroup } from './QuoteRoomingPanel';
 import { QuoteStatusForm } from './QuoteStatusForm';
 import { SupportTextForm } from './SupportTextForm';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
@@ -32,6 +32,7 @@ import { QuoteGroupPricing } from './QuoteGroupPricing';
 import { QuotesForm } from '../QuotesForm';
 import { ConvertToBookingButton } from './ConvertToBookingButton';
 import type { QuoteItineraryResponse } from './QuoteItineraryTab';
+import { QuoteItineraryWorkspace } from './QuoteItineraryWorkspace';
 import { QuoteServicePlanner } from './QuoteServicePlanner';
 import { QuoteTransportBulkAssign } from './QuoteTransportBulkAssign';
 import { CancelQuoteButton } from './CancelQuoteButton';
@@ -2445,80 +2446,20 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           ) : null}
 
           {activeTab === 'itinerary' ? (
-            <div className="quote-itinerary-ops-layout">
-              <aside className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}>
-                <div className="quote-operational-sidebar-head">
-                  <p className="eyebrow">Operational Readiness</p>
-                  <h3>{readiness.statusLabel}</h3>
-                </div>
-                <div className="quote-operational-sidebar-list">
-                  <div>
-                    <span>Passengers</span>
-                    <strong>{assignedPassengerCount}/{quote.passengers.length} assigned</strong>
-                    {unassignedPassengerCount > 0 ? <em>{unassignedPassengerCount} unassigned</em> : <em>Ready</em>}
-                  </div>
-                  <div>
-                    <span>Rooming</span>
-                    <strong>{roomingHasWarnings ? 'Review needed' : 'Ready'}</strong>
-                    <em>{quoteRoomingGroups.length} room group{quoteRoomingGroups.length === 1 ? '' : 's'}</em>
-                  </div>
-                  <div>
-                    <span>Pricing warnings</span>
-                    <strong>{readiness.unpricedServices}</strong>
-                    <em>{readiness.unpricedServices > 0 ? 'Needs pricing review' : 'No unpriced rows'}</em>
-                  </div>
-                  <div>
-                    <span>Unresolved items</span>
-                    <strong>{readiness.unresolvedItems}</strong>
-                    <em>{readiness.unresolvedItems > 0 ? 'Cleanup required' : 'No unresolved rows'}</em>
-                  </div>
-                  <div>
-                    <span>Day coverage</span>
-                    <strong>{readiness.completionPercent}%</strong>
-                    <em>{readiness.totalDays} day{readiness.totalDays === 1 ? '' : 's'} planned</em>
-                  </div>
-                </div>
-              </aside>
-
-              <div className="section-stack quote-itinerary-ops-main">
-                <details className="quote-operational-collapsible quote-operational-collapsible-passengers" open>
-                  <summary>
-                    <div>
-                      <span className="eyebrow">Passengers</span>
-                      <strong>Passenger manifest foundation</strong>
-                    </div>
-                    <em>{quote.passengers.length}/{totalPax} passengers</em>
-                  </summary>
-                  <QuotePassengersPanel
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    expectedPax={totalPax}
-                    passengers={quote.passengers}
-                  />
-                </details>
-
-                <details className="quote-operational-collapsible quote-operational-collapsible-rooming" open>
-                  <summary>
-                    <div>
-                      <span className="eyebrow">Rooming</span>
-                      <strong>Rooming readiness and manual groups</strong>
-                    </div>
-                    <em>{roomingHasWarnings ? 'Review needed' : 'Ready'}</em>
-                  </summary>
-                  <QuoteRoomingPanel
-                    apiBaseUrl={ACTION_API_BASE_URL}
-                    quoteId={quote.id}
-                    passengers={quote.passengers}
-                    itinerary={quoteItinerary}
-                    roomingGroups={quoteRoomingGroups}
-                    singleSupplement={quote.singleSupplement}
-                  />
-                </details>
-
-                {renderQuoteServicePlanner()}
-                {guidedStepFooter}
-              </div>
-            </div>
+            <QuoteItineraryWorkspace
+              apiBaseUrl={ACTION_API_BASE_URL}
+              quote={quote}
+              quoteItinerary={quoteItinerary}
+              quoteRoomingGroups={quoteRoomingGroups}
+              totalPax={totalPax}
+              readiness={readiness}
+              operationalSidebarTone={operationalSidebarTone}
+              assignedPassengerCount={assignedPassengerCount}
+              unassignedPassengerCount={unassignedPassengerCount}
+              roomingHasWarnings={roomingHasWarnings}
+              servicePlanner={renderQuoteServicePlanner()}
+              guidedStepFooter={guidedStepFooter}
+            />
           ) : null}
 
           {activeTab === 'hotels' ? (
