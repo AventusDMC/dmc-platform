@@ -139,6 +139,7 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteServicePlannerSource, [
       'function ExcursionTemplateInsertPanel',
       '<h3>Add Excursion Template</h3>',
+      'Required components insert in order. Optional components stay unchecked until selected.',
       'serviceDate={getItineraryDayServiceDate(plannerProps.quote, summary.day)}',
       'onInserted={refreshScopeItemsFromQuote}',
       'selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds)',
@@ -765,6 +766,19 @@ describe('quote detail page regression', () => {
       'const serviceTypeMatch = searchPool.find((service) => service.serviceTypeId === rate.serviceType?.id);',
       'return modeMatch || serviceTypeMatch || null;',
       'Could not resolve the selected supplier service and pricing mode for this transport rate.',
+    ]);
+  });
+
+  it('keeps existing non-transport quote item save payloads unchanged during transport fallback cleanup', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const resolvedHotelServiceId =',
+      'selectedService?.id || filteredServices[0]?.id || serviceId',
+      'if (isHotelService && !resolvedHotelServiceId) {',
+      'serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId',
+      'activityId: isActivityService && activityId ? activityId : undefined',
+      'ticketRateVariantId: isTicketingService && ticketRateVariantId ? ticketRateVariantId : undefined',
     ]);
   });
 

@@ -3769,6 +3769,7 @@ function ExcursionTemplateInsertPanel({
         <div>
           <p className="eyebrow">Excursion Templates</p>
           <h3>Add Excursion Template</h3>
+          <p className="detail-copy">Required components insert in order. Optional components stay unchecked until selected.</p>
         </div>
         <button type="button" className="primary-button" disabled={isSubmitting || !selectedTemplate || !itineraryId || activeTemplates.length === 0} onClick={handleInsert}>
           {isSubmitting ? 'Adding...' : 'Add selected components'}
