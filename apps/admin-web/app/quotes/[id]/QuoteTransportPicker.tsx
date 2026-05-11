@@ -264,8 +264,9 @@ function findSupplierServiceForRate(services: SupplierService[], rate: VehicleRa
   const searchPool = supplierScoped.length > 0 ? supplierScoped : transportServices;
   const targetMode = pricingMode || getNormalizedPricingModeForRate(rate);
   const modeMatch = targetMode ? searchPool.find((service) => inferSupplierServicePricingMode(service) === targetMode) : null;
+  const serviceTypeMatch = searchPool.find((service) => service.serviceTypeId === rate.serviceType?.id);
 
-  return modeMatch || searchPool[0] || null;
+  return modeMatch || serviceTypeMatch || null;
 }
 
 function findTransportServiceTypeIdForRate(rate: VehicleRate, transportServiceTypes: TransportServiceType[], pricingMode: PricingMode | '') {

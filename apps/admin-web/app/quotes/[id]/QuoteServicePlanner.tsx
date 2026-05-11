@@ -810,7 +810,7 @@ function getServiceSupplierLabel(item: QuoteItem) {
     return getTransportSupplierDisplayName(item) || 'Supplier pending';
   }
 
-  return item.externalSupplierName || item.hotel?.name || item.contract?.name || getItemSupplierId(item) || 'Supplier pending';
+  return item.externalSupplierName || item.hotel?.name || item.contract?.name || 'Supplier pending';
 }
 
 function isExternalPackageItem(item: QuoteItem) {

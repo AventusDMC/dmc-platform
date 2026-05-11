@@ -505,7 +505,6 @@ function findSupplierServiceForTransportSelection(
   return (
     pricingModeMatchedService ||
     searchPool.find((service) => service.serviceTypeId === candidate.serviceType.id) ||
-    searchPool[0] ||
     null
   );
 }
@@ -2099,13 +2098,13 @@ export function QuoteItemsForm({
   }, [isTransportService, routeId, routeName, routeSelectionManuallyChanged, smartDefaultTransportRoute]);
 
   function applyTransportCandidate(candidate: (typeof transportCandidates)[number], options?: { userInitiated?: boolean }) {
-    const matchingService =
-      findSupplierServiceForTransportSelection(filteredServices, candidate) ||
-      filteredServices.find((service) => getServiceTypeKey(service) === 'transport') ||
-      null;
+    const matchingService = findSupplierServiceForTransportSelection(filteredServices, candidate);
 
     if (matchingService) {
       setServiceId(matchingService.id);
+    } else {
+      setServiceId('');
+      setError('Transport rate found, but no matching transport catalog service exists for this supplier/pricing mode. Add the service mapping before saving.');
     }
 
     setTransportServiceTypeId(candidate.serviceType.id);
@@ -2505,7 +2504,7 @@ export function QuoteItemsForm({
 
       const resolvedTransportServiceId =
         isTransportService
-          ? findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || serviceId
+          ? findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
           : serviceId;
       const resolvedHotelServiceId =
         isHotelService
@@ -2514,6 +2513,10 @@ export function QuoteItemsForm({
 
       if (isHotelService && !resolvedHotelServiceId) {
         throw new Error('Hotel catalog service not found for this stay.');
+      }
+
+      if (isTransportService && !resolvedTransportServiceId) {
+        throw new Error('Transport rate found, but no matching transport catalog service exists for this supplier/pricing mode. No generic fallback transport item was saved.');
       }
 
       const hasManualSellOverride = sellPrice.trim().length > 0;

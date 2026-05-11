@@ -716,7 +716,8 @@ describe('quote detail page regression', () => {
       'function inferSupplierServiceTransportPricingMode(service: SupplierService): TransportPricingMode | null',
       'function findSupplierServiceForTransportSelection',
       'findSupplierServiceForTransportSelection(filteredServices, candidate)',
-      'findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || serviceId',
+      'findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || \'\'',
+      'No generic fallback transport item was saved.',
       "return 'Extra KM';",
       "return 'Driver Overnight';",
       "return 'Full Day';",
@@ -744,6 +745,26 @@ describe('quote detail page regression', () => {
       'function getQuoteItemServiceDisplayName(item: QuoteItem)',
       '<h3>{hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}</h3>',
       '{getQuoteItemServiceTypeDisplayName(currentItem)}',
+    ]);
+  });
+
+  it('does not fall back to a generic transport service when no real rate mapping exists', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+    const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const matchingService = findSupplierServiceForTransportSelection(filteredServices, candidate);',
+      'setServiceId(\'\');',
+      'Transport rate found, but no matching transport catalog service exists for this supplier/pricing mode.',
+      'No generic fallback transport item was saved.',
+    ]);
+    assert.equal(quoteItemsFormSource.includes("filteredServices.find((service) => getServiceTypeKey(service) === 'transport')"), false);
+    assert.equal(quoteItemsFormSource.includes('searchPool[0] ||'), false);
+    assert.equal(quoteTransportPickerSource.includes('return modeMatch || searchPool[0] || null;'), false);
+    expectSourceContains(quoteTransportPickerSource, [
+      'const serviceTypeMatch = searchPool.find((service) => service.serviceTypeId === rate.serviceType?.id);',
+      'return modeMatch || serviceTypeMatch || null;',
+      'Could not resolve the selected supplier service and pricing mode for this transport rate.',
     ]);
   });
 
