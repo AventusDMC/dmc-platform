@@ -10,6 +10,7 @@ import { HotelOccupancyChildPolicySection } from './HotelOccupancyChildPolicySec
 import { HotelPoliciesSection } from './HotelPoliciesSection';
 import { HotelPromotionsSection } from './HotelPromotionsSection';
 import { HotelRatesSection } from './HotelRatesSection';
+import { HotelTariffWorkbookSection } from './HotelTariffWorkbookSection';
 import { HotelsSection } from './HotelsSection';
 import { RoomCategoriesSection } from './RoomCategoriesSection';
 
@@ -21,6 +22,7 @@ type HotelsTab =
   | 'contracts'
   | 'allotments'
   | 'rates'
+  | 'tariff-workbook'
   | 'occupancy-child-policy'
   | 'meal-plans-supplements'
   | 'policies'
@@ -36,6 +38,8 @@ type HotelsPageProps = {
     roomCategoryId?: string;
     mealPlan?: string;
     status?: string;
+    validity?: string;
+    activeState?: string;
   }>;
 };
 
@@ -45,6 +49,7 @@ const HOTEL_TABS: Array<{ id: HotelsTab; label: string }> = [
   { id: 'contracts', label: 'Contracts' },
   { id: 'allotments', label: 'Allotments' },
   { id: 'rates', label: 'Rates' },
+  { id: 'tariff-workbook', label: 'Tariff Workbook' },
   { id: 'occupancy-child-policy', label: 'Occupancy & Child Policy' },
   { id: 'meal-plans-supplements', label: 'Meal Plans & Supplements' },
   { id: 'policies', label: 'Policies' },
@@ -145,6 +150,20 @@ async function renderHotelsTabSection(activeTab: HotelsTab, params?: Awaited<Hot
         },
       });
     }
+    if (activeTab === 'tariff-workbook') {
+      return await HotelTariffWorkbookSection({
+        filters: {
+          cityId: params?.cityId,
+          hotelId: params?.hotelId,
+          contractId: params?.contractId,
+          roomCategoryId: params?.roomCategoryId,
+          mealPlan: params?.mealPlan,
+          status: params?.status,
+          validity: params?.validity,
+          activeState: params?.activeState,
+        },
+      });
+    }
     if (activeTab === 'occupancy-child-policy') return await HotelOccupancyChildPolicySection({ contractId: params?.contractId });
     if (activeTab === 'meal-plans-supplements') return await HotelMealPlansSupplementsSection({ contractId: params?.contractId });
     if (activeTab === 'policies') return await HotelPoliciesSection({ contractId: params?.contractId });
@@ -174,6 +193,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     activeTab === 'contracts' ||
     activeTab === 'allotments' ||
     activeTab === 'rates' ||
+    activeTab === 'tariff-workbook' ||
     activeTab === 'occupancy-child-policy' ||
     activeTab === 'meal-plans-supplements' ||
     activeTab === 'policies' ||
@@ -211,6 +231,8 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
         ? 'Review room-control inventory inside the same commercial context as the underlying contract and rate setup.'
         : activeTab === 'rates'
           ? 'Review published cost rows with the surrounding contract and inventory context still visible.'
+          : activeTab === 'tariff-workbook'
+            ? 'Maintain a workbook-style operational view across contracts, validity ranges, room categories, meal plans, supplements, and child policies.'
           : activeTab === 'occupancy-child-policy'
             ? 'Define occupancy limits and child charging bands alongside the current contract before publishing downstream rates.'
             : activeTab === 'meal-plans-supplements'
@@ -222,6 +244,7 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
     { id: 'contracts', label: 'Contracts', helper: 'Terms and validity' },
     { id: 'allotments', label: 'Allotments', helper: 'Inventory control' },
     { id: 'rates', label: 'Rates', helper: 'Published costs' },
+    { id: 'tariff-workbook', label: 'Tariff Workbook', helper: 'Bulk maintenance' },
     { id: 'occupancy-child-policy', label: 'Occupancy & Child Policy', helper: 'Guest mix rules' },
     { id: 'meal-plans-supplements', label: 'Meal Plans & Supplements', helper: 'Board and extras' },
     { id: 'policies', label: 'Policies', helper: 'Cancellation terms' },
@@ -254,6 +277,8 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                           ? 'Inventory control'
                           : tab.id === 'rates'
                             ? 'Published costs'
+                            : tab.id === 'tariff-workbook'
+                              ? 'Bulk maintenance'
                             : tab.id === 'meal-plans-supplements'
                               ? 'Board and extras'
                               : tab.id === 'policies'
@@ -384,6 +409,9 @@ export default async function HotelsPage({ searchParams }: HotelsPageProps) {
                       </Link>
                       <Link className="commercial-action-link" href={`/hotels?tab=rates&contractId=${currentContract.id}`}>
                         View rates
+                      </Link>
+                      <Link className="commercial-action-link" href={`/hotels?tab=tariff-workbook&contractId=${currentContract.id}`}>
+                        Open tariff workbook
                       </Link>
                       <Link className="commercial-action-link" href={`/hotels?tab=occupancy-child-policy&contractId=${currentContract.id}`}>
                         View occupancy & child policy

@@ -66,6 +66,7 @@ export async function HotelContractsSection({ contractId, hotelId }: HotelContra
     ? [
         { href: `/hotels/contracts/${currentContract.id}`, label: 'Overview', helper: 'Contract summary and validity' },
         { href: `/hotels?tab=rates&contractId=${currentContract.id}`, label: 'Rates', helper: 'Published costs' },
+        { href: `/hotels?tab=tariff-workbook&contractId=${currentContract.id}`, label: 'Tariff Workbook', helper: 'Bulk maintenance' },
         {
           href: `/hotels?tab=occupancy-child-policy&contractId=${currentContract.id}`,
           label: 'Occupancy & Child Policy',
