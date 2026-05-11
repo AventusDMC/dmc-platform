@@ -18,6 +18,7 @@ import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
 import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';
+import laneStyles from './QuoteServiceLaneBoard.module.css';
 import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
 import { buildPricingDiagnostics } from './pricing-diagnostics';
 import {
@@ -1829,7 +1830,7 @@ function EditServiceEditorPanel({
   );
 }
 
-function AssignedServicesTable({
+function QuoteServiceLaneBoard({
   dayId,
   dayNumber,
   items,
@@ -1867,14 +1868,14 @@ function AssignedServicesTable({
   }));
 
   return (
-    <div className="quote-service-visual-board">
+    <div className={`${laneStyles.board} quote-service-visual-board`} data-testid="quote-service-lane-board">
       {groupedCategories.map((group) => {
         const laneId = buildServiceLaneId(dayId, group.category);
         const laneOrder = laneOrders[laneId] || group.items.map((item) => item.id);
         const orderedItems = getOrderedLaneItems(group.items, laneOrder);
 
         return (
-          <ServiceLane
+          <QuoteServiceLane
             key={group.category}
             dayId={dayId}
             dayNumber={dayNumber}
@@ -1898,7 +1899,18 @@ function AssignedServicesTable({
   );
 }
 
-function ServiceLane({
+const serviceLaneToneClassNames: Record<ServicePlannerCategory, string> = {
+  hotel: laneStyles.laneHotel,
+  transport: laneStyles.laneTransport,
+  meal: laneStyles.laneMeal,
+  activity: laneStyles.laneActivity,
+  ticketing: laneStyles.laneTicketing,
+  guide: laneStyles.laneGuide,
+  other: laneStyles.laneOther,
+  externalPackage: laneStyles.laneExternalPackage,
+};
+
+function QuoteServiceLane({
   dayId,
   dayNumber,
   category,
@@ -1944,9 +1956,10 @@ function ServiceLane({
   return (
     <section
       ref={setNodeRef}
-      className={`quote-service-lane quote-service-lane-${category}${isOver ? ' quote-service-lane-drag-over' : ''}`}
+      className={`${laneStyles.lane} ${serviceLaneToneClassNames[category] || ''}${isOver ? ` ${laneStyles.laneDragOver}` : ''} quote-service-lane quote-service-lane-${category}${isOver ? ' quote-service-lane-drag-over' : ''}`}
+      data-testid="quote-service-lane"
     >
-      <div className="quote-service-lane-head">
+      <div className={`${laneStyles.laneHead} quote-service-lane-head`}>
         <div>
           <span>{label} ({orderedItems.length})</span>
           <strong>{orderedItems.length > 0 ? 'Added' : 'Empty'}</strong>
@@ -1969,9 +1982,9 @@ function ServiceLane({
         </details>
       ) : (
         <SortableContext items={orderedItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-          <div className="quote-service-card-row">
+          <div className={`${laneStyles.cardList} quote-service-card-row`}>
             {orderedItems.map((item) => (
-              <SortableServiceCard
+              <QuoteServiceCard
                 key={item.id}
                 item={item}
                 dayId={dayId}
@@ -1991,7 +2004,7 @@ function ServiceLane({
         </SortableContext>
       )}
       {orderedItems.length > 0 && category !== 'transport' ? (
-        <button type="button" className="quote-service-lane-add quote-service-lane-add-bottom" onClick={() => onAdd(category)}>
+        <button type="button" className={`${laneStyles.laneAdd} quote-service-lane-add quote-service-lane-add-bottom`} onClick={() => onAdd(category)}>
           {SERVICE_PLANNER_ADD_LABELS[category]}
         </button>
       ) : null}
@@ -2047,7 +2060,7 @@ function buildSortableTransform(transform: ReturnType<typeof useSortable>['trans
   return `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`;
 }
 
-function SortableServiceCard({
+function QuoteServiceCard({
   item,
   dayId,
   dayNumber,
@@ -2101,13 +2114,14 @@ function SortableServiceCard({
   return (
     <article
       ref={setNodeRef}
-      className={`quote-service-mini-card quote-service-sortable-card${isExternalPackage ? ' quote-service-mini-card-external-package' : ''}${isDragging ? ' quote-service-sortable-card-dragging' : ''}${recentlyAddedItemId === item.id ? ' quote-service-mini-card-added' : ''}`}
+      className={`${laneStyles.card} quote-service-mini-card quote-service-sortable-card${isExternalPackage ? ' quote-service-mini-card-external-package' : ''}${isDragging ? ' quote-service-sortable-card-dragging' : ''}${recentlyAddedItemId === item.id ? ' quote-service-mini-card-added' : ''}`}
+      data-testid="quote-service-card"
       style={{
         transform: buildSortableTransform(transform),
         transition,
       }}
     >
-      <div className="quote-service-mini-card-head">
+      <div className={`${laneStyles.cardHead} quote-service-mini-card-head`}>
         <button
           ref={setActivatorNodeRef}
           type="button"
@@ -2123,21 +2137,21 @@ function SortableServiceCard({
         {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
         {getItemSupplierId(item) === 'import-itinerary-system' ? <em>Unmatched</em> : null}
       </div>
-      <div className="quote-service-mini-card-main">
-        <div className="quote-service-mini-card-title-row">
-          <div className="quote-service-mini-card-title-copy">
+      <div className={`${laneStyles.cardMain} quote-service-mini-card-main`}>
+        <div className={`${laneStyles.titleRow} quote-service-mini-card-title-row`}>
+          <div className={`${laneStyles.titleCopy} quote-service-mini-card-title-copy`} data-testid="quote-service-card-title">
             <span>{SERVICE_PLANNER_TAB_LABELS[category]}</span>
             <h5>{displayName}</h5>
             {activityVariantLabel ? <em className="quote-service-time-badge">{activityVariantLabel}</em> : null}
             {serviceTimeLabel ? <em className="quote-service-time-badge">{serviceTimeLabel}</em> : null}
           </div>
-          <strong className="quote-service-card-price">{hasExternalMatrix ? 'Matrix pricing' : formatLiveMoney(item.totalSell, itemCurrency)}</strong>
+          <strong className={`${laneStyles.price} quote-service-card-price`}>{hasExternalMatrix ? 'Matrix pricing' : formatLiveMoney(item.totalSell, itemCurrency)}</strong>
         </div>
-        <p className="quote-service-card-supplier">
+        <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
           {isExternalPackage ? `Partner: ${getServiceSupplierLabel(item)}` : getServiceSupplierLabel(item)}
         </p>
         {item.appliedVehicleRate ? (
-          <p className="quote-service-card-supplier">
+          <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
             {getTransportItemDetailLabel(item)}
             {item.appliedVehicleRate.routeName ? ` | Service Area: ${item.appliedVehicleRate.routeName}` : ''}
           </p>
@@ -2161,7 +2175,7 @@ function SortableServiceCard({
           {item.externalHotelsOrSimilar ? <p>Hotels or Similar: {item.externalHotelsOrSimilar}</p> : null}
         </div>
       ) : null}
-      <div className="quote-service-card-pricing-summary">
+      <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`}>
         {hasExternalMatrix ? (
           <span>Fallback net <span className="quote-money">{item.externalNetCost !== null && item.externalNetCost !== undefined ? formatLiveMoney(item.externalNetCost, itemCurrency) : 'Not set'}</span></span>
         ) : (
@@ -2176,7 +2190,7 @@ function SortableServiceCard({
         ) : null}
         {itemMarginWarning && !hasExternalMatrix ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
       </div>
-      <div className="quote-service-card-pricing-summary" aria-label="Pricing diagnostics">
+      <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`} aria-label="Pricing diagnostics">
         <span>{pricingDiagnostics.pricingSource}</span>
         <span>{pricingDiagnostics.pricingMode}</span>
         <span>{pricingDiagnostics.unitsUsed}</span>
@@ -2186,7 +2200,7 @@ function SortableServiceCard({
         <summary>Details</summary>
         <p>{getServiceNotes(item)}</p>
       </details>
-      <div className="quote-service-mini-card-actions">
+      <div className={`${laneStyles.actions} quote-service-mini-card-actions`} data-testid="quote-service-card-actions">
         <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
           Edit
         </button>
@@ -3392,7 +3406,7 @@ function ScopePlanner({
                     </div>
                     <em>Operational flow</em>
                   </summary>
-                  <AssignedServicesTable
+                  <QuoteServiceLaneBoard
                     dayId={summary.day.id}
                     dayNumber={summary.day.dayNumber}
                     items={summary.items}

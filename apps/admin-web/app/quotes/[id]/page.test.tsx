@@ -11,6 +11,7 @@ const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
 const quoteDayPlannerLayoutSource = readFileSync(new URL('./QuoteDayPlannerLayout.tsx', import.meta.url), 'utf8');
 const quoteDayPlannerLayoutCssSource = readFileSync(new URL('./QuoteDayPlannerLayout.module.css', import.meta.url), 'utf8');
+const quoteServiceLaneBoardCssSource = readFileSync(new URL('./QuoteServiceLaneBoard.module.css', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceCssSource = readFileSync(new URL('./QuoteItineraryWorkspace.module.css', import.meta.url), 'utf8');
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
@@ -309,6 +310,16 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
+      "import laneStyles from './QuoteServiceLaneBoard.module.css';",
+      'function QuoteServiceLaneBoard',
+      'data-testid="quote-service-lane-board"',
+      'function QuoteServiceLane',
+      'data-testid="quote-service-lane"',
+      'function QuoteServiceCard',
+      'data-testid="quote-service-card"',
+      'data-testid="quote-service-card-title"',
+      'data-testid="quote-service-card-actions"',
+      '<QuoteServiceLaneBoard',
       "import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';",
       '<QuoteDayPlannerLayout',
       'dayNavigation={',
@@ -319,6 +330,28 @@ describe('quote detail page regression', () => {
       'quote-operational-collapsible-services',
       'quote-operational-collapsible-intelligence',
       '<em>Operational flow</em>',
+    ]);
+
+    expectSourceContains(quoteServiceLaneBoardCssSource, [
+      '.board',
+      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));',
+      'container-type: inline-size;',
+      '.lane',
+      '.card',
+      '.titleRow',
+      'grid-template-columns: minmax(16rem, 1fr) minmax(8.5rem, max-content);',
+      '.cardList.cardList',
+      'grid-auto-flow: row;',
+      'scroll-snap-type: none;',
+      '.card.card',
+      '.titleCopy h5',
+      'word-break: normal;',
+      'overflow-wrap: normal;',
+      'overflow-wrap: break-word;',
+      '.actions',
+      'display: flex;',
+      'flex-wrap: wrap;',
+      '@container (max-width: 38rem)',
     ]);
 
     expectSourceContains(quoteDayPlannerLayoutSource, [
@@ -356,6 +389,9 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-layout\s*\{/m);
     assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-main\s*\{/m);
     assert.doesNotMatch(cssSource, /^\.quote-operational-sidebar\s*\{/m);
+    assert.doesNotMatch(cssSource, /\.quote-service-planner \.quote-service-visual-board\s*\{[^}]*display:\s*grid;/);
+    assert.doesNotMatch(cssSource, /\.quote-service-planner \.quote-service-card-row\s*\{[^}]*grid-template-columns:/);
+    assert.doesNotMatch(cssSource, /\.quote-service-planner \.quote-service-mini-card-title-row\s*\{[^}]*grid-template-columns:/);
   });
 
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {

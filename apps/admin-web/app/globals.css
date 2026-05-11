@@ -21987,135 +21987,12 @@ video {
   background: rgba(255, 255, 255, 0.82);
 }
 
-.quote-service-planner .quote-service-visual-board {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.quote-service-planner .quote-service-lane {
-  display: grid;
-  gap: 0.75rem;
-  min-width: 0;
-  padding: 0.9rem;
-  border-color: rgba(226, 232, 240, 0.95);
-  border-radius: 0.9rem;
-  background: #FFFFFF;
-  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.04);
-}
-
-.quote-service-planner .quote-service-lane:hover {
-  transform: none;
-  box-shadow: 0 10px 26px rgba(17, 24, 39, 0.06);
-}
-
-.quote-service-planner .quote-service-lane-head {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
-}
-
-.quote-service-planner .quote-service-lane-head span {
-  color: #5B6472;
-  font-size: 0.75rem;
-  font-weight: 850;
-  letter-spacing: 0.05em;
-}
-
-.quote-service-planner .quote-service-lane-head strong {
-  min-width: 1.65rem;
-  height: 1.65rem;
-  border-radius: 999px;
-  background: #EEF6FA;
-  color: #1C7FB8;
-  font-size: 0.78rem;
-  line-height: 1.65rem;
-  text-align: center;
-}
-
-.quote-service-planner .quote-service-lane-add,
-.quote-service-planner .quote-service-empty-add {
-  min-height: 2.15rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 0.65rem;
-  font-size: 0.8rem;
-  font-weight: 800;
-  box-shadow: none;
-}
-
-.quote-service-planner .quote-service-card-row {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.quote-service-planner .quote-service-mini-card {
-  min-width: 0;
-  padding: 0.95rem;
-  border-radius: 0.85rem;
-  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.045);
-}
-
-.quote-service-planner .quote-service-mini-card-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 0.8rem;
-  align-items: start;
-}
-
-.quote-service-planner .quote-service-mini-card-title-copy,
-.quote-service-planner .quote-service-mini-card-main,
-.quote-service-planner .quote-service-card-supplier {
-  min-width: 0;
-}
-
-.quote-service-planner .quote-service-mini-card-title-copy h5 {
-  font-weight: 750;
-}
-
 .quote-service-planner .quote-service-card-price,
 .quote-service-planner .quote-money,
 .quote-preview-total-list strong,
 .quote-pricing-summary-row strong,
 .financial-value {
   font-variant-numeric: tabular-nums;
-}
-
-.quote-service-planner .quote-service-card-price {
-  min-width: 8.75rem;
-  color: #111827;
-  font-size: 1.05rem;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.quote-service-planner .quote-service-card-pricing-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgba(226, 232, 240, 0.82);
-}
-
-.quote-service-planner .quote-service-card-pricing-summary > span {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-  color: #6B7280;
-  font-size: 0.75rem;
-  line-height: 1.25;
-}
-
-.quote-service-planner .quote-service-card-pricing-summary .quote-money {
-  color: #111827;
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .quote-pricing-summary-row {
@@ -22453,83 +22330,6 @@ video {
   color: #111827;
   font-size: 1.08rem;
   font-weight: 850;
-}
-
-.quote-service-planner .quote-service-visual-board {
-  gap: 1rem;
-}
-
-.quote-service-planner .quote-service-lane {
-  gap: 0.85rem;
-  padding: 1rem;
-  border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 0.95rem;
-  background: rgba(248, 250, 252, 0.62);
-  box-shadow: none;
-}
-
-.quote-service-planner .quote-service-lane:hover {
-  box-shadow: none;
-}
-
-.quote-service-planner .quote-service-lane-head {
-  margin: 0;
-  padding-bottom: 0.7rem;
-}
-
-.quote-service-planner .quote-service-lane-head div {
-  width: 100%;
-  justify-content: space-between;
-}
-
-.quote-service-planner .quote-service-lane-head span {
-  color: #111827;
-  font-size: 0.88rem;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.quote-service-planner .quote-service-card-row {
-  display: grid;
-  grid-auto-flow: row;
-  grid-auto-columns: unset;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
-  overflow: visible;
-  padding-bottom: 0;
-  scroll-snap-type: none;
-}
-
-.quote-service-planner .quote-service-mini-card {
-  width: 100%;
-  padding: 1rem;
-  border-color: rgba(203, 213, 225, 0.82);
-  background: #FFFFFF;
-}
-
-.quote-service-planner .quote-service-mini-card-head {
-  align-self: start;
-}
-
-.quote-service-planner .quote-service-mini-card-main {
-  gap: 0.35rem;
-}
-
-.quote-service-planner .quote-service-card-pricing-summary {
-  grid-template-columns: repeat(3, minmax(8rem, 1fr));
-  align-items: stretch;
-}
-
-.quote-service-planner .quote-service-card-pricing-summary > span {
-  padding: 0.55rem 0.65rem;
-  border-radius: 0.65rem;
-  background: rgba(248, 250, 252, 0.9);
-}
-
-.quote-service-planner .quote-service-lane-add-bottom {
-  justify-self: start;
-  margin-top: 0.1rem;
-  background: transparent;
 }
 
 .quote-service-planner .quote-service-empty-add {
@@ -23531,69 +23331,9 @@ video {
   }
 }
 
-/* Quote service lane beta polish. */
-.quote-service-planner .quote-service-lane {
-  --lane-accent: #1F9ACF;
-  --lane-soft: #E8F6FB;
-  border-left: 4px solid var(--lane-accent);
-  background: linear-gradient(180deg, var(--lane-soft), #FFFFFF 58%);
-}
-
-.quote-service-planner .quote-service-lane-hotel {
-  --lane-accent: #2563EB;
-  --lane-soft: #EFF6FF;
-}
-
-.quote-service-planner .quote-service-lane-transport {
-  --lane-accent: #0F766E;
-  --lane-soft: #ECFDF5;
-}
-
-.quote-service-planner .quote-service-lane-meal {
-  --lane-accent: #B45309;
-  --lane-soft: #FFF7ED;
-}
-
-.quote-service-planner .quote-service-lane-activity {
-  --lane-accent: #7C3AED;
-  --lane-soft: #F5F3FF;
-}
-
-.quote-service-planner .quote-service-lane-guide {
-  --lane-accent: #0369A1;
-  --lane-soft: #F0F9FF;
-}
-
-.quote-service-planner .quote-service-lane-other {
-  --lane-accent: #475467;
-  --lane-soft: #F8FAFC;
-}
-
-.quote-service-planner .quote-service-lane-externalPackage {
-  --lane-accent: #BE123C;
-  --lane-soft: #FFF1F2;
-}
-
-.quote-service-planner .quote-service-lane-head strong,
 .quote-service-empty-state-collapsed summary strong {
   background: color-mix(in srgb, var(--lane-accent) 12%, #FFFFFF);
   color: var(--lane-accent);
-}
-
-.quote-service-planner .quote-service-lane-add,
-.quote-service-planner .quote-service-empty-add {
-  min-height: 2.75rem;
-  padding: 0.7rem 0.95rem;
-  border-color: color-mix(in srgb, var(--lane-accent) 32%, #FFFFFF);
-  background: #FFFFFF;
-  color: var(--lane-accent);
-  font-size: 0.9rem;
-  font-weight: 900;
-}
-
-.quote-service-planner .quote-service-lane-add:hover,
-.quote-service-planner .quote-service-empty-add:hover {
-  background: color-mix(in srgb, var(--lane-accent) 10%, #FFFFFF);
 }
 
 .quote-service-empty-state-collapsed summary strong {
@@ -23619,34 +23359,9 @@ video {
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
 }
 
-@media (min-width: 1120px) {
-  .quote-service-planner-shell.quote-service-planner-saas-grid {
-    grid-template-columns: minmax(13rem, 0.22fr) minmax(0, 1fr);
-  }
-
-  .quote-service-planner .quote-service-mini-card {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .quote-service-planner .quote-service-mini-card-head,
-  .quote-service-planner .quote-service-mini-card-main,
-  .quote-service-planner .quote-service-external-package-meta,
-  .quote-service-planner .quote-service-card-pricing-summary,
-  .quote-service-planner .quote-service-card-details,
-  .quote-service-planner .quote-service-mini-card-actions {
-    grid-column: 1 / -1;
-  }
-}
-
 @media (max-width: 720px) {
-  .quote-service-planner .quote-service-current-services,
-  .quote-service-planner .quote-service-lane {
+  .quote-service-planner .quote-service-current-services {
     padding: 0.85rem;
-  }
-
-  .quote-service-planner .quote-service-card-pricing-summary {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

@@ -1,0 +1,305 @@
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  gap: 1rem;
+  min-width: 0;
+  container-type: inline-size;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.board * {
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.lane {
+  --lane-accent: #1f9acf;
+  --lane-soft: #e8f6fb;
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-left: 4px solid var(--lane-accent);
+  border-radius: 0.95rem;
+  background: linear-gradient(180deg, var(--lane-soft), #ffffff 58%);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.04);
+}
+
+.laneHotel {
+  --lane-accent: #2563eb;
+  --lane-soft: #eff6ff;
+}
+
+.laneTransport {
+  --lane-accent: #0f766e;
+  --lane-soft: #ecfdf5;
+}
+
+.laneMeal {
+  --lane-accent: #b45309;
+  --lane-soft: #fff7ed;
+}
+
+.laneActivity {
+  --lane-accent: #7c3aed;
+  --lane-soft: #f5f3ff;
+}
+
+.laneTicketing {
+  --lane-accent: #c2410c;
+  --lane-soft: #fff7ed;
+}
+
+.laneGuide {
+  --lane-accent: #0369a1;
+  --lane-soft: #f0f9ff;
+}
+
+.laneOther {
+  --lane-accent: #475467;
+  --lane-soft: #f8fafc;
+}
+
+.laneExternalPackage {
+  --lane-accent: #be123c;
+  --lane-soft: #fff1f2;
+}
+
+.laneDragOver {
+  background: color-mix(in srgb, var(--lane-accent) 12%, #ffffff);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--lane-accent) 16%, transparent),
+    0 12px 28px rgba(17, 24, 39, 0.08);
+}
+
+.laneHead {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.laneHead > div {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+}
+
+.laneHead span {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 0.85rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.laneHead strong {
+  flex: 0 0 auto;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lane-accent) 12%, #ffffff);
+  color: var(--lane-accent);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cardList.cardList {
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-columns: unset;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+  min-width: 0;
+  overflow: visible;
+  padding-bottom: 0;
+  scroll-snap-type: none;
+}
+
+.card.card {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  padding: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.045);
+  scroll-snap-align: none;
+}
+
+.cardHead {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-width: 0;
+  min-height: 2rem;
+}
+
+.cardMain {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.titleRow {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(8.5rem, max-content);
+  gap: 1rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.titleCopy {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.titleCopy > span {
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.titleCopy h5 {
+  margin: 0;
+  color: #111827;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.28;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.price {
+  display: block;
+  min-width: 8.5rem;
+  overflow: hidden;
+  color: #111827;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supplier {
+  min-width: 0;
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.pricingSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.72rem;
+  border: 1px solid rgba(229, 231, 235, 0.88);
+  border-radius: 0.85rem;
+  background: rgba(244, 250, 253, 0.72);
+}
+
+.pricingSummary span {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  color: #6b7280;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.pricingSummary :global(.quote-money) {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #374151;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricingSummary :global(.quote-ui-badge) {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.actions :global(.secondary-button) {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.72rem;
+  white-space: nowrap;
+}
+
+.laneAdd {
+  min-height: 2.75rem;
+  padding: 0.7rem 0.95rem;
+  border-color: color-mix(in srgb, var(--lane-accent) 32%, #ffffff);
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: var(--lane-accent);
+  font-size: 0.9rem;
+  font-weight: 900;
+  box-shadow: none;
+}
+
+.laneAdd:hover {
+  background: color-mix(in srgb, var(--lane-accent) 10%, #ffffff);
+}
+
+@container (max-width: 38rem) {
+  .titleRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .price {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .pricingSummary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
