@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Res, StreamableFile } from '@nestj
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { BookingsService } from './bookings.service';
+import { OperationalVouchersService } from '../operational-documents/operational-vouchers.service';
 
 type UpdateVoucherStatusBody = {
   status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
@@ -9,7 +10,10 @@ type UpdateVoucherStatusBody = {
 
 @Controller('vouchers')
 export class VouchersController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly operationalVouchersService: OperationalVouchersService,
+  ) {}
 
   private toAuditActor(actor: AuthenticatedActor | null | undefined) {
     if (!actor) {
@@ -41,6 +45,15 @@ export class VouchersController {
     response.setHeader('Content-Disposition', `attachment; filename="${safeFileName}.pdf"`);
 
     return new StreamableFile(pdfBuffer);
+  }
+
+  @Get(':id/preview')
+  @Roles('admin', 'operations')
+  previewOperationalVoucher(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.operationalVouchersService.getHotelVoucherPreview(id, actor);
   }
 
   @Patch(':id/status')

@@ -201,7 +201,7 @@ type QuoteSnapshot = {
 type ServiceVoucher = {
   id: string;
   bookingServiceId: string;
-  type: 'TRANSPORT' | 'HOTEL' | 'GUIDE' | 'EXTERNAL_PACKAGE';
+  type: 'TRANSPORT' | 'HOTEL' | 'GUIDE' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
   supplierId: string;
   status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
   issuedAt: string | null;
@@ -1532,6 +1532,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                 <Link href={`/api/vouchers/${voucher.id}/pdf`} className="secondary-button">
                                   PDF
                                 </Link>
+                                {voucher.type === 'HOTEL' ? (
+                                  <Link href={`/vouchers/${voucher.id}/preview`} className="secondary-button">
+                                    Preview
+                                  </Link>
+                                ) : null}
                                 {voucher.status === 'DRAFT' ? (
                                   <form action={`/api/vouchers/${voucher.id}/status`} method="POST">
                                     <input type="hidden" name="status" value="ISSUED" />
@@ -1724,9 +1729,16 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                       </td>
                                       <td>
                                         {service.vouchers && service.vouchers.length > 0 ? (
-                                          <Link href={`/api/vouchers/${service.vouchers[0].id}/pdf`} className="secondary-button">
-                                            Voucher PDF
-                                          </Link>
+                                          <div className="quote-status-actions">
+                                            <Link href={`/api/vouchers/${service.vouchers[0].id}/pdf`} className="secondary-button">
+                                              Voucher PDF
+                                            </Link>
+                                            {service.vouchers[0].type === 'HOTEL' ? (
+                                              <Link href={`/vouchers/${service.vouchers[0].id}/preview`} className="secondary-button">
+                                                Preview
+                                              </Link>
+                                            ) : null}
+                                          </div>
                                         ) : (
                                           <form action={`/api/bookings/${booking.id}/services/${service.id}/voucher`} method="POST" className="quote-status-form">
                                             <input type="hidden" name="notes" value={service.notes || ''} />

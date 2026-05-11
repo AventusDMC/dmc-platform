@@ -17,6 +17,7 @@ import { BookingsController } from './bookings/bookings.controller';
 import { BookingsService } from './bookings/bookings.service';
 import { OperationsDashboardController } from './bookings/operations-dashboard.controller';
 import { VouchersController } from './bookings/vouchers.controller';
+import { OperationalVouchersService } from './operational-documents/operational-vouchers.service';
 import { CitiesController } from './cities/cities.controller';
 import { CitiesService } from './cities/cities.service';
 import { CompaniesController } from './companies/companies.controller';
@@ -171,6 +172,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
       useClass: RolesGuard,
     },
     BookingsService,
+    OperationalVouchersService,
     CitiesService,
     ContractChildPolicyService,
     ContractImportsService,

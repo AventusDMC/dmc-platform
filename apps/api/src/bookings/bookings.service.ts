@@ -5257,9 +5257,6 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (type === VoucherType.HOTEL) {
-      if (!service.confirmationNumber && !service.supplierReference) {
-        throw new BadRequestException('Hotel voucher requires a confirmation number');
-      }
       return;
     }
 
