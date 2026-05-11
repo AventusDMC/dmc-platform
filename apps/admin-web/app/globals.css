@@ -26323,6 +26323,12 @@ video {
    itinerary tab needs a desktop-width canvas while the rest of Admin Web keeps
    the global max-width and single-column protections. */
 @media (min-width: 1180px) {
+  .admin-shell:has(.quote-itinerary-workspace-page),
+  .admin-shell:has(.quote-itinerary-workspace-page) .admin-main-shell,
+  .admin-shell:has(.quote-itinerary-workspace-page) .admin-content-shell {
+    overflow-x: visible;
+  }
+
   .admin-shell .quote-itinerary-workspace-page,
   .admin-shell .quote-itinerary-workspace-page.app-page-content,
   .admin-shell .panel.quote-itinerary-workspace-page {
@@ -26341,31 +26347,35 @@ video {
   .admin-shell .quote-itinerary-workspace-page .quote-builder-main,
   .admin-shell .quote-itinerary-workspace-page .quote-builder-main-content,
   .admin-shell .quote-itinerary-workspace-page .quote-builder-main-content > .section-stack {
+    justify-self: stretch;
+    align-self: stretch;
     width: 100%;
     min-width: 0 !important;
     max-width: none !important;
+    margin-inline: 0 !important;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-builder-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, min(26vw, 360px));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-layout {
     display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(920px, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 1rem;
     width: 100%;
-    min-width: min(100%, 1180px);
+    min-width: 0;
     max-width: none;
-    overflow-x: auto;
+    overflow-x: visible;
     overflow-y: visible;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-main {
     flex: 1 1 auto;
     width: 100%;
-    min-width: 920px !important;
+    min-inline-size: min(100%, 960px);
+    min-width: 0 !important;
     max-width: none !important;
   }
 
@@ -26381,16 +26391,17 @@ video {
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-main > .quote-service-planner {
-    overflow-x: auto;
+    overflow-x: visible;
     overflow-y: visible;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-service-planner-shell.quote-service-planner-saas-grid {
     display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(900px, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     width: 100%;
-    min-width: 1160px;
+    min-inline-size: min(100%, 960px);
+    min-width: 0;
     max-width: none !important;
   }
 
@@ -26399,7 +26410,7 @@ video {
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     align-items: start;
     width: 100%;
-    min-width: 900px;
+    min-width: 0;
     max-width: none !important;
   }
 
@@ -26428,19 +26439,25 @@ video {
   }
 }
 
-@media (min-width: 1440px) {
+@media (min-width: 1536px) {
+  .admin-shell .quote-itinerary-workspace-page .quote-builder-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, min(24vw, 360px));
+  }
+
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-layout {
-    grid-template-columns: minmax(240px, 300px) minmax(1040px, 1fr);
-    min-width: min(100%, 1320px);
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+    min-width: 0;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-main {
-    min-width: 1040px !important;
+    min-inline-size: min(100%, 1040px);
+    min-width: 0 !important;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-service-planner-shell.quote-service-planner-saas-grid {
-    grid-template-columns: minmax(240px, 300px) minmax(1020px, 1fr);
-    min-width: 1280px;
+    grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+    min-inline-size: min(100%, 1040px);
+    min-width: 0;
   }
 }
 
