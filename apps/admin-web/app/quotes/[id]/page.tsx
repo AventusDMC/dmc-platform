@@ -2107,7 +2107,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
 
   return (
     <main className="page quote-builder-page">
-      <section className={`panel quote-workspace-page app-page-content${activeTab === 'itinerary' ? ' quote-itinerary-workspace-page' : ''}`}>
+      <section className="panel quote-workspace-page app-page-content">
         <div className="quote-builder-shell">
           <AdminBreadcrumbs
             items={[

@@ -285,64 +285,6 @@ describe('quote detail page regression', () => {
     ]);
   });
 
-  it('keeps the quote itinerary workspace readable at laptop and wide desktop widths', () => {
-    assert.ok(
-      cssSource.lastIndexOf('Quote itinerary containment override') >
-        cssSource.lastIndexOf('Final admin responsive guardrail: keep after quote workspace overrides'),
-      'quote itinerary containment override must remain after the final global responsive guardrail',
-    );
-
-    expectSourceContains(pageSource, [
-      "activeTab === 'itinerary' ? ' quote-itinerary-workspace-page' : ''",
-    ]);
-
-    expectSourceContains(cssSource, [
-      'Quote itinerary containment override',
-      '@media (min-width: 1180px)',
-      '.admin-shell:has(.quote-itinerary-workspace-page)',
-      'overflow-x: visible;',
-      '.admin-shell .quote-itinerary-workspace-page .quote-builder-layout',
-      'grid-template-columns: minmax(0, 1fr);',
-      '.admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-layout',
-      'min-width: 0;',
-      '.admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-main',
-      'min-inline-size: min(100%, 960px);',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-planner-shell.quote-service-planner-saas-grid',
-      'min-inline-size: min(100%, 960px);',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-visual-board',
-      'grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-lane',
-      'min-width: 280px;',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card',
-      'min-width: 260px;',
-      'overflow-wrap: normal !important;',
-      'word-break: normal !important;',
-      '@media (min-width: 2200px)',
-      'grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);',
-      'min-inline-size: min(100%, 1040px);',
-      'Quote itinerary desktop breakpoint tuning',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-planner .workspace-day-header',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card-actions',
-      'flex-flow: row wrap;',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-visual-board',
-      'grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-lane',
-      'min-width: min(100%, 420px);',
-      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card-title-row',
-      'grid-template-columns: minmax(0, 1fr) max-content;',
-      '.admin-shell .quote-itinerary-workspace-page .quote-rooming-grid',
-      'overflow-wrap: break-word !important;',
-      'word-break: normal !important;',
-      '@media (max-width: 820px)',
-    ]);
-
-    assert.doesNotMatch(
-      cssSource,
-      /@media \(min-width: 1536px\)[\s\S]*?\.admin-shell \.quote-itinerary-workspace-page \.quote-builder-layout/,
-      'quote itinerary must not restore the empty quote-builder side column at 1536px wide desktop widths',
-    );
-  });
-
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
     expectSourceContains(pageSource, [
       "activeTab === 'itinerary'",
