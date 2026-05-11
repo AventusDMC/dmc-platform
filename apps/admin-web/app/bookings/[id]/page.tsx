@@ -2625,6 +2625,42 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               <article className="workspace-section booking-ops-sidebar-card">
                 <div className="workspace-section-head">
                   <div>
+                    <p className="eyebrow">Readiness</p>
+                    <h3>{operationalReadiness.label}</h3>
+                  </div>
+                  <BookingOperationsStatusBadge kind="readiness" status={operationalReadiness.status} />
+                </div>
+                <div className="booking-ops-sidebar-list">
+                  <div>
+                    <span>Rooming</span>
+                    <strong>{operationalReadiness.summary.rooming.complete ? 'Complete' : 'Incomplete'}</strong>
+                  </div>
+                  <div>
+                    <span>Pricing unresolved</span>
+                    <strong>{operationalReadiness.summary.pricing.unresolved}</strong>
+                  </div>
+                  <div>
+                    <span>Missing transport</span>
+                    <strong>{operationalReadiness.summary.transport.missing}</strong>
+                  </div>
+                  <div>
+                    <span>Voucher readiness</span>
+                    <strong>{operationalReadiness.summary.vouchers.issued}/{operationalReadiness.summary.vouchers.eligible}</strong>
+                  </div>
+                  <div>
+                    <span>Passenger assignment</span>
+                    <strong>{operationalReadiness.summary.passengers.unassigned} unassigned</strong>
+                  </div>
+                  <div>
+                    <span>Excursion readiness</span>
+                    <strong>{operationalReadiness.summary.excursions.incomplete}</strong>
+                  </div>
+                </div>
+              </article>
+
+              <article className="workspace-section booking-ops-sidebar-card">
+                <div className="workspace-section-head">
+                  <div>
                     <p className="eyebrow">Booking Status</p>
                     <h3>Current state</h3>
                   </div>

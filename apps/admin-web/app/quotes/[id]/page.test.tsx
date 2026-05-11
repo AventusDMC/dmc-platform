@@ -285,18 +285,38 @@ describe('quote detail page regression', () => {
     ]);
   });
 
-  it('keeps the quote itinerary workspace wide and multi-column on desktop', () => {
+  it('keeps the quote itinerary workspace readable at 1366px and 1440px desktop widths', () => {
+    assert.ok(
+      cssSource.lastIndexOf('Quote itinerary containment override') >
+        cssSource.lastIndexOf('Final admin responsive guardrail: keep after quote workspace overrides'),
+      'quote itinerary containment override must remain after the final global responsive guardrail',
+    );
+
+    expectSourceContains(pageSource, [
+      "activeTab === 'itinerary' ? ' quote-itinerary-workspace-page' : ''",
+    ]);
+
     expectSourceContains(cssSource, [
-      'Quote itinerary workspace desktop exception',
+      'Quote itinerary containment override',
       '@media (min-width: 1180px)',
-      '.quote-itinerary-ops-layout',
-      'grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);',
-      '.quote-itinerary-ops-main .quote-service-planner-shell.quote-service-planner-saas-grid',
-      'grid-template-columns: minmax(220px, 280px) minmax(760px, 1fr);',
-      '.quote-itinerary-ops-main .quote-service-visual-board',
-      'grid-template-columns: repeat(3, minmax(220px, 1fr));',
+      '.admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-layout',
+      'grid-template-columns: minmax(220px, 280px) minmax(920px, 1fr);',
+      'min-width: min(100%, 1180px);',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-planner-shell.quote-service-planner-saas-grid',
+      'grid-template-columns: minmax(220px, 280px) minmax(900px, 1fr);',
+      'min-width: 1160px;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-visual-board',
+      'grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));',
+      'min-width: 900px;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-lane',
+      'min-width: 280px;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card',
+      'min-width: 260px;',
+      'overflow-wrap: normal !important;',
+      'word-break: normal !important;',
       '@media (min-width: 1440px)',
-      'grid-template-columns: repeat(4, minmax(220px, 1fr));',
+      'grid-template-columns: minmax(240px, 300px) minmax(1040px, 1fr);',
+      'min-width: 1280px;',
     ]);
   });
 

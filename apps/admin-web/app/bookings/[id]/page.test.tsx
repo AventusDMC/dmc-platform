@@ -161,6 +161,27 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('renders read-only operational readiness dashboard with counters and day indicators', () => {
+    expectSourceContains(pageSource, [
+      'operationalReadiness?:',
+      'Read-only readiness dashboard',
+      'booking-operational-counter-strip',
+      'Optional not selected',
+      'Unresolved items',
+      'Voucher readiness',
+      'Passenger assignment',
+      'Excursion readiness',
+      'operationalReadiness.dayReadiness.find',
+      'kind="readiness"',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.booking-operational-readiness-grid',
+      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));',
+      '.booking-dashboard-day-readiness',
+    ]);
+  });
+
   it('keeps responsive dashboard layout and mobile action access', () => {
     expectSourceContains(pageSource, [
       '<AdminHeaderActions className="booking-dashboard-actions">',
