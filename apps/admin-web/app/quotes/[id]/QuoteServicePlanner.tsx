@@ -17,6 +17,7 @@ import { QuoteItemCard } from './QuoteItemCard';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
+import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';
 import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
 import { buildPricingDiagnostics } from './pricing-diagnostics';
 import {
@@ -3287,33 +3288,35 @@ function ScopePlanner({
         </article>
       ) : null}
 
-      <div className="quote-service-planner-shell quote-service-planner-saas-grid">
-        <DayNavigation
-          className="quote-service-day-nav"
-          title={`${scope.label} days`}
-          activeId={activeDaySummary?.day.id}
-          onSelect={plannerState.onActiveDayChange}
-          items={daySummaries.map((summary) => {
-            const dayTotalSell = summary.items.reduce((total, item) => total + Number(item.totalSell || 0), 0);
-            const warning =
-              summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
-                <>
-                  {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
-                  {summary.unpricedCount > 0 && summary.unresolvedCount > 0 ? ' / ' : null}
-                  {summary.unresolvedCount > 0 ? `${summary.unresolvedCount} unresolved` : null}
-                </>
-              ) : null;
+      <QuoteDayPlannerLayout
+        dayNavigation={
+          <DayNavigation
+            className={getQuoteDayNavigationClassName()}
+            title={`${scope.label} days`}
+            activeId={activeDaySummary?.day.id}
+            onSelect={plannerState.onActiveDayChange}
+            items={daySummaries.map((summary) => {
+              const dayTotalSell = summary.items.reduce((total, item) => total + Number(item.totalSell || 0), 0);
+              const warning =
+                summary.unpricedCount > 0 || summary.unresolvedCount > 0 ? (
+                  <>
+                    {summary.unpricedCount > 0 ? `${summary.unpricedCount} unpriced` : null}
+                    {summary.unpricedCount > 0 && summary.unresolvedCount > 0 ? ' / ' : null}
+                    {summary.unresolvedCount > 0 ? `${summary.unresolvedCount} unresolved` : null}
+                  </>
+                ) : null;
 
-            return {
-              id: summary.day.id,
-              label: formatDayHeading(summary.day, summary.inferredCity),
-              helper: `${summary.items.length} service${summary.items.length === 1 ? '' : 's'} / ${summary.completionPercent}% complete`,
-              total: dayTotalSell > 0 ? formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency) : null,
-              warning,
-            };
-          })}
-        />
-        <div className="quote-service-day-column">
+              return {
+                id: summary.day.id,
+                label: formatDayHeading(summary.day, summary.inferredCity),
+                helper: `${summary.items.length} service${summary.items.length === 1 ? '' : 's'} / ${summary.completionPercent}% complete`,
+                total: dayTotalSell > 0 ? formatLiveMoney(dayTotalSell, plannerProps.quote.quoteCurrency) : null,
+                warning,
+              };
+            })}
+          />
+        }
+      >
           {reorderError ? <p className="form-error">{reorderError}</p> : null}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceDragEnd}>
       {activeDaySummary ? (() => {
@@ -3378,8 +3381,9 @@ function ScopePlanner({
               />
             </details>
 
-            <div className="quote-service-day-layout quote-service-day-layout-visual">
-              <section className="quote-service-current-services quote-service-day-main">
+            <QuoteDayPlannerDayLayout
+              main={
+                <>
                 <details className="quote-operational-collapsible quote-operational-collapsible-services" open>
                   <summary>
                     <div>
@@ -3444,8 +3448,10 @@ function ScopePlanner({
                   }}
                   onTimelineEdit={(item, index) => setActiveTimelineItem({ day: summary.day, index, draft: item })}
                 />
-              </section>
-
+                </>
+              }
+              sidePanel={
+                <>
                 <section className="quote-service-side-section">
                   <div className="workspace-section-head">
                     <div>
@@ -3499,15 +3505,16 @@ function ScopePlanner({
                     </div>
                   </section>
                 ) : null}
-            </div>
+                </>
+              }
+            />
             </div>
           </article>
         );
       })() : null}
           </DndContext>
 
-        </div>
-      </div>
+      </QuoteDayPlannerLayout>
 
       <DayDescriptionDrawer
         item={activeDayDescription}

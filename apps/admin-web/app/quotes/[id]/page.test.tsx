@@ -9,6 +9,8 @@ const versionPageSource = readFileSync(new URL('./versions/[versionId]/page.tsx'
 const quotesListPageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
 const quotesTableSource = readFileSync(new URL('../QuotesTable.tsx', import.meta.url), 'utf8');
 const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+const quoteDayPlannerLayoutSource = readFileSync(new URL('./QuoteDayPlannerLayout.tsx', import.meta.url), 'utf8');
+const quoteDayPlannerLayoutCssSource = readFileSync(new URL('./QuoteDayPlannerLayout.module.css', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceSource = readFileSync(new URL('./QuoteItineraryWorkspace.tsx', import.meta.url), 'utf8');
 const quoteItineraryWorkspaceCssSource = readFileSync(new URL('./QuoteItineraryWorkspace.module.css', import.meta.url), 'utf8');
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
@@ -307,11 +309,43 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(quoteServicePlannerSource, [
+      "import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';",
+      '<QuoteDayPlannerLayout',
+      'dayNavigation={',
+      'className={getQuoteDayNavigationClassName()}',
+      '<QuoteDayPlannerDayLayout',
       'quote-operational-collapsible-cleanup',
       'quote-operational-collapsible-excursions',
       'quote-operational-collapsible-services',
       'quote-operational-collapsible-intelligence',
       '<em>Operational flow</em>',
+    ]);
+
+    expectSourceContains(quoteDayPlannerLayoutSource, [
+      "import styles from './QuoteDayPlannerLayout.module.css';",
+      'export function QuoteDayPlannerLayout',
+      'className={styles.container}',
+      'quote-service-planner-shell quote-service-planner-saas-grid',
+      'quote-service-day-column',
+      'export function QuoteDayPlannerDayLayout',
+      'quote-service-day-layout quote-service-day-layout-visual',
+      'quote-service-current-services quote-service-day-main',
+      'export function getQuoteDayNavigationClassName',
+      'quote-service-day-nav',
+    ]);
+
+    expectSourceContains(quoteDayPlannerLayoutCssSource, [
+      '.container',
+      'container-type: inline-size;',
+      '.shell:global(.quote-service-planner-shell.quote-service-planner-saas-grid)',
+      'grid-template-columns: minmax(13rem, 17.5rem) minmax(0, 1fr);',
+      '.dayNavigation.dayNavigation:global(.quote-service-day-nav)',
+      '.mainColumn.mainColumn:global(.quote-service-day-column)',
+      '.dayLayout.dayLayout:global(.quote-service-day-layout.quote-service-day-layout-visual)',
+      '.sidePanelStack',
+      '@media (max-width: 980px)',
+      '@container (max-width: 54rem)',
+      '@media (max-width: 760px)',
     ]);
 
     expectSourceContains(cssSource, [
