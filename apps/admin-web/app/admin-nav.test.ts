@@ -220,6 +220,19 @@ test('mobile admin navigation hooks and collapse classes exist', () => {
   assert.match(cssSource, /\.admin-sidebar\s*\{\s*display: none;/);
 });
 
+test('global admin responsive stabilization utilities and shell guardrails exist', () => {
+  assert.match(cssSource, /\/\* Global Admin Web responsive stabilization\./);
+  assert.match(cssSource, /\.responsive-table\s*\{/);
+  assert.match(cssSource, /\.workspace-grid,\s*\n\.stack-on-narrow\s*\{/);
+  assert.match(cssSource, /\.truncate-safe\s*\{/);
+  assert.match(cssSource, /\.break-safe\s*\{/);
+  assert.match(cssSource, /\.admin-shell\s*\{[\s\S]*grid-template-columns:\s*minmax\(220px,\s*260px\) minmax\(0,\s*1fr\)/);
+  assert.match(cssSource, /\.admin-main-shell,[\s\S]*\.admin-content-shell,[\s\S]*min-width:\s*0 !important/);
+  assert.match(cssSource, /\.admin-shell :where\([\s\S]*\.table-wrap,[\s\S]*\.responsive-table,[\s\S]*overflow-x:\s*auto !important/);
+  assert.match(cssSource, /\.admin-shell :where\([\s\S]*\.data-table,[\s\S]*\.app-table,[\s\S]*table-layout:\s*auto/);
+  assert.match(cssSource, /@media \(max-width: 1440px\)[\s\S]*\.quote-builder-layout,[\s\S]*\.booking-ops-layout,[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+});
+
 test('AXIS branding renders on sidebar and login with powered footer', () => {
   const adminLogoBlock = cssSource.match(/\.admin-brand-logo\s*\{[\s\S]*?\n\}/)?.[0] || '';
   const adminLogoWrapperBlock = cssSource.match(/\.admin-brand-logo-wrapper\s*\{[\s\S]*?\n\}/)?.[0] || '';
