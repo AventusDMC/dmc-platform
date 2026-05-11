@@ -253,6 +253,38 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('adds sticky operational summary and collapsible itinerary workspace sections', () => {
+    expectSourceContains(pageSource, [
+      'className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}',
+      '<p className="eyebrow">Operational Readiness</p>',
+      '<span>Passengers</span>',
+      '<span>Rooming</span>',
+      '<span>Pricing warnings</span>',
+      '<span>Unresolved items</span>',
+      '<span>Day coverage</span>',
+      'quote-operational-collapsible-passengers',
+      'quote-operational-collapsible-rooming',
+    ]);
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'quote-operational-collapsible-cleanup',
+      'quote-operational-collapsible-excursions',
+      'quote-operational-collapsible-services',
+      'quote-operational-collapsible-intelligence',
+      '<em>Operational flow</em>',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.quote-itinerary-ops-layout',
+      '.quote-operational-sidebar',
+      '.quote-operational-collapsible',
+      '.quote-operational-sidebar-critical',
+      '.quote-operational-sidebar-warning',
+      '.quote-operational-sidebar-ready',
+      '.quote-service-planner .quote-service-lane-head span::before',
+    ]);
+  });
+
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
     expectSourceContains(pageSource, [
       "activeTab === 'itinerary'",

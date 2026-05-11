@@ -1892,6 +1892,33 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   };
   const readiness = buildQuoteReadinessModel(quote, buildStepHref);
   const allQuotePricingItems = [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
+  const assignedPassengerIds = new Set(quoteRoomingGroups.flatMap((group) => group.assignments.map((assignment) => assignment.quotePassengerId)));
+  const assignedPassengerCount = quote.passengers.filter((passenger) => assignedPassengerIds.has(passenger.id)).length;
+  const unassignedPassengerCount = Math.max(quote.passengers.length - assignedPassengerCount, 0);
+  const roomingHasWarnings =
+    quoteRoomingGroups.length === 0 ||
+    unassignedPassengerCount > 0 ||
+    quoteRoomingGroups.some((group) => {
+      const assigned = group.assignments.length;
+      const capacity =
+        group.occupancyType === 'single'
+          ? 1
+          : group.occupancyType === 'double'
+            ? 2
+            : group.occupancyType === 'triple'
+              ? 3
+              : group.occupancyType === 'quad'
+                ? 4
+                : null;
+
+      return assigned === 0 || (capacity !== null && assigned > capacity);
+    });
+  const operationalSidebarTone =
+    readiness.blockers.length > 0 || roomingHasWarnings
+      ? 'critical'
+      : readiness.warnings.length > 0 || readiness.cleanupItems.length > 0 || readiness.unpricedServices > 0
+        ? 'warning'
+        : 'ready';
   const countIssuesForStep = (step: QuoteWorkspaceStep) =>
     readiness.blockers.filter((issue) => issue.action?.step === step).length +
     readiness.warnings.filter((issue) => issue.action?.step === step).length +
@@ -2418,23 +2445,79 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           ) : null}
 
           {activeTab === 'itinerary' ? (
-            <div className="section-stack">
-              <QuotePassengersPanel
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                expectedPax={totalPax}
-                passengers={quote.passengers}
-              />
-              <QuoteRoomingPanel
-                apiBaseUrl={ACTION_API_BASE_URL}
-                quoteId={quote.id}
-                passengers={quote.passengers}
-                itinerary={quoteItinerary}
-                roomingGroups={quoteRoomingGroups}
-                singleSupplement={quote.singleSupplement}
-              />
-              {renderQuoteServicePlanner()}
-              {guidedStepFooter}
+            <div className="quote-itinerary-ops-layout">
+              <aside className={`quote-operational-sidebar quote-operational-sidebar-${operationalSidebarTone}`}>
+                <div className="quote-operational-sidebar-head">
+                  <p className="eyebrow">Operational Readiness</p>
+                  <h3>{readiness.statusLabel}</h3>
+                </div>
+                <div className="quote-operational-sidebar-list">
+                  <div>
+                    <span>Passengers</span>
+                    <strong>{assignedPassengerCount}/{quote.passengers.length} assigned</strong>
+                    {unassignedPassengerCount > 0 ? <em>{unassignedPassengerCount} unassigned</em> : <em>Ready</em>}
+                  </div>
+                  <div>
+                    <span>Rooming</span>
+                    <strong>{roomingHasWarnings ? 'Review needed' : 'Ready'}</strong>
+                    <em>{quoteRoomingGroups.length} room group{quoteRoomingGroups.length === 1 ? '' : 's'}</em>
+                  </div>
+                  <div>
+                    <span>Pricing warnings</span>
+                    <strong>{readiness.unpricedServices}</strong>
+                    <em>{readiness.unpricedServices > 0 ? 'Needs pricing review' : 'No unpriced rows'}</em>
+                  </div>
+                  <div>
+                    <span>Unresolved items</span>
+                    <strong>{readiness.unresolvedItems}</strong>
+                    <em>{readiness.unresolvedItems > 0 ? 'Cleanup required' : 'No unresolved rows'}</em>
+                  </div>
+                  <div>
+                    <span>Day coverage</span>
+                    <strong>{readiness.completionPercent}%</strong>
+                    <em>{readiness.totalDays} day{readiness.totalDays === 1 ? '' : 's'} planned</em>
+                  </div>
+                </div>
+              </aside>
+
+              <div className="section-stack quote-itinerary-ops-main">
+                <details className="quote-operational-collapsible quote-operational-collapsible-passengers" open>
+                  <summary>
+                    <div>
+                      <span className="eyebrow">Passengers</span>
+                      <strong>Passenger manifest foundation</strong>
+                    </div>
+                    <em>{quote.passengers.length}/{totalPax} passengers</em>
+                  </summary>
+                  <QuotePassengersPanel
+                    apiBaseUrl={ACTION_API_BASE_URL}
+                    quoteId={quote.id}
+                    expectedPax={totalPax}
+                    passengers={quote.passengers}
+                  />
+                </details>
+
+                <details className="quote-operational-collapsible quote-operational-collapsible-rooming" open>
+                  <summary>
+                    <div>
+                      <span className="eyebrow">Rooming</span>
+                      <strong>Rooming readiness and manual groups</strong>
+                    </div>
+                    <em>{roomingHasWarnings ? 'Review needed' : 'Ready'}</em>
+                  </summary>
+                  <QuoteRoomingPanel
+                    apiBaseUrl={ACTION_API_BASE_URL}
+                    quoteId={quote.id}
+                    passengers={quote.passengers}
+                    itinerary={quoteItinerary}
+                    roomingGroups={quoteRoomingGroups}
+                    singleSupplement={quote.singleSupplement}
+                  />
+                </details>
+
+                {renderQuoteServicePlanner()}
+                {guidedStepFooter}
+              </div>
             </div>
           ) : null}
 

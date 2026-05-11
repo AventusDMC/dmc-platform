@@ -3256,15 +3256,24 @@ function ScopePlanner({
         </div>
       </section>
 
-      <QuoteUnresolvedBatchActions
-        apiBaseUrl={plannerProps.apiBaseUrl}
-        quoteId={plannerProps.quote.id}
-        optionId={scope.optionId}
-        items={unresolvedItems}
-        days={plannerProps.quote.itineraries}
-        services={plannerProps.services}
-        scopeLabel={scope.label}
-      />
+      <details className="quote-operational-collapsible quote-operational-collapsible-cleanup" open={unresolvedItems.length > 0}>
+        <summary>
+          <div>
+            <span className="eyebrow">Cleanup / Import</span>
+            <strong>Unresolved imported rows</strong>
+          </div>
+          <em>{unresolvedItems.length > 0 ? `${unresolvedItems.length} to review` : 'No cleanup needed'}</em>
+        </summary>
+        <QuoteUnresolvedBatchActions
+          apiBaseUrl={plannerProps.apiBaseUrl}
+          quoteId={plannerProps.quote.id}
+          optionId={scope.optionId}
+          items={unresolvedItems}
+          days={plannerProps.quote.itineraries}
+          services={plannerProps.services}
+          scopeLabel={scope.label}
+        />
+      </details>
 
       {daySummaries.length === 0 ? (
         <article className="workspace-day-card quote-service-day-card">
@@ -3350,64 +3359,76 @@ function ScopePlanner({
               </div>
             </div>
 
-            <ExcursionTemplateInsertPanel
-              apiBaseUrl={plannerProps.apiBaseUrl}
-              quoteId={plannerProps.quote.id}
-              itineraryId={summary.day.id}
-              serviceDate={getItineraryDayServiceDate(plannerProps.quote, summary.day)}
-              templates={plannerProps.excursionTemplates}
-              totalPax={plannerProps.totalPax}
-              onInserted={refreshScopeItemsFromQuote}
-            />
+            <details className="quote-operational-collapsible quote-operational-collapsible-excursions" open>
+              <summary>
+                <div>
+                  <span className="eyebrow">Excursion Templates</span>
+                  <strong>Composite itinerary insertion</strong>
+                </div>
+                <em>{plannerProps.excursionTemplates.length} available</em>
+              </summary>
+              <ExcursionTemplateInsertPanel
+                apiBaseUrl={plannerProps.apiBaseUrl}
+                quoteId={plannerProps.quote.id}
+                itineraryId={summary.day.id}
+                serviceDate={getItineraryDayServiceDate(plannerProps.quote, summary.day)}
+                templates={plannerProps.excursionTemplates}
+                totalPax={plannerProps.totalPax}
+                onInserted={refreshScopeItemsFromQuote}
+              />
+            </details>
 
             <div className="quote-service-day-layout quote-service-day-layout-visual">
               <section className="quote-service-current-services quote-service-day-main">
-                <div className="workspace-section-head">
-                  <div>
-                    <p className="eyebrow">Assigned Services</p>
-                    <h4>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'No services planned yet'}</h4>
-                  </div>
-                </div>
-                <AssignedServicesTable
-                  dayId={summary.day.id}
-                  dayNumber={summary.day.dayNumber}
-                  items={summary.items}
-                  laneOrders={laneOrders}
-                  currency={plannerProps.quote.quoteCurrency}
-                  canDetachContracts={canDetachContracts}
-                  deletingItemId={deletingItemId || undefined}
-                  detachingContractItemId={detachingContractItemId || undefined}
-                  recentlyAddedItemId={recentlyAddedItemId || undefined}
-                  onAdd={(category) => openAddPanel(summary.day, category)}
-                  transportPicker={
-                    <QuoteTransportPicker
-                      apiBaseUrl={plannerProps.apiBaseUrl}
-                      quoteId={plannerProps.quote.id}
-                      itineraryId={summary.day.id}
-                      routes={plannerProps.routes}
-                      vehicles={plannerProps.vehicles}
-                      supplierRateCards={plannerProps.supplierRateCards}
-                      services={plannerProps.services}
-                      transportServiceTypes={plannerProps.transportServiceTypes}
-                      transportDataStatus={plannerProps.transportDataStatus}
-                      totalPax={plannerProps.totalPax}
-                      quoteCurrency={plannerProps.quote.quoteCurrency}
-                      dayNumber={summary.day.dayNumber}
-                      onSaved={(item) => handleEditorItemSaved(item as QuoteItem)}
-                    />
-                  }
-                  onEdit={(item) =>
-                    setActiveServicePanel({
-                      kind: 'edit',
-                      key: `${scope.optionId || 'base'}:${item.id}:edit`,
-                      optionId: scope.optionId,
-                      item,
-                      dayNumber: summary.day.dayNumber,
-                    })
-                  }
-                  onRemove={handleRemoveItem}
-                  onDetachContract={handleDetachContract}
-                />
+                <details className="quote-operational-collapsible quote-operational-collapsible-services" open>
+                  <summary>
+                    <div>
+                      <span className="eyebrow">Assigned Services</span>
+                      <strong>{currentServicesCount > 0 ? `${currentServicesCount} service${currentServicesCount === 1 ? '' : 's'} planned` : 'No services planned yet'}</strong>
+                    </div>
+                    <em>Operational flow</em>
+                  </summary>
+                  <AssignedServicesTable
+                    dayId={summary.day.id}
+                    dayNumber={summary.day.dayNumber}
+                    items={summary.items}
+                    laneOrders={laneOrders}
+                    currency={plannerProps.quote.quoteCurrency}
+                    canDetachContracts={canDetachContracts}
+                    deletingItemId={deletingItemId || undefined}
+                    detachingContractItemId={detachingContractItemId || undefined}
+                    recentlyAddedItemId={recentlyAddedItemId || undefined}
+                    onAdd={(category) => openAddPanel(summary.day, category)}
+                    transportPicker={
+                      <QuoteTransportPicker
+                        apiBaseUrl={plannerProps.apiBaseUrl}
+                        quoteId={plannerProps.quote.id}
+                        itineraryId={summary.day.id}
+                        routes={plannerProps.routes}
+                        vehicles={plannerProps.vehicles}
+                        supplierRateCards={plannerProps.supplierRateCards}
+                        services={plannerProps.services}
+                        transportServiceTypes={plannerProps.transportServiceTypes}
+                        transportDataStatus={plannerProps.transportDataStatus}
+                        totalPax={plannerProps.totalPax}
+                        quoteCurrency={plannerProps.quote.quoteCurrency}
+                        dayNumber={summary.day.dayNumber}
+                        onSaved={(item) => handleEditorItemSaved(item as QuoteItem)}
+                      />
+                    }
+                    onEdit={(item) =>
+                      setActiveServicePanel({
+                        kind: 'edit',
+                        key: `${scope.optionId || 'base'}:${item.id}:edit`,
+                        optionId: scope.optionId,
+                        item,
+                        dayNumber: summary.day.dayNumber,
+                      })
+                    }
+                    onRemove={handleRemoveItem}
+                    onDetachContract={handleDetachContract}
+                  />
+                </details>
                 <DayNarrativePanel
                   day={summary.day}
                   value={getDayContent(summary.day)}
@@ -3442,7 +3463,16 @@ function ScopePlanner({
                   </div>
                 </section>
 
-                <QuoteOperationalIntelligencePanel model={operationalIntelligence} />
+                <details className="quote-operational-collapsible quote-operational-collapsible-intelligence" open>
+                  <summary>
+                    <div>
+                      <span className="eyebrow">Operational Intelligence</span>
+                      <strong>Coverage, timing, and warnings</strong>
+                    </div>
+                    <em>{operationalIntelligence.pricingWarnings.length + operationalIntelligence.missingRequiredComponents.length + operationalIntelligence.warnings.length} warnings</em>
+                  </summary>
+                  <QuoteOperationalIntelligencePanel model={operationalIntelligence} />
+                </details>
 
                 {summary.suggestions.length > 0 ? (
                   <section className="quote-service-side-section quote-service-suggestions-section" hidden>

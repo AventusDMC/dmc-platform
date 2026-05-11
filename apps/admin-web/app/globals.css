@@ -16871,6 +16871,208 @@ body {
   margin: 0;
 }
 
+.quote-itinerary-ops-layout {
+  display: grid;
+  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.quote-itinerary-ops-main {
+  min-width: 0;
+}
+
+.quote-operational-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-left: 4px solid var(--ops-status, #1f9acf);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.08);
+}
+
+.quote-operational-sidebar-critical {
+  --ops-status: #b91c1c;
+}
+
+.quote-operational-sidebar-warning {
+  --ops-status: #b7791f;
+}
+
+.quote-operational-sidebar-ready {
+  --ops-status: #138a54;
+}
+
+.quote-operational-sidebar-head h3 {
+  margin: 0.15rem 0 0;
+  color: var(--ops-status);
+  font-size: 1.05rem;
+}
+
+.quote-operational-sidebar-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.quote-operational-sidebar-list > div {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.65rem;
+  background: #f8fafc;
+}
+
+.quote-operational-sidebar-list span,
+.quote-operational-collapsible > summary .eyebrow {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.quote-operational-sidebar-list strong {
+  color: #111827;
+  font-size: 0.98rem;
+}
+
+.quote-operational-sidebar-list em,
+.quote-operational-collapsible > summary > em {
+  color: #667085;
+  font-size: 0.8rem;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.quote-operational-collapsible {
+  min-width: 0;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.045);
+}
+
+.quote-operational-collapsible > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.quote-operational-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.quote-operational-collapsible > summary::after {
+  content: "Expand";
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.quote-operational-collapsible[open] > summary::after {
+  content: "Collapse";
+}
+
+.quote-operational-collapsible > summary strong {
+  display: block;
+  margin-top: 0.16rem;
+  color: #111827;
+  font-size: 0.98rem;
+}
+
+.quote-operational-collapsible > .workspace-section,
+.quote-operational-collapsible > .planner-smart-panel,
+.quote-operational-collapsible > .quote-service-side-section,
+.quote-operational-collapsible > .quote-service-visual-board,
+.quote-operational-collapsible > .quote-unresolved-batch-actions {
+  margin: 0 1rem 1rem;
+}
+
+.quote-operational-collapsible .workspace-section,
+.quote-operational-collapsible .planner-smart-panel,
+.quote-operational-collapsible .quote-service-side-section {
+  box-shadow: none;
+}
+
+.quote-operational-collapsible-services,
+.quote-operational-collapsible-intelligence {
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.quote-operational-collapsible-services > .quote-service-visual-board,
+.quote-operational-collapsible-intelligence > .quote-operational-intelligence-panel,
+.quote-operational-collapsible-excursions > .excursion-template-insert-panel {
+  margin: 0 1rem 1rem;
+}
+
+.quote-service-planner .quote-service-visual-board {
+  gap: 0.95rem;
+}
+
+.quote-service-planner .quote-service-lane {
+  border-radius: 0.75rem;
+}
+
+.quote-service-planner .quote-service-lane-head span::before {
+  content: "";
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.45rem;
+  border-radius: 999px;
+  background: var(--lane-accent, #1f9acf);
+  vertical-align: 0.02rem;
+}
+
+.quote-service-planner .quote-service-mini-card {
+  border-radius: 0.75rem;
+}
+
+.quote-service-planner .quote-service-card-pricing-summary[aria-label="Pricing diagnostics"],
+.quote-service-planner .quote-service-card-details {
+  opacity: 0.86;
+}
+
+.quote-service-planner .quote-service-card-details:not([open]) {
+  max-height: 2.6rem;
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .quote-itinerary-ops-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-operational-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .quote-operational-collapsible > summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .quote-operational-collapsible > summary::after {
+    min-width: 0;
+  }
+}
+
 .empty-state,
 .ui-empty-state,
 .quote-service-empty-state,
