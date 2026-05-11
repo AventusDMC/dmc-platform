@@ -2259,7 +2259,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           </nav>
 
           {/* TODO(ui): Split the remaining quote tab bodies into shared presentational sections after the server data assembly is isolated. */}
-          <div className="quote-builder-layout app-detail-layout">
+          <div className={`quote-builder-layout app-detail-layout quote-builder-layout-${activeTab}`}>
             <div className="section-stack quote-builder-main quote-builder-main-content">
 
           {activeTab === 'overview' ? (

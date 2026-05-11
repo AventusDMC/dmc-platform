@@ -281,6 +281,7 @@ describe('quote detail page regression', () => {
       'readiness={readiness}',
       'servicePlanner={renderQuoteServicePlanner()}',
       'guidedStepFooter={guidedStepFooter}',
+      'quote-builder-layout-${activeTab}',
     ]);
 
     expectSourceContains(quoteItineraryWorkspaceSource, [
@@ -300,12 +301,16 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteItineraryWorkspaceCssSource, [
       '.workspace',
-      'grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);',
+      'grid-template-columns: minmax(0, 1fr);',
+      'container-type: inline-size;',
       '.main',
       '.operationalSidebar',
+      'position: static;',
       '.operationalSidebarCritical',
       '.operationalSidebarWarning',
       '.operationalSidebarReady',
+      '@container (min-width: 106rem)',
+      'grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);',
       '@media (max-width: 980px)',
     ]);
 
@@ -377,13 +382,16 @@ describe('quote detail page regression', () => {
       '.dayLayout.dayLayout:global(.quote-service-day-layout.quote-service-day-layout-visual)',
       '.sidePanelStack',
       '@media (max-width: 980px)',
-      '@container (max-width: 54rem)',
+      '@container (max-width: 78rem)',
       '@media (max-width: 760px)',
     ]);
 
     expectSourceContains(cssSource, [
       '.quote-operational-collapsible',
       '.quote-service-planner .quote-service-lane-head span::before',
+      '.quote-builder-layout-itinerary',
+      'grid-template-columns: minmax(0, 1fr);',
+      '@media (min-width: 2200px)',
     ]);
 
     assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-layout\s*\{/m);

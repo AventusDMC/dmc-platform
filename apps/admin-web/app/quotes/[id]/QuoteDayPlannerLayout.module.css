@@ -87,7 +87,7 @@
   }
 }
 
-@container (max-width: 54rem) {
+@container (max-width: 78rem) {
   .shell:global(.quote-service-planner-shell.quote-service-planner-saas-grid) {
     grid-template-columns: minmax(0, 1fr);
   }

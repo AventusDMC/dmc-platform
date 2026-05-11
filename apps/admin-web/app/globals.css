@@ -19196,6 +19196,24 @@ body {
   gap: clamp(1.25rem, 1.8vw, 2rem);
 }
 
+.quote-builder-layout-itinerary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.quote-builder-layout-itinerary > .quote-builder-sidebar {
+  max-width: none;
+}
+
+@media (min-width: 2200px) {
+  .quote-builder-layout-itinerary {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .quote-builder-layout-itinerary > .quote-builder-sidebar {
+    max-width: 360px;
+  }
+}
+
 .quote-builder-main,
 .quote-builder-main-content {
   min-width: 0;
@@ -22791,6 +22809,16 @@ video {
   grid-template-columns: minmax(0, 1fr) minmax(280px, min(30vw, 360px));
 }
 
+.admin-shell :where(.quote-builder-layout-itinerary) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 2200px) {
+  .admin-shell :where(.quote-builder-layout-itinerary) {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  }
+}
+
 .admin-shell :where(
   .app-workspace-sidebar,
   .app-workspace-main,
@@ -24581,6 +24609,16 @@ video {
 /* Quote overview financial summary must stay in the sidebar flow. */
 .quote-builder-page .quote-builder-layout {
   position: relative;
+}
+
+.quote-builder-page .quote-builder-layout-itinerary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 2200px) {
+  .quote-builder-page .quote-builder-layout-itinerary {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
 }
 
 .quote-builder-page .quote-builder-layout > .quote-builder-sidebar.app-sticky-panel {
