@@ -320,6 +320,20 @@ describe('quote detail page regression', () => {
       '@media (min-width: 1536px)',
       'grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);',
       'min-inline-size: min(100%, 1040px);',
+      'Quote itinerary desktop breakpoint tuning',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-planner .workspace-day-header',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card-actions',
+      'flex-flow: row wrap;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-visual-board',
+      'grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-lane',
+      'min-width: 320px;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-service-mini-card-title-row',
+      'grid-template-columns: minmax(0, 1fr) max-content;',
+      '.admin-shell .quote-itinerary-workspace-page .quote-rooming-grid',
+      'overflow-wrap: break-word !important;',
+      'word-break: normal !important;',
+      '@media (max-width: 820px)',
     ]);
   });
 
