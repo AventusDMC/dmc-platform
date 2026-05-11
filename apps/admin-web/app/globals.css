@@ -26516,14 +26516,14 @@ video {
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-service-visual-board {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     gap: 1rem;
     align-items: stretch;
     overflow-x: visible;
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-service-lane {
-    min-width: 320px;
+    min-width: min(100%, 420px);
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-service-mini-card {
@@ -26542,7 +26542,7 @@ video {
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-rooming-grid {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
   }
 
   .admin-shell .quote-itinerary-workspace-page .quote-rooming-edit-form .form-row,
