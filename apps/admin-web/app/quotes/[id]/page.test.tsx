@@ -285,7 +285,7 @@ describe('quote detail page regression', () => {
     ]);
   });
 
-  it('keeps the quote itinerary workspace readable at 1366px and 1440px desktop widths', () => {
+  it('keeps the quote itinerary workspace readable at laptop and wide desktop widths', () => {
     assert.ok(
       cssSource.lastIndexOf('Quote itinerary containment override') >
         cssSource.lastIndexOf('Final admin responsive guardrail: keep after quote workspace overrides'),
@@ -317,7 +317,7 @@ describe('quote detail page regression', () => {
       'min-width: 260px;',
       'overflow-wrap: normal !important;',
       'word-break: normal !important;',
-      '@media (min-width: 1536px)',
+      '@media (min-width: 2200px)',
       'grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);',
       'min-inline-size: min(100%, 1040px);',
       'Quote itinerary desktop breakpoint tuning',
@@ -335,6 +335,12 @@ describe('quote detail page regression', () => {
       'word-break: normal !important;',
       '@media (max-width: 820px)',
     ]);
+
+    assert.doesNotMatch(
+      cssSource,
+      /@media \(min-width: 1536px\)[\s\S]*?\.admin-shell \.quote-itinerary-workspace-page \.quote-builder-layout/,
+      'quote itinerary must not restore the empty quote-builder side column at 1536px wide desktop widths',
+    );
   });
 
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {

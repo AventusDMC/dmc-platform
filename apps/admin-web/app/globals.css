@@ -26439,11 +26439,7 @@ video {
   }
 }
 
-@media (min-width: 1536px) {
-  .admin-shell .quote-itinerary-workspace-page .quote-builder-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, min(24vw, 360px));
-  }
-
+@media (min-width: 2200px) {
   .admin-shell .quote-itinerary-workspace-page .quote-itinerary-ops-layout {
     grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
     min-width: 0;
