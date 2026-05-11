@@ -21809,7 +21809,7 @@ video {
 .quote-step-nav {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(9.5rem, max-content);
+  grid-auto-columns: minmax(12rem, max-content);
   grid-template-columns: none;
   justify-content: start;
   overflow-x: auto;
@@ -21821,8 +21821,8 @@ video {
 
 .quote-dashboard-workflow-step,
 .quote-step-link {
-  min-width: 9.5rem;
-  max-width: 15rem;
+  min-width: 12rem;
+  max-width: 17rem;
   min-height: 2.6rem;
   justify-content: flex-start;
   white-space: normal;

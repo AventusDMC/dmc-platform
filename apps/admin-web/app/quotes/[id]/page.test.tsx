@@ -394,10 +394,10 @@ describe('quote detail page regression', () => {
       '@media (min-width: 2200px)',
       '.quote-dashboard-workflow,\n.quote-step-nav',
       'grid-auto-flow: column;',
-      'grid-auto-columns: minmax(9.5rem, max-content);',
+      'grid-auto-columns: minmax(12rem, max-content);',
       'overflow-x: auto;',
       '.quote-dashboard-workflow-step,\n.quote-step-link',
-      'min-width: 9.5rem;',
+      'min-width: 12rem;',
       'word-break: normal;',
       'text-overflow: ellipsis;',
     ]);
