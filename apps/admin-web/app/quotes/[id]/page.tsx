@@ -2431,6 +2431,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 passengers={quote.passengers}
                 itinerary={quoteItinerary}
                 roomingGroups={quoteRoomingGroups}
+                singleSupplement={quote.singleSupplement}
               />
               {renderQuoteServicePlanner()}
               {guidedStepFooter}

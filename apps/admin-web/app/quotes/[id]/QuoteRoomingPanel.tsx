@@ -49,6 +49,7 @@ type QuoteRoomingPanelProps = {
   passengers: QuotePassenger[];
   itinerary: QuoteItineraryResponse;
   roomingGroups: QuoteRoomingGroup[];
+  singleSupplement?: number | null;
 };
 
 type RoomingHotelOption = {
@@ -78,10 +79,71 @@ function getOccupancyCapacity(occupancy: RoomOccupancy) {
   return null;
 }
 
+function getOccupancyLabel(occupancy: RoomOccupancy) {
+  return OCCUPANCY_OPTIONS.find((option) => option.value === occupancy)?.label || 'Unknown';
+}
+
 function formatOccupancyCount(group: QuoteRoomingGroup) {
   const assigned = group.assignments.length;
   const capacity = getOccupancyCapacity(group.occupancyType);
   return capacity === null ? `${assigned} assigned` : `${assigned}/${capacity}`;
+}
+
+function getRoomingStayKey(group: Pick<QuoteRoomingGroup, 'itineraryDayId' | 'hotelQuoteItemId'>) {
+  return `${group.itineraryDayId}|${group.hotelQuoteItemId}`;
+}
+
+function getRoomingGroupReadiness(group: QuoteRoomingGroup) {
+  const assigned = group.assignments.length;
+  const capacity = getOccupancyCapacity(group.occupancyType);
+  const warnings: string[] = [];
+
+  if (assigned === 0) {
+    warnings.push('Empty room group');
+  }
+
+  if (capacity === null) {
+    warnings.push('Incomplete occupancy');
+  } else if (assigned > capacity) {
+    warnings.push('Over-capacity');
+  } else if (assigned > 0 && assigned < capacity) {
+    warnings.push('Incomplete occupancy');
+  }
+
+  return warnings;
+}
+
+function buildRoomingOperationalIntelligence(passengers: QuotePassenger[], roomingGroups: QuoteRoomingGroup[], singleSupplement?: number | null) {
+  const assignedPassengerIds = new Set(roomingGroups.flatMap((group) => group.assignments.map((assignment) => assignment.quotePassengerId)));
+  const assignedTotal = passengers.filter((passenger) => assignedPassengerIds.has(passenger.id)).length;
+  const unassignedPassengers = passengers.filter((passenger) => !assignedPassengerIds.has(passenger.id));
+  const emptyRoomGroups = roomingGroups.filter((group) => group.assignments.length === 0);
+  const incompleteRoomGroups = roomingGroups.filter((group) => getRoomingGroupReadiness(group).includes('Incomplete occupancy'));
+  const overCapacityRoomGroups = roomingGroups.filter((group) => getRoomingGroupReadiness(group).includes('Over-capacity'));
+  const singleRoomCount = roomingGroups.filter((group) => group.occupancyType === 'single').length;
+  const doubleRoomCount = roomingGroups.filter((group) => group.occupancyType === 'double').length;
+  const tripleRoomCount = roomingGroups.filter((group) => group.occupancyType === 'triple').length;
+
+  return {
+    summary: {
+      singleRoomCount,
+      doubleRoomCount,
+      tripleRoomCount,
+      assignedTotal,
+      unassignedTotal: unassignedPassengers.length,
+      passengerTotal: passengers.length,
+    },
+    warnings: {
+      emptyRoomGroups,
+      incompleteRoomGroups,
+      overCapacityRoomGroups,
+      unassignedPassengers,
+    },
+    singleSupplementAwareness:
+      singleRoomCount > 0
+        ? `Single supplement review: ${singleRoomCount} SGL room${singleRoomCount === 1 ? '' : 's'}${singleSupplement && singleSupplement > 0 ? `, quote supplement ${singleSupplement}` : ', supplement to confirm'}.`
+        : 'No SGL room groups currently flagged.',
+  };
 }
 
 function buildHotelOptions(itinerary: QuoteItineraryResponse): RoomingHotelOption[] {
@@ -115,9 +177,13 @@ function getGroupHotelLabel(group: QuoteRoomingGroup) {
     .join(' | ') || 'Hotel stay';
 }
 
-export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, roomingGroups }: QuoteRoomingPanelProps) {
+export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, roomingGroups, singleSupplement = null }: QuoteRoomingPanelProps) {
   const router = useRouter();
   const hotelOptions = useMemo(() => buildHotelOptions(itinerary), [itinerary]);
+  const roomingIntelligence = useMemo(
+    () => buildRoomingOperationalIntelligence(passengers, roomingGroups, singleSupplement),
+    [passengers, roomingGroups, singleSupplement],
+  );
   const [selectedHotelKey, setSelectedHotelKey] = useState(() => hotelOptions[0] ? `${hotelOptions[0].dayId}|${hotelOptions[0].hotelQuoteItemId}` : '');
   const [roomType, setRoomType] = useState('');
   const [occupancyType, setOccupancyType] = useState<RoomOccupancy>('double');
@@ -226,14 +292,14 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
   function getUnassignedPassengers(group: QuoteRoomingGroup) {
     const assignedPassengerIds = new Set(
       roomingGroups
-        .filter((candidate) => candidate.itineraryDayId === group.itineraryDayId && candidate.hotelQuoteItemId === group.hotelQuoteItemId)
+        .filter((candidate) => getRoomingStayKey(candidate) === getRoomingStayKey(group))
         .flatMap((candidate) => candidate.assignments.map((assignment) => assignment.quotePassengerId)),
     );
 
     return passengers.filter((passenger) => !assignedPassengerIds.has(passenger.id));
   }
 
-  const totalAssigned = roomingGroups.reduce((sum, group) => sum + group.assignments.length, 0);
+  const totalAssigned = roomingIntelligence.summary.assignedTotal;
 
   return (
     <section className="workspace-section app-card quote-rooming-panel">
@@ -250,6 +316,35 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
       </div>
 
       {error ? <p className="form-error">{error}</p> : null}
+
+      <section className="detail-card">
+        <div className="workspace-section-head">
+          <div>
+            <p className="eyebrow">Operational intelligence</p>
+            <h3>Rooming readiness</h3>
+            <p className="detail-copy">Read-only validation for manual rooming before manifests, vouchers, and dispatch.</p>
+          </div>
+          <strong>{roomingIntelligence.warnings.unassignedPassengers.length === 0 && roomingIntelligence.warnings.emptyRoomGroups.length === 0 && roomingIntelligence.warnings.incompleteRoomGroups.length === 0 && roomingIntelligence.warnings.overCapacityRoomGroups.length === 0 ? 'Ready' : 'Review needed'}</strong>
+        </div>
+        <div className="quote-preview-total-list">
+          <div><span>SGL count</span><strong>{roomingIntelligence.summary.singleRoomCount}</strong></div>
+          <div><span>DBL count</span><strong>{roomingIntelligence.summary.doubleRoomCount}</strong></div>
+          <div><span>Triple count</span><strong>{roomingIntelligence.summary.tripleRoomCount}</strong></div>
+          <div><span>Assigned</span><strong>{roomingIntelligence.summary.assignedTotal}/{roomingIntelligence.summary.passengerTotal}</strong></div>
+          <div><span>Unassigned</span><strong>{roomingIntelligence.summary.unassignedTotal}</strong></div>
+          <div><span>Single supplement</span><strong>{roomingIntelligence.singleSupplementAwareness}</strong></div>
+        </div>
+        <div className="quote-operational-warning-list">
+          {roomingIntelligence.warnings.emptyRoomGroups.length > 0 ? <p className="form-error">Empty room groups: {roomingIntelligence.warnings.emptyRoomGroups.length}</p> : null}
+          {roomingIntelligence.warnings.incompleteRoomGroups.length > 0 ? <p className="form-error">Incomplete occupancy: {roomingIntelligence.warnings.incompleteRoomGroups.length}</p> : null}
+          {roomingIntelligence.warnings.overCapacityRoomGroups.length > 0 ? <p className="form-error">Over-capacity room groups: {roomingIntelligence.warnings.overCapacityRoomGroups.length}</p> : null}
+          {roomingIntelligence.warnings.unassignedPassengers.length > 0 ? (
+            <p className="form-error">
+              Unassigned passengers: {roomingIntelligence.warnings.unassignedPassengers.map(getPassengerName).join(', ')}
+            </p>
+          ) : null}
+        </div>
+      </section>
 
       <form className="entity-form compact-form" onSubmit={createRoomingGroup}>
         <div className="form-row">
@@ -304,6 +399,49 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
 
       {roomingGroups.length === 0 ? <p className="empty-state">No room groups yet.</p> : null}
 
+      <section className="detail-card quote-rooming-export-summary">
+        <div className="workspace-section-head">
+          <div>
+            <p className="eyebrow">Exportable rooming summary</p>
+            <h3>Rooming list view</h3>
+            <p className="detail-copy">Simple copy/export-friendly operational view. Pricing is intentionally excluded.</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Hotel stay</th>
+                <th>Room</th>
+                <th>Occupancy</th>
+                <th>Passengers</th>
+                <th>Readiness</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roomingGroups.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>No room groups to export.</td>
+                </tr>
+              ) : (
+                roomingGroups.map((group) => {
+                  const readiness = getRoomingGroupReadiness(group);
+                  return (
+                    <tr key={group.id}>
+                      <td>{getGroupHotelLabel(group)}</td>
+                      <td>{group.temporaryRoomLabel || group.roomType || 'Room group'}</td>
+                      <td>{getOccupancyLabel(group.occupancyType)} ({formatOccupancyCount(group)})</td>
+                      <td>{group.assignments.map((assignment) => getPassengerName(assignment.quotePassenger)).join(', ') || 'Unassigned'}</td>
+                      <td>{readiness.length > 0 ? readiness.join(', ') : 'Ready'}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <div className="quote-rooming-grid">
         {roomingGroups.map((group) => {
           const unassignedPassengers = getUnassignedPassengers(group);
@@ -315,7 +453,7 @@ export function QuoteRoomingPanel({ apiBaseUrl, quoteId, passengers, itinerary, 
                   <p className="eyebrow">{getGroupHotelLabel(group)}</p>
                   <h3>{group.temporaryRoomLabel || group.roomType || 'Room group'}</h3>
                   <p className="detail-copy">
-                    {OCCUPANCY_OPTIONS.find((option) => option.value === group.occupancyType)?.label || 'Unknown'} | Occupancy {formatOccupancyCount(group)}
+                    {getOccupancyLabel(group.occupancyType)} | Occupancy {formatOccupancyCount(group)}
                     {group.guideRoom ? ' | Guide room' : ''}
                     {group.leaderRoom ? ' | Leader room' : ''}
                   </p>
