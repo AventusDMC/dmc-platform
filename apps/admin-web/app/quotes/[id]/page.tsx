@@ -2590,6 +2590,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       groupPricingHref={buildStepHref('group-pricing')}
                       servicesHref={buildStepHref('services')}
                       previewHref={buildStepHref('preview')}
+                      itineraryDays={quote.itineraries.map((day) => ({
+                        id: day.id,
+                        dayNumber: day.dayNumber,
+                        title: day.title,
+                      }))}
                       quote={{
                         pricingMode: quote.pricingMode,
                         pricingType: quote.pricingType,

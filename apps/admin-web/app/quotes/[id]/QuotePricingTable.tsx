@@ -27,6 +27,8 @@ type PromotionExplanationItem =
 
 type QuoteItem = {
   id: string;
+  itineraryId?: string | null;
+  serviceDate?: string | null;
   paxCount: number | null;
   totalCost: number;
   baseSell?: number | null;
@@ -89,6 +91,11 @@ type QuotePricingTableProps = {
   groupPricingHref: string;
   servicesHref: string;
   previewHref: string;
+  itineraryDays?: Array<{
+    id: string;
+    dayNumber: number;
+    title: string;
+  }>;
   quote: {
     pricingMode: 'SLAB' | 'FIXED';
     pricingType: 'simple' | 'group';
@@ -163,6 +170,38 @@ function formatMoneyOrPending(value: number | null | undefined, currency = 'USD'
   }
 
   return formatMoney(value, currency);
+}
+
+function formatPricingIssueDay(item: Pick<QuoteItem, 'itineraryId' | 'serviceDate'>, itineraryDays: QuotePricingTableProps['itineraryDays']) {
+  if (item.serviceDate) {
+    const date = new Date(item.serviceDate);
+    return Number.isNaN(date.getTime())
+      ? 'Dated service'
+      : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date);
+  }
+
+  if (item.itineraryId) {
+    const day = itineraryDays?.find((candidate) => candidate.id === item.itineraryId);
+    return day ? `Day ${day.dayNumber}${day.title ? ` - ${day.title}` : ''}` : 'Assigned day';
+  }
+
+  return 'Unassigned';
+}
+
+function getPricingIssueAction(issue: string) {
+  if (issue === 'Missing cost') {
+    return 'Add supplier cost or confirm included cost.';
+  }
+
+  if (issue === 'Missing sell') {
+    return 'Add client sell price or mark as included intentionally.';
+  }
+
+  if (issue === 'Missing pax count') {
+    return 'Confirm passenger count for this service.';
+  }
+
+  return 'Review pricing inputs.';
 }
 
 function hasMissingRowPricing(row: PricingRow) {
@@ -487,6 +526,7 @@ export function QuotePricingTable({
   groupPricingHref,
   servicesHref,
   previewHref,
+  itineraryDays = [],
   quote,
   focImpactLabel,
   supplementsImpactLabel,
@@ -802,14 +842,22 @@ export function QuotePricingTable({
       allItems.filter((item) => item.totalCost <= 0 || item.totalSell <= 0 || !item.paxCount).map((item) => ({
         id: item.id,
         name: item.service.name,
+        category: item.service.category || 'Service',
+        dayLabel: formatPricingIssueDay(item, itineraryDays),
         issue:
           item.totalCost <= 0
             ? 'Missing cost'
             : item.totalSell <= 0
               ? 'Missing sell'
               : 'Missing pax count',
+        action:
+          item.totalCost <= 0
+            ? getPricingIssueAction('Missing cost')
+            : item.totalSell <= 0
+              ? getPricingIssueAction('Missing sell')
+              : getPricingIssueAction('Missing pax count'),
       })),
-    [allItems],
+    [allItems, itineraryDays],
   );
   const pricingReady =
     missingPricingItems.length === 0 &&
@@ -986,7 +1034,7 @@ export function QuotePricingTable({
           <div className="workspace-section-head">
             <div>
               <p className="eyebrow">Missing Data</p>
-              <h3>Services still missing pricing</h3>
+              <h3>{missingPricingItems.length} service{missingPricingItems.length === 1 ? '' : 's'} still missing pricing</h3>
             </div>
             <Link href={servicesHref} className="secondary-button">
               Open Services
@@ -995,8 +1043,14 @@ export function QuotePricingTable({
           <div className="section-stack">
             {missingPricingItems.map((item) => (
               <div key={item.id} className="quote-pricing-missing-row">
-                <strong>{item.name}</strong>
-                <span>{item.issue}</span>
+                <div>
+                  <strong>{item.name}</strong>
+                  <p className="table-subcopy">{item.dayLabel} / {item.category}</p>
+                </div>
+                <div>
+                  <span>{item.issue}</span>
+                  <p className="table-subcopy">{item.action}</p>
+                </div>
               </div>
             ))}
           </div>

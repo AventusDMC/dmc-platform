@@ -13,6 +13,8 @@ const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
+const quoteSummaryPanelSource = readFileSync(new URL('./QuoteSummaryPanel.tsx', import.meta.url), 'utf8');
+const quotePricingTableSource = readFileSync(new URL('./QuotePricingTable.tsx', import.meta.url), 'utf8');
 const quotePassengersPanelSource = readFileSync(new URL('./QuotePassengersPanel.tsx', import.meta.url), 'utf8');
 const quoteRoomingPanelSource = readFileSync(new URL('./QuoteRoomingPanel.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
@@ -349,6 +351,38 @@ describe('quote detail page regression', () => {
 
     assert.match(versionPageSource, /formatMoney\(item\.totalSell, item\.currency\)/);
     assert.doesNotMatch(versionPageSource, /supplier cost|Supplier cost|gross profit|Gross profit|margin|Margin/);
+  });
+
+  it('separates operator costing from client sell summary on the quote commercial panel', () => {
+    expectSourceContains(quoteSummaryPanelSource, [
+      '<p className="eyebrow">Commercial Summary</p>',
+      '<h3>Operator and client views</h3>',
+      '<p className="eyebrow">Operator / Internal Cost View</p>',
+      '<p className="eyebrow">Client Proposal / Sell View</p>',
+      '<span>Total cost</span>',
+      '<span>Total sell</span>',
+      '<span>Profit</span>',
+      '<span>Margin</span>',
+      '<span>Price per pax</span>',
+      'Internal costing stays in the operator view only.',
+    ]);
+  });
+
+  it('makes unpriced pricing warnings actionable by day and category', () => {
+    expectSourceContains(quotePricingTableSource, [
+      'formatPricingIssueDay(item, itineraryDays)',
+      "category: item.service.category || 'Service'",
+      '<p className="table-subcopy">{item.dayLabel} / {item.category}</p>',
+      '<p className="table-subcopy">{item.action}</p>',
+      "return 'Add supplier cost or confirm included cost.';",
+      "return 'Add client sell price or mark as included intentionally.';",
+    ]);
+
+    expectSourceContains(pageSource, [
+      'itineraryDays={quote.itineraries.map((day) => ({',
+      'dayNumber: day.dayNumber',
+      'title: day.title',
+    ]);
   });
 
   it('adds margin intelligence to live pricing and quote item cards without repricing', () => {

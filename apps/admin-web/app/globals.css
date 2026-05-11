@@ -4591,6 +4591,86 @@ select option:checked {
   text-align: right;
 }
 
+.quote-pricing-missing-row .table-subcopy {
+  margin: 0.2rem 0 0;
+}
+
+.quote-pricing-missing-row > div:last-child {
+  text-align: right;
+}
+
+.quote-commercial-summary-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-commercial-metric-grid,
+.quote-commercial-view-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.quote-commercial-metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.quote-commercial-metric-grid > div,
+.quote-commercial-view-card {
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  border-radius: 0.5rem;
+  background: rgba(249, 250, 251, 0.78);
+}
+
+.quote-commercial-metric-grid > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem;
+}
+
+.quote-commercial-metric-grid span,
+.quote-client-sell-list span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quote-commercial-metric-grid strong {
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+}
+
+.quote-commercial-view-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+
+.quote-commercial-view-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.quote-commercial-view-card-client {
+  background: #fff;
+}
+
+.quote-client-sell-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.quote-client-sell-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(30, 27, 24, 0.08);
+}
+
+.quote-client-sell-list > div:last-child {
+  border-bottom: 0;
+}
+
 .quote-pricing-slab-row {
   display: flex;
   align-items: flex-start;
@@ -9482,6 +9562,11 @@ th.money-cell {
     grid-template-columns: 1fr;
   }
 
+  .quote-commercial-metric-grid,
+  .quote-commercial-view-grid {
+    grid-template-columns: 1fr;
+  }
+
   .quote-pricing-missing-row,
   .quote-pricing-slab-row {
     flex-direction: column;
@@ -9489,6 +9574,7 @@ th.money-cell {
   }
 
   .quote-pricing-missing-row span,
+  .quote-pricing-missing-row > div:last-child,
   .quote-pricing-slab-values {
     text-align: left;
     justify-content: flex-start;

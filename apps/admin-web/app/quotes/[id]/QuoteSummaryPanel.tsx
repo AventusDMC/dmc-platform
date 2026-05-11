@@ -4,9 +4,11 @@ type QuoteSummaryItem = {
   serviceDate?: string | null;
   finalCost?: number | null;
   totalCost?: number | null;
+  totalSell?: number | null;
   currency?: string | null;
   service: {
     name: string;
+    category?: string | null;
   };
 };
 
@@ -95,65 +97,149 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
   const safeTotalCost = Number.isFinite(Number(totalCost)) ? Number(totalCost) : 0;
   const safeTotalSell = Number.isFinite(Number(totalSell)) ? Number(totalSell) : 0;
   const safePax = Math.max(0, Number.isFinite(Number(pax)) ? Number(pax) : 0);
-  const marginPercent = safeTotalCost > 0 ? ((safeTotalSell - safeTotalCost) / safeTotalCost) * 100 : 0;
+  const profit = safeTotalSell - safeTotalCost;
+  const marginPercent = safeTotalSell > 0 ? (profit / safeTotalSell) * 100 : 0;
   const pricePerPax = safePax > 0 ? safeTotalSell / safePax : 0;
   const groupedItems = groupItemsByDay(items);
 
   return (
-    <article className="detail-card">
+    <article className="detail-card quote-commercial-summary-panel">
       <div className="workspace-section-head">
         <div>
-          <p className="eyebrow">Quote Summary</p>
-          <h3>Pricing summary</h3>
+          <p className="eyebrow">Commercial Summary</p>
+          <h3>Operator and client views</h3>
         </div>
       </div>
 
-      <div className="quote-preview-total-list">
+      <div className="quote-commercial-metric-grid">
         <div>
-          <span>Total Sell</span>
-          <strong>{formatMoney(safeTotalSell, currency || 'USD')}</strong>
-        </div>
-        <div>
-          <span>Total Cost</span>
+          <span>Total cost</span>
           <strong>{formatMoney(safeTotalCost, currency || 'USD')}</strong>
         </div>
         <div>
-          <span>Margin %</span>
+          <span>Total sell</span>
+          <strong>{formatMoney(safeTotalSell, currency || 'USD')}</strong>
+        </div>
+        <div>
+          <span>Profit</span>
+          <strong>{formatMoney(profit, currency || 'USD')}</strong>
+        </div>
+        <div>
+          <span>Margin</span>
           <strong>{formatPercent(marginPercent)}</strong>
         </div>
         <div>
-          <span>Price per Pax</span>
+          <span>Price per pax</span>
           <strong>{formatMoney(pricePerPax, currency || 'USD')}</strong>
         </div>
       </div>
 
-      <div className="section-stack">
-        {groupedItems.length === 0 ? (
-          <p className="detail-copy">No services have been added yet.</p>
-        ) : (
-          groupedItems.map(([key, dayItems], index) => (
-            <section key={key} className="quote-service-category-group">
-              <div className="workspace-section-head quote-service-group-head">
-                <div>
-                  <h4>{formatDayLabel(key, index)}</h4>
-                </div>
-                <span className="page-tab-badge">{dayItems.length}</span>
-              </div>
-              <div className="quote-preview-total-list">
-                {dayItems.map((item) => {
-                  const itemCost = Number(item.finalCost ?? item.totalCost ?? 0);
+      <div className="quote-commercial-view-grid">
+        <section className="quote-commercial-view-card quote-commercial-view-card-internal">
+          <div className="workspace-section-head quote-service-group-head">
+            <div>
+              <p className="eyebrow">Operator / Internal Cost View</p>
+              <h4>Cost, sell, and profit control</h4>
+            </div>
+          </div>
+          <div className="quote-preview-total-list">
+            <div>
+              <span>Total cost</span>
+              <strong>{formatMoney(safeTotalCost, currency || 'USD')}</strong>
+            </div>
+            <div>
+              <span>Total sell</span>
+              <strong>{formatMoney(safeTotalSell, currency || 'USD')}</strong>
+            </div>
+            <div>
+              <span>Profit</span>
+              <strong>{formatMoney(profit, currency || 'USD')}</strong>
+            </div>
+            <div>
+              <span>Margin</span>
+              <strong>{formatPercent(marginPercent)}</strong>
+            </div>
+          </div>
 
-                  return (
-                    <div key={item.id}>
-                      <span>{item.service.name}</span>
-                      <strong>{formatMoney(itemCost, item.currency || currency || 'USD')}</strong>
+          <div className="section-stack">
+            {groupedItems.length === 0 ? (
+              <p className="detail-copy">No services have been added yet.</p>
+            ) : (
+              groupedItems.map(([key, dayItems], index) => (
+                <section key={key} className="quote-service-category-group">
+                  <div className="workspace-section-head quote-service-group-head">
+                    <div>
+                      <h4>{formatDayLabel(key, index)}</h4>
                     </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))
-        )}
+                    <span className="page-tab-badge">{dayItems.length}</span>
+                  </div>
+                  <div className="quote-preview-total-list">
+                    {dayItems.map((item) => {
+                      const itemCost = Number(item.finalCost ?? item.totalCost ?? 0);
+                      const itemSell = Number(item.totalSell ?? 0);
+
+                      return (
+                        <div key={item.id}>
+                          <span>{item.service.name}</span>
+                          <strong>{formatMoney(itemCost, item.currency || currency || 'USD')}</strong>
+                          <em>{formatMoney(itemSell, item.currency || currency || 'USD')} sell</em>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="quote-commercial-view-card quote-commercial-view-card-client">
+          <div className="workspace-section-head quote-service-group-head">
+            <div>
+              <p className="eyebrow">Client Proposal / Sell View</p>
+              <h4>Client-safe commercial view</h4>
+            </div>
+          </div>
+          <div className="quote-preview-total-list">
+            <div>
+              <span>Total package price</span>
+              <strong>{formatMoney(safeTotalSell, currency || 'USD')}</strong>
+            </div>
+            <div>
+              <span>Price per pax</span>
+              <strong>{formatMoney(pricePerPax, currency || 'USD')}</strong>
+            </div>
+            <div>
+              <span>Passengers</span>
+              <strong>{safePax > 0 ? `${safePax} pax` : 'Pax to confirm'}</strong>
+            </div>
+          </div>
+          <div className="section-stack">
+            {groupedItems.length === 0 ? (
+              <p className="detail-copy">No proposal services have been added yet.</p>
+            ) : (
+              groupedItems.map(([key, dayItems], index) => (
+                <section key={key} className="quote-service-category-group">
+                  <div className="workspace-section-head quote-service-group-head">
+                    <div>
+                      <h4>{formatDayLabel(key, index)}</h4>
+                    </div>
+                    <span className="page-tab-badge">{dayItems.length}</span>
+                  </div>
+                  <div className="quote-client-sell-list">
+                    {dayItems.map((item) => (
+                      <div key={item.id}>
+                        <span>{item.service.name}</span>
+                        <strong>{formatMoney(Number(item.totalSell ?? 0), item.currency || currency || 'USD')}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))
+            )}
+            <p className="detail-copy">Internal costing stays in the operator view only.</p>
+          </div>
+        </section>
       </div>
     </article>
   );
