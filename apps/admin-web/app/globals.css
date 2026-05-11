@@ -21805,6 +21805,48 @@ video {
   box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
 }
 
+.quote-dashboard-workflow,
+.quote-step-nav {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(9.5rem, max-content);
+  grid-template-columns: none;
+  justify-content: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.quote-dashboard-workflow-step,
+.quote-step-link {
+  min-width: 9.5rem;
+  max-width: 15rem;
+  min-height: 2.6rem;
+  justify-content: flex-start;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-align: left;
+}
+
+.quote-dashboard-workflow-step span,
+.quote-step-link > span:not(.quote-step-index):not(.page-tab-badge),
+.quote-dashboard-tab-copy strong,
+.quote-dashboard-tab-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.quote-step-index {
+  flex: 0 0 auto;
+}
+
 .quote-builder-main-content {
   padding: 0;
   background: transparent;

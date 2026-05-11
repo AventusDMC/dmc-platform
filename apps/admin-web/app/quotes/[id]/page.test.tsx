@@ -392,6 +392,14 @@ describe('quote detail page regression', () => {
       '.quote-builder-layout-itinerary',
       'grid-template-columns: minmax(0, 1fr);',
       '@media (min-width: 2200px)',
+      '.quote-dashboard-workflow,\n.quote-step-nav',
+      'grid-auto-flow: column;',
+      'grid-auto-columns: minmax(9.5rem, max-content);',
+      'overflow-x: auto;',
+      '.quote-dashboard-workflow-step,\n.quote-step-link',
+      'min-width: 9.5rem;',
+      'word-break: normal;',
+      'text-overflow: ellipsis;',
     ]);
 
     assert.doesNotMatch(cssSource, /^\.quote-itinerary-ops-layout\s*\{/m);
