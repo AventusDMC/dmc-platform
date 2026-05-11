@@ -285,6 +285,21 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('keeps the quote itinerary workspace wide and multi-column on desktop', () => {
+    expectSourceContains(cssSource, [
+      'Quote itinerary workspace desktop exception',
+      '@media (min-width: 1180px)',
+      '.quote-itinerary-ops-layout',
+      'grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);',
+      '.quote-itinerary-ops-main .quote-service-planner-shell.quote-service-planner-saas-grid',
+      'grid-template-columns: minmax(220px, 280px) minmax(760px, 1fr);',
+      '.quote-itinerary-ops-main .quote-service-visual-board',
+      'grid-template-columns: repeat(3, minmax(220px, 1fr));',
+      '@media (min-width: 1440px)',
+      'grid-template-columns: repeat(4, minmax(220px, 1fr));',
+    ]);
+  });
+
   it('loads hotel catalog data for Add Confirmed Hotel Stay from the itinerary drawer', () => {
     expectSourceContains(pageSource, [
       "activeTab === 'itinerary'",

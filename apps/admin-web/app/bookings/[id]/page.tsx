@@ -316,6 +316,71 @@ type Booking = {
       };
     };
   };
+  operationalReadiness?: {
+    status: 'ready' | 'warning' | 'critical' | 'pending';
+    label: string;
+    summary: {
+      rooming: {
+        complete: boolean;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+        issues: {
+          unassignedPassengers: number;
+          unassignedRooms: number;
+          occupancyIssues: number;
+        };
+      };
+      pricing: {
+        unresolved: number;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+      };
+      transport: {
+        missing: number;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+      };
+      vouchers: {
+        eligible: number;
+        issued: number;
+        draft: number;
+        missing: number;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+      };
+      passengers: {
+        expected: number;
+        received: number;
+        missingRecords: number;
+        unassigned: number;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+      };
+      excursions: {
+        incomplete: number;
+        status: 'ready' | 'warning' | 'critical' | 'pending';
+      };
+    };
+    counters: {
+      passengers: number;
+      expectedPassengers: number;
+      roomGroups: number;
+      vouchers: number;
+      unresolvedItems: number;
+      optionalItemsNotSelected: number;
+    };
+    dayReadiness: Array<{
+      id: string;
+      dayNumber: number;
+      title: string;
+      date: string | null;
+      status: 'ready' | 'warning' | 'incomplete' | 'pending';
+      serviceCount: number;
+      issueCount: number;
+      issues: string[];
+    }>;
+    sections: Array<{
+      title: string;
+      status: 'ready' | 'warning' | 'critical' | 'pending';
+      count: number;
+      issues: string[];
+    }>;
+  };
   days?: Array<{
     id: string;
     dayNumber: number;
@@ -541,6 +606,14 @@ function formatBookingType(value: BookingType) {
 function formatConfirmationStatus(status?: 'pending' | 'requested' | 'confirmed') {
   if (!status) return 'Pending';
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatReadinessStatus(status: 'ready' | 'warning' | 'critical' | 'pending' | 'incomplete') {
+  if (status === 'ready') return 'Ready';
+  if (status === 'critical') return 'Critical';
+  if (status === 'warning') return 'Warning';
+  if (status === 'incomplete') return 'Incomplete';
+  return 'Pending';
 }
 
 function formatClientInvoiceStatus(status: ClientInvoiceStatus) {
@@ -1013,6 +1086,32 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
       ? `${booking.rooming.badge.breakdown.occupancyIssues} room occupancy issues need correction.`
       : null,
   ].filter(Boolean) as string[];
+  const operationalReadiness = booking.operationalReadiness || {
+    status: booking.operations.badge.tone === 'error' ? 'critical' : booking.operations.badge.tone === 'warning' || booking.rooming.badge.count > 0 ? 'warning' : 'ready',
+    label: booking.operations.badge.tone === 'error' ? 'Critical' : booking.operations.badge.tone === 'warning' || booking.rooming.badge.count > 0 ? 'Warning' : 'Ready',
+    summary: {
+      rooming: {
+        complete: booking.rooming.badge.count === 0,
+        status: booking.rooming.badge.count > 0 ? 'warning' : 'ready',
+        issues: booking.rooming.badge.breakdown,
+      },
+      pricing: { unresolved: 0, status: 'ready' },
+      transport: { missing: 0, status: 'ready' },
+      vouchers: { eligible: booking.services.length, issued: booking.vouchers?.filter((voucher) => voucher.status === 'ISSUED').length || 0, draft: booking.vouchers?.filter((voucher) => voucher.status === 'DRAFT').length || 0, missing: 0, status: 'ready' },
+      passengers: { expected: totalPax, received: booking.passengers.length, missingRecords: Math.max(totalPax - booking.passengers.length, 0), unassigned: booking.rooming.badge.breakdown.unassignedPassengers, status: booking.rooming.badge.breakdown.unassignedPassengers > 0 ? 'warning' : 'ready' },
+      excursions: { incomplete: activityServicesMissingOpsCount, status: activityServicesMissingOpsCount > 0 ? 'warning' : 'ready' },
+    },
+    counters: {
+      passengers: booking.passengers.length,
+      expectedPassengers: totalPax,
+      roomGroups: booking.roomingEntries.length,
+      vouchers: booking.vouchers?.length || 0,
+      unresolvedItems: booking.operations.badge.count + booking.rooming.badge.count,
+      optionalItemsNotSelected: 0,
+    },
+    dayReadiness: (booking.days || []).map((day) => ({ id: day.id, dayNumber: day.dayNumber, title: day.title, date: day.date, status: 'pending', serviceCount: booking.services.filter((service) => service.bookingDayId === day.id).length, issueCount: 0, issues: [] })),
+    sections: [],
+  } satisfies NonNullable<Booking['operationalReadiness']>;
   const operationalAlerts = [
     pendingConfirmationsCount > 0 ? `${pendingConfirmationsCount} services are waiting on supplier confirmation.` : null,
     booking.operations.badge.breakdown.missingExecutionDetails > 0
@@ -1258,6 +1357,63 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                     />
                   </section>
 
+                  <section className="workspace-section booking-ops-panel-card booking-operational-readiness-panel">
+                    <div className="workspace-section-head">
+                      <div>
+                        <p className="eyebrow">Operational Readiness</p>
+                        <h2>Read-only readiness dashboard</h2>
+                      </div>
+                      <BookingOperationsStatusBadge kind="readiness" status={operationalReadiness.status} label={operationalReadiness.label} />
+                    </div>
+                    <div className="summary-strip booking-operational-counter-strip">
+                      <article className="summary-strip-card">
+                        <span>Passengers</span>
+                        <strong>{operationalReadiness.counters.passengers}/{operationalReadiness.counters.expectedPassengers}</strong>
+                      </article>
+                      <article className="summary-strip-card">
+                        <span>Room groups</span>
+                        <strong>{operationalReadiness.counters.roomGroups}</strong>
+                      </article>
+                      <article className="summary-strip-card">
+                        <span>Vouchers</span>
+                        <strong>{operationalReadiness.counters.vouchers}</strong>
+                      </article>
+                      <article className="summary-strip-card">
+                        <span>Unresolved items</span>
+                        <strong>{operationalReadiness.counters.unresolvedItems}</strong>
+                      </article>
+                      <article className="summary-strip-card">
+                        <span>Optional not selected</span>
+                        <strong>{operationalReadiness.counters.optionalItemsNotSelected}</strong>
+                      </article>
+                    </div>
+                    <div className="booking-operational-readiness-grid">
+                      {operationalReadiness.sections.map((section) => (
+                        <article key={section.title} className="detail-card booking-operational-readiness-card">
+                          <div className="workspace-section-head">
+                            <div>
+                              <p className="eyebrow">{section.title}</p>
+                              <h3>{section.count} issue{section.count === 1 ? '' : 's'}</h3>
+                            </div>
+                            <BookingOperationsStatusBadge kind="readiness" status={section.status} />
+                          </div>
+                          {section.issues.length > 0 ? (
+                            <div className="booking-ops-checklist">
+                              {section.issues.map((issue) => (
+                                <div key={issue} className="booking-ops-checklist-item">
+                                  <span>Review</span>
+                                  <strong>{issue}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="detail-copy">No readiness issues flagged.</p>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+
                   <section className="workspace-section booking-ops-panel-card">
                     <div className="workspace-section-head">
                       <div>
@@ -1417,8 +1573,20 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                   <h3>{day.title}</h3>
                                   <p>{formatDateOnly(day.date)}</p>
                                 </div>
-                                <BookingOperationsStatusBadge kind="custom" label={day.status} tone={day.status === 'DONE' ? 'success' : 'neutral'} />
+                                <BookingOperationsStatusBadge
+                                  kind="readiness"
+                                  status={operationalReadiness.dayReadiness.find((entry) => entry.id === day.id)?.status || 'pending'}
+                                />
                               </div>
+                              {operationalReadiness.dayReadiness.find((entry) => entry.id === day.id)?.issues.length ? (
+                                <div className="booking-dashboard-day-readiness">
+                                  {operationalReadiness.dayReadiness.find((entry) => entry.id === day.id)?.issues.map((issue) => (
+                                    <span key={issue} className="status-pill warning">
+                                      {issue}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                               {day.notes ? <p className="detail-copy">{day.notes}</p> : null}
                               <div className="booking-dashboard-service-grid">
                                 {dayServices.length === 0 ? (

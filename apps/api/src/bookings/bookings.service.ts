@@ -447,6 +447,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           passengers: booking.passengers,
           roomingEntries: booking.roomingEntries,
         }),
+        operationalReadiness: this.buildOperationalReadinessDashboard(booking),
         quote: {
           ...(booking.quote || {}),
           company: booking.quote?.clientCompany || null,
@@ -480,6 +481,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         operations: this.buildBookingOperationsSummary(services || []),
         rooming: this.buildBookingRoomingSummary({
           expectedRoomCount: baseBooking.roomCount,
+          passengers: [],
+          roomingEntries: [],
+        }),
+        operationalReadiness: this.buildOperationalReadinessDashboard({
+          ...baseBooking,
+          days: days || [],
+          services: services || [],
           passengers: [],
           roomingEntries: [],
         }),
@@ -6066,6 +6074,317 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         })),
       }),
     };
+  }
+
+  private buildOperationalReadinessDashboard(booking: {
+    pax?: number | null;
+    adults?: number | null;
+    children?: number | null;
+    roomCount?: number | null;
+    snapshotJson?: any;
+    days?: Array<{
+      id: string;
+      dayNumber: number;
+      date?: string | Date | null;
+      title: string;
+      notes?: string | null;
+    }>;
+    services?: Array<{
+      id: string;
+      bookingDayId?: string | null;
+      sourceQuoteItemId?: string | null;
+      description?: string | null;
+      serviceType?: string | null;
+      operationType?: string | null;
+      operationStatus?: string | null;
+      supplierId?: string | null;
+      supplierName?: string | null;
+      supplierStatus?: string | null;
+      referenceId?: string | null;
+      vehicleId?: string | null;
+      assignedTo?: string | null;
+      serviceDate?: string | Date | null;
+      startTime?: string | null;
+      pickupTime?: string | null;
+      pickupLocation?: string | null;
+      meetingPoint?: string | null;
+      participantCount?: number | null;
+      adultCount?: number | null;
+      childCount?: number | null;
+      totalCost?: number | null;
+      totalSell?: number | null;
+      status?: string | null;
+      confirmationStatus?: string | null;
+      vouchers?: Array<{
+        id: string;
+        status: VoucherStatus | string;
+        type: VoucherType | string;
+      }>;
+    }>;
+    passengers?: Array<{
+      id: string;
+      roomingAssignments?: Array<{
+        bookingRoomingEntryId: string;
+      }>;
+    }>;
+    roomingEntries?: Array<{
+      id: string;
+      occupancy: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
+      assignments?: Array<{
+        bookingPassenger: {
+          id: string;
+        };
+      }>;
+    }>;
+  }) {
+    type ReadinessStatus = 'ready' | 'warning' | 'critical' | 'pending';
+    const services = Array.isArray(booking.services) ? booking.services.filter((service) => service.status !== 'cancelled') : [];
+    const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+    const roomingEntries = Array.isArray(booking.roomingEntries) ? booking.roomingEntries : [];
+    const days = Array.isArray(booking.days) ? booking.days : [];
+    const expectedPassengers = Math.max(0, Number(booking.pax || Number(booking.adults || 0) + Number(booking.children || 0) || passengers.length || 0));
+    const rooming = this.buildBookingRoomingSummary({
+      expectedRoomCount: Math.max(0, Number(booking.roomCount || 0)),
+      passengers: passengers.map((passenger) => ({
+        id: passenger.id,
+        roomingAssignments: Array.isArray(passenger.roomingAssignments) ? passenger.roomingAssignments : [],
+      })),
+      roomingEntries: roomingEntries.map((entry) => ({
+        id: entry.id,
+        occupancy: entry.occupancy,
+        assignments: Array.isArray(entry.assignments) ? entry.assignments : [],
+      })),
+    });
+    const roomingIncomplete = rooming.badge.count > 0;
+    const missingPassengerRecords = Math.max(expectedPassengers - passengers.length, 0);
+    const unassignedPassengers = rooming.badge.breakdown.unassignedPassengers;
+    const pricingUnresolvedServices = services.filter((service) => this.isOperationalPricingUnresolved(service));
+    const missingTransportServices = services.filter((service) => this.isOperationalTransportMissing(service));
+    const voucherEligibleServices = services.filter((service) => this.isOperationalVoucherEligible(service));
+    const missingVoucherServices = voucherEligibleServices.filter((service) => !Array.isArray(service.vouchers) || service.vouchers.length === 0);
+    const draftVouchers = voucherEligibleServices.flatMap((service) => service.vouchers || []).filter((voucher) => voucher.status === VoucherStatus.DRAFT);
+    const readyVouchers = voucherEligibleServices.flatMap((service) => service.vouchers || []).filter((voucher) => voucher.status === VoucherStatus.ISSUED);
+    const excursionIncompleteServices = services.filter((service) => this.isOperationalExcursionIncomplete(service));
+    const pendingConfirmations = services.filter((service) => service.confirmationStatus !== BookingServiceStatus.confirmed).length;
+    const optionalItemsNotSelected = this.countOptionalItemsNotSelected(booking.snapshotJson);
+    const unresolvedItems =
+      pricingUnresolvedServices.length +
+      missingTransportServices.length +
+      missingPassengerRecords +
+      unassignedPassengers +
+      rooming.badge.breakdown.unassignedRooms +
+      rooming.badge.breakdown.occupancyIssues +
+      missingVoucherServices.length +
+      excursionIncompleteServices.length;
+    const status: ReadinessStatus =
+      services.length === 0 && passengers.length === 0
+        ? 'pending'
+        : pricingUnresolvedServices.length > 0 ||
+            missingTransportServices.length > 0 ||
+            missingPassengerRecords > 0 ||
+            rooming.badge.breakdown.occupancyIssues > 0
+          ? 'critical'
+          : unresolvedItems > 0 || pendingConfirmations > 0 || draftVouchers.length > 0
+            ? 'warning'
+            : 'ready';
+
+    return {
+      status,
+      label: this.formatOperationalReadinessStatus(status),
+      summary: {
+        rooming: {
+          complete: !roomingIncomplete && roomingEntries.length >= Math.max(0, Number(booking.roomCount || 0)),
+          status: roomingIncomplete ? 'warning' : 'ready',
+          issues: rooming.badge.breakdown,
+        },
+        pricing: {
+          unresolved: pricingUnresolvedServices.length,
+          status: pricingUnresolvedServices.length > 0 ? 'critical' : 'ready',
+        },
+        transport: {
+          missing: missingTransportServices.length,
+          status: missingTransportServices.length > 0 ? 'critical' : 'ready',
+        },
+        vouchers: {
+          eligible: voucherEligibleServices.length,
+          issued: readyVouchers.length,
+          draft: draftVouchers.length,
+          missing: missingVoucherServices.length,
+          status: missingVoucherServices.length > 0 || draftVouchers.length > 0 ? 'warning' : 'ready',
+        },
+        passengers: {
+          expected: expectedPassengers,
+          received: passengers.length,
+          missingRecords: missingPassengerRecords,
+          unassigned: unassignedPassengers,
+          status: missingPassengerRecords > 0 ? 'critical' : unassignedPassengers > 0 ? 'warning' : 'ready',
+        },
+        excursions: {
+          incomplete: excursionIncompleteServices.length,
+          status: excursionIncompleteServices.length > 0 ? 'warning' : 'ready',
+        },
+      },
+      counters: {
+        passengers: passengers.length,
+        expectedPassengers,
+        roomGroups: roomingEntries.length,
+        vouchers: readyVouchers.length + draftVouchers.length,
+        unresolvedItems,
+        optionalItemsNotSelected,
+      },
+      dayReadiness: days.map((day) => this.buildDayOperationalReadiness(day, services)),
+      sections: [
+        this.buildOperationalReadinessSection('Rooming', roomingIncomplete ? 'warning' : 'ready', rooming.badge.count, [
+          rooming.badge.breakdown.unassignedPassengers > 0 ? `${rooming.badge.breakdown.unassignedPassengers} passengers unassigned` : null,
+          rooming.badge.breakdown.unassignedRooms > 0 ? `${rooming.badge.breakdown.unassignedRooms} room groups incomplete` : null,
+          rooming.badge.breakdown.occupancyIssues > 0 ? `${rooming.badge.breakdown.occupancyIssues} occupancy issues` : null,
+        ]),
+        this.buildOperationalReadinessSection('Pricing', pricingUnresolvedServices.length > 0 ? 'critical' : 'ready', pricingUnresolvedServices.length, [
+          pricingUnresolvedServices.length > 0 ? `${pricingUnresolvedServices.length} service rows need pricing review` : null,
+        ]),
+        this.buildOperationalReadinessSection('Transport', missingTransportServices.length > 0 ? 'critical' : 'ready', missingTransportServices.length, [
+          missingTransportServices.length > 0 ? `${missingTransportServices.length} transport services missing assignment details` : null,
+        ]),
+        this.buildOperationalReadinessSection('Vouchers', missingVoucherServices.length > 0 || draftVouchers.length > 0 ? 'warning' : 'ready', missingVoucherServices.length + draftVouchers.length, [
+          missingVoucherServices.length > 0 ? `${missingVoucherServices.length} vouchers not generated` : null,
+          draftVouchers.length > 0 ? `${draftVouchers.length} vouchers still draft` : null,
+        ]),
+        this.buildOperationalReadinessSection('Passengers', missingPassengerRecords > 0 ? 'critical' : unassignedPassengers > 0 ? 'warning' : 'ready', missingPassengerRecords + unassignedPassengers, [
+          missingPassengerRecords > 0 ? `${missingPassengerRecords} passenger records missing` : null,
+          unassignedPassengers > 0 ? `${unassignedPassengers} passengers not assigned to rooms` : null,
+        ]),
+        this.buildOperationalReadinessSection('Excursions', excursionIncompleteServices.length > 0 ? 'warning' : 'ready', excursionIncompleteServices.length, [
+          excursionIncompleteServices.length > 0 ? `${excursionIncompleteServices.length} excursions need operational details` : null,
+        ]),
+      ],
+    };
+  }
+
+  private buildOperationalReadinessSection(title: string, status: 'ready' | 'warning' | 'critical' | 'pending', count: number, issues: Array<string | null>) {
+    return {
+      title,
+      status,
+      count,
+      issues: issues.filter((issue): issue is string => Boolean(issue)),
+    };
+  }
+
+  private buildDayOperationalReadiness(day: { id: string; dayNumber: number; date?: string | Date | null; title: string }, services: Array<any>) {
+    const dayServices = services.filter((service) => service.bookingDayId === day.id);
+    const missingTransport = dayServices.filter((service) => this.isOperationalTransportMissing(service)).length;
+    const pricingUnresolved = dayServices.filter((service) => this.isOperationalPricingUnresolved(service)).length;
+    const excursionIncomplete = dayServices.filter((service) => this.isOperationalExcursionIncomplete(service)).length;
+    const voucherMissing = dayServices.filter((service) => this.isOperationalVoucherEligible(service) && (!Array.isArray(service.vouchers) || service.vouchers.length === 0)).length;
+    const pendingConfirmations = dayServices.filter((service) => service.confirmationStatus !== BookingServiceStatus.confirmed).length;
+    const issueCount = missingTransport + pricingUnresolved + excursionIncomplete + voucherMissing + pendingConfirmations;
+    const status = dayServices.length === 0
+      ? 'pending'
+      : missingTransport > 0 || pricingUnresolved > 0
+        ? 'incomplete'
+        : issueCount > 0
+          ? 'warning'
+          : 'ready';
+
+    return {
+      id: day.id,
+      dayNumber: day.dayNumber,
+      title: day.title,
+      date: day.date,
+      status,
+      serviceCount: dayServices.length,
+      issueCount,
+      issues: [
+        missingTransport > 0 ? `${missingTransport} missing transport` : null,
+        pricingUnresolved > 0 ? `${pricingUnresolved} unresolved pricing` : null,
+        excursionIncomplete > 0 ? `${excursionIncomplete} excursion readiness` : null,
+        voucherMissing > 0 ? `${voucherMissing} vouchers missing` : null,
+        pendingConfirmations > 0 ? `${pendingConfirmations} confirmations pending` : null,
+      ].filter((issue): issue is string => Boolean(issue)),
+    };
+  }
+
+  private isOperationalPricingUnresolved(service: { totalCost?: number | null; totalSell?: number | null; supplierId?: string | null; supplierName?: string | null; supplierStatus?: string | null }) {
+    const totalCost = Number(service.totalCost || 0);
+    const totalSell = Number(service.totalSell || 0);
+    return service.supplierStatus === 'unresolved' || (!service.supplierId && Boolean(this.normalizeOptionalText(service.supplierName))) || (totalCost <= 0 && totalSell <= 0);
+  }
+
+  private isOperationalTransportMissing(service: {
+    operationType?: string | null;
+    serviceType?: string | null;
+    description?: string | null;
+    supplierId?: string | null;
+    referenceId?: string | null;
+    vehicleId?: string | null;
+    pickupTime?: string | null;
+    assignedTo?: string | null;
+  }) {
+    if (!this.isOperationalServiceKind(service, 'TRANSPORT')) {
+      return false;
+    }
+
+    return !service.supplierId || !service.referenceId || !service.vehicleId || !this.normalizeOptionalText(service.pickupTime) || !this.normalizeOptionalText(service.assignedTo);
+  }
+
+  private isOperationalExcursionIncomplete(service: {
+    operationType?: string | null;
+    serviceType?: string | null;
+    description?: string | null;
+    supplierId?: string | null;
+    serviceDate?: string | Date | null;
+    startTime?: string | null;
+    pickupTime?: string | null;
+    pickupLocation?: string | null;
+    meetingPoint?: string | null;
+    participantCount?: number | null;
+    adultCount?: number | null;
+    childCount?: number | null;
+  }) {
+    if (!this.isOperationalServiceKind(service, 'ACTIVITY')) {
+      return false;
+    }
+
+    const participantCount = Number(service.participantCount || service.adultCount || 0) + Number(service.childCount || 0);
+    return !service.supplierId || !service.serviceDate || (!service.startTime && !service.pickupTime) || (!service.pickupLocation && !service.meetingPoint) || participantCount <= 0;
+  }
+
+  private isOperationalVoucherEligible(service: { operationType?: string | null; serviceType?: string | null; description?: string | null }) {
+    return ['TRANSPORT', 'HOTEL', 'GUIDE', 'ACTIVITY', 'EXTERNAL_PACKAGE'].some((kind) => this.isOperationalServiceKind(service, kind));
+  }
+
+  private isOperationalServiceKind(service: { operationType?: string | null; serviceType?: string | null; description?: string | null }, kind: string) {
+    const normalized = String(service.operationType || service.serviceType || '').trim().toUpperCase();
+    if (normalized === kind) {
+      return true;
+    }
+
+    const text = [service.serviceType, service.description].filter(Boolean).join(' ').toLowerCase();
+    if (kind === 'TRANSPORT') return text.includes('transport') || text.includes('transfer') || text.includes('vehicle');
+    if (kind === 'HOTEL') return text.includes('hotel') || text.includes('accommodation') || text.includes('room');
+    if (kind === 'GUIDE') return text.includes('guide') || text.includes('escort');
+    if (kind === 'ACTIVITY') return text.includes('activity') || text.includes('tour') || text.includes('experience') || text.includes('excursion') || text.includes('sightseeing');
+    if (kind === 'EXTERNAL_PACKAGE') return text.includes('external') || text.includes('package');
+    return false;
+  }
+
+  private countOptionalItemsNotSelected(snapshotJson: any) {
+    const snapshot = snapshotJson || {};
+    if (Array.isArray(snapshot.optionalComponentsNotSelected)) {
+      return snapshot.optionalComponentsNotSelected.length;
+    }
+
+    if (Array.isArray(snapshot.optionalItemsNotSelected)) {
+      return snapshot.optionalItemsNotSelected.length;
+    }
+
+    return 0;
+  }
+
+  private formatOperationalReadinessStatus(status: 'ready' | 'warning' | 'critical' | 'pending') {
+    if (status === 'ready') return 'Ready';
+    if (status === 'critical') return 'Critical';
+    if (status === 'warning') return 'Warning';
+    return 'Pending';
   }
 
   private sumSnapshotQuoteItemCosts(

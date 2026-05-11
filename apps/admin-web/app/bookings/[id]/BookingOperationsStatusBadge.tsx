@@ -5,6 +5,7 @@ type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type ServiceLifecycleStatus = 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
 type ServiceConfirmationStatus = 'pending' | 'requested' | 'confirmed';
+type OperationalReadinessStatus = 'ready' | 'warning' | 'critical' | 'pending' | 'incomplete';
 
 function formatLabel(value: string) {
   return value
@@ -45,6 +46,13 @@ function getConfirmationTone(status: ServiceConfirmationStatus): Tone {
   return 'warning';
 }
 
+function getOperationalReadinessTone(status: OperationalReadinessStatus): Tone {
+  if (status === 'ready') return 'success';
+  if (status === 'critical' || status === 'incomplete') return 'danger';
+  if (status === 'warning') return 'warning';
+  return 'neutral';
+}
+
 type BookingOperationsStatusBadgeProps =
   | {
       kind: 'booking';
@@ -65,6 +73,11 @@ type BookingOperationsStatusBadgeProps =
   | {
       kind: 'confirmation';
       status: ServiceConfirmationStatus;
+    }
+  | {
+      kind: 'readiness';
+      status: OperationalReadinessStatus;
+      label?: string;
     }
   | {
       kind: 'custom';
@@ -93,6 +106,14 @@ export function BookingOperationsStatusBadge(props: BookingOperationsStatusBadge
 
   if (props.kind === 'lifecycle') {
     return <span className={`booking-ops-status app-badge booking-ops-status-${getLifecycleTone(props.status)}`}>{formatLabel(props.status)}</span>;
+  }
+
+  if (props.kind === 'readiness') {
+    return (
+      <span className={`booking-ops-status app-badge booking-ops-status-${getOperationalReadinessTone(props.status)}`}>
+        {props.label || formatLabel(props.status)}
+      </span>
+    );
   }
 
   return (

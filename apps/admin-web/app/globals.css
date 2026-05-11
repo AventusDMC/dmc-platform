@@ -22875,6 +22875,72 @@ video {
   }
 }
 
+/* Quote itinerary workspace desktop exception.
+   Global responsive guardrails keep most admin pages from overflowing, but the
+   operational itinerary editor needs a stable horizontal canvas at desktop
+   widths so day navigation and service lanes remain readable. */
+@media (min-width: 1180px) {
+  .panel.quote-workspace-page {
+    width: 100%;
+    max-width: none;
+  }
+
+  .quote-itinerary-ops-layout {
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    width: 100%;
+    max-width: none;
+    align-items: start;
+  }
+
+  .quote-itinerary-ops-main,
+  .quote-itinerary-ops-main > .quote-service-planner,
+  .quote-itinerary-ops-main .quote-service-planner .workspace-tab-panels,
+  .quote-itinerary-ops-main .quote-service-day-column {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .quote-itinerary-ops-main > .quote-service-planner {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .quote-itinerary-ops-main .quote-service-planner-shell.quote-service-planner-saas-grid {
+    grid-template-columns: minmax(220px, 280px) minmax(760px, 1fr);
+    width: 100%;
+    min-width: min(100%, 1040px);
+    max-width: none;
+  }
+
+  .quote-itinerary-ops-main .quote-service-day-card-active,
+  .quote-itinerary-ops-main .quote-service-current-services {
+    width: 100%;
+    min-width: min(100%, 760px);
+    max-width: none;
+  }
+
+  .quote-itinerary-ops-main .quote-service-visual-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    align-items: start;
+    width: 100%;
+    min-width: min(100%, 720px);
+    max-width: none;
+  }
+
+  .quote-itinerary-ops-main .quote-service-lane {
+    min-width: 220px;
+    max-width: none;
+  }
+}
+
+@media (min-width: 1440px) {
+  .quote-itinerary-ops-main .quote-service-visual-board {
+    grid-template-columns: repeat(4, minmax(220px, 1fr));
+  }
+}
+
 /* Global Admin Web responsive stabilization.
    These rules intentionally sit last to neutralize older page-specific fixed-width
    and dense-grid declarations without changing page behavior. */
