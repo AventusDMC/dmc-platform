@@ -107,6 +107,70 @@ export class PackageTemplatesService {
     return template;
   }
 
+  async duplicate(id: string) {
+    const sourceTemplate = await this.findOne(id);
+
+    const duplicate = await (this.prisma as any).$transaction(async (tx: any) => {
+      const copiedTemplate = await tx.packageTemplate.create({
+        data: {
+          name: `${sourceTemplate.name} Copy`,
+          durationDays: sourceTemplate.durationDays,
+          targetMarket: sourceTemplate.targetMarket,
+          season: sourceTemplate.season,
+          active: false,
+          operationalNotes: sourceTemplate.operationalNotes,
+        },
+      });
+
+      const dayIdBySourceDayId = new Map<string, string>();
+      const orderedDays = [...(sourceTemplate.days || [])].sort((first: any, second: any) => first.dayNumber - second.dayNumber);
+
+      for (const day of orderedDays) {
+        const copiedDay = await tx.packageTemplateDay.create({
+          data: {
+            packageTemplateId: copiedTemplate.id,
+            dayNumber: day.dayNumber,
+            title: day.title,
+            description: day.description,
+            active: day.active,
+          },
+        });
+        dayIdBySourceDayId.set(day.id, copiedDay.id);
+      }
+
+      const orderedComponents = [...(sourceTemplate.components || [])].sort(
+        (first: any, second: any) => first.dayNumber - second.dayNumber || first.sortOrder - second.sortOrder,
+      );
+
+      if (orderedComponents.length > 0) {
+        await tx.packageTemplateComponent.createMany({
+          data: orderedComponents.map((component: any) => ({
+            packageTemplateId: copiedTemplate.id,
+            packageTemplateDayId: component.packageTemplateDayId ? dayIdBySourceDayId.get(component.packageTemplateDayId) || null : null,
+            componentType: component.componentType,
+            dayNumber: component.dayNumber,
+            label: component.label,
+            sortOrder: component.sortOrder,
+            isOptional: component.isOptional,
+            active: component.active,
+            operationalNotes: component.operationalNotes,
+            excursionTemplateId: component.excursionTemplateId,
+            activityId: component.activityId,
+            hotelContractId: component.hotelContractId,
+            routeId: component.routeId,
+            transportServiceTypeId: component.transportServiceTypeId,
+            pricingMode: component.pricingMode,
+            supplierServiceId: component.supplierServiceId,
+          })),
+        });
+      }
+
+      return copiedTemplate;
+    });
+
+    return this.findOne(duplicate.id);
+  }
+
   async updateDay(packageTemplateId: string, dayId: string, data: PackageTemplateDayInput) {
     await this.findOne(packageTemplateId);
     const day = await (this.prisma as any).packageTemplateDay.findFirst({

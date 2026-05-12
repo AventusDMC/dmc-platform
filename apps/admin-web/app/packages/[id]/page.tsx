@@ -18,6 +18,7 @@ import { PackageComponentReorderControls } from '../PackageComponentReorderContr
 import { PackageDayPlannerActions } from '../PackageDayPlannerActions';
 import { PackageQuoteAssemblyPanel } from '../PackageQuoteAssemblyPanel';
 import { PackageTemplateComponentForm } from '../PackageTemplateComponentForm';
+import { PackageTemplateDuplicateButton } from '../PackageTemplateDuplicateButton';
 import { PackageTemplateDayForm } from '../PackageTemplateDayForm';
 import type {
   PackageTemplate,
@@ -159,6 +160,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                   </p>
                 </div>
                 {template.operationalNotes ? <p className="detail-copy">{template.operationalNotes}</p> : null}
+                <PackageTemplateDuplicateButton apiBaseUrl="/api" packageTemplateId={template.id} packageName={template.name} navigateToCopy />
               </article>
             </section>
 

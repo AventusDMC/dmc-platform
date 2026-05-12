@@ -74,6 +74,12 @@ export class PackageTemplatesController {
     return this.packageTemplatesService.update(id, this.normalizeTemplateBody(body));
   }
 
+  @Post(':id/duplicate')
+  @Roles('admin', 'operations')
+  duplicate(@Param('id') id: string) {
+    return this.packageTemplatesService.duplicate(id);
+  }
+
   @Post(':id/components')
   @Roles('admin', 'operations')
   addComponent(@Param('id') id: string, @Body() body: PackageTemplateComponentBody) {

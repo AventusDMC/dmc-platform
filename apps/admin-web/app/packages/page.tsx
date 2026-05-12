@@ -7,6 +7,7 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { PACKAGE_CATALOG_MODULES } from './package-template-display';
 import { PackageTemplateForm } from './PackageTemplateForm';
+import { PackageTemplateDuplicateButton } from './PackageTemplateDuplicateButton';
 import type { PackageTemplate } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -113,9 +114,12 @@ export default async function PackageTemplatesPage() {
                             </span>
                           </td>
                           <td>
-                            <Link href={`/packages/${template.id}`} className="secondary-button">
-                              Open
-                            </Link>
+                            <span className="table-action-group">
+                              <Link href={`/packages/${template.id}`} className="secondary-button">
+                                Open
+                              </Link>
+                              <PackageTemplateDuplicateButton apiBaseUrl="/api" packageTemplateId={template.id} packageName={template.name} />
+                            </span>
                           </td>
                         </tr>
                       ))}

@@ -9,6 +9,7 @@ const componentReorderSource = readFileSync(new URL('./PackageComponentReorderCo
 const dayActionsSource = readFileSync(new URL('./PackageDayPlannerActions.tsx', import.meta.url), 'utf8');
 const dayFormSource = readFileSync(new URL('./PackageTemplateDayForm.tsx', import.meta.url), 'utf8');
 const displaySource = readFileSync(new URL('./package-template-display.ts', import.meta.url), 'utf8');
+const duplicateButtonSource = readFileSync(new URL('./PackageTemplateDuplicateButton.tsx', import.meta.url), 'utf8');
 const quoteAssemblyPanelSource = readFileSync(new URL('./PackageQuoteAssemblyPanel.tsx', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
 const apiControllerSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.controller.ts', import.meta.url), 'utf8');
@@ -18,6 +19,10 @@ const prismaSchemaSource = readFileSync(new URL('../../../api/prisma/schema.pris
 const quoteAssemblySource = quoteServiceSource.slice(
   quoteServiceSource.indexOf('async previewPackageTemplateAssembly'),
   quoteServiceSource.indexOf('private async findActivityBridgeSupplierService'),
+);
+const packageDuplicateSource = apiServiceSource.slice(
+  apiServiceSource.indexOf('async duplicate(id: string)'),
+  apiServiceSource.indexOf('async updateDay'),
 );
 
 describe('package productization phase one', () => {
@@ -165,5 +170,37 @@ describe('package productization phase one', () => {
     assert.match(quoteServiceSource, /activityId: values\.component\.activityId \|\| undefined/);
     assert.doesNotMatch(quoteAssemblySource, /packageTemplate\.create|hotelContract\.create|excursionTemplate\.create|activity\.create|route\.create|supplierService\.create/);
     assert.doesNotMatch(quoteAssemblyPanelSource, /pricing engine|proposal automation|booking automation/i);
+  });
+
+  it('duplicates package templates from the list and detail pages as inactive copies', () => {
+    assert.match(listPageSource, /<PackageTemplateDuplicateButton apiBaseUrl="\/api" packageTemplateId=\{template\.id\} packageName=\{template\.name\} \/>/);
+    assert.match(detailPageSource, /<PackageTemplateDuplicateButton apiBaseUrl="\/api" packageTemplateId=\{template\.id\} packageName=\{template\.name\} navigateToCopy \/>/);
+    assert.match(duplicateButtonSource, /Duplicate/);
+    assert.match(duplicateButtonSource, /package-templates\/\$\{packageTemplateId\}\/duplicate/);
+    assert.match(apiControllerSource, /@Post\(':id\/duplicate'\)/);
+    assert.match(apiControllerSource, /this\.packageTemplatesService\.duplicate\(id\)/);
+    assert.match(apiServiceSource, /async duplicate\(id: string\)/);
+    assert.match(apiServiceSource, /name: `\$\{sourceTemplate\.name\} Copy`/);
+    assert.match(apiServiceSource, /active: false/);
+  });
+
+  it('duplicates package days, component links, ordering, and notes without touching the source package', () => {
+    assert.match(apiServiceSource, /const sourceTemplate = await this\.findOne\(id\)/);
+    assert.match(apiServiceSource, /packageTemplateDay\.create/);
+    assert.match(apiServiceSource, /title: day\.title/);
+    assert.match(apiServiceSource, /description: day\.description/);
+    assert.match(apiServiceSource, /dayIdBySourceDayId\.set\(day\.id, copiedDay\.id\)/);
+    assert.match(apiServiceSource, /packageTemplateComponent\.createMany/);
+    assert.match(apiServiceSource, /packageTemplateDayId: component\.packageTemplateDayId \? dayIdBySourceDayId\.get\(component\.packageTemplateDayId\)/);
+    assert.match(apiServiceSource, /sortOrder: component\.sortOrder/);
+    assert.match(apiServiceSource, /operationalNotes: component\.operationalNotes/);
+    assert.match(apiServiceSource, /excursionTemplateId: component\.excursionTemplateId/);
+    assert.match(apiServiceSource, /hotelContractId: component\.hotelContractId/);
+    assert.match(apiServiceSource, /routeId: component\.routeId/);
+    assert.match(apiServiceSource, /transportServiceTypeId: component\.transportServiceTypeId/);
+    assert.match(apiServiceSource, /supplierServiceId: component\.supplierServiceId/);
+    assert.doesNotMatch(apiServiceSource, /hotelContract\.create|excursionTemplate\.create|route\.create|supplierService\.create|activity\.create/);
+    assert.doesNotMatch(packageDuplicateSource, /packageTemplate\.update\(\{\s*where: \{ id \}/);
+    assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
   });
 });
