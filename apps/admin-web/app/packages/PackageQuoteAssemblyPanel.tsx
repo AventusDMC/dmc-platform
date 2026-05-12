@@ -11,6 +11,7 @@ type PackageAssemblyPreviewComponent = {
   selected: boolean;
   insertable: boolean;
   skipReason?: string | null;
+  warning?: string | null;
   operationalReference?: string | null;
 };
 
@@ -176,6 +177,7 @@ export function PackageQuoteAssemblyPanel({ apiBaseUrl, packageTemplateId }: Pac
                             ) : (
                               <span className="status-pill status-pill-muted">{component.skipReason || 'Skipped'}</span>
                             )}
+                            {component.warning ? <p className="table-cell-copy">{component.warning}</p> : null}
                           </td>
                         </tr>
                       ))}

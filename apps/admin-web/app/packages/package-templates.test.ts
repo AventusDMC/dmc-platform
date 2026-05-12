@@ -166,6 +166,36 @@ describe('package productization phase one', () => {
     assert.match(quoteServiceSource, /where: \{ quoteId, packageTemplateId \}/);
   });
 
+  it('maps package component types only when safe quote item data exists', () => {
+    assert.match(quoteServiceSource, /component\.componentType === 'HOTEL'/);
+    assert.match(quoteServiceSource, /resolvePackageHotelMapping/);
+    assert.match(quoteServiceSource, /hotelContractId/);
+    assert.match(quoteServiceSource, /roomCategoryId/);
+    assert.match(quoteServiceSource, /occupancyType/);
+    assert.match(quoteServiceSource, /mealPlan/);
+    assert.match(quoteServiceSource, /component\.componentType === 'TRANSPORT'/);
+    assert.match(quoteServiceSource, /resolvePackageTransportMapping/);
+    assert.match(quoteServiceSource, /findMatchingRate/);
+    assert.match(quoteServiceSource, /routeId: component\.routeId/);
+    assert.match(quoteServiceSource, /transportServiceTypeId: component\.transportServiceTypeId/);
+    assert.match(quoteServiceSource, /component\.componentType === 'TICKET'/);
+    assert.match(quoteServiceSource, /isTicketPackageService/);
+    assert.match(quoteServiceSource, /component\.componentType === 'SERVICE'/);
+    assert.match(quoteServiceSource, /serviceId: component\.supplierServiceId/);
+    assert.match(quoteServiceSource, /insertPackageExcursionTemplateComponent/);
+    assert.match(quoteServiceSource, /getExcursionTemplateComponentMappingStatus/);
+  });
+
+  it('previews unsafe package mappings as warnings or skipped components', () => {
+    assert.match(quoteAssemblyPanelSource, /warning\?: string \| null/);
+    assert.match(quoteAssemblyPanelSource, /component\.warning/);
+    assert.match(quoteServiceSource, /PackageComponentMappingStatus/);
+    assert.match(quoteServiceSource, /mappingStatus\.reason/);
+    assert.match(quoteServiceSource, /will be skipped because mapping data is incomplete/);
+    assert.match(quoteServiceSource, /Hotel component needs one active hotel contract rate/);
+    assert.match(quoteServiceSource, /Transport component needs route, pricing mode\/service type, transport service, and a valid transport rate/);
+  });
+
   it('does not duplicate operational inventory while assembling package quote items', () => {
     assert.match(quoteServiceSource, /serviceId: component\.supplierServiceId/);
     assert.match(quoteServiceSource, /excursionTemplateId: values\.template\.id/);

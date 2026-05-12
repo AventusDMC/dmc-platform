@@ -228,6 +228,12 @@ type ApplyPackageTemplateToQuoteInput = {
   selectedOptionalComponentIds?: string[];
 };
 
+type PackageComponentMappingStatus = {
+  insertable: boolean;
+  reason: string | null;
+  warning?: string | null;
+};
+
 type ExpandExcursionTemplateInput = {
   quoteId: string;
   excursionTemplateId: string;
@@ -3135,10 +3141,40 @@ export class QuotesService {
   }
 
   async previewPackageTemplateAssembly(quoteId: string, packageTemplateId: string, actor?: CompanyScopedActor) {
-    await this.assertQuoteMutationAccess(quoteId, actor);
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
     const template = await this.getPackageTemplateForAssembly(packageTemplateId);
     const existingPackageUse = await this.findExistingPackageAssembly(quoteId, packageTemplateId);
     const days = this.getPackageAssemblyDays(template);
+    const previewDays = await Promise.all(
+      days.map(async (day: any) => {
+        const components = await Promise.all(
+          this.getPackageAssemblyComponents(day).map(async (component: any) => {
+            const mappingStatus = await this.getPackageComponentMappingStatus(component, quote);
+
+            return {
+              id: component.id,
+              componentType: component.componentType,
+              label: component.label,
+              sortOrder: component.sortOrder,
+              optional: Boolean(component.isOptional),
+              selected: !component.isOptional,
+              insertable: mappingStatus.insertable,
+              skipReason: component.isOptional ? 'Optional component is not selected by default' : mappingStatus.reason,
+              warning: mappingStatus.warning || null,
+              operationalReference: this.getPackageComponentReferenceLabel(component),
+            };
+          }),
+        );
+
+        return {
+          id: day.id,
+          dayNumber: day.dayNumber,
+          title: day.title,
+          notes: day.description || null,
+          components,
+        };
+      }),
+    );
 
     return {
       quoteId,
@@ -3146,23 +3182,7 @@ export class QuotesService {
       packageName: template.name,
       duplicate: Boolean(existingPackageUse),
       duplicateReason: existingPackageUse ? 'This package template is already linked to this quote.' : null,
-      days: days.map((day: any) => ({
-        id: day.id,
-        dayNumber: day.dayNumber,
-        title: day.title,
-        notes: day.description || null,
-        components: this.getPackageAssemblyComponents(day).map((component: any) => ({
-          id: component.id,
-          componentType: component.componentType,
-          label: component.label,
-          sortOrder: component.sortOrder,
-          optional: Boolean(component.isOptional),
-          selected: !component.isOptional,
-          insertable: this.isPackageComponentInsertable(component),
-          skipReason: this.getPackageComponentSkipReason(component),
-          operationalReference: this.getPackageComponentReferenceLabel(component),
-        })),
-      })),
+      days: previewDays,
     };
   }
 
@@ -3192,13 +3212,14 @@ export class QuotesService {
           continue;
         }
 
-        if (!this.isPackageComponentInsertable(component)) {
-          skippedComponents.push({ componentId: component.id, reason: this.getPackageComponentSkipReason(component) });
+        const mappingStatus = await this.getPackageComponentMappingStatus(component, quote);
+        if (!mappingStatus.insertable) {
+          skippedComponents.push({ componentId: component.id, reason: mappingStatus.reason });
           continue;
         }
 
         if (component.componentType === 'EXCURSION_TEMPLATE' && component.excursionTemplateId) {
-          const excursionItems = await this.insertPackageExcursionTemplateComponent({
+          const excursionResult = await this.insertPackageExcursionTemplateComponent({
             quote,
             packageTemplate: template,
             packageDay: day,
@@ -3206,11 +3227,12 @@ export class QuotesService {
             quoteDay,
             actor,
           });
-          createdItems.push(...excursionItems);
+          createdItems.push(...excursionResult.createdItems);
+          skippedComponents.push(...excursionResult.skippedComponents);
           continue;
         }
 
-        const payload = this.buildPackageComponentQuoteItemPayload({
+        const payload = await this.buildPackageComponentQuoteItemPayload({
           quote,
           packageTemplate: template,
           packageDay: day,
@@ -3219,11 +3241,19 @@ export class QuotesService {
         });
 
         if (!payload) {
-          skippedComponents.push({ componentId: component.id, reason: this.getPackageComponentSkipReason(component) });
+          skippedComponents.push({ componentId: component.id, reason: 'Package component mapping is incomplete' });
           continue;
         }
 
-        createdItems.push(await this.createItem(payload, actor));
+        try {
+          createdItems.push(await this.createItem(payload, actor));
+        } catch (error) {
+          if (error instanceof BadRequestException || error instanceof NotFoundException) {
+            skippedComponents.push({ componentId: component.id, reason: error.message });
+            continue;
+          }
+          throw error;
+        }
       }
     }
 
@@ -3552,30 +3582,52 @@ export class QuotesService {
     return day || item;
   }
 
-  private isPackageComponentInsertable(component: any) {
+  private async getPackageComponentMappingStatus(component: any, quote: { adults?: number | null; children?: number | null }): Promise<PackageComponentMappingStatus> {
     if (component.componentType === 'EXCURSION_TEMPLATE') {
-      return Boolean(component.excursionTemplate?.components?.some((entry: any) => entry.active !== false && !entry.isOptional && this.isExcursionTemplateComponentInsertable(entry)));
+      const requiredComponents = (component.excursionTemplate?.components || []).filter((entry: any) => entry.active !== false && !entry.isOptional);
+      if (requiredComponents.length === 0) {
+        return { insertable: false, reason: 'Excursion template has no required components to insert' };
+      }
+
+      const componentStatuses = await Promise.all(requiredComponents.map((entry: any) => this.getExcursionTemplateComponentMappingStatus(entry, quote)));
+      const safeCount = componentStatuses.filter((entry) => entry.insertable).length;
+      if (safeCount === 0) {
+        return { insertable: false, reason: 'Excursion template has no required components with safe quote item mappings' };
+      }
+
+      const unsafeCount = componentStatuses.length - safeCount;
+      return {
+        insertable: true,
+        reason: null,
+        warning: unsafeCount > 0 ? `${unsafeCount} excursion template component${unsafeCount === 1 ? '' : 's'} will be skipped because mapping data is incomplete.` : null,
+      };
     }
 
-    return Boolean(this.buildPackageComponentQuoteItemPayload({ quote: { id: 'preview', adults: 1, children: 0 }, packageTemplate: { id: 'preview' }, packageDay: { id: component.packageTemplateDayId, dayNumber: component.dayNumber }, packageComponent: component, quoteDay: { id: 'preview' } }));
-  }
-
-  private getPackageComponentSkipReason(component: any) {
-    if (component.isOptional) {
-      return 'Optional component is not selected by default';
+    if (component.componentType === 'HOTEL') {
+      const hotelMapping = await this.resolvePackageHotelMapping(component);
+      return hotelMapping
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: 'Hotel component needs one active hotel contract rate with room category, occupancy, meal plan, and a hotel service record' };
     }
 
-    if (component.componentType === 'EXCURSION_TEMPLATE') {
-      return this.isPackageComponentInsertable(component)
-        ? null
-        : 'Excursion template has no required components with service links that can be inserted safely';
+    if (component.componentType === 'TRANSPORT') {
+      const transportMapping = await this.resolvePackageTransportMapping(component, quote);
+      return transportMapping
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: 'Transport component needs route, pricing mode/service type, transport service, and a valid transport rate' };
     }
 
-    if (component.componentType === 'TICKET' || component.componentType === 'SERVICE') {
-      return component.supplierServiceId ? null : 'No linked service record';
+    if (component.componentType === 'TICKET') {
+      return component.supplierServiceId && this.isTicketPackageService(component.supplierService)
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: 'Ticket component needs a linked entrance or ticket rate service record' };
     }
 
-    return 'This package component does not yet have enough quote item mapping data for safe insertion';
+    if (component.componentType === 'SERVICE') {
+      return component.supplierServiceId ? { insertable: true, reason: null } : { insertable: false, reason: 'No linked service record' };
+    }
+
+    return { insertable: false, reason: 'This package component does not yet have enough quote item mapping data for safe insertion' };
   }
 
   private getPackageComponentReferenceLabel(component: any) {
@@ -3623,39 +3675,205 @@ export class QuotesService {
     });
   }
 
-  private buildPackageComponentQuoteItemPayload(values: {
-    quote: { id: string; adults?: number | null; children?: number | null };
+  private async resolvePackageHotelMapping(component: any) {
+    if (!component.hotelContractId) {
+      return null;
+    }
+
+    const hotelService = await this.findFallbackSupplierServiceForPackageComponent('HOTEL');
+    if (!hotelService) {
+      return null;
+    }
+
+    const today = new Date();
+    const currentRates = await this.prisma.hotelRate.findMany({
+      where: {
+        contractId: component.hotelContractId,
+        seasonFrom: { lte: today },
+        seasonTo: { gte: today },
+        roomCategory: { isActive: true },
+      },
+      include: { roomCategory: true, contract: { include: { hotel: true } } },
+      orderBy: [{ cost: 'asc' }, { createdAt: 'desc' }],
+    });
+    const fallbackRates =
+      currentRates.length > 0
+        ? []
+        : await this.prisma.hotelRate.findMany({
+            where: {
+              contractId: component.hotelContractId,
+              roomCategory: { isActive: true },
+            },
+            include: { roomCategory: true, contract: { include: { hotel: true } } },
+            orderBy: [{ seasonFrom: 'asc' }, { cost: 'asc' }, { createdAt: 'desc' }],
+          });
+    const selectedRate = this.selectPackageHotelRate(currentRates.length > 0 ? currentRates : fallbackRates);
+
+    if (!selectedRate?.contract?.hotelId || !selectedRate.roomCategoryId || !selectedRate.occupancyType || !selectedRate.mealPlan || !selectedRate.seasonName) {
+      return null;
+    }
+
+    return {
+      serviceId: hotelService.id,
+      hotelId: selectedRate.contract.hotelId,
+      contractId: selectedRate.contractId,
+      seasonName: selectedRate.seasonName,
+      roomCategoryId: selectedRate.roomCategoryId,
+      occupancyType: selectedRate.occupancyType,
+      mealPlan: selectedRate.mealPlan,
+    };
+  }
+
+  private selectPackageHotelRate(rates: any[]) {
+    const mealPlanPriority = new Map([
+      [HotelMealPlan.BB, 0],
+      [HotelMealPlan.HB, 1],
+      [HotelMealPlan.FB, 2],
+      [HotelMealPlan.RO, 3],
+      [HotelMealPlan.AI, 4],
+    ]);
+    const occupancyPriority = new Map([
+      [HotelOccupancyType.DBL, 0],
+      [HotelOccupancyType.SGL, 1],
+      [HotelOccupancyType.TPL, 2],
+    ]);
+
+    return [...rates].sort((first: any, second: any) => {
+      const mealPlanDelta = (mealPlanPriority.get(first.mealPlan) ?? 99) - (mealPlanPriority.get(second.mealPlan) ?? 99);
+      if (mealPlanDelta !== 0) return mealPlanDelta;
+      const occupancyDelta = (occupancyPriority.get(first.occupancyType) ?? 99) - (occupancyPriority.get(second.occupancyType) ?? 99);
+      if (occupancyDelta !== 0) return occupancyDelta;
+      return Number(first.cost ?? 0) - Number(second.cost ?? 0);
+    })[0] || null;
+  }
+
+  private async resolvePackageTransportMapping(component: any, quote: { adults?: number | null; children?: number | null }) {
+    if (!component.routeId || !component.transportServiceTypeId) {
+      return null;
+    }
+
+    const transportService = component.supplierService || (await this.findFallbackSupplierServiceForPackageComponent('TRANSPORT'));
+    if (!transportService || !this.isTransportService(transportService)) {
+      return null;
+    }
+
+    const paxCount = this.getQuotePaxCount(quote);
+    try {
+      const vehicleRate = await this.transportPricingService.findMatchingRate({
+        serviceTypeId: component.transportServiceTypeId,
+        routeId: component.routeId,
+        paxCount,
+      });
+
+      return {
+        serviceId: transportService.id,
+        routeId: component.routeId,
+        transportServiceTypeId: component.transportServiceTypeId,
+        vehicleRateId: vehicleRate.id,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private getQuotePaxCount(quote: { adults?: number | null; children?: number | null }) {
+    return Math.max(1, Number(quote.adults ?? 0) + Number(quote.children ?? 0));
+  }
+
+  private async buildPackageComponentQuoteItemPayload(values: {
+    quote: { id: string; adults?: number | null; children?: number | null; roomCount?: number | null; nightCount?: number | null };
     packageTemplate: { id: string };
     packageDay: { id?: string | null; dayNumber: number };
     packageComponent: any;
     quoteDay: { id: string };
-  }): CreateQuoteItemInput | null {
+  }): Promise<CreateQuoteItemInput | null> {
     const component = values.packageComponent;
+    const paxCount = this.getQuotePaxCount(values.quote);
+    const common = {
+      quoteId: values.quote.id,
+      packageTemplateId: values.packageTemplate.id,
+      packageTemplateDayId: values.packageDay.id || null,
+      packageTemplateComponentId: component.id,
+      itineraryId: values.quoteDay.id,
+      quantity: 1,
+      paxCount,
+      markupPercent: 0,
+    };
 
-    if ((component.componentType === 'TICKET' || component.componentType === 'SERVICE') && component.supplierServiceId) {
-      const paxCount = Math.max(1, Number(values.quote.adults ?? 1) + Number(values.quote.children ?? 0));
+    if (component.componentType === 'HOTEL') {
+      const hotelMapping = await this.resolvePackageHotelMapping(component);
+      if (!hotelMapping) {
+        return null;
+      }
+
       return {
-        quoteId: values.quote.id,
-        packageTemplateId: values.packageTemplate.id,
-        packageTemplateDayId: values.packageDay.id || null,
-        packageTemplateComponentId: component.id,
+        ...common,
+        ...hotelMapping,
+        roomCount: Math.max(1, Number(values.quote.roomCount ?? 1)),
+        nightCount: 1,
+      };
+    }
+
+    if (component.componentType === 'TRANSPORT') {
+      const transportMapping = await this.resolvePackageTransportMapping(component, values.quote);
+      if (!transportMapping) {
+        return null;
+      }
+
+      return {
+        ...common,
+        ...transportMapping,
+      };
+    }
+
+    if (component.componentType === 'TICKET' && component.supplierServiceId && this.isTicketPackageService(component.supplierService)) {
+      return {
+        ...common,
         serviceId: component.supplierServiceId,
-        itineraryId: values.quoteDay.id,
-        quantity: 1,
-        paxCount,
-        markupPercent: 0,
+      };
+    }
+
+    if (component.componentType === 'SERVICE' && component.supplierServiceId) {
+      return {
+        ...common,
+        serviceId: component.supplierServiceId,
       };
     }
 
     return null;
   }
 
-  private isExcursionTemplateComponentInsertable(component: any) {
+  private async getExcursionTemplateComponentMappingStatus(component: any, quote: { adults?: number | null; children?: number | null }): Promise<PackageComponentMappingStatus> {
     if (component.componentType === 'TRANSPORT') {
-      return Boolean(component.supplierServiceId && component.routeId && component.transportServiceTypeId);
+      const mapping = await this.resolvePackageTransportMapping(component, quote);
+      return mapping
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: `Excursion transport component "${component.label}" needs route, service type, transport service, and a valid rate` };
     }
 
-    return Boolean(component.supplierServiceId);
+    if (component.componentType === 'TICKET') {
+      return component.supplierServiceId && this.isTicketPackageService(component.supplierService)
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: `Excursion ticket component "${component.label}" needs a linked entrance or ticket rate service` };
+    }
+
+    if (component.componentType === 'DINING') {
+      return component.supplierServiceId
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: `Excursion component "${component.label}" needs a linked service record` };
+    }
+
+    if (component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') {
+      if (component.supplierServiceId || component.activityId) {
+        return { insertable: true, reason: null };
+      }
+      const fallbackService = await this.findFallbackSupplierServiceForExcursionComponent(component.componentType);
+      return fallbackService
+        ? { insertable: true, reason: null }
+        : { insertable: false, reason: `Excursion component "${component.label}" needs a linked ${component.componentType.toLowerCase()} record` };
+    }
+
+    return { insertable: false, reason: `Unsupported excursion component type: ${component.componentType}` };
   }
 
   private async insertPackageExcursionTemplateComponent(values: {
@@ -3668,11 +3886,22 @@ export class QuotesService {
   }) {
     const template = values.packageComponent.excursionTemplate;
     const createdItems = [];
-    const components = [...(template?.components || [])]
-      .filter((component: any) => component.active !== false && !component.isOptional && this.isExcursionTemplateComponentInsertable(component))
+    const skippedComponents = [];
+    const requiredComponents = [...(template?.components || [])]
+      .filter((component: any) => component.active !== false && !component.isOptional)
       .sort((first: any, second: any) => first.sortOrder - second.sortOrder || first.label.localeCompare(second.label));
 
-    for (const component of components) {
+    for (const component of requiredComponents) {
+      const mappingStatus = await this.getExcursionTemplateComponentMappingStatus(component, values.quote);
+      if (!mappingStatus.insertable) {
+        skippedComponents.push({
+          componentId: values.packageComponent.id,
+          excursionTemplateComponentId: component.id,
+          reason: mappingStatus.reason,
+        });
+        continue;
+      }
+
       const payload = await this.buildExcursionTemplateQuoteItemPayload({
         quote: values.quote,
         template,
@@ -3697,7 +3926,7 @@ export class QuotesService {
       );
     }
 
-    return createdItems;
+    return { createdItems, skippedComponents };
   }
 
   private async findActivityBridgeSupplierService(activity: { name?: string | null }) {
@@ -3738,6 +3967,29 @@ export class QuotesService {
     }
 
     return services.filter((service) => this.isActivityService(service));
+  }
+
+  private async findFallbackSupplierServiceForPackageComponent(componentType: 'HOTEL' | 'TRANSPORT') {
+    const services = await this.prisma.supplierService.findMany({
+      include: {
+        serviceType: true,
+        entranceFee: true,
+        serviceRates: { orderBy: { createdAt: 'desc' }, take: 1 },
+        ticketRateVariants: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    });
+
+    if (componentType === 'HOTEL') {
+      return services.find((service) => this.isHotelService(service)) || null;
+    }
+
+    return services.find((service) => this.isTransportService(service)) || null;
+  }
+
+  private isTicketPackageService(service: any) {
+    return Boolean(service?.entranceFee || service?.ticketRateVariants?.some((variant: any) => variant.active !== false));
   }
 
   async detachItemHotelContract(quoteId: string, itemId: string, actor?: CompanyScopedActor) {
