@@ -6,9 +6,10 @@ import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
-import { groupPackageComponentsByDay, PACKAGE_CATALOG_MODULES, packageComponentReferenceLabel, packageComponentTypeLabel } from '../package-template-display';
+import { PACKAGE_CATALOG_MODULES, packageComponentReferenceLabel, packageComponentTypeLabel, resolvePackageTemplateDays } from '../package-template-display';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageTemplateComponentForm } from '../PackageTemplateComponentForm';
+import { PackageTemplateDayForm } from '../PackageTemplateDayForm';
 import type {
   PackageTemplate,
   PackageTemplateHotelContractOption,
@@ -102,9 +103,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
   }
 
   const components = template.components || [];
-  const groupedDays = groupPackageComponentsByDay(components, template.durationDays);
+  const packageDays = resolvePackageTemplateDays(template.days, components, template.durationDays);
   const activeComponentCount = components.filter((component) => component.active).length;
   const optionalComponentCount = components.filter((component) => component.isOptional).length;
+  const activeDayCount = packageDays.filter((day) => day.active).length;
 
   return (
     <main className="page">
@@ -117,7 +119,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
           summary={
             <SummaryStrip
               items={[
-                { id: 'duration', label: 'Duration', value: `${template.durationDays} days`, helper: 'Default itinerary structure' },
+                { id: 'duration', label: 'Duration', value: `${template.durationDays} days`, helper: `${activeDayCount} active itinerary days` },
                 { id: 'components', label: 'Components', value: String(components.length), helper: `${activeComponentCount} active links` },
                 { id: 'optional', label: 'Optional', value: String(optionalComponentCount), helper: 'Commercially selectable' },
                 { id: 'status', label: 'Status', value: template.active ? 'Active' : 'Inactive', helper: 'Template availability' },
@@ -150,7 +152,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
 
             <TableSectionShell
               title="Linked itinerary structure"
-              description="Components reference excursion templates, Activity Masters, hotel contracts, transport routes/pricing modes, and ticketing services."
+              description="Package days hold reusable itinerary titles, notes, and linked operational components without duplicating inventory."
               context={<p>{components.length} linked operational components</p>}
               createPanel={
                 <CollapsibleCreatePanel
@@ -178,9 +180,17 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
               }
             >
               <div className="section-stack">
-                {groupedDays.map((day) => (
-                  <article key={day.dayNumber} className="detail-card">
-                    <h2>Day {day.dayNumber}</h2>
+                {packageDays.map((day) => (
+                  <details key={day.id} className="detail-card" open={day.active || day.components.length > 0}>
+                    <summary className="section-header">
+                      <span>
+                        <span className="eyebrow">Day {day.dayNumber}</span>
+                        <strong>{day.title}</strong>
+                        {day.description ? <p className="table-cell-copy">{day.description}</p> : null}
+                      </span>
+                      <span className={day.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>{day.active ? 'Active' : 'Inactive'}</span>
+                    </summary>
+                    <PackageTemplateDayForm apiBaseUrl="/api" packageTemplateId={template.id} day={day} />
                     {day.components.length > 0 ? (
                       <div className="table-scroll">
                         <table>
@@ -226,10 +236,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                     ) : (
                       <div className="empty-state ui-empty-state">
                         <strong>No components planned for this day.</strong>
-                        <p>Add operational links when this package day needs hotels, transport, excursions, activities, or ticketing.</p>
+                        <p>Add operational links when this package day needs hotels, transport, excursions, activities, ticketing, or services.</p>
                       </div>
                     )}
-                  </article>
+                  </details>
                 ))}
               </div>
             </TableSectionShell>

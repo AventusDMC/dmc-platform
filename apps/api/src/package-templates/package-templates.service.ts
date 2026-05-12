@@ -32,6 +32,12 @@ type PackageTemplateComponentInput = {
   supplierServiceId?: string | null;
 };
 
+type PackageTemplateDayInput = {
+  title?: string | null;
+  description?: string | null;
+  active?: boolean;
+};
+
 const COMPONENT_TYPES: PackageTemplateComponentType[] = ['EXCURSION_TEMPLATE', 'ACTIVITY', 'HOTEL', 'TRANSPORT', 'TICKET', 'SERVICE'];
 
 @Injectable()
@@ -55,8 +61,19 @@ export class PackageTemplatesService {
   }
 
   create(data: CreatePackageTemplateInput) {
+    const durationDays = this.normalizePositiveInteger(data.durationDays, 'durationDays');
+    const templateData = {
+      ...this.buildTemplateData(data, false),
+      durationDays,
+    };
+
     return (this.prisma as any).packageTemplate.create({
-      data: this.buildTemplateData(data, false),
+      data: {
+        ...templateData,
+        days: {
+          create: this.buildDefaultDays(durationDays),
+        },
+      },
       include: this.packageInclude(),
     });
   }
@@ -64,16 +81,54 @@ export class PackageTemplatesService {
   async update(id: string, data: UpdatePackageTemplateInput) {
     await this.findOne(id);
 
-    return (this.prisma as any).packageTemplate.update({
+    const template = await (this.prisma as any).packageTemplate.update({
       where: { id },
       data: this.buildTemplateData(data, true),
       include: this.packageInclude(),
     });
+
+    if (data.durationDays !== undefined) {
+      await this.ensurePackageDays(id, template.durationDays);
+      return this.findOne(id);
+    }
+
+    return template;
+  }
+
+  async updateDay(packageTemplateId: string, dayId: string, data: PackageTemplateDayInput) {
+    await this.findOne(packageTemplateId);
+    const day = await (this.prisma as any).packageTemplateDay.findFirst({
+      where: { id: dayId, packageTemplateId },
+    });
+
+    throwIfNotFound(day, 'Package template day');
+
+    return (this.prisma as any).packageTemplateDay.update({
+      where: { id: dayId },
+      data: {
+        title: data.title === undefined ? undefined : requireTrimmedString(data.title || '', 'title'),
+        description: data.description === undefined ? undefined : normalizeOptionalString(data.description),
+        active: data.active === undefined ? undefined : Boolean(data.active),
+      },
+      include: {
+        components: {
+          include: this.componentInclude(),
+          orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+        },
+      },
+    });
   }
 
   async addComponent(packageTemplateId: string, data: PackageTemplateComponentInput) {
-    await this.findOne(packageTemplateId);
-    const componentData = this.buildComponentData(packageTemplateId, data);
+    const template = await this.findOne(packageTemplateId);
+    const dayNumber = this.normalizePositiveInteger(data.dayNumber, 'dayNumber');
+
+    if (dayNumber > template.durationDays) {
+      throw new BadRequestException(`dayNumber must be between 1 and ${template.durationDays}`);
+    }
+
+    const packageDay = await this.ensurePackageDay(packageTemplateId, dayNumber);
+    const componentData = this.buildComponentData(packageTemplateId, packageDay.id, data, dayNumber);
 
     return (this.prisma as any).packageTemplateComponent.create({
       data: componentData,
@@ -106,14 +161,15 @@ export class PackageTemplatesService {
     };
   }
 
-  private buildComponentData(packageTemplateId: string, data: PackageTemplateComponentInput) {
+  private buildComponentData(packageTemplateId: string, packageTemplateDayId: string, data: PackageTemplateComponentInput, dayNumber: number) {
     const componentType = this.normalizeComponentType(data.componentType);
     this.validateComponentReference(componentType, data);
 
     return {
       packageTemplateId,
+      packageTemplateDayId,
       componentType,
-      dayNumber: this.normalizePositiveInteger(data.dayNumber, 'dayNumber'),
+      dayNumber,
       label: requireTrimmedString(data.label, 'label'),
       sortOrder: data.sortOrder === undefined || data.sortOrder === null ? 0 : this.normalizeNonNegativeInteger(data.sortOrder, 'sortOrder'),
       isOptional: Boolean(data.isOptional),
@@ -180,6 +236,15 @@ export class PackageTemplatesService {
 
   private packageInclude() {
     return {
+      days: {
+        include: {
+          components: {
+            include: this.componentInclude(),
+            orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+          },
+        },
+        orderBy: [{ dayNumber: 'asc' }],
+      },
       components: {
         include: this.componentInclude(),
         orderBy: [{ dayNumber: 'asc' }, { sortOrder: 'asc' }],
@@ -204,5 +269,49 @@ export class PackageTemplatesService {
         },
       },
     };
+  }
+
+  private buildDefaultDays(durationDays: number) {
+    return Array.from({ length: durationDays }, (_, index) => ({
+      dayNumber: index + 1,
+      title: `Day ${index + 1}`,
+      active: true,
+    }));
+  }
+
+  private async ensurePackageDays(packageTemplateId: string, durationDays: number) {
+    for (const day of this.buildDefaultDays(durationDays)) {
+      await (this.prisma as any).packageTemplateDay.upsert({
+        where: {
+          packageTemplateId_dayNumber: {
+            packageTemplateId,
+            dayNumber: day.dayNumber,
+          },
+        },
+        update: {},
+        create: {
+          packageTemplateId,
+          ...day,
+        },
+      });
+    }
+  }
+
+  private async ensurePackageDay(packageTemplateId: string, dayNumber: number) {
+    return (this.prisma as any).packageTemplateDay.upsert({
+      where: {
+        packageTemplateId_dayNumber: {
+          packageTemplateId,
+          dayNumber,
+        },
+      },
+      update: {},
+      create: {
+        packageTemplateId,
+        dayNumber,
+        title: `Day ${dayNumber}`,
+        active: true,
+      },
+    });
   }
 }

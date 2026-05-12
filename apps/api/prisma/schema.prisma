@@ -1823,15 +1823,34 @@ model PackageTemplate {
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
   components       PackageTemplateComponent[]
+  days             PackageTemplateDay[]
 
   @@index([active, name])
   @@index([targetMarket, season])
   @@map("package_templates")
 }
 
+model PackageTemplateDay {
+  id                String                     @id @default(uuid()) @db.Uuid
+  packageTemplateId String                     @db.Uuid
+  dayNumber         Int
+  title             String
+  description       String?
+  active            Boolean                    @default(true)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  components        PackageTemplateComponent[]
+  packageTemplate   PackageTemplate            @relation(fields: [packageTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([packageTemplateId, dayNumber])
+  @@index([packageTemplateId, active, dayNumber])
+  @@map("package_template_days")
+}
+
 model PackageTemplateComponent {
   id                     String                       @id @default(uuid()) @db.Uuid
   packageTemplateId      String                       @db.Uuid
+  packageTemplateDayId   String?                      @db.Uuid
   componentType          PackageTemplateComponentType
   dayNumber              Int
   label                  String
@@ -1852,11 +1871,13 @@ model PackageTemplateComponent {
   excursionTemplate      ExcursionTemplate?           @relation(fields: [excursionTemplateId], references: [id], onDelete: SetNull)
   hotelContract          HotelContract?               @relation(fields: [hotelContractId], references: [id], onDelete: SetNull)
   packageTemplate        PackageTemplate              @relation(fields: [packageTemplateId], references: [id], onDelete: Cascade)
+  packageTemplateDay     PackageTemplateDay?          @relation(fields: [packageTemplateDayId], references: [id], onDelete: SetNull)
   route                  Route?                       @relation(fields: [routeId], references: [id], onDelete: SetNull)
   supplierService        SupplierService?             @relation(fields: [supplierServiceId], references: [id], onDelete: SetNull)
   transportServiceType   TransportServiceType?        @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
 
   @@index([packageTemplateId, dayNumber, sortOrder])
+  @@index([packageTemplateDayId])
   @@index([componentType])
   @@index([excursionTemplateId])
   @@index([activityId])

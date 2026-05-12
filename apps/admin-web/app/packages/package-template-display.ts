@@ -1,4 +1,4 @@
-import type { PackageTemplateComponent, PackageTemplateComponentType } from './types';
+import type { PackageTemplateComponent, PackageTemplateComponentType, PackageTemplateDay } from './types';
 
 export const PACKAGE_CATALOG_MODULES = [
   { id: 'packages', label: 'Packages', href: '/packages', helper: 'Commercial templates' },
@@ -59,4 +59,27 @@ export function groupPackageComponentsByDay(components: PackageTemplateComponent
   }
 
   return days;
+}
+
+export function resolvePackageTemplateDays(days: PackageTemplateDay[] | undefined, components: PackageTemplateComponent[], durationDays: number) {
+  if (days?.length) {
+    return [...days]
+      .sort((first, second) => first.dayNumber - second.dayNumber)
+      .map((day) => ({
+        ...day,
+        components: (day.components?.length ? day.components : components.filter((component) => component.dayNumber === day.dayNumber)).sort(
+          (first, second) => first.sortOrder - second.sortOrder || first.label.localeCompare(second.label),
+        ),
+      }));
+  }
+
+  return groupPackageComponentsByDay(components, durationDays).map((day) => ({
+    id: `day-${day.dayNumber}`,
+    packageTemplateId: '',
+    dayNumber: day.dayNumber,
+    title: `Day ${day.dayNumber}`,
+    description: null,
+    active: true,
+    components: day.components,
+  }));
 }

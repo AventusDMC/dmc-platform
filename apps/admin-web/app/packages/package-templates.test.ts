@@ -5,8 +5,10 @@ import assert from 'node:assert/strict';
 const listPageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
 const componentFormSource = readFileSync(new URL('./PackageTemplateComponentForm.tsx', import.meta.url), 'utf8');
+const dayFormSource = readFileSync(new URL('./PackageTemplateDayForm.tsx', import.meta.url), 'utf8');
 const displaySource = readFileSync(new URL('./package-template-display.ts', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
+const apiControllerSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.controller.ts', import.meta.url), 'utf8');
 const prismaSchemaSource = readFileSync(new URL('../../../api/prisma/schema.prisma', import.meta.url), 'utf8');
 
 describe('package productization phase one', () => {
@@ -17,6 +19,7 @@ describe('package productization phase one', () => {
     assert.match(detailPageSource, /title=\{template\.name\}/);
     assert.match(detailPageSource, /Linked itinerary structure/);
     assert.match(detailPageSource, /<PackageTemplateComponentForm/);
+    assert.match(detailPageSource, /<PackageTemplateDayForm/);
   });
 
   it('loads operational catalogs instead of duplicating inventory rows', () => {
@@ -35,7 +38,9 @@ describe('package productization phase one', () => {
 
   it('models package templates as references to operational inventory', () => {
     assert.match(prismaSchemaSource, /model PackageTemplate \{/);
+    assert.match(prismaSchemaSource, /model PackageTemplateDay \{/);
     assert.match(prismaSchemaSource, /model PackageTemplateComponent \{/);
+    assert.match(prismaSchemaSource, /packageTemplateDayId\s+String\?/);
     assert.match(prismaSchemaSource, /excursionTemplateId\s+String\?/);
     assert.match(prismaSchemaSource, /activityId\s+String\?/);
     assert.match(prismaSchemaSource, /hotelContractId\s+String\?/);
@@ -60,8 +65,18 @@ describe('package productization phase one', () => {
   });
 
   it('groups linked components by default itinerary day for the detail view', () => {
-    assert.match(displaySource, /groupPackageComponentsByDay/);
-    assert.match(detailPageSource, /groupedDays\.map/);
+    assert.match(displaySource, /resolvePackageTemplateDays/);
+    assert.match(detailPageSource, /packageDays\.map/);
     assert.match(detailPageSource, /Day \{day\.dayNumber\}/);
+  });
+
+  it('adds a package day planner without automating pricing proposals or bookings', () => {
+    assert.match(apiServiceSource, /days:\s*\{/);
+    assert.match(apiServiceSource, /ensurePackageDay/);
+    assert.match(apiServiceSource, /packageTemplateDayId/);
+    assert.match(apiControllerSource, /@Patch\(':id\/days\/:dayId'\)/);
+    assert.match(dayFormSource, /Description \/ notes/);
+    assert.match(detailPageSource, /<details/);
+    assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
   });
 });

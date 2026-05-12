@@ -30,6 +30,12 @@ type PackageTemplateComponentBody = {
   supplierServiceId?: string | null;
 };
 
+type PackageTemplateDayBody = {
+  title?: string | null;
+  description?: string | null;
+  active?: boolean;
+};
+
 @Controller('package-templates')
 export class PackageTemplatesController {
   constructor(private readonly packageTemplatesService: PackageTemplatesService) {}
@@ -60,6 +66,12 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   addComponent(@Param('id') id: string, @Body() body: PackageTemplateComponentBody) {
     return this.packageTemplatesService.addComponent(id, this.normalizeComponentBody(body));
+  }
+
+  @Patch(':id/days/:dayId')
+  @Roles('admin', 'operations')
+  updateDay(@Param('id') id: string, @Param('dayId') dayId: string, @Body() body: PackageTemplateDayBody) {
+    return this.packageTemplatesService.updateDay(id, dayId, body);
   }
 
   @Delete(':id/components/:componentId')

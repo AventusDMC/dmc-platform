@@ -2,6 +2,7 @@ export type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | '
 
 export type PackageTemplateComponent = {
   id: string;
+  packageTemplateDayId?: string | null;
   componentType: PackageTemplateComponentType;
   dayNumber: number;
   label: string;
@@ -24,6 +25,16 @@ export type PackageTemplateComponent = {
   supplierService?: { id: string; name: string; category: string; entranceFee?: { name?: string | null; siteName?: string | null } | null } | null;
 };
 
+export type PackageTemplateDay = {
+  id: string;
+  packageTemplateId: string;
+  dayNumber: number;
+  title: string;
+  description: string | null;
+  active: boolean;
+  components: PackageTemplateComponent[];
+};
+
 export type PackageTemplate = {
   id: string;
   name: string;
@@ -33,6 +44,7 @@ export type PackageTemplate = {
   active: boolean;
   operationalNotes: string | null;
   components: PackageTemplateComponent[];
+  days?: PackageTemplateDay[];
 };
 
 export type PackageTemplateOption = {
