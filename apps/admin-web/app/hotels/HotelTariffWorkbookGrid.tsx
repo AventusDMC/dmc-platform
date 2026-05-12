@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export type HotelTariffWorkbookRow = {
   id: string;
@@ -71,12 +71,17 @@ function downloadCsv(filename: string, rows: string[][]) {
 
 export function HotelTariffWorkbookGrid({ rows }: HotelTariffWorkbookGridProps) {
   const [workbookRows, setWorkbookRows] = useState(rows);
+  const rowSignature = useMemo(() => rows.map((row) => row.id).join('|'), [rows]);
   const summary = useMemo(() => {
     const hotelCount = new Set(rows.map((row) => row.hotelName)).size;
     const contractCount = new Set(rows.map((row) => `${row.hotelName}:${row.contractName}`)).size;
 
     return { hotelCount, contractCount };
   }, [rows]);
+
+  useEffect(() => {
+    setWorkbookRows(rows);
+  }, [rows, rowSignature]);
 
   function updateCell(rowId: string, key: keyof HotelTariffWorkbookRow, value: string) {
     setWorkbookRows((currentRows) => currentRows.map((row) => (row.id === rowId ? { ...row, [key]: value } : row)));

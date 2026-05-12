@@ -106,6 +106,15 @@ type HotelTariffWorkbookSectionProps = {
   };
 };
 
+export type HotelTariffWorkbookContractFilter = {
+  cityId?: string;
+  hotelId?: string;
+  contractId?: string;
+  status?: string;
+  validity?: string;
+  activeState?: string;
+};
+
 async function getHotels(): Promise<Hotel[]> {
   return adminPageFetchJson<Hotel[]>(`${API_BASE_URL}/hotels`, 'Hotel tariff workbook hotels', {
     cache: 'no-store',
@@ -163,7 +172,7 @@ function formatDateRange(from: string, to: string) {
   return `${new Date(from).toLocaleDateString()} - ${new Date(to).toLocaleDateString()}`;
 }
 
-function getValidityKey(contract: HotelContract) {
+function getValidityKey(contract: { validFrom: string; validTo: string }) {
   return `${contract.validFrom}:${contract.validTo}`;
 }
 
@@ -175,6 +184,33 @@ function getContractStatus(validFrom: string, validTo: string) {
   if (start <= today && end >= today) return 'current';
   if (start > today) return 'upcoming';
   return 'expired';
+}
+
+export function filterHotelTariffContracts<T extends { id: string; validFrom: string; validTo: string; hotel: { id: string } }>(
+  contracts: T[],
+  hotels: Array<{ id: string; cityId: string | null }>,
+  filters: HotelTariffWorkbookContractFilter,
+) {
+  const cityId = filters.cityId || '';
+  const hotelId = filters.hotelId || '';
+  const contractId = filters.contractId || '';
+  const status = filters.status || '';
+  const validity = filters.validity || '';
+  const activeState = filters.activeState || '';
+
+  return contracts.filter((contract) => {
+    const statusValue = getContractStatus(contract.validFrom, contract.validTo);
+
+    if (hotelId && contract.hotel.id !== hotelId) return false;
+    if (cityId && !hotels.find((hotel) => hotel.id === contract.hotel.id && hotel.cityId === cityId)) return false;
+    if (contractId && contract.id !== contractId) return false;
+    if (status && statusValue !== status) return false;
+    if (activeState === 'active' && statusValue === 'expired') return false;
+    if (activeState === 'inactive' && statusValue !== 'expired') return false;
+    if (validity && getValidityKey(contract) !== validity) return false;
+
+    return true;
+  });
 }
 
 function formatPricingBasis(rate: HotelRate) {
@@ -308,18 +344,13 @@ export async function HotelTariffWorkbookSection({ filters }: HotelTariffWorkboo
   const validity = filters?.validity || '';
   const activeState = filters?.activeState || '';
   const availableHotels = hotels.filter((hotel) => (cityId ? hotel.cityId === cityId : true));
-  const availableContracts = contracts.filter((contract) => {
-    const statusValue = getContractStatus(contract.validFrom, contract.validTo);
-
-    if (hotelId && contract.hotel.id !== hotelId) return false;
-    if (cityId && !hotels.find((hotel) => hotel.id === contract.hotel.id && hotel.cityId === cityId)) return false;
-    if (contractId && contract.id !== contractId) return false;
-    if (status && statusValue !== status) return false;
-    if (activeState === 'active' && statusValue === 'expired') return false;
-    if (activeState === 'inactive' && statusValue !== 'expired') return false;
-    if (validity && getValidityKey(contract) !== validity) return false;
-
-    return true;
+  const availableContracts = filterHotelTariffContracts(contracts, hotels, {
+    cityId,
+    hotelId,
+    contractId,
+    status,
+    validity,
+    activeState,
   });
   const availableContractIds = new Set(availableContracts.map((contract) => contract.id));
   const visibleRates = rates.filter((rate) => {
