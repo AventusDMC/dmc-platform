@@ -136,7 +136,8 @@ const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
 const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
 const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'EXTERNAL_PACKAGE'] as const;
-const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'DONE'] as const;
+const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
+type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
 const VOUCHER_STATUSES = ['DRAFT', 'ISSUED', 'CANCELLED'] as const;
 
 @Injectable()
@@ -5022,12 +5023,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   private normalizeBookingOperationServiceStatus(
     value: string | null | undefined,
     currentValue?: string | null,
-  ): BookingOperationServiceStatus {
+  ): BookingOperationalExecutionStatus {
     const raw = this.normalizeOptionalText(value) || currentValue || BookingOperationServiceStatus.PENDING;
-    const normalized = raw.trim().toUpperCase();
+    const normalized = raw.trim().toUpperCase().replace(/[\s-]+/g, '_');
 
     if ((BOOKING_OPERATION_SERVICE_STATUSES as readonly string[]).includes(normalized)) {
-      return normalized as BookingOperationServiceStatus;
+      return normalized as BookingOperationalExecutionStatus;
     }
 
     throw new BadRequestException(`Unsupported booking service status: ${raw}`);
@@ -5184,8 +5185,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return 'Activity operations';
   }
 
-  private mapOperationStatusToLifecycleStatus(status: BookingOperationServiceStatus): BookingServiceLifecycleStatus {
-    if (status === BookingOperationServiceStatus.DONE || status === BookingOperationServiceStatus.CONFIRMED) {
+  private mapOperationStatusToLifecycleStatus(status: BookingOperationalExecutionStatus): BookingServiceLifecycleStatus {
+    if (status === 'REJECTED' || status === 'CANCELLED') {
+      return BookingServiceLifecycleStatus.cancelled;
+    }
+
+    if (status === 'DONE' || status === 'COMPLETED' || status === 'VOUCHER_SENT' || status === BookingOperationServiceStatus.CONFIRMED) {
       return BookingServiceLifecycleStatus.confirmed;
     }
 
@@ -5196,8 +5201,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return BookingServiceLifecycleStatus.pending;
   }
 
-  private mapOperationStatusToConfirmationStatus(status: BookingOperationServiceStatus): BookingServiceStatus {
-    if (status === BookingOperationServiceStatus.DONE || status === BookingOperationServiceStatus.CONFIRMED) {
+  private mapOperationStatusToConfirmationStatus(status: BookingOperationalExecutionStatus): BookingServiceStatus {
+    if (status === 'DONE' || status === 'COMPLETED' || status === 'VOUCHER_SENT' || status === BookingOperationServiceStatus.CONFIRMED) {
       return BookingServiceStatus.confirmed;
     }
 
@@ -5349,8 +5354,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     throw new BadRequestException(`Unsupported booking status filter: ${value}`);
   }
 
-  private normalizeDashboardServiceStatus(value: string | null | undefined): BookingOperationServiceStatus | null {
-    const normalized = this.normalizeOptionalText(value)?.toUpperCase();
+  private normalizeDashboardServiceStatus(value: string | null | undefined): BookingOperationalExecutionStatus | null {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase().replace(/[\s-]+/g, '_');
     if (!normalized || normalized === 'ALL') {
       return null;
     }
@@ -5358,10 +5363,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (normalized === 'PENDING') return BookingOperationServiceStatus.PENDING;
     if (normalized === 'REQUESTED' || normalized === 'IN_PROGRESS') return BookingOperationServiceStatus.REQUESTED;
     if (normalized === 'CONFIRMED' || normalized === 'READY') return BookingOperationServiceStatus.CONFIRMED;
-    if (normalized === 'DONE') return BookingOperationServiceStatus.DONE;
+    if (normalized === 'DONE') return 'DONE';
+    if (normalized === 'REJECTED') return 'REJECTED';
+    if (normalized === 'CANCELLED' || normalized === 'CANCELED') return 'CANCELLED';
+    if (normalized === 'VOUCHER_SENT' || normalized === 'ISSUED') return 'VOUCHER_SENT';
+    if (normalized === 'COMPLETED' || normalized === 'COMPLETE') return 'COMPLETED';
 
-    if ((Object.values(BookingOperationServiceStatus) as string[]).includes(normalized)) {
-      return normalized as BookingOperationServiceStatus;
+    if ((BOOKING_OPERATION_SERVICE_STATUSES as readonly string[]).includes(normalized)) {
+      return normalized as BookingOperationalExecutionStatus;
     }
 
     throw new BadRequestException(`Unsupported service status filter: ${value}`);
@@ -5403,6 +5412,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       supplierName: service.supplierName,
       supplierStatus: this.getBookingServiceSupplierStatus(service),
       vehicleId: service.vehicleId,
+      status: service.status || null,
+      confirmationStatus: service.confirmationStatus || null,
+      vouchers: Array.isArray(service.vouchers) ? service.vouchers : [],
     };
   }
 
@@ -5441,6 +5453,93 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return Array.from(new Set(reasons));
+  }
+
+  private getMissingRoomingReasons(booking: any) {
+    const reasons: string[] = [];
+    const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+    const roomingEntries = Array.isArray(booking.roomingEntries) ? booking.roomingEntries : [];
+    const expectedRooms = Number(booking.roomCount || 0);
+    const assignedPassengerIds = new Set(
+      roomingEntries.flatMap((entry: any) =>
+        Array.isArray(entry.assignments)
+          ? entry.assignments.map((assignment: any) => assignment.bookingPassengerId || assignment.bookingPassenger?.id).filter(Boolean)
+          : [],
+      ),
+    );
+
+    if (expectedRooms > 0 && roomingEntries.length < expectedRooms) {
+      reasons.push(`rooming groups incomplete (${roomingEntries.length}/${expectedRooms})`);
+    }
+
+    if (passengers.length > 0 && passengers.some((passenger: any) => !assignedPassengerIds.has(passenger.id))) {
+      reasons.push('passengers not assigned to rooms');
+    }
+
+    if (roomingEntries.some((entry: any) => !Array.isArray(entry.assignments) || entry.assignments.length === 0)) {
+      reasons.push('rooming groups without passengers');
+    }
+
+    return Array.from(new Set(reasons));
+  }
+
+  private isOperationalVoucherMissing(service: any) {
+    if (!this.isOperationalVoucherEligible(service)) {
+      return false;
+    }
+
+    return !Array.isArray(service.vouchers) || service.vouchers.length === 0;
+  }
+
+  private buildOperationsServiceStatusSummary(services: any[]) {
+    const counts = {
+      pending: 0,
+      requested: 0,
+      confirmed: 0,
+      rejected: 0,
+      cancelled: 0,
+      voucherSent: 0,
+      completed: 0,
+    };
+
+    for (const service of services) {
+      const status = String(service.operationStatus || '').toUpperCase();
+      if (status === 'REQUESTED') counts.requested += 1;
+      else if (status === 'CONFIRMED') counts.confirmed += 1;
+      else if (status === 'REJECTED') counts.rejected += 1;
+      else if (status === 'CANCELLED') counts.cancelled += 1;
+      else if (status === 'VOUCHER_SENT') counts.voucherSent += 1;
+      else if (status === 'COMPLETED' || status === 'DONE') counts.completed += 1;
+      else counts.pending += 1;
+    }
+
+    return counts;
+  }
+
+  private buildOperationsDashboardReadinessSummary(input: {
+    bookings: any[];
+    services: any[];
+    missingPassengers: Array<{ booking: any; reasons: string[] }>;
+    missingRooming: any[];
+    missingVoucherServices: any[];
+  }) {
+    const unconfirmedServices = input.services.filter((service) => {
+      const status = String(service.operationStatus || '').toUpperCase();
+      return !['CONFIRMED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'].includes(status);
+    });
+
+    return {
+      bookings: input.bookings.length,
+      services: input.services.length,
+      missingPassengerData: input.missingPassengers.length,
+      missingRooming: input.missingRooming.length,
+      unconfirmedServices: unconfirmedServices.length,
+      missingVouchers: input.missingVoucherServices.length,
+      status:
+        input.missingPassengers.length > 0 || input.missingRooming.length > 0 || input.missingVoucherServices.length > 0 || unconfirmedServices.length > 0
+          ? 'warning'
+          : 'ready',
+    };
   }
 
   private isMissingServiceAssignment(service: any) {
@@ -7247,9 +7346,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const pendingServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
       ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: BookingOperationServiceStatus.PENDING }] }
       : { operationStatus: BookingOperationServiceStatus.PENDING };
+    const operationallyConfirmedStatuses = [BookingOperationServiceStatus.CONFIRMED, BookingOperationServiceStatus.DONE, 'VOUCHER_SENT', 'COMPLETED'];
     const unconfirmedServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
-      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: { not: BookingOperationServiceStatus.CONFIRMED } }] }
-      : { operationStatus: { not: BookingOperationServiceStatus.CONFIRMED } };
+      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: { notIn: operationallyConfirmedStatuses } }] }
+      : { operationStatus: { notIn: operationallyConfirmedStatuses } };
 
     const bookingSelect = {
       id: true,
@@ -7260,6 +7360,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       pax: true,
       adults: true,
       children: true,
+      roomCount: true,
       snapshotJson: true,
       passengers: {
         select: {
@@ -7271,6 +7372,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           passportNumber: true,
           passportExpiryDate: true,
           entryPoint: true,
+        },
+      },
+      roomingEntries: {
+        select: {
+          id: true,
+          occupancy: true,
+          assignments: {
+            select: {
+              bookingPassengerId: true,
+            },
+          },
         },
       },
     } satisfies Prisma.BookingSelect;
@@ -7288,6 +7400,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       supplierId: true,
       supplierName: true,
       vehicleId: true,
+      status: true,
+      confirmationStatus: true,
+      vouchers: {
+        select: {
+          id: true,
+          status: true,
+          type: true,
+        },
+      },
       booking: {
         select: {
           id: true,
@@ -7383,14 +7504,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-    const missingPassengers = passengerCandidates
+      const missingPassengers = passengerCandidates
       .map((booking) => ({
         booking,
         reasons: this.getMissingPassengerReasons(booking),
       }))
       .filter((entry) => entry.reasons.length > 0);
+    const missingRooming = passengerCandidates.filter((booking) => this.getMissingRoomingReasons(booking).length > 0);
     const servicesWithoutAssignment = alertServices.filter((service) => this.isMissingServiceAssignment(service));
     const missingTransportAssignmentForToday = todayTransportServices.filter((service) => this.isMissingTransportAssignment(service));
+    const missingVoucherServices = alertServices.filter((service) => this.isOperationalVoucherMissing(service));
+    const readinessSummary = this.buildOperationsDashboardReadinessSummary({
+      bookings: passengerCandidates,
+      services: alertServices,
+      missingPassengers,
+      missingRooming,
+      missingVoucherServices,
+    });
 
     return {
       filters: {
@@ -7409,6 +7539,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           reasons: entry.reasons,
         })),
       ),
+      operationalReadiness: readinessSummary,
+      serviceStatusSummary: this.buildOperationsServiceStatusSummary(alertServices),
       upcomingBorderCrossings: this.buildDashboardBucket(
         upcomingBorderCrossings.map((booking) => this.mapDashboardBooking(booking)),
       ),
@@ -7423,6 +7555,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         ),
         missingTransportAssignmentForToday: this.buildDashboardBucket(
           missingTransportAssignmentForToday.map((service) => this.mapDashboardService(service)),
+        ),
+        missingRooming: this.buildDashboardBucket(
+          missingRooming.map((booking) => ({
+            ...this.mapDashboardBooking(booking),
+            reasons: this.getMissingRoomingReasons(booking),
+          })),
+        ),
+        missingVouchers: this.buildDashboardBucket(
+          missingVoucherServices.map((service) => this.mapDashboardService(service)),
         ),
       },
     };

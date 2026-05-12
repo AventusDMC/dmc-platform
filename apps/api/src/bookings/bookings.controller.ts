@@ -183,7 +183,7 @@ type BookingOperationServiceBody = {
   pickupTime?: string | null;
   confirmationNumber?: string | null;
   notes?: string | null;
-  status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
+  status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
 };
 
 type CreateServiceVoucherBody = {

@@ -1067,8 +1067,15 @@ test('operations dashboard returns scoped counts and missing passenger alerts', 
   assert.equal(dashboard.missingPassengers.count, 1);
   assert.match(dashboard.missingPassengers.items[0].reasons.join(' '), /incomplete/i);
   assert.match(dashboard.missingPassengers.items[0].reasons.join(' '), /passport/i);
+  assert.equal(dashboard.operationalReadiness.missingPassengerData, 1);
+  assert.equal(dashboard.operationalReadiness.missingRooming, 1);
+  assert.equal(dashboard.operationalReadiness.unconfirmedServices, 1);
+  assert.equal(dashboard.operationalReadiness.missingVouchers, 1);
+  assert.equal(dashboard.serviceStatusSummary.pending, 1);
   assert.equal(dashboard.alerts.servicesWithoutSupplierOrAssignment.count, 1);
   assert.equal(dashboard.alerts.missingTransportAssignmentForToday.count, 1);
+  assert.equal(dashboard.alerts.missingRooming.count, 1);
+  assert.equal(dashboard.alerts.missingVouchers.count, 1);
   assert.ok(findManyCalls.every((call) => !call.where.booking?.quote?.clientCompanyId && !call.where.quote?.clientCompanyId));
 });
 
@@ -1102,6 +1109,22 @@ test('operations dashboard filters booking and service statuses', async () => {
   assert.ok(bookingWheres.some((where) => where.status === 'in_progress' || where.status?.in?.includes('in_progress')));
   assert.ok(serviceWheres.every((where) => !where.booking?.quote?.clientCompanyId));
   assert.ok(serviceWheres.some((where) => where.operationStatus === 'REQUESTED' || JSON.stringify(where).includes('REQUESTED')));
+});
+
+test('booking operation service statuses support phase one execution workflow', async () => {
+  const service = createService({});
+  const normalize = (service as any).normalizeBookingOperationServiceStatus.bind(service);
+
+  assert.equal(normalize('pending'), 'PENDING');
+  assert.equal(normalize('requested'), 'REQUESTED');
+  assert.equal(normalize('confirmed'), 'CONFIRMED');
+  assert.equal(normalize('rejected'), 'REJECTED');
+  assert.equal(normalize('cancelled'), 'CANCELLED');
+  assert.equal(normalize('voucher sent'), 'VOUCHER_SENT');
+  assert.equal(normalize('completed'), 'COMPLETED');
+  assert.equal((service as any).mapOperationStatusToLifecycleStatus('REJECTED'), 'cancelled');
+  assert.equal((service as any).mapOperationStatusToLifecycleStatus('VOUCHER_SENT'), 'confirmed');
+  assert.equal((service as any).mapOperationStatusToConfirmationStatus('COMPLETED'), 'confirmed');
 });
 
 test('operations dashboard requires company scope', async () => {

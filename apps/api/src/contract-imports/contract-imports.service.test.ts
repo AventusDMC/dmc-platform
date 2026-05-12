@@ -803,6 +803,47 @@ test('PDF-like Movenpick enterprise text detects hotels tables skipped sections 
   assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
 });
 
+test('PDF-like multi-property extraction does not duplicate hotel sections from repeated page headings', () => {
+  const service = createService();
+  const repeatedDeadSeaPages = Array.from({ length: 20 }, (_, page) =>
+    [
+      'Movenpick Resort & Spa Dead Sea',
+      `Low Season page ${page + 1}`,
+      'Room Type Single Double Triple',
+      `Superior Room ${120 + page} ${140 + page} ${180 + page}`,
+    ].join('\n'),
+  );
+  const repeatedPetraPages = Array.from({ length: 20 }, (_, page) =>
+    [
+      'Movenpick Resort Petra',
+      `High Season page ${page + 1}`,
+      'Room Type SGL DBL TPL',
+      `Classic Room ${110 + page} ${130 + page} ${160 + page}`,
+    ].join('\n'),
+  );
+  const text = ['Movenpick Hotels Jordan Enterprise Contract 2026', ...repeatedDeadSeaPages, ...repeatedPetraPages].join('\n');
+
+  const sections = (service as any).detectHotelSections(text, 'movenpick-jordan-2026.pdf');
+  const preview = (service as any).extractHotelContractPreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath: 'movenpick.pdf',
+    fileName: 'movenpick-jordan-2026.pdf',
+    text,
+    workbookRows: [],
+  });
+
+  assert.deepEqual(
+    sections.map((section: any) => section.hotelName),
+    ['Mövenpick Resort & Spa Dead Sea', 'Mövenpick Resort Petra'],
+  );
+  assert.equal(preview.multiProperty.detected, true);
+  assert.equal(preview.multiProperty.hotels.length, 2);
+});
+
 test('contract import approval blocks invalid rows before persistence and returns row field context', async () => {
   let hotelRateCreateCount = 0;
   const service = createService({

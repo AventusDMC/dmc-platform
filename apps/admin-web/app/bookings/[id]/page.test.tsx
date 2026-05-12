@@ -156,6 +156,9 @@ describe('booking detail page regression', () => {
       'name="assignedTo"',
       'name="pickupTime"',
       'name="confirmationNumber"',
+      '<option value="REJECTED">Rejected</option>',
+      '<option value="VOUCHER_SENT">Voucher Sent</option>',
+      '<option value="COMPLETED">Completed</option>',
       'BookingServiceTimeline',
       'Generate Voucher',
     ]);

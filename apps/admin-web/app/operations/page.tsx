@@ -35,7 +35,7 @@ type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type BookingServiceLifecycleStatus = 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
 type BookingServiceConfirmationStatus = 'pending' | 'requested' | 'confirmed';
-type BookingOperationServiceStatus = 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
+type BookingOperationServiceStatus = 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
 type OperationsWarningFilter =
   | 'missing_supplier'
   | 'pending_confirmation'
@@ -166,11 +166,31 @@ type OperationsDashboard = {
   pendingServices: OperationsDashboardBucket;
   unconfirmedServices: OperationsDashboardBucket;
   missingPassengers: OperationsDashboardBucket;
+  operationalReadiness?: {
+    bookings: number;
+    services: number;
+    missingPassengerData: number;
+    missingRooming: number;
+    unconfirmedServices: number;
+    missingVouchers: number;
+    status: 'ready' | 'warning';
+  };
+  serviceStatusSummary?: {
+    pending: number;
+    requested: number;
+    confirmed: number;
+    rejected: number;
+    cancelled: number;
+    voucherSent: number;
+    completed: number;
+  };
   upcomingBorderCrossings: OperationsDashboardBucket;
   alerts: {
     bookingsWithNoPassengers: OperationsDashboardBucket;
     servicesWithoutSupplierOrAssignment: OperationsDashboardBucket;
     missingTransportAssignmentForToday: OperationsDashboardBucket;
+    missingRooming?: OperationsDashboardBucket;
+    missingVouchers?: OperationsDashboardBucket;
   };
 };
 
@@ -1128,6 +1148,22 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
 
         <section className="operations-summary-list" aria-label="Operations alerts">
           <div>
+            <span>Missing passenger data</span>
+            <strong>{operationsDashboard.operationalReadiness?.missingPassengerData ?? operationsDashboard.missingPassengers.count}</strong>
+          </div>
+          <div>
+            <span>Missing rooming</span>
+            <strong>{operationsDashboard.operationalReadiness?.missingRooming ?? operationsDashboard.alerts.missingRooming?.count ?? 0}</strong>
+          </div>
+          <div>
+            <span>Unconfirmed services</span>
+            <strong>{operationsDashboard.operationalReadiness?.unconfirmedServices ?? operationsDashboard.unconfirmedServices.count}</strong>
+          </div>
+          <div>
+            <span>Missing vouchers</span>
+            <strong>{operationsDashboard.operationalReadiness?.missingVouchers ?? operationsDashboard.alerts.missingVouchers?.count ?? 0}</strong>
+          </div>
+          <div>
             <span>Bookings with no passengers</span>
             <strong>{operationsDashboard.alerts.bookingsWithNoPassengers.count}</strong>
           </div>
@@ -1140,6 +1176,18 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
             <strong>{operationsDashboard.alerts.missingTransportAssignmentForToday.count}</strong>
           </div>
         </section>
+
+        <SummaryStrip
+          items={[
+            { id: 'op-pending', label: 'Pending', value: String(operationsDashboard.serviceStatusSummary?.pending ?? 0) },
+            { id: 'op-requested', label: 'Requested', value: String(operationsDashboard.serviceStatusSummary?.requested ?? 0) },
+            { id: 'op-confirmed', label: 'Confirmed', value: String(operationsDashboard.serviceStatusSummary?.confirmed ?? 0) },
+            { id: 'op-rejected', label: 'Rejected', value: String(operationsDashboard.serviceStatusSummary?.rejected ?? 0) },
+            { id: 'op-cancelled', label: 'Cancelled', value: String(operationsDashboard.serviceStatusSummary?.cancelled ?? 0) },
+            { id: 'op-voucher-sent', label: 'Voucher Sent', value: String(operationsDashboard.serviceStatusSummary?.voucherSent ?? 0) },
+            { id: 'op-completed', label: 'Completed', value: String(operationsDashboard.serviceStatusSummary?.completed ?? 0) },
+          ]}
+        />
 
         <SummaryStrip
           items={[

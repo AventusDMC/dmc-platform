@@ -409,7 +409,7 @@ type Booking = {
     } | null;
     serviceType: string;
     operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE' | null;
-    operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'DONE';
+    operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
     referenceId?: string | null;
     assignedTo?: string | null;
     guidePhone?: string | null;
@@ -890,7 +890,10 @@ function renderOperationStatusOptions(defaultValue?: string | null) {
       <option value="PENDING">Pending</option>
       <option value="REQUESTED">Requested</option>
       <option value="CONFIRMED">Confirmed</option>
-      <option value="DONE">Done</option>
+      <option value="REJECTED">Rejected</option>
+      <option value="CANCELLED">Cancelled</option>
+      <option value="VOUCHER_SENT">Voucher Sent</option>
+      <option value="COMPLETED">Completed</option>
     </select>
   );
 }

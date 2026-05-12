@@ -255,7 +255,29 @@ export class ContractImportsService {
       filePath: input.file.path,
       fileName: input.file.originalname,
     });
-    console.log('[contract-imports/analyze] mapped extractedJson', JSON.stringify(preview, null, 2));
+    console.log('[contract-imports/analyze] mapped extractedJson summary', {
+      contractType: preview.contractType,
+      contractName: preview.contract?.name,
+      ratesLength: preview.rates.length,
+      supplementsLength: preview.supplements.length,
+      multiProperty: preview.multiProperty
+        ? {
+            detected: preview.multiProperty.detected,
+            propertyCount: preview.multiProperty.propertyCount,
+            hotelNames: preview.multiProperty.hotels?.map((hotel) => hotel.hotel?.name || hotel.hotelName || hotel.supplier?.name).slice(0, 20),
+          }
+        : undefined,
+      diagnostics: preview.parserDiagnostics
+        ? {
+            source: preview.parserDiagnostics.source,
+            parsedTextLineCount: preview.parserDiagnostics.parsedTextLineCount,
+            detectedHotels: preview.parserDiagnostics.detectedHotels?.slice(0, 20),
+            detectedTableCount: preview.parserDiagnostics.detectedTables?.length || 0,
+            skippedSectionCount: preview.parserDiagnostics.skippedSections?.length || 0,
+            confidence: preview.parserDiagnostics.confidence,
+          }
+        : undefined,
+    });
     const warnings = [...this.buildWarnings(preview), ...(await this.buildPersistenceWarnings(preview))];
     preview.warnings = warnings;
     console.log('[contract-imports/analyze] extractedJson summary', {
@@ -1317,9 +1339,13 @@ export class ContractImportsService {
       candidates.push({ hotelName, lineIndex });
     });
 
-    const sectionStarts = candidates.filter((candidate, index, all) => {
-      const previous = all[index - 1];
-      return !previous || candidate.lineIndex - previous.lineIndex > 3 || candidate.hotelName.toLowerCase() !== previous.hotelName.toLowerCase();
+    const sectionStarts: Array<{ hotelName: string; lineIndex: number }> = [];
+    const sectionNames = new Set<string>();
+    candidates.forEach((candidate) => {
+      const key = candidate.hotelName.toLowerCase();
+      if (sectionNames.has(key)) return;
+      sectionNames.add(key);
+      sectionStarts.push(candidate);
     });
 
     if (sectionStarts.length === 1) {
@@ -1381,7 +1407,8 @@ export class ContractImportsService {
 
   private detectTextRateTables(lines: string[]) {
     const tables: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }> = [];
-    lines.forEach((line, index) => {
+    lines.slice(0, 2500).forEach((line, index) => {
+      if (tables.length >= 120) return;
       const header = this.detectRateHeader(line);
       if (header.columns.length > 0) {
         tables.push({
@@ -1416,7 +1443,7 @@ export class ContractImportsService {
 
   private detectSkippedTextSections(lines: string[]) {
     const skipped: Array<{ label: string; reason: string; lineNumber?: number }> = [];
-    lines.forEach((line, index) => {
+    lines.slice(0, 2500).forEach((line, index) => {
       if (/[\u0600-\u06FF]/.test(line) && !/\d/.test(line)) {
         skipped.push({ label: line.slice(0, 120), reason: 'Arabic text section requires manual OCR/QC review', lineNumber: index + 1 });
       } else if (/^\s*(arabic|terms|general conditions|bank details|signature|stamp)\b/i.test(line)) {
@@ -1450,7 +1477,7 @@ export class ContractImportsService {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => [line]),
-    ].filter((row) => row.length > 0);
+    ].filter((row) => row.length > 0).slice(0, 2500);
     let activeHeader: Array<{ occupancyType: string; index: number; amountOffset: number }> = [];
     let activeSplitPattern: RegExp = /\s+/;
     let activePricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM';
@@ -1461,7 +1488,6 @@ export class ContractImportsService {
       currentSeasonName = this.detectSeasonNameInLine(line) || currentSeasonName;
       const header = this.detectRateHeader(line);
       if (header.columns.length > 0) {
-        console.log('TABLE HEADER DETECTED:', line);
         activeHeader = header.columns;
         activeSplitPattern = header.splitPattern;
         activePricingBasis = this.detectPricingBasis(line);
@@ -1517,13 +1543,12 @@ export class ContractImportsService {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => [line]),
-    ].filter((row) => row.length > 0);
+    ].filter((row) => row.length > 0).slice(0, 2500);
     let headerDetected = false;
 
     for (const rawCells of tableLines) {
       const line = rawCells.join(' ').trim();
       if (this.isSeasonMealPlanHeader(line)) {
-        console.log('SEASON MEAL PLAN HEADER DETECTED:', line);
         headerDetected = true;
         continue;
       }
@@ -3099,11 +3124,13 @@ export class ContractImportsService {
         return readableUtf8.slice(0, 1024 * 1024);
       }
 
-      const latinText = buffer.toString('latin1');
-      const pdfStrings = Array.from(latinText.matchAll(/\(([^()]{2,250})\)/g))
+      const pdfScanText = buffer.subarray(0, Math.min(buffer.length, 3 * 1024 * 1024)).toString('latin1');
+      const pdfStrings = Array.from(pdfScanText.matchAll(/\(([^()]{2,250})\)/g))
+        .slice(0, 12000)
         .map((match) => match[1].replace(/\\([()\\])/g, '$1'))
         .filter((value) => /[a-zA-Z]{2,}/.test(value));
-      const pdfArrayStrings = Array.from(latinText.matchAll(/\[((?:\([^()]{1,250}\)|\s*-?\d+(?:\.\d+)?\s*){2,})\]\s*TJ/g))
+      const pdfArrayStrings = Array.from(pdfScanText.matchAll(/\[([\s\S]{0,8000}?)\]\s*TJ/g))
+        .slice(0, 3000)
         .map((match) =>
           Array.from(match[1].matchAll(/\(([^()]{1,250})\)/g))
             .map((part) => part[1].replace(/\\([()\\])/g, '$1'))
