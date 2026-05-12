@@ -34,7 +34,7 @@ export function packageComponentReferenceLabel(component: PackageTemplateCompone
   }
 
   if (component.componentType === 'TRANSPORT') {
-    return [component.route?.name, component.pricingMode || component.transportServiceType?.name].filter(Boolean).join(' - ') || 'Transport link';
+    return [component.route?.name, component.pricingMode || component.transportServiceType?.name, component.supplierService?.name].filter(Boolean).join(' - ') || 'Transport link';
   }
 
   if (component.componentType === 'SERVICE') {

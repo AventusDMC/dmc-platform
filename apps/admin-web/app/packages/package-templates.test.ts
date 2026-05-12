@@ -178,13 +178,30 @@ describe('package productization phase one', () => {
     assert.match(quoteServiceSource, /resolvePackageTransportMapping/);
     assert.match(quoteServiceSource, /findMatchingRate/);
     assert.match(quoteServiceSource, /routeId: component\.routeId/);
-    assert.match(quoteServiceSource, /transportServiceTypeId: component\.transportServiceTypeId/);
+    assert.match(quoteServiceSource, /transportServiceTypeId: transportServiceType\.id/);
     assert.match(quoteServiceSource, /component\.componentType === 'TICKET'/);
     assert.match(quoteServiceSource, /isTicketPackageService/);
     assert.match(quoteServiceSource, /component\.componentType === 'SERVICE'/);
     assert.match(quoteServiceSource, /serviceId: component\.supplierServiceId/);
     assert.match(quoteServiceSource, /insertPackageExcursionTemplateComponent/);
     assert.match(quoteServiceSource, /getExcursionTemplateComponentMappingStatus/);
+  });
+
+  it('normalizes mature transport package mappings for safe quote insertion', () => {
+    assert.match(componentFormSource, /isTransportPackageService/);
+    assert.match(componentFormSource, /Auto-match transport service/);
+    assert.match(componentFormSource, /supplierServiceId: componentType === 'TRANSPORT'/);
+    assert.match(apiServiceSource, /supplierServiceId: componentType === 'TRANSPORT'/);
+    assert.match(apiServiceSource, /pricingMode or transportServiceTypeId is required for transport components/);
+    assert.match(quoteServiceSource, /resolvePackageTransportServiceType/);
+    assert.match(quoteServiceSource, /normalizePackageTransportMode/);
+    assert.match(quoteServiceSource, /airport transfer/);
+    assert.match(quoteServiceSource, /full day/);
+    assert.match(quoteServiceSource, /point to point/);
+    assert.match(quoteServiceSource, /findMatchingRate\(\{\s*serviceTypeId: transportServiceType\.id/);
+    assert.match(quoteServiceSource, /vehicleRateId: vehicleRate\.id/);
+    assert.match(quoteServiceSource, /formatPackageTransportMappingDetails/);
+    assert.match(quoteServiceSource, /Rate: \$\{mapping\.rateStatus/);
   });
 
   it('previews unsafe package mappings as warnings or skipped components', () => {

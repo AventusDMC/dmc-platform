@@ -457,7 +457,7 @@ export class PackageTemplatesService {
       routeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.routeId) : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.transportServiceTypeId) : null,
       pricingMode: componentType === 'TRANSPORT' ? normalizeOptionalString(data.pricingMode) : null,
-      supplierServiceId: componentType === 'TICKET' || componentType === 'SERVICE' ? normalizeOptionalString(data.supplierServiceId) : null,
+      supplierServiceId: componentType === 'TRANSPORT' || componentType === 'TICKET' || componentType === 'SERVICE' ? normalizeOptionalString(data.supplierServiceId) : null,
     };
   }
 
@@ -473,6 +473,9 @@ export class PackageTemplatesService {
     }
     if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.routeId)) {
       throw new BadRequestException('routeId is required for transport components');
+    }
+    if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.transportServiceTypeId) && !normalizeOptionalString(data.pricingMode)) {
+      throw new BadRequestException('pricingMode or transportServiceTypeId is required for transport components');
     }
     if (componentType === 'TICKET' && !normalizeOptionalString(data.supplierServiceId)) {
       throw new BadRequestException('supplierServiceId is required for ticket components');

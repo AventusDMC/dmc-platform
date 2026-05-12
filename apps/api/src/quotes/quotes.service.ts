@@ -232,6 +232,7 @@ type PackageComponentMappingStatus = {
   insertable: boolean;
   reason: string | null;
   warning?: string | null;
+  details?: string | null;
 };
 
 type ExpandExcursionTemplateInput = {
@@ -3161,7 +3162,7 @@ export class QuotesService {
               insertable: mappingStatus.insertable,
               skipReason: component.isOptional ? 'Optional component is not selected by default' : mappingStatus.reason,
               warning: mappingStatus.warning || null,
-              operationalReference: this.getPackageComponentReferenceLabel(component),
+              operationalReference: mappingStatus.details || this.getPackageComponentReferenceLabel(component),
             };
           }),
         );
@@ -3613,7 +3614,7 @@ export class QuotesService {
     if (component.componentType === 'TRANSPORT') {
       const transportMapping = await this.resolvePackageTransportMapping(component, quote);
       return transportMapping
-        ? { insertable: true, reason: null }
+        ? { insertable: true, reason: null, details: this.formatPackageTransportMappingDetails(transportMapping) }
         : { insertable: false, reason: 'Transport component needs route, pricing mode/service type, transport service, and a valid transport rate' };
     }
 
@@ -3748,7 +3749,8 @@ export class QuotesService {
   }
 
   private async resolvePackageTransportMapping(component: any, quote: { adults?: number | null; children?: number | null }) {
-    if (!component.routeId || !component.transportServiceTypeId) {
+    const transportServiceType = await this.resolvePackageTransportServiceType(component);
+    if (!component.routeId || !transportServiceType?.id) {
       return null;
     }
 
@@ -3760,7 +3762,7 @@ export class QuotesService {
     const paxCount = this.getQuotePaxCount(quote);
     try {
       const vehicleRate = await this.transportPricingService.findMatchingRate({
-        serviceTypeId: component.transportServiceTypeId,
+        serviceTypeId: transportServiceType.id,
         routeId: component.routeId,
         paxCount,
       });
@@ -3768,12 +3770,91 @@ export class QuotesService {
       return {
         serviceId: transportService.id,
         routeId: component.routeId,
-        transportServiceTypeId: component.transportServiceTypeId,
+        routeName: vehicleRate.routeName || component.route?.name || vehicleRate.route?.name || null,
+        pricingMode: component.pricingMode || transportServiceType.name,
+        serviceName: transportService.name,
+        serviceTypeName: transportServiceType.name,
+        transportServiceTypeId: transportServiceType.id,
         vehicleRateId: vehicleRate.id,
+        vehicleName: vehicleRate.vehicle?.name || null,
+        rateStatus: `${vehicleRate.currency} ${Number(vehicleRate.price).toFixed(2)}`,
       };
     } catch {
       return null;
     }
+  }
+
+  private async resolvePackageTransportServiceType(component: any) {
+    if (component.transportServiceType?.id) {
+      return component.transportServiceType;
+    }
+
+    if (component.transportServiceTypeId) {
+      return (this.prisma as any).transportServiceType.findUnique({
+        where: { id: component.transportServiceTypeId },
+      });
+    }
+
+    const normalizedPricingMode = this.normalizePackageTransportMode(component.pricingMode);
+    if (!normalizedPricingMode) {
+      return null;
+    }
+
+    const serviceTypes = await (this.prisma as any).transportServiceType.findMany({
+      orderBy: [{ name: 'asc' }],
+    });
+
+    return (
+      serviceTypes.find((type: any) => this.normalizePackageTransportMode(type.name) === normalizedPricingMode) ||
+      serviceTypes.find((type: any) => this.normalizePackageTransportMode(type.code) === normalizedPricingMode) ||
+      null
+    );
+  }
+
+  private normalizePackageTransportMode(value: string | null | undefined) {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!normalized) {
+      return '';
+    }
+
+    const aliases: Record<string, string> = {
+      airport: 'airport transfer',
+      'airport transfer': 'airport transfer',
+      'airport transfers': 'airport transfer',
+      'point to point': 'point to point',
+      'point point': 'point to point',
+      p2p: 'point to point',
+      'half day': 'half day',
+      'full day': 'full day',
+      'day tour': 'day tour',
+      'stationary waiting': 'stationary waiting',
+      waiting: 'stationary waiting',
+      'extra hour': 'extra hour',
+      'extra km': 'extra km',
+      'extra kilometer': 'extra km',
+      'extra kilometre': 'extra km',
+    };
+
+    return aliases[normalized] || normalized;
+  }
+
+  private formatPackageTransportMappingDetails(mapping: any) {
+    return [
+      `Route: ${mapping.routeName || 'matched'}`,
+      `Pricing mode: ${mapping.pricingMode || mapping.serviceTypeName || 'matched'}`,
+      `Service: ${mapping.serviceName || 'matched transport service'}`,
+      `Rate: ${mapping.rateStatus || 'matched'}`,
+      mapping.vehicleName ? `Vehicle: ${mapping.vehicleName}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
   }
 
   private getQuotePaxCount(quote: { adults?: number | null; children?: number | null }) {

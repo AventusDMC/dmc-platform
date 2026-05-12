@@ -47,6 +47,14 @@ const TRANSPORT_PRICING_MODES = [
   'Extra KM',
 ];
 
+function isTransportPackageService(service: PackageTemplateSupplierServiceOption) {
+  const values = [service.name, service.category, service.serviceType?.name, service.serviceType?.code]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+
+  return values.some((value) => /\b(transport|transfer|vehicle|coach|driver)\b/.test(value));
+}
+
 export function PackageTemplateComponentForm({
   apiBaseUrl,
   packageTemplateId,
@@ -77,6 +85,7 @@ export function PackageTemplateComponentForm({
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const operationalServiceRecords = useMemo(() => serviceRecords.filter(isOperationalPackageService), [serviceRecords]);
+  const transportServiceRecords = useMemo(() => serviceRecords.filter(isTransportPackageService), [serviceRecords]);
 
   const selectedReferenceLabel = useMemo(() => {
     if (componentType === 'EXCURSION_TEMPLATE') return excursionTemplates.find((item) => item.id === excursionTemplateId)?.name || '';
@@ -85,7 +94,11 @@ export function PackageTemplateComponentForm({
       const contract = hotelContracts.find((item) => item.id === hotelContractId);
       return contract ? `${contract.hotel?.name || 'Hotel'} - ${contract.name}` : '';
     }
-    if (componentType === 'TRANSPORT') return routes.find((item) => item.id === routeId)?.name || '';
+    if (componentType === 'TRANSPORT') {
+      const routeName = routes.find((item) => item.id === routeId)?.name || '';
+      const serviceTypeName = transportServiceTypes.find((item) => item.id === transportServiceTypeId)?.name || pricingMode;
+      return [routeName, serviceTypeName].filter(Boolean).join(' - ');
+    }
     if (componentType === 'SERVICE') return operationalServiceRecords.find((item) => item.id === supplierServiceId)?.name || '';
     return ticketServices.find((item) => item.id === supplierServiceId)?.name || '';
   }, [
@@ -99,6 +112,9 @@ export function PackageTemplateComponentForm({
     routeId,
     routes,
     operationalServiceRecords,
+    transportServiceTypeId,
+    transportServiceTypes,
+    pricingMode,
     supplierServiceId,
     ticketServices,
   ]);
@@ -121,7 +137,7 @@ export function PackageTemplateComponentForm({
       routeId: componentType === 'TRANSPORT' ? routeId : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? transportServiceTypeId || null : null,
       pricingMode: componentType === 'TRANSPORT' ? pricingMode : null,
-      supplierServiceId: componentType === 'TICKET' || componentType === 'SERVICE' ? supplierServiceId : null,
+      supplierServiceId: componentType === 'TRANSPORT' || componentType === 'TICKET' || componentType === 'SERVICE' ? supplierServiceId || null : null,
     };
 
     if (!Number.isInteger(normalizedDay) || normalizedDay < 1 || normalizedDay > durationDays) {
@@ -254,6 +270,17 @@ export function PackageTemplateComponentForm({
               {transportServiceTypes.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Transport service
+            <select value={supplierServiceId} onChange={(event) => setSupplierServiceId(event.target.value)}>
+              <option value="">Auto-match transport service</option>
+              {transportServiceRecords.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
                 </option>
               ))}
             </select>
