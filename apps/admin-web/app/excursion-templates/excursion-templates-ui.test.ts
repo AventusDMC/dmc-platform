@@ -27,7 +27,8 @@ describe('excursion template admin UI', () => {
     expectSourceContains(tariffWorkbookSectionSource, [
       "adminPageFetchJson<Activity[]>('/api/activities'",
       'buildExcursionTariffRowSources',
-      'return variants.map((variant) => ({ activity, variant }));',
+      'const safeActivities = Array.isArray(activities) ? activities : [];',
+      'const variants = Array.isArray(activity.rateVariants) ? activity.rateVariants : [];',
       'filterExcursionTariffRowSources',
       'No excursion tariff rows match the selected filters.',
       'Activity Master records',
@@ -47,7 +48,7 @@ describe('excursion template admin UI', () => {
       'excursion-tariff-workbook.csv',
       'excursion-tariff-import-template.csv',
       'Edits are staged',
-      'setWorkbookRows(rows);',
+      'setWorkbookRows(safeRows);',
       'Activity / excursion',
       'Pricing basis',
       'Operational notes',
@@ -110,6 +111,33 @@ describe('excursion template admin UI', () => {
       'variant-private',
       'variant-boat',
     ]);
+  });
+
+  it('keeps excursion tariff workbook variant access null-safe for SSR builds', () => {
+    const activities = [
+      {
+        id: 'activity-null-variants',
+        name: 'Null Variant Activity',
+        supplierCompanyId: 'supplier-null',
+        pricingBasis: 'PER_PERSON',
+        active: true,
+        rateVariants: null,
+      },
+      {
+        id: 'activity-missing-variants',
+        name: 'Missing Variant Activity',
+        supplierCompanyId: 'supplier-missing',
+        pricingBasis: 'PER_GROUP',
+        active: true,
+      },
+    ];
+
+    const sources = buildExcursionTariffRowSources(activities);
+
+    assert.equal(sources.length, 2);
+    assert.deepEqual(sources.map((source) => source.variant), [null, null]);
+    assert.deepEqual(buildExcursionTariffRowSources(null), []);
+    assert.deepEqual(filterExcursionTariffRowSources(null, null), []);
   });
 
   it('exposes a safe fill missing operational metadata action', () => {

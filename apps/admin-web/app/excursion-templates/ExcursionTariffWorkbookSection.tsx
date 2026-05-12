@@ -1,7 +1,7 @@
 import { QueryDropdownFilters, type QueryDropdownFilterOption } from '../components/QueryDropdownFilters';
 import { SummaryStrip } from '../components/SummaryStrip';
 import { adminPageFetchJson } from '../lib/admin-server';
-import { Activity } from '../activities/types';
+import { Activity, ActivityRateVariant } from '../activities/types';
 import { ExcursionTariffWorkbookGrid, type ExcursionTariffWorkbookRow } from './ExcursionTariffWorkbookGrid';
 
 type ExcursionTariffWorkbookFilters = {
@@ -12,7 +12,7 @@ type ExcursionTariffWorkbookFilters = {
   activeState?: string;
 };
 
-type FilterableActivityVariant = {
+type FilterableActivityVariant = Omit<Partial<ActivityRateVariant>, 'pricingBasis'> & {
   id?: string;
   name: string;
   pricingBasis?: string | null;
@@ -28,7 +28,7 @@ type FilterableActivity = {
   supplierCompanyId?: string | null;
   pricingBasis?: string | null;
   active: boolean;
-  rateVariants?: FilterableActivityVariant[];
+  rateVariants?: FilterableActivityVariant[] | null;
 };
 
 export type ExcursionTariffWorkbookRowSource = {
@@ -82,9 +82,11 @@ function getRowActive(source: ExcursionTariffWorkbookRowSource) {
   return source.activity.active && (source.variant ? source.variant.active !== false : true);
 }
 
-export function buildExcursionTariffRowSources(activities: FilterableActivity[]): ExcursionTariffWorkbookRowSource[] {
-  return activities.flatMap((activity) => {
-    const variants = activity.rateVariants || [];
+export function buildExcursionTariffRowSources(activities?: FilterableActivity[] | null): ExcursionTariffWorkbookRowSource[] {
+  const safeActivities = Array.isArray(activities) ? activities : [];
+
+  return safeActivities.flatMap<ExcursionTariffWorkbookRowSource>((activity) => {
+    const variants = Array.isArray(activity.rateVariants) ? activity.rateVariants : [];
 
     if (variants.length === 0) {
       return [{ activity, variant: null }];
@@ -95,16 +97,17 @@ export function buildExcursionTariffRowSources(activities: FilterableActivity[])
 }
 
 export function filterExcursionTariffRowSources(
-  sources: ExcursionTariffWorkbookRowSource[],
-  filters: ExcursionTariffWorkbookFilters,
+  sources: ExcursionTariffWorkbookRowSource[] | null | undefined,
+  filters: ExcursionTariffWorkbookFilters | null | undefined,
 ) {
-  const category = filters.category || '';
-  const cityRegion = filters.cityRegion || '';
-  const supplierId = filters.supplierId || '';
-  const pricingBasis = filters.pricingBasis || '';
-  const activeState = filters.activeState || '';
+  const safeSources = Array.isArray(sources) ? sources : [];
+  const category = filters?.category || '';
+  const cityRegion = filters?.cityRegion || '';
+  const supplierId = filters?.supplierId || '';
+  const pricingBasis = filters?.pricingBasis || '';
+  const activeState = filters?.activeState || '';
 
-  return sources.filter((source) => {
+  return safeSources.filter((source) => {
     if (category && source.activity.category !== category) return false;
     if (cityRegion && getCityRegion(source.activity) !== cityRegion) return false;
     if (supplierId && source.activity.supplierCompanyId !== supplierId) return false;
@@ -116,11 +119,13 @@ export function filterExcursionTariffRowSources(
   });
 }
 
-function buildWorkbookRows(sources: ExcursionTariffWorkbookRowSource[]): ExcursionTariffWorkbookRow[] {
-  return sources
+function buildWorkbookRows(sources?: ExcursionTariffWorkbookRowSource[] | null): ExcursionTariffWorkbookRow[] {
+  const safeSources = Array.isArray(sources) ? sources : [];
+
+  return safeSources
     .map((source) => {
       const activity = source.activity as Activity;
-      const variant = source.variant as Activity['rateVariants'] extends Array<infer Variant> ? Variant : never;
+      const variant = source.variant as FilterableActivityVariant | null;
 
       return {
         id: variant?.id || `${activity.id}:base`,
@@ -151,12 +156,13 @@ type ExcursionTariffWorkbookSectionProps = {
 
 export async function ExcursionTariffWorkbookSection({ filters }: ExcursionTariffWorkbookSectionProps) {
   const activities = await getActivities();
+  const safeActivities = Array.isArray(activities) ? activities : [];
   const category = filters?.category || '';
   const cityRegion = filters?.cityRegion || '';
   const supplierId = filters?.supplierId || '';
   const pricingBasis = filters?.pricingBasis || '';
   const activeState = filters?.activeState || '';
-  const rowSources = buildExcursionTariffRowSources(activities);
+  const rowSources = buildExcursionTariffRowSources(safeActivities);
   const visibleSources = filterExcursionTariffRowSources(rowSources, {
     category,
     cityRegion,
@@ -184,14 +190,14 @@ export async function ExcursionTariffWorkbookSection({ filters }: ExcursionTarif
             label: 'Category',
             placeholder: 'All categories',
             value: category,
-            options: buildOptions(activities.map((activity) => ({ value: activity.category || 'Category pending', label: activity.category || 'Category pending' }))),
+            options: buildOptions(safeActivities.map((activity) => ({ value: activity.category || 'Category pending', label: activity.category || 'Category pending' }))),
           },
           {
             key: 'cityRegion',
             label: 'City / Region',
             placeholder: 'All destinations',
             value: cityRegion,
-            options: buildOptions(activities.map((activity) => ({ value: getCityRegion(activity), label: getCityRegion(activity) }))),
+            options: buildOptions(safeActivities.map((activity) => ({ value: getCityRegion(activity), label: getCityRegion(activity) }))),
           },
           {
             key: 'supplierId',
@@ -199,7 +205,7 @@ export async function ExcursionTariffWorkbookSection({ filters }: ExcursionTarif
             placeholder: 'All suppliers',
             value: supplierId,
             options: buildOptions(
-              activities.map((activity) => ({
+              safeActivities.map((activity) => ({
                 value: activity.supplierCompanyId,
                 label: getSupplierLabel(activity),
               })),

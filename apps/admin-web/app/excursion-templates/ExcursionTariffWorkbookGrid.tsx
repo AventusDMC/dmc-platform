@@ -19,7 +19,7 @@ export type ExcursionTariffWorkbookRow = {
 };
 
 type ExcursionTariffWorkbookGridProps = {
-  rows: ExcursionTariffWorkbookRow[];
+  rows?: ExcursionTariffWorkbookRow[] | null;
 };
 
 const WORKBOOK_COLUMNS: Array<{ key: keyof ExcursionTariffWorkbookRow; label: string; className?: string }> = [
@@ -60,18 +60,19 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function ExcursionTariffWorkbookGrid({ rows }: ExcursionTariffWorkbookGridProps) {
-  const [workbookRows, setWorkbookRows] = useState(rows);
-  const rowSignature = useMemo(() => rows.map((row) => row.id).join('|'), [rows]);
+  const safeRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+  const [workbookRows, setWorkbookRows] = useState(safeRows);
+  const rowSignature = useMemo(() => safeRows.map((row) => row.id).join('|'), [safeRows]);
   const summary = useMemo(() => {
-    const activityCount = new Set(rows.map((row) => row.activityName)).size;
-    const supplierCount = new Set(rows.map((row) => row.supplier)).size;
+    const activityCount = new Set(safeRows.map((row) => row.activityName)).size;
+    const supplierCount = new Set(safeRows.map((row) => row.supplier)).size;
 
     return { activityCount, supplierCount };
-  }, [rows]);
+  }, [safeRows]);
 
   useEffect(() => {
-    setWorkbookRows(rows);
-  }, [rows, rowSignature]);
+    setWorkbookRows(safeRows);
+  }, [safeRows, rowSignature]);
 
   function updateCell(rowId: string, key: keyof ExcursionTariffWorkbookRow, value: string) {
     setWorkbookRows((currentRows) => currentRows.map((row) => (row.id === rowId ? { ...row, [key]: value } : row)));
