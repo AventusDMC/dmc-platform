@@ -6,6 +6,7 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { CreatePetraFullDayButton } from './CreatePetraFullDayButton';
+import { ExcursionTariffWorkbookSection } from './ExcursionTariffWorkbookSection';
 import { ExcursionTemplate } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,26 @@ async function getExcursionTemplates() {
   });
 }
 
-export default async function ExcursionTemplatesPage() {
+type ExcursionCatalogTab = 'templates' | 'tariff-workbook';
+
+type ExcursionTemplatesPageProps = {
+  searchParams?: Promise<{
+    tab?: string;
+    category?: string;
+    cityRegion?: string;
+    supplierId?: string;
+    pricingBasis?: string;
+    activeState?: string;
+  }>;
+};
+
+function resolveActiveTab(tab?: string): ExcursionCatalogTab {
+  return tab === 'tariff-workbook' ? 'tariff-workbook' : 'templates';
+}
+
+export default async function ExcursionTemplatesPage({ searchParams }: ExcursionTemplatesPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
   let templates: ExcursionTemplate[] = [];
   let loadError = false;
 
@@ -47,10 +67,16 @@ export default async function ExcursionTemplatesPage() {
           switcher={
             <ModuleSwitcher
               ariaLabel="Catalog modules"
-              activeId="excursion-templates"
+              activeId={activeTab === 'tariff-workbook' ? 'tariff-workbook' : 'excursion-templates'}
               items={[
                 { id: 'activities', label: 'Activities', href: '/activities', helper: 'Flat experiences' },
                 { id: 'excursion-templates', label: 'Excursion Templates', href: '/excursion-templates', helper: 'Composite operations' },
+                {
+                  id: 'tariff-workbook',
+                  label: 'Tariff Workbook',
+                  href: '/excursion-templates?tab=tariff-workbook',
+                  helper: 'Bulk tariff maintenance',
+                },
                 { id: 'services', label: 'Services', href: '/catalog?tab=services', helper: 'Legacy service records' },
               ]}
             />
@@ -91,10 +117,20 @@ export default async function ExcursionTemplatesPage() {
           <section className="section-stack">
             <WorkspaceSubheader
               eyebrow="Composite Catalog"
-              title="Operational excursion templates"
-              description="Read-only phase one view for reusable composite itineraries. Templates preserve links to source modules."
+              title={activeTab === 'tariff-workbook' ? 'Excursion tariff workbook' : 'Operational excursion templates'}
+              description={
+                activeTab === 'tariff-workbook'
+                  ? 'Maintain Activity Master and variant tariff rows without flattening excursion products or changing pricing behavior.'
+                  : 'Read-only phase one view for reusable composite itineraries. Templates preserve links to source modules.'
+              }
               actions={
                 <div className="table-action-group">
+                  <Link href="/excursion-templates?tab=tariff-workbook" className="dashboard-toolbar-link">
+                    Tariff Workbook
+                  </Link>
+                  <Link href="/excursion-templates" className="dashboard-toolbar-link">
+                    Templates
+                  </Link>
                   <CreatePetraFullDayButton exists={Boolean(petraFullDay)} />
                   <CreatePetraFullDayButton
                     exists={Boolean(jerashAmman)}
@@ -120,7 +156,18 @@ export default async function ExcursionTemplatesPage() {
               }
             />
 
-            <TableSectionShell
+            {activeTab === 'tariff-workbook' ? (
+              <ExcursionTariffWorkbookSection
+                filters={{
+                  category: resolvedSearchParams?.category,
+                  cityRegion: resolvedSearchParams?.cityRegion,
+                  supplierId: resolvedSearchParams?.supplierId,
+                  pricingBasis: resolvedSearchParams?.pricingBasis,
+                  activeState: resolvedSearchParams?.activeState,
+                }}
+              />
+            ) : (
+              <TableSectionShell
               title="Templates"
               description="Each template is an ordered operational sequence, not a flat quote activity."
               context={<p>{templates.length} templates in scope</p>}
@@ -179,6 +226,7 @@ export default async function ExcursionTemplatesPage() {
                 </div>
               ) : null}
             </TableSectionShell>
+            )}
           </section>
         </WorkspaceShell>
       </section>
