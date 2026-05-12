@@ -79,5 +79,7 @@ export type PackageTemplateSupplierServiceOption = {
   id: string;
   name: string;
   category: string;
+  serviceTypeId?: string | null;
+  serviceType?: { id: string; name: string; code?: string | null; isActive?: boolean } | null;
   entranceFee?: { name?: string | null; siteName?: string | null } | null;
 };

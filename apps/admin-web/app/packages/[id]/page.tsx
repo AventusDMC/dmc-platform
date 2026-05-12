@@ -9,6 +9,7 @@ import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server'
 import {
   buildPackagePlannerSummary,
   collectPackageTemplateComponents,
+  isOperationalPackageService,
   PACKAGE_CATALOG_MODULES,
   packageComponentReferenceLabel,
   packageComponentTypeLabel,
@@ -78,7 +79,7 @@ async function getCatalogs(): Promise<PackageTemplateCatalogs> {
     routes,
     transportServiceTypes,
     ticketServices,
-    serviceRecords: services,
+    serviceRecords: services.filter(isOperationalPackageService),
   };
 }
 

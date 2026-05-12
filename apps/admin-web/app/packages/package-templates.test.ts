@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPackagePlannerSummary, collectPackageTemplateComponents, resolvePackageTemplateDays } from './package-template-display';
+import { buildPackagePlannerSummary, collectPackageTemplateComponents, isOperationalPackageService, resolvePackageTemplateDays } from './package-template-display';
 
 const listPageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
@@ -295,5 +295,29 @@ describe('package productization phase one', () => {
     assert.match(detailPageSource, /value: String\(currentComponents\.length\)/);
     assert.match(listPageSource, /const packageRows = packages\.map/);
     assert.match(listPageSource, /components\.length/);
+  });
+
+  it('filters SERVICE package component options to operational service records only', () => {
+    const services = [
+      { id: 'meet', name: 'Meet & Assist', category: 'Meet And Assist', serviceType: { id: 'st-meet', name: 'Meet And Assist', code: 'MEET_ASSIST' }, entranceFee: null },
+      { id: 'fast', name: 'VIP Fast Track', category: 'Fast Track', serviceType: { id: 'st-fast', name: 'Fast Track', code: 'FAST_TRACK' }, entranceFee: null },
+      { id: 'porter', name: 'Porter Service', category: 'Porterage', serviceType: { id: 'st-porter', name: 'Porterage', code: 'PORTERAGE' }, entranceFee: null },
+      { id: 'sim', name: 'SIM Card', category: 'SIM Card', serviceType: { id: 'st-sim', name: 'SIM Card', code: 'SIM_CARD' }, entranceFee: null },
+      { id: 'wheelchair', name: 'Wheelchair Assistance', category: 'Airport Assistance', serviceType: { id: 'st-wheelchair', name: 'Wheelchair Assistance', code: 'WHEELCHAIR_ASSISTANCE' }, entranceFee: null },
+      { id: 'airport', name: 'Airport Assistance', category: 'Airport Assistance', serviceType: { id: 'st-airport', name: 'Airport Assistance', code: 'AIRPORT_ASSISTANCE' }, entranceFee: null },
+      { id: 'border', name: 'Border Assistance', category: 'Border Assistance', serviceType: { id: 'st-border', name: 'Border Assistance', code: 'BORDER_ASSISTANCE' }, entranceFee: null },
+      { id: 'escort', name: 'Escort Service', category: 'Escort Services', serviceType: { id: 'st-escort', name: 'Escort Services', code: 'ESCORT' }, entranceFee: null },
+      { id: 'ticket', name: 'Petra Entrance', category: 'Entrance Ticket', serviceType: { id: 'st-ticket', name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' }, entranceFee: { siteName: 'Petra' } },
+      { id: 'transport', name: 'Airport Transfer', category: 'Transport', serviceType: { id: 'st-transport', name: 'Transport', code: 'TRANSPORT' }, entranceFee: null },
+      { id: 'activity', name: 'Airport Assistance Tour', category: 'Sightseeing', serviceType: { id: 'st-activity', name: 'Sightseeing', code: 'SIGHTSEEING' }, entranceFee: null },
+      { id: 'hotel', name: 'Hotel Assistance Desk', category: 'Accommodation', serviceType: { id: 'st-hotel', name: 'Accommodation', code: 'ACCOMMODATION' }, entranceFee: null },
+    ];
+
+    const filtered = services.filter((service) => isOperationalPackageService(service as any)).map((service) => service.id);
+
+    assert.deepEqual(filtered, ['meet', 'fast', 'porter', 'sim', 'wheelchair', 'airport', 'border', 'escort']);
+    assert.match(detailPageSource, /serviceRecords: services\.filter\(isOperationalPackageService\)/);
+    assert.match(componentFormSource, /const operationalServiceRecords = useMemo\(\(\) => serviceRecords\.filter\(isOperationalPackageService\)/);
+    assert.match(componentFormSource, /operationalServiceRecords\.map/);
   });
 });

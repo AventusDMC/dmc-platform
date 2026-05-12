@@ -1,4 +1,4 @@
-import type { PackageTemplateComponent, PackageTemplateComponentType, PackageTemplateDay } from './types';
+import type { PackageTemplateComponent, PackageTemplateComponentType, PackageTemplateDay, PackageTemplateSupplierServiceOption } from './types';
 
 export const PACKAGE_CATALOG_MODULES = [
   { id: 'packages', label: 'Packages', href: '/packages', helper: 'Commercial templates' },
@@ -42,6 +42,61 @@ export function packageComponentReferenceLabel(component: PackageTemplateCompone
   }
 
   return component.supplierService?.entranceFee?.siteName || component.supplierService?.entranceFee?.name || component.supplierService?.name || 'Ticketing link';
+}
+
+const OPERATIONAL_SERVICE_CODE_TOKENS = [
+  'MEET_ASSIST',
+  'MEET_AND_ASSIST',
+  'VIP_FAST_TRACK',
+  'FAST_TRACK',
+  'PORTER',
+  'PORTERAGE',
+  'SIM_CARD',
+  'WHEELCHAIR_ASSISTANCE',
+  'AIRPORT_ASSISTANCE',
+  'BORDER_ASSISTANCE',
+  'ESCORT',
+  'ESCORT_SERVICE',
+  'ESCORT_SERVICES',
+];
+
+const OPERATIONAL_SERVICE_TEXT_PATTERNS = [
+  /\bmeet\s*(and|&)?\s*assist(ance)?\b/i,
+  /\bvip\s*fast\s*track\b/i,
+  /\bfast\s*track\b/i,
+  /\bporter(age)?\b/i,
+  /\bsim\s*card\b/i,
+  /\bwheelchair\s*assist(ance)?\b/i,
+  /\bairport\s*assist(ance)?\b/i,
+  /\bborder\s*assist(ance)?\b/i,
+  /\bescort\s*service(s)?\b/i,
+];
+
+const EXCLUDED_SERVICE_TYPE_PATTERNS = [
+  /\b(ticket|entrance|entry|museum|park|religious site)\b/i,
+  /\b(transport|transfer|vehicle|coach|driver)\b/i,
+  /\b(activity|excursion|sightseeing|tour|safari|guided visit)\b/i,
+  /\b(hotel|accommodation|room|night)\b/i,
+  /\b(guide|guiding|dining|meal|lunch|dinner)\b/i,
+];
+
+function normalizeToken(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+export function isOperationalPackageService(service: PackageTemplateSupplierServiceOption) {
+  if (service.entranceFee) {
+    return false;
+  }
+
+  const serviceTypeCode = normalizeToken(service.serviceType?.code || '');
+  const text = [service.name, service.category, service.serviceType?.name, service.serviceType?.code].filter(Boolean).join(' ');
+  const typeText = [service.category, service.serviceType?.name, service.serviceType?.code].filter(Boolean).join(' ');
+  const hasOperationalCode = OPERATIONAL_SERVICE_CODE_TOKENS.includes(serviceTypeCode);
+  const hasOperationalText = OPERATIONAL_SERVICE_TEXT_PATTERNS.some((pattern) => pattern.test(text));
+  const hasExcludedType = EXCLUDED_SERVICE_TYPE_PATTERNS.some((pattern) => pattern.test(typeText));
+
+  return (hasOperationalCode || hasOperationalText) && !hasExcludedType;
 }
 
 export function groupPackageComponentsByDay(components: PackageTemplateComponent[], durationDays: number) {

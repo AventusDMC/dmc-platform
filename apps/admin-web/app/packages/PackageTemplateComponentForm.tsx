@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { getErrorMessage } from '../lib/api';
+import { isOperationalPackageService } from './package-template-display';
 import {
   PackageTemplateComponentType,
   PackageTemplateHotelContractOption,
@@ -75,6 +76,7 @@ export function PackageTemplateComponentForm({
   const [supplierServiceId, setSupplierServiceId] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const operationalServiceRecords = useMemo(() => serviceRecords.filter(isOperationalPackageService), [serviceRecords]);
 
   const selectedReferenceLabel = useMemo(() => {
     if (componentType === 'EXCURSION_TEMPLATE') return excursionTemplates.find((item) => item.id === excursionTemplateId)?.name || '';
@@ -84,7 +86,7 @@ export function PackageTemplateComponentForm({
       return contract ? `${contract.hotel?.name || 'Hotel'} - ${contract.name}` : '';
     }
     if (componentType === 'TRANSPORT') return routes.find((item) => item.id === routeId)?.name || '';
-    if (componentType === 'SERVICE') return serviceRecords.find((item) => item.id === supplierServiceId)?.name || '';
+    if (componentType === 'SERVICE') return operationalServiceRecords.find((item) => item.id === supplierServiceId)?.name || '';
     return ticketServices.find((item) => item.id === supplierServiceId)?.name || '';
   }, [
     activities,
@@ -96,7 +98,7 @@ export function PackageTemplateComponentForm({
     hotelContracts,
     routeId,
     routes,
-    serviceRecords,
+    operationalServiceRecords,
     supplierServiceId,
     ticketServices,
   ]);
@@ -278,7 +280,7 @@ export function PackageTemplateComponentForm({
           Operational service
           <select value={supplierServiceId} onChange={(event) => setSupplierServiceId(event.target.value)} required>
             <option value="">Select operational service</option>
-            {serviceRecords.map((service) => (
+            {operationalServiceRecords.map((service) => (
               <option key={service.id} value={service.id}>
                 {service.name}
               </option>
