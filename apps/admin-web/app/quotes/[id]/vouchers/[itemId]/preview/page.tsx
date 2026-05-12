@@ -12,63 +12,63 @@ type VoucherPreview = {
     type: string;
     quoteItemId: string;
     quoteDayId: string | null;
-    operationalStatus: string;
-    remarks: string[];
+    operationalStatus?: string | null;
+    remarks?: string[] | null;
   };
   quote: {
     id: string;
     quoteNumber: string | null;
-    title: string;
-    pax: number;
+    title?: string | null;
+    pax?: number | null;
   };
-  itineraryDay: {
+  itineraryDay?: {
     dayNumber: number | null;
     title: string | null;
     notes: string | null;
-  };
+  } | null;
   hotel?: {
-    name: string;
+    name?: string | null;
     city: string | null;
-    roomingSummary: string;
-    mealPlan: string;
-    roomCategory: string;
-    occupancy: string;
+    roomingSummary?: string | null;
+    mealPlan?: string | null;
+    roomCategory?: string | null;
+    occupancy?: string | null;
     checkIn: string | null;
     checkOut: string | null;
-    pax: number;
-    passengers: Array<{ id: string; name: string }>;
-    rooms: Array<{
+    pax?: number | null;
+    passengers?: Array<{ id: string; name: string }>;
+    rooms?: Array<{
       id: string;
-      label: string;
+      label?: string | null;
       roomType: string | null;
-      occupancy: string;
+      occupancy?: string | null;
       notes: string | null;
-      passengers: Array<{ id: string; name: string }>;
+      passengers?: Array<{ id: string; name: string }>;
     }>;
   };
   transport?: {
-    route: string;
-    serviceType: string;
+    route?: string | null;
+    serviceType?: string | null;
     pickup: string | null;
     dropoff: string | null;
     vehicle: string | null;
-    pax: number;
+    pax?: number | null;
   };
   service?: {
-    name: string;
+    name?: string | null;
     category: string | null;
     serviceType: string | null;
-    operationalNotes: string[];
-    pax: number;
+    operationalNotes?: string[] | null;
+    pax?: number | null;
   };
-  source: {
+  source?: {
     quoteItemId: string;
     itineraryDayId: string | null;
     packageTemplateId: string | null;
     packageTemplateDayId: string | null;
     packageTemplateComponentId: string | null;
     generatedFrom: 'live-operational-quote-data';
-  };
+  } | null;
 };
 
 function ValueCard({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -80,14 +80,15 @@ function ValueCard({ label, value }: { label: string; value: string | number | n
   );
 }
 
-function NotesList({ notes, emptyLabel }: { notes: string[]; emptyLabel: string }) {
-  if (!notes.length) {
+function NotesList({ notes, emptyLabel }: { notes?: string[] | null; emptyLabel: string }) {
+  const safeNotes = notes ?? [];
+  if (!safeNotes.length) {
     return <p className="empty-state">{emptyLabel}</p>;
   }
 
   return (
     <ul className="check-list">
-      {notes.map((note) => (
+      {safeNotes.map((note) => (
         <li key={note}>{note}</li>
       ))}
     </ul>
@@ -95,7 +96,8 @@ function NotesList({ notes, emptyLabel }: { notes: string[]; emptyLabel: string 
 }
 
 async function getVoucherPreview(itemId: string) {
-  return adminPageFetchJson<VoucherPreview>(`/api/vouchers/quote-items/${itemId}/preview`, 'Quote voucher preview', {
+  return adminPageFetchJson<VoucherPreview | null>(`/api/vouchers/quote-items/${itemId}/preview`, 'Quote voucher preview', {
+    allow404: true,
     cache: 'no-store',
   });
 }
@@ -103,6 +105,29 @@ async function getVoucherPreview(itemId: string) {
 export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPreviewPageProps) {
   const { id, itemId } = await params;
   const preview = await getVoucherPreview(itemId);
+
+  if (!preview) {
+    return (
+      <main className="workspace-page">
+        <section className="workspace-section">
+          <div className="section-header">
+            <span>
+              <span className="eyebrow">Operational voucher preview</span>
+              <h1>Voucher preview unavailable</h1>
+              <p>This quote item could not be found or no longer supports voucher preview.</p>
+            </span>
+            <Link href={`/quotes/${id}?tab=itinerary`} className="secondary-button">
+              Back to quote
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const itineraryDay = preview.itineraryDay ?? null;
+  const rooms = preview.hotel?.rooms ?? [];
+  const source = preview.source ?? null;
 
   return (
     <main className="workspace-page">
@@ -121,9 +146,9 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
         </div>
 
         <div className="summary-strip">
-          <ValueCard label="Status" value={preview.voucher.operationalStatus} />
-          <ValueCard label="Day" value={preview.itineraryDay.dayNumber ? `Day ${preview.itineraryDay.dayNumber}` : null} />
-          <ValueCard label="Title" value={preview.itineraryDay.title} />
+          <ValueCard label="Status" value={preview.voucher.operationalStatus || 'PREVIEW'} />
+          <ValueCard label="Day" value={itineraryDay?.dayNumber ? `Day ${itineraryDay.dayNumber}` : null} />
+          <ValueCard label="Title" value={itineraryDay?.title} />
           <ValueCard label="Pax" value={preview.quote.pax} />
         </div>
       </section>
@@ -133,7 +158,7 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
           <div className="section-header">
             <span>
               <span className="eyebrow">Hotel voucher</span>
-              <h2>{preview.hotel.name}</h2>
+              <h2>{preview.hotel.name || 'Hotel pending'}</h2>
               <p>{preview.hotel.city || 'City pending'}</p>
             </span>
           </div>
@@ -157,13 +182,13 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
                 </tr>
               </thead>
               <tbody>
-                {preview.hotel.rooms.length ? (
-                  preview.hotel.rooms.map((room: NonNullable<VoucherPreview['hotel']>['rooms'][number]) => (
+                {rooms.length ? (
+                  rooms.map((room: NonNullable<NonNullable<VoucherPreview['hotel']>['rooms']>[number]) => (
                     <tr key={room.id}>
-                      <td>{room.label}</td>
+                      <td>{room.label || 'Room pending'}</td>
                       <td>{room.roomType || 'Pending'}</td>
-                      <td>{room.occupancy}</td>
-                      <td>{room.passengers.map((passenger: { id: string; name: string }) => passenger.name).join(', ') || 'Unassigned'}</td>
+                      <td>{room.occupancy || 'Pending'}</td>
+                      <td>{(room.passengers ?? []).map((passenger: { id: string; name: string }) => passenger.name).join(', ') || 'Unassigned'}</td>
                       <td>{room.notes || '-'}</td>
                     </tr>
                   ))
@@ -183,8 +208,8 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
           <div className="section-header">
             <span>
               <span className="eyebrow">Transport voucher</span>
-              <h2>{preview.transport.route}</h2>
-              <p>{preview.transport.serviceType}</p>
+              <h2>{preview.transport.route || 'Route pending'}</h2>
+              <p>{preview.transport.serviceType || 'Service type pending'}</p>
             </span>
           </div>
           <div className="summary-strip">
@@ -201,7 +226,7 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
           <div className="section-header">
             <span>
               <span className="eyebrow">Service voucher</span>
-              <h2>{preview.service.name}</h2>
+              <h2>{preview.service.name || 'Operational service pending'}</h2>
               <p>{preview.service.serviceType || preview.service.category || 'Operational service'}</p>
             </span>
           </div>
@@ -222,10 +247,10 @@ export default async function QuoteVoucherPreviewPage({ params }: QuoteVoucherPr
           </span>
         </div>
         <div className="summary-strip">
-          <ValueCard label="Quote item" value={preview.source.quoteItemId} />
-          <ValueCard label="Quote day" value={preview.source.itineraryDayId} />
-          <ValueCard label="Package template" value={preview.source.packageTemplateId} />
-          <ValueCard label="Component" value={preview.source.packageTemplateComponentId} />
+          <ValueCard label="Quote item" value={source?.quoteItemId || preview.voucher.quoteItemId} />
+          <ValueCard label="Quote day" value={source?.itineraryDayId || preview.voucher.quoteDayId} />
+          <ValueCard label="Package template" value={source?.packageTemplateId} />
+          <ValueCard label="Component" value={source?.packageTemplateComponentId} />
         </div>
         <NotesList notes={preview.voucher.remarks} emptyLabel="No operational remarks are available." />
       </section>

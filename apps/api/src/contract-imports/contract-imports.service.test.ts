@@ -758,6 +758,51 @@ test('multi-property hotel export returns a zip containing one normalized workbo
   assert.match(exported.buffer.toString('latin1'), /petra-valley-hotel-2026-extracted-contract\.xlsx/);
 });
 
+test('PDF-like Movenpick enterprise text detects hotels tables skipped sections and stays preview-only', () => {
+  const service = createService();
+  const text = [
+    'Mövenpick Hotels & Resorts Jordan Enterprise Contract 2026',
+    'Arabic terms الشروط والاحكام',
+    'Mövenpick Resort & Spa Dead Sea',
+    'Low Season 01/01/2026 - 31/03/2026',
+    'Room Type Single Double Triple',
+    'Superior Room 120 140 180',
+    'Deluxe Room 150 170 210',
+    'Supplements Extra Bed JOD 35 per night',
+    'Children below 6 stay free',
+    'Movenpick Resort Petra',
+    'High Season 01/04/2026 - 31/10/2026',
+    'Room Type SGL DBL TPL',
+    'Classic Room 110 130 160',
+    'Junior Suite 190 210 260',
+    'General Conditions signature and bank details',
+  ].join('\n');
+
+  const preview = (service as any).extractHotelContractPreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath: 'movenpick.pdf',
+    fileName: 'movenpick-jordan-2026.pdf',
+    text,
+    workbookRows: [],
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.multiProperty.detected, true);
+  assert.deepEqual(preview.parserDiagnostics.detectedHotels, ['Mövenpick Resort & Spa Dead Sea', 'Mövenpick Resort Petra']);
+  assert.ok(preview.parserDiagnostics.detectedTables.length >= 2);
+  assert.ok(preview.parserDiagnostics.skippedSections.some((section: any) => /Arabic/.test(section.reason)));
+  assert.ok(preview.parserDiagnostics.skippedSections.some((section: any) => /administrative/.test(section.reason)));
+  assert.ok(preview.parserDiagnostics.confidence > 0.5);
+  assert.equal(preview.multiProperty.hotels.length, 2);
+  assert.ok(preview.multiProperty.hotels[0].rates.some((rate: any) => rate.seasonName === 'Low Season'));
+  assert.ok(preview.multiProperty.hotels[1].rates.some((rate: any) => rate.seasonName === 'High Season'));
+  assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
+});
+
 test('contract import approval blocks invalid rows before persistence and returns row field context', async () => {
   let hotelRateCreateCount = 0;
   const service = createService({

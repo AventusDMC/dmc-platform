@@ -154,6 +154,12 @@ type ContractPreview = {
     rowCount: number;
     parsedTextLineCount: number;
     first20Lines: string[];
+    detectedHotels?: string[];
+    detectedTables?: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }>;
+    skippedSections?: Array<{ label: string; reason: string; lineNumber?: number }>;
+    confidence?: number;
+    warnings?: string[];
+    extractionMode?: 'SINGLE_PROPERTY' | 'MULTI_PROPERTY' | 'TEXT_PDF' | 'WORKBOOK';
   };
   missingFields: string[];
   uncertainFields: string[];
@@ -470,10 +476,7 @@ export class ContractImportsService {
     const text = workbookRows.length > 0 ? this.workbookRowsToText(workbookRows) : this.readTextPreview(input.filePath);
     const parsedTextLines = this.firstParsedTextLines(text, 20);
     const diagnostics: ContractPreview['parserDiagnostics'] = {
-      source: workbookRows.length > 0 ? 'workbook' : 'text',
-      rowCount: workbookRows.length,
-      parsedTextLineCount: text.split(/\r?\n/).filter((line) => line.trim()).length,
-      first20Lines: parsedTextLines,
+      ...this.buildTextExtractionDiagnostics(text, workbookRows),
     };
     console.log('[contract-imports/analyze] raw parsed text', {
       fileName: input.fileName,
@@ -946,13 +949,110 @@ export class ContractImportsService {
     fileName: string;
     text: string;
     workbookRows: string[][];
+    propertyName?: string;
+    isMultiPropertyChild?: boolean;
   }): ContractPreview | null {
     const text = input.text;
     const lowerText = text.toLowerCase();
+    const textDiagnostics = this.buildTextExtractionDiagnostics(text, input.workbookRows);
+    const hotelSections = this.detectHotelSections(text, input.fileName);
+    if (!input.isMultiPropertyChild && hotelSections.length > 1) {
+      const hotels = hotelSections
+        .map((section) =>
+          this.extractHotelContractPreview({
+            ...input,
+            text: section.text,
+            workbookRows: this.textToRows(section.text),
+            propertyName: section.hotelName,
+            isMultiPropertyChild: true,
+          }),
+        )
+        .filter((preview): preview is ContractPreview => Boolean(preview));
+      const year = input.contractYear || this.guessYear(text) || new Date().getFullYear();
+      const supplierName = input.supplierName || this.guessEnterpriseSupplierName(text, input.fileName);
+      const validFrom = input.validFrom ? this.isoDate(input.validFrom) : `${year}-01-01`;
+      const validTo = input.validTo ? this.isoDate(input.validTo) : `${year}-12-31`;
+      const currency = this.detectCurrency(text) || hotels[0]?.contract.currency || 'JOD';
+
+      return this.addPreviewAliases({
+        contractType: ContractImportType.HOTEL,
+        supplier: { name: supplierName, isNew: true },
+        contract: {
+          name: `${supplierName} Multi-Property ${year}`,
+          year,
+          validFrom,
+          validTo,
+          currency,
+        },
+        hotel: {
+          name: `${hotels.length} properties detected`,
+          city: 'Multiple',
+          category: 'Multi-property preview',
+        },
+        roomCategories: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.roomCategories || [])),
+        seasons: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.seasons || [])),
+        rates: hotels.flatMap((hotel) => hotel.rates.map((rate) => ({ ...rate, notes: [hotel.hotel?.name, rate.notes].filter(Boolean).join(' | ') }))),
+        mealPlans: this.mergePreviewArrayByCode(hotels.flatMap((hotel) => hotel.mealPlans || [])),
+        taxes: hotels[0]?.taxes || this.extractTaxes(text, false),
+        supplements: hotels.flatMap((hotel) => hotel.supplements.map((supplement) => ({ ...supplement, notes: [hotel.hotel?.name, supplement.notes].filter(Boolean).join(' | ') }))),
+        policies: [
+          { name: 'Multi-property PDF extraction', value: `${hotels.length} hotel sections detected for preview/QC only.` },
+          { name: 'Source file', value: input.fileName },
+        ],
+        ratePolicies: hotels.flatMap((hotel) => hotel.ratePolicies || []),
+        cancellationPolicy: null,
+        cancellationPolicies: hotels.flatMap((hotel) => hotel.cancellationPolicies || (hotel.cancellationPolicy ? [hotel.cancellationPolicy] : [])),
+        childPolicy: null,
+        meta: {
+          extractionMode: 'MULTI_PROPERTY_TEXT_PDF_PREVIEW',
+          pdfTextWarning: 'PDF text extraction is heuristic and may require OCR/table review for Arabic or scanned pages.',
+        },
+        multiProperty: {
+          detected: true,
+          propertyCount: hotels.length,
+          hotels,
+          normalizedWorkbooks: hotels.map((hotel) => {
+            const hotelWarnings = this.buildExtractionQcWarnings(hotel);
+            return {
+              hotelName: hotel.hotel?.name || hotel.hotelName || hotel.supplier.name,
+              fileName: `${this.safeExportFileName(hotel.contract.name || hotel.hotel?.name || 'hotel-contract')}-extracted-contract.xlsx`,
+              rateCount: hotel.rates.length,
+              warningCount: hotelWarnings.length + (hotel.warnings?.length || 0),
+            };
+          }),
+        },
+        warnings: [
+          {
+            severity: 'blocker',
+            field: 'multiProperty',
+            message: 'Multi-property PDF contracts are preview/QC only. Download normalized hotel workbooks and import one reviewed hotel contract at a time.',
+          },
+          ...hotels.flatMap((hotel, index) =>
+            this.buildExtractionQcWarnings(hotel).map((warning) => ({
+              ...warning,
+              field: `multiProperty.hotels.${index + 1}.${warning.field}`,
+              message: `${hotel.hotel?.name || `Hotel ${index + 1}`}: ${warning.message}`,
+            })),
+          ),
+        ],
+        parserDiagnostics: {
+          source: 'text',
+          rowCount: input.workbookRows.length,
+          parsedTextLineCount: text.split(/\r?\n/).filter((line) => line.trim()).length,
+          first20Lines: this.firstParsedTextLines(text, 20),
+          detectedHotels: hotels.map((hotel) => hotel.hotel?.name || hotel.hotelName || hotel.supplier.name),
+          extractionMode: 'MULTI_PROPERTY',
+          confidence: Math.min(0.9, Math.max(0.35, textDiagnostics.confidence || 0.35)),
+          ...this.buildTextExtractionDiagnosticsOverrides(textDiagnostics),
+        },
+        missingFields: [],
+        uncertainFields: ['multiProperty PDF extraction', 'OCR/table review'],
+      });
+    }
     const isGrandHyatt = lowerText.includes('grand hyatt') || input.fileName.toLowerCase().includes('grand-hyatt');
     const year = input.contractYear || this.guessYear(text) || new Date().getFullYear();
-    const supplierName = input.supplierName || (isGrandHyatt ? 'Grand Hyatt Amman' : this.guessNameFromFile(input.fileName));
-    const hotelName = isGrandHyatt ? 'Grand Hyatt Amman' : supplierName;
+    const supplierName = input.supplierName || (isGrandHyatt ? 'Grand Hyatt Amman' : this.guessEnterpriseSupplierName(text, input.fileName));
+    const hotelName = input.propertyName || (isGrandHyatt ? 'Grand Hyatt Amman' : this.guessHotelNameFromText(text, supplierName));
     const validFrom = input.validFrom ? this.isoDate(input.validFrom) : `${year}-01-01`;
     const validTo = input.validTo ? this.isoDate(input.validTo) : `${year}-12-31`;
     const currency = this.detectCurrency(text) || 'JOD';
@@ -1039,6 +1139,15 @@ export class ContractImportsService {
       ],
       cancellationPolicy,
       childPolicy,
+      parserDiagnostics: {
+        source: input.workbookRows.length > 0 ? 'workbook' : 'text',
+        rowCount: input.workbookRows.length,
+        parsedTextLineCount: text.split(/\r?\n/).filter((line) => line.trim()).length,
+        first20Lines: this.firstParsedTextLines(text, 20),
+        detectedHotels: [hotelName],
+        extractionMode: input.workbookRows.length > 0 ? 'WORKBOOK' : 'TEXT_PDF',
+        ...this.buildTextExtractionDiagnosticsOverrides(textDiagnostics),
+      },
       missingFields: [],
       uncertainFields,
     });
@@ -1138,6 +1247,200 @@ export class ContractImportsService {
     return this.dedupeRates(rates);
   }
 
+  private buildTextExtractionDiagnostics(text: string, rows: string[][]): NonNullable<ContractPreview['parserDiagnostics']> {
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const detectedHotels = this.detectHotelSections(text, '').map((section) => section.hotelName);
+    const detectedTables = this.detectTextRateTables(lines);
+    const skippedSections = this.detectSkippedTextSections(lines);
+    const warnings: string[] = [];
+    if (/[\u0600-\u06FF]/.test(text)) {
+      warnings.push('Arabic text detected; PDF text extraction may need OCR validation for Arabic-only notes.');
+    }
+    if (/m[oö]venpick|moevenpick/i.test(text) && detectedHotels.length <= 1) {
+      warnings.push('Movenpick enterprise contract indicators found but only one hotel section was detected.');
+    }
+    if (detectedTables.length === 0 && /\b(rate|rates|room|single|double|sgl|dbl|bb|hb)\b/i.test(text)) {
+      warnings.push('Pricing keywords were found but no confident rate table header was detected.');
+    }
+    const confidence = Math.max(
+      0.2,
+      Math.min(
+        0.95,
+        0.25 + (detectedHotels.length > 0 ? 0.2 : 0) + (detectedTables.length > 0 ? 0.3 : 0) + (rows.length > 0 ? 0.15 : 0) - (warnings.length * 0.08),
+      ),
+    );
+
+    return {
+      source: rows.length > 0 ? 'workbook' : 'text',
+      rowCount: rows.length,
+      parsedTextLineCount: lines.length,
+      first20Lines: lines.slice(0, 20),
+      detectedHotels,
+      detectedTables,
+      skippedSections,
+      confidence: Number(confidence.toFixed(2)),
+      warnings,
+      extractionMode: rows.length > 0 ? 'WORKBOOK' : 'TEXT_PDF',
+    };
+  }
+
+  private buildTextExtractionDiagnosticsOverrides(
+    diagnostics: NonNullable<ContractPreview['parserDiagnostics']>,
+  ): Omit<
+    NonNullable<ContractPreview['parserDiagnostics']>,
+    'source' | 'rowCount' | 'parsedTextLineCount' | 'first20Lines' | 'detectedHotels' | 'extractionMode' | 'confidence'
+  > {
+    const {
+      source: _source,
+      rowCount: _rowCount,
+      parsedTextLineCount: _parsedTextLineCount,
+      first20Lines: _first20Lines,
+      detectedHotels: _detectedHotels,
+      extractionMode: _extractionMode,
+      confidence: _confidence,
+      ...details
+    } = diagnostics;
+    return details;
+  }
+
+  private detectHotelSections(text: string, fileName: string) {
+    const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, ' ').trim());
+    const candidates: Array<{ hotelName: string; lineIndex: number }> = [];
+    const seen = new Set<string>();
+
+    lines.forEach((line, lineIndex) => {
+      const hotelName = this.extractHotelHeading(line);
+      if (!hotelName) return;
+      const key = hotelName.toLowerCase();
+      if (seen.has(`${key}:${lineIndex}`)) return;
+      seen.add(`${key}:${lineIndex}`);
+      candidates.push({ hotelName, lineIndex });
+    });
+
+    const sectionStarts = candidates.filter((candidate, index, all) => {
+      const previous = all[index - 1];
+      return !previous || candidate.lineIndex - previous.lineIndex > 3 || candidate.hotelName.toLowerCase() !== previous.hotelName.toLowerCase();
+    });
+
+    if (sectionStarts.length === 1) {
+      return [{ hotelName: sectionStarts[0].hotelName, text, lineStart: sectionStarts[0].lineIndex + 1, lineEnd: lines.length }];
+    }
+
+    if (sectionStarts.length === 0) {
+      return [];
+    }
+
+    return sectionStarts.map((section, index) => {
+      const next = sectionStarts[index + 1];
+      const sectionLines = lines.slice(section.lineIndex, next ? next.lineIndex : lines.length).filter(Boolean);
+      return {
+        hotelName: section.hotelName,
+        text: sectionLines.join('\n'),
+        lineStart: section.lineIndex + 1,
+        lineEnd: next ? next.lineIndex : lines.length,
+      };
+    });
+  }
+
+  private extractHotelHeading(line: string) {
+    const normalized = line
+      .replace(/[|•]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalized || normalized.length > 140) return '';
+    const lower = normalized.toLowerCase();
+    const hasPropertySignal = /\b(dead sea|petra|aqaba|tala|nabatean|castle|spa|city|amman|wadi|rum|souq|village|island|beach|club|red sea)\b/i.test(normalized);
+    if (
+      /\b(enterprise|contract|agreement|rate\s+sheet|tariff|hotels\s*&\s*resorts|hotels and resorts|group)\b/i.test(normalized) &&
+      !hasPropertySignal
+    ) {
+      return '';
+    }
+    if (/\bm[oÃ¶]venpick\s+hotels?\b/i.test(normalized) && !hasPropertySignal) return '';
+    if (lower === 'movenpick' || lower === 'mövenpick' || lower === 'moevenpick') return '';
+
+    const movenpick = normalized.match(/\b(?:m[oö]venpick|moevenpick)\b(?:\s+(?:resort|hotel|dead|petra|aqaba|tala|nabatean|castle|spa|city|amman|wadi|rum|jordan|&|and|by|sea|souq|royal|village|island|beach|club|red)){0,12}/i);
+    if (movenpick) {
+      return this.cleanHotelHeading(movenpick[0]);
+    }
+
+    const generic = normalized.match(/\b[A-Z][A-Za-z'&.-]+(?:\s+[A-Z][A-Za-z'&.-]+){0,8}\s+(?:Hotel|Resort|Suites|Lodge|Camp|Village|Castle|Spa)\b/i);
+    return generic ? this.cleanHotelHeading(generic[0]) : '';
+  }
+
+  private cleanHotelHeading(value: string) {
+    return value
+      .replace(/\b(contract|rates?|tariff|agreement|202\d|validity|page)\b.*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+      .replace(/\bMövenpick\b/i, 'Mövenpick')
+      .replace(/\bMovenpick\b/i, 'Mövenpick')
+      .replace(/\bMoevenpick\b/i, 'Mövenpick');
+  }
+
+  private detectTextRateTables(lines: string[]) {
+    const tables: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }> = [];
+    lines.forEach((line, index) => {
+      const header = this.detectRateHeader(line);
+      if (header.columns.length > 0) {
+        tables.push({
+          label: line.slice(0, 160),
+          lineNumber: index + 1,
+          confidence: 0.86,
+          columns: header.columns.map((column) => column.occupancyType),
+        });
+        return;
+      }
+      if (this.isSeasonMealPlanHeader(line)) {
+        tables.push({
+          label: line.slice(0, 160),
+          lineNumber: index + 1,
+          confidence: 0.82,
+          columns: ['HB', 'BB', 'SINGLE_SUPPLEMENT'],
+        });
+        return;
+      }
+      const amounts = this.extractMoneyAmounts(line);
+      if (amounts.length >= 2 && /\b(room|suite|single|double|sgl|dbl|bb|hb|rate|rates?)\b/i.test(line)) {
+        tables.push({
+          label: line.slice(0, 160),
+          lineNumber: index + 1,
+          confidence: 0.55,
+          columns: ['INFERRED_AMOUNTS'],
+        });
+      }
+    });
+    return tables;
+  }
+
+  private detectSkippedTextSections(lines: string[]) {
+    const skipped: Array<{ label: string; reason: string; lineNumber?: number }> = [];
+    lines.forEach((line, index) => {
+      if (/^\s*(arabic|terms|general conditions|bank details|signature|stamp)\b/i.test(line)) {
+        skipped.push({ label: line.slice(0, 120), reason: 'Non-pricing administrative section', lineNumber: index + 1 });
+      } else if (/[\u0600-\u06FF]/.test(line) && !/\d/.test(line)) {
+        skipped.push({ label: line.slice(0, 120), reason: 'Arabic text section requires manual OCR/QC review', lineNumber: index + 1 });
+      }
+    });
+    return skipped.slice(0, 30);
+  }
+
+  private guessEnterpriseSupplierName(text: string, fileName: string) {
+    if (/\b(?:m[oö]venpick|moevenpick)\b/i.test(text) || /\b(?:m[oö]venpick|moevenpick)\b/i.test(fileName)) {
+      return 'Mövenpick Hotels Jordan';
+    }
+    return this.guessNameFromFile(fileName);
+  }
+
+  private guessHotelNameFromText(text: string, fallback: string) {
+    const detected = text
+      .split(/\r?\n/)
+      .map((line) => this.extractHotelHeading(line))
+      .find(Boolean);
+    return detected || fallback;
+  }
+
   private extractHotelRatesFromTable(rows: string[][], text: string, fallbackCurrency: string): PreviewRate[] {
     const rates: PreviewRate[] = [];
     const tableLines = [
@@ -1151,9 +1454,11 @@ export class ContractImportsService {
     let activeHeader: Array<{ occupancyType: string; index: number; amountOffset: number }> = [];
     let activeSplitPattern: RegExp = /\s+/;
     let activePricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM';
+    let currentSeasonName = 'Imported';
 
     for (const rawCells of tableLines) {
       const line = rawCells.join(' ').trim();
+      currentSeasonName = this.detectSeasonNameInLine(line) || currentSeasonName;
       const header = this.detectRateHeader(line);
       if (header.columns.length > 0) {
         console.log('TABLE HEADER DETECTED:', line);
@@ -1192,7 +1497,7 @@ export class ContractImportsService {
           roomType: roomName,
           occupancyType: column.occupancyType,
           mealPlan: 'BB',
-          seasonName: 'Imported',
+          seasonName: currentSeasonName,
           cost: amount.amount,
           currency: amount.currency || fallbackCurrency,
           pricingBasis: this.detectPricingBasis(line, activePricingBasis),
@@ -1446,6 +1751,11 @@ export class ContractImportsService {
     });
 
     return { columns: columns.length >= 2 ? columns : [], splitPattern };
+  }
+
+  private detectSeasonNameInLine(line: string) {
+    const seasonMatch = line.match(/\b(Low Season|High Season|Shoulder Season|Peak Season|Summer|Winter|Ramadan|Eid|Christmas|New Year)\b/i);
+    return seasonMatch ? seasonMatch[1].replace(/\b\w/g, (letter) => letter.toUpperCase()) : '';
   }
 
   private normalizeRateHeaderOccupancy(value: string) {
@@ -2776,7 +3086,7 @@ export class ContractImportsService {
       const buffer = readFileSync(filePath);
       const utf8 = buffer.toString('utf8');
       const readableUtf8 = utf8
-        .replace(/[^\x09\x0A\x0D\x20-\x7E]+/g, ' ')
+        .replace(/[^\x09\x0A\x0D\x20-\x7E\u0600-\u06FF]+/g, ' ')
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
@@ -2788,7 +3098,14 @@ export class ContractImportsService {
       const pdfStrings = Array.from(latinText.matchAll(/\(([^()]{2,250})\)/g))
         .map((match) => match[1].replace(/\\([()\\])/g, '$1'))
         .filter((value) => /[a-zA-Z]{2,}/.test(value));
-      const extractedPdfText = pdfStrings.join('\n').replace(/[^\x09\x0A\x0D\x20-\x7E]+/g, ' ');
+      const pdfArrayStrings = Array.from(latinText.matchAll(/\[((?:\([^()]{1,250}\)|\s*-?\d+(?:\.\d+)?\s*){2,})\]\s*TJ/g))
+        .map((match) =>
+          Array.from(match[1].matchAll(/\(([^()]{1,250})\)/g))
+            .map((part) => part[1].replace(/\\([()\\])/g, '$1'))
+            .join(''),
+        )
+        .filter((value) => /[a-zA-Z]{2,}/.test(value));
+      const extractedPdfText = [...pdfStrings, ...pdfArrayStrings].join('\n').replace(/[^\x09\x0A\x0D\x20-\x7E\u0600-\u06FF]+/g, ' ');
       return (extractedPdfText || readableUtf8).slice(0, 1024 * 1024);
     } catch {
       return '';
@@ -3343,7 +3660,14 @@ export class ContractImportsService {
   private attachParserDiagnostics(preview: ContractPreview, parserDiagnostics: NonNullable<ContractPreview['parserDiagnostics']>) {
     return {
       ...preview,
-      parserDiagnostics,
+      parserDiagnostics: {
+        ...parserDiagnostics,
+        ...(preview.parserDiagnostics || {}),
+        detectedHotels: preview.parserDiagnostics?.detectedHotels || parserDiagnostics.detectedHotels,
+        detectedTables: preview.parserDiagnostics?.detectedTables || parserDiagnostics.detectedTables,
+        skippedSections: preview.parserDiagnostics?.skippedSections || parserDiagnostics.skippedSections,
+        warnings: Array.from(new Set([...(parserDiagnostics.warnings || []), ...(preview.parserDiagnostics?.warnings || [])])),
+      },
     };
   }
 

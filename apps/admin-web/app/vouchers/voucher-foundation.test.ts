@@ -50,4 +50,13 @@ describe('voucher foundation phase one', () => {
     assert.match(quoteServicePlannerSource, /\/quotes\/\$\{quoteId\}\/vouchers\/\$\{item\.id\}\/preview/);
     assert.doesNotMatch(quoteVoucherPreviewPageSource, /pdf|invoice|accounting/i);
   });
+
+  it('handles missing or sparse quote item voucher preview data without SSR crashes', () => {
+    assert.match(quoteVoucherPreviewPageSource, /allow404: true/);
+    assert.match(quoteVoucherPreviewPageSource, /Voucher preview unavailable/);
+    assert.match(quoteVoucherPreviewPageSource, /preview\.itineraryDay \?\? null/);
+    assert.match(quoteVoucherPreviewPageSource, /preview\.hotel\?\.rooms \?\? \[\]/);
+    assert.match(quoteVoucherPreviewPageSource, /room\.passengers \?\? \[\]/);
+    assert.match(quoteVoucherPreviewPageSource, /preview\.voucher\.remarks/);
+  });
 });

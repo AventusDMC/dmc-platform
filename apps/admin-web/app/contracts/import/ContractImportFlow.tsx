@@ -122,6 +122,18 @@ type ContractPreview = {
     hotels: ContractPreview[];
     normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number }>;
   };
+  parserDiagnostics?: {
+    source?: 'workbook' | 'text';
+    rowCount?: number;
+    parsedTextLineCount?: number;
+    first20Lines?: string[];
+    detectedHotels?: string[];
+    detectedTables?: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }>;
+    skippedSections?: Array<{ label: string; reason: string; lineNumber?: number }>;
+    confidence?: number;
+    warnings?: string[];
+    extractionMode?: string;
+  };
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -509,6 +521,7 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
     cancellationPolicy,
     childPolicy,
     multiProperty: source.multiProperty,
+    parserDiagnostics: source.parserDiagnostics,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
   };
@@ -963,6 +976,8 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
               ))}
             </div>
           ) : null}
+
+          <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
 
           {isMultiPropertyPreview ? (
             <section className="table-section">
@@ -1424,6 +1439,44 @@ function ChildPolicyPreview({ value }: { value?: ChildPolicyPreviewValue | null 
               ))}
             </tbody>
           </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ExtractionDiagnostics({ diagnostics }: { diagnostics?: ContractPreview['parserDiagnostics'] }) {
+  if (!diagnostics) return null;
+  const detectedHotels = diagnostics.detectedHotels || [];
+  const detectedTables = diagnostics.detectedTables || [];
+  const skippedSections = diagnostics.skippedSections || [];
+  const warnings = diagnostics.warnings || [];
+
+  return (
+    <section>
+      <h3>Extraction diagnostics</h3>
+      <div className="summary-strip">
+        <div className="summary-card">
+          <p><span>Source</span><strong>{diagnostics.extractionMode || diagnostics.source || 'Unknown'}</strong></p>
+          <p><span>Confidence</span><strong>{diagnostics.confidence !== undefined ? `${Math.round(diagnostics.confidence * 100)}%` : 'Not scored'}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Detected hotels</span><strong>{detectedHotels.length}</strong></p>
+          <p><span>Detected tables</span><strong>{detectedTables.length}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Parsed lines</span><strong>{diagnostics.parsedTextLineCount || 0}</strong></p>
+          <p><span>Skipped sections</span><strong>{skippedSections.length}</strong></p>
+        </div>
+      </div>
+      {detectedHotels.length > 0 ? <PreviewList title="Detected hotels" items={detectedHotels.map((name) => ({ name }))} empty="No hotels detected." /> : null}
+      {detectedTables.length > 0 ? <PreviewList title="Detected tables" items={detectedTables} empty="No tables detected." /> : null}
+      {skippedSections.length > 0 ? <PreviewList title="Skipped sections" items={skippedSections} empty="No skipped sections." /> : null}
+      {warnings.length > 0 ? (
+        <div className="warning-list">
+          {warnings.map((warning) => (
+            <p key={warning} className="empty-state">{warning}</p>
+          ))}
         </div>
       ) : null}
     </section>
