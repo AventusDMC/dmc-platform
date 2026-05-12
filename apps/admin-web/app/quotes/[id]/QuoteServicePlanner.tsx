@@ -624,7 +624,7 @@ function getDayCompletenessRules(quoteType: Quote['quoteType']) {
 
 function formatDayHeading(day: QuoteReadinessDay, inferredCity?: string | null) {
   const dayLabel = `Day ${String(day.dayNumber).padStart(2, '0')}`;
-  const locationLabel = inferredCity || day.title || `Day ${day.dayNumber}`;
+  const locationLabel = day.title?.trim() || inferredCity || `Day ${day.dayNumber}`;
   return `${dayLabel} - ${locationLabel}`;
 }
 

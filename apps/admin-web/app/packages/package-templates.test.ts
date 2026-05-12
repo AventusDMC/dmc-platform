@@ -228,6 +228,13 @@ describe('package productization phase one', () => {
     assert.match(quoteServicePlannerSource, /title: day\.title \|\| `Day \$\{day\.dayNumber\}`/);
   });
 
+  it('renders explicit quote day titles before hotel or city fallback headings in the itinerary UI', () => {
+    assert.match(quoteServicePlannerSource, /function formatDayHeading\(day: QuoteReadinessDay, inferredCity\?: string \| null\)/);
+    assert.match(quoteServicePlannerSource, /const locationLabel = day\.title\?\.trim\(\) \|\| inferredCity \|\| `Day \$\{day\.dayNumber\}`/);
+    assert.doesNotMatch(quoteServicePlannerSource, /const locationLabel = inferredCity \|\| day\.title/);
+    assert.match(quoteServicePlannerSource, /<h3>\{dayHeading\}<\/h3>/);
+  });
+
   it('does not duplicate operational inventory while assembling package quote items', () => {
     assert.match(quoteServiceSource, /serviceId: component\.supplierServiceId/);
     assert.match(quoteServiceSource, /excursionTemplateId: values\.template\.id/);
