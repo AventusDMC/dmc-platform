@@ -30,6 +30,7 @@ describe('package productization phase one', () => {
     assert.match(componentFormSource, /routeId/);
     assert.match(componentFormSource, /transportServiceTypeId/);
     assert.match(componentFormSource, /supplierServiceId/);
+    assert.match(componentFormSource, /serviceRecords/);
   });
 
   it('models package templates as references to operational inventory', () => {
@@ -41,7 +42,16 @@ describe('package productization phase one', () => {
     assert.match(prismaSchemaSource, /routeId\s+String\?/);
     assert.match(prismaSchemaSource, /transportServiceTypeId\s+String\?/);
     assert.match(prismaSchemaSource, /supplierServiceId\s+String\?/);
+    assert.match(prismaSchemaSource, /SERVICE/);
     assert.match(apiServiceSource, /include: this\.componentInclude\(\)/);
+  });
+
+  it('supports operational service components linked to existing service records', () => {
+    assert.match(componentFormSource, /\{ value: 'SERVICE', label: 'Operational service' \}/);
+    assert.match(componentFormSource, /componentType === 'SERVICE'/);
+    assert.match(componentFormSource, /Select operational service/);
+    assert.match(apiServiceSource, /'SERVICE'/);
+    assert.match(apiServiceSource, /supplierServiceId is required for service components/);
   });
 
   it('keeps package behavior separate from pricing, proposal, and booking automation', () => {

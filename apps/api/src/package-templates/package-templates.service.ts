@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
-type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | 'HOTEL' | 'TRANSPORT' | 'TICKET';
+type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | 'HOTEL' | 'TRANSPORT' | 'TICKET' | 'SERVICE';
 
 type CreatePackageTemplateInput = {
   name: string;
@@ -32,7 +32,7 @@ type PackageTemplateComponentInput = {
   supplierServiceId?: string | null;
 };
 
-const COMPONENT_TYPES: PackageTemplateComponentType[] = ['EXCURSION_TEMPLATE', 'ACTIVITY', 'HOTEL', 'TRANSPORT', 'TICKET'];
+const COMPONENT_TYPES: PackageTemplateComponentType[] = ['EXCURSION_TEMPLATE', 'ACTIVITY', 'HOTEL', 'TRANSPORT', 'TICKET', 'SERVICE'];
 
 @Injectable()
 export class PackageTemplatesService {
@@ -125,7 +125,7 @@ export class PackageTemplatesService {
       routeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.routeId) : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.transportServiceTypeId) : null,
       pricingMode: componentType === 'TRANSPORT' ? normalizeOptionalString(data.pricingMode) : null,
-      supplierServiceId: componentType === 'TICKET' ? normalizeOptionalString(data.supplierServiceId) : null,
+      supplierServiceId: componentType === 'TICKET' || componentType === 'SERVICE' ? normalizeOptionalString(data.supplierServiceId) : null,
     };
   }
 
@@ -144,6 +144,9 @@ export class PackageTemplatesService {
     }
     if (componentType === 'TICKET' && !normalizeOptionalString(data.supplierServiceId)) {
       throw new BadRequestException('supplierServiceId is required for ticket components');
+    }
+    if (componentType === 'SERVICE' && !normalizeOptionalString(data.supplierServiceId)) {
+      throw new BadRequestException('supplierServiceId is required for service components');
     }
   }
 

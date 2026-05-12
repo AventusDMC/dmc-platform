@@ -14,6 +14,7 @@ export function packageComponentTypeLabel(type: PackageTemplateComponentType) {
   if (type === 'ACTIVITY') return 'Activity Master';
   if (type === 'HOTEL') return 'Hotel contract';
   if (type === 'TRANSPORT') return 'Transport structure';
+  if (type === 'SERVICE') return 'Operational service';
   return 'Ticketing';
 }
 
@@ -34,6 +35,10 @@ export function packageComponentReferenceLabel(component: PackageTemplateCompone
 
   if (component.componentType === 'TRANSPORT') {
     return [component.route?.name, component.pricingMode || component.transportServiceType?.name].filter(Boolean).join(' - ') || 'Transport link';
+  }
+
+  if (component.componentType === 'SERVICE') {
+    return component.supplierService?.name || 'Operational service link';
   }
 
   return component.supplierService?.entranceFee?.siteName || component.supplierService?.entranceFee?.name || component.supplierService?.name || 'Ticketing link';

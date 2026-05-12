@@ -31,6 +31,7 @@ type PackageTemplateCatalogs = {
   routes: PackageTemplateRouteOption[];
   transportServiceTypes: PackageTemplateTransportServiceTypeOption[];
   ticketServices: PackageTemplateSupplierServiceOption[];
+  serviceRecords: PackageTemplateSupplierServiceOption[];
 };
 
 async function getPackageTemplate(id: string) {
@@ -64,6 +65,7 @@ async function getCatalogs(): Promise<PackageTemplateCatalogs> {
     routes,
     transportServiceTypes,
     ticketServices,
+    serviceRecords: services,
   };
 }
 
@@ -77,6 +79,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
     routes: [],
     transportServiceTypes: [],
     ticketServices: [],
+    serviceRecords: [],
   };
   let catalogLoadError = false;
 
@@ -169,6 +172,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                     routes={catalogs.routes}
                     transportServiceTypes={catalogs.transportServiceTypes}
                     ticketServices={catalogs.ticketServices}
+                    serviceRecords={catalogs.serviceRecords}
                   />
                 </CollapsibleCreatePanel>
               }

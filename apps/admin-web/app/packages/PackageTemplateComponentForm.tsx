@@ -23,6 +23,7 @@ type PackageTemplateComponentFormProps = {
   routes: PackageTemplateRouteOption[];
   transportServiceTypes: PackageTemplateTransportServiceTypeOption[];
   ticketServices: PackageTemplateSupplierServiceOption[];
+  serviceRecords: PackageTemplateSupplierServiceOption[];
 };
 
 const COMPONENT_TYPES: Array<{ value: PackageTemplateComponentType; label: string }> = [
@@ -31,6 +32,7 @@ const COMPONENT_TYPES: Array<{ value: PackageTemplateComponentType; label: strin
   { value: 'HOTEL', label: 'Hotel contract' },
   { value: 'TRANSPORT', label: 'Transport structure' },
   { value: 'TICKET', label: 'Ticketing service' },
+  { value: 'SERVICE', label: 'Operational service' },
 ];
 
 const TRANSPORT_PRICING_MODES = [
@@ -54,6 +56,7 @@ export function PackageTemplateComponentForm({
   routes,
   transportServiceTypes,
   ticketServices,
+  serviceRecords,
 }: PackageTemplateComponentFormProps) {
   const router = useRouter();
   const [componentType, setComponentType] = useState<PackageTemplateComponentType>('EXCURSION_TEMPLATE');
@@ -81,8 +84,22 @@ export function PackageTemplateComponentForm({
       return contract ? `${contract.hotel?.name || 'Hotel'} - ${contract.name}` : '';
     }
     if (componentType === 'TRANSPORT') return routes.find((item) => item.id === routeId)?.name || '';
+    if (componentType === 'SERVICE') return serviceRecords.find((item) => item.id === supplierServiceId)?.name || '';
     return ticketServices.find((item) => item.id === supplierServiceId)?.name || '';
-  }, [activities, activityId, componentType, excursionTemplateId, excursionTemplates, hotelContractId, hotelContracts, routeId, routes, supplierServiceId, ticketServices]);
+  }, [
+    activities,
+    activityId,
+    componentType,
+    excursionTemplateId,
+    excursionTemplates,
+    hotelContractId,
+    hotelContracts,
+    routeId,
+    routes,
+    serviceRecords,
+    supplierServiceId,
+    ticketServices,
+  ]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,7 +119,7 @@ export function PackageTemplateComponentForm({
       routeId: componentType === 'TRANSPORT' ? routeId : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? transportServiceTypeId || null : null,
       pricingMode: componentType === 'TRANSPORT' ? pricingMode : null,
-      supplierServiceId: componentType === 'TICKET' ? supplierServiceId : null,
+      supplierServiceId: componentType === 'TICKET' || componentType === 'SERVICE' ? supplierServiceId : null,
     };
 
     if (!Number.isInteger(normalizedDay) || normalizedDay < 1 || normalizedDay > durationDays) {
@@ -250,6 +267,20 @@ export function PackageTemplateComponentForm({
             {ticketServices.map((service) => (
               <option key={service.id} value={service.id}>
                 {service.entranceFee?.siteName || service.entranceFee?.name || service.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {componentType === 'SERVICE' ? (
+        <label>
+          Operational service
+          <select value={supplierServiceId} onChange={(event) => setSupplierServiceId(event.target.value)} required>
+            <option value="">Select operational service</option>
+            {serviceRecords.map((service) => (
+              <option key={service.id} value={service.id}>
+                {service.name}
               </option>
             ))}
           </select>
