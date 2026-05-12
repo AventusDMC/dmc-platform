@@ -174,7 +174,7 @@ type SupplierConfirmBookingServiceBody = {
 };
 
 type BookingOperationServiceBody = {
-  type?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
+  type?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE';
   supplierId?: string | null;
   referenceId?: string | null;
   assignedTo?: string | null;

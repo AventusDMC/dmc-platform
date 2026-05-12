@@ -153,6 +153,7 @@ describe('booking detail page regression', () => {
       'renderSupplierOptions(suppliers',
       'renderVehicleOptions(vehicles',
       'renderRouteOptions(transportRoutes',
+      '<option value="SERVICE">Service supplier</option>',
       'name="assignedTo"',
       'name="pickupTime"',
       'name="confirmationNumber"',

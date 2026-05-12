@@ -135,7 +135,8 @@ const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
 const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
 const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
-const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'EXTERNAL_PACKAGE'] as const;
+const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'SERVICE', 'EXTERNAL_PACKAGE'] as const;
+type BookingOperationalServiceType = (typeof BOOKING_OPERATION_SERVICE_TYPES)[number];
 const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
 const VOUCHER_STATUSES = ['DRAFT', 'ISSUED', 'CANCELLED'] as const;
@@ -5009,12 +5010,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
-  private normalizeBookingOperationServiceType(value: string | null | undefined, currentValue?: string | null): BookingOperationServiceType {
+  private normalizeBookingOperationServiceType(value: string | null | undefined, currentValue?: string | null): BookingOperationalServiceType {
     const raw = this.normalizeOptionalText(value) || currentValue || '';
     const normalized = raw.trim().toUpperCase();
 
     if ((BOOKING_OPERATION_SERVICE_TYPES as readonly string[]).includes(normalized)) {
-      return normalized as BookingOperationServiceType;
+      return normalized as BookingOperationalServiceType;
     }
 
     throw new BadRequestException(`Unsupported booking service type: ${raw || 'missing'}`);
@@ -5149,7 +5150,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleName,
       routeName,
       pickupTime:
-        type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY ? pickupTime : null,
+        type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY || type === 'SERVICE' ? pickupTime : null,
       supplierId,
       supplierName,
       confirmationNumber,
@@ -5158,7 +5159,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildOperationServiceDescription(
-    type: BookingOperationServiceType,
+    type: BookingOperationalServiceType,
     values: {
       assignedTo?: string | null;
       vehicleName?: string | null;
@@ -5180,6 +5181,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (type === BookingOperationServiceType.EXTERNAL_PACKAGE) {
       return 'External package operations';
+    }
+
+    if (type === 'SERVICE') {
+      return values.confirmationNumber ? `Operational service ${values.confirmationNumber}` : 'Operational service';
     }
 
     return 'Activity operations';
@@ -6448,7 +6453,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isOperationalVoucherEligible(service: { operationType?: string | null; serviceType?: string | null; description?: string | null }) {
-    return ['TRANSPORT', 'HOTEL', 'GUIDE', 'ACTIVITY', 'EXTERNAL_PACKAGE'].some((kind) => this.isOperationalServiceKind(service, kind));
+    return ['TRANSPORT', 'HOTEL', 'GUIDE', 'ACTIVITY', 'SERVICE', 'EXTERNAL_PACKAGE'].some((kind) => this.isOperationalServiceKind(service, kind));
   }
 
   private isOperationalServiceKind(service: { operationType?: string | null; serviceType?: string | null; description?: string | null }, kind: string) {
@@ -6462,6 +6467,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (kind === 'HOTEL') return text.includes('hotel') || text.includes('accommodation') || text.includes('room');
     if (kind === 'GUIDE') return text.includes('guide') || text.includes('escort');
     if (kind === 'ACTIVITY') return text.includes('activity') || text.includes('tour') || text.includes('experience') || text.includes('excursion') || text.includes('sightseeing');
+    if (kind === 'SERVICE') return text.includes('service') || text.includes('assist') || text.includes('porter') || text.includes('wheelchair') || text.includes('vip');
     if (kind === 'EXTERNAL_PACKAGE') return text.includes('external') || text.includes('package');
     return false;
   }
@@ -7504,7 +7510,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
 
-      const missingPassengers = passengerCandidates
+    const missingPassengers = passengerCandidates
       .map((booking) => ({
         booking,
         reasons: this.getMissingPassengerReasons(booking),

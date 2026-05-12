@@ -408,7 +408,7 @@ type Booking = {
       active?: boolean;
     } | null;
     serviceType: string;
-    operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'EXTERNAL_PACKAGE' | null;
+    operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
     operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
     referenceId?: string | null;
     assignedTo?: string | null;
@@ -879,6 +879,7 @@ function renderOperationTypeOptions(defaultValue?: string | null) {
       <option value="GUIDE">Guide</option>
       <option value="HOTEL">Hotel</option>
       <option value="ACTIVITY">Activity</option>
+      <option value="SERVICE">Service supplier</option>
       <option value="EXTERNAL_PACKAGE">External package</option>
     </select>
   );
