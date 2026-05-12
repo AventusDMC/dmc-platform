@@ -36,6 +36,18 @@ type PackageTemplateDayBody = {
   active?: boolean;
 };
 
+type ReorderPackageDaysBody = {
+  orderedDayIds: string[];
+};
+
+type InsertPackageDayBody = {
+  afterDayNumber?: number | null;
+};
+
+type ReorderPackageDayComponentsBody = {
+  orderedComponentIds: string[];
+};
+
 @Controller('package-templates')
 export class PackageTemplatesController {
   constructor(private readonly packageTemplatesService: PackageTemplatesService) {}
@@ -66,6 +78,32 @@ export class PackageTemplatesController {
   @Roles('admin', 'operations')
   addComponent(@Param('id') id: string, @Body() body: PackageTemplateComponentBody) {
     return this.packageTemplatesService.addComponent(id, this.normalizeComponentBody(body));
+  }
+
+  @Patch(':id/days/reorder')
+  @Roles('admin', 'operations')
+  reorderDays(@Param('id') id: string, @Body() body: ReorderPackageDaysBody) {
+    return this.packageTemplatesService.reorderDays(id, body);
+  }
+
+  @Post(':id/days/insert')
+  @Roles('admin', 'operations')
+  insertDay(@Param('id') id: string, @Body() body: InsertPackageDayBody) {
+    return this.packageTemplatesService.insertDay(id, {
+      afterDayNumber: body.afterDayNumber === undefined || body.afterDayNumber === null ? body.afterDayNumber : Number(body.afterDayNumber),
+    });
+  }
+
+  @Post(':id/days/:dayId/duplicate')
+  @Roles('admin', 'operations')
+  duplicateDay(@Param('id') id: string, @Param('dayId') dayId: string) {
+    return this.packageTemplatesService.duplicateDay(id, dayId);
+  }
+
+  @Patch(':id/days/:dayId/components/reorder')
+  @Roles('admin', 'operations')
+  reorderDayComponents(@Param('id') id: string, @Param('dayId') dayId: string, @Body() body: ReorderPackageDayComponentsBody) {
+    return this.packageTemplatesService.reorderDayComponents(id, dayId, body);
   }
 
   @Patch(':id/days/:dayId')

@@ -83,3 +83,34 @@ export function resolvePackageTemplateDays(days: PackageTemplateDay[] | undefine
     components: day.components,
   }));
 }
+
+function collectMealLabels(components: PackageTemplateComponent[]) {
+  const mealPattern = /\b(breakfast|lunch|dinner|meal|bb|hb|fb)\b/i;
+  const labels = components
+    .map((component) => packageComponentReferenceLabel(component) || component.label)
+    .filter((label) => mealPattern.test(label));
+
+  return [...new Set(labels)];
+}
+
+export function buildPackagePlannerSummary(days: PackageTemplateDay[], components: PackageTemplateComponent[], durationDays: number) {
+  const cities = [
+    ...new Set(
+      components
+        .map((component) => component.hotelContract?.hotel?.city)
+        .filter((city): city is string => Boolean(city)),
+    ),
+  ];
+  const excursions = components.filter((component) => component.componentType === 'EXCURSION_TEMPLATE').length;
+  const hotelNights = components.filter((component) => component.componentType === 'HOTEL').length;
+  const mealLabels = collectMealLabels(components);
+
+  return {
+    duration: `${durationDays} days`,
+    cities: cities.length ? cities.join(', ') : 'Not set',
+    excursions: String(excursions),
+    hotelNights: String(hotelNights),
+    includedMeals: mealLabels.length ? mealLabels.join(', ') : 'Not set',
+    activeDays: String(days.filter((day) => day.active).length),
+  };
+}

@@ -38,6 +38,18 @@ type PackageTemplateDayInput = {
   active?: boolean;
 };
 
+type ReorderDaysInput = {
+  orderedDayIds: string[];
+};
+
+type InsertDayInput = {
+  afterDayNumber?: number | null;
+};
+
+type ReorderComponentsInput = {
+  orderedComponentIds: string[];
+};
+
 const COMPONENT_TYPES: PackageTemplateComponentType[] = ['EXCURSION_TEMPLATE', 'ACTIVITY', 'HOTEL', 'TRANSPORT', 'TICKET', 'SERVICE'];
 
 @Injectable()
@@ -117,6 +129,149 @@ export class PackageTemplatesService {
         },
       },
     });
+  }
+
+  async reorderDays(packageTemplateId: string, data: ReorderDaysInput) {
+    const template = await this.findOne(packageTemplateId);
+    const days = [...(template.days || [])].sort((first, second) => first.dayNumber - second.dayNumber);
+    const orderedDayIds = Array.isArray(data.orderedDayIds) ? data.orderedDayIds : [];
+
+    if (orderedDayIds.length !== days.length || new Set(orderedDayIds).size !== days.length) {
+      throw new BadRequestException('orderedDayIds must include every package day exactly once');
+    }
+
+    const dayById = new Map(days.map((day) => [day.id, day]));
+    if (orderedDayIds.some((dayId) => !dayById.has(dayId))) {
+      throw new BadRequestException('orderedDayIds contains a day that does not belong to this package template');
+    }
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      for (let index = 0; index < orderedDayIds.length; index += 1) {
+        await tx.packageTemplateDay.update({
+          where: { id: orderedDayIds[index] },
+          data: { dayNumber: 10000 + index + 1 },
+        });
+      }
+
+      for (let index = 0; index < orderedDayIds.length; index += 1) {
+        const dayNumber = index + 1;
+        const dayId = orderedDayIds[index];
+        await tx.packageTemplateDay.update({
+          where: { id: dayId },
+          data: { dayNumber },
+        });
+        await tx.packageTemplateComponent.updateMany({
+          where: { packageTemplateId, packageTemplateDayId: dayId },
+          data: { dayNumber },
+        });
+      }
+    });
+
+    return this.findOne(packageTemplateId);
+  }
+
+  async insertDay(packageTemplateId: string, data: InsertDayInput) {
+    const template = await this.findOne(packageTemplateId);
+    const afterDayNumber = data.afterDayNumber === undefined || data.afterDayNumber === null ? template.durationDays : Number(data.afterDayNumber);
+    const insertDayNumber = Math.min(Math.max(Math.trunc(afterDayNumber) + 1, 1), template.durationDays + 1);
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await this.shiftDaysForInsert(tx, packageTemplateId, insertDayNumber);
+      await tx.packageTemplateDay.create({
+        data: {
+          packageTemplateId,
+          dayNumber: insertDayNumber,
+          title: `Day ${insertDayNumber}`,
+          active: true,
+        },
+      });
+      await tx.packageTemplate.update({
+        where: { id: packageTemplateId },
+        data: { durationDays: template.durationDays + 1 },
+      });
+    });
+
+    return this.findOne(packageTemplateId);
+  }
+
+  async duplicateDay(packageTemplateId: string, dayId: string) {
+    const template = await this.findOne(packageTemplateId);
+    const sourceDay = template.days?.find((day: any) => day.id === dayId);
+    throwIfNotFound(sourceDay, 'Package template day');
+    const insertDayNumber = sourceDay.dayNumber + 1;
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await this.shiftDaysForInsert(tx, packageTemplateId, insertDayNumber);
+      const duplicatedDay = await tx.packageTemplateDay.create({
+        data: {
+          packageTemplateId,
+          dayNumber: insertDayNumber,
+          title: `${sourceDay.title} copy`,
+          description: sourceDay.description,
+          active: sourceDay.active,
+        },
+      });
+
+      const components = sourceDay.components || [];
+      if (components.length > 0) {
+        await tx.packageTemplateComponent.createMany({
+          data: components.map((component: any) => ({
+            packageTemplateId,
+            packageTemplateDayId: duplicatedDay.id,
+            componentType: component.componentType,
+            dayNumber: insertDayNumber,
+            label: component.label,
+            sortOrder: component.sortOrder,
+            isOptional: component.isOptional,
+            active: component.active,
+            operationalNotes: component.operationalNotes,
+            excursionTemplateId: component.excursionTemplateId,
+            activityId: component.activityId,
+            hotelContractId: component.hotelContractId,
+            routeId: component.routeId,
+            transportServiceTypeId: component.transportServiceTypeId,
+            pricingMode: component.pricingMode,
+            supplierServiceId: component.supplierServiceId,
+          })),
+        });
+      }
+
+      await tx.packageTemplate.update({
+        where: { id: packageTemplateId },
+        data: { durationDays: template.durationDays + 1 },
+      });
+    });
+
+    return this.findOne(packageTemplateId);
+  }
+
+  async reorderDayComponents(packageTemplateId: string, dayId: string, data: ReorderComponentsInput) {
+    const template = await this.findOne(packageTemplateId);
+    const day = template.days?.find((item: any) => item.id === dayId);
+    throwIfNotFound(day, 'Package template day');
+    const components = day.components || [];
+    const orderedComponentIds = Array.isArray(data.orderedComponentIds) ? data.orderedComponentIds : [];
+
+    if (orderedComponentIds.length !== components.length || new Set(orderedComponentIds).size !== components.length) {
+      throw new BadRequestException('orderedComponentIds must include every component in the package day exactly once');
+    }
+
+    const componentById = new Map(components.map((component: any) => [component.id, component]));
+    if (orderedComponentIds.some((componentId) => !componentById.has(componentId))) {
+      throw new BadRequestException('orderedComponentIds contains a component that does not belong to this package day');
+    }
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      for (let index = 0; index < orderedComponentIds.length; index += 1) {
+        const componentId = orderedComponentIds[index];
+        await tx.packageTemplateComponent.update({
+          where: { id: componentId },
+          data: { sortOrder: index },
+        });
+      }
+    });
+
+    return this.findOne(packageTemplateId);
   }
 
   async addComponent(packageTemplateId: string, data: PackageTemplateComponentInput) {
@@ -313,5 +468,35 @@ export class PackageTemplatesService {
         active: true,
       },
     });
+  }
+
+  private async shiftDaysForInsert(tx: any, packageTemplateId: string, insertDayNumber: number) {
+    const daysToShift = await tx.packageTemplateDay.findMany({
+      where: {
+        packageTemplateId,
+        dayNumber: {
+          gte: insertDayNumber,
+        },
+      },
+      orderBy: [{ dayNumber: 'desc' }],
+    });
+
+    for (const day of daysToShift) {
+      await tx.packageTemplateDay.update({
+        where: { id: day.id },
+        data: { dayNumber: day.dayNumber + 10000 },
+      });
+    }
+
+    for (const day of daysToShift) {
+      await tx.packageTemplateDay.update({
+        where: { id: day.id },
+        data: { dayNumber: day.dayNumber + 1 },
+      });
+      await tx.packageTemplateComponent.updateMany({
+        where: { packageTemplateId, packageTemplateDayId: day.id },
+        data: { dayNumber: day.dayNumber + 1 },
+      });
+    }
   }
 }

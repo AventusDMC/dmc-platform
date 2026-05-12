@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 const listPageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
 const componentFormSource = readFileSync(new URL('./PackageTemplateComponentForm.tsx', import.meta.url), 'utf8');
+const componentReorderSource = readFileSync(new URL('./PackageComponentReorderControls.tsx', import.meta.url), 'utf8');
+const dayActionsSource = readFileSync(new URL('./PackageDayPlannerActions.tsx', import.meta.url), 'utf8');
 const dayFormSource = readFileSync(new URL('./PackageTemplateDayForm.tsx', import.meta.url), 'utf8');
 const displaySource = readFileSync(new URL('./package-template-display.ts', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
@@ -77,6 +79,26 @@ describe('package productization phase one', () => {
     assert.match(apiControllerSource, /@Patch\(':id\/days\/:dayId'\)/);
     assert.match(dayFormSource, /Description \/ notes/);
     assert.match(detailPageSource, /<details/);
+    assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
+  });
+
+  it('adds package planner UX actions for summary, day ordering, day duplication, day insertion, and component ordering', () => {
+    assert.match(displaySource, /buildPackagePlannerSummary/);
+    assert.match(detailPageSource, /packageSummary\.cities/);
+    assert.match(detailPageSource, /packageSummary\.excursions/);
+    assert.match(detailPageSource, /packageSummary\.hotelNights/);
+    assert.match(detailPageSource, /packageSummary\.includedMeals/);
+    assert.match(detailPageSource, /<PackageDayPlannerActions/);
+    assert.match(detailPageSource, /<PackageComponentReorderControls/);
+    assert.match(dayActionsSource, /days\/reorder/);
+    assert.match(dayActionsSource, /days\/insert/);
+    assert.match(dayActionsSource, /duplicate/);
+    assert.match(componentReorderSource, /components\/reorder/);
+    assert.match(apiControllerSource, /reorderDays/);
+    assert.match(apiControllerSource, /insertDay/);
+    assert.match(apiControllerSource, /duplicateDay/);
+    assert.match(apiControllerSource, /reorderDayComponents/);
+    assert.match(apiServiceSource, /shiftDaysForInsert/);
     assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
   });
 });

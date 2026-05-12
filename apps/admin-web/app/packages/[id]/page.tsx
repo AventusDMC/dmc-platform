@@ -6,8 +6,16 @@ import { SummaryStrip } from '../../components/SummaryStrip';
 import { TableSectionShell } from '../../components/TableSectionShell';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
-import { PACKAGE_CATALOG_MODULES, packageComponentReferenceLabel, packageComponentTypeLabel, resolvePackageTemplateDays } from '../package-template-display';
+import {
+  buildPackagePlannerSummary,
+  PACKAGE_CATALOG_MODULES,
+  packageComponentReferenceLabel,
+  packageComponentTypeLabel,
+  resolvePackageTemplateDays,
+} from '../package-template-display';
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
+import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
+import { PackageDayPlannerActions } from '../PackageDayPlannerActions';
 import { PackageTemplateComponentForm } from '../PackageTemplateComponentForm';
 import { PackageTemplateDayForm } from '../PackageTemplateDayForm';
 import type {
@@ -104,9 +112,10 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
 
   const components = template.components || [];
   const packageDays = resolvePackageTemplateDays(template.days, components, template.durationDays);
+  const packageSummary = buildPackagePlannerSummary(packageDays, components, template.durationDays);
   const activeComponentCount = components.filter((component) => component.active).length;
   const optionalComponentCount = components.filter((component) => component.isOptional).length;
-  const activeDayCount = packageDays.filter((day) => day.active).length;
+  const orderedDayIds = packageDays.map((day) => day.id);
 
   return (
     <main className="page">
@@ -119,10 +128,12 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
           summary={
             <SummaryStrip
               items={[
-                { id: 'duration', label: 'Duration', value: `${template.durationDays} days`, helper: `${activeDayCount} active itinerary days` },
-                { id: 'components', label: 'Components', value: String(components.length), helper: `${activeComponentCount} active links` },
-                { id: 'optional', label: 'Optional', value: String(optionalComponentCount), helper: 'Commercially selectable' },
-                { id: 'status', label: 'Status', value: template.active ? 'Active' : 'Inactive', helper: 'Template availability' },
+                { id: 'duration', label: 'Duration', value: packageSummary.duration, helper: `${packageSummary.activeDays} active itinerary days` },
+                { id: 'cities', label: 'Cities', value: packageSummary.cities, helper: 'From linked hotel contracts' },
+                { id: 'excursions', label: 'Excursions', value: packageSummary.excursions, helper: 'Linked templates' },
+                { id: 'hotel-nights', label: 'Hotel nights', value: packageSummary.hotelNights, helper: 'Linked hotel days' },
+                { id: 'meals', label: 'Included meals', value: packageSummary.includedMeals, helper: 'Inferred from linked services' },
+                { id: 'components', label: 'Components', value: String(components.length), helper: `${activeComponentCount} active, ${optionalComponentCount} optional` },
               ]}
             />
           }
@@ -188,7 +199,16 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                         <strong>{day.title}</strong>
                         {day.description ? <p className="table-cell-copy">{day.description}</p> : null}
                       </span>
-                      <span className={day.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>{day.active ? 'Active' : 'Inactive'}</span>
+                      <span className="table-action-group">
+                        <span className={day.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>{day.active ? 'Active' : 'Inactive'}</span>
+                        <PackageDayPlannerActions
+                          apiBaseUrl="/api"
+                          packageTemplateId={template.id}
+                          dayId={day.id}
+                          dayNumber={day.dayNumber}
+                          orderedDayIds={orderedDayIds}
+                        />
+                      </span>
                     </summary>
                     <PackageTemplateDayForm apiBaseUrl="/api" packageTemplateId={template.id} day={day} />
                     {day.components.length > 0 ? (
@@ -205,31 +225,44 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                             </tr>
                           </thead>
                           <tbody>
-                            {day.components.map((component) => (
-                              <tr key={component.id} className={!component.active ? 'muted-row' : undefined}>
-                                <td>
-                                  <strong>{component.label}</strong>
-                                  <p className="table-cell-copy">Sort {component.sortOrder}</p>
-                                </td>
-                                <td>{packageComponentTypeLabel(component.componentType)}</td>
-                                <td>{packageComponentReferenceLabel(component)}</td>
-                                <td>
-                                  <span className={component.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>
-                                    {component.active ? 'Active' : 'Inactive'}
-                                  </span>
-                                  {component.isOptional ? <span className="status-pill status-pill-warning">Optional</span> : null}
-                                </td>
-                                <td>{component.operationalNotes || 'None'}</td>
-                                <td>
-                                  <PackageComponentRemoveButton
-                                    apiBaseUrl="/api"
-                                    packageTemplateId={template.id}
-                                    componentId={component.id}
-                                    label={component.label}
-                                  />
-                                </td>
-                              </tr>
-                            ))}
+                            {day.components.map((component) => {
+                              const orderedComponentIds = day.components.map((item) => item.id);
+
+                              return (
+                                <tr key={component.id} className={!component.active ? 'muted-row' : undefined}>
+                                  <td>
+                                    <strong>{component.label}</strong>
+                                    <p className="table-cell-copy">Position {orderedComponentIds.indexOf(component.id) + 1}</p>
+                                  </td>
+                                  <td>{packageComponentTypeLabel(component.componentType)}</td>
+                                  <td>{packageComponentReferenceLabel(component)}</td>
+                                  <td>
+                                    <span className={component.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>
+                                      {component.active ? 'Active' : 'Inactive'}
+                                    </span>
+                                    {component.isOptional ? <span className="status-pill status-pill-warning">Optional</span> : null}
+                                  </td>
+                                  <td>{component.operationalNotes || 'None'}</td>
+                                  <td>
+                                    <span className="table-action-group">
+                                      <PackageComponentReorderControls
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        dayId={day.id}
+                                        componentId={component.id}
+                                        orderedComponentIds={orderedComponentIds}
+                                      />
+                                      <PackageComponentRemoveButton
+                                        apiBaseUrl="/api"
+                                        packageTemplateId={template.id}
+                                        componentId={component.id}
+                                        label={component.label}
+                                      />
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
