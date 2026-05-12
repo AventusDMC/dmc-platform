@@ -46,6 +46,7 @@ type PreviewRate = {
   cost?: number;
   currency?: string;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  normalizedPricingBasis?: 'PER_PERSON_NIGHT' | 'PER_ROOM_NIGHT';
   salesTaxPercent?: number | null;
   serviceChargePercent?: number | null;
   salesTaxIncluded?: boolean | null;
@@ -135,6 +136,12 @@ type ContractPreview = {
       notes?: string | null;
     }>;
   } | null;
+  multiProperty?: {
+    detected: boolean;
+    propertyCount: number;
+    hotels: ContractPreview[];
+    normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number }>;
+  };
   meta?: Record<string, unknown>;
   hotelName?: string;
   contractStartDate?: string | null;
@@ -621,6 +628,8 @@ export class ContractImportsService {
     validTo: Date | null;
     filePath: string;
     fileName: string;
+    propertyName?: string;
+    isMultiPropertyChild?: boolean;
   }): ContractPreview | null {
     const workbook = this.readWorkbook(input.filePath, input.fileName);
     const ratesSheet = this.getWorkbookSheet(workbook, 'Rates');
@@ -629,15 +638,99 @@ export class ContractImportsService {
     }
 
     const meta = this.readMetaSheet(workbook);
-    const ratesRows: Array<Record<string, string>> = this.sheetToObjects(workbook, ratesSheet);
+    const allRatesRows: Array<Record<string, string>> = this.sheetToObjects(workbook, ratesSheet);
+    const detectedProperties = this.detectWorkbookProperties(allRatesRows);
+    if (!input.propertyName && detectedProperties.length > 1) {
+      const hotels = detectedProperties
+        .map((propertyName) =>
+          this.extractHotelExcelTemplatePreview({
+            ...input,
+            propertyName,
+            isMultiPropertyChild: true,
+          }),
+        )
+        .filter((preview): preview is ContractPreview => Boolean(preview));
+      const supplierName = meta.supplierName || meta.supplier || input.supplierName || this.guessNameFromFile(input.fileName);
+      const year = input.contractYear || new Date().getFullYear();
+      const contractValidFrom = this.isoDateFromTemplate(meta.validFrom || meta.contractStartDate || meta.startDate) || (input.validFrom ? this.isoDate(input.validFrom) : null);
+      const contractValidTo = this.isoDateFromTemplate(meta.validTo || meta.contractEndDate || meta.endDate) || (input.validTo ? this.isoDate(input.validTo) : null);
+      const contractCurrency = (meta.currency || hotels[0]?.contract.currency || 'USD').trim().toUpperCase();
+      const normalizedWorkbooks = hotels.map((hotel) => {
+        const hotelWarnings = this.buildExtractionQcWarnings(hotel);
+        return {
+          hotelName: hotel.hotel?.name || hotel.hotelName || hotel.supplier.name,
+          fileName: `${this.safeExportFileName(hotel.contract.name || hotel.hotel?.name || 'hotel-contract')}-extracted-contract.xlsx`,
+          rateCount: hotel.rates.length,
+          warningCount: hotelWarnings.length + (hotel.warnings?.length || 0),
+        };
+      });
+
+      return this.addPreviewAliases({
+        contractType: ContractImportType.HOTEL,
+        supplier: { name: supplierName, isNew: true },
+        contract: {
+          name: `${supplierName} Multi-Property ${year}`,
+          year,
+          validFrom: contractValidFrom,
+          validTo: contractValidTo,
+          currency: contractCurrency,
+        },
+        hotel: {
+          name: `${detectedProperties.length} properties detected`,
+          city: meta.city || 'Amman',
+          category: 'Multi-property preview',
+        },
+        roomCategories: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.roomCategories || [])),
+        seasons: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.seasons || [])),
+        rates: hotels.flatMap((hotel) => hotel.rates.map((rate) => ({ ...rate, notes: [hotel.hotel?.name, rate.notes].filter(Boolean).join(' | ') }))),
+        mealPlans: this.mergePreviewArrayByCode(hotels.flatMap((hotel) => hotel.mealPlans || [])),
+        taxes: hotels[0]?.taxes || [],
+        supplements: hotels.flatMap((hotel) => hotel.supplements.map((supplement) => ({ ...supplement, notes: [hotel.hotel?.name, supplement.notes].filter(Boolean).join(' | ') }))),
+        policies: [
+          { name: 'Multi-property extraction', value: `${detectedProperties.length} hotel workbooks generated for preview/QC only.` },
+          { name: 'Source file', value: input.fileName },
+        ],
+        ratePolicies: hotels.flatMap((hotel) => hotel.ratePolicies || []),
+        cancellationPolicies: hotels.flatMap((hotel) => hotel.cancellationPolicies || (hotel.cancellationPolicy ? [hotel.cancellationPolicy] : [])),
+        cancellationPolicy: null,
+        childPolicy: null,
+        meta: {
+          ...meta,
+          extractionMode: 'MULTI_PROPERTY_PREVIEW',
+        },
+        multiProperty: {
+          detected: true,
+          propertyCount: hotels.length,
+          hotels,
+          normalizedWorkbooks,
+        },
+        warnings: [
+          {
+            severity: 'blocker',
+            field: 'multiProperty',
+            message: 'Multi-property contracts are split into per-hotel normalized workbooks for preview/QC only. Automatic import is disabled.',
+          },
+          ...hotels.flatMap((hotel, index) =>
+            this.buildExtractionQcWarnings(hotel).map((warning) => ({
+              ...warning,
+              field: `multiProperty.hotels.${index + 1}.${warning.field}`,
+              message: `${hotel.hotel?.name || `Hotel ${index + 1}`}: ${warning.message}`,
+            })),
+          ),
+        ],
+        missingFields: [],
+        uncertainFields: ['multiProperty approval'],
+      });
+    }
+    const ratesRows = input.propertyName ? this.filterRowsForProperty(allRatesRows, input.propertyName) : allRatesRows;
     const requiredColumns = ['Room Type', 'Occupancy', 'Meal Plan', 'Cost'];
     const actualColumns = Object.keys(ratesRows[0] || {});
     const rateHeaderText = actualColumns.join(' ');
     const missingColumns = requiredColumns.filter((column) => !actualColumns.some((actual) => this.templateHeaderMatches(actual, column)));
     const year = input.contractYear || new Date().getFullYear();
-    const hotelName = meta.hotelName || meta.hotel || input.supplierName || this.guessNameFromFile(input.fileName);
+    const hotelName = input.propertyName || meta.hotelName || meta.hotel || input.supplierName || this.guessNameFromFile(input.fileName);
     const supplierName = meta.supplierName || meta.supplier || input.supplierName || hotelName;
-    const contractName = meta.contractName || meta.contract || `${hotelName} ${year}`;
+    const contractName = input.propertyName ? `${hotelName} ${year}` : meta.contractName || meta.contract || `${hotelName} ${year}`;
     const contractValidFrom = this.isoDateFromTemplate(meta.validFrom || meta.contractStartDate || meta.startDate) || (input.validFrom ? this.isoDate(input.validFrom) : null);
     const contractValidTo = this.isoDateFromTemplate(meta.validTo || meta.contractEndDate || meta.endDate) || (input.validTo ? this.isoDate(input.validTo) : null);
     const contractCurrency = (meta.currency || 'USD').trim().toUpperCase();
@@ -660,7 +753,7 @@ export class ContractImportsService {
               const occupancyType = this.templateCell(row, 'Occupancy');
               const mealPlan = this.templateCell(row, 'Meal Plan');
               const cost = this.parseNumber(this.templateCell(row, 'Cost'));
-              if (!roomType || !occupancyType || !mealPlan || !cost) return null;
+              if (!roomType || !occupancyType || !cost) return null;
               const seasonFrom = this.templateCell(row, 'Season From');
               const seasonTo = this.templateCell(row, 'Season To');
               const pricingBasis = this.templatePricingBasis(row, rateHeaderText);
@@ -673,13 +766,14 @@ export class ContractImportsService {
               return {
                 roomType,
                 occupancyType: this.normalizeTemplateOccupancy(occupancyType),
-                mealPlan: this.hotelMealPlan(mealPlan),
+                mealPlan: mealPlan ? this.hotelMealPlan(mealPlan) : '',
                 seasonName: normalizedSeasonFrom || normalizedSeasonTo ? `${normalizedSeasonFrom || 'Start'} - ${normalizedSeasonTo || 'End'}` : 'Imported',
                 seasonFrom: normalizedSeasonFrom || undefined,
                 seasonTo: normalizedSeasonTo || undefined,
                 cost,
                 currency: this.templateCell(row, 'Currency') || contractCurrency,
                 pricingBasis,
+                normalizedPricingBasis: this.normalizedNightlyPricingBasis(pricingBasis),
                 salesTaxPercent: rateTaxPercent ?? defaultTaxPercent ?? null,
                 serviceChargePercent: rateServicePercent ?? defaultServicePercent ?? null,
                 salesTaxIncluded: rateTaxIncluded ?? defaultTaxIncluded ?? false,
@@ -688,14 +782,14 @@ export class ContractImportsService {
             })
             .filter((rate: PreviewRate | null): rate is PreviewRate => Boolean(rate));
 
-    const roomCategoriesFromSheet = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RoomCategories'))
+    const roomCategoriesFromSheet = this.filterRowsForProperty(this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RoomCategories')), input.propertyName)
       .map((row: Record<string, string>) => ({
         name: this.templateCell(row, 'Name') || this.templateCell(row, 'Room Type') || this.templateCell(row, 'Room Category'),
         code: this.templateCell(row, 'Code') || null,
         description: this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || null,
       }))
       .filter((category) => category.name);
-    const supplements: ContractPreview['supplements'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements'))
+    const supplements: ContractPreview['supplements'] = this.filterRowsForProperty(this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Supplements')), input.propertyName)
       .flatMap((row: Record<string, string>) => {
         const rawCurrency = this.templateCell(row, 'Currency');
         const normalizedCurrency = this.normalizeSupplementCurrency(rawCurrency, contractCurrency);
@@ -715,19 +809,19 @@ export class ContractImportsService {
             currency: normalizedCurrency.currency,
             pricingBasis: this.normalizePricingBasis(this.templateCell(row, 'Pricing Basis')) || 'PER_ROOM',
             isMandatory: /^(true|yes|y|1)$/i.test(this.templateCell(row, 'Mandatory')),
-            notes: [this.supplementLabelNote(name), notes, normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
+            notes: [this.supplementCategoryNote(name), this.supplementLabelNote(name), notes, normalizedCurrency.note].filter(Boolean).join(' | ') || undefined,
           },
         ];
       });
-    const policies: ContractPreview['policies'] = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')).map((row: Record<string, string>) => ({
+    const policies: ContractPreview['policies'] = this.filterRowsForProperty(this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Policies')), input.propertyName).map((row: Record<string, string>) => ({
       name: this.templateCell(row, 'Name') || this.templateCell(row, 'Policy') || 'Policy',
       value: this.templateCell(row, 'Value') || this.templateCell(row, 'Description') || this.templateCell(row, 'Notes') || '',
     }));
     const cancellationPolicy = this.readCancellationPolicySheet(workbook);
-    const ratePolicyResult = this.readRatePoliciesSheet(workbook, contractCurrency);
+    const ratePolicyResult = this.readRatePoliciesSheet(workbook, contractCurrency, input.propertyName);
     warnings.push(...ratePolicyResult.warnings);
     const ratePolicies = ratePolicyResult.policies;
-    const childPolicy = this.readChildPolicySheet(workbook, meta, ratePolicies, policies);
+    const childPolicy = this.readChildPolicySheet(workbook, meta, ratePolicies, policies, input.propertyName);
     const taxes: ContractPreview['taxes'] = [];
     if (defaultTaxPercent !== undefined) {
       taxes.push({ name: 'Sales tax', value: defaultTaxPercent, included: defaultTaxIncluded ?? false });
@@ -775,13 +869,27 @@ export class ContractImportsService {
         taxIncluded: defaultTaxIncluded ?? null,
         serviceIncluded: defaultServiceIncluded ?? null,
       },
-      warnings,
+      warnings: [...warnings, ...this.buildExtractionQcWarnings({ rates, seasons: [] })],
       missingFields: missingColumns.map((column) => `Rates.${column}`),
       uncertainFields: [],
     };
   }
 
-  private generateExcel(preview: ContractPreview, sourceName: string) {
+  private generateExcel(preview: ContractPreview, sourceName: string): { buffer: Buffer; fileName: string; contentType?: string } {
+    if (preview.multiProperty?.detected && preview.multiProperty.hotels.length > 0) {
+      const files = preview.multiProperty.hotels.map((hotelPreview) => {
+        const exported = this.generateExcel({ ...hotelPreview, multiProperty: undefined }, hotelPreview.contract.name || hotelPreview.hotel?.name || sourceName);
+        return {
+          fileName: exported.fileName,
+          buffer: exported.buffer,
+        };
+      });
+      return {
+        buffer: this.createStoredZip(files),
+        fileName: `${this.safeExportFileName(preview.contract.name || sourceName)}-normalized-hotel-workbooks.zip`,
+        contentType: 'application/zip',
+      };
+    }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const xlsx = require('xlsx');
     const workbook = xlsx.utils.book_new();
@@ -797,7 +905,8 @@ export class ContractImportsService {
         'Meal Plan': rate.mealPlan || '',
         Cost: rate.cost ?? '',
         Currency: rate.currency || preview.contract.currency || 'USD',
-        'Pricing Basis': rate.pricingBasis || 'PER_ROOM',
+        'Pricing Basis': rate.normalizedPricingBasis || this.normalizedNightlyPricingBasis(rate.pricingBasis || 'PER_ROOM'),
+        Notes: rate.notes || '',
       };
     });
 
@@ -807,7 +916,7 @@ export class ContractImportsService {
       'Charge Basis': supplement.chargeBasis || '',
       Amount: supplement.amount ?? '',
       Currency: supplement.currency || preview.contract.currency || 'USD',
-      'Pricing Basis': supplement.pricingBasis || 'PER_ROOM',
+      'Pricing Basis': this.normalizedNightlyPricingBasis(supplement.pricingBasis || 'PER_ROOM'),
       Mandatory: supplement.isMandatory ? 'Yes' : 'No',
       Notes: supplement.notes || '',
     }));
@@ -823,6 +932,7 @@ export class ContractImportsService {
     return {
       buffer: xlsx.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
       fileName: `${this.safeExportFileName(preview.contract.name || hotelName || sourceName)}-extracted-contract.xlsx`,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
   }
 
@@ -2169,6 +2279,13 @@ export class ContractImportsService {
 
   private buildWarnings(preview: ContractPreview) {
     const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [...(preview.warnings || [])];
+    if (preview.multiProperty?.detected) {
+      warnings.push({
+        severity: 'blocker',
+        field: 'multiProperty',
+        message: 'Multi-property extraction is preview/QC only. Download the normalized hotel workbooks and import one reviewed hotel contract at a time.',
+      });
+    }
     if (!preview.supplier.name?.trim()) {
       warnings.push({ severity: 'blocker', field: 'supplier.name', message: 'Supplier name is required before approval' });
     }
@@ -2282,6 +2399,60 @@ export class ContractImportsService {
     return warnings;
   }
 
+  private buildExtractionQcWarnings(preview: Pick<ContractPreview, 'rates' | 'seasons'>) {
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [];
+    const rateKeysBySeason = new Map<string, PreviewRate[]>();
+
+    for (const [index, rate] of (preview.rates || []).entries()) {
+      const field = `rates.${index + 1}`;
+      const seasonAmbiguous = !rate.seasonFrom || !rate.seasonTo || /^imported$/i.test(rate.seasonName || '');
+      if (seasonAmbiguous) {
+        warnings.push({ severity: 'warning', field: `${field}.season`, message: `Ambiguous season for rate ${index + 1}` });
+      }
+      if (!this.optionalString(rate.occupancyType) || !['SGL', 'DBL', 'TPL', 'TRP'].includes(this.optionalString(rate.occupancyType).toUpperCase())) {
+        warnings.push({ severity: 'warning', field: `${field}.occupancyType`, message: `Unclear occupancy for rate ${index + 1}` });
+      }
+      if (!this.optionalString(rate.mealPlan)) {
+        warnings.push({ severity: 'warning', field: `${field}.mealPlan`, message: `Missing meal plan for rate ${index + 1}` });
+      }
+
+      const key = [
+        this.optionalString(rate.roomType).toLowerCase(),
+        this.optionalString(rate.occupancyType).toUpperCase(),
+        this.optionalString(rate.mealPlan).toUpperCase(),
+      ].join('|');
+      if (!rateKeysBySeason.has(key)) {
+        rateKeysBySeason.set(key, []);
+      }
+      rateKeysBySeason.get(key)!.push(rate);
+    }
+
+    for (const [key, rates] of rateKeysBySeason.entries()) {
+      for (let leftIndex = 0; leftIndex < rates.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < rates.length; rightIndex += 1) {
+          if (this.rateSeasonsOverlap(rates[leftIndex], rates[rightIndex])) {
+            warnings.push({
+              severity: 'warning',
+              field: 'rates',
+              message: `Overlapping rates detected for ${key.replace(/\|/g, ' / ')}`,
+            });
+          }
+        }
+      }
+    }
+
+    return warnings;
+  }
+
+  private rateSeasonsOverlap(left: PreviewRate, right: PreviewRate) {
+    const leftFrom = this.parseDateOnly(left.seasonFrom);
+    const leftTo = this.parseDateOnly(left.seasonTo);
+    const rightFrom = this.parseDateOnly(right.seasonFrom);
+    const rightTo = this.parseDateOnly(right.seasonTo);
+    if (!leftFrom || !leftTo || !rightFrom || !rightTo) return false;
+    return leftFrom <= rightTo && rightFrom <= leftTo;
+  }
+
   private isKnownRatePolicyType(value: unknown) {
     return [
       'CHILD_FREE',
@@ -2342,6 +2513,10 @@ export class ContractImportsService {
           cost: this.parseNumber(rate.cost),
           currency: this.optionalString(rate.currency) || value.contract?.currency || 'JOD',
           pricingBasis: this.normalizePricingBasis(rate.pricingBasis),
+          normalizedPricingBasis:
+            rate.normalizedPricingBasis === 'PER_PERSON_NIGHT' || rate.normalizedPricingBasis === 'PER_ROOM_NIGHT'
+              ? rate.normalizedPricingBasis
+              : this.normalizedNightlyPricingBasis(rate.pricingBasis),
           salesTaxPercent: this.parseNumber(rate.salesTaxPercent),
           serviceChargePercent: this.parseNumber(rate.serviceChargePercent),
           salesTaxIncluded: this.parseBoolean(rate.salesTaxIncluded) ?? null,
@@ -2449,6 +2624,17 @@ export class ContractImportsService {
       contractEndDate: this.optionalString(value.contractEndDate || value.contract?.validTo) || null,
       currency: this.optionalString(value.currency || value.contract?.currency) || 'JOD',
       serviceCharge: value.serviceCharge || null,
+      multiProperty:
+        value.multiProperty && typeof value.multiProperty === 'object'
+          ? {
+              detected: Boolean(value.multiProperty.detected),
+              propertyCount: this.parseNumber(value.multiProperty.propertyCount) ?? 0,
+              hotels: Array.isArray(value.multiProperty.hotels)
+                ? value.multiProperty.hotels.map((hotel: any) => this.normalizeApprovedPreview({ ...hotel, multiProperty: undefined }))
+                : [],
+              normalizedWorkbooks: Array.isArray(value.multiProperty.normalizedWorkbooks) ? value.multiProperty.normalizedWorkbooks : [],
+            }
+          : undefined,
       warnings: Array.isArray(value.warnings) ? value.warnings : [],
       missingFields: Array.isArray(value.missingFields) ? value.missingFields : [],
       uncertainFields: Array.isArray(value.uncertainFields) ? value.uncertainFields : [],
@@ -2659,6 +2845,67 @@ export class ContractImportsService {
     });
   }
 
+  private detectWorkbookProperties(rows: Array<Record<string, string>>) {
+    return Array.from(
+      new Set(
+        rows
+          .map((row) => this.rowPropertyName(row))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+  }
+
+  private rowPropertyName(row: Record<string, string>) {
+    return (
+      this.templateCell(row, 'Hotel') ||
+      this.templateCell(row, 'Hotel Name') ||
+      this.templateCell(row, 'Property') ||
+      this.templateCell(row, 'Property Name')
+    ).trim();
+  }
+
+  private filterRowsForProperty(rows: Array<Record<string, string>>, propertyName?: string) {
+    if (!propertyName) return rows;
+    const scopedRows = rows.filter((row) => {
+      const rowProperty = this.rowPropertyName(row);
+      return !rowProperty || rowProperty.toLowerCase() === propertyName.toLowerCase();
+    });
+    return scopedRows;
+  }
+
+  private mergePreviewArrayByName<T extends { name?: string }>(items: T[]) {
+    const byName = new Map<string, T>();
+    for (const item of items) {
+      const key = this.optionalString(item.name).toLowerCase();
+      if (key && !byName.has(key)) {
+        byName.set(key, item);
+      }
+    }
+    return Array.from(byName.values());
+  }
+
+  private mergePreviewArrayByCode<T extends { code?: string }>(items: T[]) {
+    const byCode = new Map<string, T>();
+    for (const item of items) {
+      const key = this.optionalString(item.code).toUpperCase();
+      if (key && !byCode.has(key)) {
+        byCode.set(key, item);
+      }
+    }
+    return Array.from(byCode.values());
+  }
+
+  private normalizedNightlyPricingBasis(value: unknown): 'PER_PERSON_NIGHT' | 'PER_ROOM_NIGHT' {
+    return this.normalizePricingBasis(value) === 'PER_PERSON' ? 'PER_PERSON_NIGHT' : 'PER_ROOM_NIGHT';
+  }
+
+  private supplementCategoryNote(name: unknown) {
+    const label = this.optionalString(name);
+    if (/single\s+supp/i.test(label)) return 'Single supplement';
+    if (/(suite|room|category|upgrade)/i.test(label)) return 'Room-category supplement';
+    return '';
+  }
+
   private readMetaSheet(workbook: any) {
     const rows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'Meta'));
     const meta: Record<string, string> = {};
@@ -2729,12 +2976,12 @@ export class ContractImportsService {
     };
   }
 
-  private readRatePoliciesSheet(workbook: any, fallbackCurrency: string): {
+  private readRatePoliciesSheet(workbook: any, fallbackCurrency: string, propertyName?: string): {
     policies: RatePolicyPreview[];
     warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
   } {
     const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [];
-    const policies = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RatePolicies'))
+    const policies = this.filterRowsForProperty(this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'RatePolicies')), propertyName)
       .map((row, index) => {
         const amountRaw = this.templateCell(row, 'Amount');
         const percentRaw = this.templateCell(row, 'Percent');
@@ -2781,8 +3028,9 @@ export class ContractImportsService {
     meta: Record<string, string>,
     ratePolicies: RatePolicyPreview[],
     policies: ContractPreview['policies'],
+    propertyName?: string,
   ): ContractPreview['childPolicy'] {
-    const rows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'ChildPolicy'));
+    const rows = this.filterRowsForProperty(this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'ChildPolicy')), propertyName);
     const childPolicyNotes = policies
       .filter((policy) => /child|children|infant|kid|extra\s*bed|meal/i.test(`${policy.name} ${policy.value}`))
       .map((policy) => `${policy.name}: ${policy.value}`.trim())
@@ -3227,6 +3475,76 @@ export class ContractImportsService {
 
   private isoDate(value: Date) {
     return value.toISOString().slice(0, 10);
+  }
+
+  private createStoredZip(files: Array<{ fileName: string; buffer: Buffer }>) {
+    const localParts: Buffer[] = [];
+    const centralParts: Buffer[] = [];
+    let offset = 0;
+
+    for (const file of files) {
+      const nameBuffer = Buffer.from(file.fileName, 'utf8');
+      const crc = this.crc32(file.buffer);
+      const localHeader = Buffer.alloc(30);
+      localHeader.writeUInt32LE(0x04034b50, 0);
+      localHeader.writeUInt16LE(20, 4);
+      localHeader.writeUInt16LE(0, 6);
+      localHeader.writeUInt16LE(0, 8);
+      localHeader.writeUInt16LE(0, 10);
+      localHeader.writeUInt16LE(0, 12);
+      localHeader.writeUInt32LE(crc, 14);
+      localHeader.writeUInt32LE(file.buffer.length, 18);
+      localHeader.writeUInt32LE(file.buffer.length, 22);
+      localHeader.writeUInt16LE(nameBuffer.length, 26);
+      localHeader.writeUInt16LE(0, 28);
+      localParts.push(localHeader, nameBuffer, file.buffer);
+
+      const centralHeader = Buffer.alloc(46);
+      centralHeader.writeUInt32LE(0x02014b50, 0);
+      centralHeader.writeUInt16LE(20, 4);
+      centralHeader.writeUInt16LE(20, 6);
+      centralHeader.writeUInt16LE(0, 8);
+      centralHeader.writeUInt16LE(0, 10);
+      centralHeader.writeUInt16LE(0, 12);
+      centralHeader.writeUInt16LE(0, 14);
+      centralHeader.writeUInt32LE(crc, 16);
+      centralHeader.writeUInt32LE(file.buffer.length, 20);
+      centralHeader.writeUInt32LE(file.buffer.length, 24);
+      centralHeader.writeUInt16LE(nameBuffer.length, 28);
+      centralHeader.writeUInt16LE(0, 30);
+      centralHeader.writeUInt16LE(0, 32);
+      centralHeader.writeUInt16LE(0, 34);
+      centralHeader.writeUInt16LE(0, 36);
+      centralHeader.writeUInt32LE(0, 38);
+      centralHeader.writeUInt32LE(offset, 42);
+      centralParts.push(centralHeader, nameBuffer);
+
+      offset += localHeader.length + nameBuffer.length + file.buffer.length;
+    }
+
+    const centralDirectory = Buffer.concat(centralParts);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(0, 4);
+    end.writeUInt16LE(0, 6);
+    end.writeUInt16LE(files.length, 8);
+    end.writeUInt16LE(files.length, 10);
+    end.writeUInt32LE(centralDirectory.length, 12);
+    end.writeUInt32LE(offset, 16);
+    end.writeUInt16LE(0, 20);
+
+    return Buffer.concat([...localParts, centralDirectory, end]);
+  }
+
+  private crc32(buffer: Buffer) {
+    let crc = 0xffffffff;
+    for (const byte of buffer) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+      }
+    }
+    return (crc ^ 0xffffffff) >>> 0;
   }
 
   private normalizePreviewForDisplay(value: unknown) {

@@ -1831,6 +1831,7 @@ function EditServiceEditorPanel({
 }
 
 function QuoteServiceLaneBoard({
+  quoteId,
   dayId,
   dayNumber,
   items,
@@ -1846,6 +1847,7 @@ function QuoteServiceLaneBoard({
   detachingContractItemId,
   recentlyAddedItemId,
 }: {
+  quoteId: string;
   dayId: string;
   dayNumber: number;
   items: QuoteItem[];
@@ -1877,6 +1879,7 @@ function QuoteServiceLaneBoard({
         return (
           <QuoteServiceLane
             key={group.category}
+            quoteId={quoteId}
             dayId={dayId}
             dayNumber={dayNumber}
             category={group.category}
@@ -1911,6 +1914,7 @@ const serviceLaneToneClassNames: Record<ServicePlannerCategory, string> = {
 };
 
 function QuoteServiceLane({
+  quoteId,
   dayId,
   dayNumber,
   category,
@@ -1927,6 +1931,7 @@ function QuoteServiceLane({
   onRemove,
   onDetachContract,
 }: {
+  quoteId: string;
   dayId: string;
   dayNumber: number;
   category: ServicePlannerCategory;
@@ -1986,6 +1991,7 @@ function QuoteServiceLane({
             {orderedItems.map((item) => (
               <QuoteServiceCard
                 key={item.id}
+                quoteId={quoteId}
                 item={item}
                 dayId={dayId}
                 dayNumber={dayNumber}
@@ -2061,6 +2067,7 @@ function buildSortableTransform(transform: ReturnType<typeof useSortable>['trans
 }
 
 function QuoteServiceCard({
+  quoteId,
   item,
   dayId,
   dayNumber,
@@ -2074,6 +2081,7 @@ function QuoteServiceCard({
   onRemove,
   onDetachContract,
 }: {
+  quoteId: string;
   item: QuoteItem;
   dayId: string;
   dayNumber: number;
@@ -2201,6 +2209,11 @@ function QuoteServiceCard({
         <p>{getServiceNotes(item)}</p>
       </details>
       <div className={`${laneStyles.actions} quote-service-mini-card-actions`} data-testid="quote-service-card-actions">
+        {category === 'hotel' || category === 'transport' || category === 'guide' || category === 'other' ? (
+          <Link href={`/quotes/${quoteId}/vouchers/${item.id}/preview`} className="secondary-button">
+            Voucher
+          </Link>
+        ) : null}
         <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
           Edit
         </button>
@@ -3407,6 +3420,7 @@ function ScopePlanner({
                     <em>Operational flow</em>
                   </summary>
                   <QuoteServiceLaneBoard
+                    quoteId={plannerProps.quote.id}
                     dayId={summary.day.id}
                     dayNumber={summary.day.dayNumber}
                     items={summary.items}

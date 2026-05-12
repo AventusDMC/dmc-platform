@@ -624,6 +624,140 @@ test('hotel Excel template keeps percent supplement currency cells out of curren
   assert.equal(warnings.some((warning) => /Unsupported supplement currency/.test(warning.message)), false);
 });
 
+test('hotel Excel template splits multi-property contracts into preview-only normalized hotel workbooks', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Key: 'Supplier Name', Value: 'Jordan Hotel Group' },
+      { Key: 'Contract Name', Value: 'Jordan Hotel Group 2026' },
+      { Key: 'Currency', Value: 'JOD' },
+      { Key: 'Valid From', Value: '2026-01-01' },
+      { Key: 'Valid To', Value: '2026-12-31' },
+    ]),
+    'Meta',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      {
+        Hotel: 'Amman City Hotel',
+        'Room Type': 'Deluxe Room',
+        Occupancy: 'DBL',
+        'Meal Plan': 'BB',
+        'Season From': '2026-01-01',
+        'Season To': '2026-03-31',
+        Cost: 120,
+        Currency: 'JOD',
+        'Pricing Basis': 'per room',
+      },
+      {
+        Hotel: 'Petra Valley Hotel',
+        'Room Type': 'Standard Room',
+        Occupancy: 'DBL',
+        'Meal Plan': '',
+        'Season From': '2026-02-01',
+        'Season To': '2026-04-30',
+        Cost: 95,
+        Currency: 'JOD',
+        'Pricing Basis': 'per person',
+      },
+      {
+        Hotel: 'Petra Valley Hotel',
+        'Room Type': 'Standard Room',
+        Occupancy: 'DBL',
+        'Meal Plan': '',
+        'Season From': '2026-03-01',
+        'Season To': '2026-05-31',
+        Cost: 105,
+        Currency: 'JOD',
+        'Pricing Basis': 'per person',
+      },
+    ]),
+    'Rates',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Hotel: 'Amman City Hotel', Name: 'Single Supplement', Type: 'SINGLE_SUPPLEMENT', 'Charge Basis': 'PER_NIGHT', Amount: 35, Currency: 'JOD', 'Pricing Basis': 'per room' },
+      { Hotel: 'Petra Valley Hotel', Name: 'Junior Suite Upgrade', Type: 'EXTRA_BED', 'Charge Basis': 'PER_NIGHT', Amount: 45, Currency: 'JOD', 'Pricing Basis': 'per room' },
+    ]),
+    'Supplements',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { Hotel: 'Amman City Hotel', Label: 'Children under 6', 'Min Age': 0, 'Max Age': 5, 'Charge Basis': 'FREE' },
+      { Hotel: 'Petra Valley Hotel', Label: 'Children 6-11', 'Min Age': 6, 'Max Age': 11, 'Charge Basis': 'PERCENT_OF_ADULT', 'Charge Value': 50 },
+    ]),
+    'ChildPolicy',
+  );
+  const filePath = join(tmpdir(), `multi-property-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: 'Jordan Hotel Group',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'multi-property-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.multiProperty.detected, true);
+  assert.equal(preview.multiProperty.hotels.length, 2);
+  assert.deepEqual(preview.multiProperty.hotels.map((hotel: any) => hotel.hotel.name), ['Amman City Hotel', 'Petra Valley Hotel']);
+  assert.equal(preview.multiProperty.hotels[0].rates[0].normalizedPricingBasis, 'PER_ROOM_NIGHT');
+  assert.equal(preview.multiProperty.hotels[1].rates[0].normalizedPricingBasis, 'PER_PERSON_NIGHT');
+  assert.match(preview.multiProperty.hotels[0].supplements[0].notes, /Single supplement/);
+  assert.match(preview.multiProperty.hotels[1].supplements[0].notes, /Room-category supplement/);
+  assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
+  assert.ok(warnings.some((warning) => /Missing meal plan/.test(warning.message)));
+  assert.ok(warnings.some((warning) => /Overlapping rates/.test(warning.message)));
+  assert.deepEqual(
+    preview.multiProperty.normalizedWorkbooks.map((entry: any) => entry.fileName),
+    ['amman-city-hotel-2026-extracted-contract.xlsx', 'petra-valley-hotel-2026-extracted-contract.xlsx'],
+  );
+});
+
+test('multi-property hotel export returns a zip containing one normalized workbook per hotel', () => {
+  const service = createService();
+  const preview = normalizeApproved(service, {
+    ...baseApprovedData({
+      contract: { name: 'Group Contract 2026', currency: 'JOD', validFrom: '2026-01-01', validTo: '2026-12-31' },
+    }),
+    multiProperty: {
+      detected: true,
+      propertyCount: 2,
+      normalizedWorkbooks: [],
+      hotels: [
+        baseApprovedData({
+          contract: { name: 'Amman City Hotel 2026', currency: 'JOD', validFrom: '2026-01-01', validTo: '2026-12-31' },
+          hotel: { name: 'Amman City Hotel' },
+          rate: { normalizedPricingBasis: 'PER_ROOM_NIGHT' },
+        }),
+        baseApprovedData({
+          contract: { name: 'Petra Valley Hotel 2026', currency: 'JOD', validFrom: '2026-01-01', validTo: '2026-12-31' },
+          hotel: { name: 'Petra Valley Hotel' },
+          rate: { normalizedPricingBasis: 'PER_PERSON_NIGHT' },
+        }),
+      ],
+    },
+  });
+
+  const exported = (service as any).generateExcel(preview, 'group-contract.xlsx');
+
+  assert.equal(exported.contentType, 'application/zip');
+  assert.match(exported.fileName, /group-contract-2026-normalized-hotel-workbooks\.zip/);
+  assert.equal(exported.buffer.readUInt32LE(0), 0x04034b50);
+  assert.match(exported.buffer.toString('latin1'), /amman-city-hotel-2026-extracted-contract\.xlsx/);
+  assert.match(exported.buffer.toString('latin1'), /petra-valley-hotel-2026-extracted-contract\.xlsx/);
+});
+
 test('contract import approval blocks invalid rows before persistence and returns row field context', async () => {
   let hotelRateCreateCount = 0;
   const service = createService({

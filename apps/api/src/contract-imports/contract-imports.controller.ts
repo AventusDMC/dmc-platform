@@ -67,7 +67,7 @@ export class ContractImportsController {
       },
     }),
   )
-  analyze(@Body() body: AnalyzeBody, @UploadedFile() file: any, @Actor() actor: AuthenticatedActor) {
+  analyze(@Body() body: AnalyzeBody, @UploadedFile() file: any, @Actor() actor: AuthenticatedActor): Promise<any> {
     if (!file) {
       throw new BadRequestException('Contract file is required');
     }
@@ -104,7 +104,7 @@ export class ContractImportsController {
   @Post(':id/export-excel')
   async exportExcel(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
     const exported = await this.contractImportsService.exportExcel(id, actor);
-    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Type', exported.contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     response.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
     return new StreamableFile(exported.buffer);
   }

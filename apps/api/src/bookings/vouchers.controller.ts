@@ -56,6 +56,15 @@ export class VouchersController {
     return this.operationalVouchersService.getHotelVoucherPreview(id, actor);
   }
 
+  @Get('quote-items/:quoteItemId/preview')
+  @Roles('admin', 'operations')
+  previewQuoteItemVoucher(
+    @Param('quoteItemId') quoteItemId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.operationalVouchersService.getQuoteItemVoucherPreview(quoteItemId, actor);
+  }
+
   @Patch(':id/status')
   @Roles('admin', 'operations')
   updateVoucherStatus(

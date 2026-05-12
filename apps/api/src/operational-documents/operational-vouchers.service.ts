@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { VoucherType } from '@prisma/client';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
+import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
 import { PrismaService } from '../prisma/prisma.service';
 
-type OperationalVoucherKind = 'HOTEL' | 'TRANSPORT' | 'ACTIVITY' | 'GUIDE' | 'EXTERNAL_PACKAGE';
+type OperationalVoucherKind = 'HOTEL' | 'TRANSPORT' | 'SERVICE' | 'ACTIVITY' | 'GUIDE' | 'EXTERNAL_PACKAGE';
 
 type HotelVoucherPassenger = {
   id: string;
@@ -69,9 +70,208 @@ export type HotelOperationalVoucherPreview = {
   };
 };
 
+export type QuoteOperationalVoucherPreview = {
+  id: string;
+  kind: 'HOTEL' | 'TRANSPORT' | 'SERVICE';
+  status: 'PREVIEW';
+  voucher: {
+    type: 'HOTEL' | 'TRANSPORT' | 'SERVICE';
+    quoteItemId: string;
+    quoteDayId: string | null;
+    operationalStatus: 'DRAFT';
+    remarks: string[];
+  };
+  quote: {
+    id: string;
+    quoteNumber: string | null;
+    title: string;
+    pax: number;
+  };
+  itineraryDay: {
+    id: string | null;
+    dayNumber: number | null;
+    title: string | null;
+    notes: string | null;
+  };
+  hotel?: {
+    name: string;
+    city: string | null;
+    roomingSummary: string;
+    rooms: HotelVoucherRoom[];
+    passengers: HotelVoucherPassenger[];
+    mealPlan: string;
+    roomCategory: string;
+    occupancy: string;
+    checkIn: string | null;
+    checkOut: string | null;
+    pax: number;
+  };
+  transport?: {
+    route: string;
+    serviceType: string;
+    pickup: string | null;
+    dropoff: string | null;
+    vehicle: string | null;
+    pax: number;
+  };
+  service?: {
+    name: string;
+    category: string | null;
+    serviceType: string | null;
+    operationalNotes: string[];
+    pax: number;
+  };
+  source: {
+    quoteItemId: string;
+    itineraryDayId: string | null;
+    packageTemplateId: string | null;
+    packageTemplateDayId: string | null;
+    packageTemplateComponentId: string | null;
+    generatedFrom: 'live-operational-quote-data';
+  };
+};
+
 @Injectable()
 export class OperationalVouchersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getQuoteItemVoucherPreview(quoteItemId: string, actor?: CompanyScopedActor): Promise<QuoteOperationalVoucherPreview> {
+    const companyId = requireActorCompanyId(actor);
+    const item = await this.prisma.quoteItem.findFirst({
+      where: {
+        id: quoteItemId,
+        quote: {
+          clientCompanyId: companyId,
+        },
+      },
+      include: {
+        quote: {
+          include: {
+            passengers: {
+              orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+            },
+            roomingGroups: {
+              include: {
+                hotelQuoteItem: {
+                  include: {
+                    hotel: true,
+                    roomCategory: true,
+                  },
+                },
+                assignments: {
+                  include: {
+                    quotePassenger: true,
+                  },
+                  orderBy: { createdAt: 'asc' },
+                },
+              },
+              orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+            },
+          },
+        },
+        itinerary: true,
+        quoteItineraryDayItems: {
+          include: {
+            day: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+        service: {
+          include: {
+            serviceType: true,
+            entranceFee: true,
+          },
+        },
+        hotel: true,
+        roomCategory: true,
+        appliedVehicleRate: {
+          include: {
+            vehicle: true,
+            serviceType: true,
+            route: {
+              include: {
+                fromPlace: true,
+                toPlace: true,
+              },
+            },
+            fromPlace: true,
+            toPlace: true,
+          },
+        },
+      },
+    } as any);
+
+    if (!item) {
+      throw new NotFoundException('Quote item not found');
+    }
+
+    const kind = this.resolveQuoteVoucherKind(item);
+    if (!kind) {
+      throw new BadRequestException('Only hotel, transport, and operational service quote items support voucher previews in phase 1');
+    }
+
+    const quote = (item as any).quote;
+    const plannerDay = (item as any).quoteItineraryDayItems?.find((entry: any) => entry.day)?.day || null;
+    const legacyDay = (item as any).itinerary || null;
+    const itineraryDay = plannerDay || legacyDay || null;
+    const remarks = this.compactTextList([
+      item.pricingDescription,
+      item.meetingPoint,
+      item.pickupLocation,
+      item.externalInternalNotes,
+    ]);
+    const base = {
+      id: `quote-item-${item.id}`,
+      kind,
+      status: 'PREVIEW' as const,
+      voucher: {
+        type: kind,
+        quoteItemId: item.id,
+        quoteDayId: itineraryDay?.id || null,
+        operationalStatus: 'DRAFT' as const,
+        remarks,
+      },
+      quote: {
+        id: quote.id,
+        quoteNumber: quote.quoteNumber || null,
+        title: quote.title,
+        pax: this.getQuoteItemPax(item, quote),
+      },
+      itineraryDay: {
+        id: itineraryDay?.id || null,
+        dayNumber: itineraryDay?.dayNumber ?? null,
+        title: itineraryDay?.title || null,
+        notes: itineraryDay?.notes || itineraryDay?.description || null,
+      },
+      source: {
+        quoteItemId: item.id,
+        itineraryDayId: itineraryDay?.id || item.itineraryId || null,
+        packageTemplateId: (item as any).packageTemplateId || null,
+        packageTemplateDayId: (item as any).packageTemplateDayId || null,
+        packageTemplateComponentId: (item as any).packageTemplateComponentId || null,
+        generatedFrom: 'live-operational-quote-data' as const,
+      },
+    };
+
+    if (kind === 'HOTEL') {
+      return {
+        ...base,
+        hotel: this.buildQuoteHotelVoucherSection(item, quote, itineraryDay),
+      };
+    }
+
+    if (kind === 'TRANSPORT') {
+      return {
+        ...base,
+        transport: this.buildQuoteTransportVoucherSection(item),
+      };
+    }
+
+    return {
+      ...base,
+      service: this.buildQuoteServiceVoucherSection(item, remarks),
+    };
+  }
 
   async getHotelVoucherPreview(voucherId: string, actor?: CompanyScopedActor): Promise<HotelOperationalVoucherPreview> {
     const companyId = requireActorCompanyId(actor);
@@ -263,6 +463,96 @@ export class OperationalVouchersService {
     }
 
     return quoteItems.find((item) => item.hotelId || item.hotel || item.mealPlan || item.roomCategoryId) || null;
+  }
+
+  private resolveQuoteVoucherKind(item: any): 'HOTEL' | 'TRANSPORT' | 'SERVICE' | null {
+    if (item.hotelId || item.hotel || item.mealPlan || item.roomCategoryId) {
+      return 'HOTEL';
+    }
+
+    const taxonomyGroup = item.service ? resolveServiceTaxonomyGroup(item.service) : null;
+    if (taxonomyGroup === 'transport' || item.appliedVehicleRateId || item.appliedVehicleRate) {
+      return 'TRANSPORT';
+    }
+
+    if (taxonomyGroup === 'operationalAssistance' || taxonomyGroup === 'guide' || taxonomyGroup === 'other') {
+      return 'SERVICE';
+    }
+
+    const serviceText = [item.service?.name, item.service?.category, item.service?.serviceType?.name, item.service?.serviceType?.code]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (/\b(meet|assist|fast track|porter|sim|wheelchair|airport assistance|border assistance|escort|guide)\b/.test(serviceText)) {
+      return 'SERVICE';
+    }
+
+    return null;
+  }
+
+  private buildQuoteHotelVoucherSection(item: any, quote: any, itineraryDay: any) {
+    const roomingGroups = (quote.roomingGroups || []).filter((group: any) => {
+      if (group.hotelQuoteItemId === item.id) {
+        return true;
+      }
+      return itineraryDay?.id && group.itineraryDayId === itineraryDay.id && group.hotelQuoteItem?.hotelId === item.hotelId;
+    });
+    const rooms = roomingGroups.map((group: any, index: number) => this.mapQuoteRoomingGroup(group, index));
+    const passengers = this.resolvePassengers(quote.passengers || [], [], rooms);
+    const checkIn = this.formatDateOnly(item.serviceDate || null);
+    const checkOut = this.formatDateOnly(this.resolveCheckOutDate({ checkIn, quoteItem: item, booking: {}, snapshot: { nightCount: item.nightCount } }));
+
+    return {
+      name: this.cleanText(item.hotel?.name) || this.cleanText(item.service?.name) || 'Hotel',
+      city: this.cleanText(item.hotel?.city),
+      roomingSummary: this.buildRoomingSummary(rooms),
+      rooms,
+      passengers,
+      mealPlan: this.cleanText(item.mealPlan) || 'Meal plan pending',
+      roomCategory: this.cleanText(item.roomCategory?.name) || 'Room category pending',
+      occupancy: this.cleanText(item.occupancyType) || this.summarizeOccupancy(rooms),
+      checkIn,
+      checkOut,
+      pax: this.getQuoteItemPax(item, quote),
+    };
+  }
+
+  private buildQuoteTransportVoucherSection(item: any) {
+    const rate = item.appliedVehicleRate;
+    const routeName =
+      this.cleanText(rate?.routeName) ||
+      this.cleanText(rate?.route?.name) ||
+      [rate?.fromPlace?.name, rate?.toPlace?.name].filter(Boolean).join(' to ') ||
+      this.cleanText(item.pricingDescription) ||
+      'Route pending';
+
+    return {
+      route: routeName,
+      serviceType: this.cleanText(rate?.serviceType?.name) || this.cleanText(item.service?.serviceType?.name) || this.cleanText(item.service?.name) || 'Transport service',
+      pickup: this.cleanText(item.pickupTime) || this.cleanText(item.startTime),
+      dropoff: this.cleanText(item.meetingPoint) || this.cleanText(item.pickupLocation),
+      vehicle: this.cleanText(rate?.vehicle?.name),
+      pax: this.getQuoteItemPax(item, item.quote),
+    };
+  }
+
+  private buildQuoteServiceVoucherSection(item: any, remarks: string[]) {
+    return {
+      name: this.cleanText(item.customServiceName) || this.cleanText(item.service?.name) || 'Operational service',
+      category: this.cleanText(item.service?.category),
+      serviceType: this.cleanText(item.service?.serviceType?.name),
+      operationalNotes: this.compactTextList([
+        item.pickupTime ? `Pickup time: ${item.pickupTime}` : null,
+        item.pickupLocation ? `Pickup location: ${item.pickupLocation}` : null,
+        item.meetingPoint ? `Meeting point: ${item.meetingPoint}` : null,
+        ...remarks,
+      ]),
+      pax: this.getQuoteItemPax(item, item.quote),
+    };
+  }
+
+  private getQuoteItemPax(item: any, quote: any) {
+    return Math.max(1, Number((item.paxCount ?? item.participantCount ?? (Number(quote?.adults ?? 0) + Number(quote?.children ?? 0))) || 1));
   }
 
   private resolveItineraryDay(days: any[], quoteItem: any, service: any) {

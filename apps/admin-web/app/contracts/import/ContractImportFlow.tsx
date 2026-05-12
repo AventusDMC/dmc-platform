@@ -29,6 +29,7 @@ type PreviewRate = {
   cost?: number;
   currency?: string;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM';
+  normalizedPricingBasis?: 'PER_PERSON_NIGHT' | 'PER_ROOM_NIGHT';
   salesTaxPercent?: number | null;
   serviceChargePercent?: number | null;
   salesTaxIncluded?: boolean | null;
@@ -115,6 +116,12 @@ type ContractPreview = {
   ratePolicies?: RatePolicyPreview[];
   cancellationPolicy?: CancellationPolicyPreview | null;
   childPolicy?: ChildPolicyPreviewValue | null;
+  multiProperty?: {
+    detected: boolean;
+    propertyCount: number;
+    hotels: ContractPreview[];
+    normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number }>;
+  };
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -427,6 +434,10 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
         cost: typeof rate.cost === 'number' ? rate.cost : Number(rate.cost ?? rate.price ?? rate.rate) || undefined,
         currency: rate.currency || contract.currency || source.currency || 'JOD',
         pricingBasis: normalizePricingBasis(rate.pricingBasis),
+        normalizedPricingBasis:
+          rate.normalizedPricingBasis === 'PER_PERSON_NIGHT' || rate.normalizedPricingBasis === 'PER_ROOM_NIGHT'
+            ? rate.normalizedPricingBasis
+            : undefined,
         salesTaxPercent: rate.salesTaxPercent ?? null,
         serviceChargePercent: rate.serviceChargePercent ?? null,
         salesTaxIncluded: rate.salesTaxIncluded ?? null,
@@ -497,6 +508,7 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
     ratePolicies,
     cancellationPolicy,
     childPolicy,
+    multiProperty: source.multiProperty,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
   };
@@ -543,6 +555,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
 
   const warnings = useMemo(() => contractImport?.warnings || [], [contractImport]);
   const blockers = warnings.filter((warning) => warning.severity === 'blocker');
+  const isMultiPropertyPreview = Boolean(preview.multiProperty?.detected);
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -912,7 +925,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
               <button className="secondary-button" type="button" onClick={() => void handleDownloadExcel()}>
                 Download Extracted Excel
               </button>
-              <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0}>
+              <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0 || isMultiPropertyPreview}>
                 {isApproving ? 'Importing...' : 'Approve import'}
               </button>
             </div>
@@ -949,6 +962,39 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                 </p>
               ))}
             </div>
+          ) : null}
+
+          {isMultiPropertyPreview ? (
+            <section className="table-section">
+              <div className="section-header">
+                <div>
+                  <h3>Multi-property extraction preview</h3>
+                  <p>Automatic import is disabled. Download the normalized workbooks and review each hotel separately.</p>
+                </div>
+              </div>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Hotel</th>
+                      <th>Workbook</th>
+                      <th>Rates</th>
+                      <th>QC warnings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.multiProperty?.normalizedWorkbooks || []).map((workbook) => (
+                      <tr key={workbook.fileName}>
+                        <td>{workbook.hotelName}</td>
+                        <td>{workbook.fileName}</td>
+                        <td>{workbook.rateCount}</td>
+                        <td>{workbook.warningCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           ) : null}
 
           <div className="form-grid">
