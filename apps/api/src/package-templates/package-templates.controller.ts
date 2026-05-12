@@ -106,6 +106,12 @@ export class PackageTemplatesController {
     return this.packageTemplatesService.reorderDayComponents(id, dayId, body);
   }
 
+  @Delete(':id/days/:dayId')
+  @Roles('admin', 'operations')
+  removeDay(@Param('id') id: string, @Param('dayId') dayId: string) {
+    return this.packageTemplatesService.removeDay(id, dayId);
+  }
+
   @Patch(':id/days/:dayId')
   @Roles('admin', 'operations')
   updateDay(@Param('id') id: string, @Param('dayId') dayId: string, @Body() body: PackageTemplateDayBody) {

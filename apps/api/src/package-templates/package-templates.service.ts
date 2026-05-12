@@ -245,6 +245,60 @@ export class PackageTemplatesService {
     return this.findOne(packageTemplateId);
   }
 
+  async removeDay(packageTemplateId: string, dayId: string) {
+    const template = await this.findOne(packageTemplateId);
+    const day = template.days?.find((item: any) => item.id === dayId);
+    throwIfNotFound(day, 'Package template day');
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      await tx.packageTemplateComponent.deleteMany({
+        where: {
+          packageTemplateId,
+          OR: [{ packageTemplateDayId: dayId }, { packageTemplateDayId: null, dayNumber: day.dayNumber }],
+        },
+      });
+
+      await tx.packageTemplateDay.delete({
+        where: { id: dayId },
+      });
+
+      const remainingDays = await tx.packageTemplateDay.findMany({
+        where: { packageTemplateId },
+        orderBy: [{ dayNumber: 'asc' }],
+      });
+
+      for (let index = 0; index < remainingDays.length; index += 1) {
+        await tx.packageTemplateDay.update({
+          where: { id: remainingDays[index].id },
+          data: { dayNumber: 10000 + index + 1 },
+        });
+      }
+
+      for (let index = 0; index < remainingDays.length; index += 1) {
+        const dayNumber = index + 1;
+        const remainingDayId = remainingDays[index].id;
+        await tx.packageTemplateDay.update({
+          where: { id: remainingDayId },
+          data: { dayNumber },
+        });
+        await tx.packageTemplateComponent.updateMany({
+          where: {
+            packageTemplateId,
+            packageTemplateDayId: remainingDayId,
+          },
+          data: { dayNumber },
+        });
+      }
+
+      await tx.packageTemplate.update({
+        where: { id: packageTemplateId },
+        data: { durationDays: remainingDays.length },
+      });
+    });
+
+    return this.findOne(packageTemplateId);
+  }
+
   async reorderDayComponents(packageTemplateId: string, dayId: string, data: ReorderComponentsInput) {
     const template = await this.findOne(packageTemplateId);
     const day = template.days?.find((item: any) => item.id === dayId);

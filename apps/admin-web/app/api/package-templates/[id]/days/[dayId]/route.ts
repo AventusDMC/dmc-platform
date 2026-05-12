@@ -15,3 +15,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const { id, dayId } = await context.params;
   return proxyRequest(request, `${API_BASE_URL}/package-templates/${encodeURIComponent(id)}/days/${encodeURIComponent(dayId)}`, 'PATCH');
 }
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const { id, dayId } = await context.params;
+  return proxyRequest(request, `${API_BASE_URL}/package-templates/${encodeURIComponent(id)}/days/${encodeURIComponent(dayId)}`, 'DELETE');
+}

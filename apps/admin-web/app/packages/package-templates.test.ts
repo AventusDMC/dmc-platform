@@ -101,4 +101,19 @@ describe('package productization phase one', () => {
     assert.match(apiServiceSource, /shiftDaysForInsert/);
     assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
   });
+
+  it('removes package days safely without deleting operational inventory', () => {
+    assert.match(dayActionsSource, /Remove/);
+    assert.match(dayActionsSource, /window\.confirm/);
+    assert.match(dayActionsSource, /method: 'DELETE'/);
+    assert.match(apiControllerSource, /removeDay/);
+    assert.match(apiServiceSource, /async removeDay/);
+    assert.match(apiServiceSource, /packageTemplateComponent\.deleteMany/);
+    assert.match(apiServiceSource, /packageTemplateDayId: null, dayNumber: day\.dayNumber/);
+    assert.match(apiServiceSource, /packageTemplateDay\.delete/);
+    assert.match(apiServiceSource, /remainingDays/);
+    assert.match(apiServiceSource, /data: \{ durationDays: remainingDays\.length \}/);
+    assert.doesNotMatch(apiServiceSource, /hotelContract\.delete|excursionTemplate\.delete|route\.delete|supplierService\.delete|activity\.delete/);
+    assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
+  });
 });

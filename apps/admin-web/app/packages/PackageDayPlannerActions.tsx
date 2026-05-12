@@ -100,6 +100,25 @@ export function PackageDayPlannerActions({ apiBaseUrl, packageTemplateId, dayId,
       >
         Duplicate
       </button>
+      <button
+        type="button"
+        className="compact-button compact-button-danger"
+        onClick={() => {
+          if (!window.confirm(`Remove day ${dayNumber} from this package template? Linked package components on this day will be removed, but operational inventory will not be deleted.`)) {
+            return;
+          }
+
+          runAction('remove day', () =>
+            fetch(`${apiBaseUrl}/package-templates/${packageTemplateId}/days/${dayId}`, {
+              method: 'DELETE',
+              headers: buildAuthHeaders(),
+            }),
+          );
+        }}
+        disabled={Boolean(pendingAction)}
+      >
+        Remove
+      </button>
     </span>
   );
 }
