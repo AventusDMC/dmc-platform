@@ -17,6 +17,47 @@ type Warning = {
   message: string;
 };
 
+type AssistedBlockTag =
+  | 'ROOM_RATE_TABLE'
+  | 'SEASON_TABLE'
+  | 'SUPPLEMENT_SECTION'
+  | 'CHILD_POLICY'
+  | 'CANCELLATION_POLICY'
+  | 'TAXES_SERVICE_NOTES';
+
+type AssistedColumnRole =
+  | 'ROOM_CATEGORY'
+  | 'SEASON'
+  | 'DATE_RANGE'
+  | 'MEAL_PLAN'
+  | 'PRICING_BASIS'
+  | 'RATE'
+  | 'SINGLE_SUPPLEMENT';
+
+type AssistedExtractionBlock = {
+  id: string;
+  kind: 'RAW_TEXT' | 'DETECTED_TABLE' | 'SKIPPED_SECTION';
+  label: string;
+  suggestedTag?: AssistedBlockTag;
+  tag?: AssistedBlockTag;
+  lineStart?: number;
+  lineEnd?: number;
+  text: string;
+  rows?: string[][];
+  columns?: string[];
+  mappings?: Partial<Record<AssistedColumnRole, string>>;
+  approved?: boolean;
+};
+
+type AssistedExtractionPreview = {
+  mode: 'PDF_ASSISTED_REVIEW';
+  importDisabled: boolean;
+  oneHotelAtATimeRequired: boolean;
+  requiredColumnRoles: AssistedColumnRole[];
+  blocks: AssistedExtractionBlock[];
+  qcWarnings: Warning[];
+};
+
 type PreviewRate = {
   roomType?: string;
   serviceName?: string;
@@ -134,6 +175,7 @@ type ContractPreview = {
     warnings?: string[];
     extractionMode?: string;
   };
+  assistedExtraction?: AssistedExtractionPreview;
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -522,6 +564,7 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
     childPolicy,
     multiProperty: source.multiProperty,
     parserDiagnostics: source.parserDiagnostics,
+    assistedExtraction: source.assistedExtraction,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
   };
@@ -550,6 +593,53 @@ function normalizeCancellationPolicy(value: unknown): CancellationPolicyPreview 
   };
 }
 
+const assistedBlockTagOptions: Array<{ value: AssistedBlockTag; label: string }> = [
+  { value: 'ROOM_RATE_TABLE', label: 'Room/rate table' },
+  { value: 'SEASON_TABLE', label: 'Season table' },
+  { value: 'SUPPLEMENT_SECTION', label: 'Supplement section' },
+  { value: 'CHILD_POLICY', label: 'Child policy' },
+  { value: 'CANCELLATION_POLICY', label: 'Cancellation policy' },
+  { value: 'TAXES_SERVICE_NOTES', label: 'Taxes/service notes' },
+];
+
+const assistedColumnRoleOptions: Array<{ value: AssistedColumnRole; label: string }> = [
+  { value: 'ROOM_CATEGORY', label: 'Room category' },
+  { value: 'SEASON', label: 'Season' },
+  { value: 'DATE_RANGE', label: 'Date range' },
+  { value: 'MEAL_PLAN', label: 'Meal plan' },
+  { value: 'PRICING_BASIS', label: 'Pricing basis' },
+  { value: 'RATE', label: 'Rate' },
+  { value: 'SINGLE_SUPPLEMENT', label: 'Single supplement' },
+];
+
+function buildAssistedQcWarnings(assisted?: AssistedExtractionPreview): Warning[] {
+  if (!assisted) return [];
+  const warnings: Warning[] = [
+    {
+      severity: 'blocker',
+      field: 'assistedExtraction',
+      message: 'Raw PDF extraction is assisted-review only. Import stays disabled until QC passes and a normalized workbook is reviewed.',
+    },
+  ];
+  const approvedRoomRateBlocks = assisted.blocks.filter((block) => block.tag === 'ROOM_RATE_TABLE' && block.approved);
+  const mappedRoles = new Set<string>();
+  for (const block of approvedRoomRateBlocks) {
+    for (const [role, sourceColumn] of Object.entries(block.mappings || {})) {
+      if (sourceColumn) mappedRoles.add(role);
+    }
+  }
+  for (const role of assisted.requiredColumnRoles || []) {
+    if (!mappedRoles.has(role)) {
+      warnings.push({
+        severity: 'warning',
+        field: `assistedExtraction.mappings.${role}`,
+        message: `${formatEnumLabel(role)} is not mapped on an approved room/rate table.`,
+      });
+    }
+  }
+  return warnings;
+}
+
 export function ContractImportFlow({ suppliers, hotelCategories }: ContractImportFlowProps) {
   const [contractType, setContractType] = useState<ContractPreview['contractType']>('HOTEL');
   const [supplierId, setSupplierId] = useState('');
@@ -566,9 +656,11 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
   const [error, setError] = useState('');
   const [contractConflict, setContractConflict] = useState<ContractConflict | null>(null);
 
-  const warnings = useMemo(() => contractImport?.warnings || [], [contractImport]);
+  const assistedWarnings = useMemo(() => buildAssistedQcWarnings(preview.assistedExtraction), [preview.assistedExtraction]);
+  const warnings = useMemo(() => [...(contractImport?.warnings || []), ...assistedWarnings], [contractImport, assistedWarnings]);
   const blockers = warnings.filter((warning) => warning.severity === 'blocker');
   const isMultiPropertyPreview = Boolean(preview.multiProperty?.detected);
+  const isAssistedExtractionPreview = Boolean(preview.assistedExtraction?.importDisabled);
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -676,6 +768,50 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
 
   function updatePreview(next: Partial<ContractPreview>) {
     setPreview((current) => ({ ...current, ...next }));
+  }
+
+  function updateAssistedBlock(blockId: string, patch: Partial<AssistedExtractionBlock>) {
+    setPreview((current) => {
+      if (!current.assistedExtraction) return current;
+      const assistedExtraction = {
+        ...current.assistedExtraction,
+        blocks: current.assistedExtraction.blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
+      };
+      return {
+        ...current,
+        assistedExtraction: {
+          ...assistedExtraction,
+          qcWarnings: buildAssistedQcWarnings(assistedExtraction),
+        },
+      };
+    });
+  }
+
+  function updateAssistedMapping(blockId: string, role: AssistedColumnRole, sourceColumn: string) {
+    setPreview((current) => {
+      if (!current.assistedExtraction) return current;
+      const assistedExtraction = {
+        ...current.assistedExtraction,
+        blocks: current.assistedExtraction.blocks.map((block) =>
+          block.id === blockId
+            ? {
+                ...block,
+                mappings: {
+                  ...(block.mappings || {}),
+                  [role]: sourceColumn,
+                },
+              }
+            : block,
+        ),
+      };
+      return {
+        ...current,
+        assistedExtraction: {
+          ...assistedExtraction,
+          qcWarnings: buildAssistedQcWarnings(assistedExtraction),
+        },
+      };
+    });
   }
 
   function updateContract(field: keyof ContractPreview['contract'], value: string) {
@@ -854,6 +990,8 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     try {
       const response = await fetch(`/api/contract-imports/${contractImport.id}/export-excel`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: preview }),
       });
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not export extracted contract.'));
@@ -938,7 +1076,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
               <button className="secondary-button" type="button" onClick={() => void handleDownloadExcel()}>
                 Download Extracted Excel
               </button>
-              <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0 || isMultiPropertyPreview}>
+              <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0 || isMultiPropertyPreview || isAssistedExtractionPreview}>
                 {isApproving ? 'Importing...' : 'Approve import'}
               </button>
             </div>
@@ -978,6 +1116,11 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
           ) : null}
 
           <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
+          <AssistedExtractionReview
+            assistedExtraction={preview.assistedExtraction}
+            onUpdateBlock={updateAssistedBlock}
+            onUpdateMapping={updateAssistedMapping}
+          />
 
           {isMultiPropertyPreview ? (
             <section className="table-section">
@@ -1477,6 +1620,132 @@ function ExtractionDiagnostics({ diagnostics }: { diagnostics?: ContractPreview[
           {warnings.map((warning) => (
             <p key={warning} className="empty-state">{warning}</p>
           ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AssistedExtractionReview({
+  assistedExtraction,
+  onUpdateBlock,
+  onUpdateMapping,
+}: {
+  assistedExtraction?: AssistedExtractionPreview;
+  onUpdateBlock: (blockId: string, patch: Partial<AssistedExtractionBlock>) => void;
+  onUpdateMapping: (blockId: string, role: AssistedColumnRole, sourceColumn: string) => void;
+}) {
+  if (!assistedExtraction) return null;
+  const qcWarnings = buildAssistedQcWarnings(assistedExtraction);
+  const roomRateBlocks = assistedExtraction.blocks.filter((block) => block.tag === 'ROOM_RATE_TABLE' || block.suggestedTag === 'ROOM_RATE_TABLE');
+
+  return (
+    <section>
+      <div className="section-header">
+        <div>
+          <h3>Semi-assisted PDF extraction</h3>
+          <p>Review detected blocks, tag their purpose, map rate columns, then export a normalized workbook for one hotel at a time.</p>
+        </div>
+      </div>
+
+      <div className="warning-list">
+        {qcWarnings.map((warning) => (
+          <p key={`${warning.field}-${warning.message}`} className={warning.severity === 'blocker' ? 'form-error' : 'empty-state'}>
+            {warning.message}
+          </p>
+        ))}
+      </div>
+
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Block</th>
+              <th>Detected text</th>
+              <th>Tag</th>
+              <th>Approved</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assistedExtraction.blocks.map((block) => (
+              <tr key={block.id}>
+                <td>
+                  <strong>{block.label}</strong>
+                  <p className="empty-state">
+                    {block.kind} {block.lineStart ? `| lines ${block.lineStart}-${block.lineEnd || block.lineStart}` : ''}
+                  </p>
+                  {block.suggestedTag ? <p className="empty-state">Suggested: {formatEnumLabel(block.suggestedTag)}</p> : null}
+                </td>
+                <td>
+                  <pre className="raw-preview-block">{block.text.slice(0, 1800)}</pre>
+                </td>
+                <td>
+                  <select
+                    value={block.tag || ''}
+                    onChange={(event) => onUpdateBlock(block.id, { tag: (event.target.value || undefined) as AssistedBlockTag | undefined })}
+                  >
+                    <option value="">Unmapped</option>
+                    {assistedBlockTagOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(block.approved)}
+                      onChange={(event) => onUpdateBlock(block.id, { approved: event.target.checked })}
+                    />
+                    QC passed
+                  </label>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {roomRateBlocks.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Room/rate block</th>
+                {assistedColumnRoleOptions.map((role) => (
+                  <th key={role.value}>{role.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {roomRateBlocks.map((block) => {
+                const sourceColumns = Array.from(new Set([...(block.columns || []), ...(block.rows?.[0] || [])].filter(Boolean)));
+                return (
+                  <tr key={`mapping-${block.id}`}>
+                    <td>{block.label}</td>
+                    {assistedColumnRoleOptions.map((role) => (
+                      <td key={`${block.id}-${role.value}`}>
+                        <select
+                          value={block.mappings?.[role.value] || ''}
+                          onChange={(event) => onUpdateMapping(block.id, role.value, event.target.value)}
+                        >
+                          <option value="">Not mapped</option>
+                          {sourceColumns.map((column) => (
+                            <option key={`${block.id}-${role.value}-${column}`} value={column}>
+                              {column}
+                            </option>
+                          ))}
+                          <option value="manual">Manual entry</option>
+                        </select>
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : null}
     </section>

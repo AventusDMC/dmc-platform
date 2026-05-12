@@ -803,6 +803,80 @@ test('PDF-like Movenpick enterprise text detects hotels tables skipped sections 
   assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
 });
 
+test('PDF hotel contract preview exposes assisted extraction blocks and blocks direct import', () => {
+  const service = createService();
+  const text = [
+    'Movenpick Resort & Spa Dead Sea',
+    'Low Season 01/01/2026 - 31/03/2026',
+    'Room Type Single Double Triple',
+    'Superior Room 120 140 180',
+    'Half Board supplement JOD 18 per person',
+    'Children below 6 stay free and children 6-12 pay 50%',
+    'Cancellation within 7 days is charged 100%',
+    'Taxes and service charge included',
+  ].join('\n');
+
+  const preview = (service as any).extractHotelContractPreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath: 'movenpick-dead-sea.pdf',
+    fileName: 'movenpick-dead-sea-2026.pdf',
+    text,
+    workbookRows: [],
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.assistedExtraction.mode, 'PDF_ASSISTED_REVIEW');
+  assert.equal(preview.assistedExtraction.importDisabled, true);
+  assert.ok(preview.assistedExtraction.blocks.some((block: any) => block.kind === 'DETECTED_TABLE' && block.suggestedTag === 'ROOM_RATE_TABLE'));
+  assert.ok(preview.assistedExtraction.blocks.some((block: any) => block.suggestedTag === 'CHILD_POLICY'));
+  assert.ok(preview.assistedExtraction.blocks.some((block: any) => block.suggestedTag === 'CANCELLATION_POLICY'));
+  assert.ok(warnings.some((warning) => warning.field === 'assistedExtraction' && warning.severity === 'blocker'));
+  assert.ok(warnings.some((warning) => /Room category/.test(warning.message)));
+});
+
+test('assisted extraction export includes block mapping and QC sheets', () => {
+  const service = createService();
+  const preview: any = baseApprovedData({
+    rates: [],
+  });
+  preview.assistedExtraction = {
+    mode: 'PDF_ASSISTED_REVIEW',
+    importDisabled: true,
+    oneHotelAtATimeRequired: true,
+    requiredColumnRoles: ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE'],
+    blocks: [
+      {
+        id: 'table-1',
+        kind: 'DETECTED_TABLE',
+        label: 'Room Type Single Double',
+        suggestedTag: 'ROOM_RATE_TABLE',
+        tag: 'ROOM_RATE_TABLE',
+        text: 'Room Type Single Double\nSuperior Room 120 140',
+        columns: ['Room Type', 'Single', 'Double'],
+        mappings: {
+          ROOM_CATEGORY: 'Room Type',
+          RATE: 'Double',
+        },
+        approved: true,
+      },
+    ],
+    qcWarnings: [],
+  };
+
+  const exported = (service as any).generateExcel(preview, 'assisted.pdf');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const xlsx = require('xlsx');
+  const workbook = xlsx.read(exported.buffer, { type: 'buffer' });
+
+  assert.ok(workbook.SheetNames.includes('Assisted Blocks'));
+  assert.ok(workbook.SheetNames.includes('Assisted Mappings'));
+  assert.ok(workbook.SheetNames.includes('Assisted QC'));
+});
+
 test('PDF-like multi-property extraction does not duplicate hotel sections from repeated page headings', () => {
   const service = createService();
   const repeatedDeadSeaPages = Array.from({ length: 20 }, (_, page) =>

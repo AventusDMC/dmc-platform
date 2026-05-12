@@ -68,6 +68,45 @@ type RatePolicyPreview = {
   notes?: string | null;
 };
 
+type AssistedExtractionBlockTag =
+  | 'ROOM_RATE_TABLE'
+  | 'SEASON_TABLE'
+  | 'SUPPLEMENT_SECTION'
+  | 'CHILD_POLICY'
+  | 'CANCELLATION_POLICY'
+  | 'TAXES_SERVICE_NOTES';
+
+type AssistedExtractionColumnRole =
+  | 'ROOM_CATEGORY'
+  | 'SEASON'
+  | 'DATE_RANGE'
+  | 'MEAL_PLAN'
+  | 'PRICING_BASIS'
+  | 'RATE'
+  | 'SINGLE_SUPPLEMENT';
+
+type AssistedExtractionPreview = {
+  mode: 'PDF_ASSISTED_REVIEW';
+  importDisabled: boolean;
+  oneHotelAtATimeRequired: boolean;
+  requiredColumnRoles: AssistedExtractionColumnRole[];
+  blocks: Array<{
+    id: string;
+    kind: 'RAW_TEXT' | 'DETECTED_TABLE' | 'SKIPPED_SECTION';
+    label: string;
+    suggestedTag?: AssistedExtractionBlockTag;
+    tag?: AssistedExtractionBlockTag;
+    lineStart?: number;
+    lineEnd?: number;
+    text: string;
+    rows?: string[][];
+    columns?: string[];
+    mappings?: Partial<Record<AssistedExtractionColumnRole, string>>;
+    approved?: boolean;
+  }>;
+  qcWarnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
+};
+
 type ContractPreview = {
   contractType: ContractImportType;
   supplier: {
@@ -161,6 +200,7 @@ type ContractPreview = {
     warnings?: string[];
     extractionMode?: 'SINGLE_PROPERTY' | 'MULTI_PROPERTY' | 'TEXT_PDF' | 'WORKBOOK';
   };
+  assistedExtraction?: AssistedExtractionPreview;
   missingFields: string[];
   uncertainFields: string[];
 };
@@ -475,13 +515,13 @@ export class ContractImportsService {
     return updated;
   }
 
-  async exportExcel(id: string, actor?: AuthenticatedActor) {
+  async exportExcel(id: string, actor?: AuthenticatedActor, approvedData?: unknown) {
     const record = await this.findOne(id, actor);
     if (!record.extractedJson) {
       throw new BadRequestException('No extracted contract data is available to export');
     }
 
-    const preview = this.normalizeApprovedPreview(record.extractedJson);
+    const preview = this.normalizeApprovedPreview(approvedData || record.extractedJson);
     return this.generateExcel(preview, record.sourceFileName || preview.contract.name || 'contract-import');
   }
 
@@ -953,6 +993,36 @@ export class ContractImportsService {
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rates), 'Rates');
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(supplements), 'Supplements');
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(policies), 'Policies');
+    if (preview.assistedExtraction) {
+      const blocks = preview.assistedExtraction.blocks.map((block) => ({
+        BlockId: block.id,
+        Kind: block.kind,
+        SuggestedTag: block.suggestedTag || '',
+        OperatorTag: block.tag || '',
+        Approved: block.approved ? 'Yes' : 'No',
+        LineStart: block.lineStart ?? '',
+        LineEnd: block.lineEnd ?? '',
+        Label: block.label,
+        Text: block.text,
+      }));
+      const mappings = preview.assistedExtraction.blocks.flatMap((block) =>
+        Object.entries(block.mappings || {}).map(([role, sourceColumn]) => ({
+          BlockId: block.id,
+          Tag: block.tag || block.suggestedTag || '',
+          Role: role,
+          SourceColumn: sourceColumn || '',
+          Approved: block.approved ? 'Yes' : 'No',
+        })),
+      );
+      const qcWarnings = preview.assistedExtraction.qcWarnings.map((warning) => ({
+        Severity: warning.severity,
+        Field: warning.field,
+        Message: warning.message,
+      }));
+      xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(blocks), 'Assisted Blocks');
+      xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(mappings), 'Assisted Mappings');
+      xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(qcWarnings), 'Assisted QC');
+    }
 
     return {
       buffer: xlsx.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
@@ -1067,6 +1137,7 @@ export class ContractImportsService {
           confidence: Math.min(0.9, Math.max(0.35, textDiagnostics.confidence || 0.35)),
           ...this.buildTextExtractionDiagnosticsOverrides(textDiagnostics),
         },
+        assistedExtraction: this.buildAssistedExtractionPreview(text, input.workbookRows, { oneHotelAtATimeRequired: true }),
         missingFields: [],
         uncertainFields: ['multiProperty PDF extraction', 'OCR/table review'],
       });
@@ -1170,6 +1241,7 @@ export class ContractImportsService {
         extractionMode: input.workbookRows.length > 0 ? 'WORKBOOK' : 'TEXT_PDF',
         ...this.buildTextExtractionDiagnosticsOverrides(textDiagnostics),
       },
+      assistedExtraction: this.buildAssistedExtractionPreview(text, input.workbookRows, { oneHotelAtATimeRequired: true }),
       missingFields: [],
       uncertainFields,
     });
@@ -1304,6 +1376,145 @@ export class ContractImportsService {
       warnings,
       extractionMode: rows.length > 0 ? 'WORKBOOK' : 'TEXT_PDF',
     };
+  }
+
+  private buildAssistedExtractionPreview(
+    text: string,
+    rows: string[][],
+    options: { oneHotelAtATimeRequired?: boolean } = {},
+  ): AssistedExtractionPreview | undefined {
+    if (rows.length > 0 || !text.trim()) return undefined;
+
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const diagnostics = this.buildTextExtractionDiagnostics(text, rows);
+    const blocks: AssistedExtractionPreview['blocks'] = [];
+    const seen = new Set<string>();
+
+    const addBlock = (block: AssistedExtractionPreview['blocks'][number]) => {
+      const key = `${block.kind}:${block.lineStart || 0}:${block.label.toLowerCase()}`;
+      if (seen.has(key) || !block.text.trim()) return;
+      seen.add(key);
+      blocks.push({
+        ...block,
+        suggestedTag: block.suggestedTag || this.suggestAssistedBlockTag(block.text),
+      });
+    };
+
+    for (const table of diagnostics.detectedTables || []) {
+      const start = Math.max(0, (table.lineNumber || 1) - 1);
+      const tableLines = lines.slice(start, Math.min(lines.length, start + 10));
+      addBlock({
+        id: `table-${table.lineNumber || blocks.length + 1}`,
+        kind: 'DETECTED_TABLE',
+        label: table.label || `Detected table at line ${table.lineNumber || start + 1}`,
+        suggestedTag: 'ROOM_RATE_TABLE',
+        lineStart: start + 1,
+        lineEnd: start + tableLines.length,
+        text: tableLines.join('\n'),
+        rows: tableLines.map((line) => line.split(/\t+| {2,}|,/).map((cell) => cell.trim()).filter(Boolean)),
+        columns: table.columns || [],
+      });
+    }
+
+    for (const section of diagnostics.skippedSections || []) {
+      const start = Math.max(0, (section.lineNumber || 1) - 1);
+      const sectionLines = lines.slice(start, Math.min(lines.length, start + 6));
+      addBlock({
+        id: `section-${section.lineNumber || blocks.length + 1}`,
+        kind: 'SKIPPED_SECTION',
+        label: section.label || section.reason,
+        lineStart: start + 1,
+        lineEnd: start + sectionLines.length,
+        text: sectionLines.join('\n'),
+      });
+    }
+
+    lines.slice(0, 2500).forEach((line, index) => {
+      const suggestedTag = this.suggestAssistedBlockTag(line);
+      if (!suggestedTag || (suggestedTag !== 'CHILD_POLICY' && suggestedTag !== 'CANCELLATION_POLICY' && suggestedTag !== 'SUPPLEMENT_SECTION' && suggestedTag !== 'TAXES_SERVICE_NOTES')) {
+        return;
+      }
+      const sectionLines = lines.slice(index, Math.min(lines.length, index + 5));
+      addBlock({
+        id: `${suggestedTag.toLowerCase()}-${index + 1}`,
+        kind: 'RAW_TEXT',
+        label: `${this.humanizeAssistedRole(suggestedTag as unknown as AssistedExtractionColumnRole)} lines ${index + 1}-${index + sectionLines.length}`,
+        suggestedTag,
+        lineStart: index + 1,
+        lineEnd: index + sectionLines.length,
+        text: sectionLines.join('\n'),
+      });
+    });
+
+    for (let index = 0; index < lines.length && blocks.length < 24; index += 14) {
+      const chunk = lines.slice(index, index + 14);
+      addBlock({
+        id: `text-${index + 1}`,
+        kind: 'RAW_TEXT',
+        label: `Raw text lines ${index + 1}-${index + chunk.length}`,
+        lineStart: index + 1,
+        lineEnd: index + chunk.length,
+        text: chunk.join('\n'),
+      });
+    }
+
+    const preview: AssistedExtractionPreview = {
+      mode: 'PDF_ASSISTED_REVIEW',
+      importDisabled: true,
+      oneHotelAtATimeRequired: options.oneHotelAtATimeRequired ?? true,
+      requiredColumnRoles: ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE'],
+      blocks: blocks.slice(0, 40),
+      qcWarnings: [],
+    };
+    preview.qcWarnings = this.buildAssistedExtractionQcWarnings(preview);
+    return preview;
+  }
+
+  private suggestAssistedBlockTag(text: string): AssistedExtractionBlockTag | undefined {
+    if (/\b(cancel|cancellation|no[- ]?show|penalt)/i.test(text)) return 'CANCELLATION_POLICY';
+    if (/\b(child|children|infant|age|extra bed)\b/i.test(text)) return 'CHILD_POLICY';
+    if (/\b(tax|service charge|vat|municipality)\b/i.test(text)) return 'TAXES_SERVICE_NOTES';
+    if (/\b(supplement|gala|extra meal|single supplement)\b/i.test(text)) return 'SUPPLEMENT_SECTION';
+    if (/\b(season|valid|from|to|date range)\b/i.test(text) && !/\b(room|rate|sgl|dbl|single|double)\b/i.test(text)) return 'SEASON_TABLE';
+    if (/\b(room|suite|rate|sgl|dbl|single|double|bb|hb|fb)\b/i.test(text)) return 'ROOM_RATE_TABLE';
+    return undefined;
+  }
+
+  private buildAssistedExtractionQcWarnings(assisted: AssistedExtractionPreview) {
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [
+      {
+        severity: 'blocker',
+        field: 'assistedExtraction',
+        message: 'Raw PDF extraction is assisted-review only. Import stays disabled until an operator approves mappings and exports a normalized workbook.',
+      },
+    ];
+    const approvedRoomRateBlocks = assisted.blocks.filter((block) => block.tag === 'ROOM_RATE_TABLE' && block.approved);
+    const mappedRoles = new Set<string>();
+    for (const block of approvedRoomRateBlocks) {
+      for (const [role, sourceColumn] of Object.entries(block.mappings || {})) {
+        if (sourceColumn) mappedRoles.add(role);
+      }
+    }
+    for (const role of assisted.requiredColumnRoles) {
+      if (!mappedRoles.has(role)) {
+        warnings.push({
+          severity: 'warning',
+          field: `assistedExtraction.mappings.${role}`,
+          message: `${this.humanizeAssistedRole(role)} is not mapped on an approved room/rate table.`,
+        });
+      }
+    }
+    if (!assisted.blocks.some((block) => block.suggestedTag === 'CHILD_POLICY' || block.tag === 'CHILD_POLICY')) {
+      warnings.push({ severity: 'warning', field: 'assistedExtraction.childPolicy', message: 'No child policy block was tagged or detected.' });
+    }
+    if (!assisted.blocks.some((block) => block.suggestedTag === 'CANCELLATION_POLICY' || block.tag === 'CANCELLATION_POLICY')) {
+      warnings.push({ severity: 'warning', field: 'assistedExtraction.cancellationPolicy', message: 'No cancellation policy block was tagged or detected.' });
+    }
+    return warnings;
+  }
+
+  private humanizeAssistedRole(role: AssistedExtractionColumnRole) {
+    return role.toLowerCase().replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
   }
 
   private buildTextExtractionDiagnosticsOverrides(
@@ -2626,6 +2837,14 @@ export class ContractImportsService {
         message: 'Multi-property extraction is preview/QC only. Download the normalized hotel workbooks and import one reviewed hotel contract at a time.',
       });
     }
+    if (preview.assistedExtraction?.importDisabled) {
+      warnings.push({
+        severity: 'blocker',
+        field: 'assistedExtraction',
+        message: 'Raw PDF assisted extraction cannot be imported directly. Export the normalized workbook, review one hotel at a time, and re-import the reviewed workbook.',
+      });
+      warnings.push(...this.buildAssistedExtractionQcWarnings(preview.assistedExtraction));
+    }
     if (!preview.supplier.name?.trim()) {
       warnings.push({ severity: 'blocker', field: 'supplier.name', message: 'Supplier name is required before approval' });
     }
@@ -2975,10 +3194,55 @@ export class ContractImportsService {
               normalizedWorkbooks: Array.isArray(value.multiProperty.normalizedWorkbooks) ? value.multiProperty.normalizedWorkbooks : [],
             }
           : undefined,
+      parserDiagnostics: value.parserDiagnostics,
+      assistedExtraction: this.normalizeAssistedExtractionPreview(value.assistedExtraction),
       warnings: Array.isArray(value.warnings) ? value.warnings : [],
       missingFields: Array.isArray(value.missingFields) ? value.missingFields : [],
       uncertainFields: Array.isArray(value.uncertainFields) ? value.uncertainFields : [],
     };
+  }
+
+  private normalizeAssistedExtractionPreview(value: any): AssistedExtractionPreview | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const blocks = Array.isArray(value.blocks)
+      ? value.blocks.map((block: any, index: number) => ({
+          id: this.optionalString(block.id) || `block-${index + 1}`,
+          kind: ['RAW_TEXT', 'DETECTED_TABLE', 'SKIPPED_SECTION'].includes(block.kind) ? block.kind : 'RAW_TEXT',
+          label: this.optionalString(block.label) || `Block ${index + 1}`,
+          suggestedTag: this.normalizeAssistedBlockTag(block.suggestedTag),
+          tag: this.normalizeAssistedBlockTag(block.tag),
+          lineStart: this.parseOptionalInt(block.lineStart),
+          lineEnd: this.parseOptionalInt(block.lineEnd),
+          text: this.optionalString(block.text),
+          rows: Array.isArray(block.rows) ? block.rows : undefined,
+          columns: Array.isArray(block.columns) ? block.columns.map((column: unknown) => this.optionalString(column)).filter(Boolean) : undefined,
+          mappings: block.mappings && typeof block.mappings === 'object' ? block.mappings : undefined,
+          approved: Boolean(block.approved),
+        }))
+      : [];
+    const assisted: AssistedExtractionPreview = {
+      mode: 'PDF_ASSISTED_REVIEW',
+      importDisabled: value.importDisabled !== false,
+      oneHotelAtATimeRequired: value.oneHotelAtATimeRequired !== false,
+      requiredColumnRoles: Array.isArray(value.requiredColumnRoles)
+        ? value.requiredColumnRoles.filter((role: unknown): role is AssistedExtractionColumnRole => this.isAssistedColumnRole(role))
+        : ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE'],
+      blocks,
+      qcWarnings: Array.isArray(value.qcWarnings) ? value.qcWarnings : [],
+    };
+    assisted.qcWarnings = this.buildAssistedExtractionQcWarnings(assisted);
+    return assisted;
+  }
+
+  private normalizeAssistedBlockTag(value: unknown): AssistedExtractionBlockTag | undefined {
+    const normalized = String(value || '').trim().toUpperCase();
+    return ['ROOM_RATE_TABLE', 'SEASON_TABLE', 'SUPPLEMENT_SECTION', 'CHILD_POLICY', 'CANCELLATION_POLICY', 'TAXES_SERVICE_NOTES'].includes(normalized)
+      ? (normalized as AssistedExtractionBlockTag)
+      : undefined;
+  }
+
+  private isAssistedColumnRole(value: unknown): value is AssistedExtractionColumnRole {
+    return ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE', 'SINGLE_SUPPLEMENT'].includes(String(value || '').trim().toUpperCase());
   }
 
   private parseContractType(value: unknown) {

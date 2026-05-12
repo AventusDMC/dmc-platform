@@ -35,6 +35,10 @@ type ApproveBody = {
   mode?: 'replace' | 'version' | 'cancel';
 };
 
+type ExportExcelBody = {
+  data?: unknown;
+};
+
 @Controller('contract-imports')
 export class ContractImportsController {
   constructor(private readonly contractImportsService: ContractImportsService) {}
@@ -102,8 +106,8 @@ export class ContractImportsController {
   }
 
   @Post(':id/export-excel')
-  async exportExcel(@Param('id') id: string, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
-    const exported = await this.contractImportsService.exportExcel(id, actor);
+  async exportExcel(@Param('id') id: string, @Body() body: ExportExcelBody, @Res({ passthrough: true }) response: any, @Actor() actor: AuthenticatedActor) {
+    const exported = await this.contractImportsService.exportExcel(id, actor, body?.data);
     response.setHeader('Content-Type', exported.contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     response.setHeader('Content-Disposition', `attachment; filename="${exported.fileName}"`);
     return new StreamableFile(exported.buffer);
