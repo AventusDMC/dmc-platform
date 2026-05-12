@@ -3,6 +3,7 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { RoutesSection } from './RoutesSection';
+import { TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
 import { VehiclesSection } from './VehiclesSection';
@@ -10,12 +11,18 @@ import { VehicleTypesSection } from './VehicleTypesSection';
 
 export const dynamic = 'force-dynamic';
 
-type TransportTab = 'routes' | 'vehicles' | 'vehicle-types' | 'pricing-rules' | 'rates';
+type TransportTab = 'routes' | 'vehicles' | 'vehicle-types' | 'pricing-rules' | 'rates' | 'tariff-workbook';
 const API_BASE_URL = '/api';
 
 type TransportPageProps = {
   searchParams?: Promise<{
     tab?: string;
+    supplierId?: string;
+    routeId?: string;
+    pricingMode?: string;
+    vehicleType?: string;
+    validity?: string;
+    activeState?: string;
   }>;
 };
 
@@ -25,6 +32,7 @@ const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
   { id: 'vehicle-types', label: 'Vehicle Types' },
   { id: 'pricing-rules', label: 'Pricing Rules' },
   { id: 'rates', label: 'Supplier Rate Cards' },
+  { id: 'tariff-workbook', label: 'Tariff Workbook' },
 ];
 
 async function getVehiclesCount() {
@@ -81,7 +89,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
   });
 
   return (
-    <main className={`page ${activeTab === 'rates' ? 'transport-contracts-page' : ''}`}>
+    <main className={`page ${activeTab === 'rates' || activeTab === 'tariff-workbook' ? 'transport-contracts-page' : ''}`}>
       <section className="panel workspace-panel workspace-panel-wide">
         <WorkspaceShell
           eyebrow="Products & Pricing"
@@ -104,7 +112,9 @@ export default async function TransportPage({ searchParams }: TransportPageProps
                         ? 'Fleet taxonomy'
                       : tab.id === 'pricing-rules'
                         ? 'Commercial logic'
-                        : 'Supplier rate cards',
+                        : tab.id === 'rates'
+                          ? 'Supplier rate cards'
+                          : 'Bulk maintenance',
               }))}
             />
           }
@@ -125,6 +135,18 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             {activeTab === 'routes' ? <RoutesSection /> : null}
             {activeTab === 'pricing-rules' ? <TransportPricingRulesSection /> : null}
             {activeTab === 'rates' ? <VehicleRatesSection /> : null}
+            {activeTab === 'tariff-workbook' ? (
+              <TransportTariffWorkbookSection
+                filters={{
+                  supplierId: resolvedSearchParams?.supplierId,
+                  routeId: resolvedSearchParams?.routeId,
+                  pricingMode: resolvedSearchParams?.pricingMode,
+                  vehicleType: resolvedSearchParams?.vehicleType,
+                  validity: resolvedSearchParams?.validity,
+                  activeState: resolvedSearchParams?.activeState,
+                }}
+              />
+            ) : null}
           </section>
         </WorkspaceShell>
       </section>

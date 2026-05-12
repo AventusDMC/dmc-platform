@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { filterTransportTariffRates } from './TransportTariffWorkbookSection';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.meta.url), 'utf8');
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
+const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkbookSection.tsx', import.meta.url), 'utf8');
+const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
@@ -64,7 +67,7 @@ describe('transport catalog supplier rate-card UX', () => {
   });
 
   it('uses a full-width rate-card page and supplier rate-line table', () => {
-    expectSourceContains(pageSource, ["activeTab === 'rates' ? 'transport-contracts-page' : ''"]);
+    expectSourceContains(pageSource, ["activeTab === 'rates' || activeTab === 'tariff-workbook' ? 'transport-contracts-page' : ''"]);
 
     expectSourceContains(tableSource, [
       'transport-contract-table',
@@ -79,6 +82,135 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
 
     assert.equal(tableSource.includes('<th>Service type</th>'), false);
+  });
+
+  it('adds a transportation tariff workbook without changing transport pricing or route architecture', () => {
+    expectSourceContains(pageSource, [
+      "{ id: 'tariff-workbook', label: 'Tariff Workbook' }",
+      '<TransportTariffWorkbookSection',
+      "activeTab === 'tariff-workbook'",
+    ]);
+
+    expectSourceContains(tariffWorkbookSectionSource, [
+      'getVehicleRates',
+      'getSuppliers',
+      'getRoutes',
+      'getVehicles',
+      'TRANSPORT_RATE_CARD_PRICING_MODES',
+      'deriveTransportPricingMode(rate)',
+      'filterTransportTariffRates',
+      'No transportation tariff rows match the selected filters.',
+    ]);
+
+    assert.equal(tariffWorkbookSectionSource.includes('method: \'POST\''), false);
+    assert.equal(tariffWorkbookSectionSource.includes('calculate'), false);
+  });
+
+  it('renders the transportation tariff workbook as a local spreadsheet-style grid with CSV actions', () => {
+    const cssSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8');
+
+    expectSourceContains(tariffWorkbookGridSource, [
+      'Transportation Tariff Workbook',
+      'Import template',
+      'Export workbook',
+      'transportation-tariff-workbook.csv',
+      'transportation-tariff-import-template.csv',
+      'Edits are staged',
+      'useEffect(() => {',
+      'setWorkbookRows(rows);',
+      'Pricing mode',
+      'Pax range',
+      'Active / inactive',
+    ]);
+
+    assert.match(cssSource, /\.transport-tariff-workbook-scroll\s*{[\s\S]*?overflow-x:\s*auto/);
+    assert.match(cssSource, /\.transport-tariff-workbook-table\s*{[\s\S]*?min-width:\s*1320px/);
+    assert.match(cssSource, /\.transport-tariff-workbook-table th\s*{[\s\S]*?position:\s*sticky/);
+    assert.match(cssSource, /\.transport-tariff-workbook-table input\s*{[\s\S]*?white-space:\s*nowrap/);
+  });
+
+  it('applies transportation tariff workbook supplier route mode vehicle validity and active filters by ids', () => {
+    const rates = [
+      {
+        id: 'rate-alpha-airport',
+        supplierId: 'supplier-alpha',
+        supplier: { id: 'supplier-alpha' },
+        routeId: 'route-airport-petra',
+        routeName: 'Airport to Petra',
+        minPax: 1,
+        maxPax: 3,
+        price: 100,
+        currency: 'USD',
+        validFrom: '2026-01-01',
+        validTo: '2026-12-31',
+        active: true,
+        vehicle: { name: 'Sedan', vehicleType: 'Sedan' },
+        serviceType: { name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+        route: { id: 'route-airport-petra', name: 'Airport to Petra' },
+      },
+      {
+        id: 'rate-alpha-day',
+        supplierId: 'supplier-alpha',
+        supplier: { id: 'supplier-alpha' },
+        routeId: 'route-amman-city',
+        routeName: 'Amman City',
+        minPax: 1,
+        maxPax: 49,
+        price: 400,
+        currency: 'USD',
+        validFrom: '2026-01-01',
+        validTo: '2026-12-31',
+        active: false,
+        vehicle: { name: 'Large 49', vehicleType: 'Coach' },
+        serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+        route: { id: 'route-amman-city', name: 'Amman City' },
+      },
+      {
+        id: 'rate-beta-extra',
+        supplierId: 'supplier-beta',
+        supplier: { id: 'supplier-beta' },
+        routeId: 'route-airport-petra',
+        routeName: 'Airport to Petra',
+        minPax: 1,
+        maxPax: 49,
+        price: 5,
+        currency: 'USD',
+        validFrom: '2027-01-01',
+        validTo: '2027-12-31',
+        active: true,
+        vehicle: { name: 'Large 49', vehicleType: 'Coach' },
+        serviceType: { name: 'Extra KM', code: 'EXTRA_KM', classification: 'ADD_ON' },
+        route: { id: 'route-airport-petra', name: 'Airport to Petra' },
+      },
+    ];
+
+    assert.deepEqual(filterTransportTariffRates(rates, { supplierId: 'supplier-alpha' }).map((rate) => rate.id), [
+      'rate-alpha-airport',
+      'rate-alpha-day',
+    ]);
+    assert.deepEqual(filterTransportTariffRates(rates, { routeId: 'route-airport-petra' }).map((rate) => rate.id), [
+      'rate-alpha-airport',
+      'rate-beta-extra',
+    ]);
+    assert.deepEqual(filterTransportTariffRates(rates, { pricingMode: 'Full Day' }).map((rate) => rate.id), ['rate-alpha-day']);
+    assert.deepEqual(filterTransportTariffRates(rates, { vehicleType: 'Coach', activeState: 'active' }).map((rate) => rate.id), [
+      'rate-beta-extra',
+    ]);
+    assert.deepEqual(filterTransportTariffRates(rates, { validity: '2026-01-01:2026-12-31' }).map((rate) => rate.id), [
+      'rate-alpha-airport',
+      'rate-alpha-day',
+    ]);
+    assert.deepEqual(
+      filterTransportTariffRates(rates, { supplierId: 'supplier-alpha', routeId: 'route-airport-petra', pricingMode: 'Airport Transfer' }).map(
+        (rate) => rate.id,
+      ),
+      ['rate-alpha-airport'],
+    );
+    assert.deepEqual(filterTransportTariffRates(rates, {}).map((rate) => rate.id), [
+      'rate-alpha-airport',
+      'rate-alpha-day',
+      'rate-beta-extra',
+    ]);
   });
 
   it('structures supplier rate-card details into readable pricing workflow sections', () => {
