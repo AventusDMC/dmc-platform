@@ -5,7 +5,7 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
-import { PACKAGE_CATALOG_MODULES } from './package-template-display';
+import { collectPackageTemplateComponents, PACKAGE_CATALOG_MODULES, resolvePackageTemplateDays } from './package-template-display';
 import { PackageTemplateForm } from './PackageTemplateForm';
 import { PackageTemplateDuplicateButton } from './PackageTemplateDuplicateButton';
 import type { PackageTemplate } from './types';
@@ -34,8 +34,14 @@ export default async function PackageTemplatesPage() {
   }
 
   const activeCount = packages.filter((template) => template.active).length;
-  const componentCount = packages.reduce((sum, template) => sum + (template.components?.length || 0), 0);
-  const totalDays = packages.reduce((sum, template) => sum + template.durationDays, 0);
+  const packageRows = packages.map((template) => {
+    const days = resolvePackageTemplateDays(template.days, template.components || [], template.durationDays);
+    const components = collectPackageTemplateComponents(days, template.components || []);
+    const durationDays = Math.max(template.durationDays, days.length, ...days.map((day) => day.dayNumber));
+    return { template, days, components, durationDays };
+  });
+  const componentCount = packageRows.reduce((sum, row) => sum + row.components.length, 0);
+  const totalDays = packageRows.reduce((sum, row) => sum + row.durationDays, 0);
 
   return (
     <main className="page">
@@ -98,17 +104,17 @@ export default async function PackageTemplatesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {packages.map((template) => (
+                      {packageRows.map(({ template, components, durationDays }) => (
                         <tr key={template.id} className={!template.active ? 'muted-row' : undefined}>
                           <td>
                             <strong>{template.name}</strong>
                             {template.summary ? <p className="table-cell-copy">{template.summary}</p> : null}
                             {template.operationalNotes ? <p className="table-cell-copy">{template.operationalNotes}</p> : null}
                           </td>
-                          <td>{template.durationDays} days</td>
+                          <td>{durationDays} days</td>
                           <td>{template.targetMarket || 'Not set'}</td>
                           <td>{template.season || 'Not set'}</td>
-                          <td>{template.components?.length || 0}</td>
+                          <td>{components.length}</td>
                           <td>
                             <span className={template.active ? 'status-pill status-pill-success' : 'status-pill status-pill-muted'}>
                               {template.active ? 'Active' : 'Inactive'}

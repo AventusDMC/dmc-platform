@@ -84,6 +84,24 @@ export function resolvePackageTemplateDays(days: PackageTemplateDay[] | undefine
   }));
 }
 
+export function collectPackageTemplateComponents(days: PackageTemplateDay[], fallbackComponents: PackageTemplateComponent[] = []) {
+  const componentById = new Map<string, PackageTemplateComponent>();
+
+  for (const day of days) {
+    for (const component of day.components || []) {
+      componentById.set(component.id, component);
+    }
+  }
+
+  for (const component of fallbackComponents) {
+    if (!componentById.has(component.id)) {
+      componentById.set(component.id, component);
+    }
+  }
+
+  return [...componentById.values()].sort((first, second) => first.dayNumber - second.dayNumber || first.sortOrder - second.sortOrder);
+}
+
 function collectMealLabels(components: PackageTemplateComponent[]) {
   const mealPattern = /\b(breakfast|lunch|dinner|meal|bb|hb|fb)\b/i;
   const labels = components
@@ -94,19 +112,21 @@ function collectMealLabels(components: PackageTemplateComponent[]) {
 }
 
 export function buildPackagePlannerSummary(days: PackageTemplateDay[], components: PackageTemplateComponent[], durationDays: number) {
+  const currentComponents = collectPackageTemplateComponents(days, components);
+  const currentDuration = Math.max(durationDays, days.length, ...days.map((day) => day.dayNumber));
   const cities = [
     ...new Set(
-      components
+      currentComponents
         .map((component) => component.hotelContract?.hotel?.city)
         .filter((city): city is string => Boolean(city)),
     ),
   ];
-  const excursions = components.filter((component) => component.componentType === 'EXCURSION_TEMPLATE').length;
-  const hotelNights = components.filter((component) => component.componentType === 'HOTEL').length;
-  const mealLabels = collectMealLabels(components);
+  const excursions = currentComponents.filter((component) => component.componentType === 'EXCURSION_TEMPLATE').length;
+  const hotelNights = currentComponents.filter((component) => component.componentType === 'HOTEL').length;
+  const mealLabels = collectMealLabels(currentComponents);
 
   return {
-    duration: `${durationDays} days`,
+    duration: `${currentDuration} days`,
     cities: cities.length ? cities.join(', ') : 'Not set',
     excursions: String(excursions),
     hotelNights: String(hotelNights),

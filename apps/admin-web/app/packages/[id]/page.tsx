@@ -8,6 +8,7 @@ import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import {
   buildPackagePlannerSummary,
+  collectPackageTemplateComponents,
   PACKAGE_CATALOG_MODULES,
   packageComponentReferenceLabel,
   packageComponentTypeLabel,
@@ -115,9 +116,11 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
 
   const components = template.components || [];
   const packageDays = resolvePackageTemplateDays(template.days, components, template.durationDays);
-  const packageSummary = buildPackagePlannerSummary(packageDays, components, template.durationDays);
-  const activeComponentCount = components.filter((component) => component.active).length;
-  const optionalComponentCount = components.filter((component) => component.isOptional).length;
+  const currentComponents = collectPackageTemplateComponents(packageDays, components);
+  const packageDurationDays = Math.max(template.durationDays, packageDays.length, ...packageDays.map((day) => day.dayNumber));
+  const packageSummary = buildPackagePlannerSummary(packageDays, currentComponents, packageDurationDays);
+  const activeComponentCount = currentComponents.filter((component) => component.active).length;
+  const optionalComponentCount = currentComponents.filter((component) => component.isOptional).length;
   const orderedDayIds = packageDays.map((day) => day.id);
 
   return (
@@ -136,7 +139,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                 { id: 'excursions', label: 'Excursions', value: packageSummary.excursions, helper: 'Linked templates' },
                 { id: 'hotel-nights', label: 'Hotel nights', value: packageSummary.hotelNights, helper: 'Linked hotel days' },
                 { id: 'meals', label: 'Included meals', value: packageSummary.includedMeals, helper: 'Inferred from linked services' },
-                { id: 'components', label: 'Components', value: String(components.length), helper: `${activeComponentCount} active, ${optionalComponentCount} optional` },
+                { id: 'components', label: 'Components', value: String(currentComponents.length), helper: `${activeComponentCount} active, ${optionalComponentCount} optional` },
               ]}
             />
           }
@@ -159,7 +162,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
             <TableSectionShell
               title="Linked itinerary structure"
               description="Package days hold reusable itinerary titles, notes, and linked operational components without duplicating inventory."
-              context={<p>{components.length} linked operational components</p>}
+              context={<p>{currentComponents.length} linked operational components</p>}
               createPanel={
                 <CollapsibleCreatePanel
                   title="Add operational component"
@@ -173,7 +176,7 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                   <PackageTemplateComponentForm
                     apiBaseUrl="/api"
                     packageTemplateId={template.id}
-                    durationDays={template.durationDays}
+                    durationDays={packageDurationDays}
                     excursionTemplates={catalogs.excursionTemplates}
                     activities={catalogs.activities}
                     hotelContracts={catalogs.hotelContracts}

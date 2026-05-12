@@ -47,6 +47,7 @@ export function PackageTemplateDuplicateButton({
       const copy = await readJsonResponse<DuplicatePackageResponse>(response, 'Duplicate package template');
       if (navigateToCopy) {
         router.push(`/packages/${copy.id}`);
+        router.refresh();
       } else {
         router.refresh();
       }

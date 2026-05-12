@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { buildPackagePlannerSummary, collectPackageTemplateComponents, resolvePackageTemplateDays } from './package-template-display';
 
 const listPageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
@@ -233,5 +234,66 @@ describe('package productization phase one', () => {
     assert.match(metadataEditorSource, /operationalNotes: operationalNotes\.trim\(\) \|\| null/);
     assert.doesNotMatch(metadataEditorSource, /days\/|components\/|PackageTemplateDay|PackageTemplateComponent/);
     assert.doesNotMatch(metadataEditorSource, /pricing engine|proposal automation|booking automation/i);
+  });
+
+  it('recalculates package summary from current days after duplicating a 7 day package and adding a day 8 hotel', () => {
+    const staleOriginalComponents = Array.from({ length: 28 }, (_, index) => ({
+      id: `original-${index + 1}`,
+      componentType: 'SERVICE',
+      dayNumber: Math.floor(index / 4) + 1,
+      label: `Original component ${index + 1}`,
+      sortOrder: index % 4,
+      isOptional: false,
+      active: true,
+      operationalNotes: null,
+      excursionTemplateId: null,
+      activityId: null,
+      hotelContractId: null,
+      routeId: null,
+      transportServiceTypeId: null,
+      pricingMode: null,
+      supplierServiceId: `service-${index + 1}`,
+    }));
+    const currentDayEightHotel = {
+      id: 'day-8-dead-sea-hotel',
+      componentType: 'HOTEL',
+      dayNumber: 8,
+      label: 'Dead Sea hotel night',
+      sortOrder: 0,
+      isOptional: false,
+      active: true,
+      operationalNotes: null,
+      excursionTemplateId: null,
+      activityId: null,
+      hotelContractId: 'dead-sea-contract',
+      routeId: null,
+      transportServiceTypeId: null,
+      pricingMode: null,
+      supplierServiceId: null,
+      hotelContract: { id: 'dead-sea-contract', name: 'Contract', hotel: { id: 'dead-sea-hotel', name: 'Dead Sea Hotel', city: 'Dead Sea' } },
+    };
+    const currentDays = Array.from({ length: 8 }, (_, index) => ({
+      id: `day-${index + 1}`,
+      packageTemplateId: 'copy-package',
+      dayNumber: index + 1,
+      title: `Day ${index + 1}`,
+      description: null,
+      active: true,
+      components: index === 7 ? [currentDayEightHotel] : staleOriginalComponents.filter((component) => component.dayNumber === index + 1),
+    }));
+
+    const resolvedDays = resolvePackageTemplateDays(currentDays as any, staleOriginalComponents as any, 7);
+    const currentComponents = collectPackageTemplateComponents(resolvedDays as any, staleOriginalComponents as any);
+    const summary = buildPackagePlannerSummary(resolvedDays as any, currentComponents as any, 7);
+
+    assert.equal(resolvedDays.length, 8);
+    assert.equal(currentComponents.length, 29);
+    assert.equal(summary.duration, '8 days');
+    assert.equal(summary.hotelNights, '1');
+    assert.equal(summary.cities, 'Dead Sea');
+    assert.match(detailPageSource, /const currentComponents = collectPackageTemplateComponents\(packageDays, components\)/);
+    assert.match(detailPageSource, /value: String\(currentComponents\.length\)/);
+    assert.match(listPageSource, /const packageRows = packages\.map/);
+    assert.match(listPageSource, /components\.length/);
   });
 });
