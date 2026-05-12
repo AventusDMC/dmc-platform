@@ -17,6 +17,13 @@ type UpdateBookingServiceConfirmationBody = {
   notes?: string | null;
 };
 
+type UpdateSupplierConfirmationBody = {
+  supplierConfirmationStatus: 'NOT_SENT' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
+  supplierReference?: string | null;
+  supplierRemarks?: string | null;
+  confirmationDeadline?: string | null;
+};
+
 type UpdateBookingServiceOperationalBody = {
   serviceDate?: string | null;
   startTime?: string | null;
@@ -865,6 +872,23 @@ export class BookingsController {
             : body.confirmationNumber || null,
       supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch('services/:serviceId/supplier-confirmation')
+  @Roles('admin', 'operations')
+  updateSupplierConfirmation(
+    @Param('serviceId') serviceId: string,
+    @Body() body: UpdateSupplierConfirmationBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updateSupplierConfirmation(serviceId, {
+      supplierConfirmationStatus: body.supplierConfirmationStatus,
+      supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
+      supplierRemarks: body.supplierRemarks === undefined ? undefined : body.supplierRemarks || null,
+      confirmationDeadline: body.confirmationDeadline === undefined ? undefined : body.confirmationDeadline || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

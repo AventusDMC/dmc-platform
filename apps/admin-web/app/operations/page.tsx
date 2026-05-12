@@ -35,6 +35,7 @@ type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type BookingServiceLifecycleStatus = 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
 type BookingServiceConfirmationStatus = 'pending' | 'requested' | 'confirmed';
+type SupplierConfirmationStatus = 'NOT_SENT' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 type BookingOperationServiceStatus = 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
 type OperationsWarningFilter =
   | 'missing_supplier'
@@ -93,6 +94,12 @@ type BookingService = {
   confirmationNotes: string | null;
   confirmationRequestedAt: string | null;
   confirmationConfirmedAt: string | null;
+  supplierConfirmationStatus: SupplierConfirmationStatus;
+  confirmationSentAt: string | null;
+  supplierConfirmedAt: string | null;
+  supplierRemarks: string | null;
+  confirmationDeadline: string | null;
+  lastSupplierContactAt: string | null;
   auditLogs: AuditLog[];
 };
 
@@ -172,6 +179,10 @@ type OperationsDashboard = {
     missingPassengerData: number;
     missingRooming: number;
     unconfirmedServices: number;
+    supplierUnconfirmedServices?: number;
+    rejectedSupplierConfirmations?: number;
+    pendingSupplierConfirmations?: number;
+    overdueSupplierConfirmations?: number;
     missingVouchers: number;
     status: 'ready' | 'warning';
   };
@@ -198,6 +209,7 @@ type OperationsPageProps = {
   searchParams?: Promise<{
     serviceStatus?: BookingServiceLifecycleStatus | 'all';
     confirmationStatus?: BookingServiceConfirmationStatus | 'all';
+    supplierConfirmation?: 'all' | 'awaiting' | 'confirmed' | 'rejected' | 'overdue';
     bookingStatus?: BookingStatus | 'all';
     serviceTypeScope?: 'all' | 'activity';
     warning?: OperationsWarningFilter | 'all';
@@ -241,6 +253,12 @@ type OperationRow = {
   confirmationNotes: string | null;
   confirmationRequestedAt: string | null;
   confirmationConfirmedAt: string | null;
+  supplierConfirmationStatus: SupplierConfirmationStatus;
+  confirmationSentAt: string | null;
+  supplierConfirmedAt: string | null;
+  supplierRemarks: string | null;
+  confirmationDeadline: string | null;
+  lastSupplierContactAt: string | null;
   warnings: OperationsWarningFilter[];
   auditLogs: AuditLog[];
 };
@@ -369,6 +387,14 @@ function getAllowedBookingStatusTransitions(status: BookingStatus): AllowedBooki
 
 function formatConfirmationStatus(status: BookingServiceConfirmationStatus) {
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatSupplierConfirmationStatus(status: SupplierConfirmationStatus) {
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 }
 
 function formatClientInvoiceStatus(status: ClientInvoiceStatus) {
@@ -546,6 +572,7 @@ function buildOperationsHref(
   current: {
     serviceStatus: BookingServiceLifecycleStatus | 'all';
     confirmationStatus: BookingServiceConfirmationStatus | 'all';
+    supplierConfirmation: 'all' | 'awaiting' | 'confirmed' | 'rejected' | 'overdue';
     bookingStatus: BookingStatus | 'all';
     serviceTypeScope: 'all' | 'activity';
     warning: OperationsWarningFilter | 'all';
@@ -556,6 +583,7 @@ function buildOperationsHref(
   overrides: Partial<{
     serviceStatus: BookingServiceLifecycleStatus | 'all';
     confirmationStatus: BookingServiceConfirmationStatus | 'all';
+    supplierConfirmation: 'all' | 'awaiting' | 'confirmed' | 'rejected' | 'overdue';
     bookingStatus: BookingStatus | 'all';
     serviceTypeScope: 'all' | 'activity';
     warning: OperationsWarningFilter | 'all';
@@ -573,6 +601,9 @@ function buildOperationsHref(
 
   if (next.confirmationStatus !== 'all') {
     params.set('confirmationStatus', next.confirmationStatus);
+  }
+  if (next.supplierConfirmation !== 'all') {
+    params.set('supplierConfirmation', next.supplierConfirmation);
   }
 
   if (next.bookingStatus !== 'all') {
@@ -668,6 +699,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const serviceStatusFilter = resolvedSearchParams?.serviceStatus || 'all';
   const confirmationStatusFilter = resolvedSearchParams?.confirmationStatus || 'all';
+  const supplierConfirmationFilter = resolvedSearchParams?.supplierConfirmation || 'all';
   const bookingStatusFilter = resolvedSearchParams?.bookingStatus || 'all';
   const serviceTypeScope = resolvedSearchParams?.serviceTypeScope || 'all';
   const warningFilter = resolvedSearchParams?.warning || 'all';
@@ -717,6 +749,12 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       confirmationNotes: service.confirmationNotes,
       confirmationRequestedAt: service.confirmationRequestedAt,
       confirmationConfirmedAt: service.confirmationConfirmedAt,
+      supplierConfirmationStatus: service.supplierConfirmationStatus || 'NOT_SENT',
+      confirmationSentAt: service.confirmationSentAt,
+      supplierConfirmedAt: service.supplierConfirmedAt,
+      supplierRemarks: service.supplierRemarks,
+      confirmationDeadline: service.confirmationDeadline,
+      lastSupplierContactAt: service.lastSupplierContactAt,
       warnings: getWarnings(service),
       auditLogs: service.auditLogs || [],
     })),
@@ -854,6 +892,15 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
     missingServiceDates: rows.filter((row) => row.warnings.includes('missing_service_date')).length,
     missingActivityOperationalData: rows.filter((row) => row.warnings.includes('missing_activity_operational_data')).length,
     reconfirmationDue: rows.filter((row) => row.warnings.includes('reconfirmation_due')).length,
+    supplierUnconfirmed: rows.filter((row) => row.status !== 'cancelled' && row.supplierConfirmationStatus !== 'CONFIRMED').length,
+    supplierRejected: rows.filter((row) => row.status !== 'cancelled' && row.supplierConfirmationStatus === 'REJECTED').length,
+    supplierOverdue: rows.filter(
+      (row) =>
+        row.status !== 'cancelled' &&
+        row.supplierConfirmationStatus !== 'CONFIRMED' &&
+        row.confirmationDeadline &&
+        new Date(row.confirmationDeadline).getTime() < Date.now(),
+    ).length,
     cancelledServices: rows.filter((row) => row.status === 'cancelled').length,
     blockedBookings: blockedBookings.length,
     bulkSkippedServices: skippedServices.length,
@@ -903,6 +950,27 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
     }
 
     if (confirmationStatusFilter !== 'all' && row.confirmationStatus !== confirmationStatusFilter) {
+      return false;
+    }
+
+    if (supplierConfirmationFilter === 'awaiting' && row.supplierConfirmationStatus === 'CONFIRMED') {
+      return false;
+    }
+
+    if (supplierConfirmationFilter === 'confirmed' && row.supplierConfirmationStatus !== 'CONFIRMED') {
+      return false;
+    }
+
+    if (supplierConfirmationFilter === 'rejected' && row.supplierConfirmationStatus !== 'REJECTED') {
+      return false;
+    }
+
+    if (
+      supplierConfirmationFilter === 'overdue' &&
+      (!row.confirmationDeadline ||
+        row.supplierConfirmationStatus === 'CONFIRMED' ||
+        new Date(row.confirmationDeadline).getTime() >= Date.now())
+    ) {
       return false;
     }
 
@@ -969,6 +1037,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
   const currentFilters = {
     serviceStatus: serviceStatusFilter,
     confirmationStatus: confirmationStatusFilter,
+    supplierConfirmation: supplierConfirmationFilter,
     bookingStatus: bookingStatusFilter,
     serviceTypeScope,
     warning: warningFilter,
@@ -1158,6 +1227,18 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
           <div>
             <span>Unconfirmed services</span>
             <strong>{operationsDashboard.operationalReadiness?.unconfirmedServices ?? operationsDashboard.unconfirmedServices.count}</strong>
+          </div>
+          <div>
+            <span>Supplier confirmations pending</span>
+            <strong>{operationsDashboard.operationalReadiness?.pendingSupplierConfirmations ?? summary.supplierUnconfirmed}</strong>
+          </div>
+          <div>
+            <span>Rejected confirmations</span>
+            <strong>{operationsDashboard.operationalReadiness?.rejectedSupplierConfirmations ?? summary.supplierRejected}</strong>
+          </div>
+          <div>
+            <span>Overdue confirmations</span>
+            <strong>{operationsDashboard.operationalReadiness?.overdueSupplierConfirmations ?? summary.supplierOverdue}</strong>
           </div>
           <div>
             <span>Missing vouchers</span>
@@ -1533,6 +1614,18 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                 <Link href={buildOperationsHref(currentFilters, { confirmationStatus: 'pending' })} className="secondary-button">
                   Pending only
                 </Link>
+                <Link href={buildOperationsHref(currentFilters, { supplierConfirmation: 'awaiting' })} className="secondary-button">
+                  Awaiting supplier
+                </Link>
+                <Link href={buildOperationsHref(currentFilters, { supplierConfirmation: 'confirmed' })} className="secondary-button">
+                  Supplier confirmed
+                </Link>
+                <Link href={buildOperationsHref(currentFilters, { supplierConfirmation: 'rejected' })} className="secondary-button">
+                  Supplier rejected
+                </Link>
+                <Link href={buildOperationsHref(currentFilters, { supplierConfirmation: 'overdue' })} className="secondary-button">
+                  Supplier overdue
+                </Link>
               </div>
           </AdvancedFiltersPanel>
 
@@ -1798,10 +1891,12 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                                 <td>
                                   <strong>{formatLifecycleStatus(row.status)}</strong>
                                   <div className="table-subcopy">{formatConfirmationStatus(row.confirmationStatus)}</div>
+                                  <div className="table-subcopy">{formatSupplierConfirmationStatus(row.supplierConfirmationStatus)}</div>
                                 </td>
                                 <td>
                                   <strong>{row.supplierName || 'Unassigned'}</strong>
                                   <div className="table-subcopy">{supplierReference ? `Ref: ${supplierReference}` : 'No supplier ref'}</div>
+                                  {row.confirmationDeadline ? <div className="table-subcopy">Deadline: {formatDateTime(row.confirmationDeadline)}</div> : null}
                                 </td>
                                 <td>
                                   {row.warnings.length === 0 ? (
@@ -1872,6 +1967,22 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                                           Save
                                         </button>
                                       </form>
+                                      <form action={`/api/bookings/services/${row.id}/supplier-confirmation`} method="POST" className="operations-inline-form">
+                                        <select name="supplierConfirmationStatus" defaultValue={row.supplierConfirmationStatus}>
+                                          <option value="NOT_SENT">Not sent</option>
+                                          <option value="SENT">Sent</option>
+                                          <option value="ACKNOWLEDGED">Acknowledged</option>
+                                          <option value="CONFIRMED">Confirmed</option>
+                                          <option value="REJECTED">Rejected</option>
+                                          <option value="CANCELLED">Cancelled</option>
+                                        </select>
+                                        <input type="text" name="supplierReference" defaultValue={supplierReference || ''} placeholder="Supplier ref" />
+                                        <input type="text" name="supplierRemarks" defaultValue={row.supplierRemarks || ''} placeholder="Supplier remarks" />
+                                        <input type="datetime-local" name="confirmationDeadline" defaultValue={row.confirmationDeadline ? row.confirmationDeadline.slice(0, 16) : ''} />
+                                        <button type="submit" className="secondary-button">
+                                          Save supplier confirmation
+                                        </button>
+                                      </form>
                                       <form action={`/api/bookings/services/${row.id}/status`} method="POST" className="operations-inline-form">
                                         <select name="action" defaultValue="">
                                           <option value="" disabled>
@@ -1890,6 +2001,10 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                                       {row.confirmationNotes ? <p className="detail-copy">Confirmation note: {row.confirmationNotes}</p> : null}
                                       {row.confirmationRequestedAt ? <p className="detail-copy">Requested: {formatDateTime(row.confirmationRequestedAt)}</p> : null}
                                       {row.confirmationConfirmedAt ? <p className="detail-copy">Confirmed: {formatDateTime(row.confirmationConfirmedAt)}</p> : null}
+                                      {row.confirmationSentAt ? <p className="detail-copy">Sent to supplier: {formatDateTime(row.confirmationSentAt)}</p> : null}
+                                      {row.supplierConfirmedAt ? <p className="detail-copy">Supplier confirmed: {formatDateTime(row.supplierConfirmedAt)}</p> : null}
+                                      {row.lastSupplierContactAt ? <p className="detail-copy">Last supplier contact: {formatDateTime(row.lastSupplierContactAt)}</p> : null}
+                                      {row.supplierRemarks ? <p className="detail-copy">Supplier remarks: {row.supplierRemarks}</p> : null}
                                       {latestBulkSkip ? (
                                         <p className="form-error">
                                           Bulk skip: {latestBulkSkip.note || latestBulkSkip.newValue || 'Action blocked'}

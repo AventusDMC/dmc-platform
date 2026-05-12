@@ -8,6 +8,7 @@ import {
   BookingServiceStatus,
   BookingStatus,
   Prisma,
+  SupplierConfirmationStatus,
   VoucherStatus,
   VoucherType,
 } from '@prisma/client';
@@ -139,6 +140,8 @@ const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVIT
 type BookingOperationalServiceType = (typeof BOOKING_OPERATION_SERVICE_TYPES)[number];
 const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
+const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
+type SupplierConfirmationStatusValue = (typeof SUPPLIER_CONFIRMATION_STATUSES)[number];
 const VOUCHER_STATUSES = ['DRAFT', 'ISSUED', 'CANCELLED'] as const;
 
 @Injectable()
@@ -589,8 +592,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
               participantCount: true,
               adultCount: true,
               childCount: true,
-              supplierReference: true,
-              supplierId: true,
+          supplierReference: true,
+          supplierConfirmationStatus: true,
+          confirmationSentAt: true,
+          supplierConfirmedAt: true,
+          supplierRemarks: true,
+          confirmationDeadline: true,
+          lastSupplierContactAt: true,
+          supplierId: true,
               supplierName: true,
               confirmationStatus: true,
               confirmationNumber: true,
@@ -1229,6 +1238,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             adultCount: service.adultCount,
             childCount: service.childCount,
             supplierReference: service.supplierReference,
+            supplierConfirmationStatus: service.supplierConfirmationStatus,
+            confirmationSentAt: service.confirmationSentAt,
+            supplierConfirmedAt: service.supplierConfirmedAt,
+            supplierRemarks: service.supplierRemarks,
+            confirmationDeadline: service.confirmationDeadline,
+            lastSupplierContactAt: service.lastSupplierContactAt,
             reconfirmationRequired: service.reconfirmationRequired,
             reconfirmationDueAt: service.reconfirmationDueAt,
             description: service.description,
@@ -3976,6 +3991,94 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
   }
 
+  async updateSupplierConfirmation(
+    bookingServiceId: string,
+    data: {
+      supplierConfirmationStatus: string;
+      supplierReference?: string | null;
+      supplierRemarks?: string | null;
+      confirmationDeadline?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const actor = data.actor;
+    const nextStatus = this.normalizeSupplierConfirmationStatus(data.supplierConfirmationStatus);
+    const requestedReference =
+      data.supplierReference === undefined ? undefined : this.normalizeOptionalText(data.supplierReference);
+    const requestedRemarks = data.supplierRemarks === undefined ? undefined : this.normalizeOptionalText(data.supplierRemarks);
+    const requestedDeadline =
+      data.confirmationDeadline === undefined ? undefined : this.normalizeDateTimeInput(data.confirmationDeadline);
+
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        supplierConfirmationStatus: true,
+        confirmationSentAt: true,
+        supplierConfirmedAt: true,
+        supplierReference: true,
+        confirmationNumber: true,
+        supplierRemarks: true,
+        confirmationDeadline: true,
+        lastSupplierContactAt: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    const now = new Date();
+    const supplierReference = requestedReference || bookingService.supplierReference || bookingService.confirmationNumber || null;
+    const supplierConfirmedAt =
+      nextStatus === SupplierConfirmationStatus.CONFIRMED
+        ? bookingService.supplierConfirmedAt || now
+        : bookingService.supplierConfirmedAt;
+    const confirmationSentAt =
+      nextStatus === SupplierConfirmationStatus.SENT ||
+      nextStatus === SupplierConfirmationStatus.ACKNOWLEDGED ||
+      nextStatus === SupplierConfirmationStatus.CONFIRMED
+        ? bookingService.confirmationSentAt || now
+        : bookingService.confirmationSentAt;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedService = await tx.bookingService.update({
+        where: { id: bookingServiceId },
+        data: {
+          supplierConfirmationStatus: nextStatus,
+          supplierReference,
+          confirmationNumber: supplierReference || bookingService.confirmationNumber || null,
+          supplierRemarks: requestedRemarks === undefined ? bookingService.supplierRemarks : requestedRemarks,
+          confirmationDeadline: requestedDeadline === undefined ? bookingService.confirmationDeadline : requestedDeadline,
+          confirmationSentAt,
+          supplierConfirmedAt,
+          lastSupplierContactAt: nextStatus === SupplierConfirmationStatus.NOT_SENT ? bookingService.lastSupplierContactAt : now,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: 'service_supplier_confirmation_updated',
+        oldValue: bookingService.supplierConfirmationStatus,
+        newValue: nextStatus,
+        note: requestedRemarks ?? null,
+        actor,
+      });
+
+      return updatedService;
+    });
+  }
+
   async supplierConfirm(
     bookingServiceId: string,
     data: {
@@ -5035,6 +5138,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     throw new BadRequestException(`Unsupported booking service status: ${raw}`);
   }
 
+  private normalizeSupplierConfirmationStatus(value: string | null | undefined): SupplierConfirmationStatusValue {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase().replace(/[\s-]+/g, '_');
+    if (!normalized || !(SUPPLIER_CONFIRMATION_STATUSES as readonly string[]).includes(normalized)) {
+      throw new BadRequestException(`Unsupported supplier confirmation status: ${value || 'missing'}`);
+    }
+
+    return normalized as SupplierConfirmationStatusValue;
+  }
+
   private async normalizeBookingOperationServiceInput(
     data: {
       type?: string | null;
@@ -5419,6 +5531,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleId: service.vehicleId,
       status: service.status || null,
       confirmationStatus: service.confirmationStatus || null,
+      supplierConfirmationStatus: service.supplierConfirmationStatus || SupplierConfirmationStatus.NOT_SENT,
+      confirmationSentAt: service.confirmationSentAt || null,
+      supplierConfirmedAt: service.supplierConfirmedAt || null,
+      supplierRemarks: service.supplierRemarks || null,
+      confirmationDeadline: service.confirmationDeadline || null,
+      lastSupplierContactAt: service.lastSupplierContactAt || null,
       vouchers: Array.isArray(service.vouchers) ? service.vouchers : [],
     };
   }
@@ -5532,6 +5650,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const status = String(service.operationStatus || '').toUpperCase();
       return !['CONFIRMED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'].includes(status);
     });
+    const now = new Date();
+    const activeServices = input.services.filter((service) => service.status !== BookingServiceLifecycleStatus.cancelled);
+    const supplierUnconfirmedServices = activeServices.filter(
+      (service) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED,
+    );
+    const rejectedSupplierConfirmations = activeServices.filter(
+      (service) => service.supplierConfirmationStatus === SupplierConfirmationStatus.REJECTED,
+    );
+    const pendingSupplierConfirmations = activeServices.filter((service) =>
+      [SupplierConfirmationStatus.NOT_SENT, SupplierConfirmationStatus.SENT, SupplierConfirmationStatus.ACKNOWLEDGED].includes(
+        service.supplierConfirmationStatus,
+      ),
+    );
+    const overdueSupplierConfirmations = pendingSupplierConfirmations.filter(
+      (service) => service.confirmationDeadline && new Date(service.confirmationDeadline).getTime() < now.getTime(),
+    );
 
     return {
       bookings: input.bookings.length,
@@ -5539,9 +5673,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       missingPassengerData: input.missingPassengers.length,
       missingRooming: input.missingRooming.length,
       unconfirmedServices: unconfirmedServices.length,
+      supplierUnconfirmedServices: supplierUnconfirmedServices.length,
+      rejectedSupplierConfirmations: rejectedSupplierConfirmations.length,
+      pendingSupplierConfirmations: pendingSupplierConfirmations.length,
+      overdueSupplierConfirmations: overdueSupplierConfirmations.length,
       missingVouchers: input.missingVoucherServices.length,
       status:
-        input.missingPassengers.length > 0 || input.missingRooming.length > 0 || input.missingVoucherServices.length > 0 || unconfirmedServices.length > 0
+        input.missingPassengers.length > 0 ||
+        input.missingRooming.length > 0 ||
+        input.missingVoucherServices.length > 0 ||
+        unconfirmedServices.length > 0 ||
+        rejectedSupplierConfirmations.length > 0 ||
+        overdueSupplierConfirmations.length > 0
           ? 'warning'
           : 'ready',
     };
@@ -7408,6 +7551,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleId: true,
       status: true,
       confirmationStatus: true,
+      supplierConfirmationStatus: true,
+      confirmationSentAt: true,
+      supplierConfirmedAt: true,
+      supplierRemarks: true,
+      confirmationDeadline: true,
+      lastSupplierContactAt: true,
       vouchers: {
         select: {
           id: true,

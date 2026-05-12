@@ -2064,6 +2064,12 @@ model BookingService {
   adultCount              Int?
   childCount              Int?
   supplierReference       String?
+  supplierConfirmationStatus SupplierConfirmationStatus @default(NOT_SENT)
+  confirmationSentAt      DateTime?
+  supplierConfirmedAt     DateTime?
+  supplierRemarks         String?
+  confirmationDeadline    DateTime?
+  lastSupplierContactAt   DateTime?
   reconfirmationRequired  Boolean                       @default(false)
   reconfirmationDueAt     DateTime?
   description             String
@@ -2226,6 +2232,15 @@ enum BookingServiceStatus {
   pending
   requested
   confirmed
+}
+
+enum SupplierConfirmationStatus {
+  NOT_SENT
+  SENT
+  ACKNOWLEDGED
+  CONFIRMED
+  REJECTED
+  CANCELLED
 }
 
 enum BookingRoomOccupancy {

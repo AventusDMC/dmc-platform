@@ -35,6 +35,7 @@ type BookingType = 'FIT' | 'GROUP' | 'SERIES';
 type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type AuditEntityType = 'booking' | 'booking_service';
+type SupplierConfirmationStatus = 'NOT_SENT' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
 type AuditLog = {
   id: string;
@@ -433,6 +434,12 @@ type Booking = {
     confirmationNotes: string | null;
     confirmationRequestedAt: string | null;
     confirmationConfirmedAt: string | null;
+    supplierConfirmationStatus: SupplierConfirmationStatus;
+    confirmationSentAt: string | null;
+    supplierConfirmedAt: string | null;
+    supplierRemarks: string | null;
+    confirmationDeadline: string | null;
+    lastSupplierContactAt: string | null;
     vouchers?: ServiceVoucher[];
     auditLogs: AuditLog[];
   }>;
@@ -606,6 +613,15 @@ function formatBookingType(value: BookingType) {
 function formatConfirmationStatus(status?: 'pending' | 'requested' | 'confirmed') {
   if (!status) return 'Pending';
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatSupplierConfirmationStatus(status?: SupplierConfirmationStatus) {
+  if (!status) return 'Not sent';
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 }
 
 function formatReadinessStatus(status: 'ready' | 'warning' | 'critical' | 'pending' | 'incomplete') {
@@ -1828,9 +1844,17 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                       <td>
                                         {service.supplierName || 'Not assigned'}
                                         {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
+                                        <div className="table-subcopy">{service.supplierReference ? `Ref: ${service.supplierReference}` : 'No supplier ref'}</div>
                                       </td>
-                                      <td>{service.operationStatus || service.confirmationStatus.toUpperCase()}</td>
-                                      <td>{service.notes || service.confirmationNotes || 'No notes'}</td>
+                                      <td>
+                                        {service.operationStatus || service.confirmationStatus.toUpperCase()}
+                                        <div className="table-subcopy">{formatSupplierConfirmationStatus(service.supplierConfirmationStatus)}</div>
+                                      </td>
+                                      <td>
+                                        {service.notes || service.confirmationNotes || service.supplierRemarks || 'No notes'}
+                                        {service.confirmationSentAt ? <div className="table-subcopy">Sent: {formatDateTime(service.confirmationSentAt)}</div> : null}
+                                        {service.supplierConfirmedAt ? <div className="table-subcopy">Confirmed: {formatDateTime(service.supplierConfirmedAt)}</div> : null}
+                                      </td>
                                       <td>
                                         {service.operationType === 'EXTERNAL_PACKAGE' ? (
                                           <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
@@ -1898,6 +1922,35 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                             </form>
                                           </details>
                                         )}
+                                        <details>
+                                          <summary>Supplier confirmation</summary>
+                                          <form action={`/api/bookings/services/${service.id}/supplier-confirmation`} method="POST" className="quote-status-form">
+                                            <label>
+                                              Status
+                                              <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
+                                                <option value="NOT_SENT">Not sent</option>
+                                                <option value="SENT">Sent</option>
+                                                <option value="ACKNOWLEDGED">Acknowledged</option>
+                                                <option value="CONFIRMED">Confirmed</option>
+                                                <option value="REJECTED">Rejected</option>
+                                                <option value="CANCELLED">Cancelled</option>
+                                              </select>
+                                            </label>
+                                            <label>
+                                              Supplier reference
+                                              <input type="text" name="supplierReference" defaultValue={service.supplierReference || service.confirmationNumber || ''} />
+                                            </label>
+                                            <label>
+                                              Remarks
+                                              <input type="text" name="supplierRemarks" defaultValue={service.supplierRemarks || ''} />
+                                            </label>
+                                            <label>
+                                              Deadline
+                                              <input type="datetime-local" name="confirmationDeadline" defaultValue={service.confirmationDeadline ? service.confirmationDeadline.slice(0, 16) : ''} />
+                                            </label>
+                                            <button type="submit">Save supplier confirmation</button>
+                                          </form>
+                                        </details>
                                       </td>
                                       <td>
                                         {service.vouchers && service.vouchers.length > 0 ? (
