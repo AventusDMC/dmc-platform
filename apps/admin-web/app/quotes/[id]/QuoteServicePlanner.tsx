@@ -941,7 +941,7 @@ function serializeDayContent(description: string, timeline: DayTimelineItem[]) {
 function getPlannerDays(quote: Quote, quoteItinerary?: PlannerItineraryResponse): QuoteReadinessDay[] {
   const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const quoteItineraryDays = (quoteItinerary?.days || [])
-    .filter((day) => day.isActive && day.dayNumber <= expectedDayCount)
+    .filter((day) => day.isActive)
     .sort((left, right) => left.dayNumber - right.dayNumber)
     .map((day) => ({
       id: day.id,

@@ -3548,7 +3548,7 @@ export class QuotesService {
 
   private getPackageAssemblyDays(template: any) {
     if (template.days?.length) {
-      return [...template.days].sort((first: any, second: any) => first.dayNumber - second.dayNumber);
+      return [...template.days].filter((day: any) => day.active !== false).sort((first: any, second: any) => first.dayNumber - second.dayNumber);
     }
 
     const components = [...(template.components || [])].sort((first: any, second: any) => first.dayNumber - second.dayNumber || first.sortOrder - second.sortOrder);
@@ -3654,8 +3654,8 @@ export class QuotesService {
         data: {
           packageTemplateId,
           packageTemplateDayId: packageDay.id || null,
-          title: existingDay.title || packageDay.title || `Day ${packageDay.dayNumber}`,
-          notes: existingDay.notes || packageDay.description || null,
+          title: packageDay.title || `Day ${packageDay.dayNumber}`,
+          notes: packageDay.description || null,
           isActive: true,
         },
       });

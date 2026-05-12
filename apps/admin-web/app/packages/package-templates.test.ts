@@ -13,6 +13,7 @@ const displaySource = readFileSync(new URL('./package-template-display.ts', impo
 const duplicateButtonSource = readFileSync(new URL('./PackageTemplateDuplicateButton.tsx', import.meta.url), 'utf8');
 const metadataEditorSource = readFileSync(new URL('./PackageTemplateMetadataEditor.tsx', import.meta.url), 'utf8');
 const quoteAssemblyPanelSource = readFileSync(new URL('./PackageQuoteAssemblyPanel.tsx', import.meta.url), 'utf8');
+const quoteServicePlannerSource = readFileSync(new URL('../quotes/[id]/QuoteServicePlanner.tsx', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
 const apiControllerSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.controller.ts', import.meta.url), 'utf8');
 const quoteServiceSource = readFileSync(new URL('../../../api/src/quotes/quotes.service.ts', import.meta.url), 'utf8');
@@ -194,6 +195,37 @@ describe('package productization phase one', () => {
     assert.match(quoteServiceSource, /will be skipped because mapping data is incomplete/);
     assert.match(quoteServiceSource, /Hotel component needs one active hotel contract rate/);
     assert.match(quoteServiceSource, /Transport component needs route, pricing mode\/service type, transport service, and a valid transport rate/);
+  });
+
+  it('creates and displays every active package day even when only some days insert safe quote items', () => {
+    assert.match(quoteServiceSource, /for \(const day of days\) \{[\s\S]*const quoteDay = await this\.upsertPackageQuoteItineraryDay/);
+    assert.match(quoteServiceSource, /return \[\.\.\.template\.days\]\.filter\(\(day: any\) => day\.active !== false\)/);
+    assert.match(quoteServiceSource, /createdDays\.push\(quoteDay\)/);
+    assert.match(quoteServiceSource, /skippedComponents\.push\(\{ componentId: component\.id, reason: mappingStatus\.reason \}\)/);
+    assert.match(quoteServiceSource, /createdItems\.push\(await this\.createItem\(payload, actor\)\)/);
+    assert.match(quoteServicePlannerSource, /const quoteItineraryDays = \(quoteItinerary\?\.days \|\| \[\]\)[\s\S]*\.filter\(\(day\) => day\.isActive\)/);
+    assert.doesNotMatch(
+      quoteServicePlannerSource,
+      /const quoteItineraryDays = \(quoteItinerary\?\.days \|\| \[\]\)[\s\S]{0,120}\.filter\(\(day\) => day\.isActive && day\.dayNumber <= expectedDayCount\)/,
+    );
+  });
+
+  it('preserves package day title and narrative when applying a package to a quote', () => {
+    const packageDayTitle = 'Welcome to Jordan / Ahlan Wa Sahlan';
+    const samplePackageDay = {
+      id: 'package-day-1',
+      dayNumber: 1,
+      title: packageDayTitle,
+      description: 'Arrival assistance, hotel transfer, and welcome notes.',
+      active: true,
+      components: [],
+    };
+
+    assert.equal(samplePackageDay.title, packageDayTitle);
+    assert.match(quoteServiceSource, /title: packageDay\.title \|\| `Day \$\{packageDay\.dayNumber\}`/);
+    assert.match(quoteServiceSource, /notes: packageDay\.description \|\| null/);
+    assert.doesNotMatch(quoteServiceSource, /title: existingDay\.title \|\| packageDay\.title/);
+    assert.match(quoteServicePlannerSource, /title: day\.title \|\| `Day \$\{day\.dayNumber\}`/);
   });
 
   it('does not duplicate operational inventory while assembling package quote items', () => {
