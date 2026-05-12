@@ -1417,10 +1417,10 @@ export class ContractImportsService {
   private detectSkippedTextSections(lines: string[]) {
     const skipped: Array<{ label: string; reason: string; lineNumber?: number }> = [];
     lines.forEach((line, index) => {
-      if (/^\s*(arabic|terms|general conditions|bank details|signature|stamp)\b/i.test(line)) {
-        skipped.push({ label: line.slice(0, 120), reason: 'Non-pricing administrative section', lineNumber: index + 1 });
-      } else if (/[\u0600-\u06FF]/.test(line) && !/\d/.test(line)) {
+      if (/[\u0600-\u06FF]/.test(line) && !/\d/.test(line)) {
         skipped.push({ label: line.slice(0, 120), reason: 'Arabic text section requires manual OCR/QC review', lineNumber: index + 1 });
+      } else if (/^\s*(arabic|terms|general conditions|bank details|signature|stamp)\b/i.test(line)) {
+        skipped.push({ label: line.slice(0, 120), reason: 'Non-pricing administrative section', lineNumber: index + 1 });
       }
     });
     return skipped.slice(0, 30);
@@ -1473,7 +1473,7 @@ export class ContractImportsService {
         .map((cell) => cell.trim())
         .filter(Boolean);
       if (strictCells.length < 2) {
-        rates.push(...this.extractFlattenedTableRates(line, fallbackCurrency, activePricingBasis));
+        rates.push(...this.extractFlattenedTableRates(line, fallbackCurrency, activePricingBasis, currentSeasonName));
         continue;
       }
       const cells = strictCells;
@@ -1591,7 +1591,12 @@ export class ContractImportsService {
     };
   }
 
-  private extractFlattenedTableRates(line: string, fallbackCurrency: string, fallbackPricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM'): PreviewRate[] {
+  private extractFlattenedTableRates(
+    line: string,
+    fallbackCurrency: string,
+    fallbackPricingBasis: 'PER_PERSON' | 'PER_ROOM' = 'PER_ROOM',
+    seasonName = 'Imported',
+  ): PreviewRate[] {
     const numberMatches = line.match(/\d+(?:\.\d+)?/g) || [];
     const numbers = numberMatches
       .map((value) => Number(value))
@@ -1606,7 +1611,7 @@ export class ContractImportsService {
       roomType: room,
       occupancyType: occupancyTypes[index],
       mealPlan: 'BB',
-      seasonName: 'Imported',
+      seasonName,
       cost,
       currency: fallbackCurrency,
       pricingBasis: this.detectPricingBasis(line, fallbackPricingBasis),
