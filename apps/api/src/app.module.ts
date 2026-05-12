@@ -61,6 +61,8 @@ import { LeadsController } from './leads/leads.controller';
 import { LeadsService } from './leads/leads.service';
 import { PlacesController } from './places/places.controller';
 import { PlacesService } from './places/places.service';
+import { PackageTemplatesController } from './package-templates/package-templates.controller';
+import { PackageTemplatesService } from './package-templates/package-templates.service';
 import { PlaceTypesController } from './place-types/place-types.controller';
 import { PlaceTypesService } from './place-types/place-types.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -113,6 +115,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     AuthController,
     BookingsController,
     OperationsDashboardController,
+    PackageTemplatesController,
     VouchersController,
     CitiesController,
     ContractChildPolicyController,
@@ -173,6 +176,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     },
     BookingsService,
     OperationalVouchersService,
+    PackageTemplatesService,
     CitiesService,
     ContractChildPolicyService,
     ContractImportsService,

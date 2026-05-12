@@ -277,6 +277,7 @@ model Activity {
   rateVariants        ActivityRateVariant[]
   bookingServices     BookingService[]
   excursionComponents ExcursionTemplateComponent[]
+  packageComponents   PackageTemplateComponent[]
   quoteItems          QuoteItem[]
 
   @@index([active, name])
@@ -385,6 +386,7 @@ model HotelContract {
   supplements                 HotelContractSupplement[]
   childPolicyAuditLogs        HotelContractChildPolicyAuditLog[]
   quoteItems                  QuoteItem[]
+  packageComponents           PackageTemplateComponent[]
 
   @@index([hotelId])
   @@map("hotel_contracts")
@@ -1590,6 +1592,7 @@ model Route {
   vehicleRates        VehicleRate[]
   pricingRules        TransportPricingRule[]
   excursionComponents ExcursionTemplateComponent[]
+  packageComponents   PackageTemplateComponent[]
 
   @@index([fromPlaceId])
   @@index([isActive, name])
@@ -1637,6 +1640,7 @@ model SupplierService {
   entranceFee           EntranceFee?
   quoteBlocks           QuoteBlock[]
   excursionComponents   ExcursionTemplateComponent[]
+  packageComponents     PackageTemplateComponent[]
   quoteItems            QuoteItem[]
   serviceType           ServiceType?                 @relation(fields: [serviceTypeId], references: [id])
 
@@ -1803,8 +1807,64 @@ model TransportServiceType {
   vehicleRates        VehicleRate[]
   excursionComponents ExcursionTemplateComponent[]
   pricingRules        TransportPricingRule[]
+  packageComponents   PackageTemplateComponent[]
 
   @@map("transport_service_types")
+}
+
+model PackageTemplate {
+  id               String                     @id @default(uuid()) @db.Uuid
+  name             String
+  durationDays     Int
+  targetMarket     String?
+  season           String?
+  active           Boolean                    @default(true)
+  operationalNotes String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  components       PackageTemplateComponent[]
+
+  @@index([active, name])
+  @@index([targetMarket, season])
+  @@map("package_templates")
+}
+
+model PackageTemplateComponent {
+  id                     String                       @id @default(uuid()) @db.Uuid
+  packageTemplateId      String                       @db.Uuid
+  componentType          PackageTemplateComponentType
+  dayNumber              Int
+  label                  String
+  sortOrder              Int                          @default(0)
+  isOptional             Boolean                      @default(false)
+  active                 Boolean                      @default(true)
+  operationalNotes       String?
+  excursionTemplateId    String?                      @db.Uuid
+  activityId             String?                      @db.Uuid
+  hotelContractId        String?                      @db.Uuid
+  routeId                String?                      @db.Uuid
+  transportServiceTypeId String?                      @db.Uuid
+  pricingMode            String?
+  supplierServiceId      String?                      @db.Uuid
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  activity               Activity?                    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  excursionTemplate      ExcursionTemplate?           @relation(fields: [excursionTemplateId], references: [id], onDelete: SetNull)
+  hotelContract          HotelContract?               @relation(fields: [hotelContractId], references: [id], onDelete: SetNull)
+  packageTemplate        PackageTemplate              @relation(fields: [packageTemplateId], references: [id], onDelete: Cascade)
+  route                  Route?                       @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  supplierService        SupplierService?             @relation(fields: [supplierServiceId], references: [id], onDelete: SetNull)
+  transportServiceType   TransportServiceType?        @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
+
+  @@index([packageTemplateId, dayNumber, sortOrder])
+  @@index([componentType])
+  @@index([excursionTemplateId])
+  @@index([activityId])
+  @@index([hotelContractId])
+  @@index([routeId])
+  @@index([transportServiceTypeId])
+  @@index([supplierServiceId])
+  @@map("package_template_components")
 }
 
 model ExcursionTemplate {
@@ -1829,6 +1889,7 @@ model ExcursionTemplate {
   createdAt                DateTime                     @default(now())
   updatedAt                DateTime                     @updatedAt
   components               ExcursionTemplateComponent[]
+  packageComponents        PackageTemplateComponent[]
 
   @@index([active, name])
   @@map("excursion_templates")
@@ -2244,6 +2305,14 @@ enum ExcursionComponentType {
   ACTIVITY
   GUIDE
   DINING
+}
+
+enum PackageTemplateComponentType {
+  EXCURSION_TEMPLATE
+  ACTIVITY
+  HOTEL
+  TRANSPORT
+  TICKET
 }
 
 enum HotelCancellationPenaltyType {
