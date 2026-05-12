@@ -9,6 +9,7 @@ type CreatePackageTemplateBody = {
   durationDays: number;
   targetMarket?: string | null;
   season?: string | null;
+  summary?: string | null;
   active?: boolean;
   operationalNotes?: string | null;
 };

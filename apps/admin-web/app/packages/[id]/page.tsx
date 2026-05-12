@@ -20,6 +20,7 @@ import { PackageQuoteAssemblyPanel } from '../PackageQuoteAssemblyPanel';
 import { PackageTemplateComponentForm } from '../PackageTemplateComponentForm';
 import { PackageTemplateDuplicateButton } from '../PackageTemplateDuplicateButton';
 import { PackageTemplateDayForm } from '../PackageTemplateDayForm';
+import { PackageTemplateMetadataEditor } from '../PackageTemplateMetadataEditor';
 import type {
   PackageTemplate,
   PackageTemplateHotelContractOption,
@@ -146,20 +147,9 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
             </Link>
 
             <section className="detail-grid">
+              <PackageTemplateMetadataEditor apiBaseUrl="/api" template={template} />
               <article className="detail-card">
-                <h2>Package setup</h2>
-                <div className="detail-fields">
-                  <p>
-                    <strong>Target market:</strong> {template.targetMarket || 'Not set'}
-                  </p>
-                  <p>
-                    <strong>Season:</strong> {template.season || 'Not set'}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {template.active ? 'Active' : 'Inactive'}
-                  </p>
-                </div>
-                {template.operationalNotes ? <p className="detail-copy">{template.operationalNotes}</p> : null}
+                <h2>Package actions</h2>
                 <PackageTemplateDuplicateButton apiBaseUrl="/api" packageTemplateId={template.id} packageName={template.name} navigateToCopy />
               </article>
             </section>

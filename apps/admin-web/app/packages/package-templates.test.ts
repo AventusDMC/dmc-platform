@@ -10,6 +10,7 @@ const dayActionsSource = readFileSync(new URL('./PackageDayPlannerActions.tsx', 
 const dayFormSource = readFileSync(new URL('./PackageTemplateDayForm.tsx', import.meta.url), 'utf8');
 const displaySource = readFileSync(new URL('./package-template-display.ts', import.meta.url), 'utf8');
 const duplicateButtonSource = readFileSync(new URL('./PackageTemplateDuplicateButton.tsx', import.meta.url), 'utf8');
+const metadataEditorSource = readFileSync(new URL('./PackageTemplateMetadataEditor.tsx', import.meta.url), 'utf8');
 const quoteAssemblyPanelSource = readFileSync(new URL('./PackageQuoteAssemblyPanel.tsx', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
 const apiControllerSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.controller.ts', import.meta.url), 'utf8');
@@ -202,5 +203,35 @@ describe('package productization phase one', () => {
     assert.doesNotMatch(apiServiceSource, /hotelContract\.create|excursionTemplate\.create|route\.create|supplierService\.create|activity\.create/);
     assert.doesNotMatch(packageDuplicateSource, /packageTemplate\.update\(\{\s*where: \{ id \}/);
     assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
+  });
+
+  it('allows package metadata editing from the detail page', () => {
+    assert.match(detailPageSource, /<PackageTemplateMetadataEditor apiBaseUrl="\/api" template=\{template\} \/>/);
+    assert.match(metadataEditorSource, /Edit/);
+    assert.match(metadataEditorSource, /Save/);
+    assert.match(metadataEditorSource, /method: 'PATCH'/);
+    assert.match(metadataEditorSource, /Package name/);
+    assert.match(metadataEditorSource, /Duration days/);
+    assert.match(metadataEditorSource, /Target market/);
+    assert.match(metadataEditorSource, /Season/);
+    assert.match(metadataEditorSource, /Package summary/);
+    assert.match(metadataEditorSource, /Operational notes/);
+    assert.match(metadataEditorSource, /Active/);
+  });
+
+  it('updates package metadata without changing package days or component links', () => {
+    assert.match(prismaSchemaSource, /model PackageTemplate \{[\s\S]*summary\s+String\?/);
+    assert.match(apiControllerSource, /summary\?: string \| null/);
+    assert.match(apiControllerSource, /this\.packageTemplatesService\.update\(id, this\.normalizeTemplateBody\(body\)\)/);
+    assert.match(apiServiceSource, /summary: data\.summary === undefined \? undefined : normalizeOptionalString\(data\.summary\)/);
+    assert.match(metadataEditorSource, /name: name\.trim\(\)/);
+    assert.match(metadataEditorSource, /durationDays: normalizedDuration/);
+    assert.match(metadataEditorSource, /targetMarket: targetMarket\.trim\(\) \|\| null/);
+    assert.match(metadataEditorSource, /season: season\.trim\(\) \|\| null/);
+    assert.match(metadataEditorSource, /summary: summary\.trim\(\) \|\| null/);
+    assert.match(metadataEditorSource, /active,/);
+    assert.match(metadataEditorSource, /operationalNotes: operationalNotes\.trim\(\) \|\| null/);
+    assert.doesNotMatch(metadataEditorSource, /days\/|components\/|PackageTemplateDay|PackageTemplateComponent/);
+    assert.doesNotMatch(metadataEditorSource, /pricing engine|proposal automation|booking automation/i);
   });
 });

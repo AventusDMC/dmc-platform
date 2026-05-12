@@ -15,6 +15,7 @@ export function PackageTemplateForm({ apiBaseUrl }: PackageTemplateFormProps) {
   const [durationDays, setDurationDays] = useState('7');
   const [targetMarket, setTargetMarket] = useState('');
   const [season, setSeason] = useState('');
+  const [summary, setSummary] = useState('');
   const [operationalNotes, setOperationalNotes] = useState('');
   const [active, setActive] = useState(true);
   const [error, setError] = useState('');
@@ -46,6 +47,7 @@ export function PackageTemplateForm({ apiBaseUrl }: PackageTemplateFormProps) {
           durationDays: normalizedDuration,
           targetMarket: targetMarket.trim() || null,
           season: season.trim() || null,
+          summary: summary.trim() || null,
           active,
           operationalNotes: operationalNotes.trim() || null,
         }),
@@ -88,6 +90,10 @@ export function PackageTemplateForm({ apiBaseUrl }: PackageTemplateFormProps) {
           <input value={season} onChange={(event) => setSeason(event.target.value)} placeholder="Spring 2027" />
         </label>
       </div>
+      <label>
+        Package summary
+        <textarea rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} />
+      </label>
       <label>
         Operational notes
         <textarea rows={3} value={operationalNotes} onChange={(event) => setOperationalNotes(event.target.value)} />

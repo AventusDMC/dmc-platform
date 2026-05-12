@@ -9,6 +9,7 @@ type CreatePackageTemplateInput = {
   durationDays: number;
   targetMarket?: string | null;
   season?: string | null;
+  summary?: string | null;
   active?: boolean;
   operationalNotes?: string | null;
 };
@@ -117,6 +118,7 @@ export class PackageTemplatesService {
           durationDays: sourceTemplate.durationDays,
           targetMarket: sourceTemplate.targetMarket,
           season: sourceTemplate.season,
+          summary: sourceTemplate.summary,
           active: false,
           operationalNotes: sourceTemplate.operationalNotes,
         },
@@ -429,6 +431,7 @@ export class PackageTemplatesService {
         data.durationDays === undefined && partial ? undefined : this.normalizePositiveInteger(data.durationDays, 'durationDays'),
       targetMarket: data.targetMarket === undefined ? undefined : normalizeOptionalString(data.targetMarket),
       season: data.season === undefined ? undefined : normalizeOptionalString(data.season),
+      summary: data.summary === undefined ? undefined : normalizeOptionalString(data.summary),
       active: data.active === undefined ? undefined : Boolean(data.active),
       operationalNotes: data.operationalNotes === undefined ? undefined : normalizeOptionalString(data.operationalNotes),
     };

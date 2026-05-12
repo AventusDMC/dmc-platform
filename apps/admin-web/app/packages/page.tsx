@@ -102,6 +102,7 @@ export default async function PackageTemplatesPage() {
                         <tr key={template.id} className={!template.active ? 'muted-row' : undefined}>
                           <td>
                             <strong>{template.name}</strong>
+                            {template.summary ? <p className="table-cell-copy">{template.summary}</p> : null}
                             {template.operationalNotes ? <p className="table-cell-copy">{template.operationalNotes}</p> : null}
                           </td>
                           <td>{template.durationDays} days</td>

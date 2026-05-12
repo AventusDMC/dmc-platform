@@ -1828,6 +1828,7 @@ model PackageTemplate {
   durationDays     Int
   targetMarket     String?
   season           String?
+  summary          String?
   active           Boolean                    @default(true)
   operationalNotes String?
   createdAt        DateTime                   @default(now())
