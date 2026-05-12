@@ -9,9 +9,16 @@ const componentReorderSource = readFileSync(new URL('./PackageComponentReorderCo
 const dayActionsSource = readFileSync(new URL('./PackageDayPlannerActions.tsx', import.meta.url), 'utf8');
 const dayFormSource = readFileSync(new URL('./PackageTemplateDayForm.tsx', import.meta.url), 'utf8');
 const displaySource = readFileSync(new URL('./package-template-display.ts', import.meta.url), 'utf8');
+const quoteAssemblyPanelSource = readFileSync(new URL('./PackageQuoteAssemblyPanel.tsx', import.meta.url), 'utf8');
 const apiServiceSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.service.ts', import.meta.url), 'utf8');
 const apiControllerSource = readFileSync(new URL('../../../api/src/package-templates/package-templates.controller.ts', import.meta.url), 'utf8');
+const quoteServiceSource = readFileSync(new URL('../../../api/src/quotes/quotes.service.ts', import.meta.url), 'utf8');
+const quoteControllerSource = readFileSync(new URL('../../../api/src/quotes/quotes.controller.ts', import.meta.url), 'utf8');
 const prismaSchemaSource = readFileSync(new URL('../../../api/prisma/schema.prisma', import.meta.url), 'utf8');
+const quoteAssemblySource = quoteServiceSource.slice(
+  quoteServiceSource.indexOf('async previewPackageTemplateAssembly'),
+  quoteServiceSource.indexOf('private async findActivityBridgeSupplierService'),
+);
 
 describe('package productization phase one', () => {
   it('adds a first-class package template list and detail workspace', () => {
@@ -115,5 +122,48 @@ describe('package productization phase one', () => {
     assert.match(apiServiceSource, /data: \{ durationDays: remainingDays\.length \}/);
     assert.doesNotMatch(apiServiceSource, /hotelContract\.delete|excursionTemplate\.delete|route\.delete|supplierService\.delete|activity\.delete/);
     assert.doesNotMatch(apiServiceSource, /quotePricing|proposal|booking/i);
+  });
+
+  it('previews and applies package templates into quote itinerary days before insertion', () => {
+    assert.match(detailPageSource, /<PackageQuoteAssemblyPanel apiBaseUrl="\/api" packageTemplateId=\{template\.id\} \/>/);
+    assert.match(quoteAssemblyPanelSource, /Preview package days/);
+    assert.match(quoteAssemblyPanelSource, /Add Package to Quote/);
+    assert.match(quoteAssemblyPanelSource, /package-templates\/\$\{encodeURIComponent\(packageTemplateId\)\}\/preview/);
+    assert.match(quoteAssemblyPanelSource, /package-templates\/\$\{encodeURIComponent\(packageTemplateId\)\}\/apply/);
+    assert.match(quoteControllerSource, /@Get\(':id\/package-templates\/:templateId\/preview'\)/);
+    assert.match(quoteControllerSource, /@Post\(':id\/package-templates\/:templateId\/apply'\)/);
+    assert.match(quoteServiceSource, /previewPackageTemplateAssembly/);
+    assert.match(quoteServiceSource, /applyPackageTemplateToQuote/);
+    assert.match(quoteServiceSource, /quoteItineraryDay\.create/);
+    assert.match(quoteServiceSource, /dayNumber: packageDay\.dayNumber/);
+  });
+
+  it('preserves package provenance and component order during quote assembly', () => {
+    assert.match(prismaSchemaSource, /model QuoteItem \{[\s\S]*packageTemplateId\s+String\?/);
+    assert.match(prismaSchemaSource, /model QuoteItem \{[\s\S]*packageTemplateDayId\s+String\?/);
+    assert.match(prismaSchemaSource, /model QuoteItem \{[\s\S]*packageTemplateComponentId\s+String\?/);
+    assert.match(prismaSchemaSource, /model QuoteItineraryDay \{[\s\S]*packageTemplateId\s+String\?/);
+    assert.match(prismaSchemaSource, /model QuoteItineraryDay \{[\s\S]*packageTemplateDayId\s+String\?/);
+    assert.match(quoteServiceSource, /packageTemplateId: values\.packageTemplate\.id/);
+    assert.match(quoteServiceSource, /packageTemplateDayId: values\.packageDay\.id \|\| null/);
+    assert.match(quoteServiceSource, /packageTemplateComponentId: values\.packageComponent\.id/);
+    assert.match(quoteServiceSource, /sort\(\(first: any, second: any\) => first\.sortOrder - second\.sortOrder/);
+  });
+
+  it('keeps optional package components unchecked and guards duplicate package insertion', () => {
+    assert.match(quoteAssemblyPanelSource, /checked=\{!component\.optional && component\.insertable\}/);
+    assert.match(quoteAssemblyPanelSource, /selectedOptionalComponentIds: \[\]/);
+    assert.match(quoteServiceSource, /Optional component not selected/);
+    assert.match(quoteServiceSource, /findExistingPackageAssembly/);
+    assert.match(quoteServiceSource, /already linked to this quote/);
+    assert.match(quoteServiceSource, /where: \{ quoteId, packageTemplateId \}/);
+  });
+
+  it('does not duplicate operational inventory while assembling package quote items', () => {
+    assert.match(quoteServiceSource, /serviceId: component\.supplierServiceId/);
+    assert.match(quoteServiceSource, /excursionTemplateId: values\.template\.id/);
+    assert.match(quoteServiceSource, /activityId: values\.component\.activityId \|\| undefined/);
+    assert.doesNotMatch(quoteAssemblySource, /packageTemplate\.create|hotelContract\.create|excursionTemplate\.create|activity\.create|route\.create|supplierService\.create/);
+    assert.doesNotMatch(quoteAssemblyPanelSource, /pricing engine|proposal automation|booking automation/i);
   });
 });

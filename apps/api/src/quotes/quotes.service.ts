@@ -134,6 +134,9 @@ type QuoteInvoiceSummary = {
 type CreateQuoteItemInput = {
   quoteId: string;
   optionId?: string;
+  packageTemplateId?: string | null;
+  packageTemplateDayId?: string | null;
+  packageTemplateComponentId?: string | null;
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
@@ -218,6 +221,11 @@ type ReorderQuoteItemsInput = {
 type MoveQuoteItemInput = {
   day: number;
   serviceType: string;
+};
+
+type ApplyPackageTemplateToQuoteInput = {
+  packageTemplateId: string;
+  selectedOptionalComponentIds?: string[];
 };
 
 type ExpandExcursionTemplateInput = {
@@ -2929,6 +2937,18 @@ export class QuotesService {
     const values = await this.resolveQuoteItemValues({
       quoteId: quote.id,
       optionId,
+      packageTemplateId:
+        data.packageTemplateId === undefined
+          ? (existingItem as { packageTemplateId?: string | null }).packageTemplateId ?? undefined
+          : data.packageTemplateId,
+      packageTemplateDayId:
+        data.packageTemplateDayId === undefined
+          ? (existingItem as { packageTemplateDayId?: string | null }).packageTemplateDayId ?? undefined
+          : data.packageTemplateDayId,
+      packageTemplateComponentId:
+        data.packageTemplateComponentId === undefined
+          ? (existingItem as { packageTemplateComponentId?: string | null }).packageTemplateComponentId ?? undefined
+          : data.packageTemplateComponentId,
       serviceId: data.serviceId === undefined ? existingItem.serviceId : data.serviceId,
       activityId:
         data.activityId === undefined ? (existingItem as { activityId?: string | null }).activityId ?? undefined : data.activityId,
@@ -3111,6 +3131,108 @@ export class QuotesService {
     return {
       ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
+    };
+  }
+
+  async previewPackageTemplateAssembly(quoteId: string, packageTemplateId: string, actor?: CompanyScopedActor) {
+    await this.assertQuoteMutationAccess(quoteId, actor);
+    const template = await this.getPackageTemplateForAssembly(packageTemplateId);
+    const existingPackageUse = await this.findExistingPackageAssembly(quoteId, packageTemplateId);
+    const days = this.getPackageAssemblyDays(template);
+
+    return {
+      quoteId,
+      packageTemplateId: template.id,
+      packageName: template.name,
+      duplicate: Boolean(existingPackageUse),
+      duplicateReason: existingPackageUse ? 'This package template is already linked to this quote.' : null,
+      days: days.map((day: any) => ({
+        id: day.id,
+        dayNumber: day.dayNumber,
+        title: day.title,
+        notes: day.description || null,
+        components: this.getPackageAssemblyComponents(day).map((component: any) => ({
+          id: component.id,
+          componentType: component.componentType,
+          label: component.label,
+          sortOrder: component.sortOrder,
+          optional: Boolean(component.isOptional),
+          selected: !component.isOptional,
+          insertable: this.isPackageComponentInsertable(component),
+          skipReason: this.getPackageComponentSkipReason(component),
+          operationalReference: this.getPackageComponentReferenceLabel(component),
+        })),
+      })),
+    };
+  }
+
+  async applyPackageTemplateToQuote(quoteId: string, data: ApplyPackageTemplateToQuoteInput, actor?: CompanyScopedActor) {
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const template = await this.getPackageTemplateForAssembly(data.packageTemplateId);
+    const existingPackageUse = await this.findExistingPackageAssembly(quote.id, template.id);
+
+    if (existingPackageUse) {
+      throw new BadRequestException('This package template is already linked to this quote.');
+    }
+
+    const selectedOptionalComponentIds = new Set(Array.isArray(data.selectedOptionalComponentIds) ? data.selectedOptionalComponentIds : []);
+    const days = this.getPackageAssemblyDays(template);
+    const createdDays = [];
+    const createdItems = [];
+    const skippedComponents = [];
+
+    for (const day of days) {
+      const quoteDay = await this.upsertPackageQuoteItineraryDay(quote.id, template.id, day);
+      createdDays.push(quoteDay);
+      const components = this.getPackageAssemblyComponents(day);
+
+      for (const component of components) {
+        if (component.isOptional && !selectedOptionalComponentIds.has(component.id)) {
+          skippedComponents.push({ componentId: component.id, reason: 'Optional component not selected' });
+          continue;
+        }
+
+        if (!this.isPackageComponentInsertable(component)) {
+          skippedComponents.push({ componentId: component.id, reason: this.getPackageComponentSkipReason(component) });
+          continue;
+        }
+
+        if (component.componentType === 'EXCURSION_TEMPLATE' && component.excursionTemplateId) {
+          const excursionItems = await this.insertPackageExcursionTemplateComponent({
+            quote,
+            packageTemplate: template,
+            packageDay: day,
+            packageComponent: component,
+            quoteDay,
+            actor,
+          });
+          createdItems.push(...excursionItems);
+          continue;
+        }
+
+        const payload = this.buildPackageComponentQuoteItemPayload({
+          quote,
+          packageTemplate: template,
+          packageDay: day,
+          packageComponent: component,
+          quoteDay,
+        });
+
+        if (!payload) {
+          skippedComponents.push({ componentId: component.id, reason: this.getPackageComponentSkipReason(component) });
+          continue;
+        }
+
+        createdItems.push(await this.createItem(payload, actor));
+      }
+    }
+
+    return {
+      quoteId: quote.id,
+      packageTemplateId: template.id,
+      createdDays,
+      createdItems,
+      skippedComponents,
     };
   }
 
@@ -3314,6 +3436,268 @@ export class QuotesService {
     }
 
     throw new BadRequestException(`Unsupported excursion component type: ${values.component.componentType}`);
+  }
+
+  private async getPackageTemplateForAssembly(packageTemplateId: string) {
+    const template = await (this.prisma as any).packageTemplate.findUnique({
+      where: { id: packageTemplateId },
+      include: {
+        days: {
+          include: {
+            components: {
+              include: this.packageComponentInclude(),
+              orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+            },
+          },
+          orderBy: [{ dayNumber: 'asc' }],
+        },
+        components: {
+          include: this.packageComponentInclude(),
+          orderBy: [{ dayNumber: 'asc' }, { sortOrder: 'asc' }],
+        },
+      },
+    });
+
+    if (!template) {
+      throw new BadRequestException('Package template not found');
+    }
+
+    return template;
+  }
+
+  private packageComponentInclude() {
+    return {
+      excursionTemplate: {
+        include: {
+          components: {
+            include: {
+              activity: true,
+              route: true,
+              supplierService: {
+                include: {
+                  serviceType: true,
+                  entranceFee: true,
+                  serviceRates: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                  },
+                  ticketRateVariants: {
+                    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                  },
+                },
+              },
+              transportServiceType: true,
+            },
+            orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+          },
+        },
+      },
+      activity: true,
+      hotelContract: {
+        include: {
+          hotel: true,
+        },
+      },
+      route: true,
+      transportServiceType: true,
+      supplierService: {
+        include: {
+          serviceType: true,
+          entranceFee: true,
+          serviceRates: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          ticketRateVariants: {
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      },
+    };
+  }
+
+  private getPackageAssemblyDays(template: any) {
+    if (template.days?.length) {
+      return [...template.days].sort((first: any, second: any) => first.dayNumber - second.dayNumber);
+    }
+
+    const components = [...(template.components || [])].sort((first: any, second: any) => first.dayNumber - second.dayNumber || first.sortOrder - second.sortOrder);
+    const dayNumbers = [...new Set(components.map((component: any) => component.dayNumber).filter((dayNumber: number) => Number.isInteger(dayNumber) && dayNumber > 0))];
+    return dayNumbers.map((dayNumber) => ({
+      id: null,
+      dayNumber,
+      title: `Day ${dayNumber}`,
+      description: null,
+      active: true,
+      components: components.filter((component: any) => component.dayNumber === dayNumber),
+    }));
+  }
+
+  private getPackageAssemblyComponents(day: any) {
+    return [...(day.components || [])].filter((component: any) => component.active !== false).sort((first: any, second: any) => first.sortOrder - second.sortOrder || first.label.localeCompare(second.label));
+  }
+
+  private async findExistingPackageAssembly(quoteId: string, packageTemplateId: string) {
+    const [day, item] = await Promise.all([
+      (this.prisma as any).quoteItineraryDay.findFirst({
+        where: { quoteId, packageTemplateId },
+        select: { id: true },
+      }),
+      (this.prisma as any).quoteItem.findFirst({
+        where: { quoteId, packageTemplateId },
+        select: { id: true },
+      }),
+    ]);
+
+    return day || item;
+  }
+
+  private isPackageComponentInsertable(component: any) {
+    if (component.componentType === 'EXCURSION_TEMPLATE') {
+      return Boolean(component.excursionTemplate?.components?.some((entry: any) => entry.active !== false && !entry.isOptional && this.isExcursionTemplateComponentInsertable(entry)));
+    }
+
+    return Boolean(this.buildPackageComponentQuoteItemPayload({ quote: { id: 'preview', adults: 1, children: 0 }, packageTemplate: { id: 'preview' }, packageDay: { id: component.packageTemplateDayId, dayNumber: component.dayNumber }, packageComponent: component, quoteDay: { id: 'preview' } }));
+  }
+
+  private getPackageComponentSkipReason(component: any) {
+    if (component.isOptional) {
+      return 'Optional component is not selected by default';
+    }
+
+    if (component.componentType === 'EXCURSION_TEMPLATE') {
+      return this.isPackageComponentInsertable(component)
+        ? null
+        : 'Excursion template has no required components with service links that can be inserted safely';
+    }
+
+    if (component.componentType === 'TICKET' || component.componentType === 'SERVICE') {
+      return component.supplierServiceId ? null : 'No linked service record';
+    }
+
+    return 'This package component does not yet have enough quote item mapping data for safe insertion';
+  }
+
+  private getPackageComponentReferenceLabel(component: any) {
+    if (component.componentType === 'EXCURSION_TEMPLATE') return component.excursionTemplate?.name || component.label;
+    if (component.componentType === 'ACTIVITY') return component.activity?.name || component.label;
+    if (component.componentType === 'HOTEL') return [component.hotelContract?.hotel?.name, component.hotelContract?.name].filter(Boolean).join(' - ') || component.label;
+    if (component.componentType === 'TRANSPORT') return [component.route?.name, component.transportServiceType?.name || component.pricingMode].filter(Boolean).join(' - ') || component.label;
+    return component.supplierService?.entranceFee?.siteName || component.supplierService?.name || component.label;
+  }
+
+  private async upsertPackageQuoteItineraryDay(quoteId: string, packageTemplateId: string, packageDay: any) {
+    const existingDay = await (this.prisma as any).quoteItineraryDay.findUnique({
+      where: {
+        quoteId_dayNumber: {
+          quoteId,
+          dayNumber: packageDay.dayNumber,
+        },
+      },
+    });
+
+    if (existingDay) {
+      return (this.prisma as any).quoteItineraryDay.update({
+        where: { id: existingDay.id },
+        data: {
+          packageTemplateId,
+          packageTemplateDayId: packageDay.id || null,
+          title: existingDay.title || packageDay.title || `Day ${packageDay.dayNumber}`,
+          notes: existingDay.notes || packageDay.description || null,
+          isActive: true,
+        },
+      });
+    }
+
+    return (this.prisma as any).quoteItineraryDay.create({
+      data: {
+        quoteId,
+        packageTemplateId,
+        packageTemplateDayId: packageDay.id || null,
+        dayNumber: packageDay.dayNumber,
+        title: packageDay.title || `Day ${packageDay.dayNumber}`,
+        notes: packageDay.description || null,
+        sortOrder: packageDay.dayNumber - 1,
+        isActive: true,
+      },
+    });
+  }
+
+  private buildPackageComponentQuoteItemPayload(values: {
+    quote: { id: string; adults?: number | null; children?: number | null };
+    packageTemplate: { id: string };
+    packageDay: { id?: string | null; dayNumber: number };
+    packageComponent: any;
+    quoteDay: { id: string };
+  }): CreateQuoteItemInput | null {
+    const component = values.packageComponent;
+
+    if ((component.componentType === 'TICKET' || component.componentType === 'SERVICE') && component.supplierServiceId) {
+      const paxCount = Math.max(1, Number(values.quote.adults ?? 1) + Number(values.quote.children ?? 0));
+      return {
+        quoteId: values.quote.id,
+        packageTemplateId: values.packageTemplate.id,
+        packageTemplateDayId: values.packageDay.id || null,
+        packageTemplateComponentId: component.id,
+        serviceId: component.supplierServiceId,
+        itineraryId: values.quoteDay.id,
+        quantity: 1,
+        paxCount,
+        markupPercent: 0,
+      };
+    }
+
+    return null;
+  }
+
+  private isExcursionTemplateComponentInsertable(component: any) {
+    if (component.componentType === 'TRANSPORT') {
+      return Boolean(component.supplierServiceId && component.routeId && component.transportServiceTypeId);
+    }
+
+    return Boolean(component.supplierServiceId);
+  }
+
+  private async insertPackageExcursionTemplateComponent(values: {
+    quote: { id: string; adults?: number | null; children?: number | null };
+    packageTemplate: { id: string };
+    packageDay: { id?: string | null; dayNumber: number };
+    packageComponent: any;
+    quoteDay: { id: string };
+    actor?: CompanyScopedActor;
+  }) {
+    const template = values.packageComponent.excursionTemplate;
+    const createdItems = [];
+    const components = [...(template?.components || [])]
+      .filter((component: any) => component.active !== false && !component.isOptional && this.isExcursionTemplateComponentInsertable(component))
+      .sort((first: any, second: any) => first.sortOrder - second.sortOrder || first.label.localeCompare(second.label));
+
+    for (const component of components) {
+      const payload = await this.buildExcursionTemplateQuoteItemPayload({
+        quote: values.quote,
+        template,
+        component,
+        itineraryId: values.quoteDay.id,
+        serviceDate: null,
+        paxCount: Math.max(1, Number(values.quote.adults ?? 1) + Number(values.quote.children ?? 0)),
+        quantity: 1,
+        markupPercent: 0,
+      });
+
+      createdItems.push(
+        await this.createItem(
+          {
+            ...payload,
+            packageTemplateId: values.packageTemplate.id,
+            packageTemplateDayId: values.packageDay.id || null,
+            packageTemplateComponentId: values.packageComponent.id,
+          },
+          values.actor,
+        ),
+      );
+    }
+
+    return createdItems;
   }
 
   private async findActivityBridgeSupplierService(activity: { name?: string | null }) {
@@ -4445,6 +4829,9 @@ export class QuotesService {
       data: {
         quoteId: data.quoteId,
         optionId: data.optionId || null,
+        packageTemplateId: data.packageTemplateId === undefined ? undefined : data.packageTemplateId || null,
+        packageTemplateDayId: data.packageTemplateDayId === undefined ? undefined : data.packageTemplateDayId || null,
+        packageTemplateComponentId: data.packageTemplateComponentId === undefined ? undefined : data.packageTemplateComponentId || null,
         serviceId: normalizedServiceId,
         activityId: activity?.id ?? null,
         activityRateVariantId: selectedActivityRate?.id ?? null,

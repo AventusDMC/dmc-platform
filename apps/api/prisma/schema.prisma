@@ -957,6 +957,9 @@ model QuoteBlock {
 model QuoteItem {
   id                                 String                  @id @default(uuid()) @db.Uuid
   quoteId                            String                  @db.Uuid
+  packageTemplateId                  String?                 @db.Uuid
+  packageTemplateDayId               String?                 @db.Uuid
+  packageTemplateComponentId         String?                 @db.Uuid
   serviceId                          String?                 @db.Uuid
   activityId                         String?                 @db.Uuid
   activityRateVariantId              String?                 @db.Uuid
@@ -1052,6 +1055,9 @@ model QuoteItem {
   ticketRateVariant                  TicketRateVariant?      @relation(fields: [ticketRateVariantId], references: [id])
 
   @@index([contractId])
+  @@index([packageTemplateId])
+  @@index([packageTemplateDayId])
+  @@index([packageTemplateComponentId])
   @@index([activityId])
   @@index([activityRateVariantId])
   @@index([excursionTemplateId])
@@ -1066,21 +1072,25 @@ model QuoteItem {
 }
 
 model QuoteItineraryDay {
-  id            String                   @id @default(uuid()) @db.Uuid
-  quoteId       String                   @db.Uuid
-  dayNumber     Int
-  title         String
-  notes         String?
-  sortOrder     Int                      @default(0)
-  isActive      Boolean                  @default(true)
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-  quote         Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  dayItems      QuoteItineraryDayItem[]
-  auditLogs     QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
-  roomingGroups RoomingGroup[]
+  id                   String                   @id @default(uuid()) @db.Uuid
+  quoteId              String                   @db.Uuid
+  packageTemplateId    String?                  @db.Uuid
+  packageTemplateDayId String?                  @db.Uuid
+  dayNumber            Int
+  title                String
+  notes                String?
+  sortOrder            Int                      @default(0)
+  isActive             Boolean                  @default(true)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  quote                Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  dayItems             QuoteItineraryDayItem[]
+  auditLogs            QuoteItineraryAuditLog[] @relation("QuoteItineraryDayAuditLogs")
+  roomingGroups        RoomingGroup[]
 
   @@unique([quoteId, dayNumber])
+  @@index([packageTemplateId])
+  @@index([packageTemplateDayId])
   @@index([quoteId, isActive, sortOrder])
   @@map("quote_itinerary_days")
 }

@@ -106,6 +106,9 @@ type UpdateQuoteStatusBody = {
 };
 
 type CreateQuoteItemBody = {
+  packageTemplateId?: string | null;
+  packageTemplateDayId?: string | null;
+  packageTemplateComponentId?: string | null;
   serviceId?: string | null;
   activityId?: string | null;
   activityRateVariantId?: string | null;
@@ -183,6 +186,10 @@ type ExpandExcursionTemplateBody = {
   paxCount?: number;
   quantity?: number;
   markupPercent?: number;
+};
+
+type ApplyPackageTemplateBody = {
+  selectedOptionalComponentIds?: string[];
 };
 
 type AssignQuoteItemServiceBody = {
@@ -976,6 +983,9 @@ export class QuotesController {
 
     return this.quotesService.createItem({
       quoteId: id,
+      packageTemplateId: body.packageTemplateId === undefined ? undefined : body.packageTemplateId || null,
+      packageTemplateDayId: body.packageTemplateDayId === undefined ? undefined : body.packageTemplateDayId || null,
+      packageTemplateComponentId: body.packageTemplateComponentId === undefined ? undefined : body.packageTemplateComponentId || null,
       serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
       activityId: body.activityId === undefined ? undefined : body.activityId || null,
       activityRateVariantId: body.activityRateVariantId === undefined ? undefined : body.activityRateVariantId || null,
@@ -1055,6 +1065,45 @@ export class QuotesController {
         ? body.transportAddOns.map((addOn) => ({ rateId: addOn.rateId, quantity: Number(addOn.quantity ?? 0) }))
         : undefined,
     }, actor);
+  }
+
+  @Get(':id/package-templates/:templateId/preview')
+  async previewPackageTemplateAssembly(
+    @Param('id') id: string,
+    @Param('templateId') templateId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.previewPackageTemplateAssembly(id, templateId, actor);
+  }
+
+  @Post(':id/package-templates/:templateId/apply')
+  @Roles('admin', 'viewer', 'finance')
+  async applyPackageTemplateAssembly(
+    @Param('id') id: string,
+    @Param('templateId') templateId: string,
+    @Body() body: ApplyPackageTemplateBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.applyPackageTemplateToQuote(
+      id,
+      {
+        packageTemplateId: templateId,
+        selectedOptionalComponentIds: Array.isArray(body.selectedOptionalComponentIds) ? body.selectedOptionalComponentIds : [],
+      },
+      actor,
+    );
   }
 
   @Post(':id/excursion-templates/:templateId/expand')

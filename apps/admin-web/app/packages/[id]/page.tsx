@@ -16,6 +16,7 @@ import {
 import { PackageComponentRemoveButton } from '../PackageComponentRemoveButton';
 import { PackageComponentReorderControls } from '../PackageComponentReorderControls';
 import { PackageDayPlannerActions } from '../PackageDayPlannerActions';
+import { PackageQuoteAssemblyPanel } from '../PackageQuoteAssemblyPanel';
 import { PackageTemplateComponentForm } from '../PackageTemplateComponentForm';
 import { PackageTemplateDayForm } from '../PackageTemplateDayForm';
 import type {
@@ -160,6 +161,8 @@ export default async function PackageTemplateDetailPage({ params }: PackageTempl
                 {template.operationalNotes ? <p className="detail-copy">{template.operationalNotes}</p> : null}
               </article>
             </section>
+
+            <PackageQuoteAssemblyPanel apiBaseUrl="/api" packageTemplateId={template.id} />
 
             <TableSectionShell
               title="Linked itinerary structure"
