@@ -1,6 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../auth/auth.decorators';
 import { ExcursionTemplatesService } from './excursion-templates.service';
+
+const { memoryStorage } = require('multer');
 
 type ExcursionComponentType = 'TRANSPORT' | 'TICKET' | 'ACTIVITY' | 'GUIDE' | 'DINING';
 
@@ -82,6 +85,26 @@ export class ExcursionTemplatesController {
   @Roles('admin', 'operations')
   create(@Body() body: CreateExcursionTemplateBody) {
     return this.excursionTemplatesService.create(this.normalizeBody(body));
+  }
+
+  @Post('operational-blueprint/import-preview')
+  @Roles('admin', 'operations')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  previewOperationalBlueprintImport(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Excursion template workbook is required');
+    }
+    return this.excursionTemplatesService.previewOperationalBlueprintImport(file);
+  }
+
+  @Post('operational-blueprint/import')
+  @Roles('admin', 'operations')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  importOperationalBlueprintWorkbook(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Excursion template workbook is required');
+    }
+    return this.excursionTemplatesService.importOperationalBlueprintWorkbook(file);
   }
 
   @Post('petra-full-day/ensure')

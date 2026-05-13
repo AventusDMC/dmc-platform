@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import * as XLSX from 'xlsx';
 
 type ExcursionComponentType = 'TRANSPORT' | 'TICKET' | 'ACTIVITY' | 'GUIDE' | 'DINING';
+type ExcursionWorkbookMode = 'preview' | 'import';
 
 type ExcursionTemplateComponentInput = {
   id?: string | null;
@@ -55,6 +57,39 @@ type ReorderExcursionTemplateComponentsInput = {
   componentIds: string[];
 };
 
+type ExcursionWorkbookTemplateRow = {
+  TemplateCode: string;
+  TemplateName: string;
+  DurationDays: string;
+  StartCity: string;
+  Category: string;
+  Description: string;
+  Active: string;
+};
+
+type ExcursionWorkbookRouteRow = {
+  RouteCode: string;
+  TemplateCode: string;
+  RouteName: string;
+  StartCity: string;
+  DurationDays: string;
+  RouteDescription: string;
+  MainDestinations: string;
+  IncludedKM: string;
+  IncludedHours: string;
+};
+
+type ExcursionWorkbookStopRow = {
+  RouteCode: string;
+  StopOrder: string;
+  StopName: string;
+  Region: string;
+  Overnight: string;
+  Notes: string;
+};
+
+type ExcursionWorkbookComponentRow = Record<string, string>;
+
 type AqabaActivityDefinition = {
   name: string;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP';
@@ -73,8 +108,59 @@ type AqabaActivityDefinition = {
 };
 
 const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'GUIDE', 'DINING'];
+const EXCURSION_WORKBOOK_SHEETS = {
+  templates: 'EXCURSION_TEMPLATES',
+  routes: 'TOURING_ROUTES',
+  stops: 'TOURING_ROUTE_STOPS',
+  transport: 'TRANSPORT_COMPONENTS',
+  tickets: 'TICKET_COMPONENTS',
+  guides: 'GUIDE_COMPONENTS',
+  dining: 'DINING_COMPONENTS',
+  activities: 'ACTIVITY_COMPONENTS',
+  optional: 'OPTIONAL_COMPONENTS',
+} as const;
+const EXCURSION_WORKBOOK_REQUIRED_COLUMNS: Record<string, string[]> = {
+  EXCURSION_TEMPLATES: ['TemplateCode', 'TemplateName', 'DurationDays', 'StartCity', 'Category', 'Description', 'Active'],
+  TOURING_ROUTES: ['RouteCode', 'TemplateCode', 'RouteName', 'StartCity', 'DurationDays', 'RouteDescription', 'MainDestinations', 'IncludedKM', 'IncludedHours'],
+  TOURING_ROUTE_STOPS: ['RouteCode', 'StopOrder', 'StopName', 'Region', 'Overnight', 'Notes'],
+  TRANSPORT_COMPONENTS: ['TemplateCode', 'RouteCode', 'Required', 'PricingMode', 'Notes'],
+  TICKET_COMPONENTS: ['TemplateCode', 'TicketName', 'Required', 'Notes'],
+  GUIDE_COMPONENTS: ['TemplateCode', 'GuideType', 'Required', 'Notes'],
+  DINING_COMPONENTS: ['TemplateCode', 'DiningName', 'Required', 'Optional', 'Notes'],
+  ACTIVITY_COMPONENTS: ['TemplateCode', 'ActivityName', 'Required', 'Optional', 'Notes'],
+  OPTIONAL_COMPONENTS: ['TemplateCode', 'ComponentType', 'ComponentName', 'Notes'],
+};
 const PRICING_PENDING_NOTE =
   'Pricing pending from Sindbad Aqaba source catalog. Operational record created with 0 cost/sell until commercial values are confirmed.';
+
+function normalizeWorkbookText(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function normalizeWorkbookKey(value: unknown) {
+  return normalizeWorkbookText(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function parseWorkbookBoolean(value: unknown, fallback = true) {
+  const normalized = normalizeWorkbookText(value).toLowerCase();
+  if (!normalized) return fallback;
+  return !['false', 'no', 'n', '0', 'inactive'].includes(normalized);
+}
+
+function parseWorkbookPositiveInteger(value: unknown, fallback: number) {
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized > 0 ? Math.floor(normalized) : fallback;
+}
+
+function parseWorkbookOptionalNumber(value: unknown) {
+  if (normalizeWorkbookText(value) === '') return null;
+  const normalized = Number(value);
+  return Number.isFinite(normalized) && normalized >= 0 ? normalized : null;
+}
+
+function splitWorkbookList(value: unknown) {
+  return normalizeWorkbookText(value).split(/[;,|]/).map((entry) => entry.trim()).filter(Boolean);
+}
 
 @Injectable()
 export class ExcursionTemplatesService {
@@ -103,6 +189,14 @@ export class ExcursionTemplatesService {
     });
 
     return throwIfNotFound(template, 'Excursion template');
+  }
+
+  async previewOperationalBlueprintImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    return this.processOperationalBlueprintImport(file, 'preview');
+  }
+
+  async importOperationalBlueprintWorkbook(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    return this.processOperationalBlueprintImport(file, 'import');
   }
 
   async create(data: CreateExcursionTemplateInput) {
@@ -377,6 +471,130 @@ export class ExcursionTemplatesService {
     });
 
     return this.findOne(templateId);
+  }
+
+  private async processOperationalBlueprintImport(file: { buffer?: Buffer; path?: string; originalname?: string }, mode: ExcursionWorkbookMode) {
+    const workbook = this.parseOperationalBlueprintWorkbook(file);
+    const templateCodes = new Set(workbook.templates.map((row) => normalizeWorkbookKey(row.TemplateCode)).filter(Boolean));
+    const routeCodes = new Set(workbook.routes.map((row) => normalizeWorkbookKey(row.RouteCode)).filter(Boolean));
+    const duplicateTemplateCodes = workbook.templates
+      .map((row) => normalizeWorkbookKey(row.TemplateCode))
+      .filter((code, index, collection) => code && collection.indexOf(code) !== index);
+    const errors: Array<{ row?: number; sheet: string; message: string }> = [];
+    const warnings: Array<{ sheet: string; templateCode?: string; message: string }> = [];
+
+    for (const [index, row] of workbook.templates.entries()) {
+      if (!normalizeWorkbookKey(row.TemplateCode)) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, row: index + 2, message: 'TemplateCode is required.' });
+      }
+      if (!normalizeWorkbookText(row.TemplateName)) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, row: index + 2, message: 'TemplateName is required.' });
+      }
+      if (!normalizeWorkbookText(row.Description)) {
+        warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, templateCode: normalizeWorkbookKey(row.TemplateCode), message: 'No operational notes/description provided.' });
+      }
+    }
+    for (const code of Array.from(new Set(duplicateTemplateCodes))) {
+      errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, message: `Duplicate TemplateCode: ${code}.` });
+    }
+    for (const [index, row] of workbook.routes.entries()) {
+      if (!templateCodes.has(normalizeWorkbookKey(row.TemplateCode))) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.routes, row: index + 2, message: `Route references unknown template ${row.TemplateCode}.` });
+      }
+      if (!normalizeWorkbookKey(row.RouteCode)) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.routes, row: index + 2, message: 'RouteCode is required.' });
+      }
+    }
+    for (const [index, row] of workbook.stops.entries()) {
+      if (!routeCodes.has(normalizeWorkbookKey(row.RouteCode))) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.stops, row: index + 2, message: `Stop references unknown route ${row.RouteCode}.` });
+      }
+    }
+
+    const componentRows = [
+      ...workbook.transport.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.transport, index, row, templateCode: row.TemplateCode, routeCode: row.RouteCode })),
+      ...workbook.tickets.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.tickets, index, row, templateCode: row.TemplateCode })),
+      ...workbook.guides.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.guides, index, row, templateCode: row.TemplateCode })),
+      ...workbook.dining.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.dining, index, row, templateCode: row.TemplateCode })),
+      ...workbook.activities.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.activities, index, row, templateCode: row.TemplateCode })),
+      ...workbook.optional.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.optional, index, row, templateCode: row.TemplateCode })),
+    ];
+
+    for (const entry of componentRows) {
+      const templateCode = normalizeWorkbookKey(entry.templateCode);
+      if (!templateCodes.has(templateCode)) {
+        errors.push({ sheet: entry.sheet, row: entry.index + 2, message: `Component references unknown template ${entry.templateCode}.` });
+      }
+      if (entry.sheet === EXCURSION_WORKBOOK_SHEETS.transport && parseWorkbookBoolean(entry.row.Required, false) && !routeCodes.has(normalizeWorkbookKey(entry.routeCode))) {
+        errors.push({ sheet: entry.sheet, row: entry.index + 2, message: 'Required transport component must reference a known RouteCode.' });
+      }
+    }
+
+    const masterMatches = await this.resolveOperationalBlueprintMasterMatches(workbook);
+    warnings.push(...masterMatches.warnings);
+
+    for (const template of workbook.templates) {
+      const code = normalizeWorkbookKey(template.TemplateCode);
+      if (!workbook.dining.some((row) => normalizeWorkbookKey(row.TemplateCode) === code)) {
+        warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.dining, templateCode: code, message: 'No dining option configured.' });
+      }
+      if (!workbook.guides.some((row) => normalizeWorkbookKey(row.TemplateCode) === code)) {
+        warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.guides, templateCode: code, message: 'No guide component configured.' });
+      }
+    }
+
+    const preview = workbook.templates.map((template) => {
+      const code = normalizeWorkbookKey(template.TemplateCode);
+      return {
+        templateCode: code,
+        templateName: normalizeWorkbookText(template.TemplateName),
+        durationDays: parseWorkbookPositiveInteger(template.DurationDays, 1),
+        startCity: normalizeWorkbookText(template.StartCity),
+        category: normalizeWorkbookText(template.Category),
+        active: parseWorkbookBoolean(template.Active),
+        routes: workbook.routes.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        transportComponents: workbook.transport.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        ticketComponents: workbook.tickets.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        guideComponents: workbook.guides.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        diningComponents: workbook.dining.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        activityComponents: workbook.activities.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+        optionalComponents: workbook.optional.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
+      };
+    });
+
+    const summary = {
+      mode,
+      templates: preview,
+      counts: {
+        templates: workbook.templates.length,
+        touringRoutes: workbook.routes.length,
+        routeStops: workbook.stops.length,
+        transportComponents: workbook.transport.length,
+        ticketComponents: workbook.tickets.length,
+        guideComponents: workbook.guides.length,
+        diningComponents: workbook.dining.length,
+        activityComponents: workbook.activities.length,
+        optionalComponents: workbook.optional.length,
+      },
+      reusableInventory: masterMatches.preview,
+      errors,
+      warnings,
+      importedTemplates: 0,
+      importedTouringRoutes: 0,
+      importedComponents: 0,
+    };
+
+    if (errors.length > 0 || mode === 'preview') {
+      return summary;
+    }
+
+    const imported = await this.applyOperationalBlueprintImport(workbook, masterMatches);
+    return {
+      ...summary,
+      importedTemplates: imported.templates,
+      importedTouringRoutes: imported.touringRoutes,
+      importedComponents: imported.components,
+    };
   }
 
   async fillMissingOperationalMetadata(templateId: string) {
@@ -1329,6 +1547,225 @@ export class ExcursionTemplatesService {
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       },
     };
+  }
+
+  private parseOperationalBlueprintWorkbook(file: { buffer?: Buffer; path?: string; originalname?: string }) {
+    if (!file?.buffer && !file?.path) {
+      throw new BadRequestException('Excursion template workbook is required');
+    }
+
+    const workbook = file.buffer ? XLSX.read(file.buffer, { type: 'buffer', cellDates: true }) : XLSX.readFile(file.path!, { cellDates: true });
+    for (const sheet of Object.values(EXCURSION_WORKBOOK_SHEETS)) {
+      if (!workbook.Sheets[sheet]) {
+        throw new BadRequestException(`Missing workbook tab: ${sheet}`);
+      }
+      const headers = Object.keys(XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheet], { defval: '', raw: false, blankrows: false })[0] || {});
+      const missing = EXCURSION_WORKBOOK_REQUIRED_COLUMNS[sheet].filter((column) => !headers.includes(column));
+      if (missing.length > 0) {
+        throw new BadRequestException(`Missing ${sheet} columns: ${missing.join(', ')}`);
+      }
+    }
+
+    const readSheet = <T extends Record<string, string>>(sheet: string) =>
+      XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheet], { defval: '', raw: false, blankrows: false }).map((row) =>
+        Object.fromEntries(Object.entries(row).map(([key, value]) => [key, normalizeWorkbookText(value)])),
+      ) as T[];
+
+    return {
+      templates: readSheet<ExcursionWorkbookTemplateRow>(EXCURSION_WORKBOOK_SHEETS.templates),
+      routes: readSheet<ExcursionWorkbookRouteRow>(EXCURSION_WORKBOOK_SHEETS.routes),
+      stops: readSheet<ExcursionWorkbookStopRow>(EXCURSION_WORKBOOK_SHEETS.stops),
+      transport: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.transport),
+      tickets: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.tickets),
+      guides: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.guides),
+      dining: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.dining),
+      activities: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.activities),
+      optional: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.optional),
+    };
+  }
+
+  private async resolveOperationalBlueprintMasterMatches(workbook: ReturnType<ExcursionTemplatesService['parseOperationalBlueprintWorkbook']>) {
+    const warnings: Array<{ sheet: string; templateCode?: string; message: string }> = [];
+    const ticketMatches = new Map<string, any>();
+    const diningMatches = new Map<string, any>();
+    const guideMatches = new Map<string, any>();
+    const activityMatches = new Map<string, any>();
+    const transportTypeMatches = new Map<string, any>();
+    const preview: Array<{ componentType: string; name: string; found: boolean; linkedId: string | null }> = [];
+
+    for (const row of workbook.tickets) {
+      const name = normalizeWorkbookText(row.TicketName);
+      const match = await this.findSupplierServiceByLooseName(name);
+      ticketMatches.set(name, match);
+      preview.push({ componentType: 'TICKET', name, found: Boolean(match), linkedId: match?.id || null });
+      if (!match) warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.tickets, templateCode: normalizeWorkbookKey(row.TemplateCode), message: `Ticket not found in master inventory: ${name}.` });
+    }
+    for (const row of workbook.dining) {
+      const name = normalizeWorkbookText(row.DiningName);
+      const match = await this.findSupplierServiceByLooseName(name);
+      diningMatches.set(name, match);
+      preview.push({ componentType: 'DINING', name, found: Boolean(match), linkedId: match?.id || null });
+      if (!match) warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.dining, templateCode: normalizeWorkbookKey(row.TemplateCode), message: `Dining option not found in master inventory: ${name}.` });
+    }
+    for (const row of workbook.guides) {
+      const name = normalizeWorkbookText(row.GuideType);
+      const match = await this.findActivityByLooseName(name) || await this.findSupplierServiceByLooseName(name);
+      guideMatches.set(name, match);
+      preview.push({ componentType: 'GUIDE', name, found: Boolean(match), linkedId: match?.id || null });
+      if (!match) warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.guides, templateCode: normalizeWorkbookKey(row.TemplateCode), message: `Guide not found in master inventory: ${name}.` });
+    }
+    for (const row of workbook.activities) {
+      const name = normalizeWorkbookText(row.ActivityName);
+      const match = await this.findActivityByLooseName(name);
+      activityMatches.set(name, match);
+      preview.push({ componentType: 'ACTIVITY', name, found: Boolean(match), linkedId: match?.id || null });
+      if (!match) warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.activities, templateCode: normalizeWorkbookKey(row.TemplateCode), message: `Activity not found in master inventory: ${name}.` });
+    }
+    for (const row of workbook.transport) {
+      const name = normalizeWorkbookText(row.PricingMode);
+      const match = await this.findTransportServiceTypeByLooseName(name);
+      transportTypeMatches.set(name, match);
+      preview.push({ componentType: 'TRANSPORT', name, found: Boolean(match), linkedId: match?.id || null });
+      if (!match) warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.transport, templateCode: normalizeWorkbookKey(row.TemplateCode), message: `Transport pricing mode not found: ${name}.` });
+    }
+
+    return { warnings, preview, ticketMatches, diningMatches, guideMatches, activityMatches, transportTypeMatches };
+  }
+
+  private async applyOperationalBlueprintImport(workbook: ReturnType<ExcursionTemplatesService['parseOperationalBlueprintWorkbook']>, matches: Awaited<ReturnType<ExcursionTemplatesService['resolveOperationalBlueprintMasterMatches']>>) {
+    const touringRoutes = new Map<string, any>();
+    let importedRoutes = 0;
+    let importedTemplates = 0;
+    let importedComponents = 0;
+
+    for (const routeRow of workbook.routes) {
+      const code = normalizeWorkbookKey(routeRow.RouteCode);
+      const stops = workbook.stops
+        .filter((stop) => normalizeWorkbookKey(stop.RouteCode) === code)
+        .map((stop, index) => ({
+          order: parseWorkbookPositiveInteger(stop.StopOrder, index + 1),
+          city: normalizeWorkbookText(stop.Region) || normalizeWorkbookText(stop.StopName),
+          location: normalizeWorkbookText(stop.StopName),
+          notes: [parseWorkbookBoolean(stop.Overnight, false) ? 'Overnight stop' : '', normalizeWorkbookText(stop.Notes)].filter(Boolean).join(' | '),
+        }));
+      const data = {
+        code,
+        name: normalizeWorkbookText(routeRow.RouteName),
+        startCity: normalizeWorkbookText(routeRow.StartCity),
+        durationDays: parseWorkbookPositiveInteger(routeRow.DurationDays, 1),
+        routeDescription: normalizeWorkbookText(routeRow.RouteDescription) || null,
+        mainDestinations: splitWorkbookList(routeRow.MainDestinations),
+        includedKm: parseWorkbookOptionalNumber(routeRow.IncludedKM),
+        includedHours: parseWorkbookOptionalNumber(routeRow.IncludedHours),
+        active: true,
+        stops: {
+          deleteMany: {},
+          create: stops,
+        },
+      };
+      const existing = await (this.prisma as any).touringRoute.findUnique({ where: { code } });
+      const route = existing
+        ? await (this.prisma as any).touringRoute.update({ where: { id: existing.id }, data, include: { stops: true } })
+        : await (this.prisma as any).touringRoute.create({ data, include: { stops: true } });
+      touringRoutes.set(code, route);
+      importedRoutes += 1;
+    }
+
+    for (const templateRow of workbook.templates) {
+      const code = normalizeWorkbookKey(templateRow.TemplateCode);
+      const components = this.buildOperationalBlueprintComponents(code, workbook, touringRoutes, matches);
+      const data: CreateExcursionTemplateInput = {
+        code,
+        name: normalizeWorkbookText(templateRow.TemplateName),
+        defaultDepartureCity: normalizeWorkbookText(templateRow.StartCity),
+        durationMinutes: parseWorkbookPositiveInteger(templateRow.DurationDays, 1) * 24 * 60,
+        description: normalizeWorkbookText(templateRow.Description),
+        operationalNotes: [normalizeWorkbookText(templateRow.Category), normalizeWorkbookText(templateRow.Description)].filter(Boolean).join(' | '),
+        active: parseWorkbookBoolean(templateRow.Active),
+        components,
+      };
+      const existing = await (this.prisma as any).excursionTemplate.findUnique({ where: { code } });
+      if (existing) {
+        await this.update(existing.id, data);
+      } else {
+        await this.create(data);
+      }
+      importedTemplates += 1;
+      importedComponents += components.length;
+    }
+
+    return { templates: importedTemplates, touringRoutes: importedRoutes, components: importedComponents };
+  }
+
+  private buildOperationalBlueprintComponents(
+    templateCode: string,
+    workbook: ReturnType<ExcursionTemplatesService['parseOperationalBlueprintWorkbook']>,
+    touringRoutes: Map<string, any>,
+    matches: Awaited<ReturnType<ExcursionTemplatesService['resolveOperationalBlueprintMasterMatches']>>,
+  ): ExcursionTemplateComponentInput[] {
+    const components: ExcursionTemplateComponentInput[] = [];
+    const push = (component: ExcursionTemplateComponentInput) => components.push({ ...component, sortOrder: components.length });
+    for (const row of workbook.transport.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const route = touringRoutes.get(normalizeWorkbookKey(row.RouteCode));
+      const pricingMode = normalizeWorkbookText(row.PricingMode);
+      push({
+        componentType: 'TRANSPORT',
+        label: route?.name || normalizeWorkbookText(row.RouteCode) || 'Transport component',
+        isOptional: !parseWorkbookBoolean(row.Required, true),
+        touringRouteId: route?.id || null,
+        transportServiceTypeId: matches.transportTypeMatches.get(pricingMode)?.id || null,
+        operationalNotes: normalizeWorkbookText(row.Notes),
+      });
+    }
+    for (const row of workbook.tickets.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const name = normalizeWorkbookText(row.TicketName);
+      push({ componentType: 'TICKET', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), supplierServiceId: matches.ticketMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+    }
+    for (const row of workbook.guides.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const name = normalizeWorkbookText(row.GuideType);
+      const match = matches.guideMatches.get(name);
+      push({ componentType: 'GUIDE', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), activityId: match?.durationMinutes !== undefined ? match.id : null, supplierServiceId: match?.durationMinutes === undefined ? match?.id || null : null, operationalNotes: normalizeWorkbookText(row.Notes) });
+    }
+    for (const row of workbook.dining.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const name = normalizeWorkbookText(row.DiningName);
+      push({ componentType: 'DINING', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), supplierServiceId: matches.diningMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+    }
+    for (const row of workbook.activities.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const name = normalizeWorkbookText(row.ActivityName);
+      push({ componentType: 'ACTIVITY', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), activityId: matches.activityMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+    }
+    for (const row of workbook.optional.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
+      const componentType = this.normalizeImportedOptionalComponentType(row.ComponentType);
+      const name = normalizeWorkbookText(row.ComponentName);
+      push({ componentType, label: name, isOptional: true, operationalNotes: normalizeWorkbookText(row.Notes) });
+    }
+    return components;
+  }
+
+  private normalizeImportedOptionalComponentType(value: unknown): ExcursionComponentType {
+    const normalized = normalizeWorkbookText(value).toUpperCase();
+    return COMPONENT_TYPES.includes(normalized as ExcursionComponentType) ? (normalized as ExcursionComponentType) : 'ACTIVITY';
+  }
+
+  private async findSupplierServiceByLooseName(name: string) {
+    if (!name) return null;
+    const services = await this.prisma.supplierService.findMany({ include: { serviceType: true, entranceFee: true }, orderBy: [{ createdAt: 'desc' }], take: 500 });
+    const key = normalizeWorkbookKey(name);
+    return services.find((service: any) => normalizeWorkbookKey(`${service.name} ${service.serviceType?.name || ''} ${service.entranceFee?.siteName || ''}`).includes(key)) || null;
+  }
+
+  private async findActivityByLooseName(name: string) {
+    if (!name) return null;
+    const activities = await (this.prisma as any).activity.findMany({ orderBy: [{ createdAt: 'desc' }], take: 500 });
+    const key = normalizeWorkbookKey(name);
+    return activities.find((activity: any) => normalizeWorkbookKey(`${activity.name} ${activity.category || ''} ${activity.city || ''} ${activity.region || ''}`).includes(key)) || null;
+  }
+
+  private async findTransportServiceTypeByLooseName(name: string) {
+    if (!name) return null;
+    const types = await this.prisma.transportServiceType.findMany({ orderBy: [{ createdAt: 'desc' }] });
+    const key = normalizeWorkbookKey(name);
+    return types.find((type: any) => normalizeWorkbookKey(`${type.name} ${type.code || ''} ${type.classification || ''}`).includes(key)) || null;
   }
 
   private async normalizeComponents(components: ExcursionTemplateComponentInput[]) {

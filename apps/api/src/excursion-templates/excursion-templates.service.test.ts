@@ -4,6 +4,51 @@ const { BadRequestException } = require('@nestjs/common');
 const { ROLES_KEY } = require('../auth/auth.decorators');
 const { ExcursionTemplatesController } = require('./excursion-templates.controller');
 const { ExcursionTemplatesService } = require('./excursion-templates.service');
+const XLSX = require('xlsx');
+
+function buildOperationalBlueprintWorkbook(overrides = {}) {
+  const sheets = {
+    EXCURSION_TEMPLATES: [
+      {
+        TemplateCode: 'PETRA_2D',
+        TemplateName: 'Petra Two Day',
+        DurationDays: 2,
+        StartCity: 'Amman',
+        Category: 'Cultural',
+        Description: 'Operational Petra program',
+        Active: 'Active',
+      },
+    ],
+    TOURING_ROUTES: [
+      {
+        RouteCode: 'AMM_PETRA_2D',
+        TemplateCode: 'PETRA_2D',
+        RouteName: 'Amman Petra Two Day',
+        StartCity: 'Amman',
+        DurationDays: 2,
+        RouteDescription: 'Amman to Petra touring route',
+        MainDestinations: 'Petra; Little Petra',
+        IncludedKM: 480,
+        IncludedHours: 20,
+      },
+    ],
+    TOURING_ROUTE_STOPS: [
+      { RouteCode: 'AMM_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
+    ],
+    TRANSPORT_COMPONENTS: [{ TemplateCode: 'PETRA_2D', RouteCode: 'AMM_PETRA_2D', Required: 'Yes', PricingMode: 'Full Day', Notes: 'Touring vehicle' }],
+    TICKET_COMPONENTS: [{ TemplateCode: 'PETRA_2D', TicketName: 'Petra Entrance Ticket', Required: 'Yes', Notes: 'Use Jordan Pass where applicable' }],
+    GUIDE_COMPONENTS: [{ TemplateCode: 'PETRA_2D', GuideType: 'Petra Guide', Required: 'Yes', Notes: 'Local guide' }],
+    DINING_COMPONENTS: [{ TemplateCode: 'PETRA_2D', DiningName: 'Lunch in Petra', Required: 'No', Optional: 'Yes', Notes: 'Optional lunch' }],
+    ACTIVITY_COMPONENTS: [{ TemplateCode: 'PETRA_2D', ActivityName: 'Petra Guided Walk', Required: 'Yes', Optional: 'No', Notes: 'Activity master' }],
+    OPTIONAL_COMPONENTS: [{ TemplateCode: 'PETRA_2D', ComponentType: 'ACTIVITY', ComponentName: 'Petra by Night', Notes: 'Optional if operating' }],
+    ...overrides,
+  };
+  const workbook = XLSX.utils.book_new();
+  for (const [name, rows] of Object.entries(sheets)) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), name);
+  }
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+}
 
 function createExcursionTemplatesService(overrides: Partial<any> = {}) {
   const prisma = {
@@ -55,6 +100,12 @@ function createExcursionTemplatesService(overrides: Partial<any> = {}) {
       findMany: async () => [],
     },
     transportPricingRule: {
+      findMany: async () => [],
+    },
+    touringRoute: {
+      findUnique: async () => null,
+      create: async ({ data }: any) => ({ id: `touring-route-${data.code}`, ...data }),
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
       findMany: async () => [],
     },
     ...overrides,
@@ -212,6 +263,105 @@ test('suggested transport resolves candidate rates through existing transport pr
     maxPax: { gte: 21 },
   });
   assert.equal(result.suggestions[0].candidates[0].id, 'rule-1');
+});
+
+test('previews operational blueprint workbook without flattening reusable components', async () => {
+  const { service } = createExcursionTemplatesService({
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'ticket-petra', name: 'Petra Entrance Ticket', serviceType: { name: 'Ticket' } }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'activity-petra', name: 'Petra Guided Walk', durationMinutes: 180 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'transport-full-day', name: 'Full Day', code: 'FULL_DAY' }],
+    },
+  });
+
+  const preview = await service.previewOperationalBlueprintImport({ buffer: buildOperationalBlueprintWorkbook(), originalname: 'excursions.xlsx' });
+
+  assert.equal(preview.mode, 'preview');
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.templates[0].templateCode, 'PETRA_2D');
+  assert.equal(preview.templates[0].routes, 1);
+  assert.equal(preview.templates[0].transportComponents, 1);
+  assert.equal(preview.counts.touringRoutes, 1);
+  assert.ok(preview.reusableInventory.some((entry: any) => entry.componentType === 'TRANSPORT' && entry.linkedId === 'transport-full-day'));
+  assert.ok(preview.warnings.some((entry: any) => /Dining option not found/.test(entry.message)));
+});
+
+test('blocks operational blueprint workbook with duplicate templates and bad required route references', async () => {
+  const { service } = createExcursionTemplatesService();
+  const buffer = buildOperationalBlueprintWorkbook({
+    EXCURSION_TEMPLATES: [
+      { TemplateCode: 'PETRA_2D', TemplateName: 'One', DurationDays: 1, StartCity: 'Amman', Category: 'Cultural', Description: 'One', Active: 'Active' },
+      { TemplateCode: 'PETRA_2D', TemplateName: 'Two', DurationDays: 1, StartCity: 'Amman', Category: 'Cultural', Description: 'Two', Active: 'Active' },
+    ],
+    TRANSPORT_COMPONENTS: [{ TemplateCode: 'PETRA_2D', RouteCode: 'MISSING_ROUTE', Required: 'Yes', PricingMode: 'Full Day', Notes: '' }],
+  });
+
+  const preview = await service.previewOperationalBlueprintImport({ buffer, originalname: 'bad.xlsx' });
+
+  assert.ok(preview.errors.some((entry: any) => /Duplicate TemplateCode/.test(entry.message)));
+  assert.ok(preview.errors.some((entry: any) => /Required transport component must reference a known RouteCode/.test(entry.message)));
+});
+
+test('imports operational blueprint workbook as templates, touring routes, and linked components', async () => {
+  const createdTemplates: any[] = [];
+  const createdRoutes: any[] = [];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      create: async ({ data }: any) => {
+        createdTemplates.push(data);
+        return { id: 'template-created', ...data };
+      },
+      findUnique: async ({ where }: any) => (where.code ? null : { id: where.id, code: 'PETRA_2D', components: [] }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) => createdRoutes.find((route: any) => route.id === where.id || route.code === where.code) || null,
+      create: async ({ data }: any) => {
+        const route = { id: `touring-route-${data.code}`, ...data };
+        createdRoutes.push(route);
+        return route;
+      },
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      findMany: async () => [],
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'ticket-petra', name: 'Petra Entrance Ticket', serviceType: { name: 'Ticket' } }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'activity-petra', name: 'Petra Guided Walk', durationMinutes: 180 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'transport-full-day', name: 'Full Day', code: 'FULL_DAY' }],
+    },
+  });
+
+  const imported = await service.importOperationalBlueprintWorkbook({ buffer: buildOperationalBlueprintWorkbook(), originalname: 'excursions.xlsx' });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.importedTemplates, 1);
+  assert.equal(imported.importedTouringRoutes, 1);
+  assert.equal(imported.importedComponents, 6);
+  assert.equal(createdRoutes[0].code, 'AMM_PETRA_2D');
+  assert.equal(createdRoutes[0].stops.create[0].location, 'Petra Visitor Center');
+  const components = createdTemplates[0].components.create;
+  assert.equal(components[0].componentType, 'TRANSPORT');
+  assert.equal(components[0].touringRouteId, 'touring-route-AMM_PETRA_2D');
+  assert.equal(components[0].transportServiceTypeId, 'transport-full-day');
+  assert.equal(components[1].componentType, 'TICKET');
+  assert.equal(components[1].supplierServiceId, 'ticket-petra');
+  assert.equal(components[4].componentType, 'ACTIVITY');
+  assert.equal(components[4].activityId, 'activity-petra');
 });
 
 test('fillMissingOperationalMetadata preserves existing values and fills only blank component metadata', async () => {

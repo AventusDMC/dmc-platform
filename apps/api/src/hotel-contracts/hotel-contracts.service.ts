@@ -94,6 +94,14 @@ type HotelContractRecord = Prisma.HotelContractGetPayload<{
   include: typeof hotelContractInclude;
 }>;
 
+const ENABLE_HOTEL_CONTRACT_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logHotelContractTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_HOTEL_CONTRACT_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
+
 @Injectable()
 export class HotelContractsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -145,7 +153,7 @@ export class HotelContractsService {
       this.getContractCompletenessMap([id]),
     ]);
     const resolved = this.attachContractReadiness(throwIfNotFound(contract, 'Hotel contract') as any, completenessByContractId) as any;
-    console.log('[hotel-contracts] summary fetch', {
+    logHotelContractTiming('[hotel-contracts] summary fetch', {
       contractId: id,
       durationMs: Date.now() - startedAt,
       ratesCount: resolved._count?.rates ?? 0,
