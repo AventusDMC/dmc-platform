@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { HotelContractsForm } from '../../../hotel-contracts/HotelContractsForm';
 import { HotelRatesForm } from '../../../hotel-rates/HotelRatesForm';
@@ -42,8 +42,18 @@ type HotelContract = {
     name: string;
     city?: string | null;
     roomCategories: HotelRoomCategory[];
+    _count?: {
+      roomCategories?: number;
+    };
   };
+  cancellationPolicy?: CancellationPolicy | null;
   readinessStatus?: 'draft' | 'in_progress' | 'ready';
+  _count?: {
+    rates?: number;
+    supplements?: number;
+    mealPlans?: number;
+    allotments?: number;
+  };
 };
 
 type HotelRate = {
@@ -145,6 +155,7 @@ type HotelContractWorkspaceProps = {
 const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER', 'EXTRA_BED'] as const;
 const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
 const MAX_CONTRACT_DETAIL_ROWS = 250;
+const CONTRACT_SAFE_MODE_THRESHOLD = 500;
 const CONTRACT_WORKSPACE_TABS: Array<{ id: ContractWorkspaceTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'rates', label: 'Rates' },
@@ -158,6 +169,24 @@ function toSafeArray<T>(value: T[] | null | undefined): T[] {
 
 function limitRows<T>(value: T[]) {
   return value.slice(0, MAX_CONTRACT_DETAIL_ROWS);
+}
+
+async function fetchWorkspaceJson<T>(url: string, label: string): Promise<T> {
+  const startedAt = performance.now();
+  const response = await fetch(url, { cache: 'no-store' });
+  const text = await response.text();
+  console.log('[hotel-contract-workspace] lazy fetch', {
+    label,
+    url,
+    durationMs: Math.round(performance.now() - startedAt),
+    payloadBytes: text.length,
+  });
+
+  if (!response.ok) {
+    throw new Error(text || `Could not fetch ${label}.`);
+  }
+
+  return text ? (JSON.parse(text) as T) : ([] as T);
 }
 
 function roomCategoryLabel(roomCategory: { name?: string | null; code?: string | null } | null | undefined) {
@@ -249,13 +278,35 @@ export function HotelContractWorkspace({
   mealPlans,
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
+  const renderStartedAt = typeof performance !== 'undefined' ? performance.now() : 0;
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [activeTab, setActiveTab] = useState<ContractWorkspaceTab>('overview');
-  const safeRates = useMemo(() => toSafeArray(rates).filter((rate) => rate.contractId === contract.id), [contract.id, rates]);
-  const safeSupplements = useMemo(() => toSafeArray(supplements), [supplements]);
-  const safeMealPlans = useMemo(() => toSafeArray(mealPlans), [mealPlans]);
-  const safeCancellationRules = useMemo(() => toSafeArray(cancellationPolicy?.rules), [cancellationPolicy]);
+  const [loadedRates, setLoadedRates] = useState<HotelRate[]>(rates);
+  const [loadedSupplements, setLoadedSupplements] = useState<Supplement[]>(supplements);
+  const [loadedMealPlans, setLoadedMealPlans] = useState<MealPlan[]>(mealPlans);
+  const [loadedCancellationPolicy, setLoadedCancellationPolicy] = useState<CancellationPolicy>(cancellationPolicy);
+  const [loadedTabs, setLoadedTabs] = useState<Record<ContractWorkspaceTab, boolean>>({
+    overview: true,
+    rates: rates.length > 0,
+    supplements: supplements.length > 0,
+    terms: Boolean(cancellationPolicy || mealPlans.length > 0),
+  });
+  const [tabError, setTabError] = useState('');
+  const [loadingTab, setLoadingTab] = useState<ContractWorkspaceTab | null>(null);
+  const safeRates = useMemo(() => toSafeArray(loadedRates).filter((rate) => rate.contractId === contract.id), [contract.id, loadedRates]);
+  const safeSupplements = useMemo(() => toSafeArray(loadedSupplements), [loadedSupplements]);
+  const safeMealPlans = useMemo(() => toSafeArray(loadedMealPlans), [loadedMealPlans]);
+  const safeCancellationRules = useMemo(() => toSafeArray(loadedCancellationPolicy?.rules), [loadedCancellationPolicy]);
   const roomCategories = useMemo(() => toSafeArray(contract.hotel?.roomCategories), [contract.hotel?.roomCategories]);
+  const totalRoomCategories = contract.hotel?._count?.roomCategories ?? roomCategories.length;
+  const totalRates = contract._count?.rates ?? safeRates.length;
+  const totalSupplements = contract._count?.supplements ?? safeSupplements.length;
+  const totalMealPlans = contract._count?.mealPlans ?? safeMealPlans.length;
+  const isLargeContract =
+    totalRoomCategories > CONTRACT_SAFE_MODE_THRESHOLD ||
+    totalRates > CONTRACT_SAFE_MODE_THRESHOLD ||
+    totalSupplements > CONTRACT_SAFE_MODE_THRESHOLD ||
+    totalMealPlans > CONTRACT_SAFE_MODE_THRESHOLD;
   const activeRoomCategories = useMemo(() => roomCategories.filter((roomCategory) => roomCategory.isActive), [roomCategories]);
   const sortedRates = useMemo(
     () =>
@@ -329,6 +380,146 @@ export function HotelContractWorkspace({
     [safeRates],
   );
 
+  useEffect(() => {
+    console.log('[hotel-contract-workspace] render tab', {
+      activeTab,
+      renderMs: Math.round(performance.now() - renderStartedAt),
+      contractId: contract.id,
+      largeContractSafeMode: isLargeContract,
+      roomCategoriesReturned: roomCategories.length,
+      roomCategoriesTotal: totalRoomCategories,
+      ratesLoaded: safeRates.length,
+      ratesTotal: totalRates,
+      supplementsLoaded: safeSupplements.length,
+      supplementsTotal: totalSupplements,
+      mealPlansLoaded: safeMealPlans.length,
+      mealPlansTotal: totalMealPlans,
+      derivedSeasonRows: seasonRows.length,
+      derivedTaxProfiles: taxProfiles.length,
+      displayedRows:
+        activeTab === 'rates'
+          ? displayedRates.length
+          : activeTab === 'supplements'
+            ? displayedSupplements.length + taxProfiles.length
+            : activeTab === 'terms'
+              ? displayedMealPlans.length + displayedCancellationRules.length
+              : displayedRoomCategories.length + seasonRows.length,
+    });
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTabData() {
+      if (loadedTabs[activeTab]) {
+        return;
+      }
+
+      setLoadingTab(activeTab);
+      setTabError('');
+      try {
+        if (activeTab === 'rates') {
+          const nextRates = await fetchWorkspaceJson<HotelRate[]>(
+            `${apiBaseUrl}/hotel-rates?contractId=${encodeURIComponent(contract.id)}`,
+            'contract rates',
+          );
+          if (!cancelled) {
+            setLoadedRates(Array.isArray(nextRates) ? nextRates.filter((rate) => rate.contractId === contract.id) : []);
+          }
+        } else if (activeTab === 'supplements') {
+          const nextSupplements = await fetchWorkspaceJson<Supplement[]>(
+            `${apiBaseUrl}/contracts/${encodeURIComponent(contract.id)}/supplements`,
+            'contract supplements',
+          );
+          if (!cancelled) {
+            setLoadedSupplements(Array.isArray(nextSupplements) ? nextSupplements : []);
+          }
+        } else if (activeTab === 'terms') {
+          const [nextMealPlans, nextCancellationPolicy] = await Promise.all([
+            fetchWorkspaceJson<MealPlan[]>(`${apiBaseUrl}/contracts/${encodeURIComponent(contract.id)}/meal-plans`, 'contract meal plans'),
+            fetchWorkspaceJson<CancellationPolicy>(
+              `${apiBaseUrl}/hotel-contracts/${encodeURIComponent(contract.id)}/cancellation-policy`,
+              'contract cancellation policy',
+            ).catch((error) => {
+              console.log('[hotel-contract-workspace] cancellation policy lazy fetch skipped', {
+                contractId: contract.id,
+                message: error instanceof Error ? error.message : String(error),
+              });
+              return null;
+            }),
+          ]);
+          if (!cancelled) {
+            setLoadedMealPlans(Array.isArray(nextMealPlans) ? nextMealPlans : []);
+            setLoadedCancellationPolicy(nextCancellationPolicy || null);
+          }
+        }
+
+        if (!cancelled) {
+          setLoadedTabs((current) => ({ ...current, [activeTab]: true }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setTabError(error instanceof Error ? error.message : `Could not load ${activeTab} details.`);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTab(null);
+        }
+      }
+    }
+
+    loadTabData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, apiBaseUrl, contract.id, loadedTabs]);
+
+  const formRoomCategories = useMemo(() => {
+    const byId = new Map<string, HotelRoomCategory>();
+    for (const roomCategory of roomCategories) {
+      byId.set(roomCategory.id, roomCategory);
+    }
+    for (const rate of safeRates) {
+      if (rate.roomCategory?.id && !byId.has(rate.roomCategory.id)) {
+        byId.set(rate.roomCategory.id, {
+          id: rate.roomCategory.id,
+          hotelId: contract.hotel.id,
+          name: rate.roomCategory.name,
+          code: rate.roomCategory.code,
+          isActive: true,
+        });
+      }
+    }
+    for (const supplement of safeSupplements) {
+      if (supplement.roomCategory?.id && !byId.has(supplement.roomCategory.id)) {
+        byId.set(supplement.roomCategory.id, {
+          id: supplement.roomCategory.id,
+          hotelId: contract.hotel.id,
+          name: supplement.roomCategory.name,
+          code: supplement.roomCategory.code,
+          isActive: true,
+        });
+      }
+    }
+    return Array.from(byId.values());
+  }, [contract.hotel.id, roomCategories, safeRates, safeSupplements]);
+
+  const formHotels = useMemo(
+    () =>
+      hotels.length > 0
+        ? hotels.map((hotel) => (hotel.id === contract.hotel.id ? { ...hotel, roomCategories: formRoomCategories } : hotel))
+        : [{ ...contract.hotel, roomCategories: formRoomCategories }],
+    [contract.hotel, formRoomCategories, hotels],
+  );
+  const formContracts = useMemo(
+    () =>
+      contracts.length > 0
+        ? contracts.map((entry) => (entry.id === contract.id ? { ...entry, hotel: { ...contract.hotel, roomCategories: formRoomCategories } } : entry))
+        : [{ ...contract, hotel: { ...contract.hotel, roomCategories: formRoomCategories } }],
+    [contract, contracts, formRoomCategories],
+  );
+
   function closeDrawer() {
     setDrawer(null);
   }
@@ -342,7 +533,7 @@ export function HotelContractWorkspace({
       return (
         <HotelContractsForm
           apiBaseUrl={apiBaseUrl}
-          hotels={hotels.map((hotel) => ({ id: hotel.id, name: hotel.name, city: hotel.city || '' }))}
+          hotels={formHotels.map((hotel) => ({ id: hotel.id, name: hotel.name, city: hotel.city || '' }))}
           contractId={contract.id}
           submitLabel="Save contract"
           initialValues={{
@@ -360,8 +551,8 @@ export function HotelContractWorkspace({
       return (
         <HotelRatesForm
           apiBaseUrl={apiBaseUrl}
-          contracts={contracts}
-          hotels={hotels}
+          contracts={formContracts}
+          hotels={formHotels}
           seasons={seasons}
           rateId={selectedRate?.id}
           submitLabel={selectedRate ? 'Save rate' : 'Add rate'}
@@ -397,7 +588,7 @@ export function HotelContractWorkspace({
       <HotelContractSupplementForm
         apiBaseUrl={apiBaseUrl}
         contractId={contract.id}
-        roomCategories={activeRoomCategories}
+        roomCategories={formRoomCategories.filter((roomCategory) => roomCategory.isActive)}
         supplementId={selectedSupplement?.id}
         submitLabel={selectedSupplement ? 'Save supplement' : 'Add supplement'}
         initialValues={
@@ -483,6 +674,27 @@ export function HotelContractWorkspace({
         ))}
       </nav>
 
+      {isLargeContract ? (
+        <div className="contract-workspace-card contract-safe-mode-banner">
+          <strong>Large contract safe mode</strong>
+          <span>
+            Summary is shown first. Rates, supplements, and terms load only when their tab is opened.
+          </span>
+        </div>
+      ) : null}
+
+      {loadingTab ? (
+        <div className="contract-workspace-card">
+          <p className="empty-state">Loading {loadingTab} details...</p>
+        </div>
+      ) : null}
+
+      {tabError ? (
+        <div className="contract-workspace-card">
+          <p className="form-error">{tabError}</p>
+        </div>
+      ) : null}
+
       {activeTab === 'overview' ? <section id="overview" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
@@ -490,14 +702,14 @@ export function HotelContractWorkspace({
               <p className="eyebrow">Rooms</p>
               <h3>Room Categories</h3>
             </div>
-            <span>{visibleRoomCategories.length} in scope</span>
+            <span>{totalRoomCategories} in scope</span>
           </div>
           {visibleRoomCategories.length === 0 ? (
             <p className="empty-state">No room categories are connected to this contract hotel yet.</p>
           ) : (
             <div className="contract-chip-list">
-              {visibleRoomCategories.length > displayedRoomCategories.length ? (
-                <p className="table-subcopy">Showing the first {displayedRoomCategories.length} room categories to keep the contract detail responsive.</p>
+              {totalRoomCategories > displayedRoomCategories.length ? (
+                <p className="table-subcopy">Showing the first {displayedRoomCategories.length} room categories. Open rates to work with detailed pricing rows.</p>
               ) : null}
               {displayedRoomCategories.map((roomCategory) => (
                 <span key={roomCategory.id} className="contract-chip">
@@ -542,12 +754,14 @@ export function HotelContractWorkspace({
           </button>
         </div>
 
-        {sortedRates.length === 0 ? (
+        {loadingTab === 'rates' ? (
+          <p className="empty-state">Loading contract rates...</p>
+        ) : sortedRates.length === 0 ? (
           <p className="empty-state">No rates for this contract yet. Add the first rate to start pricing this contract.</p>
         ) : (
           <div className="table-wrap">
-            {sortedRates.length > displayedRates.length ? (
-              <p className="table-subcopy">Showing the first {displayedRates.length} rates to keep the contract detail responsive.</p>
+            {totalRates > displayedRates.length ? (
+              <p className="table-subcopy">Showing the first {displayedRates.length} of {totalRates} rates to keep the contract detail responsive.</p>
             ) : null}
             <table className="data-table contract-rates-table">
               <thead>
@@ -609,12 +823,14 @@ export function HotelContractWorkspace({
             </button>
           </div>
 
-          {safeSupplements.length === 0 ? (
+          {loadingTab === 'supplements' ? (
+            <p className="empty-state">Loading supplements...</p>
+          ) : safeSupplements.length === 0 ? (
             <p className="empty-state">No supplements configured for this contract yet.</p>
           ) : (
             <div className="table-wrap">
-              {safeSupplements.length > displayedSupplements.length ? (
-                <p className="table-subcopy">Showing the first {displayedSupplements.length} supplements to keep the contract detail responsive.</p>
+              {totalSupplements > displayedSupplements.length ? (
+                <p className="table-subcopy">Showing the first {displayedSupplements.length} of {totalSupplements} supplements to keep the contract detail responsive.</p>
               ) : null}
               <table className="data-table">
                 <thead>
@@ -706,12 +922,14 @@ export function HotelContractWorkspace({
               Manage terms
             </Link>
           </div>
-          {cancellationPolicy ? (
+          {loadingTab === 'terms' ? (
+            <p className="empty-state">Loading contract terms...</p>
+          ) : loadedCancellationPolicy ? (
             <div className="contract-list-stack">
               <div className="contract-list-row contract-list-row-wide">
-                <strong>{cancellationPolicy.summary || 'Cancellation policy'}</strong>
-                <span>No-show: {formatNoShow(cancellationPolicy)}</span>
-                <span>{cancellationPolicy.notes || 'No cancellation notes'}</span>
+                <strong>{loadedCancellationPolicy.summary || 'Cancellation policy'}</strong>
+                <span>No-show: {formatNoShow(loadedCancellationPolicy)}</span>
+                <span>{loadedCancellationPolicy.notes || 'No cancellation notes'}</span>
               </div>
               {safeCancellationRules.length > displayedCancellationRules.length ? (
                 <div className="contract-list-row contract-list-row-wide">

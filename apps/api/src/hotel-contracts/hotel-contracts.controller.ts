@@ -74,8 +74,10 @@ export class HotelContractsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.hotelContractsService.findOne(id);
+  findOne(@Param('id') id: string, @Query('summary') summary?: string) {
+    return summary === '1' || summary === 'true'
+      ? this.hotelContractsService.findOneSummary(id)
+      : this.hotelContractsService.findOne(id);
   }
 
   @Post()

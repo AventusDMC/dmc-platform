@@ -65,6 +65,31 @@ const hotelContractInclude = Prisma.validator<Prisma.HotelContractInclude>()({
   },
 });
 
+const hotelContractSummaryInclude = Prisma.validator<Prisma.HotelContractInclude>()({
+  hotel: {
+    include: {
+      roomCategories: {
+        orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+        take: 50,
+      },
+      _count: {
+        select: {
+          roomCategories: true,
+        },
+      },
+    },
+  },
+  _count: {
+    select: {
+      rates: true,
+      quoteItems: true,
+      allotments: true,
+      supplements: true,
+      mealPlans: true,
+    },
+  },
+});
+
 type HotelContractRecord = Prisma.HotelContractGetPayload<{
   include: typeof hotelContractInclude;
 }>;
@@ -108,6 +133,28 @@ export class HotelContractsService {
       this.attachAllotmentConsumption(throwIfNotFound(contract, 'Hotel contract'), buildHotelAllotmentConsumptionRecords(bookingConsumptionSources)),
       completenessByContractId,
     );
+  }
+
+  async findOneSummary(id: string) {
+    const startedAt = Date.now();
+    const [contract, completenessByContractId] = await Promise.all([
+      this.prisma.hotelContract.findUnique({
+        where: { id },
+        include: hotelContractSummaryInclude,
+      }),
+      this.getContractCompletenessMap([id]),
+    ]);
+    const resolved = this.attachContractReadiness(throwIfNotFound(contract, 'Hotel contract') as any, completenessByContractId) as any;
+    console.log('[hotel-contracts] summary fetch', {
+      contractId: id,
+      durationMs: Date.now() - startedAt,
+      ratesCount: resolved._count?.rates ?? 0,
+      roomCategoriesReturned: resolved.hotel?.roomCategories?.length ?? 0,
+      roomCategoriesTotal: resolved.hotel?._count?.roomCategories ?? resolved.hotel?.roomCategories?.length ?? 0,
+      supplementsCount: resolved._count?.supplements ?? 0,
+      mealPlansCount: resolved._count?.mealPlans ?? 0,
+    });
+    return resolved;
   }
 
   async create(data: CreateHotelContractInput) {

@@ -115,9 +115,11 @@ describe('hotel contract display fallbacks', () => {
     const pageSource = readFileSync(new URL('./contracts/[contractId]/page.tsx', import.meta.url), 'utf8');
     const workspaceSource = readFileSync(new URL('./contracts/[contractId]/HotelContractWorkspace.tsx', import.meta.url), 'utf8');
 
-    assert.match(pageSource, /hotel-rates\?contractId=\$\{encodeURIComponent\(contractId\)\}/);
+    assert.match(pageSource, /hotel-contracts\/\$\{contractId\}\?summary=1/);
     assert.match(workspaceSource, /MAX_CONTRACT_DETAIL_ROWS = 250/);
-    assert.match(workspaceSource, /toSafeArray\(cancellationPolicy\?\.rules\)/);
+    assert.match(workspaceSource, /CONTRACT_SAFE_MODE_THRESHOLD = 500/);
+    assert.match(workspaceSource, /fetchWorkspaceJson<HotelRate\[\]>/);
+    assert.match(workspaceSource, /toSafeArray\(loadedCancellationPolicy\?\.rules\)/);
     assert.match(workspaceSource, /displayedRates\.map/);
     assert.doesNotMatch(workspaceSource, /sortedRates\.map/);
   });
