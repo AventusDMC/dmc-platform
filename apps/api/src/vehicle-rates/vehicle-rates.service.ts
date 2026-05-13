@@ -73,7 +73,7 @@ type SupplierRateCardQuery = {
 
 type TransportContractImportMode = 'preview' | 'import';
 type TransportContractMergeMode = 'keep' | 'merge';
-type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON';
+type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON' | 'SERVICE_BASED_TRANSPORT';
 type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
@@ -334,6 +334,32 @@ function getServiceCategoryClassification(serviceCategory: string, pricingMode: 
   if (normalized.includes('daily')) return 'DAILY_PACKAGE';
 
   return classifyTransportServiceName(canonicalPricingMode || pricingMode);
+}
+
+function hasExplicitTransferRoute(row: Pick<NormalizedTransportContractImportRow, 'routeName' | 'origin' | 'destination'>) {
+  const origin = normalizeImportName(row.origin);
+  const destination = normalizeImportName(row.destination);
+  const routeName = normalizeImportName(row.routeName);
+
+  if (origin && destination && normalizeImportKey(origin) !== normalizeImportKey(destination)) {
+    return true;
+  }
+
+  return /\s(?:->|â†’)\s|->|â†’/.test(routeName);
+}
+
+function isServiceBasedTransportImportRow(row: NormalizedTransportContractImportRow, classification = getServiceCategoryClassification(row.serviceCategory, row.serviceName)) {
+  const pricingMode = normalizeTransportPricingMode(row.serviceName);
+  const serviceCategory = normalizeImportName(row.serviceCategory).toLowerCase();
+  const serviceBasedMode =
+    pricingMode === 'Full Day' ||
+    pricingMode === 'Half Day' ||
+    pricingMode === 'Day Tour' ||
+    classification === 'FULL_DAY' ||
+    classification === 'HALF_DAY' ||
+    classification === 'DAILY_PACKAGE';
+
+  return (serviceCategory.includes('disposal') || serviceBasedMode) && serviceBasedMode && !hasExplicitTransferRoute(row);
 }
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
@@ -1573,6 +1599,7 @@ export class VehicleRatesService {
       errors: [] as Array<{ row: number; message: string }>,
       previewRows: [] as Array<Record<string, unknown>>,
       routeTransfers: [] as Array<Record<string, unknown>>,
+      serviceBasedTransport: [] as Array<Record<string, unknown>>,
       fullDay: [] as Array<Record<string, unknown>>,
       halfDay: [] as Array<Record<string, unknown>>,
       dayTour: [] as Array<Record<string, unknown>>,
@@ -1667,8 +1694,10 @@ export class VehicleRatesService {
     }
 
     for (const { rowNumber, normalized } of validRows) {
-      const classification = getServiceCategoryClassification(normalized.serviceCategory, normalized.serviceName);
-      const existingRoute = await this.findTransportImportRouteMatch(normalized);
+      const baseClassification = getServiceCategoryClassification(normalized.serviceCategory, normalized.serviceName);
+      const serviceBasedTransport = isServiceBasedTransportImportRow(normalized, baseClassification);
+      const classification: TransportServiceClassification = serviceBasedTransport ? 'SERVICE_BASED_TRANSPORT' : baseClassification;
+      const existingRoute = serviceBasedTransport ? null : await this.findTransportImportRouteMatch(normalized);
       const existingSupplier = normalized.supplierId ? { id: normalized.supplierId, name: normalized.supplierName } : await this.findTransportImportSupplierMatch(normalized.supplierName);
       const existingServiceType = await this.findTransportImportServiceTypeMatch(normalized.serviceName);
       const existingVehicle = existingSupplier ? await this.findTransportImportVehicleMatch(existingSupplier, normalized) : null;
@@ -1681,11 +1710,13 @@ export class VehicleRatesService {
       });
       const fromPlaceMatch = await this.findTransportImportPlaceMatch(normalized.origin, normalized.country);
       const toPlaceMatch = await this.findTransportImportPlaceMatch(normalized.destination, normalized.country);
-      const routeWarnings = [
-        fromPlaceMatch ? null : 'From Place not found',
-        toPlaceMatch ? null : 'To Place not found',
-        existingRoute ? null : 'Route not found',
-      ].filter(Boolean);
+      const routeWarnings = serviceBasedTransport
+        ? ['Service-based transport row; no transfer route required']
+        : [
+            fromPlaceMatch ? null : 'From Place not found',
+            toPlaceMatch ? null : 'To Place not found',
+            existingRoute ? null : 'Route not found',
+          ].filter(Boolean);
       const routeWarning = routeWarnings.join(' | ');
       const previewRow = {
         row: rowNumber,
@@ -1705,6 +1736,7 @@ export class VehicleRatesService {
         fromPlaceId: fromPlaceMatch?.id || null,
         toPlaceId: toPlaceMatch?.id || null,
         routeWarning,
+        serviceBasedTransport,
         vehicleType: normalized.vehicleType,
         vehicleTypeWarning: normalized.vehicleTypeWarning || '',
         minPaxPerUnit: normalized.minPaxPerUnit,
@@ -1723,7 +1755,16 @@ export class VehicleRatesService {
 
       summary.previewRows.push(previewRow);
       const pricingMode = normalizeTransportPricingMode(normalized.serviceName);
-      if (classification === 'ADD_ON') {
+      if (serviceBasedTransport) {
+        summary.serviceBasedTransport.push(previewRow);
+        if (baseClassification === 'HALF_DAY') {
+          summary.halfDay.push(previewRow);
+        } else if (pricingMode === 'Day Tour') {
+          summary.dayTour.push(previewRow);
+        } else {
+          summary.fullDay.push(previewRow);
+        }
+      } else if (classification === 'ADD_ON') {
         summary.addOns.push(previewRow);
       } else if (classification === 'HALF_DAY') {
         summary.halfDay.push(previewRow);
@@ -1744,7 +1785,7 @@ export class VehicleRatesService {
         continue;
       }
 
-      if (!existingRoute) {
+      if (!existingRoute && !serviceBasedTransport) {
         summary.errors.push({ row: rowNumber, message: 'Route not found' });
         summary.skippedRows += 1;
         continue;
@@ -1796,9 +1837,9 @@ export class VehicleRatesService {
         supplierId: supplierResult.supplier.id,
         serviceTypeId: serviceType.id,
         vehicleId: vehicle.id,
-        routeId: existingRoute.id,
-        fromPlaceId: existingRoute.fromPlaceId,
-        toPlaceId: existingRoute.toPlaceId,
+        routeId: existingRoute?.id || null,
+        fromPlaceId: existingRoute?.fromPlaceId || null,
+        toPlaceId: existingRoute?.toPlaceId || null,
         routeName: normalized.routeName,
         minPaxPerUnit: normalized.minPaxPerUnit,
         maxPaxPerUnit: resolvedMaxPaxPerUnit,
@@ -1808,16 +1849,18 @@ export class VehicleRatesService {
         validTo: normalized.contractValidTo,
         forceCreate: rowAction === 'CREATE_NEW_VALIDITY_VERSION' || rowAction === 'ARCHIVE_OLD_VERSION',
       });
-      await this.upsertTransportImportCapacityRule({
-        supplierId: supplierResult.supplier.id,
-        serviceTypeId: serviceType.id,
-        vehicleId: vehicle.id,
-        routeId: existingRoute.id,
-        minPaxPerUnit: normalized.minPaxPerUnit,
-        maxPaxPerUnit: resolvedMaxPaxPerUnit,
-        cost: normalized.cost,
-        currency: normalized.currency,
-      });
+      if (existingRoute) {
+        await this.upsertTransportImportCapacityRule({
+          supplierId: supplierResult.supplier.id,
+          serviceTypeId: serviceType.id,
+          vehicleId: vehicle.id,
+          routeId: existingRoute.id,
+          minPaxPerUnit: normalized.minPaxPerUnit,
+          maxPaxPerUnit: resolvedMaxPaxPerUnit,
+          cost: normalized.cost,
+          currency: normalized.currency,
+        });
+      }
 
       if (rateResult.created) {
         summary.createdRates += 1;
@@ -2357,9 +2400,9 @@ export class VehicleRatesService {
     supplierId: string;
     serviceTypeId: string;
     vehicleId: string;
-    routeId: string;
-    fromPlaceId: string;
-    toPlaceId: string;
+    routeId: string | null;
+    fromPlaceId: string | null;
+    toPlaceId: string | null;
     routeName: string;
     minPaxPerUnit: number;
     maxPaxPerUnit: number;
@@ -2376,6 +2419,7 @@ export class VehicleRatesService {
             supplierId: data.supplierId,
             serviceTypeId: data.serviceTypeId,
             routeId: data.routeId,
+            ...(data.routeId ? {} : { routeName: data.routeName }),
             vehicleId: data.vehicleId,
             minPax: data.minPaxPerUnit,
             maxPax: data.maxPaxPerUnit,
@@ -2436,7 +2480,7 @@ export class VehicleRatesService {
     route: { id: string; name?: string | null } | null;
     normalized: NormalizedTransportContractImportRow;
   }): Promise<TransportImportResolution> {
-    if (!input.supplier || !input.serviceType || !input.vehicle || !input.route) {
+    if (!input.supplier || !input.serviceType || !input.vehicle) {
       return {
         status: 'NEW',
         existingRate: null,
@@ -2450,7 +2494,7 @@ export class VehicleRatesService {
       where: {
         supplierId: input.supplier.id,
         serviceTypeId: input.serviceType.id,
-        routeId: input.route.id,
+        routeId: input.route?.id || null,
         vehicleId: input.vehicle.id,
         currency: input.normalized.currency,
         minPax: input.normalized.minPaxPerUnit,
@@ -2466,7 +2510,9 @@ export class VehicleRatesService {
     const normalizedCandidates = (candidates || []).filter((candidate: TransportImportExistingRate) =>
       candidate.supplierId === input.supplier?.id &&
       candidate.serviceTypeId === input.serviceType?.id &&
-      candidate.routeId === input.route?.id &&
+      (input.route
+        ? candidate.routeId === input.route.id
+        : !candidate.routeId && normalizeRouteName(candidate.routeName || '') === normalizeRouteName(input.normalized.routeName)) &&
       candidate.vehicleId === input.vehicle?.id &&
       String(candidate.currency || '').toUpperCase() === input.normalized.currency &&
       candidate.minPax === input.normalized.minPaxPerUnit &&
@@ -2494,7 +2540,7 @@ export class VehicleRatesService {
         status: 'VALIDITY_OVERLAP',
         existingRate: overlapping,
         changedFields: this.getTransportImportChangedFields(overlapping, input.normalized),
-        validityComparison: 'Imported validity overlaps an existing rate with the same supplier, route, pricing mode, and vehicle.',
+        validityComparison: 'Imported validity overlaps an existing rate with the same supplier, route/service area, pricing mode, and vehicle.',
         allowedActions: ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'],
       };
     }
@@ -2505,7 +2551,7 @@ export class VehicleRatesService {
         status: 'POSSIBLE_DUPLICATE',
         existingRate: possibleDuplicate,
         changedFields: this.getTransportImportChangedFields(possibleDuplicate, input.normalized),
-        validityComparison: 'Same supplier, route, pricing mode, and vehicle exists with a non-overlapping validity period.',
+        validityComparison: 'Same supplier, route/service area, pricing mode, and vehicle exists with a non-overlapping validity period.',
         allowedActions: ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION'],
       };
     }

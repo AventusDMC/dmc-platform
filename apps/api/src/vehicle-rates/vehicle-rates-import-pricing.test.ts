@@ -554,15 +554,73 @@ test('transport import preview groups route transfer, disposal full day, and dis
   assert.deepEqual(preview.errors, []);
   assert.equal(preview.routeTransfers.length, 1);
   assert.equal(preview.routeTransfers[0].classification, 'ROUTE_TRANSFER');
+  assert.equal(preview.serviceBasedTransport.length, 2);
   assert.equal(preview.fullDay.length, 1);
-  assert.equal(preview.fullDay[0].classification, 'FULL_DAY');
+  assert.equal(preview.fullDay[0].classification, 'SERVICE_BASED_TRANSPORT');
   assert.equal(preview.halfDay.length, 1);
-  assert.equal(preview.halfDay[0].classification, 'HALF_DAY');
+  assert.equal(preview.halfDay[0].classification, 'SERVICE_BASED_TRANSPORT');
   assert.equal(preview.dayTour.length, 1);
   assert.equal(preview.dayTour[0].serviceCategory, 'Disposal');
   assert.equal(preview.dayTour[0].serviceName, 'Day Tour');
   assert.equal(preview.addOns.length, 0);
   assert.equal(preview.routeTransfers.some((row) => row.serviceCategory === 'Disposal'), false);
+});
+
+test('transport contract import accepts service-based disposal rows without transfer routes', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  stores.suppliers.push({ id: 'supplier-almushtari', name: 'Almushtari Logistics Services', type: 'transport' });
+  const rows = [
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari Logistics Services',
+      serviceCategory: 'Disposal',
+      routeName: 'Jordan Program',
+      origin: '',
+      destination: '',
+      serviceName: 'Full Day',
+      pricingMode: 'Full Day',
+      vehicleType: 'Sedan',
+      maxPaxPerUnit: 3,
+      cost: 95,
+    },
+    {
+      ...activeImportRow,
+      supplierName: 'Almushtari Logistics Services',
+      serviceCategory: 'Disposal',
+      routeName: 'Jordan Program',
+      origin: '',
+      destination: '',
+      serviceName: 'Half Day',
+      pricingMode: 'Half Day',
+      vehicleType: 'Sedan',
+      maxPaxPerUnit: 3,
+      cost: 65,
+    },
+  ];
+
+  const preview = await importService.previewTransportContractImport({ buffer: buildWorkbookBuffer(rows), originalname: 'disposal.xlsx' });
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.serviceBasedTransport.length, 2);
+  assert.equal(preview.serviceBasedTransport[0].classification, 'SERVICE_BASED_TRANSPORT');
+  assert.equal(preview.serviceBasedTransport[0].routeId, null);
+  assert.equal(preview.serviceBasedTransport[0].routeName, 'Jordan Program');
+  assert.match(String(preview.serviceBasedTransport[0].routeWarning), /no transfer route required/);
+
+  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'disposal.xlsx' });
+
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.createdRoutes, 0);
+  assert.equal(imported.createdServices, 2);
+  assert.equal(imported.createdRates, 2);
+  assert.equal(stores.routes.length, 0);
+  assert.equal(stores.vehicleRates.length, 2);
+  assert.deepEqual(
+    stores.vehicleRates.map((rate) => `${rate.routeId || 'no-route'}:${rate.routeName}:${rate.price}`).sort(),
+    ['no-route:Jordan Program:65', 'no-route:Jordan Program:95'],
+  );
+  assert.equal(stores.pricingRules.length, 0);
 });
 
 test('transport contract import accepts clean Route and Rate column aliases', async () => {

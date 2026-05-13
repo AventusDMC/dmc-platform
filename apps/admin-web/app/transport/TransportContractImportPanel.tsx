@@ -28,6 +28,7 @@ type ImportSummary = {
   errors: Array<{ row: number; message: string }>;
   previewRows?: Array<Record<string, unknown>>;
   routeTransfers?: Array<Record<string, unknown>>;
+  serviceBasedTransport?: Array<Record<string, unknown>>;
   fullDay?: Array<Record<string, unknown>>;
   halfDay?: Array<Record<string, unknown>>;
   dayTour?: Array<Record<string, unknown>>;
@@ -89,6 +90,10 @@ function buildUploadBody(
 function getPreviewGroup(row: Record<string, unknown>) {
   const classification = String(row.classification || '').toUpperCase();
   const pricingMode = getPreviewPricingMode(row);
+
+  if (row.serviceBasedTransport || classification === 'SERVICE_BASED_TRANSPORT') {
+    return 'serviceBasedTransport';
+  }
 
   if (classification === 'ADD_ON' || pricingMode === 'Stationary / Waiting' || pricingMode === 'Extra Hour' || pricingMode === 'Extra KM' || pricingMode === 'Driver Overnight' || pricingMode === 'Add-on / Supplement') {
     return 'addOns';
@@ -188,15 +193,17 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
 
   const previewRows = filterPreviewRows(getSafeRows(summary.previewRows), filters);
   const routeTransfers = filterPreviewRows(getSafeRows(summary.routeTransfers), filters);
+  const serviceBasedTransport = filterPreviewRows(getSafeRows(summary.serviceBasedTransport), filters);
   const fullDay = filterPreviewRows(getSafeRows(summary.fullDay), filters);
   const halfDay = filterPreviewRows(getSafeRows(summary.halfDay), filters);
   const dayTour = filterPreviewRows(getSafeRows(summary.dayTour), filters);
   const addOns = filterPreviewRows(getSafeRows(summary.addOns), filters);
-  const hasGroupedRows = [routeTransfers, fullDay, halfDay, dayTour, addOns].some((rows) => rows.length > 0);
+  const hasGroupedRows = [routeTransfers, serviceBasedTransport, fullDay, halfDay, dayTour, addOns].some((rows) => rows.length > 0);
   const groups = hasGroupedRows
-    ? [routeTransfers || [], fullDay || [], halfDay || [], dayTour || [], addOns || []]
+    ? [routeTransfers || [], serviceBasedTransport || [], fullDay || [], halfDay || [], dayTour || [], addOns || []]
     : [
         previewRows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'serviceBasedTransport'),
         previewRows.filter((row) => getPreviewGroup(row) === 'fullDay'),
         previewRows.filter((row) => getPreviewGroup(row) === 'halfDay'),
         previewRows.filter((row) => getPreviewGroup(row) === 'dayTour'),
@@ -211,28 +218,34 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
       rows: groups[0] || [],
     },
     {
+      id: 'serviceBasedTransport',
+      title: 'Disposal / Program Services',
+      helper: 'Operational disposal, full-day, half-day, and program service rows that do not require a transfer route.',
+      rows: groups[1] || [],
+    },
+    {
       id: 'fullDay',
       title: 'Full-day services',
       helper: 'Full-day and Daily FD package rows. Daily FD minimum rules apply in Quote Planner.',
-      rows: groups[1] || [],
+      rows: groups[2]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'halfDay',
       title: 'Half-day services',
       helper: 'Half-day disposal rows. These are not route transfers.',
-      rows: groups[2] || [],
+      rows: groups[3]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'dayTour',
       title: 'Day tour services',
       helper: 'Standalone sightseeing and FIT touring disposal rows that do not use full-day minimum contract logic.',
-      rows: groups[3] || [],
+      rows: groups[4]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'addOns',
       title: 'Add-ons',
       helper: 'Driver overnight, stationary, waiting, and other optional charges.',
-      rows: groups[4] || [],
+      rows: groups[5] || [],
     },
   ];
 }

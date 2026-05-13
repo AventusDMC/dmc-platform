@@ -517,11 +517,13 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(importPanelSource, [
       'Route transfers',
+      'Disposal / Program Services',
       'Full-day services',
       'Half-day services',
       'Day tour services',
       'Add-ons',
       'routeTransfers?: Array<Record<string, unknown>>;',
+      'serviceBasedTransport?: Array<Record<string, unknown>>;',
       'fullDay?: Array<Record<string, unknown>>;',
       'halfDay?: Array<Record<string, unknown>>;',
       'dayTour?: Array<Record<string, unknown>>;',
@@ -530,6 +532,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS',
       'PREVIEW_PRICING_MODE_FILTER_OPTIONS',
       'filterPreviewRows',
+      "getPreviewGroup(row) === 'serviceBasedTransport'",
       'previewServiceCategoryFilter',
       'previewPricingModeFilter',
       'transport-import-preview-filters',
