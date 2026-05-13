@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { TouringRoutesService } from './touring-routes.service';
+
+const { memoryStorage } = require('multer');
 
 type TouringRouteBody = {
   code?: string | null;
@@ -59,6 +62,24 @@ export class TouringRoutesController {
   @Post()
   create(@Body() body: TouringRouteBody) {
     return this.touringRoutesService.create(body);
+  }
+
+  @Post('workbook/preview')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  previewWorkbook(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Touring route workbook is required');
+    }
+    return this.touringRoutesService.previewWorkbookImport(file);
+  }
+
+  @Post('workbook/import')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
+  importWorkbook(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Touring route workbook is required');
+    }
+    return this.touringRoutesService.importWorkbook(file);
   }
 
   @Patch(':id')

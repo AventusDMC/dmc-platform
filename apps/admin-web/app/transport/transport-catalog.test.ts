@@ -9,6 +9,7 @@ const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.
 const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkbookSection.tsx', import.meta.url), 'utf8');
 const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
+const touringRouteWorkbookImportPanelSource = readFileSync(new URL('./TouringRouteWorkbookImportPanel.tsx', import.meta.url), 'utf8');
 const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
@@ -559,12 +560,32 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
 
     expectSourceContains(touringRoutesSectionSource, [
+      '<TouringRouteWorkbookImportPanel />',
       '/touring-routes?limit=200',
       'Reusable touring routes',
       'not stored as fake transfer routes',
       'includedKm',
       'includedHours',
       'pricingBasis',
+    ]);
+  });
+
+  it('adds a safe touring route workbook upload preview and import workflow', () => {
+    expectSourceContains(touringRouteWorkbookImportPanelSource, [
+      'Upload Touring Workbook',
+      'TOURING_ROUTES',
+      'TOURING_ROUTE_STOPS',
+      'TOURING_ROUTE_RATES',
+      'VEHICLE_TYPES',
+      '/api/touring-routes/workbook/preview',
+      '/api/touring-routes/workbook/import',
+      'Touring routes preview',
+      'Vehicle pricing preview',
+      'NEW',
+      'UPDATED',
+      'UNCHANGED',
+      'OVERLAP',
+      'Import safely',
     ]);
   });
 

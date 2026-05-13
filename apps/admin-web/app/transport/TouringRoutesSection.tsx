@@ -1,4 +1,5 @@
 import { adminPageFetchJson } from '../lib/admin-server';
+import { TouringRouteWorkbookImportPanel } from './TouringRouteWorkbookImportPanel';
 
 type TouringRoute = {
   id: string;
@@ -50,59 +51,62 @@ export async function TouringRoutesSection() {
   });
 
   return (
-    <section className="workspace-section">
-      <div className="section-heading-row">
-        <div>
-          <p className="eyebrow">Touring route inventory</p>
-          <h3>Reusable touring routes</h3>
-          <p className="detail-copy">Multi-stop and multi-day transport programs that are not stored as fake transfer routes.</p>
+    <div className="section-stack">
+      <TouringRouteWorkbookImportPanel />
+      <section className="workspace-section">
+        <div className="section-heading-row">
+          <div>
+            <p className="eyebrow">Touring route inventory</p>
+            <h3>Reusable touring routes</h3>
+            <p className="detail-copy">Multi-stop and multi-day transport programs that are not stored as fake transfer routes.</p>
+          </div>
         </div>
-      </div>
 
-      {touringRoutes.length === 0 ? (
-        <p className="empty-state">No touring routes have been created yet. Import detection will classify tour/program rows separately from transfers.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Route</th>
-                <th>Start city</th>
-                <th>Duration</th>
-                <th>Main destinations</th>
-                <th>Included</th>
-                <th>Pricing</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {touringRoutes.map((route) => (
-                <tr key={route.id}>
-                  <td>{route.code}</td>
-                  <td>
-                    <strong>{route.name}</strong>
-                    {route.routeDescription ? <div className="table-subcopy">{route.routeDescription}</div> : null}
-                  </td>
-                  <td>{route.startCity}</td>
-                  <td>{route.durationDays} day{route.durationDays === 1 ? '' : 's'}</td>
-                  <td>{formatDestinations(route)}</td>
-                  <td>
-                    {[
-                      route.includedKm ? `${route.includedKm} km` : null,
-                      route.includedHours ? `${route.includedHours} hours` : null,
-                    ].filter(Boolean).join(' / ') || 'Not set'}
-                  </td>
-                  <td>{formatPricing(route)}</td>
-                  <td>
-                    <span className="status-badge">{route.active === false ? 'Inactive' : 'Active'}</span>
-                  </td>
+        {touringRoutes.length === 0 ? (
+          <p className="empty-state">No touring routes have been created yet. Import detection will classify tour/program rows separately from transfers.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Route</th>
+                  <th>Start city</th>
+                  <th>Duration</th>
+                  <th>Main destinations</th>
+                  <th>Included</th>
+                  <th>Pricing</th>
+                  <th>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+              </thead>
+              <tbody>
+                {touringRoutes.map((route) => (
+                  <tr key={route.id}>
+                    <td>{route.code}</td>
+                    <td>
+                      <strong>{route.name}</strong>
+                      {route.routeDescription ? <div className="table-subcopy">{route.routeDescription}</div> : null}
+                    </td>
+                    <td>{route.startCity}</td>
+                    <td>{route.durationDays} day{route.durationDays === 1 ? '' : 's'}</td>
+                    <td>{formatDestinations(route)}</td>
+                    <td>
+                      {[
+                        route.includedKm ? `${route.includedKm} km` : null,
+                        route.includedHours ? `${route.includedHours} hours` : null,
+                      ].filter(Boolean).join(' / ') || 'Not set'}
+                    </td>
+                    <td>{formatPricing(route)}</td>
+                    <td>
+                      <span className="status-badge">{route.active === false ? 'Inactive' : 'Active'}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
