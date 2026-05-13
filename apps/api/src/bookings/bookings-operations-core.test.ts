@@ -161,6 +161,163 @@ test('bookings controller exposes explicit cancel route', () => {
   assert.equal(amendPath, ':id/amend');
 });
 
+test('supplier confirmation tracking preserves references and confirmed timestamps', async () => {
+  const existingConfirmedAt = new Date('2026-05-10T09:00:00.000Z');
+  const updates: any[] = [];
+  const audits: any[] = [];
+  const service = createService({
+    booking: {
+      findFirst: async () => null,
+    },
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-1',
+        bookingId: 'booking-1',
+        supplierConfirmationStatus: 'SENT',
+        confirmationSentAt: new Date('2026-05-09T09:00:00.000Z'),
+        supplierConfirmedAt: existingConfirmedAt,
+        supplierReference: 'SUP-001',
+        confirmationNumber: 'SUP-001',
+        supplierRemarks: 'Original remarks',
+        confirmationDeadline: new Date('2026-05-15T09:00:00.000Z'),
+        lastSupplierContactAt: new Date('2026-05-09T09:30:00.000Z'),
+      }),
+      update: async ({ data }: any) => {
+        updates.push(data);
+        return { id: 'service-1', ...data };
+      },
+    },
+    bookingAuditLog: {
+      create: async ({ data }: any) => {
+        audits.push(data);
+        return { id: 'audit-1', ...data };
+      },
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        bookingService: {
+          update: async (args: any) => (service as any).prisma.bookingService.update(args),
+        },
+        bookingAuditLog: {
+          create: async (args: any) => (service as any).prisma.bookingAuditLog.create(args),
+        },
+      }),
+  });
+
+  const updated = await service.updateSupplierConfirmation('service-1', {
+    supplierConfirmationStatus: 'CONFIRMED',
+    supplierReference: '',
+    supplierRemarks: 'Confirmed manually',
+    actor: { label: 'Ops User' },
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(updated.supplierConfirmationStatus, 'CONFIRMED');
+  assert.equal(updates[0].supplierReference, 'SUP-001');
+  assert.equal(updates[0].confirmationNumber, 'SUP-001');
+  assert.equal(updates[0].supplierConfirmedAt, existingConfirmedAt);
+  assert.equal(updates[0].confirmationSentAt.toISOString(), '2026-05-09T09:00:00.000Z');
+  assert.equal(updates[0].supplierRemarks, 'Confirmed manually');
+  assert.equal(audits[0].action, 'service_supplier_confirmation_updated');
+});
+
+test('operations dashboard readiness counts supplier confirmation states', async () => {
+  const dashboardDate = new Date('2026-05-12T00:00:00.000Z');
+  const services = [
+    {
+      id: 'service-pending',
+      bookingId: 'booking-1',
+      description: 'Hotel',
+      serviceType: 'HOTEL',
+      operationType: 'HOTEL',
+      operationStatus: 'CONFIRMED',
+      serviceDate: dashboardDate,
+      pickupTime: null,
+      assignedTo: null,
+      supplierId: 'supplier-1',
+      supplierName: 'Hotel Supplier',
+      vehicleId: null,
+      status: 'ready',
+      confirmationStatus: 'requested',
+      supplierConfirmationStatus: 'SENT',
+      confirmationDeadline: new Date('2026-05-11T00:00:00.000Z'),
+      vouchers: [],
+      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+    {
+      id: 'service-rejected',
+      bookingId: 'booking-1',
+      description: 'Activity',
+      serviceType: 'ACTIVITY',
+      operationType: 'ACTIVITY',
+      operationStatus: 'CONFIRMED',
+      serviceDate: dashboardDate,
+      pickupTime: null,
+      assignedTo: null,
+      supplierId: 'supplier-2',
+      supplierName: 'Activity Supplier',
+      vehicleId: null,
+      status: 'ready',
+      confirmationStatus: 'requested',
+      supplierConfirmationStatus: 'REJECTED',
+      confirmationDeadline: null,
+      vouchers: [],
+      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+    {
+      id: 'service-confirmed',
+      bookingId: 'booking-1',
+      description: 'Transfer',
+      serviceType: 'TRANSPORT',
+      operationType: 'TRANSPORT',
+      operationStatus: 'CONFIRMED',
+      serviceDate: dashboardDate,
+      pickupTime: '09:00',
+      assignedTo: 'Driver',
+      supplierId: 'supplier-3',
+      supplierName: 'Transport Supplier',
+      vehicleId: 'vehicle-1',
+      status: 'confirmed',
+      confirmationStatus: 'confirmed',
+      supplierConfirmationStatus: 'CONFIRMED',
+      confirmationDeadline: null,
+      vouchers: [{ id: 'voucher-1', status: 'ISSUED', type: 'TRANSPORT' }],
+      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+  ];
+  const bookings = [
+    {
+      id: 'booking-1',
+      bookingRef: 'BK-1',
+      status: 'in_progress',
+      startDate: dashboardDate,
+      endDate: dashboardDate,
+      pax: 1,
+      adults: 1,
+      children: 0,
+      roomCount: 1,
+      snapshotJson: {},
+      passengers: [{ id: 'passenger-1', passportNumber: 'P1', passportExpiryDate: new Date('2027-01-01T00:00:00.000Z') }],
+      roomingEntries: [{ id: 'room-1', occupancy: 'single', assignments: [{ bookingPassengerId: 'passenger-1' }] }],
+    },
+  ];
+  const service = createService({
+    booking: {
+      findMany: async () => bookings,
+    },
+    bookingService: {
+      findMany: async () => services,
+    },
+  });
+
+  const dashboard = await service.getOperationsDashboard({ actor: { companyId: 'company-1' }, date: '2026-05-12' });
+
+  assert.equal(dashboard.operationalReadiness.pendingSupplierConfirmations, 1);
+  assert.equal(dashboard.operationalReadiness.rejectedSupplierConfirmations, 1);
+  assert.equal(dashboard.operationalReadiness.overdueSupplierConfirmations, 1);
+  assert.equal(dashboard.operationalReadiness.supplierUnconfirmedServices, 2);
+});
+
 test('cancel booking sets status to cancelled without deleting related data', async () => {
   let updateData: any;
   let auditLogData: any;
