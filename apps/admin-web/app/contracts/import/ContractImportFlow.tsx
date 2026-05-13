@@ -52,14 +52,32 @@ type AssistedRateCandidate = {
   lineNumber: number;
   rawLine: string;
   lineType: HotelContractLineClassification;
+  detectedHotel?: string;
   detectedRoom?: string;
   detectedMealPlan?: string;
   detectedOccupancy?: string;
   detectedSeason?: string;
   detectedDateRange?: string;
   detectedNumericValues: number[];
+  sourceLines?: number[];
+  rejectionReason?: string;
   confidence: number;
   mappingSuggestions: Partial<Record<AssistedColumnRole, string>>;
+};
+
+type AssistedRateCandidateRejection = {
+  lineNumber: number;
+  rawLine: string;
+  detectedHotel?: string;
+  possibleRoom?: string;
+  possibleMealPlan?: string;
+  possibleOccupancy?: string;
+  possibleSeason?: string;
+  possibleDateRange?: string;
+  possiblePriceValues: number[];
+  sourceLines: number[];
+  confidence: number;
+  rejectionReason: string;
 };
 
 type AssistedExtractionBlock = {
@@ -86,6 +104,7 @@ type AssistedExtractionPreview = {
   blocks: AssistedExtractionBlock[];
   lineClassifications?: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>;
   rateCandidates?: AssistedRateCandidate[];
+  rejectedRateCandidates?: AssistedRateCandidateRejection[];
   qcWarnings: Warning[];
 };
 
@@ -202,6 +221,7 @@ type ContractPreview = {
     detectedHotels?: string[];
     detectedTables?: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }>;
     skippedSections?: Array<{ label: string; reason: string; lineNumber?: number }>;
+    rateCandidateRejections?: AssistedRateCandidateRejection[];
     confidence?: number;
     warnings?: string[];
     extractionMode?: string;
@@ -1772,6 +1792,7 @@ function ExtractionDiagnostics({ diagnostics }: { diagnostics?: ContractPreview[
   const detectedHotels = diagnostics.detectedHotels || [];
   const detectedTables = diagnostics.detectedTables || [];
   const skippedSections = diagnostics.skippedSections || [];
+  const rateCandidateRejections = diagnostics.rateCandidateRejections || [];
   const warnings = diagnostics.warnings || [];
 
   return (
@@ -1790,10 +1811,15 @@ function ExtractionDiagnostics({ diagnostics }: { diagnostics?: ContractPreview[
           <p><span>Parsed lines</span><strong>{diagnostics.parsedTextLineCount || 0}</strong></p>
           <p><span>Skipped sections</span><strong>{skippedSections.length}</strong></p>
         </div>
+        <div className="summary-card">
+          <p><span>Rejected rate lines</span><strong>{rateCandidateRejections.length}</strong></p>
+          <p><span>Diagnostics</span><strong>{rateCandidateRejections.length ? 'Review reasons' : 'Clear'}</strong></p>
+        </div>
       </div>
       {detectedHotels.length > 0 ? <PreviewList title="Detected hotels" items={detectedHotels.map((name) => ({ name }))} empty="No hotels detected." /> : null}
       {detectedTables.length > 0 ? <PreviewList title="Detected tables" items={detectedTables} empty="No tables detected." /> : null}
       {skippedSections.length > 0 ? <PreviewList title="Skipped sections" items={skippedSections} empty="No skipped sections." /> : null}
+      {rateCandidateRejections.length > 0 ? <PreviewList title="Rejected room/rate lines" items={rateCandidateRejections} empty="No rejected rate lines." /> : null}
       {warnings.length > 0 ? (
         <div className="warning-list">
           {warnings.map((warning) => (
@@ -2087,6 +2113,7 @@ function AssistedExtractionReview({
   const qcWarnings = buildAssistedQcWarnings(assistedExtraction);
   const roomRateBlocks = assistedExtraction.blocks.filter((block) => block.tag === 'ROOM_RATE_TABLE' || block.suggestedTag === 'ROOM_RATE_TABLE');
   const rateCandidates = assistedExtraction.rateCandidates || [];
+  const rejectedRateCandidates = assistedExtraction.rejectedRateCandidates || [];
 
   return (
     <section>
@@ -2106,6 +2133,40 @@ function AssistedExtractionReview({
       </div>
 
       {rateCandidates.length > 0 ? (
+        <section>
+          <h4>Room/Rate Candidate Review</h4>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Property</th>
+                  <th>Possible room</th>
+                  <th>Prices</th>
+                  <th>Meal</th>
+                  <th>Occupancy</th>
+                  <th>Source lines</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rateCandidates.slice(0, 80).map((candidate) => (
+                  <tr key={`summary-${candidate.id}`}>
+                    <td>{candidate.detectedHotel || 'Unassigned property'}</td>
+                    <td>{candidate.detectedRoom || 'Room not detected'}</td>
+                    <td>{(candidate.detectedNumericValues || []).join(', ') || 'None'}</td>
+                    <td>{candidate.detectedMealPlan || '-'}</td>
+                    <td>{candidate.detectedOccupancy || '-'}</td>
+                    <td>{(candidate.sourceLines || [candidate.lineNumber]).join(', ')}</td>
+                    <td>{Math.round((candidate.confidence || 0) * 100)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {rateCandidates.length > 0 ? (
         <div className="table-scroll">
           <table className="data-table">
             <thead>
@@ -2121,6 +2182,7 @@ function AssistedExtractionReview({
                 <tr key={candidate.id}>
                   <td>{candidate.lineNumber}</td>
                   <td>
+                    {candidate.detectedHotel ? <p className="empty-state">Property: {candidate.detectedHotel}</p> : null}
                     <strong>{candidate.detectedRoom || 'Room not detected'}</strong>
                     <p className="empty-state">
                       {[candidate.detectedSeason, candidate.detectedDateRange, candidate.detectedMealPlan, candidate.detectedOccupancy]
@@ -2133,6 +2195,43 @@ function AssistedExtractionReview({
                     <pre className="raw-preview-block">{candidate.rawLine}</pre>
                   </td>
                   <td>{Math.round((candidate.confidence || 0) * 100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {rejectedRateCandidates.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th>Possible interpretation</th>
+                <th>Rejection reason</th>
+                <th>Raw extracted row</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rejectedRateCandidates.slice(0, 80).map((candidate) => (
+                <tr key={`rejected-${candidate.lineNumber}-${candidate.rawLine}`}>
+                  <td>{candidate.lineNumber}</td>
+                  <td>
+                    {candidate.detectedHotel ? <p className="empty-state">Property: {candidate.detectedHotel}</p> : null}
+                    <strong>{candidate.possibleRoom || 'Room not detected'}</strong>
+                    <p className="empty-state">
+                      {[candidate.possibleSeason, candidate.possibleDateRange, candidate.possibleMealPlan, candidate.possibleOccupancy]
+                        .filter(Boolean)
+                        .join(' | ') || 'No season/meal/occupancy context'}
+                    </p>
+                    <p className="empty-state">Values: {(candidate.possiblePriceValues || []).join(', ') || 'None'}</p>
+                    <p className="empty-state">Source lines: {(candidate.sourceLines || [candidate.lineNumber]).join(', ')}</p>
+                  </td>
+                  <td>{candidate.rejectionReason}</td>
+                  <td>
+                    <pre className="raw-preview-block">{candidate.rawLine}</pre>
+                  </td>
                 </tr>
               ))}
             </tbody>

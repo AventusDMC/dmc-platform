@@ -103,14 +103,32 @@ type AssistedRateCandidate = {
   lineNumber: number;
   rawLine: string;
   lineType: HotelContractLineClassification;
+  detectedHotel?: string;
   detectedRoom?: string;
   detectedMealPlan?: string;
   detectedOccupancy?: string;
   detectedSeason?: string;
   detectedDateRange?: string;
   detectedNumericValues: number[];
+  sourceLines?: number[];
+  rejectionReason?: string;
   confidence: number;
   mappingSuggestions: Partial<Record<AssistedExtractionColumnRole, string>>;
+};
+
+type AssistedRateCandidateRejection = {
+  lineNumber: number;
+  rawLine: string;
+  detectedHotel?: string;
+  possibleRoom?: string;
+  possibleMealPlan?: string;
+  possibleOccupancy?: string;
+  possibleSeason?: string;
+  possibleDateRange?: string;
+  possiblePriceValues: number[];
+  sourceLines: number[];
+  confidence: number;
+  rejectionReason: string;
 };
 
 type AssistedExtractionPreview = {
@@ -135,6 +153,7 @@ type AssistedExtractionPreview = {
   }>;
   lineClassifications: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>;
   rateCandidates: AssistedRateCandidate[];
+  rejectedRateCandidates?: AssistedRateCandidateRejection[];
   qcWarnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
 };
 
@@ -227,6 +246,7 @@ type ContractPreview = {
     detectedHotels?: string[];
     detectedTables?: Array<{ label: string; lineNumber?: number; confidence: number; columns?: string[] }>;
     skippedSections?: Array<{ label: string; reason: string; lineNumber?: number }>;
+    rateCandidateRejections?: AssistedRateCandidateRejection[];
     confidence?: number;
     warnings?: string[];
     extractionMode?: 'SINGLE_PROPERTY' | 'MULTI_PROPERTY' | 'TEXT_PDF' | 'WORKBOOK';
@@ -1053,6 +1073,7 @@ export class ContractImportsService {
       const rateCandidates = (preview.assistedExtraction.rateCandidates || []).map((candidate) => ({
         CandidateId: candidate.id,
         Line: candidate.lineNumber,
+        Property: candidate.detectedHotel || '',
         Type: candidate.lineType,
         Confidence: candidate.confidence,
         Room: candidate.detectedRoom || '',
@@ -1061,11 +1082,27 @@ export class ContractImportsService {
         Season: candidate.detectedSeason || '',
         DateRange: candidate.detectedDateRange || '',
         Values: candidate.detectedNumericValues.join(', '),
+        SourceLines: (candidate.sourceLines || [candidate.lineNumber]).join(', '),
+        RawLine: candidate.rawLine,
+      }));
+      const rejectedRateCandidates = (preview.assistedExtraction.rejectedRateCandidates || preview.parserDiagnostics?.rateCandidateRejections || []).map((candidate) => ({
+        Line: candidate.lineNumber,
+        Property: candidate.detectedHotel || '',
+        PossibleRoom: candidate.possibleRoom || '',
+        PossibleMealPlan: candidate.possibleMealPlan || '',
+        PossibleOccupancy: candidate.possibleOccupancy || '',
+        PossibleSeason: candidate.possibleSeason || '',
+        PossibleDateRange: candidate.possibleDateRange || '',
+        Values: candidate.possiblePriceValues.join(', '),
+        SourceLines: candidate.sourceLines.join(', '),
+        Confidence: candidate.confidence,
+        RejectionReason: candidate.rejectionReason,
         RawLine: candidate.rawLine,
       }));
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(blocks), 'Assisted Blocks');
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(mappings), 'Assisted Mappings');
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rateCandidates), 'Rate Candidates');
+      xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rejectedRateCandidates), 'Rejected Rate Lines');
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(qcWarnings), 'Assisted QC');
     }
 
@@ -1391,6 +1428,8 @@ export class ContractImportsService {
     const detectedHotels = this.detectHotelSections(text, '').map((section) => section.hotelName);
     const detectedTables = this.detectTextRateTables(lines);
     const skippedSections = this.detectSkippedTextSections(lines);
+    const lineClassifications = this.classifyHotelContractLines(lines);
+    const rateIntelligence = rows.length === 0 ? this.buildAssistedRateIntelligence(lines, lineClassifications) : { rejections: [] };
     const warnings: string[] = [];
     if (/[\u0600-\u06FF]/.test(text)) {
       warnings.push('Arabic text detected; PDF text extraction may need OCR validation for Arabic-only notes.');
@@ -1417,6 +1456,7 @@ export class ContractImportsService {
       detectedHotels,
       detectedTables,
       skippedSections,
+      rateCandidateRejections: rateIntelligence.rejections.slice(0, 200),
       confidence: Number(confidence.toFixed(2)),
       warnings,
       extractionMode: rows.length > 0 ? 'WORKBOOK' : 'TEXT_PDF',
@@ -1433,7 +1473,8 @@ export class ContractImportsService {
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const diagnostics = this.buildTextExtractionDiagnostics(text, rows);
     const lineClassifications = this.classifyHotelContractLines(lines);
-    const rateCandidates = this.buildAssistedRateCandidates(lines, lineClassifications);
+    const rateIntelligence = this.buildAssistedRateIntelligence(lines, lineClassifications);
+    const rateCandidates = rateIntelligence.candidates;
     const blocks: AssistedExtractionPreview['blocks'] = [];
     const seen = new Set<string>();
 
@@ -1535,6 +1576,7 @@ export class ContractImportsService {
       blocks: blocks.slice(0, 40),
       lineClassifications: lineClassifications.slice(0, 500),
       rateCandidates: rateCandidates.slice(0, 200),
+      rejectedRateCandidates: rateIntelligence.rejections.slice(0, 200),
       qcWarnings: [],
     };
     preview.qcWarnings = this.buildAssistedExtractionQcWarnings(preview);
@@ -1603,11 +1645,14 @@ export class ContractImportsService {
     });
   }
 
-  private buildAssistedRateCandidates(
+  private buildAssistedRateIntelligence(
     lines: string[],
     classifications: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>,
-  ): AssistedRateCandidate[] {
+  ): { candidates: AssistedRateCandidate[]; rejections: AssistedRateCandidateRejection[] } {
     const candidates: AssistedRateCandidate[] = [];
+    const rejections: AssistedRateCandidateRejection[] = [];
+    const acceptedLineNumbers = new Set<number>();
+    const hotelSections = this.detectHotelSections(lines.join('\n'), '');
     let lastRoom = '';
     let currentSeason = '';
     let currentDateRange = '';
@@ -1622,6 +1667,7 @@ export class ContractImportsService {
       const mealPlan = this.extractMealPlanFromText(line);
       const amounts = this.extractMoneyAmounts(line);
       const numericValues = amounts.map((amount) => amount.amount);
+      const detectedHotel = this.findDetectedHotelForLine(classified.lineNumber, hotelSections);
 
       if (room) lastRoom = room;
       if (season) currentSeason = season;
@@ -1635,52 +1681,193 @@ export class ContractImportsService {
       }
 
       const previous = classifications.slice(Math.max(0, index - 4), index);
+      const next = classifications.slice(index + 1, Math.min(classifications.length, index + 6));
       const previousRoom = [...previous].reverse().map((entry) => this.detectRoomName(entry.rawLine) || this.detectLooseRoomName(entry.rawLine)).find(Boolean) || lastRoom;
+      const nextRoom = next.map((entry) => this.detectRoomName(entry.rawLine) || this.detectLooseRoomName(entry.rawLine)).find(Boolean) || '';
       const candidateRoom = room || previousRoom;
+      const shouldReconstruct = (numericValues.length === 0 && Boolean(room || nextRoom || previousRoom)) || numericOnly;
+      const reconstructed = shouldReconstruct
+        ? this.reconstructFlattenedRateCandidate(classified, index, classifications, candidateRoom || nextRoom, {
+            currentSeason,
+            currentDateRange,
+            currentMealPlan,
+            detectedHotel,
+          })
+        : null;
       const hasRateSignal =
         classified.type === 'RATE_ROW' ||
         (numericValues.length >= 2 && Boolean(candidateRoom)) ||
-        (numericValues.length >= 1 && /\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(line));
+        (numericValues.length >= 1 && /\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(line)) ||
+        Boolean(reconstructed);
 
-      if (!hasRateSignal || numericValues.length === 0) return;
+      if (!hasRateSignal || (numericValues.length === 0 && !reconstructed)) {
+        const looksTableLike = this.isNumericOrTableLikeRateLine(line, classified.type, numericValues);
+        if (looksTableLike) {
+          rejections.push(
+            this.buildRateCandidateRejection(classified, {
+              detectedHotel,
+              possibleRoom: candidateRoom || nextRoom,
+              possibleMealPlan: mealPlan || currentMealPlan,
+              possibleOccupancy: this.detectOccupancy(line),
+              possibleSeason: season || currentSeason,
+              possibleDateRange: dateRange || currentDateRange,
+              possiblePriceValues: numericValues,
+              sourceLines: [classified.lineNumber],
+              confidence: classified.confidence,
+              rejectionReason: this.explainRateCandidateRejection(line, candidateRoom || nextRoom, numericValues),
+            }),
+          );
+        }
+        return;
+      }
 
       const detectedOccupancy = this.detectOccupancy(line);
+      const candidateValues = reconstructed?.numericValues || numericValues;
+      const sourceLines = reconstructed?.sourceLines || [classified.lineNumber];
+      const resolvedRoom = reconstructed?.room || candidateRoom;
+      const resolvedMealPlan = reconstructed?.mealPlan || mealPlan || currentMealPlan;
       const confidence = Math.min(
         0.95,
         0.35 +
-          (candidateRoom ? 0.2 : 0) +
-          (numericValues.length >= 2 ? 0.15 : 0) +
+          (resolvedRoom ? 0.2 : 0) +
+          (candidateValues.length >= 2 ? 0.15 : 0) +
           (/\b(sgl|dbl|tpl|trp|single|double|triple)\b/i.test(line) ? 0.1 : 0) +
           (currentSeason || season ? 0.08 : 0) +
-          (currentMealPlan || mealPlan ? 0.06 : 0) +
+          (resolvedMealPlan ? 0.06 : 0) +
+          (reconstructed ? 0.08 : 0) +
           (numericOnly ? -0.12 : 0),
       );
       const mappingSuggestions: Partial<Record<AssistedExtractionColumnRole, string>> = {};
-      if (candidateRoom) mappingSuggestions.ROOM_CATEGORY = candidateRoom;
-      if (currentSeason || season) mappingSuggestions.SEASON = season || currentSeason;
-      if (currentDateRange || dateRange) mappingSuggestions.DATE_RANGE = dateRange || currentDateRange;
-      if (mealPlan || currentMealPlan) mappingSuggestions.MEAL_PLAN = mealPlan || currentMealPlan;
+      if (resolvedRoom) mappingSuggestions.ROOM_CATEGORY = resolvedRoom;
+      if (reconstructed?.season || currentSeason || season) mappingSuggestions.SEASON = reconstructed?.season || season || currentSeason;
+      if (reconstructed?.dateRange || currentDateRange || dateRange) mappingSuggestions.DATE_RANGE = reconstructed?.dateRange || dateRange || currentDateRange;
+      if (resolvedMealPlan) mappingSuggestions.MEAL_PLAN = resolvedMealPlan;
       mappingSuggestions.PRICING_BASIS = this.detectPricingBasis(line);
-      if (numericValues.length > 0) mappingSuggestions.RATE = numericValues.join(', ');
-      if (/\b(single supplement|sgl supp|single supp)\b/i.test(line) && numericValues[0]) mappingSuggestions.SINGLE_SUPPLEMENT = String(numericValues[0]);
+      if (candidateValues.length > 0) mappingSuggestions.RATE = candidateValues.join(', ');
+      if (/\b(single supplement|sgl supp|single supp)\b/i.test(line) && candidateValues[0]) mappingSuggestions.SINGLE_SUPPLEMENT = String(candidateValues[0]);
 
       candidates.push({
-        id: `rate-${classified.lineNumber}`,
+        id: `rate-${sourceLines.join('-')}`,
         lineNumber: classified.lineNumber,
-        rawLine: classified.rawLine,
+        rawLine: reconstructed?.rawLine || classified.rawLine,
         lineType: classified.type,
-        detectedRoom: candidateRoom || undefined,
-        detectedMealPlan: mealPlan || currentMealPlan || undefined,
-        detectedOccupancy,
-        detectedSeason: season || currentSeason || undefined,
-        detectedDateRange: dateRange || currentDateRange || undefined,
-        detectedNumericValues: numericValues,
+        detectedHotel: detectedHotel || undefined,
+        detectedRoom: resolvedRoom || undefined,
+        detectedMealPlan: resolvedMealPlan || undefined,
+        detectedOccupancy: reconstructed?.occupancy || detectedOccupancy,
+        detectedSeason: reconstructed?.season || season || currentSeason || undefined,
+        detectedDateRange: reconstructed?.dateRange || dateRange || currentDateRange || undefined,
+        detectedNumericValues: candidateValues,
+        sourceLines,
         confidence: Number(confidence.toFixed(2)),
         mappingSuggestions,
       });
+      sourceLines.forEach((lineNumber) => acceptedLineNumbers.add(lineNumber));
     });
 
-    return candidates.filter((candidate, index, all) => all.findIndex((other) => other.rawLine === candidate.rawLine && other.lineNumber === candidate.lineNumber) === index);
+    const dedupedCandidates = candidates.filter((candidate, index, all) => all.findIndex((other) => other.rawLine === candidate.rawLine && other.lineNumber === candidate.lineNumber) === index);
+    const dedupedAcceptedLineNumbers = new Set(dedupedCandidates.flatMap((candidate) => candidate.sourceLines || [candidate.lineNumber]));
+    const dedupedRejections = rejections
+      .filter((rejection) => !dedupedAcceptedLineNumbers.has(rejection.lineNumber))
+      .filter((rejection, index, all) => all.findIndex((other) => other.rawLine === rejection.rawLine && other.lineNumber === rejection.lineNumber) === index);
+    acceptedLineNumbers.clear();
+    return { candidates: dedupedCandidates, rejections: dedupedRejections };
+  }
+
+  private reconstructFlattenedRateCandidate(
+    classified: { lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number },
+    index: number,
+    classifications: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>,
+    fallbackRoom: string,
+    context: { currentSeason: string; currentDateRange: string; currentMealPlan: string; detectedHotel: string },
+  ) {
+    const line = classified.rawLine.replace(/\s+/g, ' ').trim();
+    if (['HOTEL_NAME', 'SEASON', 'DATE_RANGE', 'SUPPLEMENT', 'CHILD_POLICY', 'CANCELLATION', 'TAX_NOTE'].includes(classified.type)) {
+      return null;
+    }
+    const localRoom = this.detectRoomName(line) || this.detectLooseRoomName(line) || fallbackRoom;
+    const window = classifications.slice(index, Math.min(classifications.length, index + 6));
+    const sourceEntries: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }> = [];
+    for (const [offset, entry] of window.entries()) {
+      const entryLine = entry.rawLine.replace(/\s+/g, ' ').trim();
+      if (offset > 0 && ['HOTEL_NAME', 'SEASON', 'DATE_RANGE', 'SUPPLEMENT', 'CHILD_POLICY', 'CANCELLATION', 'TAX_NOTE'].includes(entry.type)) break;
+      if (offset > 0 && entry.type === 'RATE_ROW' && sourceEntries.some((source) => this.extractMoneyAmounts(source.rawLine).length > 0)) break;
+      const values = this.extractMoneyAmounts(entryLine).map((amount) => amount.amount);
+      const hasRoom = Boolean(this.detectRoomName(entryLine) || this.detectLooseRoomName(entryLine));
+      const hasContext = /\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb|room|suite|chalet|villa)\b/i.test(entryLine);
+      if (offset === 0 || values.length > 0 || hasRoom || hasContext) sourceEntries.push(entry);
+    }
+    const combined = sourceEntries.map((entry) => entry.rawLine.replace(/\s+/g, ' ').trim()).join(' ');
+    const numericValues = this.extractMoneyAmounts(combined).map((amount) => amount.amount);
+    const room = this.detectRoomName(combined) || this.detectLooseRoomName(combined) || localRoom;
+    if (!room || numericValues.length === 0) return null;
+    if (numericValues.length === 1 && !/\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(combined)) return null;
+
+    return {
+      rawLine: sourceEntries.map((entry) => entry.rawLine).join(' | '),
+      room,
+      mealPlan: this.extractMealPlanFromText(combined) || context.currentMealPlan,
+      occupancy: this.detectOccupancy(combined),
+      numericValues,
+      sourceLines: sourceEntries.map((entry) => entry.lineNumber),
+      season: this.detectSeasonNameInLine(combined) || context.currentSeason,
+      dateRange: this.detectDateRangeInLine(combined) || context.currentDateRange,
+      detectedHotel: context.detectedHotel,
+    };
+  }
+
+  private isNumericOrTableLikeRateLine(line: string, type: HotelContractLineClassification, numericValues: number[]) {
+    return (
+      numericValues.length > 0 ||
+      type === 'ROOM_TYPE' ||
+      type === 'RATE_ROW' ||
+      /\b(room|suite|chalet|villa|sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb|rate|rates?)\b/i.test(line)
+    );
+  }
+
+  private explainRateCandidateRejection(line: string, room: string, numericValues: number[]) {
+    if (numericValues.length === 0 && room) return 'Room-like line had no price values nearby.';
+    if (numericValues.length === 0) return 'Table-like line had no price values.';
+    if (!room) return 'Price values found but no room category could be linked from the surrounding lines.';
+    if (numericValues.length === 1 && !/\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(line)) {
+      return 'Only one price value found without occupancy or meal-plan context.';
+    }
+    return 'Line looked table-like but did not meet review candidate confidence thresholds.';
+  }
+
+  private buildRateCandidateRejection(
+    classified: { lineNumber: number; rawLine: string },
+    details: {
+      detectedHotel: string;
+      possibleRoom: string;
+      possibleMealPlan: string;
+      possibleOccupancy: string;
+      possibleSeason: string;
+      possibleDateRange: string;
+      possiblePriceValues: number[];
+      sourceLines: number[];
+      confidence: number;
+      rejectionReason: string;
+    },
+  ): AssistedRateCandidateRejection {
+    return {
+      lineNumber: classified.lineNumber,
+      rawLine: classified.rawLine,
+      detectedHotel: details.detectedHotel || undefined,
+      possibleRoom: details.possibleRoom || undefined,
+      possibleMealPlan: details.possibleMealPlan || undefined,
+      possibleOccupancy: details.possibleOccupancy || undefined,
+      possibleSeason: details.possibleSeason || undefined,
+      possibleDateRange: details.possibleDateRange || undefined,
+      possiblePriceValues: details.possiblePriceValues,
+      sourceLines: details.sourceLines,
+      confidence: Number(details.confidence.toFixed(2)),
+      rejectionReason: details.rejectionReason,
+    };
+  }
+
+  private findDetectedHotelForLine(lineNumber: number, sections: Array<{ hotelName: string; lineStart: number; lineEnd: number }>) {
+    return sections.find((section) => lineNumber >= section.lineStart && lineNumber <= section.lineEnd)?.hotelName || '';
   }
 
   private tokenizeHotelContractLine(line: string) {
@@ -3630,14 +3817,37 @@ export class ContractImportsService {
             lineNumber: this.parseOptionalInt(candidate.lineNumber) || index + 1,
             rawLine: this.optionalString(candidate.rawLine),
             lineType: candidate.lineType || 'UNKNOWN',
+            detectedHotel: this.optionalString(candidate.detectedHotel) || undefined,
             detectedRoom: this.optionalString(candidate.detectedRoom) || undefined,
             detectedMealPlan: this.optionalString(candidate.detectedMealPlan) || undefined,
             detectedOccupancy: this.optionalString(candidate.detectedOccupancy) || undefined,
             detectedSeason: this.optionalString(candidate.detectedSeason) || undefined,
             detectedDateRange: this.optionalString(candidate.detectedDateRange) || undefined,
             detectedNumericValues: Array.isArray(candidate.detectedNumericValues) ? candidate.detectedNumericValues.map((value: unknown) => this.parseNumber(value)).filter((value: number | undefined): value is number => value !== undefined) : [],
+            sourceLines: Array.isArray(candidate.sourceLines) ? candidate.sourceLines.map((value: unknown) => this.parseOptionalInt(value)).filter((value: number | undefined): value is number => value !== undefined) : undefined,
+            rejectionReason: this.optionalString(candidate.rejectionReason) || undefined,
             confidence: this.parseNumber(candidate.confidence) ?? 0,
             mappingSuggestions: candidate.mappingSuggestions && typeof candidate.mappingSuggestions === 'object' ? candidate.mappingSuggestions : {},
+          }))
+        : [],
+      rejectedRateCandidates: Array.isArray(value.rejectedRateCandidates)
+        ? value.rejectedRateCandidates.map((candidate: any, index: number) => ({
+            lineNumber: this.parseOptionalInt(candidate.lineNumber) || index + 1,
+            rawLine: this.optionalString(candidate.rawLine),
+            detectedHotel: this.optionalString(candidate.detectedHotel) || undefined,
+            possibleRoom: this.optionalString(candidate.possibleRoom) || undefined,
+            possibleMealPlan: this.optionalString(candidate.possibleMealPlan) || undefined,
+            possibleOccupancy: this.optionalString(candidate.possibleOccupancy) || undefined,
+            possibleSeason: this.optionalString(candidate.possibleSeason) || undefined,
+            possibleDateRange: this.optionalString(candidate.possibleDateRange) || undefined,
+            possiblePriceValues: Array.isArray(candidate.possiblePriceValues)
+              ? candidate.possiblePriceValues.map((entry: unknown) => this.parseNumber(entry)).filter((entry: number | undefined): entry is number => entry !== undefined)
+              : [],
+            sourceLines: Array.isArray(candidate.sourceLines)
+              ? candidate.sourceLines.map((entry: unknown) => this.parseOptionalInt(entry)).filter((entry: number | undefined): entry is number => entry !== undefined)
+              : [],
+            confidence: this.parseNumber(candidate.confidence) ?? 0,
+            rejectionReason: this.optionalString(candidate.rejectionReason) || 'Rejected by parser confidence checks.',
           }))
         : [],
       qcWarnings: Array.isArray(value.qcWarnings) ? value.qcWarnings : [],

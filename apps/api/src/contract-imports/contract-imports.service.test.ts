@@ -959,6 +959,10 @@ test('hotel PDF parser creates review candidates for flattened uncertain MENA ra
   assert.ok(candidates.length >= 2);
   assert.ok(candidates.some((candidate: any) => candidate.detectedRoom === 'Superior Room' && candidate.detectedNumericValues.includes(110)));
   assert.ok(candidates.some((candidate: any) => candidate.detectedRoom === 'Family Room' && candidate.detectedMealPlan === 'HB'));
+  assert.ok(candidates.some((candidate: any) => candidate.detectedRoom === 'Villa' && candidate.sourceLines.includes(6) && candidate.sourceLines.includes(7)));
+  assert.ok(candidates.every((candidate: any) => candidate.detectedHotel === 'Mövenpick Resort Petra'));
+  assert.ok(preview.assistedExtraction.rejectedRateCandidates.some((candidate: any) => /without occupancy|no price values|no room category/i.test(candidate.rejectionReason)));
+  assert.ok(preview.parserDiagnostics.rateCandidateRejections.length >= preview.assistedExtraction.rejectedRateCandidates.length);
   assert.ok(preview.assistedExtraction.lineClassifications.some((line: any) => line.type === 'RATE_ROW'));
   assert.ok(preview.assistedExtraction.blocks.some((block: any) => block.id.startsWith('rate-candidate-') && block.suggestedTag === 'ROOM_RATE_TABLE'));
 });
