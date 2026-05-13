@@ -15676,15 +15676,21 @@ textarea:focus,
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
 }
 
-.contract-workspace-tabs a {
+.contract-workspace-tabs a,
+.contract-workspace-tab {
   padding: 0.68rem 0.95rem;
+  border: 0;
   border-radius: 12px;
+  background: transparent;
   color: #475467;
+  cursor: pointer;
   font-weight: 760;
   text-decoration: none;
 }
 
-.contract-workspace-tabs a:hover {
+.contract-workspace-tabs a:hover,
+.contract-workspace-tab:hover,
+.contract-workspace-tab-active {
   background: rgba(31, 154, 207, 0.09);
   color: #1C7FB8;
 }

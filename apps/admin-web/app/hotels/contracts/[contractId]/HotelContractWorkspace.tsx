@@ -54,7 +54,7 @@ type HotelRate = {
   seasonFrom?: string | null;
   seasonTo?: string | null;
   roomCategoryId: string;
-  occupancyType: 'SGL' | 'DBL' | 'TPL';
+  occupancyType: 'SGL' | 'DBL' | 'TPL' | 'TRP' | 'QUAD' | 'UNIT' | 'SINGLE_SUPPLEMENT' | string;
   mealPlan: 'RO' | 'BB' | 'HB' | 'FB' | 'AI';
   pricingMode?: 'PER_ROOM_PER_NIGHT' | 'PER_PERSON_PER_NIGHT' | null;
   pricingBasis?: 'PER_PERSON' | 'PER_ROOM' | null;
@@ -128,6 +128,8 @@ type DrawerState =
   | { type: 'supplement'; supplementId?: string }
   | null;
 
+type ContractWorkspaceTab = 'overview' | 'rates' | 'supplements' | 'terms';
+
 type HotelContractWorkspaceProps = {
   apiBaseUrl: string;
   contract: HotelContract;
@@ -143,6 +145,12 @@ type HotelContractWorkspaceProps = {
 const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER', 'EXTRA_BED'] as const;
 const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
 const MAX_CONTRACT_DETAIL_ROWS = 250;
+const CONTRACT_WORKSPACE_TABS: Array<{ id: ContractWorkspaceTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'rates', label: 'Rates' },
+  { id: 'supplements', label: 'Supplements' },
+  { id: 'terms', label: 'Terms' },
+];
 
 function toSafeArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value.filter(Boolean) : [];
@@ -226,6 +234,10 @@ function normalizeChargeBasis(value: Supplement['chargeBasis']): (typeof CHARGE_
   return CHARGE_BASIS_VALUES.includes(value as (typeof CHARGE_BASIS_VALUES)[number]) ? (value as (typeof CHARGE_BASIS_VALUES)[number]) : 'PER_NIGHT';
 }
 
+function normalizeEditableOccupancy(value: HotelRate['occupancyType']): 'SGL' | 'DBL' | 'TPL' {
+  return value === 'SGL' || value === 'DBL' || value === 'TPL' ? value : 'SGL';
+}
+
 export function HotelContractWorkspace({
   apiBaseUrl,
   contract,
@@ -238,12 +250,13 @@ export function HotelContractWorkspace({
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [activeTab, setActiveTab] = useState<ContractWorkspaceTab>('overview');
   const safeRates = useMemo(() => toSafeArray(rates).filter((rate) => rate.contractId === contract.id), [contract.id, rates]);
   const safeSupplements = useMemo(() => toSafeArray(supplements), [supplements]);
   const safeMealPlans = useMemo(() => toSafeArray(mealPlans), [mealPlans]);
   const safeCancellationRules = useMemo(() => toSafeArray(cancellationPolicy?.rules), [cancellationPolicy]);
   const roomCategories = useMemo(() => toSafeArray(contract.hotel?.roomCategories), [contract.hotel?.roomCategories]);
-  const activeRoomCategories = roomCategories.filter((roomCategory) => roomCategory.isActive);
+  const activeRoomCategories = useMemo(() => roomCategories.filter((roomCategory) => roomCategory.isActive), [roomCategories]);
   const sortedRates = useMemo(
     () =>
       [...safeRates].sort(
@@ -255,47 +268,65 @@ export function HotelContractWorkspace({
       ),
     [safeRates],
   );
-  const displayedRates = limitRows(sortedRates);
-  const displayedSupplements = limitRows(safeSupplements);
-  const displayedMealPlans = limitRows(safeMealPlans);
-  const displayedCancellationRules = limitRows(safeCancellationRules);
-  const usedRoomCategoryIds = new Set(
-    safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || '')),
+  const displayedRates = useMemo(() => limitRows(sortedRates), [sortedRates]);
+  const displayedSupplements = useMemo(() => limitRows(safeSupplements), [safeSupplements]);
+  const displayedMealPlans = useMemo(() => limitRows(safeMealPlans), [safeMealPlans]);
+  const displayedCancellationRules = useMemo(() => limitRows(safeCancellationRules), [safeCancellationRules]);
+  const usedRoomCategoryIds = useMemo(
+    () => new Set(safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || ''))),
+    [safeRates, safeSupplements],
   );
-  const usedRoomCategories = roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id));
-  const visibleRoomCategories = usedRoomCategories.length > 0 ? usedRoomCategories : activeRoomCategories;
+  const usedRoomCategories = useMemo(
+    () => roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id)),
+    [roomCategories, usedRoomCategoryIds],
+  );
+  const visibleRoomCategories = useMemo(
+    () => (usedRoomCategories.length > 0 ? usedRoomCategories : activeRoomCategories),
+    [activeRoomCategories, usedRoomCategories],
+  );
+  const displayedRoomCategories = useMemo(() => limitRows(visibleRoomCategories), [visibleRoomCategories]);
   const selectedRate = drawer?.type === 'rate' && drawer.rateId ? safeRates.find((rate) => rate.id === drawer.rateId) || null : null;
   const selectedSupplement =
     drawer?.type === 'supplement' && drawer.supplementId
       ? safeSupplements.find((supplement) => supplement.id === drawer.supplementId) || null
       : null;
-  const seasonRows = Array.from(
-    new Map(
-      safeRates.map((rate) => [
-        `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
-        {
-          name: rate.seasonName,
-          from: rate.seasonFrom || contract.validFrom,
-          to: rate.seasonTo || contract.validTo,
-        },
-      ]),
-    ).values(),
+  const seasonRows = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          safeRates.map((rate) => [
+            `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
+            {
+              name: rate.seasonName,
+              from: rate.seasonFrom || contract.validFrom,
+              to: rate.seasonTo || contract.validTo,
+            },
+          ]),
+        ).values(),
+      ),
+    [contract.validFrom, contract.validTo, safeRates],
   );
-  const taxProfiles = Array.from(
-    new Map(
-      safeRates.map((rate) => [
-        [
-          rate.salesTaxPercent ?? 0,
-          rate.salesTaxIncluded ? 'included' : 'excluded',
-          rate.serviceChargePercent ?? 0,
-          rate.serviceChargeIncluded ? 'included' : 'excluded',
-          rate.tourismFeeAmount ?? 0,
-          rate.tourismFeeCurrency || rate.currency,
-          rate.tourismFeeMode || 'none',
-        ].join('|'),
-        rate,
-      ]),
-    ).values(),
+  const taxProfiles = useMemo(
+    () =>
+      limitRows(
+        Array.from(
+          new Map(
+            safeRates.map((rate) => [
+              [
+                rate.salesTaxPercent ?? 0,
+                rate.salesTaxIncluded ? 'included' : 'excluded',
+                rate.serviceChargePercent ?? 0,
+                rate.serviceChargeIncluded ? 'included' : 'excluded',
+                rate.tourismFeeAmount ?? 0,
+                rate.tourismFeeCurrency || rate.currency,
+                rate.tourismFeeMode || 'none',
+              ].join('|'),
+              rate,
+            ]),
+          ).values(),
+        ),
+      ),
+    [safeRates],
   );
 
   function closeDrawer() {
@@ -339,7 +370,7 @@ export function HotelContractWorkspace({
             seasonId: selectedRate?.seasonId || '',
             seasonName: selectedRate?.seasonName || '',
             roomCategoryId: selectedRate?.roomCategoryId || '',
-            occupancyType: selectedRate?.occupancyType || 'SGL',
+            occupancyType: normalizeEditableOccupancy(selectedRate?.occupancyType || 'SGL'),
             mealPlan: selectedRate?.mealPlan || 'BB',
             pricingMode: selectedRate?.pricingMode || '',
             pricingBasis: selectedRate?.pricingBasis || 'PER_ROOM',
@@ -440,13 +471,19 @@ export function HotelContractWorkspace({
       </section>
 
       <nav className="contract-workspace-tabs" aria-label="Contract workspace sections">
-        <a href="#overview">Overview</a>
-        <a href="#rates">Rates</a>
-        <a href="#supplements">Supplements</a>
-        <a href="#terms">Terms</a>
+        {CONTRACT_WORKSPACE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={activeTab === tab.id ? 'contract-workspace-tab contract-workspace-tab-active' : 'contract-workspace-tab'}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
-      <section id="overview" className="contract-section-grid">
+      {activeTab === 'overview' ? <section id="overview" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -459,7 +496,10 @@ export function HotelContractWorkspace({
             <p className="empty-state">No room categories are connected to this contract hotel yet.</p>
           ) : (
             <div className="contract-chip-list">
-              {visibleRoomCategories.map((roomCategory) => (
+              {visibleRoomCategories.length > displayedRoomCategories.length ? (
+                <p className="table-subcopy">Showing the first {displayedRoomCategories.length} room categories to keep the contract detail responsive.</p>
+              ) : null}
+              {displayedRoomCategories.map((roomCategory) => (
                 <span key={roomCategory.id} className="contract-chip">
                   <strong>{roomCategory.name}</strong>
                   {roomCategory.code ? <small>{roomCategory.code}</small> : null}
@@ -488,9 +528,9 @@ export function HotelContractWorkspace({
             ))}
           </div>
         </article>
-      </section>
+      </section> : null}
 
-      <section id="rates" className="contract-workspace-card">
+      {activeTab === 'rates' ? <section id="rates" className="contract-workspace-card">
         <div className="section-header-inline">
           <div>
             <p className="eyebrow">Pricing</p>
@@ -555,9 +595,9 @@ export function HotelContractWorkspace({
             </table>
           </div>
         )}
-      </section>
+      </section> : null}
 
-      <section id="supplements" className="contract-section-grid">
+      {activeTab === 'supplements' ? <section id="supplements" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -653,9 +693,9 @@ export function HotelContractWorkspace({
             </div>
           )}
         </article>
-      </section>
+      </section> : null}
 
-      <section id="terms" className="contract-section-grid">
+      {activeTab === 'terms' ? <section id="terms" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -714,7 +754,7 @@ export function HotelContractWorkspace({
             </div>
           )}
         </article>
-      </section>
+      </section> : null}
 
       {drawer ? (
         <div className="contract-drawer-backdrop" role="presentation">
