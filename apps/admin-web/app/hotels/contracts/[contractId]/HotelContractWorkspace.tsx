@@ -139,6 +139,7 @@ type DrawerState =
   | null;
 
 type ContractWorkspaceTab = 'overview' | 'rates' | 'supplements' | 'terms';
+type ContractRenderProbeMode = 'shell' | 'overview' | 'rates' | 'supplements' | 'terms' | 'full';
 
 type HotelContractWorkspaceProps = {
   apiBaseUrl: string;
@@ -160,6 +161,9 @@ const RATE_PREVIEW_ROWS = 50;
 const CONTRACT_SAFE_MODE_THRESHOLD = 500;
 const CONTRACT_TAB_PAGE_SIZE = 50;
 const ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+const CONTRACT_RENDER_PROBE_STORAGE_KEY = 'hotelContractRenderProbe';
+const CONTRACT_RENDER_PROBE_QUERY_KEY = 'contractRenderProbe';
+const CONTRACT_RENDER_PROBE_MODES: ContractRenderProbeMode[] = ['shell', 'overview', 'rates', 'supplements', 'terms', 'full'];
 const CONTRACT_WORKSPACE_TABS: Array<{ id: ContractWorkspaceTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'rates', label: 'Rates' },
@@ -214,6 +218,25 @@ function measureContractWorkspace<T>(label: string, details: Record<string, unkn
     durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
   });
   return result;
+}
+
+function normalizeContractRenderProbeMode(value: string | null | undefined): ContractRenderProbeMode {
+  return CONTRACT_RENDER_PROBE_MODES.includes(value as ContractRenderProbeMode) ? (value as ContractRenderProbeMode) : 'shell';
+}
+
+function getInitialContractRenderProbeMode(): ContractRenderProbeMode {
+  if (typeof window === 'undefined') {
+    return 'shell';
+  }
+
+  const queryMode = new URLSearchParams(window.location.search).get(CONTRACT_RENDER_PROBE_QUERY_KEY);
+  if (queryMode) {
+    const mode = normalizeContractRenderProbeMode(queryMode);
+    window.localStorage.setItem(CONTRACT_RENDER_PROBE_STORAGE_KEY, mode);
+    return mode;
+  }
+
+  return normalizeContractRenderProbeMode(window.localStorage.getItem(CONTRACT_RENDER_PROBE_STORAGE_KEY));
 }
 
 function roomCategoryLabel(roomCategory: { name?: string | null; code?: string | null } | null | undefined) {
@@ -306,11 +329,14 @@ export function HotelContractWorkspace({
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
   if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
-    console.count('RoomCategoriesRender');
+    console.count('[hotel-contract-workspace] render');
   }
   const renderStartedAt = typeof performance !== 'undefined' ? performance.now() : 0;
   const [drawer, setDrawer] = useState<DrawerState>(null);
-  const [activeTab, setActiveTab] = useState<ContractWorkspaceTab>('overview');
+  const [renderProbeMode] = useState<ContractRenderProbeMode>(() => getInitialContractRenderProbeMode());
+  const [activeTab, setActiveTab] = useState<ContractWorkspaceTab>(() =>
+    renderProbeMode === 'rates' || renderProbeMode === 'supplements' || renderProbeMode === 'terms' ? renderProbeMode : 'overview',
+  );
   const [loadedRates, setLoadedRates] = useState<HotelRate[]>(rates);
   const [loadedSupplements, setLoadedSupplements] = useState<Supplement[]>(supplements);
   const [loadedMealPlans, setLoadedMealPlans] = useState<MealPlan[]>(mealPlans);
@@ -329,6 +355,16 @@ export function HotelContractWorkspace({
     supplements: false,
     terms: false,
   });
+  const roomCategoryCount = contract.hotel?._count?.roomCategories ?? (Array.isArray(contract.hotel?.roomCategories) ? contract.hotel.roomCategories.length : 0);
+  const rateCount = contract._count?.rates ?? (Array.isArray(rates) ? rates.length : 0);
+  const supplementCount = contract._count?.supplements ?? (Array.isArray(supplements) ? supplements.length : 0);
+  const mealPlanCount = contract._count?.mealPlans ?? (Array.isArray(mealPlans) ? mealPlans.length : 0);
+
+  const shouldRenderOverview = renderProbeMode === 'overview' || renderProbeMode === 'full';
+  const shouldRenderRates = renderProbeMode === 'rates' || renderProbeMode === 'full';
+  const shouldRenderSupplements = renderProbeMode === 'supplements' || renderProbeMode === 'full';
+  const shouldRenderTerms = renderProbeMode === 'terms' || renderProbeMode === 'full';
+  const shouldHydrateDrawerForms = renderProbeMode === 'full';
   const safeRates = useMemo(() => toSafeArray(loadedRates).filter((rate) => rate.contractId === contract.id), [contract.id, loadedRates]);
   const safeSupplements = useMemo(() => toSafeArray(loadedSupplements), [loadedSupplements]);
   const safeMealPlans = useMemo(() => toSafeArray(loadedMealPlans), [loadedMealPlans]);
@@ -348,9 +384,9 @@ export function HotelContractWorkspace({
       measureContractWorkspace(
         '[hotel-contract-workspace] room category filtering',
         { contractId: contract.id, roomCategories: roomCategories.length },
-        () => roomCategories.filter((roomCategory) => roomCategory.isActive),
+        () => (shouldRenderOverview ? roomCategories.filter((roomCategory) => roomCategory.isActive) : []),
       ),
-    [contract.id, roomCategories],
+    [contract.id, roomCategories, shouldRenderOverview],
   );
   const sortedRates = useMemo(
     () =>
@@ -358,37 +394,42 @@ export function HotelContractWorkspace({
         '[hotel-contract-workspace] rate sorting',
         { contractId: contract.id, rates: safeRates.length },
         () =>
-          [...safeRates].sort(
+          shouldRenderRates
+            ? [...safeRates].sort(
             (left, right) =>
               roomCategoryLabel(left.roomCategory).localeCompare(roomCategoryLabel(right.roomCategory)) ||
               String(left.seasonName || '').localeCompare(String(right.seasonName || '')) ||
               String(left.occupancyType || '').localeCompare(String(right.occupancyType || '')) ||
               String(left.mealPlan || '').localeCompare(String(right.mealPlan || '')),
-          ),
+              )
+            : [],
       ),
-    [contract.id, safeRates],
+    [contract.id, safeRates, shouldRenderRates],
   );
   const displayedRates = useMemo(() => limitRowsTo(sortedRates, RATE_PREVIEW_ROWS), [sortedRates]);
-  const displayedSupplements = useMemo(() => limitRows(safeSupplements), [safeSupplements]);
-  const displayedMealPlans = useMemo(() => limitRows(safeMealPlans), [safeMealPlans]);
-  const displayedCancellationRules = useMemo(() => limitRows(safeCancellationRules), [safeCancellationRules]);
+  const displayedSupplements = useMemo(() => (shouldRenderSupplements ? limitRows(safeSupplements) : []), [safeSupplements, shouldRenderSupplements]);
+  const displayedMealPlans = useMemo(() => (shouldRenderTerms ? limitRows(safeMealPlans) : []), [safeMealPlans, shouldRenderTerms]);
+  const displayedCancellationRules = useMemo(() => (shouldRenderTerms ? limitRows(safeCancellationRules) : []), [safeCancellationRules, shouldRenderTerms]);
   const usedRoomCategoryIds = useMemo(
     () =>
       measureContractWorkspace(
         '[hotel-contract-workspace] room category usage ids',
         { contractId: contract.id, rates: safeRates.length, supplements: safeSupplements.length },
-        () => new Set(safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || ''))),
+        () =>
+          shouldRenderOverview
+            ? new Set(safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || '')))
+            : new Set<string>(),
       ),
-    [contract.id, safeRates, safeSupplements],
+    [contract.id, safeRates, safeSupplements, shouldRenderOverview],
   );
   const usedRoomCategories = useMemo(
     () =>
       measureContractWorkspace(
         '[hotel-contract-workspace] room category grouping',
         { contractId: contract.id, roomCategories: roomCategories.length, usedIds: usedRoomCategoryIds.size },
-        () => roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id)),
+        () => (shouldRenderOverview ? roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id)) : []),
       ),
-    [contract.id, roomCategories, usedRoomCategoryIds],
+    [contract.id, roomCategories, shouldRenderOverview, usedRoomCategoryIds],
   );
   const visibleRoomCategories = useMemo(
     () => (usedRoomCategories.length > 0 ? usedRoomCategories : activeRoomCategories),
@@ -415,7 +456,8 @@ export function HotelContractWorkspace({
         { contractId: contract.id, rates: safeRates.length },
         () =>
           limitRowsTo(
-            Array.from(
+            shouldRenderOverview
+              ? Array.from(
               new Map(
                 safeRates.map((rate) => [
                   `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
@@ -426,15 +468,17 @@ export function HotelContractWorkspace({
                   },
                 ]),
               ).values(),
-            ),
+                )
+              : [],
             RATE_PREVIEW_ROWS,
           ),
       ),
-    [contract.id, contract.validFrom, contract.validTo, safeRates],
+    [contract.id, contract.validFrom, contract.validTo, safeRates, shouldRenderOverview],
   );
   const taxProfiles = useMemo(
     () =>
-      limitRows(
+      shouldRenderSupplements
+        ? limitRows(
         Array.from(
           new Map(
             safeRates.map((rate) => [
@@ -451,14 +495,15 @@ export function HotelContractWorkspace({
             ]),
           ).values(),
         ),
-      ),
-    [safeRates],
+          )
+        : [],
+    [safeRates, shouldRenderSupplements],
   );
 
   useEffect(() => {
     logContractWorkspaceTiming('[hotel-contract-workspace] render tab', {
       activeTab,
-      renderMs: Math.round(performance.now() - renderStartedAt),
+      renderMs: typeof performance !== 'undefined' ? Math.round(performance.now() - renderStartedAt) : 0,
       contractId: contract.id,
       largeContractSafeMode: isLargeContract,
       roomCategoriesReturned: roomCategories.length,
@@ -551,7 +596,7 @@ export function HotelContractWorkspace({
   }, [activeTab, apiBaseUrl, contract.id, isLargeContract, loadedTabs, manualTabLoads]);
 
   const formRoomCategories = useMemo(() => {
-    if (!drawer) {
+    if (!shouldHydrateDrawerForms || !drawer) {
       return displayedRoomCategories;
     }
     return measureContractWorkspace(
@@ -593,7 +638,7 @@ export function HotelContractWorkspace({
         return Array.from(byId.values());
       },
     );
-  }, [contract.hotel.id, contract.id, displayedRoomCategories, drawer, roomCategories, safeRates, safeSupplements]);
+  }, [contract.hotel.id, contract.id, displayedRoomCategories, drawer, roomCategories, safeRates, safeSupplements, shouldHydrateDrawerForms]);
 
   const formHotels = useMemo(
     () =>
@@ -609,6 +654,47 @@ export function HotelContractWorkspace({
         : [{ ...contract, hotel: { ...contract.hotel, roomCategories: formRoomCategories } }],
     [contract, contracts, formRoomCategories],
   );
+
+  if (renderProbeMode === 'shell') {
+    logContractWorkspaceTiming('[hotel-contract-workspace] emergency shell render', {
+      contractId: contract.id,
+      activeTab,
+      roomCategoryCount,
+      rateCount,
+      supplementCount,
+      mealPlanCount,
+      renderMs: typeof performance !== 'undefined' ? Math.round(performance.now() - renderStartedAt) : 0,
+    });
+
+    return (
+      <section className="contract-workspace" data-render-probe-mode={renderProbeMode}>
+        <section className="contract-hero-card">
+          <div>
+            <p className="eyebrow">Contract Summary</p>
+            <h2>{contract.name}</h2>
+          </div>
+          <div className="contract-meta-grid">
+            <div>
+              <span>Room categories</span>
+              <strong>{roomCategoryCount}</strong>
+            </div>
+            <div>
+              <span>Rates</span>
+              <strong>{rateCount}</strong>
+            </div>
+            <div>
+              <span>Supplements</span>
+              <strong>{supplementCount}</strong>
+            </div>
+            <div>
+              <span>Active tab</span>
+              <strong>{activeTab}</strong>
+            </div>
+          </div>
+        </section>
+      </section>
+    );
+  }
 
   function closeDrawer() {
     setDrawer(null);
@@ -734,17 +820,19 @@ export function HotelContractWorkspace({
             {contract.hotel.city ? `, ${contract.hotel.city}` : ''} | {contract.currency}
           </p>
         </div>
-        <div className="contract-hero-actions">
-          <button type="button" className="compact-button" onClick={() => setDrawer({ type: 'contract' })}>
-            Edit contract
-          </button>
-          <button type="button" className="primary-button" onClick={() => setDrawer({ type: 'rate' })}>
-            Add rate
-          </button>
-          <button type="button" className="compact-button" onClick={() => setDrawer({ type: 'supplement' })}>
-            Add supplement
-          </button>
-        </div>
+        {shouldHydrateDrawerForms ? (
+          <div className="contract-hero-actions">
+            <button type="button" className="compact-button" onClick={() => setDrawer({ type: 'contract' })}>
+              Edit contract
+            </button>
+            <button type="button" className="primary-button" onClick={() => setDrawer({ type: 'rate' })}>
+              Add rate
+            </button>
+            <button type="button" className="compact-button" onClick={() => setDrawer({ type: 'supplement' })}>
+              Add supplement
+            </button>
+          </div>
+        ) : null}
         <div className="contract-meta-grid">
           <div>
             <span>Valid from</span>
@@ -814,7 +902,7 @@ export function HotelContractWorkspace({
         </div>
       ) : null}
 
-      {activeTab === 'overview' ? <section id="overview" className="contract-section-grid">
+      {activeTab === 'overview' && shouldRenderOverview ? <section id="overview" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -861,7 +949,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {activeTab === 'rates' && (!isLargeContract || loadedTabs.rates || manualTabLoads.rates) ? <section id="rates" className="contract-workspace-card">
+      {activeTab === 'rates' && shouldRenderRates && (!isLargeContract || loadedTabs.rates || manualTabLoads.rates) ? <section id="rates" className="contract-workspace-card">
         <div className="section-header-inline">
           <div>
             <p className="eyebrow">Pricing</p>
@@ -930,7 +1018,7 @@ export function HotelContractWorkspace({
         )}
       </section> : null}
 
-      {activeTab === 'supplements' && (!isLargeContract || loadedTabs.supplements || manualTabLoads.supplements) ? <section id="supplements" className="contract-section-grid">
+      {activeTab === 'supplements' && shouldRenderSupplements && (!isLargeContract || loadedTabs.supplements || manualTabLoads.supplements) ? <section id="supplements" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -1030,7 +1118,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {activeTab === 'terms' && (!isLargeContract || loadedTabs.terms || manualTabLoads.terms) ? <section id="terms" className="contract-section-grid">
+      {activeTab === 'terms' && shouldRenderTerms && (!isLargeContract || loadedTabs.terms || manualTabLoads.terms) ? <section id="terms" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -1093,7 +1181,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {drawer ? (
+      {drawer && shouldHydrateDrawerForms ? (
         <div className="contract-drawer-backdrop" role="presentation">
           <aside className="contract-drawer" aria-label="Contract editor">
             <div className="contract-drawer-header">

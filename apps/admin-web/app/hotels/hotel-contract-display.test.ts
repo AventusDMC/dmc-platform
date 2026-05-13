@@ -120,7 +120,11 @@ describe('hotel contract display fallbacks', () => {
     assert.match(workspaceSource, /ROOM_CATEGORY_PREVIEW_ROWS = 20/);
     assert.match(workspaceSource, /RATE_PREVIEW_ROWS = 50/);
     assert.match(workspaceSource, /CONTRACT_SAFE_MODE_THRESHOLD = 500/);
-    assert.match(workspaceSource, /console\.count\('RoomCategoriesRender'\)/);
+    assert.match(workspaceSource, /CONTRACT_RENDER_PROBE_STORAGE_KEY = 'hotelContractRenderProbe'/);
+    assert.match(workspaceSource, /CONTRACT_RENDER_PROBE_QUERY_KEY = 'contractRenderProbe'/);
+    assert.match(workspaceSource, /renderProbeMode === 'shell'/);
+    assert.match(workspaceSource, /data-render-probe-mode=\{renderProbeMode\}/);
+    assert.match(workspaceSource, /console\.count\('\[hotel-contract-workspace\] render'\)/);
     assert.match(workspaceSource, /measureContractWorkspace\(\s*'\[hotel-contract-workspace\] room category grouping'/);
     assert.match(workspaceSource, /measureContractWorkspace\(\s*'\[hotel-contract-workspace\] form option hydration'/);
     assert.match(workspaceSource, /fetchWorkspaceJson<HotelRate\[\]>/);
