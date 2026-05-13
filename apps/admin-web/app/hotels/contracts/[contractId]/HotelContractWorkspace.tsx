@@ -156,6 +156,8 @@ const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GAL
 const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
 const MAX_CONTRACT_DETAIL_ROWS = 250;
 const CONTRACT_SAFE_MODE_THRESHOLD = 500;
+const CONTRACT_TAB_PAGE_SIZE = 50;
+const ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
 const CONTRACT_WORKSPACE_TABS: Array<{ id: ContractWorkspaceTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'rates', label: 'Rates' },
@@ -175,7 +177,7 @@ async function fetchWorkspaceJson<T>(url: string, label: string): Promise<T> {
   const startedAt = performance.now();
   const response = await fetch(url, { cache: 'no-store' });
   const text = await response.text();
-  console.log('[hotel-contract-workspace] lazy fetch', {
+  logContractWorkspaceTiming('[hotel-contract-workspace] lazy fetch', {
     label,
     url,
     durationMs: Math.round(performance.now() - startedAt),
@@ -187,6 +189,12 @@ async function fetchWorkspaceJson<T>(url: string, label: string): Promise<T> {
   }
 
   return text ? (JSON.parse(text) as T) : ([] as T);
+}
+
+function logContractWorkspaceTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
+    console.log(message, details);
+  }
 }
 
 function roomCategoryLabel(roomCategory: { name?: string | null; code?: string | null } | null | undefined) {
@@ -293,6 +301,12 @@ export function HotelContractWorkspace({
   });
   const [tabError, setTabError] = useState('');
   const [loadingTab, setLoadingTab] = useState<ContractWorkspaceTab | null>(null);
+  const [manualTabLoads, setManualTabLoads] = useState<Record<ContractWorkspaceTab, boolean>>({
+    overview: true,
+    rates: false,
+    supplements: false,
+    terms: false,
+  });
   const safeRates = useMemo(() => toSafeArray(loadedRates).filter((rate) => rate.contractId === contract.id), [contract.id, loadedRates]);
   const safeSupplements = useMemo(() => toSafeArray(loadedSupplements), [loadedSupplements]);
   const safeMealPlans = useMemo(() => toSafeArray(loadedMealPlans), [loadedMealPlans]);
@@ -381,7 +395,7 @@ export function HotelContractWorkspace({
   );
 
   useEffect(() => {
-    console.log('[hotel-contract-workspace] render tab', {
+    logContractWorkspaceTiming('[hotel-contract-workspace] render tab', {
       activeTab,
       renderMs: Math.round(performance.now() - renderStartedAt),
       contractId: contract.id,
@@ -411,7 +425,7 @@ export function HotelContractWorkspace({
     let cancelled = false;
 
     async function loadTabData() {
-      if (loadedTabs[activeTab]) {
+      if (loadedTabs[activeTab] || (isLargeContract && !manualTabLoads[activeTab])) {
         return;
       }
 
@@ -420,7 +434,7 @@ export function HotelContractWorkspace({
       try {
         if (activeTab === 'rates') {
           const nextRates = await fetchWorkspaceJson<HotelRate[]>(
-            `${apiBaseUrl}/hotel-rates?contractId=${encodeURIComponent(contract.id)}`,
+            `${apiBaseUrl}/hotel-rates?contractId=${encodeURIComponent(contract.id)}&limit=${CONTRACT_TAB_PAGE_SIZE}&offset=0`,
             'contract rates',
           );
           if (!cancelled) {
@@ -428,7 +442,7 @@ export function HotelContractWorkspace({
           }
         } else if (activeTab === 'supplements') {
           const nextSupplements = await fetchWorkspaceJson<Supplement[]>(
-            `${apiBaseUrl}/contracts/${encodeURIComponent(contract.id)}/supplements`,
+            `${apiBaseUrl}/contracts/${encodeURIComponent(contract.id)}/supplements?limit=${CONTRACT_TAB_PAGE_SIZE}&offset=0`,
             'contract supplements',
           );
           if (!cancelled) {
@@ -441,7 +455,7 @@ export function HotelContractWorkspace({
               `${apiBaseUrl}/hotel-contracts/${encodeURIComponent(contract.id)}/cancellation-policy`,
               'contract cancellation policy',
             ).catch((error) => {
-              console.log('[hotel-contract-workspace] cancellation policy lazy fetch skipped', {
+              logContractWorkspaceTiming('[hotel-contract-workspace] cancellation policy lazy fetch skipped', {
                 contractId: contract.id,
                 message: error instanceof Error ? error.message : String(error),
               });
@@ -473,7 +487,7 @@ export function HotelContractWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, apiBaseUrl, contract.id, loadedTabs]);
+  }, [activeTab, apiBaseUrl, contract.id, isLargeContract, loadedTabs, manualTabLoads]);
 
   const formRoomCategories = useMemo(() => {
     const byId = new Map<string, HotelRoomCategory>();
@@ -522,6 +536,20 @@ export function HotelContractWorkspace({
 
   function closeDrawer() {
     setDrawer(null);
+  }
+
+  function requestTabLoad(tab: ContractWorkspaceTab) {
+    logContractWorkspaceTiming('[hotel-contract-workspace] manual tab load requested', {
+      contractId: contract.id,
+      tab,
+      totals: {
+        roomCategories: totalRoomCategories,
+        rates: totalRates,
+        supplements: totalSupplements,
+        mealPlans: totalMealPlans,
+      },
+    });
+    setManualTabLoads((current) => ({ ...current, [tab]: true }));
   }
 
   function renderDrawerContent() {
@@ -683,6 +711,21 @@ export function HotelContractWorkspace({
         </div>
       ) : null}
 
+      {isLargeContract && !loadedTabs[activeTab] && !manualTabLoads[activeTab] ? (
+        <div className="contract-workspace-card">
+          <div className="section-header-inline">
+            <div>
+              <p className="eyebrow">Safe mode</p>
+              <h3>Load {activeTab} details</h3>
+              <p>This contract is large, so details are loaded only when requested.</p>
+            </div>
+            <button type="button" className="primary-button" onClick={() => requestTabLoad(activeTab)}>
+              Load first {CONTRACT_TAB_PAGE_SIZE} rows
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {loadingTab ? (
         <div className="contract-workspace-card">
           <p className="empty-state">Loading {loadingTab} details...</p>
@@ -742,7 +785,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {activeTab === 'rates' ? <section id="rates" className="contract-workspace-card">
+      {activeTab === 'rates' && (!isLargeContract || loadedTabs.rates || manualTabLoads.rates) ? <section id="rates" className="contract-workspace-card">
         <div className="section-header-inline">
           <div>
             <p className="eyebrow">Pricing</p>
@@ -811,7 +854,7 @@ export function HotelContractWorkspace({
         )}
       </section> : null}
 
-      {activeTab === 'supplements' ? <section id="supplements" className="contract-section-grid">
+      {activeTab === 'supplements' && (!isLargeContract || loadedTabs.supplements || manualTabLoads.supplements) ? <section id="supplements" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>
@@ -911,7 +954,7 @@ export function HotelContractWorkspace({
         </article>
       </section> : null}
 
-      {activeTab === 'terms' ? <section id="terms" className="contract-section-grid">
+      {activeTab === 'terms' && (!isLargeContract || loadedTabs.terms || manualTabLoads.terms) ? <section id="terms" className="contract-section-grid">
         <article className="contract-workspace-card">
           <div className="section-header-inline">
             <div>

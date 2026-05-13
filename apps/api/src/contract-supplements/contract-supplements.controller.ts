@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { AuthenticatedActor } from '../auth/auth.types';
 import {
   ContractChargeBasisValue,
@@ -25,13 +25,29 @@ type RequestWithActor = {
   authenticatedActor?: AuthenticatedActor;
 };
 
+const ENABLE_CONTRACT_SUPPLEMENT_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logContractSupplementTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_CONTRACT_SUPPLEMENT_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
+
 @Controller('hotel-contracts/:contractId/supplements')
 export class ContractSupplementsController {
   constructor(private readonly contractSupplementsService: ContractSupplementsService) {}
 
   @Get()
-  findAll(@Param('contractId') contractId: string) {
-    return this.contractSupplementsService.findAll(contractId);
+  findAll(@Param('contractId') contractId: string, @Query('limit') limit?: string, @Query('offset') offset?: string) {
+    logContractSupplementTiming('[contract-supplements] request:start', {
+      contractId,
+      limit: limit || null,
+      offset: offset || null,
+    });
+    return this.contractSupplementsService.findAll(contractId, {
+      limit: limit === undefined ? null : Number(limit),
+      offset: offset === undefined ? null : Number(offset),
+    });
   }
 
   @Post()

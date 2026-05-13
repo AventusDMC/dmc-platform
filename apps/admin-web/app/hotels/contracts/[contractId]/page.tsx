@@ -8,6 +8,13 @@ import { HotelContractWorkspace } from './HotelContractWorkspace';
 export const dynamic = 'force-dynamic';
 
 const API_BASE_URL = '/api';
+const ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logContractWorkspaceTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
 
 type HotelRoomCategory = {
   id: string;
@@ -171,7 +178,7 @@ async function getContract(contractId: string) {
     cache: 'no-store',
     allow404: true,
   });
-  console.log('[hotel-contract-workspace] contract summary fetched', {
+  logContractWorkspaceTiming('[hotel-contract-workspace] contract summary fetched', {
     contractId,
     durationMs: Date.now() - startedAt,
     payloadBytes: contract ? JSON.stringify(contract).length : 0,
@@ -184,50 +191,9 @@ async function getContract(contractId: string) {
   return contract;
 }
 
-async function getHotels() {
-  return adminPageFetchJson<Hotel[]>(`${API_BASE_URL}/hotels`, 'Hotel contract workspace hotels', {
-    cache: 'no-store',
-  });
-}
-
-async function getContracts() {
-  return adminPageFetchJson<HotelContract[]>(`${API_BASE_URL}/hotel-contracts`, 'Hotel contract workspace contracts', {
-    cache: 'no-store',
-  });
-}
-
-async function getRates(contractId: string) {
-  return adminPageFetchJson<HotelRate[]>(
-    `${API_BASE_URL}/hotel-rates?contractId=${encodeURIComponent(contractId)}`,
-    'Hotel contract workspace rates',
-    {
-    cache: 'no-store',
-    },
-  );
-}
-
 async function getSeasons() {
   return adminPageFetchJson<Season[]>(`${API_BASE_URL}/seasons`, 'Hotel contract workspace seasons', {
     cache: 'no-store',
-  });
-}
-
-async function getSupplements(contractId: string) {
-  return adminPageFetchJson<Supplement[]>(`${API_BASE_URL}/contracts/${contractId}/supplements`, 'Hotel contract workspace supplements', {
-    cache: 'no-store',
-  });
-}
-
-async function getMealPlans(contractId: string) {
-  return adminPageFetchJson<MealPlan[]>(`${API_BASE_URL}/contracts/${contractId}/meal-plans`, 'Hotel contract workspace meal plans', {
-    cache: 'no-store',
-  });
-}
-
-async function getCancellationPolicy(contractId: string) {
-  return adminPageFetchJson<CancellationPolicy>(`${API_BASE_URL}/hotel-contracts/${contractId}/cancellation-policy`, 'Hotel contract workspace cancellation policy', {
-    cache: 'no-store',
-    allow404: true,
   });
 }
 

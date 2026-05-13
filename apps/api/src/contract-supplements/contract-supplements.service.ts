@@ -31,6 +31,14 @@ type SupplementRecord = {
   } | null;
 };
 
+const ENABLE_CONTRACT_SUPPLEMENT_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logContractSupplementTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_CONTRACT_SUPPLEMENT_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
+
 const SUPPLEMENT_TYPES: ContractSupplementTypeValue[] = [
   'EXTRA_BREAKFAST',
   'EXTRA_LUNCH',
@@ -48,10 +56,19 @@ export class ContractSupplementsService {
     return (this.prisma as any).hotelContractSupplement;
   }
 
-  async findAll(contractId: string) {
+  async findAll(contractId: string, options: { limit?: number | null; offset?: number | null } = {}) {
+    const startedAt = Date.now();
+    const limit = this.normalizePageLimit(options.limit);
+    const offset = this.normalizePageOffset(options.offset);
+    logContractSupplementTiming('[contract-supplements] findAll:start', {
+      contractId,
+      limit,
+      offset,
+    });
     await this.ensureContractExists(contractId);
 
-    return this.supplementModel.findMany({
+    const queryStartedAt = Date.now();
+    const rows = await this.supplementModel.findMany({
       where: {
         hotelContractId: contractId,
       },
@@ -59,7 +76,16 @@ export class ContractSupplementsService {
         roomCategory: true,
       },
       orderBy: [{ type: 'asc' }, { roomCategoryId: 'asc' }, { createdAt: 'asc' }],
+      take: limit,
+      skip: offset,
     });
+    logContractSupplementTiming('[contract-supplements] findAll:done', {
+      contractId,
+      rowsReturned: rows.length,
+      queryMs: Date.now() - queryStartedAt,
+      durationMs: Date.now() - startedAt,
+    });
+    return rows;
   }
 
   async create(contractId: string, data: CreateContractSupplementDto, actor?: AuditActor) {
@@ -166,6 +192,22 @@ export class ContractSupplementsService {
     });
 
     return throwIfNotFound(supplement, 'Contract supplement');
+  }
+
+  private normalizePageLimit(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 50;
+    }
+    return Math.min(250, Math.floor(parsed));
+  }
+
+  private normalizePageOffset(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+    return Math.floor(parsed);
   }
 
   private async normalizePayload(contractId: string, hotelId: string, contractCurrency: string, data: CreateContractSupplementDto) {

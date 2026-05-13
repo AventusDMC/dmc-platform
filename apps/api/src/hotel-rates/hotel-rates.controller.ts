@@ -32,13 +32,30 @@ type CreateHotelRateBody = {
 
 type UpdateHotelRateBody = Partial<CreateHotelRateBody>;
 
+const ENABLE_HOTEL_RATE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logHotelRateTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_HOTEL_RATE_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
+
 @Controller('hotel-rates')
 export class HotelRatesController {
   constructor(private readonly hotelRatesService: HotelRatesService) {}
 
   @Get()
-  findAll(@Query('contractId') contractId?: string) {
-    return this.hotelRatesService.findAll({ contractId: contractId || null });
+  findAll(@Query('contractId') contractId?: string, @Query('limit') limit?: string, @Query('offset') offset?: string) {
+    logHotelRateTiming('[hotel-rates] request:start', {
+      contractId: contractId || null,
+      limit: limit || null,
+      offset: offset || null,
+    });
+    return this.hotelRatesService.findAll({
+      contractId: contractId || null,
+      limit: limit === undefined ? null : Number(limit),
+      offset: offset === undefined ? null : Number(offset),
+    });
   }
 
   @Public()

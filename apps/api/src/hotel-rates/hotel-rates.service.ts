@@ -35,6 +35,8 @@ type UpdateHotelRateInput = Partial<CreateHotelRateInput>;
 
 type FindHotelRatesOptions = {
   contractId?: string | null;
+  limit?: number | null;
+  offset?: number | null;
 };
 
 type LookupHotelRateInput = {
@@ -85,14 +87,31 @@ type ContractSupplementPolicy = {
   notes?: string | null;
 };
 
+const ENABLE_HOTEL_RATE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
+
+function logHotelRateTiming(message: string, details: Record<string, unknown>) {
+  if (ENABLE_HOTEL_RATE_TIMING_LOGS) {
+    console.log(message, details);
+  }
+}
+
 @Injectable()
 export class HotelRatesService {
   private readonly hotelPricingResolver = new HotelPricingResolver();
 
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(options: FindHotelRatesOptions = {}) {
-    return this.prisma.hotelRate.findMany({
+  async findAll(options: FindHotelRatesOptions = {}) {
+    const startedAt = Date.now();
+    const limit = this.normalizePageLimit(options.limit);
+    const offset = this.normalizePageOffset(options.offset);
+    logHotelRateTiming('[hotel-rates] findAll:start', {
+      contractId: options.contractId || null,
+      limit,
+      offset,
+    });
+    const queryStartedAt = Date.now();
+    const rows = await this.prisma.hotelRate.findMany({
       where: options.contractId
         ? {
             contractId: options.contractId,
@@ -114,7 +133,16 @@ export class HotelRatesService {
           createdAt: 'desc',
         },
       ],
+      take: limit,
+      skip: offset,
     });
+    logHotelRateTiming('[hotel-rates] findAll:done', {
+      contractId: options.contractId || null,
+      rowsReturned: rows.length,
+      queryMs: Date.now() - queryStartedAt,
+      durationMs: Date.now() - startedAt,
+    });
+    return rows;
   }
 
   async findOne(id: string) {
@@ -871,6 +899,22 @@ export class HotelRatesService {
       .toUpperCase()
       .replace(/\bSEASON\b/g, '')
       .replace(/[^A-Z0-9]/g, '');
+  }
+
+  private normalizePageLimit(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 50;
+    }
+    return Math.min(250, Math.floor(parsed));
+  }
+
+  private normalizePageOffset(value: unknown) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+    return Math.floor(parsed);
   }
 
   private isExcludedAutomaticSupplement(supplement: ContractSupplementPolicy) {
