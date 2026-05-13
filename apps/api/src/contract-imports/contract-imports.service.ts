@@ -3550,7 +3550,7 @@ export class ContractImportsService {
 
     const rates = preview.rates || [];
     const contractCurrency = this.optionalString(preview.contract.currency).toUpperCase();
-    const supportedOccupancies = new Set(['SGL', 'DBL', 'TPL', 'TRP', 'QUAD', 'UNIT', 'SGL_SUPPLEMENT']);
+    const supportedOccupancies = new Set(['SGL', 'DBL', 'TPL', 'TRP', 'QUAD', 'UNIT', 'SINGLE_SUPPLEMENT']);
     const roomNames = (preview.roomCategories || []).map((category) => this.optionalString(category.name)).filter(Boolean);
     const roomNameCounts = this.countNormalizedValues(roomNames);
     for (const [roomName, count] of roomNameCounts.entries()) {
@@ -3702,7 +3702,7 @@ export class ContractImportsService {
     if (normalized === 'TRIPLE') return 'TPL';
     if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
     if (normalized === 'SINGLE') return 'SGL';
-    if (normalized === 'SINGLE_SUPPLEMENT') return 'SGL_SUPPLEMENT';
+    if (normalized === 'SGL_SUPPLEMENT') return 'SINGLE_SUPPLEMENT';
     return normalized;
   }
 
@@ -3716,7 +3716,8 @@ export class ContractImportsService {
       if (seasonAmbiguous) {
         warnings.push({ severity: 'warning', field: `${field}.season`, message: `Ambiguous season for rate ${index + 1}` });
       }
-      if (!this.optionalString(rate.occupancyType) || !['SGL', 'DBL', 'TPL', 'TRP'].includes(this.optionalString(rate.occupancyType).toUpperCase())) {
+      const occupancy = this.normalizeOccupancyForValidation(rate.occupancyType);
+      if (!occupancy || !['SGL', 'DBL', 'TPL', 'TRP', 'QUAD', 'UNIT', 'SINGLE_SUPPLEMENT'].includes(occupancy)) {
         warnings.push({ severity: 'warning', field: `${field}.occupancyType`, message: `Unclear occupancy for rate ${index + 1}` });
       }
       if (!this.optionalString(rate.mealPlan)) {
@@ -4500,7 +4501,7 @@ export class ContractImportsService {
         const currency = (this.templateCell(row, 'Currency') || contractCurrency).trim().toUpperCase();
         const amount = this.parseNumber(this.templateCell(row, 'Amount'));
         if (!typeRaw) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.SupplementType`, message: 'SupplementType is required.' });
-        if (seasonCode && !seasonByCode.has(seasonCode)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.SeasonCode`, message: `Unknown SeasonCode: ${seasonCode}` });
+        if (seasonCode && !this.isGlobalSeasonScope(seasonCode) && !seasonByCode.has(seasonCode)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.SeasonCode`, message: `Unknown SeasonCode: ${seasonCode}` });
         if (roomCode && !roomByCode.has(roomCode)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.RoomCode`, message: `Unknown RoomCode: ${roomCode}` });
         if (amount !== undefined && amount < 0) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.Amount`, message: 'Amount cannot be negative.' });
         if (currency && !this.isSupportedCurrency(currency)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.Currency`, message: `Unknown currency: ${currency}` });
@@ -4642,6 +4643,10 @@ export class ContractImportsService {
 
   private normalizedHotelCode(row: Record<string, string>) {
     return (this.templateCell(row, 'HotelCode') || this.templateCell(row, 'PropertyCode')).trim().toUpperCase();
+  }
+
+  private isGlobalSeasonScope(value: unknown) {
+    return ['ALL_SEASONS', 'GLOBAL', 'ANY'].includes(this.optionalString(value).toUpperCase());
   }
 
   private normalizedHotelName(row: Record<string, string>) {
@@ -5137,7 +5142,7 @@ export class ContractImportsService {
     if (normalized === 'TRP') return 'TRP';
     if (normalized === 'TPL') return 'TRP';
     if (normalized === 'SINGLE') return 'SGL';
-    if (normalized === 'SINGLE_SUPPLEMENT') return 'SGL_SUPPLEMENT';
+    if (normalized === 'SGL_SUPPLEMENT' || normalized === 'SINGLE_SUPPLEMENT') return 'SINGLE_SUPPLEMENT';
     if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
     return normalized || 'DBL';
   }

@@ -910,10 +910,74 @@ test('normalized workbook accepts operational occupancy and supplement nightly b
   });
   const warnings = buildWarnings(service, preview);
 
-  assert.deepEqual(preview.rates.map((rate: any) => rate.occupancyType), ['UNIT', 'SGL_SUPPLEMENT']);
+  assert.deepEqual(preview.rates.map((rate: any) => rate.occupancyType), ['UNIT', 'SINGLE_SUPPLEMENT']);
   assert.deepEqual(preview.supplements.map((supplement: any) => supplement.chargeBasis), ['PER_ROOM_NIGHT', 'PER_PERSON_NIGHT']);
   assert.equal(warnings.some((warning) => warning.field.includes('occupancyType') && warning.severity === 'blocker'), false);
+  assert.equal(warnings.some((warning) => /Unclear occupancy/.test(warning.message)), false);
   assert.equal(warnings.some((warning) => warning.field.includes('chargeBasis') && warning.severity === 'blocker'), false);
+});
+
+test('normalized workbook accepts global supplement season scopes without duplicating rows', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelName: 'Global Scope Hotel', SupplierName: 'Global Supplier', ContractName: 'Global 2026', ContractYear: 2026, Currency: 'USD', City: 'Petra', Country: 'Jordan', Category: '5 Star', ValidFrom: '2026-01-01', ValidTo: '2026-12-31', ContractStatus: 'Draft', SourceReference: 'Excel' },
+    ]),
+    'CONTRACT',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { SeasonCode: 'LOW', SeasonName: 'Low', StartDate: '2026-01-01', EndDate: '2026-03-31', SeasonType: 'LOW', Notes: '' },
+      { SeasonCode: 'HIGH', SeasonName: 'High', StartDate: '2026-04-01', EndDate: '2026-12-31', SeasonType: 'HIGH', Notes: '' },
+    ]),
+    'SEASONS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ RoomCode: 'DLX', RoomName: 'Deluxe Room', RoomType: 'STANDARD', Bedding: '', MaxAdults: 2, MaxChildren: 1, Notes: '' }]),
+    'ROOM_CATEGORIES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 120, Currency: 'USD', MinStay: '', Notes: '' }]),
+    'RATES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { SupplementType: 'RESORT_FEE', SeasonCode: 'ALL_SEASONS', RoomCode: 'DLX', MealPlan: 'BB', Basis: 'PER_ROOM_NIGHT', Amount: 12, Currency: 'USD', Mandatory: 'Yes', Notes: 'Applies hotel-wide' },
+      { SupplementType: 'SERVICE_FEE', SeasonCode: 'GLOBAL', RoomCode: '', MealPlan: '', Basis: 'PER_STAY', Amount: 8, Currency: 'USD', Mandatory: 'No', Notes: '' },
+      { SupplementType: 'ADMIN_FEE', SeasonCode: 'ANY', RoomCode: '', MealPlan: '', Basis: 'PER_ROOM', Amount: 5, Currency: 'USD', Mandatory: 'No', Notes: '' },
+    ]),
+    'SUPPLEMENTS',
+  );
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['PolicyName', 'DaysBeforeArrival', 'PenaltyType', 'PenaltyValue', 'Notes'] }), 'CANCELLATION_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['ChildAgeFrom', 'ChildAgeTo', 'SharingBasis', 'RateType', 'RateValue', 'Notes'] }), 'CHILD_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ Notes: 'Reference only' }]), 'NOTES');
+  const filePath = join(tmpdir(), `global-scope-normalized-hotel-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: null,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'global-scope-normalized-hotel-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.supplements.length, 3);
+  assert.deepEqual(
+    preview.supplements.map((supplement: any) => supplement.notes?.match(/Season: (ALL_SEASONS|GLOBAL|ANY)/)?.[1]),
+    ['ALL_SEASONS', 'GLOBAL', 'ANY'],
+  );
+  assert.equal(warnings.some((warning) => warning.field.includes('SUPPLEMENTS') && warning.field.includes('SeasonCode')), false);
 });
 
 test('normalized hotel workbook blocks unsafe spreadsheet rows before import', () => {
