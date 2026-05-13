@@ -229,7 +229,7 @@ type ContractPreview = {
     detected: boolean;
     propertyCount: number;
     hotels: ContractPreview[];
-    normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number }>;
+  normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number; roomCount?: number; supplementCount?: number; seasonCount?: number }>;
   };
   meta?: Record<string, unknown>;
   hotelName?: string;
@@ -748,6 +748,11 @@ export class ContractImportsService {
     isMultiPropertyChild?: boolean;
   }): ContractPreview | null {
     const workbook = this.readWorkbook(input.filePath, input.fileName);
+    const normalizedWorkbookPreview = this.extractNormalizedHotelWorkbookPreview(input, workbook);
+    if (normalizedWorkbookPreview) {
+      return normalizedWorkbookPreview;
+    }
+
     const ratesSheet = this.getWorkbookSheet(workbook, 'Rates');
     if (!workbook || !ratesSheet) {
       return null;
@@ -776,7 +781,10 @@ export class ContractImportsService {
         return {
           hotelName: hotel.hotel?.name || hotel.hotelName || hotel.supplier.name,
           fileName: `${this.safeExportFileName(hotel.contract.name || hotel.hotel?.name || 'hotel-contract')}-extracted-contract.xlsx`,
+          roomCount: hotel.roomCategories.length,
           rateCount: hotel.rates.length,
+          supplementCount: hotel.supplements.length,
+          seasonCount: hotel.seasons.length,
           warningCount: hotelWarnings.length + (hotel.warnings?.length || 0),
         };
       });
@@ -991,6 +999,146 @@ export class ContractImportsService {
     };
   }
 
+  private appendNormalizedHotelWorkbookSheets(workbook: any, preview: ContractPreview) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const xlsx = require('xlsx');
+    const contractCurrency = preview.contract.currency || 'USD';
+    const codeFrom = (value: unknown, fallback: string) => {
+      const normalized = this.optionalString(value)
+        .replace(/[^a-z0-9]+/gi, '_')
+        .replace(/^_+|_+$/g, '')
+        .toUpperCase();
+      return (normalized || fallback).slice(0, 20);
+    };
+    const uniqueCode = (base: string, used: Set<string>) => {
+      let code = base || 'CODE';
+      let suffix = 2;
+      while (used.has(code)) {
+        code = `${base.slice(0, Math.max(1, 18 - String(suffix).length))}_${suffix}`;
+        suffix += 1;
+      }
+      used.add(code);
+      return code;
+    };
+    const seasonCodes = new Map<string, string>();
+    const usedSeasonCodes = new Set<string>();
+    const seasons: Array<{ name: string; validFrom?: string | null; validTo?: string | null; uncertain?: boolean }> = (preview.seasons || []).length
+      ? preview.seasons
+      : Array.from(new Set((preview.rates || []).map((rate) => rate.seasonName || 'Imported'))).map((name) => {
+          const matchingRate = preview.rates.find((rate) => (rate.seasonName || 'Imported') === name);
+          return { name, validFrom: matchingRate?.seasonFrom || preview.contract.validFrom, validTo: matchingRate?.seasonTo || preview.contract.validTo };
+        });
+    const seasonRows = seasons.map((season, index) => {
+      const code = uniqueCode(codeFrom((season as any).code || season.name, `SEASON_${index + 1}`), usedSeasonCodes);
+      seasonCodes.set(season.name || `Season ${index + 1}`, code);
+      return {
+        SeasonCode: code,
+        SeasonName: season.name || code,
+        StartDate: season.validFrom || preview.contract.validFrom || '',
+        EndDate: season.validTo || preview.contract.validTo || '',
+        SeasonType: /high/i.test(season.name || '') ? 'HIGH' : /low/i.test(season.name || '') ? 'LOW' : 'STANDARD',
+        Notes: season.uncertain ? 'Needs review' : '',
+      };
+    });
+
+    const roomCodes = new Map<string, string>();
+    const usedRoomCodes = new Set<string>();
+    const roomSource: Array<{ name: string; code?: string | null; description?: string | null; uncertain?: boolean }> = (preview.roomCategories || []).length
+      ? preview.roomCategories
+      : Array.from(new Set((preview.rates || []).map((rate) => rate.roomType).filter(Boolean))).map((name) => ({ name: name as string }));
+    const roomRows = roomSource.map((room, index) => {
+      const code = uniqueCode(codeFrom(room.code || room.name, `ROOM_${index + 1}`), usedRoomCodes);
+      roomCodes.set(room.name || `Room ${index + 1}`, code);
+      return {
+        RoomCode: code,
+        RoomName: room.name || code,
+        RoomType: '',
+        Bedding: '',
+        MaxAdults: '',
+        MaxChildren: '',
+        Notes: room.description || (room.uncertain ? 'Needs review' : ''),
+      };
+    });
+
+    const rateRows = (preview.rates || []).map((rate) => {
+      const seasonCode =
+        seasonCodes.get(rate.seasonName || '') ||
+        uniqueCode(codeFrom(rate.seasonName || 'IMPORTED', `SEASON_${seasonCodes.size + 1}`), usedSeasonCodes);
+      if (rate.seasonName && !seasonCodes.has(rate.seasonName)) seasonCodes.set(rate.seasonName, seasonCode);
+      const roomCode =
+        roomCodes.get(rate.roomType || '') ||
+        uniqueCode(codeFrom(rate.roomType || 'ROOM', `ROOM_${roomCodes.size + 1}`), usedRoomCodes);
+      if (rate.roomType && !roomCodes.has(rate.roomType)) roomCodes.set(rate.roomType, roomCode);
+      return {
+        SeasonCode: seasonCode,
+        RoomCode: roomCode,
+        Occupancy: rate.occupancyType || 'DBL',
+        MealPlan: rate.mealPlan || 'BB',
+        PricingBasis: rate.normalizedPricingBasis || this.normalizedNightlyPricingBasis(rate.pricingBasis || 'PER_ROOM'),
+        Cost: rate.cost ?? '',
+        Currency: rate.currency || contractCurrency,
+        MinStay: '',
+        Notes: rate.notes || '',
+      };
+    });
+
+    const supplementRows = (preview.supplements || []).map((supplement) => ({
+      SupplementType: supplement.name || supplement.type || 'Supplement',
+      SeasonCode: '',
+      RoomCode: '',
+      MealPlan: '',
+      Basis: supplement.chargeBasis || 'PER_NIGHT',
+      Amount: supplement.amount ?? '',
+      Currency: supplement.currency || contractCurrency,
+      Mandatory: supplement.isMandatory ? 'Yes' : 'No',
+      Notes: supplement.notes || '',
+    }));
+    const cancellationRows = (preview.cancellationPolicy?.rules || []).map((rule, index) => ({
+      PolicyName: rule.notes?.split('|')[0]?.trim() || `Cancellation ${index + 1}`,
+      DaysBeforeArrival: rule.daysBefore ?? rule.windowFromValue ?? '',
+      PenaltyType: rule.penaltyType === 'NIGHTS' ? 'NIGHT' : rule.penaltyType || '',
+      PenaltyValue: rule.penaltyValue ?? rule.penaltyPercent ?? '',
+      Notes: rule.notes || '',
+    }));
+    const childRows = (preview.childPolicy?.bands || []).map((band) => ({
+      ChildAgeFrom: band.minAge,
+      ChildAgeTo: band.maxAge,
+      SharingBasis: '',
+      RateType: band.chargeBasis,
+      RateValue: band.chargeValue ?? '',
+      Notes: band.notes || band.label || '',
+    }));
+    const noteRows = (preview.policies || []).map((policy) => ({ Notes: `${policy.name}: ${policy.value}` }));
+
+    xlsx.utils.book_append_sheet(
+      workbook,
+      xlsx.utils.json_to_sheet([
+        {
+          HotelName: preview.hotel?.name || preview.hotelName || '',
+          SupplierName: preview.supplier.name || '',
+          ContractName: preview.contract.name || '',
+          ContractYear: preview.contract.year || '',
+          Currency: contractCurrency,
+          City: preview.hotel?.city || '',
+          Country: 'Jordan',
+          Category: preview.hotel?.category || '',
+          ValidFrom: preview.contract.validFrom || '',
+          ValidTo: preview.contract.validTo || '',
+          ContractStatus: 'Draft',
+          SourceReference: String(preview.meta?.sourceReference || ''),
+        },
+      ]),
+      'CONTRACT',
+    );
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(seasonRows), 'SEASONS');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(roomRows), 'ROOM_CATEGORIES');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rateRows), 'RATES');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(supplementRows), 'SUPPLEMENTS');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(cancellationRows), 'CANCELLATION_POLICY');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(childRows), 'CHILD_POLICY');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(noteRows), 'NOTES');
+  }
+
   private generateExcel(preview: ContractPreview, sourceName: string): { buffer: Buffer; fileName: string; contentType?: string } {
     if (preview.multiProperty?.detected && preview.multiProperty.hotels.length > 0) {
       const files = preview.multiProperty.hotels.map((hotelPreview) => {
@@ -1010,6 +1158,7 @@ export class ContractImportsService {
     const xlsx = require('xlsx');
     const workbook = xlsx.utils.book_new();
     const hotelName = preview.hotel?.name || preview.hotelName || preview.supplier.name || '';
+    this.appendNormalizedHotelWorkbookSheets(workbook, preview);
     const rates = preview.rates.map((rate) => {
       const season = this.splitSeasonName(rate.seasonName);
       return {
@@ -4070,9 +4219,509 @@ export class ContractImportsService {
     }
   }
 
+  private extractNormalizedHotelWorkbookPreview(
+    input: {
+      contractType: ContractImportType;
+      supplierName: string;
+      contractYear: number | null;
+      validFrom: Date | null;
+      validTo: Date | null;
+      filePath: string;
+      fileName: string;
+    },
+    workbook: any,
+    selectedHotel?: { code?: string; name: string },
+  ): ContractPreview | null {
+    const contractSheet = this.getWorkbookSheet(workbook, 'CONTRACT') || this.getWorkbookSheet(workbook, 'CONTRACTS');
+    const ratesSheet = this.getWorkbookSheet(workbook, 'RATES');
+    if (!workbook || !contractSheet || !ratesSheet) {
+      return null;
+    }
+
+    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [];
+    const requiredTabs = ['SEASONS', 'ROOM_CATEGORIES', 'RATES', 'SUPPLEMENTS', 'CANCELLATION_POLICY', 'CHILD_POLICY', 'NOTES'];
+    if (!contractSheet) {
+      warnings.push({ severity: 'blocker', field: 'tabs.CONTRACT', message: 'Normalized workbook is missing required tab: CONTRACT or CONTRACTS' });
+    }
+    for (const tab of requiredTabs) {
+      if (!this.getWorkbookSheet(workbook, tab)) {
+        warnings.push({ severity: 'blocker', field: `tabs.${tab}`, message: `Normalized workbook is missing required tab: ${tab}` });
+      }
+    }
+
+    const allContractRows = this.sheetToObjects(workbook, contractSheet).filter((row) => this.rowHasValues(row));
+    const allSeasonRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'SEASONS')).filter((row) => this.rowHasValues(row));
+    const allRoomRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'ROOM_CATEGORIES')).filter((row) => this.rowHasValues(row));
+    const allRateRows = this.sheetToObjects(workbook, ratesSheet).filter((row) => this.rowHasValues(row));
+    const allSupplementRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'SUPPLEMENTS')).filter((row) => this.rowHasValues(row));
+    const allCancellationRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'CANCELLATION_POLICY')).filter((row) => this.rowHasValues(row));
+    const allChildRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'CHILD_POLICY')).filter((row) => this.rowHasValues(row));
+    const allNoteRows = this.sheetToObjects(workbook, this.getWorkbookSheet(workbook, 'NOTES')).filter((row) => this.rowHasValues(row));
+
+    const detectedHotels = this.detectNormalizedWorkbookHotels([
+      ...allContractRows,
+      ...allSeasonRows,
+      ...allRoomRows,
+      ...allRateRows,
+      ...allSupplementRows,
+      ...allCancellationRows,
+      ...allChildRows,
+      ...allNoteRows,
+    ]);
+    if (!selectedHotel && detectedHotels.length > 1) {
+      const hotels = detectedHotels
+        .map((hotel) => this.extractNormalizedHotelWorkbookPreview(input, workbook, hotel))
+        .filter((preview): preview is ContractPreview => Boolean(preview));
+      const normalizedWorkbooks = hotels.map((hotel) => {
+        const hotelWarnings = this.buildExtractionQcWarnings(hotel);
+        return {
+          hotelName: hotel.hotel?.name || hotel.hotelName || hotel.supplier.name,
+          fileName: `${this.safeExportFileName(hotel.contract.name || hotel.hotel?.name || 'hotel-contract')}-normalized-contract.xlsx`,
+          roomCount: hotel.roomCategories.length,
+          rateCount: hotel.rates.length,
+          supplementCount: hotel.supplements.length,
+          seasonCount: hotel.seasons.length,
+          warningCount: hotelWarnings.length + (hotel.warnings?.length || 0),
+        };
+      });
+      const supplierName = input.supplierName || this.templateCell(allContractRows[0] || {}, 'SupplierName') || this.guessNameFromFile(input.fileName);
+      return this.addPreviewAliases({
+        contractType: ContractImportType.HOTEL,
+        supplier: { name: supplierName, isNew: true },
+        contract: {
+          name: `${supplierName} Multi-Hotel Workbook`,
+          year: input.contractYear || new Date().getFullYear(),
+          validFrom: input.validFrom ? this.isoDate(input.validFrom) : null,
+          validTo: input.validTo ? this.isoDate(input.validTo) : null,
+          currency: (this.templateCell(allContractRows[0] || {}, 'Currency') || 'USD').trim().toUpperCase(),
+        },
+        hotel: { name: `${detectedHotels.length} hotels detected`, city: '', category: 'Multi-hotel workbook' },
+        roomCategories: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.roomCategories || [])),
+        seasons: this.mergePreviewArrayByName(hotels.flatMap((hotel) => hotel.seasons || [])),
+        rates: hotels.flatMap((hotel) => hotel.rates.map((rate) => ({ ...rate, notes: [hotel.hotel?.name, rate.notes].filter(Boolean).join(' | ') }))),
+        mealPlans: this.mergePreviewArrayByCode(hotels.flatMap((hotel) => hotel.mealPlans || [])),
+        taxes: [],
+        supplements: hotels.flatMap((hotel) => hotel.supplements.map((supplement) => ({ ...supplement, notes: [hotel.hotel?.name, supplement.notes].filter(Boolean).join(' | ') }))),
+        policies: [
+          { name: 'Multi-hotel workbook', value: 'Select one hotel before import. Multiple hotels cannot be imported in one activation.' },
+          { name: 'Source file', value: input.fileName },
+        ],
+        ratePolicies: [],
+        cancellationPolicy: null,
+        cancellationPolicies: [],
+        childPolicy: null,
+        multiProperty: {
+          detected: true,
+          propertyCount: hotels.length,
+          hotels,
+          normalizedWorkbooks,
+        },
+        meta: {
+          extractionMode: 'NORMALIZED_EXCEL_WORKBOOK_MULTI_HOTEL',
+        },
+        parserDiagnostics: {
+          source: 'workbook',
+          rowCount: allContractRows.length + allSeasonRows.length + allRoomRows.length + allRateRows.length + allSupplementRows.length,
+          parsedTextLineCount: 0,
+          first20Lines: [],
+          detectedHotels: detectedHotels.map((hotel) => hotel.name),
+          detectedTables: ['CONTRACTS', ...requiredTabs]
+            .filter((tab) => this.getWorkbookSheet(workbook, tab) || (tab === 'CONTRACTS' && contractSheet))
+            .map((tab) => ({ label: tab, confidence: 1 })),
+          skippedSections: [],
+          confidence: 0.9,
+          warnings: ['Multi-hotel workbook requires one hotel selection before import.'],
+          extractionMode: 'WORKBOOK',
+        },
+        warnings: [
+          {
+            severity: 'blocker',
+            field: 'multiProperty',
+            message: 'This workbook contains multiple hotels. Select one hotel and import only that filtered hotel contract.',
+          },
+        ],
+        missingFields: [],
+        uncertainFields: ['hotel selection'],
+      });
+    }
+
+    const contractRows = this.filterNormalizedRowsForHotel(allContractRows, selectedHotel);
+    const seasonRows = this.filterNormalizedRowsForHotel(allSeasonRows, selectedHotel);
+    const roomRows = this.filterNormalizedRowsForHotel(allRoomRows, selectedHotel);
+    const rateRows = this.filterNormalizedRowsForHotel(allRateRows, selectedHotel);
+    const supplementRows = this.filterNormalizedRowsForHotel(allSupplementRows, selectedHotel);
+    const cancellationRows = this.filterNormalizedRowsForHotel(allCancellationRows, selectedHotel);
+    const childRows = this.filterNormalizedRowsForHotel(allChildRows, selectedHotel);
+    const noteRows = this.filterNormalizedRowsForHotel(allNoteRows, selectedHotel);
+    const headerSample = (sheetName: string, rows: Array<Record<string, string>>) => rows[0] || this.workbookSheetHeaderSample(workbook, this.getWorkbookSheet(workbook, sheetName));
+
+    if (contractRows.length !== 1) {
+      warnings.push({ severity: 'blocker', field: 'CONTRACT', message: 'CONTRACT tab must contain exactly one hotel contract row.' });
+    }
+
+    const contractRow = contractRows[0] || {};
+    this.requireWorkbookColumns(headerSample('CONTRACT', contractRows), 'CONTRACT', [
+      'HotelName',
+      'SupplierName',
+      'ContractName',
+      'ContractYear',
+      'Currency',
+      'City',
+      'Country',
+      'Category',
+      'ValidFrom',
+      'ValidTo',
+      'ContractStatus',
+      'SourceReference',
+    ], warnings);
+    this.requireWorkbookColumns(headerSample('SEASONS', seasonRows), 'SEASONS', ['SeasonCode', 'SeasonName', 'StartDate', 'EndDate', 'SeasonType', 'Notes'], warnings);
+    this.requireWorkbookColumns(headerSample('ROOM_CATEGORIES', roomRows), 'ROOM_CATEGORIES', ['RoomCode', 'RoomName', 'RoomType', 'Bedding', 'MaxAdults', 'MaxChildren', 'Notes'], warnings);
+    this.requireWorkbookColumns(headerSample('RATES', rateRows), 'RATES', ['SeasonCode', 'RoomCode', 'Occupancy', 'MealPlan', 'PricingBasis', 'Cost', 'Currency', 'MinStay', 'Notes'], warnings);
+    this.requireWorkbookColumns(headerSample('SUPPLEMENTS', supplementRows), 'SUPPLEMENTS', ['SupplementType', 'SeasonCode', 'RoomCode', 'MealPlan', 'Basis', 'Amount', 'Currency', 'Mandatory', 'Notes'], warnings);
+    this.requireWorkbookColumns(headerSample('CANCELLATION_POLICY', cancellationRows), 'CANCELLATION_POLICY', ['PolicyName', 'DaysBeforeArrival', 'PenaltyType', 'PenaltyValue', 'Notes'], warnings);
+    this.requireWorkbookColumns(headerSample('CHILD_POLICY', childRows), 'CHILD_POLICY', ['ChildAgeFrom', 'ChildAgeTo', 'SharingBasis', 'RateType', 'RateValue', 'Notes'], warnings);
+
+    const hotelName = this.templateCell(contractRow, 'HotelName');
+    const supplierName = this.templateCell(contractRow, 'SupplierName') || input.supplierName || hotelName;
+    const contractName = this.templateCell(contractRow, 'ContractName') || `${hotelName || supplierName} ${input.contractYear || new Date().getFullYear()}`;
+    const contractYear = this.parseOptionalInt(this.templateCell(contractRow, 'ContractYear')) || input.contractYear || null;
+    const contractCurrency = (this.templateCell(contractRow, 'Currency') || 'USD').trim().toUpperCase();
+    const contractValidFrom = this.isoDateFromTemplate(this.templateCell(contractRow, 'ValidFrom')) || (input.validFrom ? this.isoDate(input.validFrom) : null);
+    const contractValidTo = this.isoDateFromTemplate(this.templateCell(contractRow, 'ValidTo')) || (input.validTo ? this.isoDate(input.validTo) : null);
+
+    const seasonByCode = new Map<string, { code: string; name: string; validFrom?: string | null; validTo?: string | null; notes?: string }>();
+    const seenSeasonCodes = new Set<string>();
+    const seasons = seasonRows
+      .map((row, index) => {
+        const code = this.templateCell(row, 'SeasonCode').trim().toUpperCase();
+        const name = this.templateCell(row, 'SeasonName') || code;
+        const validFrom = this.isoDateFromTemplate(this.templateCell(row, 'StartDate'));
+        const validTo = this.isoDateFromTemplate(this.templateCell(row, 'EndDate'));
+        if (!code) warnings.push({ severity: 'blocker', field: `SEASONS.${index + 1}.SeasonCode`, message: 'SeasonCode is required.' });
+        if (code && seenSeasonCodes.has(code)) warnings.push({ severity: 'blocker', field: `SEASONS.${index + 1}.SeasonCode`, message: `Duplicate season code: ${code}` });
+        if (!validFrom) warnings.push({ severity: 'blocker', field: `SEASONS.${index + 1}.StartDate`, message: 'StartDate is required and must be a valid date.' });
+        if (!validTo) warnings.push({ severity: 'blocker', field: `SEASONS.${index + 1}.EndDate`, message: 'EndDate is required and must be a valid date.' });
+        if (code) seenSeasonCodes.add(code);
+        const season = { code, name, validFrom, validTo, notes: this.templateCell(row, 'Notes') };
+        if (code) seasonByCode.set(code, season);
+        return { name, validFrom, validTo, uncertain: false };
+      })
+      .filter((season) => season.name);
+
+    const roomByCode = new Map<string, { code: string; name: string; description?: string | null }>();
+    const seenRoomCodes = new Set<string>();
+    const roomCategories = roomRows
+      .map((row, index) => {
+        const code = this.templateCell(row, 'RoomCode').trim().toUpperCase();
+        const name = this.templateCell(row, 'RoomName');
+        if (!code) warnings.push({ severity: 'blocker', field: `ROOM_CATEGORIES.${index + 1}.RoomCode`, message: 'RoomCode is required.' });
+        if (!name) warnings.push({ severity: 'blocker', field: `ROOM_CATEGORIES.${index + 1}.RoomName`, message: 'RoomName is required.' });
+        if (code && seenRoomCodes.has(code)) warnings.push({ severity: 'blocker', field: `ROOM_CATEGORIES.${index + 1}.RoomCode`, message: `Duplicate room code: ${code}` });
+        if (code) seenRoomCodes.add(code);
+        const details = [
+          this.templateCell(row, 'RoomType') ? `Type: ${this.templateCell(row, 'RoomType')}` : '',
+          this.templateCell(row, 'Bedding') ? `Bedding: ${this.templateCell(row, 'Bedding')}` : '',
+          this.templateCell(row, 'MaxAdults') ? `Max adults: ${this.templateCell(row, 'MaxAdults')}` : '',
+          this.templateCell(row, 'MaxChildren') ? `Max children: ${this.templateCell(row, 'MaxChildren')}` : '',
+          this.templateCell(row, 'Notes'),
+        ].filter(Boolean);
+        const room = { code, name, description: details.join(' | ') || null };
+        if (code) roomByCode.set(code, room);
+        return { name, code, description: room.description, uncertain: false };
+      })
+      .filter((room) => room.name);
+
+    const validPricingBases = new Set(['PER_ROOM_NIGHT', 'PER_PERSON_NIGHT', 'PER_PERSON_IN_DBL_NIGHT', 'SINGLE_SUPPLEMENT_ON_DBL']);
+    const seenRateKeys = new Set<string>();
+    const rates: PreviewRate[] = rateRows
+      .map((row, index) => {
+        const seasonCode = this.templateCell(row, 'SeasonCode').trim().toUpperCase();
+        const roomCode = this.templateCell(row, 'RoomCode').trim().toUpperCase();
+        const occupancy = this.normalizeTemplateOccupancy(this.templateCell(row, 'Occupancy'));
+        const mealPlan = this.templateCell(row, 'MealPlan').trim().toUpperCase();
+        const pricingBasisRaw = this.templateCell(row, 'PricingBasis').trim().toUpperCase();
+        const cost = this.parseNumber(this.templateCell(row, 'Cost'));
+        const currency = (this.templateCell(row, 'Currency') || contractCurrency).trim().toUpperCase();
+        const fieldPrefix = `RATES.${index + 1}`;
+        if (!seasonCode) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.SeasonCode`, message: 'SeasonCode is required.' });
+        if (seasonCode && !seasonByCode.has(seasonCode)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.SeasonCode`, message: `Unknown SeasonCode: ${seasonCode}` });
+        if (!roomCode) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.RoomCode`, message: 'RoomCode is required.' });
+        if (roomCode && !roomByCode.has(roomCode)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.RoomCode`, message: `Unknown RoomCode: ${roomCode}` });
+        if (!occupancy) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.Occupancy`, message: 'Occupancy is required.' });
+        if (!mealPlan || !HOTEL_MEAL_PLAN_VALUES.includes(mealPlan)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.MealPlan`, message: `Invalid meal plan: ${mealPlan || 'blank'}` });
+        if (!pricingBasisRaw || !validPricingBases.has(pricingBasisRaw)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.PricingBasis`, message: `Invalid pricing basis: ${pricingBasisRaw || 'blank'}` });
+        if (cost === undefined || cost < 0) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.Cost`, message: 'Cost is required and cannot be negative.' });
+        if (!this.isSupportedCurrency(currency)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}.Currency`, message: `Unknown currency: ${currency || 'blank'}` });
+        const duplicateKey = [seasonCode, roomCode, occupancy, mealPlan, pricingBasisRaw].join('|');
+        if (seenRateKeys.has(duplicateKey)) warnings.push({ severity: 'blocker', field: `${fieldPrefix}`, message: `Duplicate rate row for ${duplicateKey.replace(/\|/g, ' / ')}` });
+        seenRateKeys.add(duplicateKey);
+
+        const season = seasonByCode.get(seasonCode);
+        const room = roomByCode.get(roomCode);
+        const pricingBasis: 'PER_ROOM' | 'PER_PERSON' = pricingBasisRaw === 'PER_ROOM_NIGHT' ? 'PER_ROOM' : 'PER_PERSON';
+        const normalizedPricingBasis: 'PER_ROOM_NIGHT' | 'PER_PERSON_NIGHT' = pricingBasis === 'PER_ROOM' ? 'PER_ROOM_NIGHT' : 'PER_PERSON_NIGHT';
+        return {
+          roomType: room?.name || roomCode,
+          occupancyType: occupancy,
+          mealPlan,
+          seasonName: season?.name || seasonCode || 'Imported',
+          seasonFrom: season?.validFrom || undefined,
+          seasonTo: season?.validTo || undefined,
+          cost,
+          currency,
+          pricingBasis,
+          normalizedPricingBasis,
+          notes: [
+            pricingBasisRaw && pricingBasisRaw !== normalizedPricingBasis ? `Original pricing basis: ${pricingBasisRaw}` : '',
+            this.templateCell(row, 'MinStay') ? `Min stay: ${this.templateCell(row, 'MinStay')}` : '',
+            this.templateCell(row, 'Notes'),
+          ].filter(Boolean).join(' | ') || undefined,
+        };
+      })
+      .filter((rate) => rate.roomType || rate.cost !== undefined);
+
+    const supplements = supplementRows
+      .map((row, index) => {
+        const typeRaw = this.templateCell(row, 'SupplementType');
+        const seasonCode = this.templateCell(row, 'SeasonCode').trim().toUpperCase();
+        const roomCode = this.templateCell(row, 'RoomCode').trim().toUpperCase();
+        const currency = (this.templateCell(row, 'Currency') || contractCurrency).trim().toUpperCase();
+        const amount = this.parseNumber(this.templateCell(row, 'Amount'));
+        if (!typeRaw) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.SupplementType`, message: 'SupplementType is required.' });
+        if (seasonCode && !seasonByCode.has(seasonCode)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.SeasonCode`, message: `Unknown SeasonCode: ${seasonCode}` });
+        if (roomCode && !roomByCode.has(roomCode)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.RoomCode`, message: `Unknown RoomCode: ${roomCode}` });
+        if (amount !== undefined && amount < 0) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.Amount`, message: 'Amount cannot be negative.' });
+        if (currency && !this.isSupportedCurrency(currency)) warnings.push({ severity: 'blocker', field: `SUPPLEMENTS.${index + 1}.Currency`, message: `Unknown currency: ${currency}` });
+        const normalizedCurrency = this.normalizeSupplementCurrency(currency, contractCurrency);
+        return {
+          name: typeRaw || 'Supplement',
+          type: this.normalizedWorkbookSupplementType(typeRaw),
+          chargeBasis: this.templateCell(row, 'Basis') || null,
+          amount: amount ?? null,
+          currency: normalizedCurrency.currency,
+          pricingBasis: this.templateCell(row, 'Basis').toUpperCase() === 'PER_PERSON' ? 'PER_PERSON' as const : 'PER_ROOM' as const,
+          isMandatory: this.parseBoolean(this.templateCell(row, 'Mandatory')) ?? false,
+          notes: [
+            seasonCode ? `Season: ${seasonCode}` : '',
+            roomCode ? `Room: ${roomCode}` : '',
+            this.templateCell(row, 'MealPlan') ? `Meal: ${this.templateCell(row, 'MealPlan')}` : '',
+            this.templateCell(row, 'Notes'),
+            normalizedCurrency.note,
+          ].filter(Boolean).join(' | ') || undefined,
+        };
+      })
+      .filter((supplement) => supplement.name);
+
+    const cancellationPolicy = cancellationRows.length
+      ? {
+          summary: 'Cancellation policy imported from normalized workbook.',
+          notes: null,
+          noShowPenaltyType: 'FULL_STAY',
+          noShowPenaltyValue: null,
+          rules: cancellationRows
+            .map((row) => {
+              const daysBefore = this.parseNumber(this.templateCell(row, 'DaysBeforeArrival'));
+              const penaltyType = this.normalizedWorkbookPenaltyType(this.templateCell(row, 'PenaltyType'));
+              const penaltyValue = this.parseNumber(this.templateCell(row, 'PenaltyValue'));
+              if (daysBefore === undefined && penaltyValue === undefined) return null;
+              return {
+                daysBefore: daysBefore ?? 0,
+                windowFromValue: daysBefore ?? 0,
+                windowToValue: 0,
+                deadlineUnit: 'DAYS',
+                penaltyType,
+                penaltyValue: penaltyValue ?? null,
+                penaltyPercent: penaltyType === 'PERCENT' ? penaltyValue ?? 0 : undefined,
+                notes: [this.templateCell(row, 'PolicyName'), this.templateCell(row, 'Notes')].filter(Boolean).join(' | ') || null,
+              };
+            })
+            .filter((rule): rule is NonNullable<typeof rule> => Boolean(rule)),
+        }
+      : null;
+
+    const childBands = childRows
+      .map((row, index) => {
+        const minAge = this.parseNumber(this.templateCell(row, 'ChildAgeFrom'));
+        const maxAge = this.parseNumber(this.templateCell(row, 'ChildAgeTo'));
+        const rateType = this.templateCell(row, 'RateType');
+        const rateValue = this.parseNumber(this.templateCell(row, 'RateValue'));
+        if (minAge === undefined && maxAge === undefined && !rateType && rateValue === undefined) return null;
+        return {
+          label: `Child policy ${index + 1}`,
+          minAge: minAge ?? 0,
+          maxAge: maxAge ?? minAge ?? 12,
+          chargeBasis: this.normalizedWorkbookChildChargeBasis(rateType),
+          chargeValue: rateValue ?? null,
+          notes: [this.templateCell(row, 'SharingBasis'), this.templateCell(row, 'Notes')].filter(Boolean).join(' | ') || null,
+        };
+      })
+      .filter((band): band is NonNullable<typeof band> => Boolean(band));
+
+    const notePolicies = noteRows.map((row, index) => ({
+      name: `Operational note ${index + 1}`,
+      value: Object.values(row).filter(Boolean).join(' | '),
+    })).filter((policy) => policy.value);
+
+    return this.addPreviewAliases({
+      contractType: ContractImportType.HOTEL,
+      supplier: { name: supplierName, isNew: true },
+      contract: {
+        name: contractName,
+        year: contractYear,
+        validFrom: contractValidFrom,
+        validTo: contractValidTo,
+        currency: contractCurrency,
+      },
+      hotel: {
+        name: hotelName,
+        city: this.templateCell(contractRow, 'City') || 'Amman',
+        category: this.templateCell(contractRow, 'Category') || 'Unclassified',
+      },
+      roomCategories,
+      seasons,
+      rates,
+      mealPlans: Array.from(new Set(rates.map((rate) => rate.mealPlan || 'BB'))).map((code, index) => ({ code, isDefault: index === 0 })),
+      taxes: [],
+      supplements,
+      policies: [
+        { name: 'Workbook workflow', value: 'Normalized Excel workbook is the operational source of truth. PDF is reference only.' },
+        { name: 'Source reference', value: this.templateCell(contractRow, 'SourceReference') || input.fileName },
+        ...notePolicies,
+      ],
+      ratePolicies: [],
+      cancellationPolicy,
+      cancellationPolicies: cancellationPolicy ? [cancellationPolicy] : [],
+      childPolicy: childBands.length
+        ? {
+            infantMaxAge: Math.max(0, ...childBands.filter((band) => band.maxAge <= 5).map((band) => band.maxAge), 5),
+            childMaxAge: Math.max(12, ...childBands.map((band) => band.maxAge)),
+            notes: null,
+            bands: childBands,
+          }
+        : null,
+      meta: {
+        extractionMode: 'NORMALIZED_EXCEL_WORKBOOK',
+        contractStatus: this.templateCell(contractRow, 'ContractStatus') || 'Draft',
+        sourceReference: this.templateCell(contractRow, 'SourceReference') || input.fileName,
+      },
+      parserDiagnostics: {
+        source: 'workbook',
+        rowCount: rateRows.length + seasonRows.length + roomRows.length + supplementRows.length,
+        parsedTextLineCount: 0,
+        first20Lines: [],
+        detectedHotels: hotelName ? [hotelName] : [],
+        detectedTables: requiredTabs
+          .filter((tab) => this.getWorkbookSheet(workbook, tab))
+          .map((tab) => ({ label: tab, confidence: 1 })),
+        skippedSections: [],
+        confidence: warnings.some((warning) => warning.severity === 'blocker') ? 0.65 : 0.98,
+        warnings: warnings.map((warning) => warning.message),
+        extractionMode: 'WORKBOOK',
+      },
+      warnings: [...warnings, ...this.buildExtractionQcWarnings({ rates, seasons })],
+      missingFields: warnings.filter((warning) => warning.severity === 'blocker').map((warning) => warning.field),
+      uncertainFields: [],
+    });
+  }
+
+  private rowHasValues(row: Record<string, string>) {
+    return Object.values(row).some((value) => this.optionalString(value));
+  }
+
+  private normalizedHotelCode(row: Record<string, string>) {
+    return (this.templateCell(row, 'HotelCode') || this.templateCell(row, 'PropertyCode')).trim().toUpperCase();
+  }
+
+  private normalizedHotelName(row: Record<string, string>) {
+    return (this.templateCell(row, 'HotelName') || this.templateCell(row, 'Hotel') || this.templateCell(row, 'PropertyName') || this.templateCell(row, 'Property')).trim();
+  }
+
+  private detectNormalizedWorkbookHotels(rows: Array<Record<string, string>>) {
+    const byKey = new Map<string, { code?: string; name: string }>();
+    for (const row of rows) {
+      const code = this.normalizedHotelCode(row);
+      const name = this.normalizedHotelName(row);
+      if (!code && !name) continue;
+      const key = code || name.toLowerCase();
+      if (!byKey.has(key)) {
+        byKey.set(key, { code: code || undefined, name: name || code });
+      } else if (name && !byKey.get(key)!.name) {
+        byKey.get(key)!.name = name;
+      }
+    }
+    return Array.from(byKey.values()).filter((hotel) => hotel.name);
+  }
+
+  private filterNormalizedRowsForHotel(rows: Array<Record<string, string>>, selectedHotel?: { code?: string; name: string }) {
+    if (!selectedHotel) return rows;
+    const selectedCode = this.optionalString(selectedHotel.code).toUpperCase();
+    const selectedName = this.optionalString(selectedHotel.name).toLowerCase();
+    return rows.filter((row) => {
+      const rowCode = this.normalizedHotelCode(row);
+      const rowName = this.normalizedHotelName(row).toLowerCase();
+      if (rowCode) return Boolean(selectedCode && rowCode === selectedCode);
+      if (rowName) return rowName === selectedName;
+      return false;
+    });
+  }
+
+  private workbookSheetHeaderSample(workbook: any, sheetName: string | null) {
+    if (!workbook || !sheetName) return {};
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const xlsx = require('xlsx');
+      const matrix = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', blankrows: false, raw: false }) as unknown[][];
+      const headers = (matrix[0] || []).map((value) => String(value ?? '').trim()).filter(Boolean);
+      return headers.reduce<Record<string, string>>((sample, header) => {
+        sample[header] = '';
+        return sample;
+      }, {});
+    } catch {
+      return {};
+    }
+  }
+
+  private requireWorkbookColumns(
+    sampleRow: Record<string, string>,
+    sheetName: string,
+    columns: string[],
+    warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>,
+  ) {
+    const actualColumns = Object.keys(sampleRow || {});
+    for (const column of columns) {
+      if (!actualColumns.some((actual) => this.templateHeaderMatches(actual, column))) {
+        warnings.push({ severity: 'blocker', field: `${sheetName}.${column}`, message: `${sheetName} sheet is missing required column: ${column}` });
+      }
+    }
+  }
+
+  private normalizedWorkbookSupplementType(value: unknown) {
+    const normalized = this.optionalString(value).toUpperCase();
+    if (normalized.includes('BREAKFAST')) return HotelContractSupplementType.EXTRA_BREAKFAST;
+    if (normalized.includes('LUNCH')) return HotelContractSupplementType.EXTRA_LUNCH;
+    if (normalized.includes('DINNER') || normalized.includes('CHRISTMAS') || normalized.includes('NEW_YEAR')) return HotelContractSupplementType.GALA_DINNER;
+    if (normalized.includes('BED') || normalized.includes('CHILD') || normalized.includes('SUPPLEMENT')) return HotelContractSupplementType.EXTRA_BED;
+    return this.normalizeHotelSupplementType(value);
+  }
+
+  private normalizedWorkbookPenaltyType(value: unknown) {
+    const normalized = this.optionalString(value).toUpperCase();
+    if (normalized === 'NIGHT') return 'NIGHTS';
+    if (['PERCENT', 'NIGHTS', 'FULL_STAY', 'FIXED'].includes(normalized)) return normalized;
+    return 'FULL_STAY';
+  }
+
+  private normalizedWorkbookChildChargeBasis(value: unknown) {
+    const normalized = this.optionalString(value).toUpperCase();
+    if (normalized.includes('PERCENT')) return ChildPolicyChargeBasis.PERCENT_OF_ADULT;
+    if (normalized.includes('FIXED') || normalized.includes('AMOUNT')) return ChildPolicyChargeBasis.FIXED_AMOUNT;
+    return ChildPolicyChargeBasis.FREE;
+  }
+
   private getWorkbookSheet(workbook: any, expectedName: string) {
     if (!workbook) return null;
-    const sheetName = (workbook.SheetNames || []).find((name: string) => name.trim().toLowerCase() === expectedName.toLowerCase());
+    const expected = this.normalizeTemplateHeader(expectedName);
+    const sheetName = (workbook.SheetNames || []).find((name: string) => this.normalizeTemplateHeader(name) === expected);
     return sheetName || null;
   }
 

@@ -774,6 +774,232 @@ test('hotel Excel template splits multi-property contracts into preview-only nor
   );
 });
 
+test('normalized hotel workbook imports one structured hotel contract preview', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      {
+        HotelName: 'Movenpick Petra',
+        SupplierName: 'Movenpick Hotels',
+        ContractName: 'Movenpick Petra 2026 FIT Contract',
+        ContractYear: 2026,
+        Currency: 'USD',
+        City: 'Petra',
+        Country: 'Jordan',
+        Category: '5 Star',
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+        ContractStatus: 'Draft',
+        SourceReference: 'PDF Ref',
+      },
+    ]),
+    'CONTRACT',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SeasonCode: 'LOW', SeasonName: 'Low Season', StartDate: '2026-01-01', EndDate: '2026-03-31', SeasonType: 'LOW', Notes: 'Standard FIT season' }]),
+    'SEASONS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ RoomCode: 'DLX', RoomName: 'Deluxe Room', RoomType: 'STANDARD', Bedding: 'KING/TWIN', MaxAdults: 2, MaxChildren: 1, Notes: '' }]),
+    'ROOM_CATEGORIES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 120, Currency: 'USD', MinStay: '', Notes: '' }]),
+    'RATES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SupplementType: 'NEW_YEAR_DINNER', SeasonCode: 'LOW', RoomCode: 'DLX', MealPlan: 'BB', Basis: 'PER_PERSON', Amount: 75, Currency: 'USD', Mandatory: 'Yes', Notes: 'Festive dinner' }]),
+    'SUPPLEMENTS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ PolicyName: 'Standard', DaysBeforeArrival: 7, PenaltyType: 'PERCENT', PenaltyValue: 100, Notes: 'Late cancellation' }]),
+    'CANCELLATION_POLICY',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ ChildAgeFrom: 0, ChildAgeTo: 5, SharingBasis: 'Sharing parents room', RateType: 'FREE', RateValue: 0, Notes: 'Free stay' }]),
+    'CHILD_POLICY',
+  );
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ Notes: 'Operational note only' }]), 'NOTES');
+  const filePath = join(tmpdir(), `normalized-hotel-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: null,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'normalized-hotel-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.meta.extractionMode, 'NORMALIZED_EXCEL_WORKBOOK');
+  assert.equal(preview.hotel.name, 'Movenpick Petra');
+  assert.equal(preview.roomCategories[0].code, 'DLX');
+  assert.equal(preview.seasons[0].name, 'Low Season');
+  assert.equal(preview.rates[0].roomType, 'Deluxe Room');
+  assert.equal(preview.rates[0].normalizedPricingBasis, 'PER_ROOM_NIGHT');
+  assert.equal(preview.supplements[0].name, 'NEW_YEAR_DINNER');
+  assert.equal(preview.supplements[0].type, 'GALA_DINNER');
+  assert.equal(preview.cancellationPolicy.rules[0].penaltyType, 'PERCENT');
+  assert.equal(preview.childPolicy.bands[0].chargeBasis, 'FREE');
+  assert.equal(warnings.some((warning) => warning.severity === 'blocker'), false);
+});
+
+test('normalized hotel workbook blocks unsafe spreadsheet rows before import', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelName: 'Unsafe Hotel', SupplierName: 'Unsafe Supplier', ContractName: 'Unsafe 2026', ContractYear: 2026, Currency: 'USD', City: 'Petra', Country: 'Jordan', Category: '5 Star', ValidFrom: '2026-01-01', ValidTo: '2026-12-31', ContractStatus: 'Draft', SourceReference: 'PDF Ref' },
+    ]),
+    'CONTRACT',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SeasonCode: 'LOW', SeasonName: 'Low', StartDate: '2026-01-01', EndDate: '2026-03-31', SeasonType: 'LOW', Notes: '' }]),
+    'SEASONS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ RoomCode: 'DLX', RoomName: 'Deluxe Room', RoomType: 'STANDARD', Bedding: '', MaxAdults: 2, MaxChildren: 1, Notes: '' }]),
+    'ROOM_CATEGORIES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 120, Currency: 'USD', MinStay: '', Notes: '' },
+      { SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 125, Currency: 'USD', MinStay: '', Notes: 'Duplicate key' },
+      { SeasonCode: 'HIGH', RoomCode: 'UNK', Occupancy: 'DBL', MealPlan: 'XX', PricingBasis: 'MATRIX', Cost: -5, Currency: 'GBP', MinStay: '', Notes: 'Invalid row' },
+    ]),
+    'RATES',
+  );
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['SupplementType', 'SeasonCode', 'RoomCode', 'MealPlan', 'Basis', 'Amount', 'Currency', 'Mandatory', 'Notes'] }), 'SUPPLEMENTS');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['PolicyName', 'DaysBeforeArrival', 'PenaltyType', 'PenaltyValue', 'Notes'] }), 'CANCELLATION_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['ChildAgeFrom', 'ChildAgeTo', 'SharingBasis', 'RateType', 'RateValue', 'Notes'] }), 'CHILD_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ Notes: 'Reference only' }]), 'NOTES');
+  const filePath = join(tmpdir(), `unsafe-normalized-hotel-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: null,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'unsafe-normalized-hotel-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.2' && /Duplicate rate row/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.SeasonCode'));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.RoomCode'));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.MealPlan'));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.PricingBasis'));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.Cost'));
+  assert.ok(warnings.some((warning) => warning.field === 'RATES.3.Currency'));
+});
+
+test('normalized multi-hotel workbook requires one hotel selection and filters all tabs per hotel', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelCode: 'MVP', HotelName: 'Movenpick Petra', SupplierName: 'Movenpick Hotels', ContractName: 'Movenpick Petra 2026', ContractYear: 2026, Currency: 'USD', City: 'Petra', Country: 'Jordan', Category: '5 Star', ValidFrom: '2026-01-01', ValidTo: '2026-12-31', ContractStatus: 'Draft', SourceReference: 'PDF Ref' },
+      { HotelCode: 'MVD', HotelName: 'Movenpick Dead Sea', SupplierName: 'Movenpick Hotels', ContractName: 'Movenpick Dead Sea 2026', ContractYear: 2026, Currency: 'USD', City: 'Dead Sea', Country: 'Jordan', Category: '5 Star', ValidFrom: '2026-01-01', ValidTo: '2026-12-31', ContractStatus: 'Draft', SourceReference: 'PDF Ref' },
+    ]),
+    'CONTRACTS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelCode: 'MVP', SeasonCode: 'LOW', SeasonName: 'Petra Low', StartDate: '2026-01-01', EndDate: '2026-03-31', SeasonType: 'LOW', Notes: '' },
+      { HotelCode: 'MVD', SeasonCode: 'LOW', SeasonName: 'Dead Sea Low', StartDate: '2026-01-01', EndDate: '2026-02-28', SeasonType: 'LOW', Notes: '' },
+    ]),
+    'SEASONS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelCode: 'MVP', RoomCode: 'DLX', RoomName: 'Petra Deluxe', RoomType: 'STANDARD', Bedding: 'KING', MaxAdults: 2, MaxChildren: 1, Notes: '' },
+      { HotelCode: 'MVD', RoomCode: 'SUP', RoomName: 'Dead Sea Superior', RoomType: 'STANDARD', Bedding: 'TWIN', MaxAdults: 2, MaxChildren: 1, Notes: '' },
+    ]),
+    'ROOM_CATEGORIES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelCode: 'MVP', SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 120, Currency: 'USD', MinStay: '', Notes: '' },
+      { HotelCode: 'MVD', SeasonCode: 'LOW', RoomCode: 'SUP', Occupancy: 'DBL', MealPlan: 'BB', PricingBasis: 'PER_PERSON_NIGHT', Cost: 90, Currency: 'USD', MinStay: '', Notes: '' },
+      { HotelCode: 'MVD', SeasonCode: 'LOW', RoomCode: 'SUP', Occupancy: 'SGL', MealPlan: 'BB', PricingBasis: 'PER_PERSON_NIGHT', Cost: 110, Currency: 'USD', MinStay: '', Notes: '' },
+    ]),
+    'RATES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelCode: 'MVP', SupplementType: 'GALA_DINNER', SeasonCode: 'LOW', RoomCode: 'DLX', MealPlan: 'BB', Basis: 'PER_PERSON', Amount: 75, Currency: 'USD', Mandatory: 'Yes', Notes: '' },
+      { HotelCode: 'MVD', SupplementType: 'EXTRA_BED', SeasonCode: 'LOW', RoomCode: 'SUP', MealPlan: 'BB', Basis: 'PER_NIGHT', Amount: 40, Currency: 'USD', Mandatory: 'No', Notes: '' },
+    ]),
+    'SUPPLEMENTS',
+  );
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ HotelCode: 'MVP', PolicyName: 'Petra cancel', DaysBeforeArrival: 7, PenaltyType: 'PERCENT', PenaltyValue: 100, Notes: '' }]), 'CANCELLATION_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ HotelCode: 'MVD', ChildAgeFrom: 0, ChildAgeTo: 5, SharingBasis: 'Sharing', RateType: 'FREE', RateValue: 0, Notes: '' }]), 'CHILD_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ HotelCode: 'MVP', Notes: 'Petra note' }, { HotelCode: 'MVD', Notes: 'Dead Sea note' }]), 'NOTES');
+  const filePath = join(tmpdir(), `multi-normalized-hotel-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: null,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'multi-normalized-hotel-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.equal(preview.multiProperty.detected, true);
+  assert.deepEqual(preview.multiProperty.normalizedWorkbooks.map((hotel: any) => hotel.hotelName), ['Movenpick Petra', 'Movenpick Dead Sea']);
+  assert.deepEqual(
+    preview.multiProperty.normalizedWorkbooks.map((hotel: any) => ({
+      rooms: hotel.roomCount,
+      rates: hotel.rateCount,
+      supplements: hotel.supplementCount,
+      seasons: hotel.seasonCount,
+    })),
+    [
+      { rooms: 1, rates: 1, supplements: 1, seasons: 1 },
+      { rooms: 1, rates: 2, supplements: 1, seasons: 1 },
+    ],
+  );
+  assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
+
+  const petra = preview.multiProperty.hotels[0];
+  assert.equal(petra.hotel.name, 'Movenpick Petra');
+  assert.deepEqual(petra.roomCategories.map((room: any) => room.name), ['Petra Deluxe']);
+  assert.deepEqual(petra.rates.map((rate: any) => rate.roomType), ['Petra Deluxe']);
+  assert.deepEqual(petra.supplements.map((supplement: any) => supplement.name), ['GALA_DINNER']);
+  assert.deepEqual(petra.seasons.map((season: any) => season.name), ['Petra Low']);
+  assert.match(petra.policies.map((policy: any) => policy.value).join(' | '), /Petra note/);
+});
+
 test('multi-property hotel export returns a zip containing one normalized workbook per hotel', () => {
   const service = createService();
   const preview = normalizeApproved(service, {
@@ -926,6 +1152,9 @@ test('assisted extraction export includes block mapping and QC sheets', () => {
   assert.ok(workbook.SheetNames.includes('Assisted Blocks'));
   assert.ok(workbook.SheetNames.includes('Assisted Mappings'));
   assert.ok(workbook.SheetNames.includes('Assisted QC'));
+  assert.ok(workbook.SheetNames.includes('CONTRACT'));
+  assert.ok(workbook.SheetNames.includes('RATES'));
+  assert.ok(workbook.SheetNames.includes('ROOM_CATEGORIES'));
   assert.ok(workbook.SheetNames.includes('Room Categories'));
   const roomRows = xlsx.utils.sheet_to_json(workbook.Sheets['Room Categories']);
   assert.equal(roomRows[0].Name, 'Superior Room');

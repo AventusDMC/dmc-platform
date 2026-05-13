@@ -214,7 +214,7 @@ type ContractPreview = {
     detected: boolean;
     propertyCount: number;
     hotels: ContractPreview[];
-    normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number }>;
+    normalizedWorkbooks: Array<{ hotelName: string; fileName: string; rateCount: number; warningCount: number; roomCount?: number; supplementCount?: number; seasonCount?: number }>;
   };
   parserDiagnostics?: {
     source?: 'workbook' | 'text';
@@ -232,6 +232,7 @@ type ContractPreview = {
   assistedExtraction?: AssistedExtractionPreview;
   missingFields: string[];
   uncertainFields: string[];
+  warnings?: Warning[];
 };
 
 type ContractImport = {
@@ -802,6 +803,7 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
     assistedExtraction: source.assistedExtraction,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
+    warnings: Array.isArray(source.warnings) ? source.warnings : [],
   };
 }
 
@@ -892,12 +894,14 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
   const [contractConflict, setContractConflict] = useState<ContractConflict | null>(null);
   const [activeAssistedStep, setActiveAssistedStep] = useState(0);
   const [selectedAssistedHotelName, setSelectedAssistedHotelName] = useState('');
+  const [selectedWorkbookHotelName, setSelectedWorkbookHotelName] = useState('');
 
   const assistedWarnings = useMemo(() => buildAssistedQcWarnings(preview.assistedExtraction), [preview.assistedExtraction]);
   const warnings = useMemo(() => [...(contractImport?.warnings || []), ...assistedWarnings], [contractImport, assistedWarnings]);
   const blockers = warnings.filter((warning) => warning.severity === 'blocker');
   const isMultiPropertyPreview = Boolean(preview.multiProperty?.detected);
   const isAssistedExtractionPreview = Boolean(preview.assistedExtraction?.importDisabled);
+  const isExcelWorkflow = /\.(xlsx|xlsm|xls)$/i.test(file?.name || contractImport?.sourceFileName || '');
   const detectedAssistedHotelNames = useMemo(() => collectDetectedHotelNames(preview), [preview]);
   const selectedAssistedHotel = selectedAssistedHotelName || detectedAssistedHotelNames[0] || '';
 
@@ -973,6 +977,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
       });
       setActiveAssistedStep(0);
       setSelectedAssistedHotelName('');
+      setSelectedWorkbookHotelName(collectDetectedHotelNames(mappedPreview)[0] || '');
       setMessage('Contract analyzed. Review and edit extracted values before approval.');
     } catch (caughtError) {
       console.error('Analyze error', caughtError);
@@ -1017,6 +1022,18 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     } finally {
       setIsApproving(false);
     }
+  }
+
+  function handleUseSelectedWorkbookHotelForImport() {
+    if (!contractImport || !selectedWorkbookHotelName) return;
+    const selectedPreview = getSelectedHotelPreview(preview, selectedWorkbookHotelName);
+    setPreview(selectedPreview);
+    setContractImport({
+      ...contractImport,
+      warnings: selectedPreview.warnings || [],
+      errors: [],
+    });
+    setMessage(`Selected ${selectedWorkbookHotelName}. Review the filtered hotel contract, then approve import.`);
   }
 
   function updatePreview(next: Partial<ContractPreview>) {
@@ -1567,10 +1584,13 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
           <label className="wide-field">
             Contract file
             <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            {contractType === 'HOTEL' ? (
+              <small>Use the normalized hotel workbook as the import source. PDFs remain reference/QC only.</small>
+            ) : null}
           </label>
         </div>
         <button className="primary-button" type="submit" disabled={isAnalyzing}>
-          {isAnalyzing ? 'Analyzing...' : 'Analyze contract'}
+          {isAnalyzing ? 'Analyzing...' : isExcelWorkflow ? 'Validate workbook' : 'Analyze contract'}
         </button>
       </form>
 
@@ -1586,7 +1606,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
             </div>
             <div className="button-row">
               <button className="secondary-button" type="button" onClick={() => void handleDownloadExcel()}>
-                Download Extracted Excel
+                Download Normalized Workbook
               </button>
               <button className="primary-button" onClick={() => void handleApprove()} disabled={isApproving || blockers.length > 0 || isMultiPropertyPreview || isAssistedExtractionPreview}>
                 {isApproving ? 'Importing...' : 'Approve import'}
@@ -1684,26 +1704,42 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
             <section className="table-section">
               <div className="section-header">
                 <div>
-                  <h3>Multi-property extraction preview</h3>
-                  <p>Automatic import is disabled. Download the normalized workbooks and review each hotel separately.</p>
+                  <h3>Choose one hotel to import</h3>
+                  <p>This workbook contains multiple hotels. Select one hotel; the import action stays disabled until the preview is filtered.</p>
                 </div>
+                <button className="primary-button" type="button" onClick={handleUseSelectedWorkbookHotelForImport} disabled={!selectedWorkbookHotelName}>
+                  Use selected hotel
+                </button>
               </div>
               <div className="table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
+                      <th>Select</th>
                       <th>Hotel</th>
-                      <th>Workbook</th>
+                      <th>Rooms</th>
                       <th>Rates</th>
+                      <th>Supplements</th>
+                      <th>Seasons</th>
                       <th>QC warnings</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(preview.multiProperty?.normalizedWorkbooks || []).map((workbook) => (
                       <tr key={workbook.fileName}>
+                        <td>
+                          <input
+                            type="radio"
+                            name="normalized-workbook-hotel"
+                            checked={selectedWorkbookHotelName === workbook.hotelName}
+                            onChange={() => setSelectedWorkbookHotelName(workbook.hotelName)}
+                          />
+                        </td>
                         <td>{workbook.hotelName}</td>
-                        <td>{workbook.fileName}</td>
+                        <td>{workbook.roomCount ?? '-'}</td>
                         <td>{workbook.rateCount}</td>
+                        <td>{workbook.supplementCount ?? '-'}</td>
+                        <td>{workbook.seasonCount ?? '-'}</td>
                         <td>{workbook.warningCount}</td>
                       </tr>
                     ))}
