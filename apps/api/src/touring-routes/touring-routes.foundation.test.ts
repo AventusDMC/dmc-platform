@@ -145,12 +145,34 @@ test('touring workbook preview validates tabs and classifies route and pricing r
   });
 
   const preview = await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' });
+  assert.equal(preview.success, true);
   assert.equal(preview.routeCount, 1);
   assert.equal(preview.stopCount, 1);
   assert.equal(preview.pricingCount, 1);
   assert.equal(preview.routes[0].importDecision, 'NEW');
   assert.equal(preview.pricings[0].importDecision, 'NEW');
   assert.deepEqual(preview.errors, []);
+});
+
+test('touring workbook preview returns structured errors instead of raw 500 on internal parser failure', async () => {
+  const { prisma } = createTouringPrismaMock();
+  prisma.supplier.findMany = async () => {
+    throw new Error('Simulated supplier lookup failure');
+  };
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [{ TourCode: 'PETRA-FD', TourName: 'Petra Full Day', StartCity: 'Amman', DurationDays: 1 }],
+    stops: [{ TourCode: 'PETRA-FD', StopOrder: 1, City: 'Petra' }],
+    rates: [{ TourCode: 'PETRA-FD', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 3, Currency: 'USD', BaseCost: 180, ValidFrom: '2026-01-01', ValidTo: '2026-12-31' }],
+  });
+
+  const preview = await service.previewWorkbookImport({ buffer, originalname: 'broken-touring.xlsx' });
+
+  assert.equal(preview.success, false);
+  assert.equal(preview.errors[0].stage, 'master inventory lookup');
+  assert.match(preview.errors[0].message, /Simulated supplier lookup failure/);
+  assert.deepEqual(preview.routes, []);
+  assert.deepEqual(preview.pricings, []);
 });
 
 test('touring workbook import creates touring routes stops and pricing without transfer routes', async () => {

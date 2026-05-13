@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +52,7 @@ type FindTouringRoutesInput = {
 
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP';
+type TouringWorkbookIssue = { sheet?: string; row?: number; stage?: string; message: string };
 
 type TouringWorkbookRouteRow = {
   tourCode: string;
@@ -226,6 +227,8 @@ function dateRangesOverlap(
 
 @Injectable()
 export class TouringRoutesService {
+  private readonly logger = new Logger(TouringRoutesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(filters: FindTouringRoutesInput = {}) {
@@ -282,7 +285,11 @@ export class TouringRoutesService {
   }
 
   async previewWorkbookImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
-    return this.processWorkbookImport(file, 'preview');
+    try {
+      return await this.processWorkbookImport(file, 'preview');
+    } catch (error) {
+      return this.buildWorkbookFailureResponse(file, 'WORKBOOK_PREVIEW', error);
+    }
   }
 
   async importWorkbook(file: { buffer?: Buffer; path?: string; originalname?: string }) {
@@ -290,21 +297,37 @@ export class TouringRoutesService {
   }
 
   private async processWorkbookImport(file: { buffer?: Buffer; path?: string; originalname?: string }, mode: TouringWorkbookMode) {
+    let stage = 'workbook read';
+    let sheet: string | undefined;
+    let activeRow: number | undefined;
+    try {
+    this.logWorkbookStage(mode, stage, { fileName: file.originalname || file.path || 'uploaded workbook' });
     const workbook = this.readWorkbook(file);
-    const errors: Array<{ sheet?: string; row?: number; message: string }> = [];
-    const warnings: Array<{ sheet?: string; row?: number; message: string }> = [];
+    const errors: TouringWorkbookIssue[] = [];
+    const warnings: TouringWorkbookIssue[] = [];
+    stage = 'workbook tab detection';
+    this.logWorkbookStage(mode, stage, { sheets: workbook.SheetNames });
     this.validateWorkbookSheets(workbook, errors);
 
+    stage = 'worksheet parsing';
+    sheet = 'TOURING_ROUTES';
     const routes = this.readSheetRows<TouringWorkbookRouteRow>(workbook, 'TOURING_ROUTES');
+    sheet = 'TOURING_ROUTE_STOPS';
     const stops = this.readSheetRows<TouringWorkbookStopRow>(workbook, 'TOURING_ROUTE_STOPS');
+    sheet = 'TOURING_ROUTE_RATES';
     const rates = this.readSheetRows<TouringWorkbookRateRow>(workbook, 'TOURING_ROUTE_RATES');
+    this.logWorkbookStage(mode, stage, { routes: routes.length, stops: stops.length, rates: rates.length });
+    stage = 'column validation';
     this.validateSheetColumns(workbook, 'TOURING_ROUTES', TOURING_ROUTE_COLUMNS, errors);
     this.validateSheetColumns(workbook, 'TOURING_ROUTE_STOPS', TOURING_STOP_COLUMNS, errors);
     this.validateSheetColumns(workbook, 'TOURING_ROUTE_RATES', TOURING_RATE_COLUMNS, errors);
 
+    stage = 'TOURING_ROUTES validation';
+    sheet = 'TOURING_ROUTES';
     const routeCodes = new Set<string>();
     const duplicateRouteCodes = new Set<string>();
     for (const entry of routes) {
+      activeRow = entry.rowNumber;
       const code = normalizeCode(entry.row.tourCode || '');
       if (!code || code === 'TOURING_ROUTE') {
         errors.push({ sheet: 'TOURING_ROUTES', row: entry.rowNumber, message: 'TourCode is required' });
@@ -317,6 +340,10 @@ export class TouringRoutesService {
       errors.push({ sheet: 'TOURING_ROUTES', message: `Duplicate TourCode ${code}` });
     }
 
+    stage = 'master inventory lookup';
+    activeRow = undefined;
+    sheet = undefined;
+    this.logWorkbookStage(mode, stage, { routeCodes: routeCodes.size });
     const existingRoutes = await (this.prisma as any).touringRoute.findMany({
       where: { code: { in: Array.from(routeCodes) } },
       include: this.include(),
@@ -333,7 +360,11 @@ export class TouringRoutesService {
       vehiclesByType.get(key)?.push(vehicle);
     }
 
+    stage = 'TOURING_ROUTES normalization';
+    sheet = 'TOURING_ROUTES';
     const parsedRoutes = routes.map(({ row, rowNumber }) => {
+      activeRow = rowNumber;
+      this.logWorkbookStage(mode, stage, { row: rowNumber }, 'debug');
       const rowErrors: string[] = [];
       const code = normalizeCode(row.tourCode || '');
       const durationDays = parseWorkbookInteger(row.durationDays, 'DurationDays', rowErrors, { required: true, min: 1 }) ?? 1;
@@ -374,8 +405,12 @@ export class TouringRoutesService {
       };
     });
 
+    stage = 'TOURING_ROUTE_STOPS parsing';
+    sheet = 'TOURING_ROUTE_STOPS';
     const stopsByCode = new Map<string, Array<{ row: number; order: number; city: string; location: string; overnight: boolean; notes: string }>>();
     for (const { row, rowNumber } of stops) {
+      activeRow = rowNumber;
+      this.logWorkbookStage(mode, stage, { row: rowNumber }, 'debug');
       const rowErrors: string[] = [];
       const code = normalizeCode(row.tourCode || '');
       if (!routeCodes.has(code)) rowErrors.push(`TourCode ${code || '(blank)'} does not reference a route in TOURING_ROUTES`);
@@ -401,6 +436,8 @@ export class TouringRoutesService {
       }
     }
 
+    stage = 'TOURING_ROUTE_RATES parsing';
+    sheet = 'TOURING_ROUTE_RATES';
     const existingPricings = await (this.prisma as any).touringRoutePricing.findMany({
       where: { touringRoute: { code: { in: Array.from(routeCodes) } } },
       include: {
@@ -412,6 +449,8 @@ export class TouringRoutesService {
     const parsedRates: ParsedTouringWorkbookRate[] = [];
     const seenRateKeys = new Set<string>();
     for (const { row, rowNumber } of rates) {
+      activeRow = rowNumber;
+      this.logWorkbookStage(mode, stage, { row: rowNumber }, 'debug');
       const rowErrors: string[] = [];
       const rateWarnings: string[] = [];
       const code = normalizeCode(row.tourCode || '');
@@ -499,7 +538,12 @@ export class TouringRoutesService {
       }
     }
 
+    stage = 'preview response build';
+    sheet = undefined;
+    activeRow = undefined;
+    this.logWorkbookStage(mode, stage, { routeCount: parsedRoutes.length, stopCount: Array.from(stopsByCode.values()).reduce((total, entries) => total + entries.length, 0), pricingCount: parsedRates.length, errors: errors.length, warnings: warnings.length });
     const summary = {
+      success: errors.length === 0,
       mode,
       sourceFileName: file.originalname || 'touring-workbook.xlsx',
       routeCount: parsedRoutes.length,
@@ -611,6 +655,16 @@ export class TouringRoutesService {
       }
       return summary;
     });
+    } catch (error) {
+      this.logger.error(
+        `[touring-workbook] ${mode} failed at ${stage}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      if (mode === 'preview') {
+        return this.buildWorkbookFailureResponse(file, stage, error, sheet, activeRow);
+      }
+      throw error;
+    }
   }
 
   private include() {
@@ -635,6 +689,57 @@ export class TouringRoutesService {
       return XLSX.readFile(file.path, { cellDates: true });
     }
     throw new BadRequestException('Touring workbook file is required');
+  }
+
+  private buildWorkbookFailureResponse(
+    file: { originalname?: string },
+    stage: string,
+    error: unknown,
+    sheet?: string,
+    row?: number,
+  ) {
+    const message = error instanceof Error ? error.message : String(error || 'Unknown touring workbook preview error');
+    this.logger.error(
+      `[touring-workbook] preview structured failure at ${stage}${sheet ? ` sheet ${sheet}` : ''}${row ? ` row ${row}` : ''}: ${message}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+
+    return {
+      success: false,
+      mode: 'preview' as const,
+      sourceFileName: file.originalname || 'touring-workbook.xlsx',
+      routeCount: 0,
+      stopCount: 0,
+      pricingCount: 0,
+      supplierMapping: { mapped: 0, missing: 0 },
+      routes: [],
+      stops: [],
+      pricings: [],
+      errors: [
+        {
+          sheet,
+          row,
+          stage,
+          message,
+        },
+      ].filter((entry) => entry.message),
+      warnings: [],
+      imported: { routes: 0, stops: 0, pricings: 0, updatedRoutes: 0, updatedPricings: 0, skippedOverlaps: 0 },
+    };
+  }
+
+  private logWorkbookStage(
+    mode: TouringWorkbookMode,
+    stage: string,
+    details: Record<string, unknown>,
+    level: 'log' | 'debug' = 'log',
+  ) {
+    const message = `[touring-workbook] ${mode} ${stage} ${JSON.stringify(details)}`;
+    if (level === 'debug') {
+      this.logger.debug(message);
+      return;
+    }
+    this.logger.log(message);
   }
 
   private validateWorkbookSheets(workbook: XLSX.WorkBook, errors: Array<{ sheet?: string; row?: number; message: string }>) {
