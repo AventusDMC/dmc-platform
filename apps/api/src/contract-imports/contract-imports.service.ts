@@ -3535,13 +3535,22 @@ export class ContractImportsService {
     return warnings;
   }
 
-  private buildPreImportValidationWarnings(preview: ContractPreview) {
+  private buildPreImportValidationWarnings(preview: ContractPreview): Array<{ severity: 'blocker' | 'warning' | 'info'; field: string; message: string }> {
     const warnings: Array<{ severity: 'blocker' | 'warning' | 'info'; field: string; message: string }> = [];
     if (preview.contractType !== ContractImportType.HOTEL) return warnings;
+    if (preview.multiProperty?.detected) {
+      return (preview.multiProperty.hotels || []).flatMap((hotel, hotelIndex) =>
+        this.buildPreImportValidationWarnings({ ...hotel, multiProperty: undefined }).map((warning) => ({
+          ...warning,
+          field: `multiProperty.hotels.${hotelIndex + 1}.${warning.field}`,
+          message: `${hotel.hotel?.name || `Hotel ${hotelIndex + 1}`}: ${warning.message}`,
+        })),
+      );
+    }
 
     const rates = preview.rates || [];
     const contractCurrency = this.optionalString(preview.contract.currency).toUpperCase();
-    const supportedOccupancies = new Set(['SGL', 'DBL', 'TPL', 'TRP', 'QUAD']);
+    const supportedOccupancies = new Set(['SGL', 'DBL', 'TPL', 'TRP', 'QUAD', 'UNIT', 'SGL_SUPPLEMENT']);
     const roomNames = (preview.roomCategories || []).map((category) => this.optionalString(category.name)).filter(Boolean);
     const roomNameCounts = this.countNormalizedValues(roomNames);
     for (const [roomName, count] of roomNameCounts.entries()) {
@@ -3693,6 +3702,7 @@ export class ContractImportsService {
     if (normalized === 'TRIPLE') return 'TPL';
     if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
     if (normalized === 'SINGLE') return 'SGL';
+    if (normalized === 'SINGLE_SUPPLEMENT') return 'SGL_SUPPLEMENT';
     return normalized;
   }
 
@@ -4130,6 +4140,8 @@ export class ContractImportsService {
     if (normalized === 'PER_ROOM') return HotelContractChargeBasis.PER_ROOM;
     if (normalized === 'PER_STAY') return HotelContractChargeBasis.PER_STAY;
     if (normalized === 'PER_NIGHT') return HotelContractChargeBasis.PER_NIGHT;
+    if (normalized === 'PER_ROOM_NIGHT') return HotelContractChargeBasis.PER_NIGHT;
+    if (normalized === 'PER_PERSON_NIGHT') return HotelContractChargeBasis.PER_NIGHT;
     return null;
   }
 
@@ -4499,7 +4511,7 @@ export class ContractImportsService {
           chargeBasis: this.templateCell(row, 'Basis') || null,
           amount: amount ?? null,
           currency: normalizedCurrency.currency,
-          pricingBasis: this.templateCell(row, 'Basis').toUpperCase() === 'PER_PERSON' ? 'PER_PERSON' as const : 'PER_ROOM' as const,
+          pricingBasis: this.templateCell(row, 'Basis').toUpperCase().includes('PERSON') ? 'PER_PERSON' as const : 'PER_ROOM' as const,
           isMandatory: this.parseBoolean(this.templateCell(row, 'Mandatory')) ?? false,
           notes: [
             seasonCode ? `Season: ${seasonCode}` : '',
@@ -5125,6 +5137,7 @@ export class ContractImportsService {
     if (normalized === 'TRP') return 'TRP';
     if (normalized === 'TPL') return 'TRP';
     if (normalized === 'SINGLE') return 'SGL';
+    if (normalized === 'SINGLE_SUPPLEMENT') return 'SGL_SUPPLEMENT';
     if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
     return normalized || 'DBL';
   }

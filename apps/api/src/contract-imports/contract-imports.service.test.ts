@@ -856,6 +856,66 @@ test('normalized hotel workbook imports one structured hotel contract preview', 
   assert.equal(warnings.some((warning) => warning.severity === 'blocker'), false);
 });
 
+test('normalized workbook accepts operational occupancy and supplement nightly basis values', () => {
+  const xlsx = require('xlsx');
+  const workbook = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { HotelName: 'Operational Hotel', SupplierName: 'Operational Supplier', ContractName: 'Operational 2026', ContractYear: 2026, Currency: 'USD', City: 'Petra', Country: 'Jordan', Category: '5 Star', ValidFrom: '2026-01-01', ValidTo: '2026-12-31', ContractStatus: 'Draft', SourceReference: 'Excel' },
+    ]),
+    'CONTRACT',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ SeasonCode: 'LOW', SeasonName: 'Low', StartDate: '2026-01-01', EndDate: '2026-03-31', SeasonType: 'LOW', Notes: '' }]),
+    'SEASONS',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([{ RoomCode: 'DLX', RoomName: 'Deluxe Room', RoomType: 'STANDARD', Bedding: '', MaxAdults: 2, MaxChildren: 1, Notes: '' }]),
+    'ROOM_CATEGORIES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'UNIT', MealPlan: 'BB', PricingBasis: 'PER_ROOM_NIGHT', Cost: 120, Currency: 'USD', MinStay: '', Notes: '' },
+      { SeasonCode: 'LOW', RoomCode: 'DLX', Occupancy: 'SGL_SUPPLEMENT', MealPlan: 'BB', PricingBasis: 'SINGLE_SUPPLEMENT_ON_DBL', Cost: 35, Currency: 'USD', MinStay: '', Notes: '' },
+    ]),
+    'RATES',
+  );
+  xlsx.utils.book_append_sheet(
+    workbook,
+    xlsx.utils.json_to_sheet([
+      { SupplementType: 'ROOM_UPGRADE', SeasonCode: 'LOW', RoomCode: 'DLX', MealPlan: 'BB', Basis: 'PER_ROOM_NIGHT', Amount: 25, Currency: 'USD', Mandatory: 'No', Notes: '' },
+      { SupplementType: 'DINNER', SeasonCode: 'LOW', RoomCode: 'DLX', MealPlan: 'BB', Basis: 'PER_PERSON_NIGHT', Amount: 15, Currency: 'USD', Mandatory: 'No', Notes: '' },
+    ]),
+    'SUPPLEMENTS',
+  );
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['PolicyName', 'DaysBeforeArrival', 'PenaltyType', 'PenaltyValue', 'Notes'] }), 'CANCELLATION_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([], { header: ['ChildAgeFrom', 'ChildAgeTo', 'SharingBasis', 'RateType', 'RateValue', 'Notes'] }), 'CHILD_POLICY');
+  xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet([{ Notes: 'Reference only' }]), 'NOTES');
+  const filePath = join(tmpdir(), `operational-normalized-hotel-contract-${Date.now()}.xlsx`);
+  xlsx.writeFile(workbook, filePath);
+
+  const service = createService();
+  const preview = (service as any).extractHotelExcelTemplatePreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: null,
+    validFrom: null,
+    validTo: null,
+    filePath,
+    fileName: 'operational-normalized-hotel-contract.xlsx',
+  });
+  const warnings = buildWarnings(service, preview);
+
+  assert.deepEqual(preview.rates.map((rate: any) => rate.occupancyType), ['UNIT', 'SGL_SUPPLEMENT']);
+  assert.deepEqual(preview.supplements.map((supplement: any) => supplement.chargeBasis), ['PER_ROOM_NIGHT', 'PER_PERSON_NIGHT']);
+  assert.equal(warnings.some((warning) => warning.field.includes('occupancyType') && warning.severity === 'blocker'), false);
+  assert.equal(warnings.some((warning) => warning.field.includes('chargeBasis') && warning.severity === 'blocker'), false);
+});
+
 test('normalized hotel workbook blocks unsafe spreadsheet rows before import', () => {
   const xlsx = require('xlsx');
   const workbook = xlsx.utils.book_new();
@@ -990,6 +1050,7 @@ test('normalized multi-hotel workbook requires one hotel selection and filters a
     ],
   );
   assert.ok(warnings.some((warning) => warning.field === 'multiProperty' && warning.severity === 'blocker'));
+  assert.equal(warnings.some((warning) => /Overlapping season dates/.test(warning.message)), false);
 
   const petra = preview.multiProperty.hotels[0];
   assert.equal(petra.hotel.name, 'Movenpick Petra');
