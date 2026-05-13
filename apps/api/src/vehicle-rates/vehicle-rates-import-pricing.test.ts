@@ -372,6 +372,7 @@ test('transport contract import creates capacity pricing and re-import updates w
   const preview = await importService.previewTransportContractImport({ buffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
   assert.deepEqual(preview.errors, []);
   assert.equal(preview.previewRows[0].pricingMode, 'PER_GROUP');
+  assert.equal(preview.previewRows[0].importDecision, 'NEW');
   assert.equal(preview.routeTransfers.length, 1);
   assert.deepEqual(preview.fullDay, []);
   assert.deepEqual(preview.addOns, []);
@@ -398,7 +399,20 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(priced.price, 90);
 
   const updatedBuffer = buildWorkbookBuffer([{ ...activeImportRow, cost: 50 }]);
-  const reimported = await importService.importTransportContract({ buffer: updatedBuffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+  const updatedPreview = await importService.previewTransportContractImport({ buffer: updatedBuffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+  assert.equal(updatedPreview.previewRows[0].importDecision, 'UPDATED');
+  assert.deepEqual(updatedPreview.previewRows[0].changedFields, ['cost']);
+
+  const skippedReimport = await importService.importTransportContract({ buffer: updatedBuffer, originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+  assert.equal(skippedReimport.createdRates, 0);
+  assert.equal(skippedReimport.updatedRates, 0);
+  assert.equal(skippedReimport.skippedRows, 1);
+  assert.equal(stores.vehicleRates[0].price, 45);
+
+  const reimported = await importService.importTransportContract(
+    { buffer: updatedBuffer, originalname: 'transport.xlsx' },
+    { allowCreateSuppliers: true, rowActions: { 2: 'UPDATE_EXISTING' } },
+  );
   assert.equal(reimported.createdSuppliers, 0);
   assert.equal(reimported.createdRoutes, 0);
   assert.equal(reimported.createdServices, 0);
@@ -725,7 +739,15 @@ test('transport contract import treats currency and validity as distinct duplica
     },
   ];
 
-  const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+  const preview = await importService.previewTransportContractImport({ buffer: buildWorkbookBuffer(rows), originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+  assert.equal(preview.previewRows[0].importDecision, 'NEW');
+  assert.equal(preview.previewRows[1].importDecision, 'NEW');
+  assert.equal(preview.previewRows[2].importDecision, 'NEW');
+
+  const imported = await importService.importTransportContract(
+    { buffer: buildWorkbookBuffer(rows), originalname: 'transport.xlsx' },
+    { allowCreateSuppliers: true, rowActions: { 3: 'CREATE_NEW_VALIDITY_VERSION' } },
+  );
 
   assert.deepEqual(imported.errors, []);
   assert.equal(imported.createdRates, 3);
@@ -735,6 +757,51 @@ test('transport contract import treats currency and validity as distinct duplica
     stores.vehicleRates.map((rate) => `${rate.currency}:${new Date(rate.validFrom).toISOString().slice(0, 10)}:${rate.price}`).sort(),
     ['JOD:2026-01-01:35', 'USD:2026-01-01:45', 'USD:2027-01-01:55'],
   );
+});
+
+test('transport contract import preview flags possible duplicate and overlap actions for existing rates', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  seedImportRoute(stores, activeImportRow);
+
+  await importService.importTransportContract({ buffer: buildWorkbookBuffer([activeImportRow]), originalname: 'transport.xlsx' }, { allowCreateSuppliers: true });
+
+  const possibleDuplicateRow = {
+    ...activeImportRow,
+    contractValidFrom: '2027-01-01',
+    contractValidTo: '2027-12-31',
+    cost: 55,
+  };
+  const overlappingRow = {
+    ...activeImportRow,
+    contractValidFrom: '2026-06-01',
+    contractValidTo: '2027-03-31',
+    cost: 60,
+  };
+
+  const preview = await importService.previewTransportContractImport(
+    { buffer: buildWorkbookBuffer([possibleDuplicateRow, overlappingRow]), originalname: 'transport-update.xlsx' },
+    { allowCreateSuppliers: true },
+  );
+
+  assert.equal(preview.previewRows[0].importDecision, 'POSSIBLE_DUPLICATE');
+  assert.equal((preview.previewRows[0].existingRate as { cost: number }).cost, 45);
+  assert.deepEqual(preview.previewRows[0].allowedActions, ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION']);
+  assert.equal(preview.previewRows[1].importDecision, 'VALIDITY_OVERLAP');
+  assert.equal((preview.previewRows[1].existingRate as { cost: number }).cost, 45);
+  assert.deepEqual(preview.previewRows[1].allowedActions, ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION']);
+
+  const archivedImport = await importService.importTransportContract(
+    { buffer: buildWorkbookBuffer([overlappingRow]), originalname: 'transport-overlap.xlsx' },
+    { allowCreateSuppliers: true, rowActions: { 2: 'ARCHIVE_OLD_VERSION' } },
+  );
+
+  assert.deepEqual(archivedImport.errors, []);
+  assert.equal(archivedImport.createdRates, 1);
+  assert.equal(stores.vehicleRates.length, 2);
+  assert.equal(stores.vehicleRates[0].active, false);
+  assert.equal(stores.vehicleRates[1].active, true);
+  assert.equal(stores.vehicleRates[1].price, 60);
 });
 
 test('transport contract import prefers Import Compatible sheet when workbook has multiple sheets', async () => {

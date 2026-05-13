@@ -35,6 +35,9 @@ type SupplierRateCardQuery = {
   status?: string;
   search?: string;
 };
+type TransportImportRowAction = 'UPDATE_EXISTING' | 'SKIP_IMPORTED_ROW' | 'CREATE_NEW_VALIDITY_VERSION' | 'ARCHIVE_OLD_VERSION';
+
+const TRANSPORT_IMPORT_ROW_ACTIONS = ['UPDATE_EXISTING', 'SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'] as const;
 
 @Controller('vehicle-rates')
 export class VehicleRatesController {
@@ -102,6 +105,7 @@ export class VehicleRatesController {
     @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
     @Body('contractNameOverride') contractNameOverride?: string,
     @Body('allowCreateSuppliers') allowCreateSuppliers?: string,
+    @Body('rowActions') rowActions?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
@@ -111,6 +115,7 @@ export class VehicleRatesController {
       contractMergeMode,
       contractNameOverride,
       allowCreateSuppliers: allowCreateSuppliers === 'true',
+      rowActions: this.parseImportRowActions(rowActions),
     });
   }
 
@@ -122,6 +127,7 @@ export class VehicleRatesController {
     @Body('contractMergeMode') contractMergeMode?: 'keep' | 'merge',
     @Body('contractNameOverride') contractNameOverride?: string,
     @Body('allowCreateSuppliers') allowCreateSuppliers?: string,
+    @Body('rowActions') rowActions?: string,
   ) {
     if (!file) {
       throw new BadRequestException('Transport contract Excel file is required');
@@ -131,7 +137,29 @@ export class VehicleRatesController {
       contractMergeMode,
       contractNameOverride,
       allowCreateSuppliers: allowCreateSuppliers === 'true',
+      rowActions: this.parseImportRowActions(rowActions),
     });
+  }
+
+  private parseImportRowActions(value?: string): Record<number, TransportImportRowAction> | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(value);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('rowActions must be an object');
+      }
+
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .map(([row, action]) => [Number(row), String(action)])
+          .filter(([row, action]) => Number.isInteger(row) && TRANSPORT_IMPORT_ROW_ACTIONS.includes(String(action) as TransportImportRowAction)),
+      ) as Record<number, TransportImportRowAction>;
+    } catch {
+      throw new BadRequestException('rowActions must be valid JSON keyed by workbook row number.');
+    }
   }
 
   @Get(':id')

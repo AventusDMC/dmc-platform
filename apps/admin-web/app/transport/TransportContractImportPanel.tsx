@@ -47,6 +47,8 @@ type TransportContractImportPanelProps = {
   apiBaseUrl: string;
 };
 
+type ImportRowAction = 'UPDATE_EXISTING' | 'SKIP_IMPORTED_ROW' | 'CREATE_NEW_VALIDITY_VERSION' | 'ARCHIVE_OLD_VERSION';
+
 async function readImportResponse(response: Response) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -58,7 +60,15 @@ async function readImportResponse(response: Response) {
 
 type ContractMergeChoice = 'keep' | 'merge';
 
-function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMergeChoice; contractNameOverride?: string; allowCreateSuppliers?: boolean }) {
+function buildUploadBody(
+  file: File,
+  options?: {
+    contractMergeMode?: ContractMergeChoice;
+    contractNameOverride?: string;
+    allowCreateSuppliers?: boolean;
+    rowActions?: Record<number, ImportRowAction>;
+  },
+) {
   const formData = new FormData();
   formData.set('file', file);
   if (options?.contractMergeMode) {
@@ -69,6 +79,9 @@ function buildUploadBody(file: File, options?: { contractMergeMode?: ContractMer
   }
   if (options?.allowCreateSuppliers) {
     formData.set('allowCreateSuppliers', 'true');
+  }
+  if (options?.rowActions && Object.keys(options.rowActions).length > 0) {
+    formData.set('rowActions', JSON.stringify(options.rowActions));
   }
   return formData;
 }
@@ -112,6 +125,48 @@ function filterPreviewRows(rows: Array<Record<string, unknown>>, filters: { serv
     const matchesPricingMode = !filters.pricingMode || pricingMode === filters.pricingMode;
     return matchesServiceCategory && matchesPricingMode;
   });
+}
+
+function getDefaultRowActions(rows?: Array<Record<string, unknown>>) {
+  return getSafeRows(rows).reduce<Record<number, ImportRowAction>>((actions, row) => {
+    const rowNumber = Number(row.row);
+    if (!Number.isInteger(rowNumber)) {
+      return actions;
+    }
+    const allowedActions = Array.isArray(row.allowedActions) ? row.allowedActions.map(String) : [];
+    if (String(row.importDecision || '') === 'NEW' && allowedActions.includes('CREATE_NEW_VALIDITY_VERSION')) {
+      actions[rowNumber] = 'CREATE_NEW_VALIDITY_VERSION';
+    } else if (allowedActions.includes('SKIP_IMPORTED_ROW')) {
+      actions[rowNumber] = 'SKIP_IMPORTED_ROW';
+    }
+    return actions;
+  }, {});
+}
+
+function getAllowedRowActions(row: Record<string, unknown>) {
+  const allowedActions = Array.isArray(row.allowedActions) ? row.allowedActions.map(String) : ['SKIP_IMPORTED_ROW'];
+  return allowedActions.filter((action): action is ImportRowAction =>
+    ['UPDATE_EXISTING', 'SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'].includes(action),
+  );
+}
+
+function formatRowActionLabel(action: ImportRowAction) {
+  switch (action) {
+    case 'UPDATE_EXISTING':
+      return 'Update existing';
+    case 'CREATE_NEW_VALIDITY_VERSION':
+      return 'Create new validity version';
+    case 'ARCHIVE_OLD_VERSION':
+      return 'Archive old version';
+    case 'SKIP_IMPORTED_ROW':
+    default:
+      return 'Skip imported row';
+  }
+}
+
+function formatChangedFields(row: Record<string, unknown>) {
+  const changedFields = Array.isArray(row.changedFields) ? row.changedFields.map(String).filter(Boolean) : [];
+  return changedFields.length > 0 ? changedFields.join(', ') : 'No field changes';
 }
 
 function formatPreviewVehicleLabel(row: Record<string, unknown>) {
@@ -193,6 +248,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
   const [allowCreateSuppliers, setAllowCreateSuppliers] = useState(false);
   const [previewServiceCategoryFilter, setPreviewServiceCategoryFilter] = useState('');
   const [previewPricingModeFilter, setPreviewPricingModeFilter] = useState('');
+  const [rowActions, setRowActions] = useState<Record<number, ImportRowAction>>({});
 
   async function handlePreview() {
     if (!file) {
@@ -210,6 +266,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
         body: buildUploadBody(file, { allowCreateSuppliers }),
       }));
       setPreview(nextPreview);
+      setRowActions(getDefaultRowActions(nextPreview.previewRows));
       setContractMergeChoice('keep');
       setContractNameOverride(nextPreview.contractWarnings?.[0]?.suggestedContractName || '');
     } catch (caughtError) {
@@ -242,6 +299,7 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
           contractMergeMode: contractWarnings.length > 0 ? contractMergeChoice : undefined,
           contractNameOverride: contractMergeChoice === 'merge' ? contractNameOverride : undefined,
           allowCreateSuppliers,
+          rowActions,
         }),
       }));
       setResult(nextResult);
@@ -469,6 +527,8 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                         <th>Currency</th>
                         <th>Rate Amount</th>
                         <th>Validity</th>
+                        <th>Import Review</th>
+                        <th>Action</th>
                         <th>Status</th>
                       </tr>
                     </thead>
@@ -492,6 +552,36 @@ export function TransportContractImportPanel({ apiBaseUrl }: TransportContractIm
                           <td>{String(row.currency || '')}</td>
                           <td>{String(row.cost || '')}</td>
                           <td>{String(row.contractValidFrom || '')} - {String(row.contractValidTo || '')}</td>
+                          <td>
+                            <strong>{String(row.importDecision || 'NEW')}</strong>
+                            <div className="table-subcopy">{String(row.validityComparison || '')}</div>
+                            <div className="table-subcopy">Changed: {formatChangedFields(row)}</div>
+                            {row.existingRate ? (
+                              <div className="table-subcopy">
+                                Existing: {String((row.existingRate as Record<string, unknown>).cost || '')}{' '}
+                                {String((row.existingRate as Record<string, unknown>).currency || '')} |{' '}
+                                {String((row.existingRate as Record<string, unknown>).validFrom || '')} -{' '}
+                                {String((row.existingRate as Record<string, unknown>).validTo || '')}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td>
+                            <select
+                              value={rowActions[Number(row.row)] || getAllowedRowActions(row)[0] || 'SKIP_IMPORTED_ROW'}
+                              onChange={(event) =>
+                                setRowActions((current) => ({
+                                  ...current,
+                                  [Number(row.row)]: event.target.value as ImportRowAction,
+                                }))
+                              }
+                            >
+                              {getAllowedRowActions(row).map((action) => (
+                                <option key={action} value={action}>
+                                  {formatRowActionLabel(action)}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
                           <td>
                             <span className="status-badge">{row.active ? 'Active' : 'Inactive'}</span>
                           </td>

@@ -78,8 +78,11 @@ type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
   allowCreateSuppliers?: boolean;
+  rowActions?: Record<number, TransportImportRowAction>;
 };
 type TransportAddOnType = 'DAILY' | 'OVERNIGHT' | 'STATIONARY' | 'WAITING';
+type TransportImportResolutionStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'POSSIBLE_DUPLICATE' | 'VALIDITY_OVERLAP';
+type TransportImportRowAction = 'UPDATE_EXISTING' | 'SKIP_IMPORTED_ROW' | 'CREATE_NEW_VALIDITY_VERSION' | 'ARCHIVE_OLD_VERSION';
 
 type TransportContractImportRow = {
   supplierName: string;
@@ -139,6 +142,34 @@ type NormalizedTransportContractImportRow = {
 type ParsedTransportImportRow = {
   rowNumber: number;
   normalized: NormalizedTransportContractImportRow;
+};
+
+type TransportImportExistingRate = {
+  id: string;
+  supplierId?: string | null;
+  serviceTypeId: string;
+  vehicleId: string;
+  routeId?: string | null;
+  routeName?: string | null;
+  minPax: number;
+  maxPax: number;
+  price: number;
+  currency: string;
+  active: boolean;
+  validFrom: Date | string;
+  validTo: Date | string;
+  supplier?: { id: string; name: string } | null;
+  serviceType?: { id: string; name: string; code?: string | null } | null;
+  vehicle?: { id: string; name: string; vehicleType?: string | null; maxPax?: number | null } | null;
+  route?: { id: string; name?: string | null } | null;
+};
+
+type TransportImportResolution = {
+  status: TransportImportResolutionStatus;
+  existingRate: TransportImportExistingRate | null;
+  changedFields: string[];
+  validityComparison: string;
+  allowedActions: TransportImportRowAction[];
 };
 
 const TRANSPORT_CONTRACT_IMPORT_COLUMNS = [
@@ -1638,6 +1669,16 @@ export class VehicleRatesService {
     for (const { rowNumber, normalized } of validRows) {
       const classification = getServiceCategoryClassification(normalized.serviceCategory, normalized.serviceName);
       const existingRoute = await this.findTransportImportRouteMatch(normalized);
+      const existingSupplier = normalized.supplierId ? { id: normalized.supplierId, name: normalized.supplierName } : await this.findTransportImportSupplierMatch(normalized.supplierName);
+      const existingServiceType = await this.findTransportImportServiceTypeMatch(normalized.serviceName);
+      const existingVehicle = existingSupplier ? await this.findTransportImportVehicleMatch(existingSupplier, normalized) : null;
+      const importResolution = await this.resolveTransportImportExistingRate({
+        supplier: existingSupplier,
+        serviceType: existingServiceType,
+        vehicle: existingVehicle,
+        route: existingRoute,
+        normalized,
+      });
       const fromPlaceMatch = await this.findTransportImportPlaceMatch(normalized.origin, normalized.country);
       const toPlaceMatch = await this.findTransportImportPlaceMatch(normalized.destination, normalized.country);
       const routeWarnings = [
@@ -1672,6 +1713,12 @@ export class VehicleRatesService {
         cost: normalized.cost,
         currency: normalized.currency,
         active: normalized.active,
+        importDecision: importResolution.status,
+        existingRate: importResolution.existingRate ? this.formatTransportImportExistingRate(importResolution.existingRate) : null,
+        importedRate: this.formatTransportImportImportedRate(normalized),
+        changedFields: importResolution.changedFields,
+        validityComparison: importResolution.validityComparison,
+        allowedActions: importResolution.allowedActions,
       };
 
       summary.previewRows.push(previewRow);
@@ -1712,6 +1759,39 @@ export class VehicleRatesService {
       const serviceType = await this.findOrCreateTransportImportServiceType(normalized.serviceName, normalized.serviceCategory);
       const vehicle = await this.findOrCreateTransportImportVehicle(supplierResult.supplier, normalized);
       const resolvedMaxPaxPerUnit = normalized.maxPaxPerUnit > 1 ? normalized.maxPaxPerUnit : vehicle.maxPax;
+      const currentResolution = await this.resolveTransportImportExistingRate({
+        supplier: supplierResult.supplier,
+        serviceType,
+        vehicle,
+        route: existingRoute,
+        normalized: {
+          ...normalized,
+          maxPaxPerUnit: resolvedMaxPaxPerUnit,
+        },
+      });
+      const rowAction = this.resolveTransportImportRowAction(rowNumber, currentResolution, options.rowActions);
+      if (rowAction === 'SKIP_IMPORTED_ROW') {
+        summary.skippedRows += 1;
+        continue;
+      }
+      if (rowAction === 'ARCHIVE_OLD_VERSION' && currentResolution.existingRate) {
+        await this.prisma.vehicleRate.update({
+          where: { id: currentResolution.existingRate.id },
+          data: { active: false },
+        });
+      }
+      if (
+        (currentResolution.status === 'UPDATED' && rowAction !== 'UPDATE_EXISTING') ||
+        (currentResolution.status === 'VALIDITY_OVERLAP' && !['CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'].includes(rowAction)) ||
+        (currentResolution.status === 'POSSIBLE_DUPLICATE' && !['CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'].includes(rowAction))
+      ) {
+        summary.errors.push({
+          row: rowNumber,
+          message: `Existing transport rate detected (${currentResolution.status}). Choose an operator action before importing this row.`,
+        });
+        summary.skippedRows += 1;
+        continue;
+      }
       const rateResult = await this.upsertTransportImportVehicleRate({
         supplierId: supplierResult.supplier.id,
         serviceTypeId: serviceType.id,
@@ -1726,6 +1806,7 @@ export class VehicleRatesService {
         currency: normalized.currency,
         validFrom: normalized.contractValidFrom,
         validTo: normalized.contractValidTo,
+        forceCreate: rowAction === 'CREATE_NEW_VALIDITY_VERSION' || rowAction === 'ARCHIVE_OLD_VERSION',
       });
       await this.upsertTransportImportCapacityRule({
         supplierId: supplierResult.supplier.id,
@@ -2093,17 +2174,36 @@ export class VehicleRatesService {
     return this.prisma.transportServiceType.create({ data: { name: serviceName, code, classification } as any });
   }
 
-  private async findOrCreateTransportImportVehicle(
+  private async findTransportImportServiceTypeMatch(serviceName: string) {
+    const code = normalizeCode(serviceName);
+    return this.prisma.transportServiceType.findFirst({
+      where: {
+        OR: [
+          { name: { equals: serviceName, mode: 'insensitive' } },
+          { code: { equals: code, mode: 'insensitive' } },
+        ],
+      },
+    });
+  }
+
+  private async findTransportImportVehicleMatch(
     supplier: { id: string; name: string },
     row: NormalizedTransportContractImportRow,
   ) {
-    const existing = await this.prisma.vehicle.findFirst({
+    return this.prisma.vehicle.findFirst({
       where: {
         name: { equals: row.vehicleLabel || row.vehicleType, mode: 'insensitive' },
         maxPax: row.maxPaxPerUnit,
         OR: [{ supplierId: supplier.id }, { resolvedSupplierId: supplier.id }, { supplierName: { equals: supplier.name, mode: 'insensitive' } }],
       } as any,
     });
+  }
+
+  private async findOrCreateTransportImportVehicle(
+    supplier: { id: string; name: string },
+    row: NormalizedTransportContractImportRow,
+  ) {
+    const existing = await this.findTransportImportVehicleMatch(supplier, row);
 
     if (existing) {
       return existing;
@@ -2267,20 +2367,23 @@ export class VehicleRatesService {
     currency: string;
     validFrom: Date;
     validTo: Date;
+    forceCreate?: boolean;
   }) {
-    const existing = await this.prisma.vehicleRate.findFirst({
-      where: {
-        supplierId: data.supplierId,
-        serviceTypeId: data.serviceTypeId,
-        routeId: data.routeId,
-        vehicleId: data.vehicleId,
-        minPax: data.minPaxPerUnit,
-        maxPax: data.maxPaxPerUnit,
-        currency: data.currency,
-        validFrom: data.validFrom,
-        validTo: data.validTo,
-      },
-    });
+    const existing = data.forceCreate
+      ? null
+      : await this.prisma.vehicleRate.findFirst({
+          where: {
+            supplierId: data.supplierId,
+            serviceTypeId: data.serviceTypeId,
+            routeId: data.routeId,
+            vehicleId: data.vehicleId,
+            minPax: data.minPaxPerUnit,
+            maxPax: data.maxPaxPerUnit,
+            currency: data.currency,
+            validFrom: data.validFrom,
+            validTo: data.validTo,
+          },
+        });
 
     if (existing) {
       return {
@@ -2324,6 +2427,162 @@ export class VehicleRatesService {
       }),
       created: true,
     };
+  }
+
+  private async resolveTransportImportExistingRate(input: {
+    supplier: { id: string; name?: string | null } | null;
+    serviceType: { id: string; name?: string | null; code?: string | null } | null;
+    vehicle: { id: string; name?: string | null; vehicleType?: string | null; maxPax?: number | null } | null;
+    route: { id: string; name?: string | null } | null;
+    normalized: NormalizedTransportContractImportRow;
+  }): Promise<TransportImportResolution> {
+    if (!input.supplier || !input.serviceType || !input.vehicle || !input.route) {
+      return {
+        status: 'NEW',
+        existingRate: null,
+        changedFields: [],
+        validityComparison: 'No matching existing supplier/route/pricing mode/vehicle rate was found.',
+        allowedActions: ['CREATE_NEW_VALIDITY_VERSION', 'SKIP_IMPORTED_ROW'],
+      };
+    }
+
+    const candidates = await this.prisma.vehicleRate.findMany({
+      where: {
+        supplierId: input.supplier.id,
+        serviceTypeId: input.serviceType.id,
+        routeId: input.route.id,
+        vehicleId: input.vehicle.id,
+        currency: input.normalized.currency,
+        minPax: input.normalized.minPaxPerUnit,
+        maxPax: input.normalized.maxPaxPerUnit,
+      } as any,
+      include: {
+        supplier: true,
+        vehicle: true,
+        serviceType: true,
+        route: true,
+      } as any,
+    });
+    const normalizedCandidates = (candidates || []).filter((candidate: TransportImportExistingRate) =>
+      candidate.supplierId === input.supplier?.id &&
+      candidate.serviceTypeId === input.serviceType?.id &&
+      candidate.routeId === input.route?.id &&
+      candidate.vehicleId === input.vehicle?.id &&
+      String(candidate.currency || '').toUpperCase() === input.normalized.currency &&
+      candidate.minPax === input.normalized.minPaxPerUnit &&
+      candidate.maxPax === input.normalized.maxPaxPerUnit,
+    );
+    const exact = normalizedCandidates.find((candidate: TransportImportExistingRate) =>
+      this.transportValiditySame(candidate.validFrom, candidate.validTo, input.normalized.contractValidFrom, input.normalized.contractValidTo),
+    );
+    if (exact) {
+      const changedFields = this.getTransportImportChangedFields(exact, input.normalized);
+      return {
+        status: changedFields.length > 0 ? 'UPDATED' : 'UNCHANGED',
+        existingRate: exact,
+        changedFields,
+        validityComparison: 'Imported validity exactly matches an existing rate.',
+        allowedActions: changedFields.length > 0 ? ['UPDATE_EXISTING', 'SKIP_IMPORTED_ROW'] : ['SKIP_IMPORTED_ROW'],
+      };
+    }
+
+    const overlapping = normalizedCandidates.find((candidate: TransportImportExistingRate) =>
+      this.transportValidityOverlaps(candidate.validFrom, candidate.validTo, input.normalized.contractValidFrom, input.normalized.contractValidTo),
+    );
+    if (overlapping) {
+      return {
+        status: 'VALIDITY_OVERLAP',
+        existingRate: overlapping,
+        changedFields: this.getTransportImportChangedFields(overlapping, input.normalized),
+        validityComparison: 'Imported validity overlaps an existing rate with the same supplier, route, pricing mode, and vehicle.',
+        allowedActions: ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION', 'ARCHIVE_OLD_VERSION'],
+      };
+    }
+
+    const possibleDuplicate = normalizedCandidates[0] || null;
+    if (possibleDuplicate) {
+      return {
+        status: 'POSSIBLE_DUPLICATE',
+        existingRate: possibleDuplicate,
+        changedFields: this.getTransportImportChangedFields(possibleDuplicate, input.normalized),
+        validityComparison: 'Same supplier, route, pricing mode, and vehicle exists with a non-overlapping validity period.',
+        allowedActions: ['SKIP_IMPORTED_ROW', 'CREATE_NEW_VALIDITY_VERSION'],
+      };
+    }
+
+    return {
+      status: 'NEW',
+      existingRate: null,
+      changedFields: [],
+      validityComparison: 'No matching existing supplier/route/pricing mode/vehicle rate was found.',
+      allowedActions: ['CREATE_NEW_VALIDITY_VERSION', 'SKIP_IMPORTED_ROW'],
+    };
+  }
+
+  private resolveTransportImportRowAction(rowNumber: number, resolution: TransportImportResolution, actions?: Record<number, TransportImportRowAction>) {
+    const action = actions?.[rowNumber];
+    if (action && resolution.allowedActions.includes(action)) {
+      return action;
+    }
+
+    if (resolution.status === 'NEW') {
+      return 'CREATE_NEW_VALIDITY_VERSION';
+    }
+
+    return 'SKIP_IMPORTED_ROW';
+  }
+
+  private getTransportImportChangedFields(existing: TransportImportExistingRate, imported: NormalizedTransportContractImportRow) {
+    const changed: string[] = [];
+    if (Number(existing.price) !== Number(imported.cost)) changed.push('cost');
+    if (String(existing.currency || '').toUpperCase() !== imported.currency) changed.push('currency');
+    if (Boolean(existing.active) !== Boolean(imported.active)) changed.push('active');
+    if (Number(existing.minPax) !== Number(imported.minPaxPerUnit)) changed.push('paxFrom');
+    if (Number(existing.maxPax) !== Number(imported.maxPaxPerUnit)) changed.push('paxTo');
+    return changed;
+  }
+
+  private formatTransportImportExistingRate(rate: TransportImportExistingRate) {
+    return {
+      id: rate.id,
+      supplier: rate.supplier?.name || rate.supplierId || null,
+      route: rate.route?.name || rate.routeName || null,
+      pricingMode: rate.serviceType?.name || rate.serviceTypeId,
+      vehicle: rate.vehicle?.name || rate.vehicleId,
+      pax: `${rate.minPax}-${rate.maxPax}`,
+      cost: rate.price,
+      currency: rate.currency,
+      active: rate.active,
+      validFrom: formatImportDate(rate.validFrom),
+      validTo: formatImportDate(rate.validTo),
+    };
+  }
+
+  private formatTransportImportImportedRate(row: NormalizedTransportContractImportRow) {
+    return {
+      supplier: row.supplierName,
+      route: row.routeName,
+      pricingMode: row.serviceName,
+      vehicle: row.vehicleLabel || row.vehicleType,
+      pax: `${row.minPaxPerUnit}-${row.maxPaxPerUnit}`,
+      cost: row.cost,
+      currency: row.currency,
+      active: row.active,
+      validFrom: formatImportDate(row.contractValidFrom),
+      validTo: formatImportDate(row.contractValidTo),
+    };
+  }
+
+  private transportValiditySame(leftFrom: Date | string, leftTo: Date | string, rightFrom: Date | string, rightTo: Date | string) {
+    return formatImportDate(leftFrom) === formatImportDate(rightFrom) && formatImportDate(leftTo) === formatImportDate(rightTo);
+  }
+
+  private transportValidityOverlaps(leftFrom: Date | string, leftTo: Date | string, rightFrom: Date | string, rightTo: Date | string) {
+    const leftStart = new Date(formatImportDate(leftFrom)).getTime();
+    const leftEnd = new Date(formatImportDate(leftTo)).getTime();
+    const rightStart = new Date(formatImportDate(rightFrom)).getTime();
+    const rightEnd = new Date(formatImportDate(rightTo)).getTime();
+    return leftStart <= rightEnd && rightStart <= leftEnd;
   }
 
   private async upsertTransportImportCapacityRule(data: {
