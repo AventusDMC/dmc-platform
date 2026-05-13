@@ -1040,8 +1040,16 @@ export class ContractImportsService {
       Name: policy.name,
       Value: policy.value,
     }));
+    const roomCategories = (preview.roomCategories || []).map((roomCategory) => ({
+      Hotel: hotelName,
+      Name: roomCategory.name || '',
+      Code: roomCategory.code || '',
+      Description: roomCategory.description || '',
+      Confidence: roomCategory.uncertain ? 'Needs Review' : 'Approved',
+    }));
 
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rates), 'Rates');
+    xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(roomCategories), 'Room Categories');
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(supplements), 'Supplements');
     xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(policies), 'Policies');
     if (preview.assistedExtraction) {

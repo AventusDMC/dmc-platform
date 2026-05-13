@@ -892,6 +892,7 @@ test('assisted extraction export includes block mapping and QC sheets', () => {
   const service = createService();
   const preview: any = baseApprovedData({
     rates: [],
+    roomCategories: [{ name: 'Superior Room', code: null, description: 'Approved from PDF room candidate lines 3, 4.', uncertain: false }],
   });
   preview.assistedExtraction = {
     mode: 'PDF_ASSISTED_REVIEW',
@@ -925,6 +926,9 @@ test('assisted extraction export includes block mapping and QC sheets', () => {
   assert.ok(workbook.SheetNames.includes('Assisted Blocks'));
   assert.ok(workbook.SheetNames.includes('Assisted Mappings'));
   assert.ok(workbook.SheetNames.includes('Assisted QC'));
+  assert.ok(workbook.SheetNames.includes('Room Categories'));
+  const roomRows = xlsx.utils.sheet_to_json(workbook.Sheets['Room Categories']);
+  assert.equal(roomRows[0].Name, 'Superior Room');
 });
 
 test('hotel PDF parser creates review candidates for flattened uncertain MENA rate rows', () => {

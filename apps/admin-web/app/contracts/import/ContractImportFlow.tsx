@@ -354,10 +354,19 @@ function getSelectedHotelPreview(preview: ContractPreview, hotelName: string): C
   if (!selected) {
     return preview;
   }
+  const approvedRoomCategories = preview.roomCategories || [];
+  const selectedRoomCategories = selected.roomCategories || [];
+  const roomCategories = [
+    ...selectedRoomCategories,
+    ...approvedRoomCategories.filter(
+      (approvedRoom) => !selectedRoomCategories.some((selectedRoom) => normalizeCategoryName(selectedRoom.name) === normalizeCategoryName(approvedRoom.name)),
+    ),
+  ];
 
   return {
     ...preview,
     ...selected,
+    roomCategories,
     multiProperty: undefined,
     parserDiagnostics: preview.parserDiagnostics,
     assistedExtraction: preview.assistedExtraction,
@@ -371,6 +380,47 @@ function getRoomCandidateNames(preview: ContractPreview): string[] {
     ...(preview.assistedExtraction?.rateCandidates || []).map((candidate) => candidate.detectedRoom || ''),
   ];
   return Array.from(new Set(names.map((name) => String(name || '').trim()).filter(Boolean)));
+}
+
+function getRoomCandidateGroups(preview: ContractPreview, selectedHotelName: string) {
+  const candidates = preview.assistedExtraction?.rateCandidates || [];
+  const groups = new Map<
+    string,
+    {
+      originalName: string;
+      detectedHotel?: string;
+      sourceLines: number[];
+      values: number[];
+      confidence: number;
+      count: number;
+      approved: boolean;
+    }
+  >();
+  for (const candidate of candidates) {
+    const roomName = candidate.detectedRoom?.trim();
+    if (!roomName) continue;
+    if (selectedHotelName && candidate.detectedHotel && normalizeCategoryName(candidate.detectedHotel) !== normalizeCategoryName(selectedHotelName)) continue;
+    const key = normalizeCategoryName(roomName);
+    const existing = groups.get(key);
+    const sourceLines = candidate.sourceLines || [candidate.lineNumber];
+    if (existing) {
+      existing.sourceLines = Array.from(new Set([...existing.sourceLines, ...sourceLines])).sort((left, right) => left - right);
+      existing.values = Array.from(new Set([...existing.values, ...(candidate.detectedNumericValues || [])]));
+      existing.confidence = Math.max(existing.confidence, candidate.confidence || 0);
+      existing.count += 1;
+    } else {
+      groups.set(key, {
+        originalName: roomName,
+        detectedHotel: candidate.detectedHotel,
+        sourceLines,
+        values: candidate.detectedNumericValues || [],
+        confidence: candidate.confidence || 0,
+        count: 1,
+        approved: (preview.roomCategories || []).some((room) => normalizeCategoryName(room.name) === key),
+      });
+    }
+  }
+  return Array.from(groups.values()).sort((left, right) => right.confidence - left.confidence || left.originalName.localeCompare(right.originalName));
 }
 
 function getMealPlanCodes(preview: ContractPreview): string[] {
@@ -1018,6 +1068,52 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     }));
   }
 
+  function approveRoomCandidate(originalName: string, approvedName: string, sourceLines: number[]) {
+    const reviewedName = approvedName.trim();
+    if (!reviewedName) return;
+    setPreview((current) => {
+      const roomCategories = current.roomCategories || [];
+      const alreadyApproved = roomCategories.some((roomCategory) => normalizeCategoryName(roomCategory.name) === normalizeCategoryName(reviewedName));
+      const nextRoomCategories = alreadyApproved
+        ? roomCategories
+        : [
+            ...roomCategories,
+            {
+              name: reviewedName,
+              code: null,
+              description: `Approved from PDF room candidate${sourceLines.length ? ` lines ${sourceLines.join(', ')}` : ''}.`,
+              uncertain: false,
+            },
+          ];
+      const nextRates = current.rates.map((rate) =>
+        normalizeCategoryName(rate.roomType) === normalizeCategoryName(originalName) ? { ...rate, roomType: reviewedName } : rate,
+      );
+      const assistedExtraction = current.assistedExtraction
+        ? {
+            ...current.assistedExtraction,
+            rateCandidates: (current.assistedExtraction.rateCandidates || []).map((candidate) =>
+              normalizeCategoryName(candidate.detectedRoom) === normalizeCategoryName(originalName)
+                ? {
+                    ...candidate,
+                    detectedRoom: reviewedName,
+                    mappingSuggestions: {
+                      ...(candidate.mappingSuggestions || {}),
+                      ROOM_CATEGORY: reviewedName,
+                    },
+                  }
+                : candidate,
+            ),
+          }
+        : undefined;
+      return {
+        ...current,
+        roomCategories: nextRoomCategories,
+        rates: nextRates,
+        assistedExtraction,
+      };
+    });
+  }
+
   function updateRate(index: number, field: keyof PreviewRate, value: string) {
     setPreview((current) => ({
       ...current,
@@ -1298,6 +1394,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                 onStepChange={setActiveAssistedStep}
                 onSelectHotel={setSelectedAssistedHotelName}
                 onUpdateRoomCategory={updateRoomCategory}
+                onApproveRoomCandidate={approveRoomCandidate}
                 onExport={() => void handleDownloadExcel(getSelectedHotelPreview(preview, selectedAssistedHotel))}
               />
               <details className="technical-extraction-details">
@@ -1877,6 +1974,7 @@ function AssistedExtractionWorkflow({
   onStepChange,
   onSelectHotel,
   onUpdateRoomCategory,
+  onApproveRoomCandidate,
   onExport,
 }: {
   preview: ContractPreview;
@@ -1887,13 +1985,17 @@ function AssistedExtractionWorkflow({
   onStepChange: (step: number) => void;
   onSelectHotel: (hotelName: string) => void;
   onUpdateRoomCategory: (index: number, field: 'name' | 'code' | 'description', value: string) => void;
+  onApproveRoomCandidate: (originalName: string, approvedName: string, sourceLines: number[]) => void;
   onExport: () => void;
 }) {
+  const [roomCandidateDrafts, setRoomCandidateDrafts] = useState<Record<string, string>>({});
   const assisted = preview.assistedExtraction;
   const blockerCount = warnings.filter((warning) => warning.severity === 'blocker' && warning.field !== 'assistedExtraction').length;
   const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
   const rateCandidates = assisted?.rateCandidates || [];
   const roomCandidates = getRoomCandidateNames(preview);
+  const roomCandidateGroups = getRoomCandidateGroups(preview, selectedHotelName);
+  const approvedRoomCount = (preview.roomCategories || []).filter((room) => room.name?.trim()).length;
   const mealPlans = getMealPlanCodes(preview);
   const seasonOverlaps = findSeasonOverlaps(preview.seasons || []);
   const festiveSeasons = getFestiveSeasonWarnings(preview.seasons || []);
@@ -1950,10 +2052,67 @@ function AssistedExtractionWorkflow({
     },
     {
       title: 'Review Room Categories',
-      status: getGuidedStepStatus({ blocker: roomCandidates.length === 0, review: (preview.roomCategories || []).some((room) => room.uncertain) }),
-      guidance: 'Normalize room category names before export. To merge duplicate categories, give them the same reviewed name; check confidence before approving unusual abbreviations.',
+      status: getGuidedStepStatus({ blocker: approvedRoomCount === 0, review: roomCandidateGroups.some((room) => !room.approved) || (preview.roomCategories || []).some((room) => room.uncertain) }),
+      guidance: 'Review detected room candidates, rename them if needed, then approve the categories that belong in the selected hotel workbook. Nothing is created until you approve it manually.',
       body: (
         <div className="guided-section-stack">
+          {roomCandidateGroups.length > 0 ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Detected candidate</th>
+                    <th>Reviewed name</th>
+                    <th>Confidence</th>
+                    <th>Source</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roomCandidateGroups.map((candidate) => {
+                    const key = normalizeCategoryName(candidate.originalName);
+                    const reviewedName = roomCandidateDrafts[key] ?? candidate.originalName;
+                    return (
+                      <tr key={key}>
+                        <td>
+                          <strong>{candidate.originalName}</strong>
+                          <p className="empty-state">
+                            {[candidate.detectedHotel, `${candidate.count} candidate row(s)`, candidate.values.length ? `Values: ${candidate.values.slice(0, 6).join(', ')}` : 'No values']
+                              .filter(Boolean)
+                              .join(' | ')}
+                          </p>
+                        </td>
+                        <td>
+                          <input
+                            value={reviewedName}
+                            onChange={(event) => setRoomCandidateDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                            aria-label={`Reviewed name for ${candidate.originalName}`}
+                          />
+                        </td>
+                        <td><span className={getGuidedStatusClass(candidate.confidence >= 0.75 ? 'complete' : 'review')}>{Math.round(candidate.confidence * 100)}%</span></td>
+                        <td>{candidate.sourceLines.join(', ')}</td>
+                        <td>
+                          {candidate.approved ? (
+                            <span className={getGuidedStatusClass('complete')}>Approved</span>
+                          ) : (
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => onApproveRoomCandidate(candidate.originalName, reviewedName, candidate.sourceLines)}
+                            >
+                              Approve room
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="empty-state">No room candidates were detected for the selected hotel. Review technical extraction details for rejected room/rate lines.</p>
+          )}
           {(preview.roomCategories || []).length > 0 ? (
             <div className="table-scroll">
               <table className="data-table">
@@ -1978,7 +2137,7 @@ function AssistedExtractionWorkflow({
               </table>
             </div>
           ) : (
-            <p className="empty-state">No normalized room categories were extracted. Review rate candidates in the technical details if needed.</p>
+            <p className="empty-state">No room categories approved yet. Approve at least one detected candidate to continue.</p>
           )}
           {roomCandidates.length > 0 ? <p className="empty-state">Detected candidates: {roomCandidates.slice(0, 12).join(', ')}</p> : null}
         </div>
