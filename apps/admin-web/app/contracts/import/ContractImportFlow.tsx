@@ -54,12 +54,14 @@ type AssistedRateCandidate = {
   lineType: HotelContractLineClassification;
   detectedHotel?: string;
   detectedRoom?: string;
+  possibleRoom?: string;
+  roomName?: string;
   detectedMealPlan?: string;
   detectedOccupancy?: string;
   detectedSeason?: string;
   detectedDateRange?: string;
   detectedNumericValues: number[];
-  sourceLines?: number[];
+  sourceLines?: Array<number | string>;
   rejectionReason?: string;
   confidence: number;
   mappingSuggestions: Partial<Record<AssistedColumnRole, string>>;
@@ -377,9 +379,39 @@ function getRoomCandidateNames(preview: ContractPreview): string[] {
   const names = [
     ...(preview.roomCategories || []).map((room) => room.name),
     ...preview.rates.map((rate) => rate.roomType || ''),
-    ...(preview.assistedExtraction?.rateCandidates || []).map((candidate) => candidate.detectedRoom || ''),
+    ...(preview.assistedExtraction?.rateCandidates || []).map((candidate) => getCandidateRoomName(candidate)),
   ];
   return Array.from(new Set(names.map((name) => String(name || '').trim()).filter(Boolean)));
+}
+
+function detectRoomNameFromText(value: unknown): string {
+  const line = String(value || '')
+    .replace(/\b(JOD|USD|EUR|BB|HB|FB|SGL|DBL|TPL|TRP)\b/gi, ' ')
+    .replace(/\d+(?:,\d{3})*(?:\.\d+)?/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const match = line.match(
+    /\b((?:classic|superior|deluxe|premium|family|executive|junior|standard|grand|royal|presidential|king|queen|twin)\s+(?:room|suite|chalet|villa)|(?:junior|executive|family|grand|royal|presidential)\s+suite|(?:classic|superior|deluxe|premium|family|executive|standard|grand|king|queen|twin)(?:\s+room)?|chalet|villa|suite)\b/i,
+  );
+  if (!match) return '';
+  const raw = match[1];
+  const needsRoomSuffix = /\b(classic|superior|deluxe|premium|family|executive|standard|grand|king|queen|twin)\b/i.test(raw) && !/\b(room|suite|chalet|villa)\b/i.test(raw);
+  return `${raw}${needsRoomSuffix ? ' Room' : ''}`.replace(/\s+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getCandidateRoomName(candidate: Partial<AssistedRateCandidate> & Record<string, unknown>): string {
+  const direct =
+    candidate.detectedRoom ||
+    candidate.possibleRoom ||
+    candidate.roomName ||
+    (candidate.mappingSuggestions && typeof candidate.mappingSuggestions === 'object'
+      ? String((candidate.mappingSuggestions as Partial<Record<AssistedColumnRole, string>>).ROOM_CATEGORY || '')
+      : '');
+  if (String(direct || '').trim()) return String(direct).trim();
+  const rawLineRoom = detectRoomNameFromText(candidate.rawLine);
+  if (rawLineRoom) return rawLineRoom;
+  const sourceLines = Array.isArray(candidate.sourceLines) ? candidate.sourceLines : [];
+  return sourceLines.map((line) => detectRoomNameFromText(line)).find(Boolean) || '';
 }
 
 function getRoomCandidateGroups(preview: ContractPreview, selectedHotelName: string) {
@@ -397,12 +429,14 @@ function getRoomCandidateGroups(preview: ContractPreview, selectedHotelName: str
     }
   >();
   for (const candidate of candidates) {
-    const roomName = candidate.detectedRoom?.trim();
+    const roomName = getCandidateRoomName(candidate).trim();
     if (!roomName) continue;
     if (selectedHotelName && candidate.detectedHotel && normalizeCategoryName(candidate.detectedHotel) !== normalizeCategoryName(selectedHotelName)) continue;
     const key = normalizeCategoryName(roomName);
     const existing = groups.get(key);
-    const sourceLines = candidate.sourceLines || [candidate.lineNumber];
+    const sourceLines = (candidate.sourceLines || [candidate.lineNumber])
+      .map((line) => Number(line))
+      .filter((line) => Number.isFinite(line));
     if (existing) {
       existing.sourceLines = Array.from(new Set([...existing.sourceLines, ...sourceLines])).sort((left, right) => left - right);
       existing.values = Array.from(new Set([...existing.values, ...(candidate.detectedNumericValues || [])]));
@@ -924,6 +958,18 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
       const mappedPreview = mapExtractedToUI(data.extractedJson, hotelCategories);
       setContractImport(data);
       setPreview(mappedPreview);
+      console.info('[contract-imports/analyze] extracted preview shape', {
+        roomCategoriesLength: mappedPreview.roomCategories?.length || 0,
+        rateCandidatesLength: mappedPreview.assistedExtraction?.rateCandidates?.length || 0,
+        firstRateCandidates: (mappedPreview.assistedExtraction?.rateCandidates || []).slice(0, 5).map((candidate) => ({
+          detectedRoom: candidate.detectedRoom,
+          possibleRoom: candidate.possibleRoom,
+          roomName: candidate.roomName,
+          mappingRoomCategory: candidate.mappingSuggestions?.ROOM_CATEGORY,
+          rawLine: candidate.rawLine,
+          sourceLines: candidate.sourceLines,
+        })),
+      });
       setActiveAssistedStep(0);
       setSelectedAssistedHotelName('');
       setMessage('Contract analyzed. Review and edit extracted values before approval.');
@@ -1092,7 +1138,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
         ? {
             ...current.assistedExtraction,
             rateCandidates: (current.assistedExtraction.rateCandidates || []).map((candidate) =>
-              normalizeCategoryName(candidate.detectedRoom) === normalizeCategoryName(originalName)
+              normalizeCategoryName(getCandidateRoomName(candidate)) === normalizeCategoryName(originalName)
                 ? {
                     ...candidate,
                     detectedRoom: reviewedName,
@@ -1110,6 +1156,29 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
         roomCategories: nextRoomCategories,
         rates: nextRates,
         assistedExtraction,
+      };
+    });
+  }
+
+  function addManualRoomCategory(roomName: string) {
+    const reviewedName = roomName.trim();
+    if (!reviewedName) return;
+    setPreview((current) => {
+      const roomCategories = current.roomCategories || [];
+      if (roomCategories.some((roomCategory) => normalizeCategoryName(roomCategory.name) === normalizeCategoryName(reviewedName))) {
+        return current;
+      }
+      return {
+        ...current,
+        roomCategories: [
+          ...roomCategories,
+          {
+            name: reviewedName,
+            code: null,
+            description: 'Manually added by operator during assisted PDF review.',
+            uncertain: false,
+          },
+        ],
       };
     });
   }
@@ -1395,6 +1464,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                 onSelectHotel={setSelectedAssistedHotelName}
                 onUpdateRoomCategory={updateRoomCategory}
                 onApproveRoomCandidate={approveRoomCandidate}
+                onAddManualRoomCategory={addManualRoomCategory}
                 onExport={() => void handleDownloadExcel(getSelectedHotelPreview(preview, selectedAssistedHotel))}
               />
               <details className="technical-extraction-details">
@@ -1975,6 +2045,7 @@ function AssistedExtractionWorkflow({
   onSelectHotel,
   onUpdateRoomCategory,
   onApproveRoomCandidate,
+  onAddManualRoomCategory,
   onExport,
 }: {
   preview: ContractPreview;
@@ -1986,9 +2057,11 @@ function AssistedExtractionWorkflow({
   onSelectHotel: (hotelName: string) => void;
   onUpdateRoomCategory: (index: number, field: 'name' | 'code' | 'description', value: string) => void;
   onApproveRoomCandidate: (originalName: string, approvedName: string, sourceLines: number[]) => void;
+  onAddManualRoomCategory: (roomName: string) => void;
   onExport: () => void;
 }) {
   const [roomCandidateDrafts, setRoomCandidateDrafts] = useState<Record<string, string>>({});
+  const [manualRoomName, setManualRoomName] = useState('');
   const assisted = preview.assistedExtraction;
   const blockerCount = warnings.filter((warning) => warning.severity === 'blocker' && warning.field !== 'assistedExtraction').length;
   const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
@@ -2111,8 +2184,31 @@ function AssistedExtractionWorkflow({
               </table>
             </div>
           ) : (
-            <p className="empty-state">No room candidates were detected for the selected hotel. Review technical extraction details for rejected room/rate lines.</p>
+            <p className="empty-state">
+              {rateCandidates.length > 0
+                ? 'Rate candidates found but no room names detected. Open technical details or add room manually.'
+                : 'No room candidates were detected for the selected hotel. Review technical extraction details for rejected room/rate lines.'}
+            </p>
           )}
+          <div className="form-grid">
+            <label>
+              Manual room category
+              <input value={manualRoomName} onChange={(event) => setManualRoomName(event.target.value)} placeholder="e.g. Deluxe Room" />
+            </label>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  onAddManualRoomCategory(manualRoomName);
+                  setManualRoomName('');
+                }}
+                disabled={!manualRoomName.trim()}
+              >
+                Add room category
+              </button>
+            </div>
+          </div>
           {(preview.roomCategories || []).length > 0 ? (
             <div className="table-scroll">
               <table className="data-table">
