@@ -37,8 +37,8 @@ function baseApprovedData(overrides: Record<string, any> = {}) {
       ...(overrides.contract || {}),
     },
     hotel: { name: 'Grand Petra', city: 'Amman', category: '5', ...(overrides.hotel || {}) },
-    roomCategories: [{ name: 'Deluxe', code: 'DLX' }],
-    seasons: [],
+    roomCategories: overrides.roomCategories || [{ name: 'Deluxe', code: 'DLX' }],
+    seasons: overrides.seasons || [],
     rates: [
       {
         roomType: 'Deluxe',
@@ -340,6 +340,56 @@ test('contract import validation keeps empty numeric fields undefined/null and f
 
   assert.ok(warnings.some((warning) => warning.field === 'rates.1.cost' && /cost is required/.test(warning.message)));
   assert.ok(warnings.some((warning) => warning.field === 'supplements.1.amount' && /amount is required/.test(warning.message)));
+});
+
+test('hotel pre-import validation blocks critical pricing and date overlap risks', () => {
+  const service = createService();
+  const preview = normalizeApproved(
+    service,
+    baseApprovedData({
+      roomCategories: [
+        { name: 'Deluxe', code: 'DLX' },
+        { name: 'deluxe', code: 'DLX2' },
+      ],
+      seasons: [
+        { name: 'Low Season', validFrom: '2026-01-01', validTo: '2026-03-31' },
+        { name: 'Shoulder Season', validFrom: '2026-03-15', validTo: '2026-05-31' },
+      ],
+      rate: { roomType: 'Deluxe', occupancyType: 'SGL', mealPlan: 'BB', seasonName: 'Low Season', seasonFrom: '2026-01-01', seasonTo: '2026-03-31', cost: 100 },
+      extraRates: [
+        { roomType: 'Deluxe', occupancyType: 'DBL', mealPlan: 'BB', seasonName: 'Low Season', seasonFrom: '2026-01-01', seasonTo: '2026-03-31', cost: 90, currency: 'USD' },
+        { roomType: 'Deluxe', occupancyType: 'PENTA', mealPlan: 'BB', seasonName: 'Low Season', seasonFrom: '2026-01-01', seasonTo: '2026-03-31', cost: 120, currency: 'JOD' },
+        { roomType: 'Deluxe', occupancyType: 'TPL', mealPlan: 'BB', seasonName: 'Low Season', seasonFrom: '2026-01-15', seasonTo: '2026-02-15', cost: 0, currency: 'JOD' },
+      ],
+    }),
+  );
+
+  const warnings = buildWarnings(service, preview);
+
+  assert.ok(warnings.some((warning) => warning.severity === 'blocker' && /zero, negative, or missing price/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.severity === 'blocker' && /unsupported occupancy/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.severity === 'blocker' && /Overlapping season dates/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.severity === 'warning' && /Duplicate room category/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.severity === 'warning' && /currency USD differs/.test(warning.message)));
+  assert.ok(warnings.some((warning) => warning.severity === 'warning' && /DBL is cheaper than SGL/.test(warning.message)));
+});
+
+test('hotel pre-import validation flags meal-plan double-count and missing base risks', () => {
+  const service = createService();
+  const preview = normalizeApproved(
+    service,
+    baseApprovedData({
+      rate: { roomType: 'Superior', occupancyType: 'DBL', mealPlan: 'HB', cost: 130 },
+      extraRates: [{ roomType: 'Superior', occupancyType: 'DBL', mealPlan: 'FB', seasonName: 'Imported', cost: 160, currency: 'JOD', pricingBasis: 'PER_ROOM' }],
+      supplements: [{ name: 'HB supplement', type: 'OPTIONAL_SUPPLEMENT', chargeBasis: 'PER_PERSON', amount: 20, currency: 'JOD' }],
+    }),
+  );
+
+  const warnings = buildWarnings(service, preview);
+
+  assert.ok(warnings.some((warning) => /HB supplement exists but no BB base/.test(warning.message)));
+  assert.ok(warnings.some((warning) => /Direct HB rates and an HB supplement/.test(warning.message)));
+  assert.ok(warnings.some((warning) => /FB rates exist without BB\/HB base meal plans/.test(warning.message)) === false);
 });
 
 test('contract import validation normalizes pricingBasis aliases and falls back for invalid pricingBasis', () => {
@@ -875,6 +925,42 @@ test('assisted extraction export includes block mapping and QC sheets', () => {
   assert.ok(workbook.SheetNames.includes('Assisted Blocks'));
   assert.ok(workbook.SheetNames.includes('Assisted Mappings'));
   assert.ok(workbook.SheetNames.includes('Assisted QC'));
+});
+
+test('hotel PDF parser creates review candidates for flattened uncertain MENA rate rows', () => {
+  const service = createService();
+  const text = [
+    'Movenpick Resort Petra',
+    'Low Season 1 Jan - 31 Mar',
+    'Room Category   SGL   DBL   TPL   BB',
+    'Superior        95    110   145',
+    'Family Room 160 185 220 HB',
+    'Villa',
+    '250 275 320',
+    'Single supplement 35',
+    'Children below 6 stay free',
+    'Cancellation within 7 days 100%',
+    'Service charge and taxes included',
+  ].join('\n');
+
+  const preview = (service as any).extractHotelContractPreview({
+    contractType: ContractImportType.HOTEL,
+    supplierName: '',
+    contractYear: 2026,
+    validFrom: null,
+    validTo: null,
+    filePath: 'petra.pdf',
+    fileName: 'petra-2026.pdf',
+    text,
+    workbookRows: [],
+  });
+
+  const candidates = preview.assistedExtraction.rateCandidates;
+  assert.ok(candidates.length >= 2);
+  assert.ok(candidates.some((candidate: any) => candidate.detectedRoom === 'Superior Room' && candidate.detectedNumericValues.includes(110)));
+  assert.ok(candidates.some((candidate: any) => candidate.detectedRoom === 'Family Room' && candidate.detectedMealPlan === 'HB'));
+  assert.ok(preview.assistedExtraction.lineClassifications.some((line: any) => line.type === 'RATE_ROW'));
+  assert.ok(preview.assistedExtraction.blocks.some((block: any) => block.id.startsWith('rate-candidate-') && block.suggestedTag === 'ROOM_RATE_TABLE'));
 });
 
 test('PDF-like multi-property extraction does not duplicate hotel sections from repeated page headings', () => {

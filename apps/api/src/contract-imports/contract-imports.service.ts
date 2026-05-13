@@ -85,6 +85,34 @@ type AssistedExtractionColumnRole =
   | 'RATE'
   | 'SINGLE_SUPPLEMENT';
 
+type HotelContractLineClassification =
+  | 'HOTEL_NAME'
+  | 'ROOM_TYPE'
+  | 'SEASON'
+  | 'DATE_RANGE'
+  | 'MEAL_PLAN'
+  | 'RATE_ROW'
+  | 'SUPPLEMENT'
+  | 'CHILD_POLICY'
+  | 'CANCELLATION'
+  | 'TAX_NOTE'
+  | 'UNKNOWN';
+
+type AssistedRateCandidate = {
+  id: string;
+  lineNumber: number;
+  rawLine: string;
+  lineType: HotelContractLineClassification;
+  detectedRoom?: string;
+  detectedMealPlan?: string;
+  detectedOccupancy?: string;
+  detectedSeason?: string;
+  detectedDateRange?: string;
+  detectedNumericValues: number[];
+  confidence: number;
+  mappingSuggestions: Partial<Record<AssistedExtractionColumnRole, string>>;
+};
+
 type AssistedExtractionPreview = {
   mode: 'PDF_ASSISTED_REVIEW';
   importDisabled: boolean;
@@ -103,7 +131,10 @@ type AssistedExtractionPreview = {
     columns?: string[];
     mappings?: Partial<Record<AssistedExtractionColumnRole, string>>;
     approved?: boolean;
+    rateCandidateIds?: string[];
   }>;
+  lineClassifications: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>;
+  rateCandidates: AssistedRateCandidate[];
   qcWarnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
 };
 
@@ -187,7 +218,7 @@ type ContractPreview = {
   contractEndDate?: string | null;
   currency?: string;
   serviceCharge?: { name: string; value: number; included: boolean; uncertain?: boolean } | null;
-  warnings?: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }>;
+  warnings?: Array<{ severity: 'blocker' | 'warning' | 'info'; field: string; message: string }>;
   parserDiagnostics?: {
     source: 'workbook' | 'text';
     rowCount: number;
@@ -1019,8 +1050,22 @@ export class ContractImportsService {
         Field: warning.field,
         Message: warning.message,
       }));
+      const rateCandidates = (preview.assistedExtraction.rateCandidates || []).map((candidate) => ({
+        CandidateId: candidate.id,
+        Line: candidate.lineNumber,
+        Type: candidate.lineType,
+        Confidence: candidate.confidence,
+        Room: candidate.detectedRoom || '',
+        MealPlan: candidate.detectedMealPlan || '',
+        Occupancy: candidate.detectedOccupancy || '',
+        Season: candidate.detectedSeason || '',
+        DateRange: candidate.detectedDateRange || '',
+        Values: candidate.detectedNumericValues.join(', '),
+        RawLine: candidate.rawLine,
+      }));
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(blocks), 'Assisted Blocks');
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(mappings), 'Assisted Mappings');
+      xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(rateCandidates), 'Rate Candidates');
       xlsx.utils.book_append_sheet(workbook, xlsx.utils.json_to_sheet(qcWarnings), 'Assisted QC');
     }
 
@@ -1387,6 +1432,8 @@ export class ContractImportsService {
 
     const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const diagnostics = this.buildTextExtractionDiagnostics(text, rows);
+    const lineClassifications = this.classifyHotelContractLines(lines);
+    const rateCandidates = this.buildAssistedRateCandidates(lines, lineClassifications);
     const blocks: AssistedExtractionPreview['blocks'] = [];
     const seen = new Set<string>();
 
@@ -1403,6 +1450,9 @@ export class ContractImportsService {
     for (const table of diagnostics.detectedTables || []) {
       const start = Math.max(0, (table.lineNumber || 1) - 1);
       const tableLines = lines.slice(start, Math.min(lines.length, start + 10));
+      const candidateIds = rateCandidates
+        .filter((candidate) => candidate.lineNumber >= start + 1 && candidate.lineNumber <= start + tableLines.length)
+        .map((candidate) => candidate.id);
       addBlock({
         id: `table-${table.lineNumber || blocks.length + 1}`,
         kind: 'DETECTED_TABLE',
@@ -1413,6 +1463,25 @@ export class ContractImportsService {
         text: tableLines.join('\n'),
         rows: tableLines.map((line) => line.split(/\t+| {2,}|,/).map((cell) => cell.trim()).filter(Boolean)),
         columns: table.columns || [],
+        rateCandidateIds: candidateIds,
+      });
+    }
+
+    for (const candidate of rateCandidates.slice(0, 120)) {
+      const start = Math.max(0, candidate.lineNumber - 2);
+      const candidateLines = lines.slice(start, Math.min(lines.length, start + 5));
+      addBlock({
+        id: `rate-candidate-${candidate.lineNumber}`,
+        kind: 'DETECTED_TABLE',
+        label: `Rate candidate line ${candidate.lineNumber} (${Math.round(candidate.confidence * 100)}%)`,
+        suggestedTag: 'ROOM_RATE_TABLE',
+        lineStart: start + 1,
+        lineEnd: start + candidateLines.length,
+        text: candidateLines.join('\n'),
+        rows: [this.tokenizeHotelContractLine(candidate.rawLine)],
+        columns: Object.values(candidate.mappingSuggestions).filter(Boolean),
+        mappings: candidate.mappingSuggestions,
+        rateCandidateIds: [candidate.id],
       });
     }
 
@@ -1464,6 +1533,8 @@ export class ContractImportsService {
       oneHotelAtATimeRequired: options.oneHotelAtATimeRequired ?? true,
       requiredColumnRoles: ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE'],
       blocks: blocks.slice(0, 40),
+      lineClassifications: lineClassifications.slice(0, 500),
+      rateCandidates: rateCandidates.slice(0, 200),
       qcWarnings: [],
     };
     preview.qcWarnings = this.buildAssistedExtractionQcWarnings(preview);
@@ -1478,6 +1549,144 @@ export class ContractImportsService {
     if (/\b(season|valid|from|to|date range)\b/i.test(text) && !/\b(room|rate|sgl|dbl|single|double)\b/i.test(text)) return 'SEASON_TABLE';
     if (/\b(room|suite|rate|sgl|dbl|single|double|bb|hb|fb)\b/i.test(text)) return 'ROOM_RATE_TABLE';
     return undefined;
+  }
+
+  private classifyHotelContractLines(lines: string[]) {
+    return lines.map((rawLine, index) => {
+      const line = rawLine.replace(/\s+/g, ' ').trim();
+      const amounts = this.extractMoneyAmounts(line);
+      const roomName = this.detectRoomName(line) || this.detectLooseRoomName(line);
+      const season = this.detectSeasonNameInLine(line);
+      const dateRange = this.detectDateRangeInLine(line);
+      const mealPlan = this.extractMealPlanFromText(line);
+      let type: HotelContractLineClassification = 'UNKNOWN';
+      let confidence = 0.25;
+
+      if (this.extractHotelHeading(line)) {
+        type = 'HOTEL_NAME';
+        confidence = 0.82;
+      } else if (/\b(cancel|cancellation|no[- ]?show|penalt)/i.test(line)) {
+        type = 'CANCELLATION';
+        confidence = 0.88;
+      } else if (/\b(child|children|infant|age|extra bed)\b/i.test(line)) {
+        type = 'CHILD_POLICY';
+        confidence = 0.84;
+      } else if (/\b(tax|service charge|vat|municipality)\b/i.test(line)) {
+        type = 'TAX_NOTE';
+        confidence = 0.82;
+      } else if (/\b(supplement|gala|extra meal|single supplement)\b/i.test(line)) {
+        type = amounts.length > 0 ? 'SUPPLEMENT' : 'UNKNOWN';
+        confidence = amounts.length > 0 ? 0.82 : 0.45;
+      } else if (amounts.length > 0 && (roomName || /\b(room|suite|sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(line))) {
+        type = 'RATE_ROW';
+        confidence = Math.min(0.92, 0.45 + (roomName ? 0.2 : 0) + (amounts.length >= 2 ? 0.15 : 0) + (mealPlan !== 'BB' || /\bbb\b/i.test(line) ? 0.08 : 0) + (dateRange ? 0.08 : 0));
+      } else if (roomName) {
+        type = 'ROOM_TYPE';
+        confidence = 0.76;
+      } else if (season) {
+        type = 'SEASON';
+        confidence = 0.78;
+      } else if (dateRange) {
+        type = 'DATE_RANGE';
+        confidence = 0.78;
+      } else if (/\b(bb|hb|fb|half board|full board|bed\s*(?:and|&)\s*breakfast)\b/i.test(line)) {
+        type = 'MEAL_PLAN';
+        confidence = 0.7;
+      }
+
+      return {
+        lineNumber: index + 1,
+        rawLine,
+        type,
+        confidence: Number(confidence.toFixed(2)),
+      };
+    });
+  }
+
+  private buildAssistedRateCandidates(
+    lines: string[],
+    classifications: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>,
+  ): AssistedRateCandidate[] {
+    const candidates: AssistedRateCandidate[] = [];
+    let lastRoom = '';
+    let currentSeason = '';
+    let currentDateRange = '';
+    let currentMealPlan = 'BB';
+    const recentNumericOnlyLines: Array<{ lineNumber: number; rawLine: string; values: number[] }> = [];
+
+    classifications.forEach((classified, index) => {
+      const line = classified.rawLine.replace(/\s+/g, ' ').trim();
+      const room = this.detectRoomName(line) || this.detectLooseRoomName(line);
+      const season = this.detectSeasonNameInLine(line);
+      const dateRange = this.detectDateRangeInLine(line);
+      const mealPlan = this.extractMealPlanFromText(line);
+      const amounts = this.extractMoneyAmounts(line);
+      const numericValues = amounts.map((amount) => amount.amount);
+
+      if (room) lastRoom = room;
+      if (season) currentSeason = season;
+      if (dateRange) currentDateRange = dateRange;
+      if (mealPlan) currentMealPlan = mealPlan;
+
+      const numericOnly = numericValues.length > 0 && !/[A-Za-z]/.test(line.replace(/\b(JOD|USD|EUR)\b/gi, ''));
+      if (numericOnly) {
+        recentNumericOnlyLines.push({ lineNumber: classified.lineNumber, rawLine: line, values: numericValues });
+        if (recentNumericOnlyLines.length > 4) recentNumericOnlyLines.shift();
+      }
+
+      const previous = classifications.slice(Math.max(0, index - 4), index);
+      const previousRoom = [...previous].reverse().map((entry) => this.detectRoomName(entry.rawLine) || this.detectLooseRoomName(entry.rawLine)).find(Boolean) || lastRoom;
+      const candidateRoom = room || previousRoom;
+      const hasRateSignal =
+        classified.type === 'RATE_ROW' ||
+        (numericValues.length >= 2 && Boolean(candidateRoom)) ||
+        (numericValues.length >= 1 && /\b(sgl|dbl|tpl|trp|single|double|triple|bb|hb|fb)\b/i.test(line));
+
+      if (!hasRateSignal || numericValues.length === 0) return;
+
+      const detectedOccupancy = this.detectOccupancy(line);
+      const confidence = Math.min(
+        0.95,
+        0.35 +
+          (candidateRoom ? 0.2 : 0) +
+          (numericValues.length >= 2 ? 0.15 : 0) +
+          (/\b(sgl|dbl|tpl|trp|single|double|triple)\b/i.test(line) ? 0.1 : 0) +
+          (currentSeason || season ? 0.08 : 0) +
+          (currentMealPlan || mealPlan ? 0.06 : 0) +
+          (numericOnly ? -0.12 : 0),
+      );
+      const mappingSuggestions: Partial<Record<AssistedExtractionColumnRole, string>> = {};
+      if (candidateRoom) mappingSuggestions.ROOM_CATEGORY = candidateRoom;
+      if (currentSeason || season) mappingSuggestions.SEASON = season || currentSeason;
+      if (currentDateRange || dateRange) mappingSuggestions.DATE_RANGE = dateRange || currentDateRange;
+      if (mealPlan || currentMealPlan) mappingSuggestions.MEAL_PLAN = mealPlan || currentMealPlan;
+      mappingSuggestions.PRICING_BASIS = this.detectPricingBasis(line);
+      if (numericValues.length > 0) mappingSuggestions.RATE = numericValues.join(', ');
+      if (/\b(single supplement|sgl supp|single supp)\b/i.test(line) && numericValues[0]) mappingSuggestions.SINGLE_SUPPLEMENT = String(numericValues[0]);
+
+      candidates.push({
+        id: `rate-${classified.lineNumber}`,
+        lineNumber: classified.lineNumber,
+        rawLine: classified.rawLine,
+        lineType: classified.type,
+        detectedRoom: candidateRoom || undefined,
+        detectedMealPlan: mealPlan || currentMealPlan || undefined,
+        detectedOccupancy,
+        detectedSeason: season || currentSeason || undefined,
+        detectedDateRange: dateRange || currentDateRange || undefined,
+        detectedNumericValues: numericValues,
+        confidence: Number(confidence.toFixed(2)),
+        mappingSuggestions,
+      });
+    });
+
+    return candidates.filter((candidate, index, all) => all.findIndex((other) => other.rawLine === candidate.rawLine && other.lineNumber === candidate.lineNumber) === index);
+  }
+
+  private tokenizeHotelContractLine(line: string) {
+    return line.split(/\t+| {2,}|\|/).map((cell) => cell.trim()).filter(Boolean).length > 1
+      ? line.split(/\t+| {2,}|\|/).map((cell) => cell.trim()).filter(Boolean)
+      : line.split(/\s+/).map((cell) => cell.trim()).filter(Boolean);
   }
 
   private buildAssistedExtractionQcWarnings(assisted: AssistedExtractionPreview) {
@@ -1640,12 +1849,19 @@ export class ContractImportsService {
         return;
       }
       const amounts = this.extractMoneyAmounts(line);
-      if (amounts.length >= 2 && /\b(room|suite|single|double|sgl|dbl|bb|hb|rate|rates?)\b/i.test(line)) {
+      if (amounts.length >= 2 && (/\b(room|suite|single|double|sgl|dbl|tpl|trp|bb|hb|fb|rate|rates?)\b/i.test(line) || this.detectLooseRoomName(line))) {
         tables.push({
           label: line.slice(0, 160),
           lineNumber: index + 1,
           confidence: 0.55,
           columns: ['INFERRED_AMOUNTS'],
+        });
+      } else if (amounts.length >= 1 && this.detectLooseRoomName(line) && /\b(standard|deluxe|superior|suite|family|chalet|villa|king|twin)\b/i.test(line)) {
+        tables.push({
+          label: line.slice(0, 160),
+          lineNumber: index + 1,
+          confidence: 0.45,
+          columns: ['REVIEW_CANDIDATE'],
         });
       }
     });
@@ -1937,10 +2153,18 @@ export class ContractImportsService {
 
   private detectRoomName(line: string) {
     const roomPattern =
-      /\b((?:standard|deluxe|superior|executive|classic|premium|family|grand|twin|double|triple)\s+(?:room|suite)|(?:junior|executive|grand|family)\s+suite|suite|twin|double|triple)\b/i;
+      /\b((?:standard|deluxe|superior|executive|classic|premium|family|grand|twin|double|triple|king|queen|chalet|villa|studio)\s+(?:room|suite|chalet|villa)|(?:junior|executive|grand|family|royal|presidential)\s+suite|(?:family\s+room)|(?:king|twin)\s+room|chalet|villa|suite|twin|double|triple)\b/i;
     const match = line.match(roomPattern);
     if (!match) return '';
     return match[1].replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  private detectLooseRoomName(line: string) {
+    const cleaned = line.replace(/\b(JOD|USD|EUR|BB|HB|FB|SGL|DBL|TPL|TRP)\b/gi, ' ').replace(/\d+(?:,\d{3})*(?:\.\d+)?/g, ' ');
+    const match = cleaned.match(/\b(standard|deluxe|superior|executive|classic|premium|family|grand|junior|royal|presidential|king|queen|twin|chalet|villa|studio)(?:\s+(?:room|suite|chalet|villa))?\b/i);
+    if (!match) return '';
+    const suffix = /\b(room|suite|chalet|villa)\b/i.test(match[0]) ? '' : /\b(chalet|villa)\b/i.test(match[1]) ? '' : ' Room';
+    return `${match[0]}${suffix}`.replace(/\s+/g, ' ').trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
   private normalizeRoomName(value: string) {
@@ -1953,7 +2177,7 @@ export class ContractImportsService {
     const detected = this.detectRoomName(cleaned);
     if (detected) return detected;
 
-    if (/\b(standard|deluxe|suite|twin|double|triple|superior|executive|classic|premium|family|grand)\b/i.test(cleaned)) {
+    if (/\b(standard|deluxe|suite|twin|double|triple|superior|executive|classic|premium|family|grand|chalet|villa|king|queen|studio)\b/i.test(cleaned)) {
       return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase());
     }
 
@@ -1995,8 +2219,16 @@ export class ContractImportsService {
   }
 
   private detectSeasonNameInLine(line: string) {
-    const seasonMatch = line.match(/\b(Low Season|High Season|Shoulder Season|Peak Season|Summer|Winter|Ramadan|Eid|Christmas|New Year)\b/i);
+    const seasonMatch = line.match(/\b(Low Season|High Season|Shoulder Season|Peak Season|Festive Season|Festive|Summer|Winter|Ramadan|Eid|Christmas|New Year)\b/i);
     return seasonMatch ? seasonMatch[1].replace(/\b\w/g, (letter) => letter.toUpperCase()) : '';
+  }
+
+  private detectDateRangeInLine(line: string) {
+    const numericRange = line.match(/\b\d{1,2}[\/\-.]\d{1,2}(?:[\/\-.]20\d{2})?\s*(?:-|to|until|till|–|—)\s*\d{1,2}[\/\-.]\d{1,2}(?:[\/\-.]20\d{2})?\b/i);
+    if (numericRange) return numericRange[0].replace(/\s+/g, ' ');
+
+    const monthRange = line.match(/\b\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s*(?:20\d{2})?\s*(?:-|to|until|till|–|—)\s*\d{1,2}\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*(?:\s*20\d{2})?\b/i);
+    return monthRange ? monthRange[0].replace(/\s+/g, ' ') : '';
   }
 
   private normalizeRateHeaderOccupancy(value: string) {
@@ -2829,7 +3061,7 @@ export class ContractImportsService {
   }
 
   private buildWarnings(preview: ContractPreview) {
-    const warnings: Array<{ severity: 'blocker' | 'warning'; field: string; message: string }> = [...(preview.warnings || [])];
+    const warnings: Array<{ severity: 'blocker' | 'warning' | 'info'; field: string; message: string }> = [...(preview.warnings || [])];
     if (preview.multiProperty?.detected) {
       warnings.push({
         severity: 'blocker',
@@ -2949,6 +3181,7 @@ export class ContractImportsService {
         warnings.push({ severity: 'blocker', field, message: 'Percent must be between 0 and 100' });
       }
     }
+    warnings.push(...this.buildPreImportValidationWarnings(preview));
     for (const field of preview.missingFields || []) {
       warnings.push({ severity: 'warning', field, message: `${field} was not extracted from the uploaded contract` });
     }
@@ -2956,6 +3189,167 @@ export class ContractImportsService {
       warnings.push({ severity: 'warning', field, message: `${field} needs review` });
     }
     return warnings;
+  }
+
+  private buildPreImportValidationWarnings(preview: ContractPreview) {
+    const warnings: Array<{ severity: 'blocker' | 'warning' | 'info'; field: string; message: string }> = [];
+    if (preview.contractType !== ContractImportType.HOTEL) return warnings;
+
+    const rates = preview.rates || [];
+    const contractCurrency = this.optionalString(preview.contract.currency).toUpperCase();
+    const supportedOccupancies = new Set(['SGL', 'DBL', 'TPL', 'TRP', 'QUAD']);
+    const roomNames = (preview.roomCategories || []).map((category) => this.optionalString(category.name)).filter(Boolean);
+    const roomNameCounts = this.countNormalizedValues(roomNames);
+    for (const [roomName, count] of roomNameCounts.entries()) {
+      if (count > 1) {
+        warnings.push({ severity: 'warning', field: 'roomCategories', message: `Duplicate room category name needs review: ${roomName}` });
+      }
+    }
+
+    if ((preview.seasons || []).length === 0 && rates.length > 0) {
+      warnings.push({ severity: 'warning', field: 'seasons', message: 'No season records were extracted; rates may rely on ambiguous season text.' });
+    }
+
+    const contractFrom = this.parseDateOnly(preview.contract.validFrom);
+    const contractTo = this.parseDateOnly(preview.contract.validTo);
+    const seasonRanges = (preview.seasons || [])
+      .map((season, index) => ({
+        index,
+        name: season.name || `Season ${index + 1}`,
+        from: this.parseDateOnly(season.validFrom),
+        to: this.parseDateOnly(season.validTo),
+      }))
+      .filter((season) => season.from && season.to) as Array<{ index: number; name: string; from: Date; to: Date }>;
+
+    for (let left = 0; left < seasonRanges.length; left += 1) {
+      for (let right = left + 1; right < seasonRanges.length; right += 1) {
+        if (seasonRanges[left].from <= seasonRanges[right].to && seasonRanges[right].from <= seasonRanges[left].to) {
+          const severity = /festive|eid|christmas|new year/i.test(`${seasonRanges[left].name} ${seasonRanges[right].name}`) ? 'warning' : 'blocker';
+          warnings.push({
+            severity,
+            field: 'seasons',
+            message: `Overlapping season dates detected: ${seasonRanges[left].name} overlaps ${seasonRanges[right].name}.`,
+          });
+        }
+      }
+    }
+
+    if (contractFrom && contractTo && seasonRanges.length > 0) {
+      const sorted = [...seasonRanges].sort((a, b) => a.from.getTime() - b.from.getTime());
+      if (sorted[0].from > contractFrom) {
+        warnings.push({ severity: 'warning', field: 'seasons.coverage', message: `Season coverage starts after contract start date (${this.isoDate(contractFrom)}).` });
+      }
+      if (sorted[sorted.length - 1].to < contractTo) {
+        warnings.push({ severity: 'warning', field: 'seasons.coverage', message: `Season coverage ends before contract end date (${this.isoDate(contractTo)}).` });
+      }
+      for (let index = 0; index < sorted.length - 1; index += 1) {
+        const nextExpected = new Date(sorted[index].to.getTime());
+        nextExpected.setUTCDate(nextExpected.getUTCDate() + 1);
+        if (nextExpected < sorted[index + 1].from) {
+          warnings.push({
+            severity: 'warning',
+            field: 'seasons.coverage',
+            message: `Coverage gap detected between ${sorted[index].name} and ${sorted[index + 1].name}.`,
+          });
+        }
+      }
+    }
+
+    const groupedRates = new Map<string, PreviewRate[]>();
+    for (const [index, rate] of rates.entries()) {
+      const field = `rates.${index + 1}`;
+      const cost = Number(rate.cost);
+      if (!Number.isFinite(cost) || cost <= 0) {
+        warnings.push({ severity: 'blocker', field: `${field}.cost`, message: `Rate ${index + 1} has a zero, negative, or missing price.` });
+      }
+      const rateCurrency = this.optionalString(rate.currency).toUpperCase();
+      if (rateCurrency && contractCurrency && rateCurrency !== contractCurrency) {
+        warnings.push({ severity: 'warning', field: `${field}.currency`, message: `Rate ${index + 1} currency ${rateCurrency} differs from contract currency ${contractCurrency}.` });
+      }
+      const occupancy = this.normalizeOccupancyForValidation(rate.occupancyType);
+      if (!occupancy || !supportedOccupancies.has(occupancy)) {
+        warnings.push({ severity: 'blocker', field: `${field}.occupancyType`, message: `Rate ${index + 1} has unsupported occupancy: ${rate.occupancyType || 'blank'}.` });
+      }
+      if (occupancy === 'TRP') {
+        warnings.push({ severity: 'info', field: `${field}.occupancyType`, message: `Rate ${index + 1} uses TRP naming; ERP will treat it as triple occupancy.` });
+      }
+      const mealPlan = this.optionalString(rate.mealPlan).toUpperCase();
+      const groupKey = [
+        this.optionalString(rate.roomType).toLowerCase(),
+        this.optionalString(rate.seasonName).toLowerCase(),
+        rate.seasonFrom || '',
+        rate.seasonTo || '',
+      ].join('|');
+      if (!groupedRates.has(groupKey)) groupedRates.set(groupKey, []);
+      groupedRates.get(groupKey)!.push({ ...rate, occupancyType: occupancy || rate.occupancyType, mealPlan });
+    }
+
+    const supplementNames = (preview.supplements || []).map((supplement) => `${supplement.name || ''} ${supplement.type || ''} ${supplement.notes || ''}`.toLowerCase());
+    const hasHbSupplement = supplementNames.some((name) => /\bhb\b|half\s*board/.test(name));
+    const hasFbSupplement = supplementNames.some((name) => /\bfb\b|full\s*board/.test(name));
+    const mealPlans = new Set(rates.map((rate) => this.optionalString(rate.mealPlan).toUpperCase()).filter(Boolean));
+    if (hasHbSupplement && !mealPlans.has('BB')) {
+      warnings.push({ severity: 'warning', field: 'mealPlans', message: 'HB supplement exists but no BB base rate was found.' });
+    }
+    if (hasHbSupplement && mealPlans.has('HB')) {
+      warnings.push({ severity: 'warning', field: 'mealPlans', message: 'Direct HB rates and an HB supplement both exist; review double-count risk.' });
+    }
+    if (mealPlans.has('FB') && !mealPlans.has('BB') && !mealPlans.has('HB')) {
+      warnings.push({ severity: 'warning', field: 'mealPlans', message: 'FB rates exist without BB/HB base meal plans.' });
+    }
+    if (hasFbSupplement && mealPlans.has('FB')) {
+      warnings.push({ severity: 'warning', field: 'mealPlans', message: 'Direct FB rates and an FB supplement both exist; review double-count risk.' });
+    }
+
+    for (const [key, group] of groupedRates.entries()) {
+      const displayKey = key.split('|').filter(Boolean).join(' / ') || 'rate group';
+      const byOccupancy = new Map(group.map((rate) => [this.normalizeOccupancyForValidation(rate.occupancyType), Number(rate.cost)]));
+      const sgl = byOccupancy.get('SGL');
+      const dbl = byOccupancy.get('DBL');
+      const tpl = byOccupancy.get('TPL') ?? byOccupancy.get('TRP');
+      if (sgl !== undefined && dbl !== undefined && dbl < sgl) {
+        warnings.push({ severity: 'warning', field: 'rates.occupancy', message: `DBL is cheaper than SGL for ${displayKey}; review occupancy pricing.` });
+      }
+      if (sgl !== undefined && dbl !== undefined && tpl === undefined) {
+        warnings.push({ severity: 'info', field: 'rates.occupancy', message: `Triple occupancy is not present for ${displayKey}.` });
+      }
+      const mealPlanSet = new Set(group.map((rate) => this.optionalString(rate.mealPlan).toUpperCase()).filter(Boolean));
+      if (mealPlanSet.size > 1 && !mealPlanSet.has('BB')) {
+        warnings.push({ severity: 'warning', field: 'mealPlans', message: `Room/season group has multiple meal plans but no BB base: ${displayKey}.` });
+      }
+    }
+
+    const unresolvedCandidates = (preview.assistedExtraction?.rateCandidates || []).filter((candidate) => {
+      const mapped = preview.assistedExtraction?.blocks.some((block) => block.approved && (block.rateCandidateIds || []).includes(candidate.id));
+      return !mapped;
+    });
+    if (unresolvedCandidates.length > 0) {
+      warnings.push({
+        severity: 'info',
+        field: 'assistedExtraction.rateCandidates',
+        message: `${unresolvedCandidates.length} review rate candidate(s) remain unresolved in assisted extraction.`,
+      });
+    }
+
+    return warnings;
+  }
+
+  private countNormalizedValues(values: string[]) {
+    const counts = new Map<string, number>();
+    for (const value of values) {
+      const normalized = value.trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!normalized) continue;
+      counts.set(normalized, (counts.get(normalized) || 0) + 1);
+    }
+    return counts;
+  }
+
+  private normalizeOccupancyForValidation(value: unknown) {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'TRIPLE') return 'TPL';
+    if (normalized === 'DOUBLE' || normalized === 'TWIN') return 'DBL';
+    if (normalized === 'SINGLE') return 'SGL';
+    return normalized;
   }
 
   private buildExtractionQcWarnings(preview: Pick<ContractPreview, 'rates' | 'seasons'>) {
@@ -3218,6 +3612,7 @@ export class ContractImportsService {
           columns: Array.isArray(block.columns) ? block.columns.map((column: unknown) => this.optionalString(column)).filter(Boolean) : undefined,
           mappings: block.mappings && typeof block.mappings === 'object' ? block.mappings : undefined,
           approved: Boolean(block.approved),
+          rateCandidateIds: Array.isArray(block.rateCandidateIds) ? block.rateCandidateIds.map((id: unknown) => this.optionalString(id)).filter(Boolean) : undefined,
         }))
       : [];
     const assisted: AssistedExtractionPreview = {
@@ -3228,6 +3623,23 @@ export class ContractImportsService {
         ? value.requiredColumnRoles.filter((role: unknown): role is AssistedExtractionColumnRole => this.isAssistedColumnRole(role))
         : ['ROOM_CATEGORY', 'SEASON', 'DATE_RANGE', 'MEAL_PLAN', 'PRICING_BASIS', 'RATE'],
       blocks,
+      lineClassifications: Array.isArray(value.lineClassifications) ? value.lineClassifications : [],
+      rateCandidates: Array.isArray(value.rateCandidates)
+        ? value.rateCandidates.map((candidate: any, index: number) => ({
+            id: this.optionalString(candidate.id) || `rate-${index + 1}`,
+            lineNumber: this.parseOptionalInt(candidate.lineNumber) || index + 1,
+            rawLine: this.optionalString(candidate.rawLine),
+            lineType: candidate.lineType || 'UNKNOWN',
+            detectedRoom: this.optionalString(candidate.detectedRoom) || undefined,
+            detectedMealPlan: this.optionalString(candidate.detectedMealPlan) || undefined,
+            detectedOccupancy: this.optionalString(candidate.detectedOccupancy) || undefined,
+            detectedSeason: this.optionalString(candidate.detectedSeason) || undefined,
+            detectedDateRange: this.optionalString(candidate.detectedDateRange) || undefined,
+            detectedNumericValues: Array.isArray(candidate.detectedNumericValues) ? candidate.detectedNumericValues.map((value: unknown) => this.parseNumber(value)).filter((value: number | undefined): value is number => value !== undefined) : [],
+            confidence: this.parseNumber(candidate.confidence) ?? 0,
+            mappingSuggestions: candidate.mappingSuggestions && typeof candidate.mappingSuggestions === 'object' ? candidate.mappingSuggestions : {},
+          }))
+        : [],
       qcWarnings: Array.isArray(value.qcWarnings) ? value.qcWarnings : [],
     };
     assisted.qcWarnings = this.buildAssistedExtractionQcWarnings(assisted);

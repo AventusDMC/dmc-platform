@@ -12,7 +12,7 @@ type Supplier = {
 };
 
 type Warning = {
-  severity: 'blocker' | 'warning';
+  severity: 'blocker' | 'warning' | 'info';
   field: string;
   message: string;
 };
@@ -34,6 +34,34 @@ type AssistedColumnRole =
   | 'RATE'
   | 'SINGLE_SUPPLEMENT';
 
+type HotelContractLineClassification =
+  | 'HOTEL_NAME'
+  | 'ROOM_TYPE'
+  | 'SEASON'
+  | 'DATE_RANGE'
+  | 'MEAL_PLAN'
+  | 'RATE_ROW'
+  | 'SUPPLEMENT'
+  | 'CHILD_POLICY'
+  | 'CANCELLATION'
+  | 'TAX_NOTE'
+  | 'UNKNOWN';
+
+type AssistedRateCandidate = {
+  id: string;
+  lineNumber: number;
+  rawLine: string;
+  lineType: HotelContractLineClassification;
+  detectedRoom?: string;
+  detectedMealPlan?: string;
+  detectedOccupancy?: string;
+  detectedSeason?: string;
+  detectedDateRange?: string;
+  detectedNumericValues: number[];
+  confidence: number;
+  mappingSuggestions: Partial<Record<AssistedColumnRole, string>>;
+};
+
 type AssistedExtractionBlock = {
   id: string;
   kind: 'RAW_TEXT' | 'DETECTED_TABLE' | 'SKIPPED_SECTION';
@@ -47,6 +75,7 @@ type AssistedExtractionBlock = {
   columns?: string[];
   mappings?: Partial<Record<AssistedColumnRole, string>>;
   approved?: boolean;
+  rateCandidateIds?: string[];
 };
 
 type AssistedExtractionPreview = {
@@ -55,6 +84,8 @@ type AssistedExtractionPreview = {
   oneHotelAtATimeRequired: boolean;
   requiredColumnRoles: AssistedColumnRole[];
   blocks: AssistedExtractionBlock[];
+  lineClassifications?: Array<{ lineNumber: number; rawLine: string; type: HotelContractLineClassification; confidence: number }>;
+  rateCandidates?: AssistedRateCandidate[];
   qcWarnings: Warning[];
 };
 
@@ -1115,6 +1146,7 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
             </div>
           ) : null}
 
+          <ImportPreviewSummary preview={preview} warnings={warnings} />
           <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
           <AssistedExtractionReview
             assistedExtraction={preview.assistedExtraction}
@@ -1626,6 +1658,42 @@ function ExtractionDiagnostics({ diagnostics }: { diagnostics?: ContractPreview[
   );
 }
 
+function ImportPreviewSummary({ preview, warnings }: { preview: ContractPreview; warnings: Warning[] }) {
+  const roomCount = preview.roomCategories?.length || new Set(preview.rates.map((rate) => rate.roomType).filter(Boolean)).size;
+  const seasonCount = preview.seasons?.length || new Set(preview.rates.map((rate) => rate.seasonName).filter(Boolean)).size;
+  const unresolvedCandidates = (preview.assistedExtraction?.rateCandidates || []).filter((candidate) => {
+    const mapped = preview.assistedExtraction?.blocks.some((block) => block.approved && (block.rateCandidateIds || []).includes(candidate.id));
+    return !mapped;
+  }).length;
+  const blockerCount = warnings.filter((warning) => warning.severity === 'blocker').length;
+  const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
+  const infoCount = warnings.filter((warning) => warning.severity === 'info').length;
+
+  return (
+    <section>
+      <h3>Import preview summary</h3>
+      <div className="summary-strip">
+        <div className="summary-card">
+          <p><span>Seasons</span><strong>{seasonCount}</strong></p>
+          <p><span>Room categories</span><strong>{roomCount}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Rates</span><strong>{preview.rates.length}</strong></p>
+          <p><span>Supplements</span><strong>{preview.supplements.length}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Cancellation</span><strong>{preview.cancellationPolicy ? 'Present' : 'Missing'}</strong></p>
+          <p><span>Child policy</span><strong>{preview.childPolicy ? 'Present' : 'Missing'}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Unresolved candidates</span><strong>{unresolvedCandidates}</strong></p>
+          <p><span>Validation</span><strong>{blockerCount} / {warningCount} / {infoCount}</strong></p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AssistedExtractionReview({
   assistedExtraction,
   onUpdateBlock,
@@ -1638,6 +1706,7 @@ function AssistedExtractionReview({
   if (!assistedExtraction) return null;
   const qcWarnings = buildAssistedQcWarnings(assistedExtraction);
   const roomRateBlocks = assistedExtraction.blocks.filter((block) => block.tag === 'ROOM_RATE_TABLE' || block.suggestedTag === 'ROOM_RATE_TABLE');
+  const rateCandidates = assistedExtraction.rateCandidates || [];
 
   return (
     <section>
@@ -1655,6 +1724,41 @@ function AssistedExtractionReview({
           </p>
         ))}
       </div>
+
+      {rateCandidates.length > 0 ? (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th>Parsed interpretation</th>
+                <th>Raw extracted row</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rateCandidates.slice(0, 80).map((candidate) => (
+                <tr key={candidate.id}>
+                  <td>{candidate.lineNumber}</td>
+                  <td>
+                    <strong>{candidate.detectedRoom || 'Room not detected'}</strong>
+                    <p className="empty-state">
+                      {[candidate.detectedSeason, candidate.detectedDateRange, candidate.detectedMealPlan, candidate.detectedOccupancy]
+                        .filter(Boolean)
+                        .join(' | ') || 'No season/meal/occupancy context'}
+                    </p>
+                    <p className="empty-state">Values: {(candidate.detectedNumericValues || []).join(', ') || 'None'}</p>
+                  </td>
+                  <td>
+                    <pre className="raw-preview-block">{candidate.rawLine}</pre>
+                  </td>
+                  <td>{Math.round((candidate.confidence || 0) * 100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       <div className="table-scroll">
         <table className="data-table">
