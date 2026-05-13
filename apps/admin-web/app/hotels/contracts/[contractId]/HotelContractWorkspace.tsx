@@ -155,6 +155,8 @@ type HotelContractWorkspaceProps = {
 const SUPPLEMENT_TYPES = ['EXTRA_BREAKFAST', 'EXTRA_LUNCH', 'EXTRA_DINNER', 'GALA_DINNER', 'EXTRA_BED'] as const;
 const CHARGE_BASIS_VALUES = ['PER_PERSON', 'PER_ROOM', 'PER_STAY', 'PER_NIGHT'] as const;
 const MAX_CONTRACT_DETAIL_ROWS = 250;
+const ROOM_CATEGORY_PREVIEW_ROWS = 20;
+const RATE_PREVIEW_ROWS = 50;
 const CONTRACT_SAFE_MODE_THRESHOLD = 500;
 const CONTRACT_TAB_PAGE_SIZE = 50;
 const ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS = process.env.NODE_ENV !== 'production';
@@ -171,6 +173,10 @@ function toSafeArray<T>(value: T[] | null | undefined): T[] {
 
 function limitRows<T>(value: T[]) {
   return value.slice(0, MAX_CONTRACT_DETAIL_ROWS);
+}
+
+function limitRowsTo<T>(value: T[], limit: number) {
+  return value.slice(0, limit);
 }
 
 async function fetchWorkspaceJson<T>(url: string, label: string): Promise<T> {
@@ -195,6 +201,19 @@ function logContractWorkspaceTiming(message: string, details: Record<string, unk
   if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
     console.log(message, details);
   }
+}
+
+function measureContractWorkspace<T>(label: string, details: Record<string, unknown>, callback: () => T): T {
+  if (!ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS || typeof performance === 'undefined') {
+    return callback();
+  }
+  const startedAt = performance.now();
+  const result = callback();
+  logContractWorkspaceTiming(label, {
+    ...details,
+    durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+  });
+  return result;
 }
 
 function roomCategoryLabel(roomCategory: { name?: string | null; code?: string | null } | null | undefined) {
@@ -286,6 +305,9 @@ export function HotelContractWorkspace({
   mealPlans,
   cancellationPolicy,
 }: HotelContractWorkspaceProps) {
+  if (ENABLE_CONTRACT_WORKSPACE_TIMING_LOGS) {
+    console.count('RoomCategoriesRender');
+  }
   const renderStartedAt = typeof performance !== 'undefined' ? performance.now() : 0;
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [activeTab, setActiveTab] = useState<ContractWorkspaceTab>('overview');
@@ -321,35 +343,66 @@ export function HotelContractWorkspace({
     totalRates > CONTRACT_SAFE_MODE_THRESHOLD ||
     totalSupplements > CONTRACT_SAFE_MODE_THRESHOLD ||
     totalMealPlans > CONTRACT_SAFE_MODE_THRESHOLD;
-  const activeRoomCategories = useMemo(() => roomCategories.filter((roomCategory) => roomCategory.isActive), [roomCategories]);
+  const activeRoomCategories = useMemo(
+    () =>
+      measureContractWorkspace(
+        '[hotel-contract-workspace] room category filtering',
+        { contractId: contract.id, roomCategories: roomCategories.length },
+        () => roomCategories.filter((roomCategory) => roomCategory.isActive),
+      ),
+    [contract.id, roomCategories],
+  );
   const sortedRates = useMemo(
     () =>
-      [...safeRates].sort(
-        (left, right) =>
-          roomCategoryLabel(left.roomCategory).localeCompare(roomCategoryLabel(right.roomCategory)) ||
-          String(left.seasonName || '').localeCompare(String(right.seasonName || '')) ||
-          String(left.occupancyType || '').localeCompare(String(right.occupancyType || '')) ||
-          String(left.mealPlan || '').localeCompare(String(right.mealPlan || '')),
+      measureContractWorkspace(
+        '[hotel-contract-workspace] rate sorting',
+        { contractId: contract.id, rates: safeRates.length },
+        () =>
+          [...safeRates].sort(
+            (left, right) =>
+              roomCategoryLabel(left.roomCategory).localeCompare(roomCategoryLabel(right.roomCategory)) ||
+              String(left.seasonName || '').localeCompare(String(right.seasonName || '')) ||
+              String(left.occupancyType || '').localeCompare(String(right.occupancyType || '')) ||
+              String(left.mealPlan || '').localeCompare(String(right.mealPlan || '')),
+          ),
       ),
-    [safeRates],
+    [contract.id, safeRates],
   );
-  const displayedRates = useMemo(() => limitRows(sortedRates), [sortedRates]);
+  const displayedRates = useMemo(() => limitRowsTo(sortedRates, RATE_PREVIEW_ROWS), [sortedRates]);
   const displayedSupplements = useMemo(() => limitRows(safeSupplements), [safeSupplements]);
   const displayedMealPlans = useMemo(() => limitRows(safeMealPlans), [safeMealPlans]);
   const displayedCancellationRules = useMemo(() => limitRows(safeCancellationRules), [safeCancellationRules]);
   const usedRoomCategoryIds = useMemo(
-    () => new Set(safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || ''))),
-    [safeRates, safeSupplements],
+    () =>
+      measureContractWorkspace(
+        '[hotel-contract-workspace] room category usage ids',
+        { contractId: contract.id, rates: safeRates.length, supplements: safeSupplements.length },
+        () => new Set(safeRates.map((rate) => rate.roomCategoryId).concat(safeSupplements.map((supplement) => supplement.roomCategoryId || ''))),
+      ),
+    [contract.id, safeRates, safeSupplements],
   );
   const usedRoomCategories = useMemo(
-    () => roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id)),
-    [roomCategories, usedRoomCategoryIds],
+    () =>
+      measureContractWorkspace(
+        '[hotel-contract-workspace] room category grouping',
+        { contractId: contract.id, roomCategories: roomCategories.length, usedIds: usedRoomCategoryIds.size },
+        () => roomCategories.filter((roomCategory) => usedRoomCategoryIds.has(roomCategory.id)),
+      ),
+    [contract.id, roomCategories, usedRoomCategoryIds],
   );
   const visibleRoomCategories = useMemo(
     () => (usedRoomCategories.length > 0 ? usedRoomCategories : activeRoomCategories),
     [activeRoomCategories, usedRoomCategories],
   );
-  const displayedRoomCategories = useMemo(() => limitRows(visibleRoomCategories), [visibleRoomCategories]);
+  const displayedRoomCategories = useMemo(
+    () =>
+      measureContractWorkspace(
+        '[hotel-contract-workspace] displayed room category creation',
+        { contractId: contract.id, visibleRoomCategories: visibleRoomCategories.length },
+        () => limitRowsTo(visibleRoomCategories, ROOM_CATEGORY_PREVIEW_ROWS),
+      ),
+    [contract.id, visibleRoomCategories],
+  );
   const selectedRate = drawer?.type === 'rate' && drawer.rateId ? safeRates.find((rate) => rate.id === drawer.rateId) || null : null;
   const selectedSupplement =
     drawer?.type === 'supplement' && drawer.supplementId
@@ -357,19 +410,27 @@ export function HotelContractWorkspace({
       : null;
   const seasonRows = useMemo(
     () =>
-      Array.from(
-        new Map(
-          safeRates.map((rate) => [
-            `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
-            {
-              name: rate.seasonName,
-              from: rate.seasonFrom || contract.validFrom,
-              to: rate.seasonTo || contract.validTo,
-            },
-          ]),
-        ).values(),
+      measureContractWorkspace(
+        '[hotel-contract-workspace] season row grouping',
+        { contractId: contract.id, rates: safeRates.length },
+        () =>
+          limitRowsTo(
+            Array.from(
+              new Map(
+                safeRates.map((rate) => [
+                  `${rate.seasonName}-${rate.seasonFrom || contract.validFrom}-${rate.seasonTo || contract.validTo}`,
+                  {
+                    name: rate.seasonName,
+                    from: rate.seasonFrom || contract.validFrom,
+                    to: rate.seasonTo || contract.validTo,
+                  },
+                ]),
+              ).values(),
+            ),
+            RATE_PREVIEW_ROWS,
+          ),
       ),
-    [contract.validFrom, contract.validTo, safeRates],
+    [contract.id, contract.validFrom, contract.validTo, safeRates],
   );
   const taxProfiles = useMemo(
     () =>
@@ -490,34 +551,49 @@ export function HotelContractWorkspace({
   }, [activeTab, apiBaseUrl, contract.id, isLargeContract, loadedTabs, manualTabLoads]);
 
   const formRoomCategories = useMemo(() => {
-    const byId = new Map<string, HotelRoomCategory>();
-    for (const roomCategory of roomCategories) {
-      byId.set(roomCategory.id, roomCategory);
+    if (!drawer) {
+      return displayedRoomCategories;
     }
-    for (const rate of safeRates) {
-      if (rate.roomCategory?.id && !byId.has(rate.roomCategory.id)) {
-        byId.set(rate.roomCategory.id, {
-          id: rate.roomCategory.id,
-          hotelId: contract.hotel.id,
-          name: rate.roomCategory.name,
-          code: rate.roomCategory.code,
-          isActive: true,
-        });
-      }
-    }
-    for (const supplement of safeSupplements) {
-      if (supplement.roomCategory?.id && !byId.has(supplement.roomCategory.id)) {
-        byId.set(supplement.roomCategory.id, {
-          id: supplement.roomCategory.id,
-          hotelId: contract.hotel.id,
-          name: supplement.roomCategory.name,
-          code: supplement.roomCategory.code,
-          isActive: true,
-        });
-      }
-    }
-    return Array.from(byId.values());
-  }, [contract.hotel.id, roomCategories, safeRates, safeSupplements]);
+    return measureContractWorkspace(
+      '[hotel-contract-workspace] form option hydration',
+      {
+        contractId: contract.id,
+        roomCategories: roomCategories.length,
+        rates: safeRates.length,
+        supplements: safeSupplements.length,
+        drawer: drawer.type,
+      },
+      () => {
+        const byId = new Map<string, HotelRoomCategory>();
+        for (const roomCategory of roomCategories) {
+          byId.set(roomCategory.id, roomCategory);
+        }
+        for (const rate of safeRates) {
+          if (rate.roomCategory?.id && !byId.has(rate.roomCategory.id)) {
+            byId.set(rate.roomCategory.id, {
+              id: rate.roomCategory.id,
+              hotelId: contract.hotel.id,
+              name: rate.roomCategory.name,
+              code: rate.roomCategory.code,
+              isActive: true,
+            });
+          }
+        }
+        for (const supplement of safeSupplements) {
+          if (supplement.roomCategory?.id && !byId.has(supplement.roomCategory.id)) {
+            byId.set(supplement.roomCategory.id, {
+              id: supplement.roomCategory.id,
+              hotelId: contract.hotel.id,
+              name: supplement.roomCategory.name,
+              code: supplement.roomCategory.code,
+              isActive: true,
+            });
+          }
+        }
+        return Array.from(byId.values());
+      },
+    );
+  }, [contract.hotel.id, contract.id, displayedRoomCategories, drawer, roomCategories, safeRates, safeSupplements]);
 
   const formHotels = useMemo(
     () =>

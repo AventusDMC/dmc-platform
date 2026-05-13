@@ -117,10 +117,17 @@ describe('hotel contract display fallbacks', () => {
 
     assert.match(pageSource, /hotel-contracts\/\$\{contractId\}\?summary=1/);
     assert.match(workspaceSource, /MAX_CONTRACT_DETAIL_ROWS = 250/);
+    assert.match(workspaceSource, /ROOM_CATEGORY_PREVIEW_ROWS = 20/);
+    assert.match(workspaceSource, /RATE_PREVIEW_ROWS = 50/);
     assert.match(workspaceSource, /CONTRACT_SAFE_MODE_THRESHOLD = 500/);
+    assert.match(workspaceSource, /console\.count\('RoomCategoriesRender'\)/);
+    assert.match(workspaceSource, /measureContractWorkspace\(\s*'\[hotel-contract-workspace\] room category grouping'/);
+    assert.match(workspaceSource, /measureContractWorkspace\(\s*'\[hotel-contract-workspace\] form option hydration'/);
     assert.match(workspaceSource, /fetchWorkspaceJson<HotelRate\[\]>/);
     assert.match(workspaceSource, /toSafeArray\(loadedCancellationPolicy\?\.rules\)/);
     assert.match(workspaceSource, /displayedRates\.map/);
+    assert.match(workspaceSource, /limitRowsTo\(sortedRates, RATE_PREVIEW_ROWS\)/);
+    assert.match(workspaceSource, /limitRowsTo\(visibleRoomCategories, ROOM_CATEGORY_PREVIEW_ROWS\)/);
     assert.doesNotMatch(workspaceSource, /sortedRates\.map/);
   });
 });
