@@ -63,6 +63,7 @@ type AssistedRateCandidate = {
   detectedNumericValues: number[];
   sourceLines?: Array<number | string>;
   rejectionReason?: string;
+  reviewStatus?: 'APPROVED' | 'REJECTED';
   confidence: number;
   mappingSuggestions: Partial<Record<AssistedColumnRole, string>>;
 };
@@ -1183,6 +1184,181 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     });
   }
 
+  function updateSeason(index: number, field: 'name' | 'validFrom' | 'validTo', value: string) {
+    setPreview((current) => ({
+      ...current,
+      seasons: (current.seasons || []).map((season, seasonIndex) => (seasonIndex === index ? { ...season, [field]: value } : season)),
+    }));
+  }
+
+  function addSeason() {
+    setPreview((current) => ({
+      ...current,
+      seasons: [
+        ...(current.seasons || []),
+        {
+          name: 'Manual season',
+          validFrom: current.contract.validFrom || '',
+          validTo: current.contract.validTo || '',
+          uncertain: true,
+        },
+      ],
+    }));
+  }
+
+  function approveSeason(index: number) {
+    setPreview((current) => ({
+      ...current,
+      seasons: (current.seasons || []).map((season, seasonIndex) => (seasonIndex === index ? { ...season, uncertain: false } : season)),
+    }));
+  }
+
+  function removeSeason(index: number) {
+    setPreview((current) => ({
+      ...current,
+      seasons: (current.seasons || []).filter((_, seasonIndex) => seasonIndex !== index),
+    }));
+  }
+
+  function addSupplement() {
+    setPreview((current) => ({
+      ...current,
+      supplements: [
+        ...current.supplements,
+        {
+          name: 'Manual supplement',
+          amount: null,
+          pricingBasis: 'PER_PERSON',
+          notes: 'Manually added during guided review.',
+          uncertain: true,
+        },
+      ],
+    }));
+  }
+
+  function updateSupplement(index: number, field: 'name' | 'amount' | 'pricingBasis' | 'notes', value: string) {
+    setPreview((current) => ({
+      ...current,
+      supplements: current.supplements.map((supplement, supplementIndex) =>
+        supplementIndex === index
+          ? {
+              ...supplement,
+              [field]: field === 'amount' ? (value.trim() ? Number(value) || 0 : null) : value,
+            }
+          : supplement,
+      ),
+    }));
+  }
+
+  function approveSupplement(index: number) {
+    setPreview((current) => ({
+      ...current,
+      supplements: current.supplements.map((supplement, supplementIndex) => (supplementIndex === index ? { ...supplement, uncertain: false } : supplement)),
+    }));
+  }
+
+  function ignoreSupplement(index: number) {
+    setPreview((current) => ({
+      ...current,
+      policies: [
+        ...current.policies,
+        {
+          name: 'Ignored supplement',
+          value: current.supplements[index]?.name || `Supplement ${index + 1}`,
+          uncertain: false,
+        },
+      ],
+      supplements: current.supplements.filter((_, supplementIndex) => supplementIndex !== index),
+    }));
+  }
+
+  function addTax() {
+    setPreview((current) => ({
+      ...current,
+      taxes: [...current.taxes, { name: 'Service note', value: 0, included: false, uncertain: true }],
+    }));
+  }
+
+  function updateTax(index: number, field: 'name' | 'value' | 'included', value: string) {
+    setPreview((current) => ({
+      ...current,
+      taxes: current.taxes.map((tax, taxIndex) =>
+        taxIndex === index
+          ? {
+              ...tax,
+              [field]: field === 'value' ? Number(value) || 0 : field === 'included' ? value === 'true' : value,
+              uncertain: false,
+            }
+          : tax,
+      ),
+    }));
+  }
+
+  function updateChildPolicyNotes(value: string) {
+    setPreview((current) => ({
+      ...current,
+      childPolicy: {
+        ...(current.childPolicy || { rules: [] }),
+        notes: value,
+        rules: current.childPolicy?.rules?.length ? current.childPolicy.rules : value.trim() ? [value] : [],
+      },
+    }));
+  }
+
+  function updateRateCandidate(candidateId: string, patch: Partial<AssistedRateCandidate>) {
+    setPreview((current) => {
+      if (!current.assistedExtraction) return current;
+      return {
+        ...current,
+        assistedExtraction: {
+          ...current.assistedExtraction,
+          rateCandidates: (current.assistedExtraction.rateCandidates || []).map((candidate) =>
+            candidate.id === candidateId
+              ? {
+                  ...candidate,
+                  ...patch,
+                  mappingSuggestions: {
+                    ...(candidate.mappingSuggestions || {}),
+                    ...(patch.mappingSuggestions || {}),
+                  },
+                }
+              : candidate,
+          ),
+        },
+      };
+    });
+  }
+
+  function addOperatorNote(step: string, note: string) {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+    setPreview((current) => ({
+      ...current,
+      policies: [
+        ...current.policies,
+        {
+          name: `Operator note - ${step}`,
+          value: trimmed,
+          uncertain: false,
+        },
+      ],
+    }));
+  }
+
+  function markWarningsReviewed(note: string) {
+    setPreview((current) => ({
+      ...current,
+      policies: [
+        ...current.policies,
+        {
+          name: 'Validation warnings reviewed',
+          value: note.trim() || 'Operator reviewed validation warnings and chose to continue with warning.',
+          uncertain: false,
+        },
+      ],
+    }));
+  }
+
   function updateRate(index: number, field: keyof PreviewRate, value: string) {
     setPreview((current) => ({
       ...current,
@@ -1465,6 +1641,22 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
                 onUpdateRoomCategory={updateRoomCategory}
                 onApproveRoomCandidate={approveRoomCandidate}
                 onAddManualRoomCategory={addManualRoomCategory}
+                onAddSeason={addSeason}
+                onUpdateSeason={updateSeason}
+                onApproveSeason={approveSeason}
+                onRemoveSeason={removeSeason}
+                onAddSupplement={addSupplement}
+                onUpdateSupplement={updateSupplement}
+                onApproveSupplement={approveSupplement}
+                onIgnoreSupplement={ignoreSupplement}
+                onAddTax={addTax}
+                onUpdateTax={updateTax}
+                onUpdateCancellationPolicy={updateCancellationPolicy}
+                onAddCancellationRule={addCancellationRule}
+                onUpdateChildPolicyNotes={updateChildPolicyNotes}
+                onUpdateRateCandidate={updateRateCandidate}
+                onAddOperatorNote={addOperatorNote}
+                onMarkWarningsReviewed={markWarningsReviewed}
                 onExport={() => void handleDownloadExcel(getSelectedHotelPreview(preview, selectedAssistedHotel))}
               />
               <details className="technical-extraction-details">
@@ -2046,6 +2238,22 @@ function AssistedExtractionWorkflow({
   onUpdateRoomCategory,
   onApproveRoomCandidate,
   onAddManualRoomCategory,
+  onAddSeason,
+  onUpdateSeason,
+  onApproveSeason,
+  onRemoveSeason,
+  onAddSupplement,
+  onUpdateSupplement,
+  onApproveSupplement,
+  onIgnoreSupplement,
+  onAddTax,
+  onUpdateTax,
+  onUpdateCancellationPolicy,
+  onAddCancellationRule,
+  onUpdateChildPolicyNotes,
+  onUpdateRateCandidate,
+  onAddOperatorNote,
+  onMarkWarningsReviewed,
   onExport,
 }: {
   preview: ContractPreview;
@@ -2058,10 +2266,28 @@ function AssistedExtractionWorkflow({
   onUpdateRoomCategory: (index: number, field: 'name' | 'code' | 'description', value: string) => void;
   onApproveRoomCandidate: (originalName: string, approvedName: string, sourceLines: number[]) => void;
   onAddManualRoomCategory: (roomName: string) => void;
+  onAddSeason: () => void;
+  onUpdateSeason: (index: number, field: 'name' | 'validFrom' | 'validTo', value: string) => void;
+  onApproveSeason: (index: number) => void;
+  onRemoveSeason: (index: number) => void;
+  onAddSupplement: () => void;
+  onUpdateSupplement: (index: number, field: 'name' | 'amount' | 'pricingBasis' | 'notes', value: string) => void;
+  onApproveSupplement: (index: number) => void;
+  onIgnoreSupplement: (index: number) => void;
+  onAddTax: () => void;
+  onUpdateTax: (index: number, field: 'name' | 'value' | 'included', value: string) => void;
+  onUpdateCancellationPolicy: (field: keyof CancellationPolicyPreview, value: string) => void;
+  onAddCancellationRule: () => void;
+  onUpdateChildPolicyNotes: (value: string) => void;
+  onUpdateRateCandidate: (candidateId: string, patch: Partial<AssistedRateCandidate>) => void;
+  onAddOperatorNote: (step: string, note: string) => void;
+  onMarkWarningsReviewed: (note: string) => void;
   onExport: () => void;
 }) {
   const [roomCandidateDrafts, setRoomCandidateDrafts] = useState<Record<string, string>>({});
   const [manualRoomName, setManualRoomName] = useState('');
+  const [operatorNotes, setOperatorNotes] = useState<Record<string, string>>({});
+  const [warningReviewNote, setWarningReviewNote] = useState('');
   const assisted = preview.assistedExtraction;
   const blockerCount = warnings.filter((warning) => warning.severity === 'blocker' && warning.field !== 'assistedExtraction').length;
   const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
@@ -2086,6 +2312,12 @@ function AssistedExtractionWorkflow({
   const policyDetected = Boolean(preview.cancellationPolicy || preview.policies.some((policy) => /cancel/i.test(policy.name)));
   const childPolicyDetected = Boolean(preview.childPolicy || preview.ratePolicies?.some((policy) => String(policy.policyType || '').startsWith('CHILD')));
   const taxesDetected = preview.taxes.length > 0 || preview.policies.some((policy) => /tax|service/i.test(`${policy.name} ${policy.value}`));
+  const warningsReviewed = preview.policies.some((policy) => policy.name === 'Validation warnings reviewed');
+  const setStepNote = (step: string, value: string) => setOperatorNotes((current) => ({ ...current, [step]: value }));
+  const saveStepNote = (step: string) => {
+    onAddOperatorNote(step, operatorNotes[step] || '');
+    setStepNote(step, '');
+  };
 
   const steps = [
     {
@@ -2236,6 +2468,12 @@ function AssistedExtractionWorkflow({
             <p className="empty-state">No room categories approved yet. Approve at least one detected candidate to continue.</p>
           )}
           {roomCandidates.length > 0 ? <p className="empty-state">Detected candidates: {roomCandidates.slice(0, 12).join(', ')}</p> : null}
+          <GuidedStepNote
+            step="Room Categories"
+            value={operatorNotes['Room Categories'] || ''}
+            onChange={(value) => setStepNote('Room Categories', value)}
+            onSave={() => saveStepNote('Room Categories')}
+          />
         </div>
       ),
     },
@@ -2254,7 +2492,54 @@ function AssistedExtractionWorkflow({
           </div>
           {missingMealPlanCount > 0 ? <p className="form-error">{missingMealPlanCount} rate candidate(s) are missing meal plan context.</p> : null}
           {duplicateSupplementNames.length > 0 ? <p className="empty-state">Possible double-count supplements: {duplicateSupplementNames.join(', ')}</p> : null}
-          <PreviewList title="Supplements" items={preview.supplements || []} empty="No supplements extracted." />
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={onAddSupplement}>Add supplement</button>
+          </div>
+          {(preview.supplements || []).length > 0 ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Amount</th>
+                    <th>Type</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.supplements.map((supplement, index) => (
+                    <tr key={`${supplement.name}-${index}`}>
+                      <td><input value={supplement.name || ''} onChange={(event) => onUpdateSupplement(index, 'name', event.target.value)} /></td>
+                      <td><input value={String(supplement.amount ?? '')} onChange={(event) => onUpdateSupplement(index, 'amount', event.target.value)} inputMode="decimal" /></td>
+                      <td>
+                        <select value={supplement.pricingBasis || 'PER_PERSON'} onChange={(event) => onUpdateSupplement(index, 'pricingBasis', event.target.value)}>
+                          <option value="PER_PERSON">Per person</option>
+                          <option value="PER_ROOM">Per room</option>
+                        </select>
+                      </td>
+                      <td><input value={supplement.notes || ''} onChange={(event) => onUpdateSupplement(index, 'notes', event.target.value)} /></td>
+                      <td>
+                        <div className="button-row">
+                          <button className="secondary-button" type="button" onClick={() => onApproveSupplement(index)}>Approve</button>
+                          <button className="secondary-button" type="button" onClick={() => onIgnoreSupplement(index)}>Mark ignored</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="empty-state">No supplements extracted. Add one manually or save a note that none apply.</p>
+          )}
+          <RateCandidateResolutionPanel candidates={rateCandidates} roomCategories={preview.roomCategories || []} onUpdateRateCandidate={onUpdateRateCandidate} />
+          <GuidedStepNote
+            step="Meal Plans & Supplements"
+            value={operatorNotes['Meal Plans & Supplements'] || ''}
+            onChange={(value) => setStepNote('Meal Plans & Supplements', value)}
+            onSave={() => saveStepNote('Meal Plans & Supplements')}
+          />
         </div>
       ),
     },
@@ -2266,7 +2551,48 @@ function AssistedExtractionWorkflow({
         <div className="guided-section-stack">
           {seasonOverlaps.length > 0 ? <p className="form-error">Overlapping seasons: {seasonOverlaps.join('; ')}</p> : null}
           {festiveSeasons.length > 0 ? <p className="empty-state">Festive review recommended: {festiveSeasons.join(', ')}</p> : null}
-          <PreviewList title="Season groups" items={preview.seasons || []} empty="No seasons extracted." />
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={onAddSeason}>Add season</button>
+          </div>
+          {(preview.seasons || []).length > 0 ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Season</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(preview.seasons || []).map((season, index) => (
+                    <tr key={`${season.name}-${index}`}>
+                      <td><input value={season.name || ''} onChange={(event) => onUpdateSeason(index, 'name', event.target.value)} /></td>
+                      <td><input type="date" value={season.validFrom || ''} onChange={(event) => onUpdateSeason(index, 'validFrom', event.target.value)} /></td>
+                      <td><input type="date" value={season.validTo || ''} onChange={(event) => onUpdateSeason(index, 'validTo', event.target.value)} /></td>
+                      <td><span className={getGuidedStatusClass(season.uncertain ? 'review' : 'complete')}>{season.uncertain ? 'Needs Review' : 'Complete'}</span></td>
+                      <td>
+                        <div className="button-row">
+                          <button className="secondary-button" type="button" onClick={() => onApproveSeason(index)}>Approve</button>
+                          <button className="secondary-button" type="button" onClick={() => onRemoveSeason(index)}>Remove</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="empty-state">No seasons extracted. Add a manual season or save a QC note explaining why date ranges are not used.</p>
+          )}
+          <GuidedStepNote
+            step="Seasons"
+            value={operatorNotes.Seasons || ''}
+            onChange={(value) => setStepNote('Seasons', value)}
+            onSave={() => saveStepNote('Seasons')}
+          />
         </div>
       ),
     },
@@ -2275,22 +2601,95 @@ function AssistedExtractionWorkflow({
       status: getGuidedStepStatus({ review: !policyDetected || !childPolicyDetected || !taxesDetected }),
       guidance: 'Confirm cancellation, child policy, taxes, and service notes are present where the contract includes them. Missing policies can be acceptable only when the source contract truly omits them.',
       body: (
-        <div className="guided-summary-grid">
-          <GuidedMetric label="Cancellation" value={policyDetected ? 'Detected' : 'Missing'} status={policyDetected ? 'complete' : 'review'} />
-          <GuidedMetric label="Child policy" value={childPolicyDetected ? 'Detected' : 'Missing'} status={childPolicyDetected ? 'complete' : 'review'} />
-          <GuidedMetric label="Taxes/service" value={taxesDetected ? 'Detected' : 'Missing'} status={taxesDetected ? 'complete' : 'review'} />
-          <GuidedMetric label="Rate policies" value={preview.ratePolicies?.length || 0} status={preview.ratePolicies?.length ? 'complete' : 'review'} />
+        <div className="guided-section-stack">
+          <div className="guided-summary-grid">
+            <GuidedMetric label="Cancellation" value={policyDetected ? 'Detected' : 'Missing'} status={policyDetected ? 'complete' : 'review'} />
+            <GuidedMetric label="Child policy" value={childPolicyDetected ? 'Detected' : 'Missing'} status={childPolicyDetected ? 'complete' : 'review'} />
+            <GuidedMetric label="Taxes/service" value={taxesDetected ? 'Detected' : 'Missing'} status={taxesDetected ? 'complete' : 'review'} />
+            <GuidedMetric label="Rate policies" value={preview.ratePolicies?.length || 0} status={preview.ratePolicies?.length ? 'complete' : 'review'} />
+          </div>
+          <div className="form-grid">
+            <label className="wide-field">
+              Cancellation summary
+              <input value={preview.cancellationPolicy?.summary || ''} onChange={(event) => onUpdateCancellationPolicy('summary', event.target.value)} />
+            </label>
+            <label className="wide-field">
+              Cancellation notes
+              <input value={preview.cancellationPolicy?.notes || ''} onChange={(event) => onUpdateCancellationPolicy('notes', event.target.value)} />
+            </label>
+            <label className="wide-field">
+              Child policy notes
+              <input value={preview.childPolicy?.notes || preview.childPolicy?.rules?.join('; ') || ''} onChange={(event) => onUpdateChildPolicyNotes(event.target.value)} />
+            </label>
+          </div>
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={onAddCancellationRule}>Add cancellation rule</button>
+            <button className="secondary-button" type="button" onClick={onAddTax}>Add tax/service note</button>
+          </div>
+          {(preview.taxes || []).length > 0 ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Tax/service</th>
+                    <th>Value %</th>
+                    <th>Included</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.taxes.map((tax, index) => (
+                    <tr key={`${tax.name}-${index}`}>
+                      <td><input value={tax.name || ''} onChange={(event) => onUpdateTax(index, 'name', event.target.value)} /></td>
+                      <td><input value={String(tax.value ?? '')} onChange={(event) => onUpdateTax(index, 'value', event.target.value)} inputMode="decimal" /></td>
+                      <td>
+                        <select value={String(Boolean(tax.included))} onChange={(event) => onUpdateTax(index, 'included', event.target.value)}>
+                          <option value="false">No</option>
+                          <option value="true">Yes</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <GuidedStepNote
+            step="Policies"
+            value={operatorNotes.Policies || ''}
+            onChange={(value) => setStepNote('Policies', value)}
+            onSave={() => saveStepNote('Policies')}
+          />
         </div>
       ),
     },
     {
       title: 'Export Reviewed Workbook',
-      status: getGuidedStepStatus({ blocker: !selectedHotelName || blockerCount > 0, review: warningCount > 0 }),
+      status: getGuidedStepStatus({ blocker: !selectedHotelName || blockerCount > 0, review: warningCount > 0 && !warningsReviewed }),
       guidance: 'Export only the selected property after the earlier steps are complete or intentionally accepted for review. Automatic import remains disabled for assisted PDF extraction.',
       body: (
         <div className="guided-export-panel">
           <p><strong>Selected hotel:</strong> {selectedHotelName || 'No hotel selected'}</p>
           {selectedWorkbook ? <p><strong>Workbook:</strong> {selectedWorkbook.fileName}</p> : null}
+          {warningCount > 0 ? (
+            <div className="form-grid">
+              <label className="wide-field">
+                Validation warning review note
+                <input value={warningReviewNote} onChange={(event) => setWarningReviewNote(event.target.value)} placeholder="Why it is safe to continue with warning" />
+              </label>
+              <div className="button-row">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    onMarkWarningsReviewed(warningReviewNote);
+                    setWarningReviewNote('');
+                  }}
+                >
+                  Mark warnings reviewed
+                </button>
+              </div>
+            </div>
+          ) : null}
           <p className="empty-state">This creates a reviewed workbook for operator QC. It does not auto-import the contract.</p>
           <button className="primary-button" type="button" onClick={onExport} disabled={!selectedHotelName || blockerCount > 0}>
             Export reviewed workbook
@@ -2352,6 +2751,113 @@ function GuidedMetric({ label, value, status }: { label: string; value: string |
       <strong>{value}</strong>
       <em className={getGuidedStatusClass(status)}>{getGuidedStatusLabel(status)}</em>
     </div>
+  );
+}
+
+function GuidedStepNote({ step, value, onChange, onSave }: { step: string; value: string; onChange: (value: string) => void; onSave: () => void }) {
+  return (
+    <div className="form-grid">
+      <label className="wide-field">
+        Operator note
+        <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={`QC note for ${step}`} />
+      </label>
+      <div className="button-row">
+        <button className="secondary-button" type="button" onClick={onSave} disabled={!value.trim()}>
+          Add note
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RateCandidateResolutionPanel({
+  candidates,
+  roomCategories,
+  onUpdateRateCandidate,
+}: {
+  candidates: AssistedRateCandidate[];
+  roomCategories: NonNullable<ContractPreview['roomCategories']>;
+  onUpdateRateCandidate: (candidateId: string, patch: Partial<AssistedRateCandidate>) => void;
+}) {
+  if (candidates.length === 0) return null;
+  return (
+    <section>
+      <h4>Rate candidate resolution</h4>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th>Room</th>
+              <th>Occupancy</th>
+              <th>Meal</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.slice(0, 40).map((candidate) => (
+              <tr key={candidate.id}>
+                <td>
+                  <strong>{getCandidateRoomName(candidate) || 'Unmapped room'}</strong>
+                  <p className="empty-state">Lines {(candidate.sourceLines || [candidate.lineNumber]).join(', ')} | Values {(candidate.detectedNumericValues || []).join(', ') || 'None'}</p>
+                </td>
+                <td>
+                  <select
+                    value={candidate.mappingSuggestions?.ROOM_CATEGORY || candidate.detectedRoom || ''}
+                    onChange={(event) =>
+                      onUpdateRateCandidate(candidate.id, {
+                        detectedRoom: event.target.value,
+                        mappingSuggestions: { ROOM_CATEGORY: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="">Select room</option>
+                    {roomCategories.map((room) => (
+                      <option key={room.name} value={room.name}>{room.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <select
+                    value={candidate.detectedOccupancy || 'DBL'}
+                    onChange={(event) => onUpdateRateCandidate(candidate.id, { detectedOccupancy: event.target.value })}
+                  >
+                    <option value="SGL">SGL</option>
+                    <option value="DBL">DBL</option>
+                    <option value="TRP">TRP</option>
+                    <option value="TPL">TPL</option>
+                  </select>
+                </td>
+                <td>
+                  <select
+                    value={candidate.detectedMealPlan || 'BB'}
+                    onChange={(event) =>
+                      onUpdateRateCandidate(candidate.id, {
+                        detectedMealPlan: event.target.value,
+                        mappingSuggestions: { MEAL_PLAN: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="RO">RO</option>
+                    <option value="BB">BB</option>
+                    <option value="HB">HB</option>
+                    <option value="FB">FB</option>
+                    <option value="AI">AI</option>
+                  </select>
+                </td>
+                <td>
+                  <div className="button-row">
+                    <button className="secondary-button" type="button" onClick={() => onUpdateRateCandidate(candidate.id, { reviewStatus: 'APPROVED' })}>Approve</button>
+                    <button className="secondary-button" type="button" onClick={() => onUpdateRateCandidate(candidate.id, { reviewStatus: 'REJECTED', rejectionReason: 'Rejected by operator in guided workflow.' })}>Reject</button>
+                  </div>
+                  {candidate.reviewStatus ? <span className={getGuidedStatusClass(candidate.reviewStatus === 'APPROVED' ? 'complete' : 'review')}>{formatEnumLabel(candidate.reviewStatus)}</span> : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
