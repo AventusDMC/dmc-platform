@@ -230,6 +230,19 @@ type ContractPreview = {
     extractionMode?: string;
   };
   assistedExtraction?: AssistedExtractionPreview;
+  meta?: {
+    transportReplacement?: {
+      supplierMatched?: boolean;
+      supplierId?: string | null;
+      supplierName?: string | null;
+      activeRateCardCount?: number;
+      activeSupplierServiceCount?: number;
+      activeRouteCount?: number;
+      newWorkbookRateCount?: number;
+      newWorkbookRouteCount?: number;
+    };
+    [key: string]: unknown;
+  };
   missingFields: string[];
   uncertainFields: string[];
   warnings?: Warning[];
@@ -801,6 +814,7 @@ function mapExtractedToUI(extractedJson: unknown, hotelCategories: HotelCategory
     multiProperty: source.multiProperty,
     parserDiagnostics: source.parserDiagnostics,
     assistedExtraction: source.assistedExtraction,
+    meta: source.meta,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields : [],
     uncertainFields: Array.isArray(source.uncertainFields) ? source.uncertainFields : [],
     warnings: Array.isArray(source.warnings) ? source.warnings : [],
@@ -1095,6 +1109,25 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     setPreview((current) => ({
       ...current,
       supplier: { ...current.supplier, name: value, isNew: !current.supplier.id },
+    }));
+  }
+
+  function mapPreviewSupplierToExisting(supplierId: string) {
+    const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId) || null;
+    setPreview((current) => ({
+      ...current,
+      supplier: selectedSupplier
+        ? {
+            ...current.supplier,
+            id: selectedSupplier.id,
+            name: selectedSupplier.name,
+            isNew: false,
+          }
+        : {
+            ...current.supplier,
+            id: null,
+            isNew: true,
+          },
     }));
   }
 
@@ -1681,8 +1714,16 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
               />
               <details className="technical-extraction-details">
                 <summary>Show technical extraction details</summary>
-                <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
-                <AssistedExtractionReview
+          <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
+          <TransportSupplierMappingPanel
+            preview={preview}
+            suppliers={suppliers}
+            onMapSupplier={mapPreviewSupplierToExisting}
+            onReplace={() => void handleApprove('replace')}
+            isApproving={isApproving}
+            disabled={blockers.length > 0 || isMultiPropertyPreview || isAssistedExtractionPreview}
+          />
+          <AssistedExtractionReview
                   assistedExtraction={preview.assistedExtraction}
                   onUpdateBlock={updateAssistedBlock}
                   onUpdateMapping={updateAssistedMapping}
@@ -2892,6 +2933,79 @@ function RateCandidateResolutionPanel({
             ))}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+function TransportSupplierMappingPanel({
+  preview,
+  suppliers,
+  onMapSupplier,
+  onReplace,
+  isApproving,
+  disabled,
+}: {
+  preview: ContractPreview;
+  suppliers: Supplier[];
+  onMapSupplier: (supplierId: string) => void;
+  onReplace: () => void;
+  isApproving: boolean;
+  disabled: boolean;
+}) {
+  if (preview.contractType !== 'TRANSPORT') return null;
+  const replacement = preview.meta?.transportReplacement;
+  const routeCount = new Set(preview.rates.map((rate) => rate.routeName || rate.serviceName || rate.roomType).filter(Boolean)).size;
+  return (
+    <section>
+      <div className="section-header">
+        <div>
+          <h3>Transport supplier mapping and replacement</h3>
+          <p>Map the workbook supplier to the existing supplier before replacing an incorrect transport rate card.</p>
+        </div>
+      </div>
+      <div className="form-grid">
+        <label>
+          Workbook supplier
+          <input value={preview.supplier.name || ''} readOnly />
+        </label>
+        <label>
+          Existing supplier mapping
+          <select value={preview.supplier.id || ''} onChange={(event) => onMapSupplier(event.target.value)}>
+            <option value="">Create or match by name</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="summary-strip">
+        <div className="summary-card">
+          <p><span>Existing supplier</span><strong>{preview.supplier.id ? preview.supplier.name : replacement?.supplierName || 'Not mapped'}</strong></p>
+          <p><span>Matched</span><strong>{preview.supplier.id || replacement?.supplierMatched ? 'Yes' : 'No'}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Active rate cards</span><strong>{replacement?.activeRateCardCount ?? '-'}</strong></p>
+          <p><span>Active routes</span><strong>{replacement?.activeRouteCount ?? '-'}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Existing services</span><strong>{replacement?.activeSupplierServiceCount ?? '-'}</strong></p>
+          <p><span>Workbook routes</span><strong>{replacement?.newWorkbookRouteCount ?? routeCount}</strong></p>
+        </div>
+        <div className="summary-card">
+          <p><span>Workbook rates</span><strong>{replacement?.newWorkbookRateCount ?? preview.rates.length}</strong></p>
+          <p><span>Mode</span><strong>Archive + replace</strong></p>
+        </div>
+      </div>
+      <div className="warning-list">
+        <p className="empty-state">Replace archives active vehicle rate cards for the mapped supplier and imports the reviewed workbook as the active replacement. Old rows are not hard-deleted.</p>
+      </div>
+      <div className="button-row">
+        <button className="danger-button" type="button" onClick={onReplace} disabled={disabled || isApproving || !preview.supplier.id}>
+          {isApproving ? 'Replacing...' : 'Replace existing transport contract/rate card'}
+        </button>
       </div>
     </section>
   );

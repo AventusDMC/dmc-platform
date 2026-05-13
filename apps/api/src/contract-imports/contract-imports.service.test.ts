@@ -27,8 +27,8 @@ function createService(prisma: Record<string, any> = {}) {
 
 function baseApprovedData(overrides: Record<string, any> = {}) {
   return {
-    contractType: 'HOTEL',
-    supplier: { name: 'Grand Petra Supplier', isNew: false },
+    contractType: overrides.contractType || 'HOTEL',
+    supplier: { name: 'Grand Petra Supplier', isNew: false, ...(overrides.supplier || {}) },
     contract: {
       name: 'Grand Petra 2026',
       validFrom: '2026-01-01',
@@ -390,6 +390,69 @@ test('hotel pre-import validation flags meal-plan double-count and missing base 
   assert.ok(warnings.some((warning) => /HB supplement exists but no BB base/.test(warning.message)));
   assert.ok(warnings.some((warning) => /Direct HB rates and an HB supplement/.test(warning.message)));
   assert.ok(warnings.some((warning) => /FB rates exist without BB\/HB base meal plans/.test(warning.message)) === false);
+});
+
+test('transport replacement uses mapped supplier and archives active vehicle rate cards', async () => {
+  const archivedVehicleRates: any[] = [];
+  const serviceRateUpdates: any[] = [];
+  const supplierNotes: any[] = [];
+  const service = createService({
+    supplier: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: 'Al Mushtari', notes: null }),
+      findFirst: async () => null,
+      create: async ({ data }: any) => ({ id: 'created-supplier', ...data }),
+      update: async ({ data }: any) => {
+        supplierNotes.push(data);
+        return { id: 'supplier-al-mushtari', name: 'Al Mushtari', ...data };
+      },
+    },
+    vehicleRate: {
+      updateMany: async ({ where, data }: any) => {
+        archivedVehicleRates.push({ where, data });
+        return { count: 3 };
+      },
+    },
+    supplierService: {
+      findFirst: async () => ({ id: 'service-1', name: 'Airport Transfer', supplierId: 'supplier-al-mushtari' }),
+      update: async ({ data }: any) => ({ id: 'service-1', ...data }),
+      create: async ({ data }: any) => ({ id: 'service-1', ...data }),
+    },
+    serviceRate: {
+      findFirst: async () => ({ id: 'rate-1', serviceId: 'service-1' }),
+      update: async ({ data }: any) => {
+        serviceRateUpdates.push(data);
+        return { id: 'rate-1', ...data };
+      },
+      create: async ({ data }: any) => ({ id: 'rate-1', ...data }),
+    },
+  });
+  const preview = normalizeApproved(
+    service,
+    baseApprovedData({
+      contractType: 'TRANSPORT',
+      supplier: { id: 'supplier-al-mushtari', name: 'Al Mushtari', isNew: false },
+      rate: {
+        routeName: 'Airport - Amman',
+        serviceName: 'Airport Transfer',
+        roomType: '',
+        cost: 45,
+        currency: 'JOD',
+      },
+    }),
+  );
+
+  const importedId = await (service as any).importApprovedPreview(
+    preview,
+    { supplierId: null, sourceFileName: 'al-mushtari.xlsx', sourceFilePath: 'uploads/al-mushtari.xlsx' },
+    'replace',
+  );
+
+  assert.equal(importedId, 'supplier-al-mushtari');
+  assert.deepEqual(archivedVehicleRates[0].where, { supplierId: 'supplier-al-mushtari', active: true });
+  assert.equal(archivedVehicleRates[0].data.active, false);
+  assert.match(archivedVehicleRates[0].data.notes, /Archived due to replacement import from al-mushtari\.xlsx/);
+  assert.equal(serviceRateUpdates[0].supplierId, 'supplier-al-mushtari');
+  assert.ok(supplierNotes.some((note) => /Replacement import: al-mushtari\.xlsx/.test(note.notes)));
 });
 
 test('contract import validation normalizes pricingBasis aliases and falls back for invalid pricingBasis', () => {

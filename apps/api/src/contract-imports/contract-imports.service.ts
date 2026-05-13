@@ -346,6 +346,7 @@ export class ContractImportsService {
       filePath: input.file.path,
       fileName: input.file.originalname,
     });
+    await this.attachTransportReplacementSummary(preview, supplier?.id || null);
     console.log('[contract-imports/analyze] mapped extractedJson summary', {
       contractType: preview.contractType,
       contractName: preview.contract?.name,
@@ -576,6 +577,51 @@ export class ContractImportsService {
     return this.generateExcel(preview, record.sourceFileName || preview.contract.name || 'contract-import');
   }
 
+  private async attachTransportReplacementSummary(preview: ContractPreview, selectedSupplierId: string | null) {
+    if (preview.contractType !== ContractImportType.TRANSPORT) return;
+    const supplier =
+      selectedSupplierId
+        ? await this.prisma.supplier.findUnique({ where: { id: selectedSupplierId }, select: { id: true, name: true } })
+        : await this.prisma.supplier.findFirst({
+            where: { name: { equals: preview.supplier.name, mode: 'insensitive' } },
+            select: { id: true, name: true },
+          });
+    const routeNames = Array.from(new Set((preview.rates || []).map((rate) => rate.routeName || rate.serviceName || rate.roomType).filter(Boolean)));
+    const activeVehicleRates =
+      supplier && this.prisma.vehicleRate
+        ? await (this.prisma.vehicleRate as any).findMany({
+            where: { supplierId: supplier.id, active: true },
+            select: { id: true, routeName: true },
+            take: 5000,
+          })
+        : [];
+    const activeSupplierServices =
+      supplier && this.prisma.supplierService
+        ? await this.prisma.supplierService.findMany({
+            where: { supplierId: supplier.id, category: 'transport' },
+            select: { id: true, name: true },
+            take: 5000,
+          })
+        : [];
+
+    preview.meta = {
+      ...(preview.meta || {}),
+      transportReplacement: {
+        supplierMatched: Boolean(supplier),
+        supplierId: supplier?.id || null,
+        supplierName: supplier?.name || preview.supplier.name,
+        activeRateCardCount: activeVehicleRates.length,
+        activeSupplierServiceCount: activeSupplierServices.length,
+        activeRouteCount: new Set(activeVehicleRates.map((rate: any) => rate.routeName).filter(Boolean)).size,
+        newWorkbookRateCount: preview.rates.length,
+        newWorkbookRouteCount: routeNames.length,
+      },
+    };
+    if (supplier && !preview.supplier.id) {
+      preview.supplier = { ...preview.supplier, id: supplier.id, name: supplier.name, isNew: false };
+    }
+  }
+
   private extractPreview(input: {
     contractType: ContractImportType;
     supplierName: string;
@@ -694,13 +740,13 @@ export class ContractImportsService {
     record: { supplierId: string | null; sourceFileName: string; sourceFilePath: string },
     approvalMode?: ContractImportApprovalMode,
   ) {
-    const supplier = await this.ensureSupplier(record.supplierId, preview.supplier.name, preview.contractType);
+    const supplier = await this.ensureSupplier(record.supplierId || preview.supplier.id || null, preview.supplier.name, preview.contractType);
 
     if (preview.contractType === ContractImportType.HOTEL) {
       return this.importHotelPreview(preview, supplier.id, record.sourceFileName, record.sourceFilePath, approvalMode);
     }
 
-    return this.importServicePreview(preview, supplier.id, record.sourceFileName);
+    return this.importServicePreview(preview, supplier.id, record.sourceFileName, approvalMode);
   }
 
   private async importApprovedPreviewTransactionally(
@@ -3146,7 +3192,11 @@ export class ContractImportsService {
     });
   }
 
-  private async importServicePreview(preview: ContractPreview, supplierId: string, sourceFileName: string) {
+  private async importServicePreview(preview: ContractPreview, supplierId: string, sourceFileName: string, approvalMode?: ContractImportApprovalMode) {
+    if (preview.contractType === ContractImportType.TRANSPORT && approvalMode === 'replace') {
+      await this.archiveTransportRateCardsForReplacement(supplierId, sourceFileName);
+    }
+
     for (const rate of preview.rates) {
       const name = rate.serviceName || rate.routeName || rate.roomType || preview.contract.name;
       const existing = await this.prisma.supplierService.findFirst({
@@ -3170,7 +3220,11 @@ export class ContractImportsService {
         : await this.prisma.supplierService.create({ data });
 
       const existingRate = await this.prisma.serviceRate.findFirst({
-        where: { serviceId: service.id, pricingMode: preview.contractType === ContractImportType.TRANSPORT ? 'PER_GROUP' : 'PER_PERSON' },
+        where: {
+          serviceId: service.id,
+          supplierId,
+          pricingMode: preview.contractType === ContractImportType.TRANSPORT ? 'PER_GROUP' : 'PER_PERSON',
+        },
       });
       const rateData = {
         serviceId: service.id,
@@ -3188,6 +3242,23 @@ export class ContractImportsService {
 
     await this.appendSupplierSourceNote(supplierId, sourceFileName, '');
     return supplierId;
+  }
+
+  private async archiveTransportRateCardsForReplacement(supplierId: string, sourceFileName: string) {
+    const archiveNote = `Archived due to replacement import from ${sourceFileName} on ${this.isoDate(new Date())}.`;
+    if (this.prisma.vehicleRate && typeof (this.prisma.vehicleRate as any).updateMany === 'function') {
+      await (this.prisma.vehicleRate as any).updateMany({
+        where: {
+          supplierId,
+          active: true,
+        },
+        data: {
+          active: false,
+          notes: archiveNote,
+        },
+      });
+    }
+    await this.appendSupplierSourceNote(supplierId, `Replacement import: ${sourceFileName}`, archiveNote);
   }
 
   private async ensureHotel(preview: ContractPreview, supplierId: string) {
