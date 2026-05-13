@@ -154,6 +154,7 @@ type HotelContract = {
     chargeBasis: string;
     amount: number;
     currency: string;
+    mealPlan?: string | null;
     isMandatory?: boolean | null;
     isActive?: boolean | null;
     notes?: string | null;
@@ -827,13 +828,49 @@ function formatHotelRatePricingBasis(value: HotelRate['pricingBasis']) {
   return value === 'PER_PERSON' ? 'per person/night' : 'per room/night';
 }
 
-function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null) {
+function supplementMealPlan(supplement: NonNullable<HotelContract['supplements']>[number]) {
+  const directMealPlan = String(supplement.mealPlan || '').trim().toUpperCase();
+  if (directMealPlan) {
+    return directMealPlan;
+  }
+
+  const match = String(supplement.notes || '').match(/\bMeal(?:\s*Plan)?\s*:\s*(RO|BB|HB|FB|AI)\b/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function normalizeSeasonScope(value: string) {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/\bSEASON\b/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function supplementAppliesToSeason(supplement: NonNullable<HotelContract['supplements']>[number], seasonName?: string | null) {
+  const match = String(supplement.notes || '').match(/\bSeason\s*:\s*([A-Z0-9_\-\s]+?)(?:\s*\||$)/i);
+  const seasonScope = String(match?.[1] || '').trim().toUpperCase();
+  if (!seasonScope || ['ALL_SEASONS', 'GLOBAL', 'ANY'].includes(seasonScope)) {
+    return true;
+  }
+
+  const normalizedScope = normalizeSeasonScope(seasonScope);
+  const normalizedSeason = normalizeSeasonScope(seasonName || '');
+  return Boolean(normalizedSeason && (normalizedSeason === normalizedScope || normalizedSeason.includes(normalizedScope) || normalizedScope.includes(normalizedSeason)));
+}
+
+function isHbMealSupplement(
+  supplement: NonNullable<HotelContract['supplements']>[number],
+  roomCategoryId?: string | null,
+  seasonName?: string | null,
+) {
+  const type = String(supplement.type || '').trim().toUpperCase();
+  const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
+  const mealPlan = supplementMealPlan(supplement);
+  return supplement.isActive !== false && type === 'EXTRA_DINNER' && appliesToRoom && (!mealPlan || mealPlan === 'HB') && supplementAppliesToSeason(supplement, seasonName);
+}
+
+function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null, seasonName?: string | null) {
   return Boolean(
-    contract?.supplements?.some((supplement) => {
-      const type = String(supplement.type || '').trim().toUpperCase();
-      const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
-      return supplement.isActive !== false && type === 'EXTRA_DINNER' && appliesToRoom;
-    }),
+    contract?.supplements?.some((supplement) => isHbMealSupplement(supplement, roomCategoryId, seasonName)),
   );
 }
 
@@ -845,23 +882,11 @@ function calculateHotelSupplementPreviewTotal(
   pax: number,
   rooms: number,
   nights: number,
+  seasonName?: string | null,
 ) {
   return Number(
     (contract?.supplements || [])
-      .filter((supplement) => {
-        if (supplement.isActive === false) {
-          return false;
-        }
-        const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
-        if (!appliesToRoom) {
-          return false;
-        }
-        if (supplement.isMandatory === true) {
-          return true;
-        }
-        const type = String(supplement.type || '').trim().toUpperCase();
-        return mealPlan === 'HB' && baseMealPlan === 'BB' && type === 'EXTRA_DINNER';
-      })
+      .filter((supplement) => mealPlan === 'HB' && baseMealPlan === 'BB' && isHbMealSupplement(supplement, roomCategoryId, seasonName))
       .reduce((sum, supplement) => {
         const amount = Number(supplement.amount || 0);
         if (!Number.isFinite(amount) || amount <= 0) {
@@ -869,11 +894,33 @@ function calculateHotelSupplementPreviewTotal(
         }
 
         const basis = String(supplement.chargeBasis || '').trim().toUpperCase();
-        const multiplier = basis === 'PER_ROOM' ? rooms * nights : basis === 'PER_STAY' ? 1 : basis === 'PER_NIGHT' ? nights : pax * nights;
+        const multiplier =
+          basis === 'PER_ROOM' || basis === 'PER_ROOM_NIGHT'
+            ? rooms * nights
+            : basis === 'PER_STAY'
+              ? 1
+              : basis === 'PER_NIGHT'
+                ? nights
+                : pax * nights;
         return sum + amount * multiplier;
       }, 0)
       .toFixed(2),
   );
+}
+
+function roomCategorySortRank(category: { name: string; code?: string | null }) {
+  const value = `${category.code || ''} ${category.name || ''}`.toUpperCase();
+  if (/\bSTANDARD\b|\bSTD\b/.test(value)) return 0;
+  if (/\bCLASSIC\b|\bCLS\b/.test(value)) return 1;
+  if (/\bSUPERIOR\b|\bSUP\b/.test(value)) return 2;
+  if (/\bDELUXE\b|\bDLX\b/.test(value)) return 3;
+  if (/\bPREMIUM\b|\bPRM\b/.test(value)) return 4;
+  if (/\bUPGRADE\b|\bSEA\s*VIEW\b|\bPOOL\s*VIEW\b|\bVIEW\b/.test(value)) return 5;
+  if (/\bFAMILY\b|\bFAM\b/.test(value)) return 6;
+  if (/\bAPARTMENT\b|\bAPT\b/.test(value)) return 7;
+  if (/\bPRESIDENTIAL\b|\bPRES\b/.test(value)) return 9;
+  if (/\bSUITE\b|\bSTE\b|\bJUNIOR\b|\bEXECUTIVE\b/.test(value)) return 8;
+  return 10;
 }
 
 export function QuoteItemsForm({
@@ -1333,14 +1380,14 @@ export function QuoteItemsForm({
         ] as const),
       ],
     ).values(),
-  ).sort((left, right) => left.name.localeCompare(right.name));
+  ).sort((left, right) => roomCategorySortRank(left) - roomCategorySortRank(right) || left.name.localeCompare(right.name));
   const roomCategoryFilteredRates = seasonFilteredRates.filter((rate) => rate.roomCategoryId === roomCategoryId);
   const occupancyOptions = Array.from(new Set(roomCategoryFilteredRates.map((rate) => rate.occupancyType))).sort();
   const occupancyFilteredRates = roomCategoryFilteredRates.filter((rate) => rate.occupancyType === occupancyType);
   const mealPlanOptions = Array.from(
     new Set([
       ...occupancyFilteredRates.map((rate) => rate.mealPlan),
-      ...(contractHasHbSupplement(selectedHotelContract, roomCategoryId) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')
+      ...(contractHasHbSupplement(selectedHotelContract, roomCategoryId, effectiveSeasonName) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')
         ? (['HB'] as const)
         : []),
     ]),
@@ -1356,7 +1403,7 @@ export function QuoteItemsForm({
     ) || null;
   const selectedHotelBaseRate =
     selectedHotelRate ||
-    (mealPlan === 'HB' && contractHasHbSupplement(selectedHotelContract, roomCategoryId)
+    (mealPlan === 'HB' && contractHasHbSupplement(selectedHotelContract, roomCategoryId, effectiveSeasonName)
       ? hotelRates.find(
           (rate) =>
             rate.contractId === contractId &&
@@ -1385,6 +1432,7 @@ export function QuoteItemsForm({
     hotelPreviewPax,
     hotelPreviewRooms,
     hotelPreviewNights,
+    effectiveSeasonName,
   );
   const hotelPreviewMultiplier =
     hotelPreviewPricingBasis === 'PER_PERSON'

@@ -4644,7 +4644,7 @@ export class QuotesService {
           ? hotelRateCandidates.find(
               (rate) =>
                 rate.mealPlan === HotelMealPlan.BB &&
-                this.hasHbSupplementForHotelRate(rate.contract?.supplements, rate.roomCategoryId),
+                this.hasHbSupplementForHotelRate(rate.contract?.supplements, rate.roomCategoryId, rate.seasonName),
             ) || null
           : null);
 
@@ -4690,7 +4690,13 @@ export class QuotesService {
             isSelected: true,
           },
         ],
-        supplements: this.toHotelPricingSupplements(hotelRate.contract?.supplements),
+        supplements: this.toHotelPricingSupplements(
+          hotelRate.contract?.supplements,
+          requestedMealPlan,
+          hotelRate.mealPlan,
+          hotelRate.roomCategoryId,
+          hotelRate.seasonName,
+        ),
       });
       hotelSupplementTotal = hotelPricing.supplementCost;
       baseCost = hotelPricing.totalCost;
@@ -6516,9 +6522,9 @@ export class QuotesService {
     };
   }
 
-  private hasHbSupplementForHotelRate(supplements: unknown, roomCategoryId?: string | null) {
+  private hasHbSupplementForHotelRate(supplements: unknown, roomCategoryId?: string | null, seasonName?: string | null) {
     return Array.isArray(supplements)
-      ? supplements.some((supplement) => this.isHbSupplementForRoom(supplement, roomCategoryId))
+      ? supplements.some((supplement) => this.isHbSupplementForRoom(supplement, roomCategoryId, seasonName))
       : false;
   }
 
@@ -6563,36 +6569,95 @@ export class QuotesService {
     );
   }
 
-  private isHbSupplementForRoom(supplement: any, roomCategoryId?: string | null) {
+  private isHbSupplementForRoom(supplement: any, roomCategoryId?: string | null, seasonName?: string | null) {
     if (!supplement || supplement.isActive === false) {
       return false;
     }
 
     const type = String(supplement.type || '').trim().toUpperCase();
-    return type === 'EXTRA_DINNER' && this.supplementAppliesToRoom(supplement, roomCategoryId);
+    const mealPlan = this.supplementMealPlan(supplement);
+    return type === 'EXTRA_DINNER' && this.supplementAppliesToRoom(supplement, roomCategoryId) && (!mealPlan || mealPlan === HotelMealPlan.HB) && this.supplementAppliesToSeason(supplement, seasonName);
   }
 
   private supplementAppliesToRoom(supplement: any, roomCategoryId?: string | null) {
     return !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
   }
 
-  private toHotelPricingSupplements(supplements: unknown) {
+  private toHotelPricingSupplements(
+    supplements: unknown,
+    requestedMealPlan?: HotelMealPlan,
+    baseMealPlan?: HotelMealPlan,
+    roomCategoryId?: string | null,
+    seasonName?: string | null,
+  ) {
     if (!Array.isArray(supplements)) {
       return [];
     }
 
-    return supplements.map((supplement: any) => ({
-      id: supplement.id ?? null,
-      label: supplement.notes ?? supplement.type ?? null,
-      type: supplement.type ?? null,
-      amount: Number(supplement.amount || 0),
-      basis: supplement.chargeBasis ?? supplement.basis ?? supplement.pricingBasis ?? null,
-      chargeBasis: supplement.chargeBasis ?? null,
-      pricingBasis: supplement.pricingBasis ?? null,
-      roomCategoryId: supplement.roomCategoryId ?? null,
-      isMandatory: supplement.isMandatory ?? false,
-      isActive: supplement.isActive ?? true,
-    }));
+    return supplements
+      .filter(
+        (supplement: any) =>
+          (requestedMealPlan === HotelMealPlan.HB && baseMealPlan === HotelMealPlan.BB && this.isHbSupplementForRoom(supplement, roomCategoryId, seasonName)) ||
+          (supplement?.isMandatory === true && !this.isExcludedAutomaticSupplement(supplement) && this.supplementAppliesToRoom(supplement, roomCategoryId) && this.supplementAppliesToSeason(supplement, seasonName)),
+      )
+      .map((supplement: any) => ({
+        id: supplement.id ?? null,
+        label: supplement.notes ?? supplement.type ?? null,
+        type: supplement.type ?? null,
+        amount: Number(supplement.amount || 0),
+        basis: supplement.chargeBasis ?? supplement.basis ?? supplement.pricingBasis ?? null,
+        chargeBasis: supplement.chargeBasis ?? null,
+        pricingBasis: supplement.pricingBasis ?? null,
+        mealPlan: this.supplementMealPlan(supplement),
+        roomCategoryId: supplement.roomCategoryId ?? null,
+        isMandatory: supplement.isMandatory ?? false,
+        isActive: supplement.isActive ?? true,
+        isSelected: true,
+      }));
+  }
+
+  private supplementMealPlan(supplement: any) {
+    const directMealPlan = String(supplement?.mealPlan || '').trim().toUpperCase();
+    if (directMealPlan) {
+      return directMealPlan;
+    }
+
+    const notes = String(supplement?.notes || '');
+    const match = notes.match(/\bMeal(?:\s*Plan)?\s*:\s*(RO|BB|HB|FB|AI)\b/i);
+    return match ? match[1].toUpperCase() : null;
+  }
+
+  private supplementAppliesToSeason(supplement: any, seasonName?: string | null) {
+    const notes = String(supplement?.notes || '');
+    const match = notes.match(/\bSeason\s*:\s*([A-Z0-9_\-\s]+?)(?:\s*\||$)/i);
+    const seasonScope = String(supplement?.seasonCode || match?.[1] || '').trim().toUpperCase();
+    if (!seasonScope || ['ALL_SEASONS', 'GLOBAL', 'ANY'].includes(seasonScope)) {
+      return true;
+    }
+
+    const normalizedScope = this.normalizeSeasonScope(seasonScope);
+    const normalizedSeason = this.normalizeSeasonScope(seasonName || '');
+    return Boolean(normalizedSeason && (normalizedSeason === normalizedScope || normalizedSeason.includes(normalizedScope) || normalizedScope.includes(normalizedSeason)));
+  }
+
+  private normalizeSeasonScope(value: string) {
+    return String(value || '')
+      .toUpperCase()
+      .replace(/\bSEASON\b/g, '')
+      .replace(/[^A-Z0-9]/g, '');
+  }
+
+  private isExcludedAutomaticSupplement(supplement: any) {
+    const normalizedType = String(supplement?.type || '').trim().toUpperCase();
+    return [
+      'NEW_YEAR_GALA_DINNER',
+      'CHRISTMAS_GALA_DINNER',
+      'ROOM_CATEGORY_SUPPLEMENT',
+      'BREAKFAST_EXTRA_PERSON',
+      'LUNCH',
+      'ROLLAWAY_BED',
+      'THIRD_PERSON_REDUCTION',
+    ].includes(normalizedType);
   }
 
   private getHotelRateBaseMultiplier(

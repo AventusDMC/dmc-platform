@@ -344,7 +344,7 @@ export class HotelRatesService {
       .map((rate) => ({
         rate,
         occupancyScore: this.matchDimensionScore(rate.occupancyType, occupancy, (value) => this.normalizeOccupancyType(value)),
-        mealPlanScore: this.matchMealPlanScore(rate.mealPlan, mealPlan, rate.contract?.supplements, rate.roomCategoryId),
+        mealPlanScore: this.matchMealPlanScore(rate.mealPlan, mealPlan, rate.contract?.supplements, rate.roomCategoryId, rate.seasonName),
       }))
       .filter((match) => match.occupancyScore !== null && match.mealPlanScore !== null);
 
@@ -449,7 +449,14 @@ export class HotelRatesService {
               isSelected: true,
             },
           ],
-          supplements: this.toHotelPricingSupplements(rate.contract?.supplements, data.selectedSupplementIds),
+          supplements: this.toHotelPricingSupplements(
+            rate.contract?.supplements,
+            data.selectedSupplementIds,
+            mealPlan,
+            this.normalizeMealPlan(rate.mealPlan),
+            rate.roomCategoryId,
+            rate.seasonName,
+          ),
         });
         breakdown.push({
           date: this.formatDateOnly(current),
@@ -467,7 +474,7 @@ export class HotelRatesService {
           adults,
           childrenAges,
           roomCount,
-          this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId),
+          this.getRatePolicies(rate, data.selectedSupplementIds, mealPlan, this.normalizeMealPlan(rate.mealPlan), rate.roomCategoryId, rate.seasonName),
           occupancy,
           mealPlan,
           nightIndex === 0,
@@ -662,6 +669,7 @@ export class HotelRatesService {
     requested: HotelMealPlan,
     supplements: unknown,
     roomCategoryId?: string | null,
+    seasonName?: string | null,
   ) {
     const exactScore = this.matchDimensionScore(value, requested, (entry) => this.normalizeMealPlan(entry));
     if (exactScore !== null) {
@@ -670,7 +678,7 @@ export class HotelRatesService {
 
     try {
       const baseMealPlan = this.normalizeMealPlan(value || '');
-      return this.hasDerivedMealPlanSupplement(supplements, requested, baseMealPlan, roomCategoryId) ? 0 : null;
+      return this.hasDerivedMealPlanSupplement(supplements, requested, baseMealPlan, roomCategoryId, seasonName) ? 0 : null;
     } catch {
       return null;
     }
@@ -709,12 +717,13 @@ export class HotelRatesService {
     requestedMealPlan?: HotelMealPlan,
     baseMealPlan?: HotelMealPlan,
     roomCategoryId?: string | null,
+    seasonName?: string | null,
   ) {
     const policies = rate.contract?.ratePolicies;
     const ratePolicies = Array.isArray(policies) ? (policies as RatePolicy[]) : [];
     return [
       ...ratePolicies,
-      ...this.getIncludedSupplementPolicies(rate.contract?.supplements, selectedSupplementIds, requestedMealPlan, baseMealPlan, roomCategoryId),
+      ...this.getIncludedSupplementPolicies(rate.contract?.supplements, selectedSupplementIds, requestedMealPlan, baseMealPlan, roomCategoryId, seasonName),
     ];
   }
 
@@ -724,6 +733,7 @@ export class HotelRatesService {
     requestedMealPlan?: HotelMealPlan,
     baseMealPlan?: HotelMealPlan,
     roomCategoryId?: string | null,
+    seasonName?: string | null,
   ): RatePolicy[] {
     if (!Array.isArray(supplements)) {
       return [];
@@ -735,9 +745,9 @@ export class HotelRatesService {
       .filter((supplement) => supplement.isActive !== false)
       .filter(
         (supplement) =>
-          supplement.isMandatory === true ||
+          (supplement.isMandatory === true && !this.isExcludedAutomaticSupplement(supplement)) ||
           (supplement.id ? selectedIds.has(String(supplement.id)) : false) ||
-          this.isDerivedMealPlanSupplement(supplement, requestedMealPlan, baseMealPlan, roomCategoryId),
+          this.isDerivedMealPlanSupplement(supplement, requestedMealPlan, baseMealPlan, roomCategoryId, seasonName),
       )
       .map((supplement): RatePolicy | null => {
         const policyType = this.contractSupplementPolicyType(supplement.type);
@@ -755,31 +765,54 @@ export class HotelRatesService {
       .filter((policy): policy is RatePolicy => Boolean(policy));
   }
 
-  private toHotelPricingSupplements(supplements: unknown, selectedSupplementIds?: string[] | null) {
+  private toHotelPricingSupplements(
+    supplements: unknown,
+    selectedSupplementIds?: string[] | null,
+    requestedMealPlan?: HotelMealPlan,
+    baseMealPlan?: HotelMealPlan,
+    roomCategoryId?: string | null,
+    seasonName?: string | null,
+  ) {
     if (!Array.isArray(supplements)) {
       return [];
     }
 
     const selectedIds = new Set((selectedSupplementIds || []).map((id) => String(id)));
-    return supplements.map((supplement: ContractSupplementPolicy) => ({
-      id: supplement.id ?? null,
-      label: supplement.notes ?? supplement.type ?? null,
-      type: supplement.type ?? null,
-      amount: Number(supplement.amount || 0),
-      basis: supplement.chargeBasis ?? (supplement as any).basis ?? (supplement as any).pricingBasis ?? null,
-      chargeBasis: supplement.chargeBasis ?? null,
-      pricingBasis: (supplement as any).pricingBasis ?? null,
-      roomCategoryId: supplement.roomCategoryId ?? null,
-      isMandatory: supplement.isMandatory ?? false,
-      isActive: supplement.isActive ?? true,
-      isSelected: supplement.id ? selectedIds.has(String(supplement.id)) : false,
-    }));
+    return supplements
+      .filter((supplement: ContractSupplementPolicy) => {
+        const isSelected = supplement.id ? selectedIds.has(String(supplement.id)) : false;
+        return (
+          isSelected ||
+          this.isDerivedMealPlanSupplement(supplement, requestedMealPlan, baseMealPlan, roomCategoryId, seasonName) ||
+          (supplement.isMandatory === true && !this.isExcludedAutomaticSupplement(supplement))
+        );
+      })
+      .map((supplement: ContractSupplementPolicy) => ({
+        id: supplement.id ?? null,
+        label: supplement.notes ?? supplement.type ?? null,
+        type: supplement.type ?? null,
+        amount: Number(supplement.amount || 0),
+        basis: supplement.chargeBasis ?? (supplement as any).basis ?? (supplement as any).pricingBasis ?? null,
+        chargeBasis: supplement.chargeBasis ?? null,
+        pricingBasis: (supplement as any).pricingBasis ?? null,
+        mealPlan: this.supplementMealPlan(supplement),
+        roomCategoryId: supplement.roomCategoryId ?? null,
+        isMandatory: supplement.isMandatory ?? false,
+        isActive: supplement.isActive ?? true,
+        isSelected: true,
+      }));
   }
 
-  private hasDerivedMealPlanSupplement(supplements: unknown, requestedMealPlan: HotelMealPlan, baseMealPlan: HotelMealPlan, roomCategoryId?: string | null) {
+  private hasDerivedMealPlanSupplement(
+    supplements: unknown,
+    requestedMealPlan: HotelMealPlan,
+    baseMealPlan: HotelMealPlan,
+    roomCategoryId?: string | null,
+    seasonName?: string | null,
+  ) {
     return Array.isArray(supplements)
       ? supplements.some((supplement) =>
-          this.isDerivedMealPlanSupplement(supplement as ContractSupplementPolicy, requestedMealPlan, baseMealPlan, roomCategoryId),
+          this.isDerivedMealPlanSupplement(supplement as ContractSupplementPolicy, requestedMealPlan, baseMealPlan, roomCategoryId, seasonName),
         )
       : false;
   }
@@ -789,6 +822,7 @@ export class HotelRatesService {
     requestedMealPlan?: HotelMealPlan,
     baseMealPlan?: HotelMealPlan,
     roomCategoryId?: string | null,
+    seasonName?: string | null,
   ) {
     if (!requestedMealPlan || !baseMealPlan || requestedMealPlan === baseMealPlan || supplement.isActive === false) {
       return false;
@@ -796,7 +830,60 @@ export class HotelRatesService {
 
     const normalizedType = String(supplement.type || '').trim().toUpperCase();
     const appliesToRoom = !supplement.roomCategoryId || !roomCategoryId || supplement.roomCategoryId === roomCategoryId;
-    return requestedMealPlan === HotelMealPlan.HB && baseMealPlan === HotelMealPlan.BB && normalizedType === 'EXTRA_DINNER' && appliesToRoom;
+    const supplementMealPlan = this.supplementMealPlan(supplement);
+    const mealPlanMatches = !supplementMealPlan || supplementMealPlan === requestedMealPlan;
+    return (
+      requestedMealPlan === HotelMealPlan.HB &&
+      baseMealPlan === HotelMealPlan.BB &&
+      normalizedType === 'EXTRA_DINNER' &&
+      appliesToRoom &&
+      mealPlanMatches &&
+      this.supplementAppliesToSeason(supplement, seasonName)
+    );
+  }
+
+  private supplementMealPlan(supplement: ContractSupplementPolicy) {
+    const directMealPlan = String((supplement as any).mealPlan || '').trim().toUpperCase();
+    if (directMealPlan) {
+      return directMealPlan as HotelMealPlan;
+    }
+
+    const notes = String(supplement.notes || '');
+    const match = notes.match(/\bMeal(?:\s*Plan)?\s*:\s*(RO|BB|HB|FB|AI)\b/i);
+    return match ? (match[1].toUpperCase() as HotelMealPlan) : null;
+  }
+
+  private supplementAppliesToSeason(supplement: ContractSupplementPolicy, seasonName?: string | null) {
+    const notes = String(supplement.notes || '');
+    const match = notes.match(/\bSeason\s*:\s*([A-Z0-9_\-\s]+?)(?:\s*\||$)/i);
+    const seasonScope = String((supplement as any).seasonCode || match?.[1] || '').trim().toUpperCase();
+    if (!seasonScope || ['ALL_SEASONS', 'GLOBAL', 'ANY'].includes(seasonScope)) {
+      return true;
+    }
+
+    const normalizedScope = this.normalizeSeasonScope(seasonScope);
+    const normalizedSeason = this.normalizeSeasonScope(seasonName || '');
+    return Boolean(normalizedSeason && (normalizedSeason === normalizedScope || normalizedSeason.includes(normalizedScope) || normalizedScope.includes(normalizedSeason)));
+  }
+
+  private normalizeSeasonScope(value: string) {
+    return String(value || '')
+      .toUpperCase()
+      .replace(/\bSEASON\b/g, '')
+      .replace(/[^A-Z0-9]/g, '');
+  }
+
+  private isExcludedAutomaticSupplement(supplement: ContractSupplementPolicy) {
+    const normalizedType = String(supplement.type || '').trim().toUpperCase();
+    return [
+      'NEW_YEAR_GALA_DINNER',
+      'CHRISTMAS_GALA_DINNER',
+      'ROOM_CATEGORY_SUPPLEMENT',
+      'BREAKFAST_EXTRA_PERSON',
+      'LUNCH',
+      'ROLLAWAY_BED',
+      'THIRD_PERSON_REDUCTION',
+    ].includes(normalizedType);
   }
 
   private contractSupplementPolicyType(type: string | null | undefined) {

@@ -45,11 +45,15 @@ describe('quote hotel selector catalog loading', () => {
 
   it('shows HB when a selected contract has an HB supplement even if rates are BB based', () => {
     expectSourceContains(quoteItemsFormSource, [
-      'function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null)',
+      'function contractHasHbSupplement(contract: HotelContract | null, roomCategoryId?: string | null, seasonName?: string | null)',
       'function calculateHotelSupplementPreviewTotal(',
+      'function isHbMealSupplement(',
+      'function roomCategorySortRank(',
       "type === 'EXTRA_DINNER'",
+      "mealPlan === 'HB' && baseMealPlan === 'BB' && isHbMealSupplement",
+      "basis === 'PER_ROOM' || basis === 'PER_ROOM_NIGHT'",
       "...occupancyFilteredRates.map((rate) => rate.mealPlan)",
-      "contractHasHbSupplement(selectedHotelContract, roomCategoryId) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')",
+      "contractHasHbSupplement(selectedHotelContract, roomCategoryId, effectiveSeasonName) && occupancyFilteredRates.some((rate) => rate.mealPlan === 'BB')",
       "selectedHotelBaseRate",
       "rate.mealPlan === 'BB'",
       'const hotelPreviewSupplementTotal = calculateHotelSupplementPreviewTotal(',
