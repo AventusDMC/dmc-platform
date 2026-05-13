@@ -202,6 +202,7 @@ type CreateQuoteItemInput = {
   vehicleRateId?: string | null;
   transportVehicleId?: string;
   routeId?: string;
+  touringRouteId?: string | null;
   normalizedKey?: string;
   routeName?: string;
   transportAddOns?: Array<{
@@ -5233,6 +5234,7 @@ export class QuotesService {
               } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
             : pricingDescription,
         appliedVehicleRateId,
+        touringRouteId: data.touringRouteId === undefined ? undefined : data.touringRouteId || null,
         entranceFeeId,
         jordanPassCovered,
         jordanPassSavingsJod,

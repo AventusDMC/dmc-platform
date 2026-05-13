@@ -20,15 +20,18 @@ async function getTemplate(id: string) {
 }
 
 async function getCatalogs(): Promise<ExcursionTemplateCatalogs> {
-  const [routes, transportServiceTypes, activities, services] = await Promise.all([
+  const [routes, touringRoutes, transportServiceTypes, activities, services] = await Promise.all([
     adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes', 'Excursion route catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['touringRoutes']>('/api/touring-routes?active=true&limit=200', 'Excursion touring route catalog', {
+      cache: 'no-store',
+    }),
     adminPageFetchJson<ExcursionTemplateCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Excursion transport type catalog', {
       cache: 'no-store',
     }),
     adminPageFetchJson<ExcursionTemplateCatalogs['activities']>('/api/activities', 'Excursion activity catalog', { cache: 'no-store' }),
     adminPageFetchJson<ExcursionTemplateCatalogs['services']>('/api/services', 'Excursion service catalog', { cache: 'no-store' }),
   ]);
-  return { routes, transportServiceTypes, activities, services };
+  return { routes, touringRoutes, transportServiceTypes, activities, services };
 }
 
 export default async function ExcursionTemplatePage({ params }: ExcursionTemplatePageProps) {

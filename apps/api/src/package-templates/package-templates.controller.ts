@@ -26,6 +26,7 @@ type PackageTemplateComponentBody = {
   activityId?: string | null;
   hotelContractId?: string | null;
   routeId?: string | null;
+  touringRouteId?: string | null;
   transportServiceTypeId?: string | null;
   pricingMode?: string | null;
   supplierServiceId?: string | null;

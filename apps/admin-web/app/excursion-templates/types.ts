@@ -11,6 +11,7 @@ export type ExcursionTemplateComponent = {
   supplierServiceId?: string | null;
   activityId?: string | null;
   routeId?: string | null;
+  touringRouteId?: string | null;
   transportServiceTypeId?: string | null;
   suggestedDepartureCity?: string | null;
   suggestedArrivalCity?: string | null;
@@ -32,6 +33,15 @@ export type ExcursionTemplateComponent = {
     fromPlace?: { name?: string | null } | null;
     toPlace?: { name?: string | null } | null;
   } | null;
+  touringRoute?: {
+    id: string;
+    code?: string | null;
+    name: string;
+    startCity: string;
+    durationDays: number;
+    includedKm?: number | null;
+    includedHours?: number | null;
+  } | null;
   supplierService?: {
     id: string;
     name: string;
@@ -49,6 +59,16 @@ export type ExcursionTemplateComponent = {
 
 export type ExcursionTemplateCatalogs = {
   routes: Array<{ id: string; name: string; durationMinutes?: number | null }>;
+  touringRoutes: Array<{
+    id: string;
+    code?: string | null;
+    name: string;
+    startCity: string;
+    durationDays: number;
+    active?: boolean;
+    includedKm?: number | null;
+    includedHours?: number | null;
+  }>;
   transportServiceTypes: Array<{ id: string; name: string; code?: string | null; classification?: string | null }>;
   activities: Array<{ id: string; name: string; active?: boolean; durationMinutes?: number | null }>;
   services: Array<{

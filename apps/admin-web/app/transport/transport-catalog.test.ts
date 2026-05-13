@@ -8,6 +8,7 @@ const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.m
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
 const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkbookSection.tsx', import.meta.url), 'utf8');
 const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
+const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
 const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
@@ -517,12 +518,14 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(importPanelSource, [
       'Route transfers',
+      'Touring routes',
       'Disposal / Program Services',
       'Full-day services',
       'Half-day services',
       'Day tour services',
       'Add-ons',
       'routeTransfers?: Array<Record<string, unknown>>;',
+      'touringRoutes?: Array<Record<string, unknown>>;',
       'serviceBasedTransport?: Array<Record<string, unknown>>;',
       'fullDay?: Array<Record<string, unknown>>;',
       'halfDay?: Array<Record<string, unknown>>;',
@@ -531,6 +534,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'function getSafeRows',
       'PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS',
       'PREVIEW_PRICING_MODE_FILTER_OPTIONS',
+      "getPreviewGroup(row) === 'touringRoutes'",
       'filterPreviewRows',
       "getPreviewGroup(row) === 'serviceBasedTransport'",
       'previewServiceCategoryFilter',
@@ -543,6 +547,24 @@ describe('transport catalog supplier rate-card UX', () => {
       'Confirm import',
       'controlled supplier rate-card category',
       'window.location.href = \'/transport?tab=rates&imported=1\'',
+    ]);
+  });
+
+  it('exposes touring routes as separate transport inventory', () => {
+    expectSourceContains(pageSource, [
+      "{ id: 'touring-routes', label: 'Touring Routes' }",
+      '<TouringRoutesSection />',
+      'Touring routes',
+      'summary.touringRoutes',
+    ]);
+
+    expectSourceContains(touringRoutesSectionSource, [
+      '/touring-routes?limit=200',
+      'Reusable touring routes',
+      'not stored as fake transfer routes',
+      'includedKm',
+      'includedHours',
+      'pricingBasis',
     ]);
   });
 

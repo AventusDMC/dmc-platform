@@ -41,7 +41,7 @@ function isDiningService(service: ExcursionTemplateCatalogs['services'][number])
 
 function getReferenceLabel(component: ExcursionTemplate['components'][number]) {
   if (component.componentType === 'TRANSPORT') {
-    return [component.route?.name, component.transportServiceType?.name].filter(Boolean).join(' / ') || 'Transport link pending';
+    return [component.touringRoute?.name || component.route?.name, component.transportServiceType?.name].filter(Boolean).join(' / ') || 'Transport link pending';
   }
   return component.activity?.name || component.supplierService?.name || 'Catalog link pending';
 }
@@ -73,7 +73,9 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   const [isSaving, setIsSaving] = useState(false);
   const [isFillingMetadata, setIsFillingMetadata] = useState(false);
   const [componentType, setComponentType] = useState<ExcursionComponentType>('TRANSPORT');
+  const [transportProductType, setTransportProductType] = useState<'TRANSFER' | 'TOURING_ROUTE'>('TRANSFER');
   const [selectedRouteId, setSelectedRouteId] = useState('');
+  const [selectedTouringRouteId, setSelectedTouringRouteId] = useState('');
   const [selectedTransportServiceTypeId, setSelectedTransportServiceTypeId] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState('');
@@ -210,6 +212,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   function addComponent(formData: FormData) {
     const type = String(formData.get('componentType') || 'TRANSPORT') as ExcursionComponentType;
     const selectedRoute = catalogs.routes.find((route) => route.id === selectedRouteId);
+    const selectedTouringRoute = catalogs.touringRoutes.find((route) => route.id === selectedTouringRouteId);
     const selectedTransportType = catalogs.transportServiceTypes.find((entry) => entry.id === selectedTransportServiceTypeId);
     const selectedActivity = catalogs.activities.find((activity) => activity.id === selectedActivityId);
     const servicePool = type === 'TICKET' ? ticketServices : diningServices;
@@ -229,10 +232,13 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       type === 'TRANSPORT'
         ? {
             ...basePayload,
-            label: [selectedRoute?.name, selectedTransportType?.name].filter(Boolean).join(' / ') || 'Transport component',
-            routeId: selectedRouteId,
+            label: [transportProductType === 'TOURING_ROUTE' ? selectedTouringRoute?.name : selectedRoute?.name, selectedTransportType?.name]
+              .filter(Boolean)
+              .join(' / ') || 'Transport component',
+            routeId: transportProductType === 'TRANSFER' ? selectedRouteId : null,
+            touringRouteId: transportProductType === 'TOURING_ROUTE' ? selectedTouringRouteId : null,
             transportServiceTypeId: selectedTransportServiceTypeId,
-            durationMinutes: selectedRoute?.durationMinutes ?? null,
+            durationMinutes: transportProductType === 'TOURING_ROUTE' ? (selectedTouringRoute?.durationDays || 1) * 24 * 60 : selectedRoute?.durationMinutes ?? null,
           }
         : type === 'ACTIVITY' || type === 'GUIDE'
           ? {
@@ -476,14 +482,43 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
             {componentType === 'TRANSPORT' ? (
               <>
                 <label>
-                  Route
-                  <select value={selectedRouteId} onChange={(event) => setSelectedRouteId(event.currentTarget.value)} required>
-                    <option value="">Select route</option>
-                    {catalogs.routes.map((route) => (
-                      <option key={route.id} value={route.id}>
-                        {route.name}
-                      </option>
-                    ))}
+                  Transport product
+                  <select
+                    value={transportProductType}
+                    onChange={(event) => {
+                      const nextType = event.currentTarget.value as 'TRANSFER' | 'TOURING_ROUTE';
+                      setTransportProductType(nextType);
+                      setSelectedRouteId('');
+                      setSelectedTouringRouteId('');
+                    }}
+                  >
+                    <option value="TRANSFER">Transfer route</option>
+                    <option value="TOURING_ROUTE">Touring route</option>
+                  </select>
+                </label>
+                <label>
+                  {transportProductType === 'TOURING_ROUTE' ? 'Touring route' : 'Transfer route'}
+                  <select
+                    value={transportProductType === 'TOURING_ROUTE' ? selectedTouringRouteId : selectedRouteId}
+                    onChange={(event) =>
+                      transportProductType === 'TOURING_ROUTE'
+                        ? setSelectedTouringRouteId(event.currentTarget.value)
+                        : setSelectedRouteId(event.currentTarget.value)
+                    }
+                    required
+                  >
+                    <option value="">Select {transportProductType === 'TOURING_ROUTE' ? 'touring route' : 'route'}</option>
+                    {transportProductType === 'TOURING_ROUTE'
+                      ? catalogs.touringRoutes.map((route) => (
+                          <option key={route.id} value={route.id}>
+                            {route.name} ({route.durationDays}D)
+                          </option>
+                        ))
+                      : catalogs.routes.map((route) => (
+                          <option key={route.id} value={route.id}>
+                            {route.name}
+                          </option>
+                        ))}
                   </select>
                 </label>
                 <label>

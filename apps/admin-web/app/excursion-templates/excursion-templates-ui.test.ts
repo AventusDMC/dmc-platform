@@ -16,6 +16,17 @@ function expectSourceContains(source: string, fragments: string[]) {
 }
 
 describe('excursion template admin UI', () => {
+  it('lets transport components link touring routes without flattening transport inventory', () => {
+    expectSourceContains(editorSource, [
+      'transportProductType',
+      "value=\"TOURING_ROUTE\"",
+      'Touring route',
+      'touringRouteId',
+      'catalogs.touringRoutes',
+      'selectedTouringRouteId',
+    ]);
+  });
+
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {
     expectSourceContains(pageSource, [
       "type ExcursionCatalogTab = 'templates' | 'tariff-workbook';",

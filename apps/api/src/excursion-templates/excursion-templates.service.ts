@@ -15,6 +15,7 @@ type ExcursionTemplateComponentInput = {
   supplierServiceId?: string | null;
   activityId?: string | null;
   routeId?: string | null;
+  touringRouteId?: string | null;
   transportServiceTypeId?: string | null;
   suggestedDepartureCity?: string | null;
   suggestedArrivalCity?: string | null;
@@ -1309,6 +1310,11 @@ export class ExcursionTemplatesService {
               toPlace: true,
             },
           },
+          touringRoute: {
+            include: {
+              stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+            },
+          },
           supplierService: {
             include: {
               serviceType: true,
@@ -1340,6 +1346,7 @@ export class ExcursionTemplatesService {
           supplierServiceId: normalizeOptionalString(component.supplierServiceId),
           activityId: normalizeOptionalString(component.activityId),
           routeId: normalizeOptionalString(component.routeId),
+          touringRouteId: normalizeOptionalString(component.touringRouteId),
           transportServiceTypeId: normalizeOptionalString(component.transportServiceTypeId),
           suggestedDepartureCity: normalizeOptionalString(component.suggestedDepartureCity),
           suggestedArrivalCity: normalizeOptionalString(component.suggestedArrivalCity),
@@ -1370,8 +1377,11 @@ export class ExcursionTemplatesService {
     if (component.activityId && componentType !== 'ACTIVITY' && componentType !== 'GUIDE') {
       throw new BadRequestException(`components[${index}].activityId is only allowed for ACTIVITY or GUIDE components`);
     }
-    if ((component.routeId || component.transportServiceTypeId) && componentType !== 'TRANSPORT') {
+    if ((component.routeId || component.touringRouteId || component.transportServiceTypeId) && componentType !== 'TRANSPORT') {
       throw new BadRequestException(`components[${index}] transport references are only allowed for TRANSPORT components`);
+    }
+    if (component.routeId && component.touringRouteId) {
+      throw new BadRequestException(`components[${index}] cannot link both routeId and touringRouteId`);
     }
 
     if (component.activityId) {
@@ -1382,6 +1392,9 @@ export class ExcursionTemplatesService {
     }
     if (component.routeId) {
       await this.ensureRouteExists(component.routeId, index);
+    }
+    if (component.touringRouteId) {
+      await this.ensureTouringRouteExists(component.touringRouteId, index);
     }
     if (component.transportServiceTypeId) {
       await this.ensureTransportServiceTypeExists(component.transportServiceTypeId, index);
@@ -1409,6 +1422,13 @@ export class ExcursionTemplatesService {
     }
   }
 
+  private async ensureTouringRouteExists(id: string, index: number) {
+    const route = await (this.prisma as any).touringRoute.findUnique({ where: { id }, select: { id: true } });
+    if (!route) {
+      throw new BadRequestException(`components[${index}].touringRouteId was not found`);
+    }
+  }
+
   private async ensureTransportServiceTypeExists(id: string, index: number) {
     const serviceType = await this.prisma.transportServiceType.findUnique({ where: { id }, select: { id: true } });
     if (!serviceType) {
@@ -1427,8 +1447,8 @@ export class ExcursionTemplatesService {
   }
 
   private validateAddedComponentHasLinkedRecord(component: ExcursionTemplateComponentInput) {
-    if (component.componentType === 'TRANSPORT' && (!component.routeId || !component.transportServiceTypeId)) {
-      throw new BadRequestException('TRANSPORT components must link an existing route and transport service type');
+    if (component.componentType === 'TRANSPORT' && (!(component.routeId || component.touringRouteId) || !component.transportServiceTypeId)) {
+      throw new BadRequestException('TRANSPORT components must link an existing transfer route or touring route and transport service type');
     }
     if ((component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') && !component.activityId) {
       throw new BadRequestException('ACTIVITY and GUIDE components must link an existing Activity Master record');

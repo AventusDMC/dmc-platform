@@ -73,7 +73,14 @@ type SupplierRateCardQuery = {
 
 type TransportContractImportMode = 'preview' | 'import';
 type TransportContractMergeMode = 'keep' | 'merge';
-type TransportServiceClassification = 'ROUTE_TRANSFER' | 'FULL_DAY' | 'HALF_DAY' | 'DAILY_PACKAGE' | 'ADD_ON' | 'SERVICE_BASED_TRANSPORT';
+type TransportServiceClassification =
+  | 'ROUTE_TRANSFER'
+  | 'TOURING_ROUTE'
+  | 'FULL_DAY'
+  | 'HALF_DAY'
+  | 'DAILY_PACKAGE'
+  | 'ADD_ON'
+  | 'SERVICE_BASED_TRANSPORT';
 type TransportContractImportOptions = {
   contractMergeMode?: TransportContractMergeMode;
   contractNameOverride?: string;
@@ -348,6 +355,21 @@ function hasExplicitTransferRoute(row: Pick<NormalizedTransportContractImportRow
   return /\s(?:->|â†’)\s|->|â†’/.test(routeName);
 }
 
+function isTouringRouteImportRow(row: Pick<NormalizedTransportContractImportRow, 'routeName' | 'serviceName' | 'serviceCategory' | 'notes'>) {
+  const category = normalizeImportName(row.serviceCategory).toLowerCase();
+  const text = [row.routeName, row.serviceName, row.serviceCategory, row.notes].filter(Boolean).join(' ').toLowerCase();
+  const routeName = normalizeImportName(row.routeName);
+  const multiStopMarkers = (routeName.match(/(?:->|â†’|\/|&|,|\s-\s)/g) || []).length;
+  const scenicStopMarkers = (routeName.match(/(?:\/|&|,)/g) || []).length;
+
+  return (
+    /\btouring\s+routes?\b/.test(category) ||
+    multiStopMarkers >= 2 ||
+    (scenicStopMarkers >= 1 && /\b(tour|touring|circuit)\b/.test(text)) ||
+    /\b(touring\s+route|route\s+program|route\s+programme|circuit|classical|biblical|round\s*trip|return\s+tour|multi[-\s]?day|[2-9]\s*day|[2-9]d)\b/.test(text)
+  );
+}
+
 function isServiceBasedTransportImportRow(row: NormalizedTransportContractImportRow, classification = getServiceCategoryClassification(row.serviceCategory, row.serviceName)) {
   const pricingMode = normalizeTransportPricingMode(row.serviceName);
   const serviceCategory = normalizeImportName(row.serviceCategory).toLowerCase();
@@ -369,6 +391,7 @@ function buildRouteName(fromPlaceName: string, toPlaceName: string) {
 function classifyTransportServiceName(serviceName: string): TransportServiceClassification {
   const normalized = serviceName.trim().toLowerCase();
 
+  if (/\b(touring\s+route|circuit|classical|biblical|multi[-\s]?day|[2-9]\s*day|[2-9]d)\b/.test(normalized)) return 'TOURING_ROUTE';
   if (/\b(daily\s*fd|daily\s+full\s+day|daily\s+package)\b/.test(normalized)) return 'DAILY_PACKAGE';
   if (/\b(full\s+day|fd)\b/.test(normalized)) return 'FULL_DAY';
   if (/\b(half\s+day|hd)\b/.test(normalized)) return 'HALF_DAY';
@@ -1599,6 +1622,7 @@ export class VehicleRatesService {
       errors: [] as Array<{ row: number; message: string }>,
       previewRows: [] as Array<Record<string, unknown>>,
       routeTransfers: [] as Array<Record<string, unknown>>,
+      touringRoutes: [] as Array<Record<string, unknown>>,
       serviceBasedTransport: [] as Array<Record<string, unknown>>,
       fullDay: [] as Array<Record<string, unknown>>,
       halfDay: [] as Array<Record<string, unknown>>,
@@ -1695,9 +1719,10 @@ export class VehicleRatesService {
 
     for (const { rowNumber, normalized } of validRows) {
       const baseClassification = getServiceCategoryClassification(normalized.serviceCategory, normalized.serviceName);
+      const touringRoute = isTouringRouteImportRow(normalized);
       const serviceBasedTransport = isServiceBasedTransportImportRow(normalized, baseClassification);
-      const classification: TransportServiceClassification = serviceBasedTransport ? 'SERVICE_BASED_TRANSPORT' : baseClassification;
-      const existingRoute = serviceBasedTransport ? null : await this.findTransportImportRouteMatch(normalized);
+      const classification: TransportServiceClassification = touringRoute ? 'TOURING_ROUTE' : serviceBasedTransport ? 'SERVICE_BASED_TRANSPORT' : baseClassification;
+      const existingRoute = serviceBasedTransport || touringRoute ? null : await this.findTransportImportRouteMatch(normalized);
       const existingSupplier = normalized.supplierId ? { id: normalized.supplierId, name: normalized.supplierName } : await this.findTransportImportSupplierMatch(normalized.supplierName);
       const existingServiceType = await this.findTransportImportServiceTypeMatch(normalized.serviceName);
       const existingVehicle = existingSupplier ? await this.findTransportImportVehicleMatch(existingSupplier, normalized) : null;
@@ -1712,6 +1737,8 @@ export class VehicleRatesService {
       const toPlaceMatch = await this.findTransportImportPlaceMatch(normalized.destination, normalized.country);
       const routeWarnings = serviceBasedTransport
         ? ['Service-based transport row; no transfer route required']
+        : touringRoute
+          ? ['Touring route row; create/link TouringRoute inventory instead of a fake transfer route']
         : [
             fromPlaceMatch ? null : 'From Place not found',
             toPlaceMatch ? null : 'To Place not found',
@@ -1736,6 +1763,8 @@ export class VehicleRatesService {
         fromPlaceId: fromPlaceMatch?.id || null,
         toPlaceId: toPlaceMatch?.id || null,
         routeWarning,
+        transportProductType: touringRoute ? 'TOURING_ROUTE' : serviceBasedTransport ? 'SERVICE_BASED' : 'TRANSFER',
+        touringRoute,
         serviceBasedTransport,
         vehicleType: normalized.vehicleType,
         vehicleTypeWarning: normalized.vehicleTypeWarning || '',
@@ -1755,7 +1784,9 @@ export class VehicleRatesService {
 
       summary.previewRows.push(previewRow);
       const pricingMode = normalizeTransportPricingMode(normalized.serviceName);
-      if (serviceBasedTransport) {
+      if (touringRoute) {
+        summary.touringRoutes.push(previewRow);
+      } else if (serviceBasedTransport) {
         summary.serviceBasedTransport.push(previewRow);
         if (baseClassification === 'HALF_DAY') {
           summary.halfDay.push(previewRow);
@@ -1786,7 +1817,7 @@ export class VehicleRatesService {
       }
 
       if (!existingRoute && !serviceBasedTransport) {
-        summary.errors.push({ row: rowNumber, message: 'Route not found' });
+        summary.errors.push({ row: rowNumber, message: touringRoute ? 'Touring route rows must be reviewed as TouringRoute inventory before rate-card import' : 'Route not found' });
         summary.skippedRows += 1;
         continue;
       }
@@ -2002,8 +2033,8 @@ export class VehicleRatesService {
     if (row.currency && !['USD', 'EUR', 'JOD'].includes(row.currency.trim().toUpperCase())) {
       errors.push('currency must be one of USD, EUR, or JOD.');
     }
-    if (row.serviceCategory && !['transfers', 'disposal', 'add-ons', 'add ons'].includes(normalizedCategory)) {
-      errors.push('serviceCategory must be one of Transfers, Disposal, or Add-ons.');
+    if (row.serviceCategory && !['transfers', 'disposal', 'add-ons', 'add ons', 'touring routes', 'touring route'].includes(normalizedCategory)) {
+      errors.push('serviceCategory must be one of Transfers, Touring Routes, Disposal, or Add-ons.');
     }
     if (row.active && !['active', 'inactive', 'true', 'false', 'yes', 'no', '1', '0'].includes(normalizedStatus)) {
       errors.push('status must be Active or Inactive.');

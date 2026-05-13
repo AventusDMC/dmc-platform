@@ -6,7 +6,7 @@ import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 import { normalizeTransportPricingMode } from '../lib/transport-pricing-modes';
 import { SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../lib/transport-suppliers';
 
-const PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS = ['Transfers', 'Disposal', 'Add-ons'];
+const PREVIEW_SERVICE_CATEGORY_FILTER_OPTIONS = ['Transfers', 'Touring Routes', 'Disposal', 'Add-ons'];
 const PREVIEW_PRICING_MODE_FILTER_OPTIONS = [
   'Point-to-Point',
   'Full Day',
@@ -28,6 +28,7 @@ type ImportSummary = {
   errors: Array<{ row: number; message: string }>;
   previewRows?: Array<Record<string, unknown>>;
   routeTransfers?: Array<Record<string, unknown>>;
+  touringRoutes?: Array<Record<string, unknown>>;
   serviceBasedTransport?: Array<Record<string, unknown>>;
   fullDay?: Array<Record<string, unknown>>;
   halfDay?: Array<Record<string, unknown>>;
@@ -91,6 +92,10 @@ function getPreviewGroup(row: Record<string, unknown>) {
   const classification = String(row.classification || '').toUpperCase();
   const pricingMode = getPreviewPricingMode(row);
 
+  if (classification === 'TOURING_ROUTE' || String(row.transportProductType || '') === 'TOURING_ROUTE') {
+    return 'touringRoutes';
+  }
+
   if (row.serviceBasedTransport || classification === 'SERVICE_BASED_TRANSPORT') {
     return 'serviceBasedTransport';
   }
@@ -126,7 +131,12 @@ function filterPreviewRows(rows: Array<Record<string, unknown>>, filters: { serv
   return rows.filter((row) => {
     const serviceCategory = String(row.serviceCategory || '').trim().toLowerCase();
     const pricingMode = getPreviewPricingMode(row);
-    const matchesServiceCategory = !filters.serviceCategory || serviceCategory === filters.serviceCategory.toLowerCase();
+    const productType = String(row.transportProductType || '').trim().toUpperCase();
+    const requestedCategory = filters.serviceCategory.toLowerCase();
+    const matchesServiceCategory =
+      !filters.serviceCategory ||
+      serviceCategory === requestedCategory ||
+      (requestedCategory === 'touring routes' && productType === 'TOURING_ROUTE');
     const matchesPricingMode = !filters.pricingMode || pricingMode === filters.pricingMode;
     return matchesServiceCategory && matchesPricingMode;
   });
@@ -193,16 +203,18 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
 
   const previewRows = filterPreviewRows(getSafeRows(summary.previewRows), filters);
   const routeTransfers = filterPreviewRows(getSafeRows(summary.routeTransfers), filters);
+  const touringRoutes = filterPreviewRows(getSafeRows(summary.touringRoutes), filters);
   const serviceBasedTransport = filterPreviewRows(getSafeRows(summary.serviceBasedTransport), filters);
   const fullDay = filterPreviewRows(getSafeRows(summary.fullDay), filters);
   const halfDay = filterPreviewRows(getSafeRows(summary.halfDay), filters);
   const dayTour = filterPreviewRows(getSafeRows(summary.dayTour), filters);
   const addOns = filterPreviewRows(getSafeRows(summary.addOns), filters);
-  const hasGroupedRows = [routeTransfers, serviceBasedTransport, fullDay, halfDay, dayTour, addOns].some((rows) => rows.length > 0);
+  const hasGroupedRows = [routeTransfers, touringRoutes, serviceBasedTransport, fullDay, halfDay, dayTour, addOns].some((rows) => rows.length > 0);
   const groups = hasGroupedRows
-    ? [routeTransfers || [], serviceBasedTransport || [], fullDay || [], halfDay || [], dayTour || [], addOns || []]
+    ? [routeTransfers || [], touringRoutes || [], serviceBasedTransport || [], fullDay || [], halfDay || [], dayTour || [], addOns || []]
     : [
         previewRows.filter((row) => getPreviewGroup(row) === 'routeTransfers'),
+        previewRows.filter((row) => getPreviewGroup(row) === 'touringRoutes'),
         previewRows.filter((row) => getPreviewGroup(row) === 'serviceBasedTransport'),
         previewRows.filter((row) => getPreviewGroup(row) === 'fullDay'),
         previewRows.filter((row) => getPreviewGroup(row) === 'halfDay'),
@@ -218,34 +230,40 @@ function getPreviewGroups(summary: ImportSummary | null, filters: { serviceCateg
       rows: groups[0] || [],
     },
     {
+      id: 'touringRoutes',
+      title: 'Touring routes',
+      helper: 'Multi-stop, circular, one-day, and multi-day transport products. Review as TouringRoute inventory instead of fake transfers.',
+      rows: groups[1] || [],
+    },
+    {
       id: 'serviceBasedTransport',
       title: 'Disposal / Program Services',
       helper: 'Operational disposal, full-day, half-day, and program service rows that do not require a transfer route.',
-      rows: groups[1] || [],
+      rows: groups[2] || [],
     },
     {
       id: 'fullDay',
       title: 'Full-day services',
       helper: 'Full-day and Daily FD package rows. Daily FD minimum rules apply in Quote Planner.',
-      rows: groups[2]?.filter((row) => !row.serviceBasedTransport) || [],
+      rows: groups[3]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'halfDay',
       title: 'Half-day services',
       helper: 'Half-day disposal rows. These are not route transfers.',
-      rows: groups[3]?.filter((row) => !row.serviceBasedTransport) || [],
+      rows: groups[4]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'dayTour',
       title: 'Day tour services',
       helper: 'Standalone sightseeing and FIT touring disposal rows that do not use full-day minimum contract logic.',
-      rows: groups[4]?.filter((row) => !row.serviceBasedTransport) || [],
+      rows: groups[5]?.filter((row) => !row.serviceBasedTransport) || [],
     },
     {
       id: 'addOns',
       title: 'Add-ons',
       helper: 'Driver overnight, stationary, waiting, and other optional charges.',
-      rows: groups[5] || [],
+      rows: groups[6] || [],
     },
   ];
 }

@@ -14,6 +14,7 @@ type ExcursionTemplateComponentBody = {
   supplierServiceId?: string | null;
   activityId?: string | null;
   routeId?: string | null;
+  touringRouteId?: string | null;
   transportServiceTypeId?: string | null;
   suggestedDepartureCity?: string | null;
   suggestedArrivalCity?: string | null;

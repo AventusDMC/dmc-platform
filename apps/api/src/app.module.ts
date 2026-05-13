@@ -96,6 +96,8 @@ import { TransportPricingController } from './transport-pricing/transport-pricin
 import { TransportPricingService } from './transport-pricing/transport-pricing.service';
 import { TransportServiceTypesController } from './transport-service-types/transport-service-types.controller';
 import { TransportServiceTypesService } from './transport-service-types/transport-service-types.service';
+import { TouringRoutesController } from './touring-routes/touring-routes.controller';
+import { TouringRoutesService } from './touring-routes/touring-routes.service';
 import { VehicleRatesController } from './vehicle-rates/vehicle-rates.controller';
 import { VehicleRatesService } from './vehicle-rates/vehicle-rates.service';
 import { VehiclesController } from './vehicles/vehicles.controller';
@@ -154,6 +156,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     SupportTextTemplatesController,
     VehiclesController,
     TransportServiceTypesController,
+    TouringRoutesController,
     VehicleRatesController,
     TransportPricingController,
     UsersController,
@@ -214,6 +217,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     SupportTextTemplatesService,
     VehiclesService,
     TransportServiceTypesService,
+    TouringRoutesService,
     VehicleRatesService,
     TransportPricingService,
     UsersService,

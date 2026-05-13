@@ -1039,6 +1039,7 @@ model QuoteItem {
   externalInternalNotes              String?
   externalHotelsOrSimilar            String?
   externalClientDescription          String?
+  touringRouteId                     String?                 @db.Uuid
   appliedVehicleRate                 VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
   activity                           Activity?               @relation(fields: [activityId], references: [id])
   activityRateVariant                ActivityRateVariant?    @relation(fields: [activityRateVariantId], references: [id])
@@ -1053,6 +1054,7 @@ model QuoteItem {
   roomCategory                       HotelRoomCategory?      @relation(fields: [roomCategoryId], references: [id])
   service                            SupplierService?        @relation(fields: [serviceId], references: [id])
   ticketRateVariant                  TicketRateVariant?      @relation(fields: [ticketRateVariantId], references: [id])
+  touringRoute                       TouringRoute?           @relation(fields: [touringRouteId], references: [id], onDelete: SetNull)
 
   @@index([contractId])
   @@index([packageTemplateId])
@@ -1068,6 +1070,7 @@ model QuoteItem {
   @@index([quoteId, optionId])
   @@index([roomCategoryId])
   @@index([ticketRateVariantId])
+  @@index([touringRouteId])
   @@map("quote_items")
 }
 
@@ -1761,6 +1764,7 @@ model Supplier {
   updatedAt             DateTime               @updatedAt
   bookingServices       BookingService[]
   transportPricingRules TransportPricingRule[]
+  touringRoutePricings  TouringRoutePricing[]
   vehicleRates          VehicleRate[]
   vouchers              Voucher[]
   dmcQuoteDayServices   DmcQuoteDayService[]
@@ -1808,16 +1812,17 @@ model TransportPricingRule {
 }
 
 model TransportServiceType {
-  id                  String                         @id @default(uuid()) @db.Uuid
-  name                String
-  code                String                         @unique
-  classification      TransportServiceClassification @default(ROUTE_TRANSFER)
-  createdAt           DateTime                       @default(now())
-  updatedAt           DateTime                       @updatedAt
-  vehicleRates        VehicleRate[]
-  excursionComponents ExcursionTemplateComponent[]
-  pricingRules        TransportPricingRule[]
-  packageComponents   PackageTemplateComponent[]
+  id                   String                         @id @default(uuid()) @db.Uuid
+  name                 String
+  code                 String                         @unique
+  classification       TransportServiceClassification @default(ROUTE_TRANSFER)
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  vehicleRates         VehicleRate[]
+  excursionComponents  ExcursionTemplateComponent[]
+  pricingRules         TransportPricingRule[]
+  packageComponents    PackageTemplateComponent[]
+  touringRoutePricings TouringRoutePricing[]
 
   @@map("transport_service_types")
 }
@@ -1873,6 +1878,7 @@ model PackageTemplateComponent {
   activityId             String?                      @db.Uuid
   hotelContractId        String?                      @db.Uuid
   routeId                String?                      @db.Uuid
+  touringRouteId         String?                      @db.Uuid
   transportServiceTypeId String?                      @db.Uuid
   pricingMode            String?
   supplierServiceId      String?                      @db.Uuid
@@ -1885,6 +1891,7 @@ model PackageTemplateComponent {
   packageTemplateDay     PackageTemplateDay?          @relation(fields: [packageTemplateDayId], references: [id], onDelete: SetNull)
   route                  Route?                       @relation(fields: [routeId], references: [id], onDelete: SetNull)
   supplierService        SupplierService?             @relation(fields: [supplierServiceId], references: [id], onDelete: SetNull)
+  touringRoute           TouringRoute?                @relation(fields: [touringRouteId], references: [id], onDelete: SetNull)
   transportServiceType   TransportServiceType?        @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
 
   @@index([packageTemplateId, dayNumber, sortOrder])
@@ -1894,6 +1901,7 @@ model PackageTemplateComponent {
   @@index([activityId])
   @@index([hotelContractId])
   @@index([routeId])
+  @@index([touringRouteId])
   @@index([transportServiceTypeId])
   @@index([supplierServiceId])
   @@map("package_template_components")
@@ -1939,6 +1947,7 @@ model ExcursionTemplateComponent {
   supplierServiceId            String?                @db.Uuid
   activityId                   String?                @db.Uuid
   routeId                      String?                @db.Uuid
+  touringRouteId               String?                @db.Uuid
   transportServiceTypeId       String?                @db.Uuid
   suggestedDepartureCity       String?
   suggestedArrivalCity         String?
@@ -1955,6 +1964,7 @@ model ExcursionTemplateComponent {
   route                        Route?                 @relation(fields: [routeId], references: [id], onDelete: SetNull)
   supplierService              SupplierService?       @relation(fields: [supplierServiceId], references: [id], onDelete: SetNull)
   template                     ExcursionTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  touringRoute                 TouringRoute?          @relation(fields: [touringRouteId], references: [id], onDelete: SetNull)
   transportServiceType         TransportServiceType?  @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
 
   @@index([templateId, sortOrder])
@@ -1963,8 +1973,84 @@ model ExcursionTemplateComponent {
   @@index([supplierServiceId])
   @@index([activityId])
   @@index([routeId])
+  @@index([touringRouteId])
   @@index([transportServiceTypeId])
   @@map("excursion_template_components")
+}
+
+model TouringRoute {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  code                String                       @unique
+  name                String
+  startCity           String
+  durationDays        Int                          @default(1)
+  routeDescription    String?
+  mainDestinations    Json?
+  includedKm          Float?
+  includedHours       Float?
+  active              Boolean                      @default(true)
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  stops               TouringRouteStop[]
+  pricings            TouringRoutePricing[]
+  excursionComponents ExcursionTemplateComponent[]
+  packageComponents   PackageTemplateComponent[]
+  quoteItems          QuoteItem[]
+
+  @@index([active, name])
+  @@index([startCity])
+  @@map("touring_routes")
+}
+
+model TouringRouteStop {
+  id             String       @id @default(uuid()) @db.Uuid
+  touringRouteId String       @db.Uuid
+  order          Int
+  city           String
+  location       String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  touringRoute   TouringRoute @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+
+  @@unique([touringRouteId, order])
+  @@index([touringRouteId])
+  @@map("touring_route_stops")
+}
+
+model TouringRoutePricing {
+  id                     String                   @id @default(uuid()) @db.Uuid
+  touringRouteId         String                   @db.Uuid
+  supplierId             String?                  @db.Uuid
+  vehicleId              String?                  @db.Uuid
+  transportServiceTypeId String?                  @db.Uuid
+  pricingBasis           TouringRoutePricingBasis @default(PER_VEHICLE)
+  minPax                 Int                      @default(1)
+  maxPax                 Int                      @default(99)
+  currency               String                   @default("USD")
+  baseCost               Float
+  costPerDay             Float?
+  includedKm             Float?
+  includedHours          Float?
+  extraKmRate            Float?
+  extraHourRate          Float?
+  validFrom              DateTime?
+  validTo                DateTime?
+  active                 Boolean                  @default(true)
+  notes                  String?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  supplier               Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  touringRoute           TouringRoute             @relation(fields: [touringRouteId], references: [id], onDelete: Cascade)
+  transportServiceType   TransportServiceType?    @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
+  vehicle                Vehicle?                 @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([touringRouteId])
+  @@index([supplierId])
+  @@index([vehicleId])
+  @@index([transportServiceTypeId])
+  @@index([active, touringRouteId, minPax, maxPax])
+  @@map("touring_route_pricings")
 }
 
 model User {
@@ -2024,79 +2110,80 @@ model VehicleRate {
 }
 
 model Vehicle {
-  id                 String                 @id @default(uuid()) @db.Uuid
-  supplierId         String
-  resolvedSupplierId String?                @db.Uuid
-  supplierName       String?
-  name               String
-  vehicleType        String?                @map("vehicle_type")
-  maxPax             Int
-  luggageCapacity    Int
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  vehicleRates       VehicleRate[]
-  bookingServices    BookingService[]
-  pricingRules       TransportPricingRule[]
+  id                   String                 @id @default(uuid()) @db.Uuid
+  supplierId           String
+  resolvedSupplierId   String?                @db.Uuid
+  supplierName         String?
+  name                 String
+  vehicleType          String?                @map("vehicle_type")
+  maxPax               Int
+  luggageCapacity      Int
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  vehicleRates         VehicleRate[]
+  bookingServices      BookingService[]
+  pricingRules         TransportPricingRule[]
+  touringRoutePricings TouringRoutePricing[]
 
   @@map("vehicles")
 }
 
 model BookingService {
-  id                      String                        @id @default(uuid()) @db.Uuid
-  bookingId               String                        @db.Uuid
-  bookingDayId            String?                       @db.Uuid
-  sourceQuoteItemId       String?                       @db.Uuid
-  activityId              String?                       @db.Uuid
-  serviceOrder            Int                           @default(0)
-  serviceType             String
-  operationType           String?
-  operationStatus         String                        @default("PENDING")
-  referenceId             String?                       @db.Uuid
-  assignedTo              String?
-  guidePhone              String?
-  vehicleId               String?                       @db.Uuid
-  serviceDate             DateTime?
-  startTime               String?
-  pickupTime              String?
-  pickupLocation          String?
-  meetingPoint            String?
-  participantCount        Int?
-  adultCount              Int?
-  childCount              Int?
-  supplierReference       String?
-  supplierConfirmationStatus SupplierConfirmationStatus @default(NOT_SENT)
-  confirmationSentAt      DateTime?
-  supplierConfirmedAt     DateTime?
-  supplierRemarks         String?
-  confirmationDeadline    DateTime?
-  lastSupplierContactAt   DateTime?
-  reconfirmationRequired  Boolean                       @default(false)
-  reconfirmationDueAt     DateTime?
-  description             String
-  notes                   String?
-  qty                     Int                           @default(1)
-  unitCost                Float
-  unitSell                Float
-  totalCost               Float
-  totalSell               Float
-  status                  BookingServiceLifecycleStatus @default(pending)
-  supplierId              String?                       @db.Uuid
-  supplierName            String?
-  confirmationStatus      BookingServiceStatus          @default(pending)
-  confirmationNumber      String?
-  confirmationNotes       String?
-  statusNote              String?
-  confirmationRequestedAt DateTime?
-  confirmationConfirmedAt DateTime?
-  createdAt               DateTime                      @default(now())
-  updatedAt               DateTime                      @updatedAt
-  booking                 Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  bookingDay              BookingDay?                   @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
-  activity                Activity?                     @relation(fields: [activityId], references: [id], onDelete: SetNull)
-  auditLogs               BookingAuditLog[]
-  vouchers                Voucher[]
-  supplier                Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  vehicle                 Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  id                         String                        @id @default(uuid()) @db.Uuid
+  bookingId                  String                        @db.Uuid
+  bookingDayId               String?                       @db.Uuid
+  sourceQuoteItemId          String?                       @db.Uuid
+  activityId                 String?                       @db.Uuid
+  serviceOrder               Int                           @default(0)
+  serviceType                String
+  operationType              String?
+  operationStatus            String                        @default("PENDING")
+  referenceId                String?                       @db.Uuid
+  assignedTo                 String?
+  guidePhone                 String?
+  vehicleId                  String?                       @db.Uuid
+  serviceDate                DateTime?
+  startTime                  String?
+  pickupTime                 String?
+  pickupLocation             String?
+  meetingPoint               String?
+  participantCount           Int?
+  adultCount                 Int?
+  childCount                 Int?
+  supplierReference          String?
+  supplierConfirmationStatus SupplierConfirmationStatus    @default(NOT_SENT)
+  confirmationSentAt         DateTime?
+  supplierConfirmedAt        DateTime?
+  supplierRemarks            String?
+  confirmationDeadline       DateTime?
+  lastSupplierContactAt      DateTime?
+  reconfirmationRequired     Boolean                       @default(false)
+  reconfirmationDueAt        DateTime?
+  description                String
+  notes                      String?
+  qty                        Int                           @default(1)
+  unitCost                   Float
+  unitSell                   Float
+  totalCost                  Float
+  totalSell                  Float
+  status                     BookingServiceLifecycleStatus @default(pending)
+  supplierId                 String?                       @db.Uuid
+  supplierName               String?
+  confirmationStatus         BookingServiceStatus          @default(pending)
+  confirmationNumber         String?
+  confirmationNotes          String?
+  statusNote                 String?
+  confirmationRequestedAt    DateTime?
+  confirmationConfirmedAt    DateTime?
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
+  booking                    Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingDay                 BookingDay?                   @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
+  activity                   Activity?                     @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  auditLogs                  BookingAuditLog[]
+  vouchers                   Voucher[]
+  supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@index([bookingDayId])
   @@index([activityId])
@@ -2478,10 +2565,16 @@ enum TransportPricingMode {
 
 enum TransportServiceClassification {
   ROUTE_TRANSFER
+  TOURING_ROUTE
   FULL_DAY
   HALF_DAY
   DAILY_PACKAGE
   ADD_ON
+}
+
+enum TouringRoutePricingBasis {
+  PER_VEHICLE
+  PER_DAY
 }
 
 enum ServiceUnitType {

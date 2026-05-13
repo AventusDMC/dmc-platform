@@ -424,6 +424,36 @@ test('transport contract import creates capacity pricing and re-import updates w
   assert.equal(stores.pricingRules[0].baseCost, 50);
 });
 
+test('transport contract preview separates touring routes from transfer rows', async () => {
+  const { prisma } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const preview = await importService.previewTransportContractImport(
+    {
+      buffer: buildWorkbookBuffer([
+        {
+          ...activeImportRow,
+          serviceName: 'Day Tour',
+          serviceCategory: 'Touring Routes',
+          routeName: 'Amman -> Petra -> Wadi Rum -> Amman',
+          origin: 'Amman',
+          destination: 'Amman',
+          notes: '2 day touring program',
+        },
+      ]),
+      originalname: 'touring-routes.xlsx',
+    },
+    { allowCreateSuppliers: true },
+  );
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.previewRows.length, 1);
+  assert.equal(preview.previewRows[0].classification, 'TOURING_ROUTE');
+  assert.equal(preview.previewRows[0].transportProductType, 'TOURING_ROUTE');
+  assert.equal(preview.touringRoutes.length, 1);
+  assert.equal(preview.routeTransfers.length, 0);
+  assert.match(String(preview.previewRows[0].routeWarning), /Touring route row/);
+});
+
 test('transfer service labels derive point-to-point pricing mode for import and pricing lookup', async () => {
   const { prisma, stores } = createPrismaMock();
   const importService = new VehicleRatesService(prisma as any);
@@ -559,9 +589,10 @@ test('transport import preview groups route transfer, disposal full day, and dis
   assert.equal(preview.fullDay[0].classification, 'SERVICE_BASED_TRANSPORT');
   assert.equal(preview.halfDay.length, 1);
   assert.equal(preview.halfDay[0].classification, 'SERVICE_BASED_TRANSPORT');
-  assert.equal(preview.dayTour.length, 1);
-  assert.equal(preview.dayTour[0].serviceCategory, 'Disposal');
-  assert.equal(preview.dayTour[0].serviceName, 'Day Tour');
+  assert.equal(preview.dayTour.length, 0);
+  assert.equal(preview.touringRoutes.length, 1);
+  assert.equal(preview.touringRoutes[0].classification, 'TOURING_ROUTE');
+  assert.equal(preview.touringRoutes[0].routeName, 'Jerash & Ajloun Day Tour');
   assert.equal(preview.addOns.length, 0);
   assert.equal(preview.routeTransfers.some((row) => row.serviceCategory === 'Disposal'), false);
 });

@@ -172,6 +172,7 @@ type CreateQuoteItemBody = {
   vehicleRateId?: string | null;
   transportVehicleId?: string;
   routeId?: string;
+  touringRouteId?: string | null;
   normalizedKey?: string;
   routeName?: string;
   transportAddOns?: Array<{ rateId?: string; quantity?: number }>;
@@ -1059,6 +1060,7 @@ export class QuotesController {
       vehicleRateId: body.vehicleRateId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
+      touringRouteId: body.touringRouteId === undefined ? undefined : body.touringRouteId || null,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportAddOns: Array.isArray(body.transportAddOns)

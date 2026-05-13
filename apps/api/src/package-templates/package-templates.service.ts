@@ -28,6 +28,7 @@ type PackageTemplateComponentInput = {
   activityId?: string | null;
   hotelContractId?: string | null;
   routeId?: string | null;
+  touringRouteId?: string | null;
   transportServiceTypeId?: string | null;
   pricingMode?: string | null;
   supplierServiceId?: string | null;
@@ -160,6 +161,7 @@ export class PackageTemplatesService {
             activityId: component.activityId,
             hotelContractId: component.hotelContractId,
             routeId: component.routeId,
+            touringRouteId: component.touringRouteId,
             transportServiceTypeId: component.transportServiceTypeId,
             pricingMode: component.pricingMode,
             supplierServiceId: component.supplierServiceId,
@@ -295,6 +297,7 @@ export class PackageTemplatesService {
             activityId: component.activityId,
             hotelContractId: component.hotelContractId,
             routeId: component.routeId,
+            touringRouteId: component.touringRouteId,
             transportServiceTypeId: component.transportServiceTypeId,
             pricingMode: component.pricingMode,
             supplierServiceId: component.supplierServiceId,
@@ -455,6 +458,7 @@ export class PackageTemplatesService {
       activityId: componentType === 'ACTIVITY' ? normalizeOptionalString(data.activityId) : null,
       hotelContractId: componentType === 'HOTEL' ? normalizeOptionalString(data.hotelContractId) : null,
       routeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.routeId) : null,
+      touringRouteId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.touringRouteId) : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.transportServiceTypeId) : null,
       pricingMode: componentType === 'TRANSPORT' ? normalizeOptionalString(data.pricingMode) : null,
       supplierServiceId: componentType === 'TRANSPORT' || componentType === 'TICKET' || componentType === 'SERVICE' ? normalizeOptionalString(data.supplierServiceId) : null,
@@ -471,8 +475,11 @@ export class PackageTemplatesService {
     if (componentType === 'HOTEL' && !normalizeOptionalString(data.hotelContractId)) {
       throw new BadRequestException('hotelContractId is required for hotel components');
     }
-    if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.routeId)) {
-      throw new BadRequestException('routeId is required for transport components');
+    if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.routeId) && !normalizeOptionalString(data.touringRouteId)) {
+      throw new BadRequestException('routeId or touringRouteId is required for transport components');
+    }
+    if (componentType === 'TRANSPORT' && normalizeOptionalString(data.routeId) && normalizeOptionalString(data.touringRouteId)) {
+      throw new BadRequestException('Transport components cannot link both routeId and touringRouteId');
     }
     if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.transportServiceTypeId) && !normalizeOptionalString(data.pricingMode)) {
       throw new BadRequestException('pricingMode or transportServiceTypeId is required for transport components');
@@ -541,6 +548,7 @@ export class PackageTemplatesService {
         },
       },
       route: true,
+      touringRoute: true,
       transportServiceType: true,
       supplierService: {
         include: {

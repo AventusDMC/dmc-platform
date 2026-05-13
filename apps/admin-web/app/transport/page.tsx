@@ -5,13 +5,14 @@ import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { RoutesSection } from './RoutesSection';
 import { TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
+import { TouringRoutesSection } from './TouringRoutesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
 import { VehiclesSection } from './VehiclesSection';
 import { VehicleTypesSection } from './VehicleTypesSection';
 
 export const dynamic = 'force-dynamic';
 
-type TransportTab = 'routes' | 'vehicles' | 'vehicle-types' | 'pricing-rules' | 'rates' | 'tariff-workbook';
+type TransportTab = 'routes' | 'touring-routes' | 'vehicles' | 'vehicle-types' | 'pricing-rules' | 'rates' | 'tariff-workbook';
 const API_BASE_URL = '/api';
 
 type TransportPageProps = {
@@ -28,6 +29,7 @@ type TransportPageProps = {
 
 const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
   { id: 'routes', label: 'Routes' },
+  { id: 'touring-routes', label: 'Touring Routes' },
   { id: 'vehicles', label: 'Vehicle Fleet' },
   { id: 'vehicle-types', label: 'Vehicle Types' },
   { id: 'pricing-rules', label: 'Pricing Rules' },
@@ -49,10 +51,11 @@ async function getRoutesCount() {
 }
 
 async function getTransportSummary() {
-  const [vehicles, routesResponse, serviceTypes, pricingRules, vehicleRatesSummary] = await Promise.all([
+  const [vehicles, routesResponse, serviceTypes, touringRoutes, pricingRules, vehicleRatesSummary] = await Promise.all([
     getVehiclesCount(),
     getRoutesCount(),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-service-types`, 'Transport service types', { cache: 'no-store' }),
+    adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/touring-routes`, 'Touring routes', { cache: 'no-store' }),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-pricing/rules`, 'Transport pricing rules', { cache: 'no-store' }),
     adminPageFetchJson<{ rateLines: number }>(`${API_BASE_URL}/vehicle-rates/summary`, 'Transport vehicle rates summary', { cache: 'no-store' }),
   ]);
@@ -61,6 +64,7 @@ async function getTransportSummary() {
     vehicles,
     routes: routesResponse,
     serviceTypes: serviceTypes.length,
+    touringRoutes: touringRoutes.length,
     pricingRules: pricingRules.length,
     vehicleRates: vehicleRatesSummary.rateLines,
   };
@@ -85,6 +89,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
       serviceTypes: 0,
       pricingRules: 0,
       vehicleRates: 0,
+      touringRoutes: 0,
     };
   });
 
@@ -106,6 +111,8 @@ export default async function TransportPage({ searchParams }: TransportPageProps
                 helper:
                   tab.id === 'routes'
                       ? 'Transfer library'
+                      : tab.id === 'touring-routes'
+                        ? 'Operational tours'
                       : tab.id === 'vehicles'
                         ? 'Fleet'
                       : tab.id === 'vehicle-types'
@@ -123,6 +130,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
               items={[
                 { id: 'vehicles', label: 'Vehicles', value: String(summary.vehicles), helper: 'Fleet records' },
                 { id: 'routes', label: 'Routes', value: String(summary.routes.total), helper: `${summary.routes.active} active` },
+                { id: 'touring-routes', label: 'Touring routes', value: String(summary.touringRoutes), helper: 'Touring inventory' },
                 { id: 'service-types', label: 'Service types', value: String(summary.serviceTypes), helper: 'Reusable labels' },
                 { id: 'pricing-rules', label: 'Pricing rules', value: String(summary.pricingRules), helper: `${summary.vehicleRates} rate lines` },
               ]}
@@ -133,6 +141,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}
             {activeTab === 'vehicle-types' ? <VehicleTypesSection /> : null}
             {activeTab === 'routes' ? <RoutesSection /> : null}
+            {activeTab === 'touring-routes' ? <TouringRoutesSection /> : null}
             {activeTab === 'pricing-rules' ? <TransportPricingRulesSection /> : null}
             {activeTab === 'rates' ? <VehicleRatesSection /> : null}
             {activeTab === 'tariff-workbook' ? (
