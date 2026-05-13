@@ -232,6 +232,8 @@ type ContractConflict = {
   };
 };
 
+type GuidedStepStatus = 'complete' | 'review' | 'blocked';
+
 type ContractImportFlowProps = {
   suppliers: Supplier[];
   hotelCategories: HotelCategoryOption[];
@@ -291,10 +293,107 @@ function formatEnumLabel(value: unknown): string {
   return humanizeKey(raw.toLowerCase().replace(/_/g, ' '));
 }
 
+function getGuidedStatusLabel(status: GuidedStepStatus) {
+  if (status === 'complete') return 'Complete';
+  if (status === 'blocked') return 'Blocked';
+  return 'Needs Review';
+}
+
+function getGuidedStatusClass(status: GuidedStepStatus) {
+  if (status === 'complete') return 'guided-status guided-status-complete';
+  if (status === 'blocked') return 'guided-status guided-status-blocked';
+  return 'guided-status guided-status-review';
+}
+
 function formatMoney(value: unknown, currency?: string | null): string {
   const amount = optionalNumber(value);
   if (amount === null) return '';
   return [currency, amount.toLocaleString(undefined, { maximumFractionDigits: 2 })].filter(Boolean).join(' ');
+}
+
+function collectDetectedHotelNames(preview: ContractPreview): string[] {
+  const names = [
+    ...(preview.multiProperty?.hotels || []).map((hotelPreview) => hotelPreview.hotel?.name || hotelPreview.supplier?.name || ''),
+    ...(preview.multiProperty?.normalizedWorkbooks || []).map((workbook) => workbook.hotelName),
+    ...(preview.parserDiagnostics?.detectedHotels || []),
+    ...(preview.assistedExtraction?.lineClassifications || [])
+      .filter((line) => line.type === 'HOTEL_NAME')
+      .map((line) => line.rawLine),
+    preview.hotel?.name || '',
+  ];
+  return Array.from(new Set(names.map((name) => String(name || '').trim()).filter(Boolean)));
+}
+
+function getSelectedHotelPreview(preview: ContractPreview, hotelName: string): ContractPreview {
+  const normalizedName = normalizeCategoryName(hotelName);
+  const selected = (preview.multiProperty?.hotels || []).find((hotelPreview) => {
+    const candidates = [hotelPreview.hotel?.name, hotelPreview.supplier?.name, hotelPreview.contract?.name];
+    return candidates.some((candidate) => normalizeCategoryName(candidate) === normalizedName);
+  });
+
+  if (!selected) {
+    return preview;
+  }
+
+  return {
+    ...preview,
+    ...selected,
+    multiProperty: undefined,
+    parserDiagnostics: preview.parserDiagnostics,
+    assistedExtraction: preview.assistedExtraction,
+  };
+}
+
+function getRoomCandidateNames(preview: ContractPreview): string[] {
+  const names = [
+    ...(preview.roomCategories || []).map((room) => room.name),
+    ...preview.rates.map((rate) => rate.roomType || ''),
+    ...(preview.assistedExtraction?.rateCandidates || []).map((candidate) => candidate.detectedRoom || ''),
+  ];
+  return Array.from(new Set(names.map((name) => String(name || '').trim()).filter(Boolean)));
+}
+
+function getMealPlanCodes(preview: ContractPreview): string[] {
+  const codes = [
+    ...(preview.mealPlans || []).map((mealPlan) => mealPlan.code),
+    ...preview.rates.map((rate) => rate.mealPlan || ''),
+    ...(preview.assistedExtraction?.rateCandidates || []).map((candidate) => candidate.detectedMealPlan || ''),
+  ];
+  return Array.from(new Set(codes.map((code) => String(code || '').trim().toUpperCase()).filter(Boolean)));
+}
+
+function findSeasonOverlaps(seasons: NonNullable<ContractPreview['seasons']>) {
+  const dated = seasons
+    .map((season, index) => ({
+      index,
+      name: season.name || `Season ${index + 1}`,
+      from: season.validFrom ? Date.parse(season.validFrom) : Number.NaN,
+      to: season.validTo ? Date.parse(season.validTo) : Number.NaN,
+    }))
+    .filter((season) => Number.isFinite(season.from) && Number.isFinite(season.to));
+  const overlaps: string[] = [];
+  for (let index = 0; index < dated.length; index += 1) {
+    for (let compareIndex = index + 1; compareIndex < dated.length; compareIndex += 1) {
+      const current = dated[index];
+      const compare = dated[compareIndex];
+      if (current.from <= compare.to && compare.from <= current.to) {
+        overlaps.push(`${current.name} overlaps ${compare.name}`);
+      }
+    }
+  }
+  return overlaps;
+}
+
+function getFestiveSeasonWarnings(seasons: NonNullable<ContractPreview['seasons']>) {
+  return seasons
+    .filter((season) => /festive|christmas|new\s*year|eid|ramadan/i.test(`${season.name || ''} ${season.validFrom || ''} ${season.validTo || ''}`))
+    .map((season) => season.name || 'Festive season');
+}
+
+function getGuidedStepStatus(options: { blocker?: boolean; review?: boolean }): GuidedStepStatus {
+  if (options.blocker) return 'blocked';
+  if (options.review) return 'review';
+  return 'complete';
 }
 
 function normalizeCategoryName(value: unknown): string {
@@ -686,12 +785,16 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [contractConflict, setContractConflict] = useState<ContractConflict | null>(null);
+  const [activeAssistedStep, setActiveAssistedStep] = useState(0);
+  const [selectedAssistedHotelName, setSelectedAssistedHotelName] = useState('');
 
   const assistedWarnings = useMemo(() => buildAssistedQcWarnings(preview.assistedExtraction), [preview.assistedExtraction]);
   const warnings = useMemo(() => [...(contractImport?.warnings || []), ...assistedWarnings], [contractImport, assistedWarnings]);
   const blockers = warnings.filter((warning) => warning.severity === 'blocker');
   const isMultiPropertyPreview = Boolean(preview.multiProperty?.detected);
   const isAssistedExtractionPreview = Boolean(preview.assistedExtraction?.importDisabled);
+  const detectedAssistedHotelNames = useMemo(() => collectDetectedHotelNames(preview), [preview]);
+  const selectedAssistedHotel = selectedAssistedHotelName || detectedAssistedHotelNames[0] || '';
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -751,6 +854,8 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
       const mappedPreview = mapExtractedToUI(data.extractedJson, hotelCategories);
       setContractImport(data);
       setPreview(mappedPreview);
+      setActiveAssistedStep(0);
+      setSelectedAssistedHotelName('');
       setMessage('Contract analyzed. Review and edit extracted values before approval.');
     } catch (caughtError) {
       console.error('Analyze error', caughtError);
@@ -875,6 +980,21 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
         hotelCategoryId: value || null,
         category: selectedCategory?.name || current.hotel?.category || '',
       },
+    }));
+  }
+
+  function updateRoomCategory(index: number, field: 'name' | 'code' | 'description', value: string) {
+    setPreview((current) => ({
+      ...current,
+      roomCategories: (current.roomCategories || []).map((roomCategory, roomCategoryIndex) =>
+        roomCategoryIndex === index ? { ...roomCategory, [field]: value } : roomCategory,
+      ),
+      rates:
+        field === 'name'
+          ? current.rates.map((rate) =>
+              normalizeCategoryName(rate.roomType) === normalizeCategoryName(current.roomCategories?.[index]?.name) ? { ...rate, roomType: value } : rate,
+            )
+          : current.rates,
     }));
   }
 
@@ -1015,14 +1135,14 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
     }));
   }
 
-  async function handleDownloadExcel() {
+  async function handleDownloadExcel(downloadPreview: ContractPreview = preview) {
     if (!contractImport) return;
     setError('');
     try {
       const response = await fetch(`/api/contract-imports/${contractImport.id}/export-excel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: preview }),
+        body: JSON.stringify({ data: downloadPreview }),
       });
       if (!response.ok) {
         throw new Error(await getErrorMessage(response, 'Could not export extracted contract.'));
@@ -1147,12 +1267,39 @@ export function ContractImportFlow({ suppliers, hotelCategories }: ContractImpor
           ) : null}
 
           <ImportPreviewSummary preview={preview} warnings={warnings} />
-          <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
-          <AssistedExtractionReview
-            assistedExtraction={preview.assistedExtraction}
-            onUpdateBlock={updateAssistedBlock}
-            onUpdateMapping={updateAssistedMapping}
-          />
+          {isAssistedExtractionPreview ? (
+            <>
+              <AssistedExtractionWorkflow
+                preview={preview}
+                warnings={warnings}
+                detectedHotelNames={detectedAssistedHotelNames}
+                selectedHotelName={selectedAssistedHotel}
+                activeStep={activeAssistedStep}
+                onStepChange={setActiveAssistedStep}
+                onSelectHotel={setSelectedAssistedHotelName}
+                onUpdateRoomCategory={updateRoomCategory}
+                onExport={() => void handleDownloadExcel(getSelectedHotelPreview(preview, selectedAssistedHotel))}
+              />
+              <details className="technical-extraction-details">
+                <summary>Show technical extraction details</summary>
+                <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
+                <AssistedExtractionReview
+                  assistedExtraction={preview.assistedExtraction}
+                  onUpdateBlock={updateAssistedBlock}
+                  onUpdateMapping={updateAssistedMapping}
+                />
+              </details>
+            </>
+          ) : (
+            <>
+              <ExtractionDiagnostics diagnostics={preview.parserDiagnostics} />
+              <AssistedExtractionReview
+                assistedExtraction={preview.assistedExtraction}
+                onUpdateBlock={updateAssistedBlock}
+                onUpdateMapping={updateAssistedMapping}
+              />
+            </>
+          )}
 
           {isMultiPropertyPreview ? (
             <section className="table-section">
@@ -1665,7 +1812,8 @@ function ImportPreviewSummary({ preview, warnings }: { preview: ContractPreview;
     const mapped = preview.assistedExtraction?.blocks.some((block) => block.approved && (block.rateCandidateIds || []).includes(candidate.id));
     return !mapped;
   }).length;
-  const blockerCount = warnings.filter((warning) => warning.severity === 'blocker').length;
+  const blockingWarnings = warnings.filter((warning) => warning.severity === 'blocker' && warning.field !== 'assistedExtraction');
+  const blockerCount = blockingWarnings.length;
   const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
   const infoCount = warnings.filter((warning) => warning.severity === 'info').length;
 
@@ -1691,6 +1839,238 @@ function ImportPreviewSummary({ preview, warnings }: { preview: ContractPreview;
         </div>
       </div>
     </section>
+  );
+}
+
+function AssistedExtractionWorkflow({
+  preview,
+  warnings,
+  detectedHotelNames,
+  selectedHotelName,
+  activeStep,
+  onStepChange,
+  onSelectHotel,
+  onUpdateRoomCategory,
+  onExport,
+}: {
+  preview: ContractPreview;
+  warnings: Warning[];
+  detectedHotelNames: string[];
+  selectedHotelName: string;
+  activeStep: number;
+  onStepChange: (step: number) => void;
+  onSelectHotel: (hotelName: string) => void;
+  onUpdateRoomCategory: (index: number, field: 'name' | 'code' | 'description', value: string) => void;
+  onExport: () => void;
+}) {
+  const assisted = preview.assistedExtraction;
+  const blockerCount = warnings.filter((warning) => warning.severity === 'blocker' && warning.field !== 'assistedExtraction').length;
+  const warningCount = warnings.filter((warning) => warning.severity === 'warning').length;
+  const rateCandidates = assisted?.rateCandidates || [];
+  const roomCandidates = getRoomCandidateNames(preview);
+  const mealPlans = getMealPlanCodes(preview);
+  const seasonOverlaps = findSeasonOverlaps(preview.seasons || []);
+  const festiveSeasons = getFestiveSeasonWarnings(preview.seasons || []);
+  const missingMealPlanCount = preview.rates.filter((rate) => !rate.mealPlan).length + rateCandidates.filter((candidate) => !candidate.detectedMealPlan).length;
+  const duplicateSupplementNames = Array.from(
+    new Set(
+      (preview.supplements || [])
+        .map((supplement) => normalizeCategoryName(supplement.name))
+        .filter((name, index, names) => name && names.indexOf(name) !== index),
+    ),
+  );
+  const selectedWorkbook = (preview.multiProperty?.normalizedWorkbooks || []).find(
+    (workbook) => normalizeCategoryName(workbook.hotelName) === normalizeCategoryName(selectedHotelName),
+  );
+  const policyDetected = Boolean(preview.cancellationPolicy || preview.policies.some((policy) => /cancel/i.test(policy.name)));
+  const childPolicyDetected = Boolean(preview.childPolicy || preview.ratePolicies?.some((policy) => String(policy.policyType || '').startsWith('CHILD')));
+  const taxesDetected = preview.taxes.length > 0 || preview.policies.some((policy) => /tax|service/i.test(`${policy.name} ${policy.value}`));
+
+  const steps = [
+    {
+      title: 'Contract Summary',
+      status: getGuidedStepStatus({ blocker: blockerCount > 0, review: warningCount > 0 }),
+      guidance: 'Confirm the extraction found the expected properties, rates, supplements, and policy sections. Red blockers must be resolved before import; yellow items need operator review before workbook use.',
+      body: (
+        <div className="guided-summary-grid">
+          <GuidedMetric label="Hotels detected" value={detectedHotelNames.length || 0} status={detectedHotelNames.length > 0 ? 'complete' : 'blocked'} />
+          <GuidedMetric label="Rate candidates" value={rateCandidates.length || preview.rates.length} status={rateCandidates.length || preview.rates.length ? 'complete' : 'blocked'} />
+          <GuidedMetric label="Warnings" value={warningCount} status={warningCount ? 'review' : 'complete'} />
+          <GuidedMetric label="Blockers" value={blockerCount} status={blockerCount ? 'blocked' : 'complete'} />
+          <GuidedMetric label="Supplements" value={preview.supplements.length} status={preview.supplements.length ? 'complete' : 'review'} />
+          <GuidedMetric label="Cancellation policy" value={policyDetected ? 'Detected' : 'Missing'} status={policyDetected ? 'complete' : 'review'} />
+          <GuidedMetric label="Child policy" value={childPolicyDetected ? 'Detected' : 'Missing'} status={childPolicyDetected ? 'complete' : 'review'} />
+        </div>
+      ),
+    },
+    {
+      title: 'Select Hotel',
+      status: getGuidedStepStatus({ blocker: detectedHotelNames.length === 0 || !selectedHotelName, review: detectedHotelNames.length > 1 }),
+      guidance: 'Choose exactly one property to onboard. Multi-property PDFs should be reviewed and exported one hotel at a time so rates and policies do not cross between hotels.',
+      body: (
+        <div className="guided-choice-list">
+          {detectedHotelNames.length === 0 ? <p className="form-error">No hotel names were confidently detected.</p> : null}
+          {detectedHotelNames.map((hotelName) => (
+            <label key={hotelName} className={hotelName === selectedHotelName ? 'guided-choice guided-choice-selected' : 'guided-choice'}>
+              <input type="radio" name="assisted-hotel" checked={hotelName === selectedHotelName} onChange={() => onSelectHotel(hotelName)} />
+              <span>
+                <strong>{hotelName}</strong>
+                <small>{hotelName === selectedHotelName ? 'Selected for reviewed workbook export' : 'Detected property'}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      ),
+    },
+    {
+      title: 'Review Room Categories',
+      status: getGuidedStepStatus({ blocker: roomCandidates.length === 0, review: (preview.roomCategories || []).some((room) => room.uncertain) }),
+      guidance: 'Normalize room category names before export. To merge duplicate categories, give them the same reviewed name; check confidence before approving unusual abbreviations.',
+      body: (
+        <div className="guided-section-stack">
+          {(preview.roomCategories || []).length > 0 ? (
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Reviewed room name</th>
+                    <th>Code</th>
+                    <th>Description</th>
+                    <th>Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(preview.roomCategories || []).map((room, index) => (
+                    <tr key={`${room.name}-${index}`}>
+                      <td><input value={room.name || ''} onChange={(event) => onUpdateRoomCategory(index, 'name', event.target.value)} /></td>
+                      <td><input value={room.code || ''} onChange={(event) => onUpdateRoomCategory(index, 'code', event.target.value)} /></td>
+                      <td><input value={room.description || ''} onChange={(event) => onUpdateRoomCategory(index, 'description', event.target.value)} /></td>
+                      <td><span className={getGuidedStatusClass(room.uncertain ? 'review' : 'complete')}>{room.uncertain ? 'Review' : 'Safe'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="empty-state">No normalized room categories were extracted. Review rate candidates in the technical details if needed.</p>
+          )}
+          {roomCandidates.length > 0 ? <p className="empty-state">Detected candidates: {roomCandidates.slice(0, 12).join(', ')}</p> : null}
+        </div>
+      ),
+    },
+    {
+      title: 'Review Meal Plans & Supplements',
+      status: getGuidedStepStatus({ blocker: missingMealPlanCount > 0, review: duplicateSupplementNames.length > 0 || preview.supplements.some((supplement) => supplement.uncertain) }),
+      guidance: 'Confirm BB, HB, and FB are not mixed with rate inclusions. Watch for duplicated supplements or single supplements counted once as a room rate and again as a supplement.',
+      body: (
+        <div className="guided-section-stack">
+          <div className="guided-chip-row">
+            {['BB', 'HB', 'FB'].map((code) => (
+              <span key={code} className={getGuidedStatusClass(mealPlans.includes(code) ? 'complete' : 'review')}>
+                {code}: {mealPlans.includes(code) ? 'Detected' : 'Not detected'}
+              </span>
+            ))}
+          </div>
+          {missingMealPlanCount > 0 ? <p className="form-error">{missingMealPlanCount} rate candidate(s) are missing meal plan context.</p> : null}
+          {duplicateSupplementNames.length > 0 ? <p className="empty-state">Possible double-count supplements: {duplicateSupplementNames.join(', ')}</p> : null}
+          <PreviewList title="Supplements" items={preview.supplements || []} empty="No supplements extracted." />
+        </div>
+      ),
+    },
+    {
+      title: 'Review Seasons',
+      status: getGuidedStepStatus({ blocker: seasonOverlaps.length > 0, review: festiveSeasons.length > 0 || (preview.seasons || []).some((season) => season.uncertain) }),
+      guidance: 'Check that date ranges are complete and do not overlap unless the contract clearly uses festive overrides. Festive or holiday rows often need separate manual review.',
+      body: (
+        <div className="guided-section-stack">
+          {seasonOverlaps.length > 0 ? <p className="form-error">Overlapping seasons: {seasonOverlaps.join('; ')}</p> : null}
+          {festiveSeasons.length > 0 ? <p className="empty-state">Festive review recommended: {festiveSeasons.join(', ')}</p> : null}
+          <PreviewList title="Season groups" items={preview.seasons || []} empty="No seasons extracted." />
+        </div>
+      ),
+    },
+    {
+      title: 'Review Policies',
+      status: getGuidedStepStatus({ review: !policyDetected || !childPolicyDetected || !taxesDetected }),
+      guidance: 'Confirm cancellation, child policy, taxes, and service notes are present where the contract includes them. Missing policies can be acceptable only when the source contract truly omits them.',
+      body: (
+        <div className="guided-summary-grid">
+          <GuidedMetric label="Cancellation" value={policyDetected ? 'Detected' : 'Missing'} status={policyDetected ? 'complete' : 'review'} />
+          <GuidedMetric label="Child policy" value={childPolicyDetected ? 'Detected' : 'Missing'} status={childPolicyDetected ? 'complete' : 'review'} />
+          <GuidedMetric label="Taxes/service" value={taxesDetected ? 'Detected' : 'Missing'} status={taxesDetected ? 'complete' : 'review'} />
+          <GuidedMetric label="Rate policies" value={preview.ratePolicies?.length || 0} status={preview.ratePolicies?.length ? 'complete' : 'review'} />
+        </div>
+      ),
+    },
+    {
+      title: 'Export Reviewed Workbook',
+      status: getGuidedStepStatus({ blocker: !selectedHotelName || blockerCount > 0, review: warningCount > 0 }),
+      guidance: 'Export only the selected property after the earlier steps are complete or intentionally accepted for review. Automatic import remains disabled for assisted PDF extraction.',
+      body: (
+        <div className="guided-export-panel">
+          <p><strong>Selected hotel:</strong> {selectedHotelName || 'No hotel selected'}</p>
+          {selectedWorkbook ? <p><strong>Workbook:</strong> {selectedWorkbook.fileName}</p> : null}
+          <p className="empty-state">This creates a reviewed workbook for operator QC. It does not auto-import the contract.</p>
+          <button className="primary-button" type="button" onClick={onExport} disabled={!selectedHotelName || blockerCount > 0}>
+            Export reviewed workbook
+          </button>
+        </div>
+      ),
+    },
+  ];
+  const currentStep = steps[Math.min(activeStep, steps.length - 1)] || steps[0];
+
+  return (
+    <section className="guided-extraction-workflow">
+      <div className="section-header">
+        <div>
+          <h3>Semi-assisted extraction workflow</h3>
+          <p>Follow the steps in order. Parser diagnostics are available below for technical review only.</p>
+        </div>
+      </div>
+      <div className="guided-workflow-layout">
+        <ol className="guided-step-list">
+          {steps.map((step, index) => (
+            <li key={step.title}>
+              <button type="button" className={index === activeStep ? 'guided-step-button guided-step-button-active' : 'guided-step-button'} onClick={() => onStepChange(index)}>
+                <span>Step {index + 1}</span>
+                <strong>{step.title}</strong>
+                <em className={getGuidedStatusClass(step.status)}>{getGuidedStatusLabel(step.status)}</em>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <article className={`guided-step-panel guided-step-panel-${currentStep.status}`}>
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Step {Math.min(activeStep, steps.length - 1) + 1}</p>
+              <h3>{currentStep.title}</h3>
+            </div>
+            <span className={getGuidedStatusClass(currentStep.status)}>{getGuidedStatusLabel(currentStep.status)}</span>
+          </div>
+          <p className="guided-step-guidance">{currentStep.guidance}</p>
+          {currentStep.body}
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={() => onStepChange(Math.max(activeStep - 1, 0))} disabled={activeStep === 0}>
+              Previous
+            </button>
+            <button className="secondary-button" type="button" onClick={() => onStepChange(Math.min(activeStep + 1, steps.length - 1))} disabled={activeStep >= steps.length - 1}>
+              Next
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function GuidedMetric({ label, value, status }: { label: string; value: string | number; status: GuidedStepStatus }) {
+  return (
+    <div className="guided-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <em className={getGuidedStatusClass(status)}>{getGuidedStatusLabel(status)}</em>
+    </div>
   );
 }
 
