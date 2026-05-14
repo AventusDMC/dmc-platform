@@ -133,8 +133,8 @@ type ParsedTouringWorkbookRate = {
 
 const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURING_ROUTE_RATES', 'VEHICLE_TYPES'] as const;
 const TOURING_ROUTE_COLUMNS = ['TourCode', 'TourName', 'StartCity', 'DurationDays'] as const;
-const TOURING_STOP_COLUMNS = ['TourCode', 'StopOrder', 'City'] as const;
-const TOURING_RATE_COLUMNS = ['TourCode', 'SupplierName', 'VehicleType', 'PaxFrom', 'PaxTo', 'Currency', 'BaseCost', 'ValidFrom', 'ValidTo'] as const;
+const TOURING_STOP_COLUMNS = ['StopOrder', 'City'] as const;
+const TOURING_RATE_COLUMNS = ['SupplierName', 'VehicleType', 'PaxFrom', 'PaxTo', 'Currency', 'BaseCost', 'ValidFrom', 'ValidTo'] as const;
 
 function normalizeCode(value: string) {
   return (
@@ -851,7 +851,7 @@ export class TouringRoutesService {
       normalized[normalizeWorkbookHeader(key)] = normalizeWorkbookText(value);
     }
     return {
-      tourCode: normalized.tourcode || '',
+      tourCode: normalized.tourcode || normalized.routecode || normalized.variantcode || '',
       tourName: normalized.tourname || normalized.name || '',
       startCity: normalized.startcity || '',
       durationDays: normalized.durationdays || normalized.days || '',

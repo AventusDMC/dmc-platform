@@ -420,8 +420,8 @@ test('imports operational blueprint workbook with touring route variants instead
       },
     ],
     TOURING_ROUTE_STOPS: [
-      { RouteCode: 'AMM_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
-      { RouteCode: 'AQJ_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
+      { VariantCode: 'AMM_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
+      { VariantCode: 'AQJ_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
     ],
     TRANSPORT_COMPONENTS: [
       { TemplateCode: 'PETRA_2D', VariantCode: 'AMM_PETRA_2D', Required: 'Yes', PricingMode: 'Full Day', Notes: 'Amman vehicle' },
@@ -442,6 +442,7 @@ test('imports operational blueprint workbook with touring route variants instead
   assert.equal(imported.importedTouringRoutes, 2);
   assert.equal(createdRoutes[0].code, 'AMM_PETRA_2D');
   assert.equal(createdRoutes[0].startCity, 'Amman');
+  assert.equal(createdRoutes[0].stops.create[0].location, 'Petra Visitor Center');
   assert.equal(createdRoutes[1].code, 'AQJ_PETRA_2D');
   assert.equal(createdTemplates[0].components.create[0].touringRouteId, 'touring-route-AMM_PETRA_2D');
   assert.equal(createdTemplates[0].components.create[1].touringRouteId, 'touring-route-AQJ_PETRA_2D');

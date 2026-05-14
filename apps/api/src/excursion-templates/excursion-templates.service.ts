@@ -93,7 +93,8 @@ type ExcursionWorkbookRouteVariantRow = {
 };
 
 type ExcursionWorkbookStopRow = {
-  RouteCode: string;
+  RouteCode?: string;
+  VariantCode?: string;
   StopOrder: string;
   StopName: string;
   Region: string;
@@ -137,7 +138,7 @@ const EXCURSION_WORKBOOK_REQUIRED_COLUMNS: Record<string, string[]> = {
   EXCURSION_TEMPLATES: ['TemplateCode', 'TemplateName', 'DurationDays', 'Category', 'Description', 'Active'],
   TOURING_ROUTES: ['RouteCode', 'TemplateCode', 'RouteName', 'StartCity', 'DurationDays', 'RouteDescription', 'MainDestinations', 'IncludedKM', 'IncludedHours'],
   TOURING_ROUTE_VARIANTS: ['VariantCode', 'TemplateCode', 'VariantName', 'StartOrigin', 'EndOrigin', 'DurationDays', 'IncludedKM', 'IncludedHours', 'RouteDescription', 'Notes'],
-  TOURING_ROUTE_STOPS: ['RouteCode', 'StopOrder', 'StopName', 'Region', 'Overnight', 'Notes'],
+  TOURING_ROUTE_STOPS: ['StopOrder', 'StopName', 'Region', 'Overnight', 'Notes'],
   TRANSPORT_COMPONENTS: ['TemplateCode', 'Required', 'PricingMode', 'Notes'],
   TICKET_COMPONENTS: ['TemplateCode', 'TicketName', 'Required', 'Notes'],
   GUIDE_COMPONENTS: ['TemplateCode', 'GuideType', 'Required', 'Notes'],
@@ -161,6 +162,10 @@ function resolveTemplateStartCity(template: ExcursionWorkbookTemplateRow) {
 }
 
 function resolveTransportRouteCode(row: ExcursionWorkbookComponentRow) {
+  return normalizeWorkbookKey(row.RouteCode || row.VariantCode);
+}
+
+function resolveStopRouteCode(row: ExcursionWorkbookStopRow) {
   return normalizeWorkbookKey(row.RouteCode || row.VariantCode);
 }
 
@@ -556,8 +561,9 @@ export class ExcursionTemplatesService {
       }
     }
     for (const [index, row] of workbook.stops.entries()) {
-      if (!routeCodes.has(normalizeWorkbookKey(row.RouteCode))) {
-        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.stops, row: index + 2, message: `Stop references unknown route ${row.RouteCode}.` });
+      const stopRouteCode = resolveStopRouteCode(row);
+      if (!routeCodes.has(stopRouteCode)) {
+        errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.stops, row: index + 2, message: `Stop references unknown route ${normalizeWorkbookText(row.RouteCode || row.VariantCode)}.` });
       }
     }
 
@@ -1710,7 +1716,7 @@ export class ExcursionTemplatesService {
     for (const routeRow of workbook.routes) {
       const code = normalizeWorkbookKey(routeRow.RouteCode);
       const stops = workbook.stops
-        .filter((stop) => normalizeWorkbookKey(stop.RouteCode) === code)
+        .filter((stop) => resolveStopRouteCode(stop) === code)
         .map((stop, index) => ({
           order: parseWorkbookPositiveInteger(stop.StopOrder, index + 1),
           city: normalizeWorkbookText(stop.Region) || normalizeWorkbookText(stop.StopName),
