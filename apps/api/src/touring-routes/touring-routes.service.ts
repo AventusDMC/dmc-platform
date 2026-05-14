@@ -148,9 +148,6 @@ type ParsedTouringWorkbookRate = {
 };
 
 const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURING_ROUTE_RATES', 'VEHICLE_TYPES'] as const;
-const TOURING_ROUTE_COLUMNS = ['TourCode', 'TourName', 'StartCity'] as const;
-const TOURING_STOP_COLUMNS = ['StopOrder'] as const;
-const TOURING_RATE_COLUMNS = ['SupplierName', 'Currency', 'ValidFrom', 'ValidTo'] as const;
 
 function normalizeCode(value: string) {
   return (
@@ -343,10 +340,9 @@ export class TouringRoutesService {
     sheet = 'VEHICLE_TYPES';
     const vehicleTypes = this.readSheetRows<TouringWorkbookVehicleTypeRow>(workbook, 'VEHICLE_TYPES');
     this.logWorkbookStage(mode, stage, { routes: routes.length, stops: stops.length, rates: rates.length, vehicleTypes: vehicleTypes.length });
-    stage = 'column validation';
-    this.validateSheetColumns(workbook, 'TOURING_ROUTES', TOURING_ROUTE_COLUMNS, errors);
-    this.validateSheetColumns(workbook, 'TOURING_ROUTE_STOPS', TOURING_STOP_COLUMNS, errors);
-    this.validateSheetColumns(workbook, 'TOURING_ROUTE_RATES', TOURING_RATE_COLUMNS, errors);
+    if (routes.length === 0) {
+      errors.push({ sheet: 'TOURING_ROUTES', stage: 'worksheet parsing', message: 'TOURING_ROUTES has no data rows after workbook parsing' });
+    }
 
     stage = 'TOURING_ROUTES validation';
     sheet = 'TOURING_ROUTES';
@@ -449,7 +445,7 @@ export class TouringRoutesService {
       const rowErrors: string[] = [];
       const code = normalizeCode(row.tourCode || '');
       if (!routeCodes.has(code)) rowErrors.push(`TourCode ${code || '(blank)'} does not reference a route in TOURING_ROUTES`);
-      const order = parseWorkbookInteger(row.stopOrder, 'StopOrder', rowErrors, { required: true, min: 1 }) ?? 1;
+      const order = parseWorkbookInteger(row.stopOrder, 'StopOrder', rowErrors, { min: 1 }) ?? (stopsByCode.get(code)?.length ?? 0) + 1;
       const stopName = normalizeWorkbookText(row.stopName || row.location || row.city);
       const city = normalizeWorkbookText(row.city || row.region || stopName);
       if (!stopName && !city) rowErrors.push('StopName or City is required');
@@ -927,38 +923,6 @@ export class TouringRoutesService {
       validFrom: normalized.validfrom || normalized.from || '',
       validTo: normalized.validto || normalized.to || '',
     } as unknown as T;
-  }
-
-  private validateSheetColumns(
-    workbook: XLSX.WorkBook,
-    sheetName: string,
-    requiredColumns: readonly string[],
-    errors: Array<{ sheet?: string; row?: number; message: string }>,
-  ) {
-    const sheet = this.getSheet(workbook, sheetName);
-    if (!sheet) return;
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown as unknown[][];
-    const headers = new Set((rows[0] || []).map(normalizeWorkbookHeader));
-    for (const column of requiredColumns) {
-      if (!headers.has(normalizeWorkbookHeader(column))) {
-        errors.push({ sheet: sheetName, message: `Missing required column ${column}` });
-      }
-    }
-    if (sheetName === 'TOURING_ROUTES' && !['DurationDays', 'DurationHours'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
-      errors.push({ sheet: sheetName, message: 'Missing required column DurationDays or DurationHours' });
-    }
-    if ((sheetName === 'TOURING_ROUTE_STOPS' || sheetName === 'TOURING_ROUTE_RATES') && !['TourCode', 'RouteCode', 'VariantCode'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
-      errors.push({ sheet: sheetName, message: 'Missing required column TourCode, RouteCode, or VariantCode' });
-    }
-    if (sheetName === 'TOURING_ROUTE_STOPS' && !['StopName', 'City'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
-      errors.push({ sheet: sheetName, message: 'Missing required column StopName or City' });
-    }
-    if (sheetName === 'TOURING_ROUTE_RATES' && !['VehicleCode', 'VehicleName', 'VehicleType'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
-      errors.push({ sheet: sheetName, message: 'Missing required column VehicleCode, VehicleName, or VehicleType' });
-    }
-    if (sheetName === 'TOURING_ROUTE_RATES' && !['Cost', 'BaseCost', 'BasePrice'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
-      errors.push({ sheet: sheetName, message: 'Missing required column Cost, BaseCost, or BasePrice' });
-    }
   }
 
   private normalizeRouteData(data: Partial<TouringRouteInput>, partial = false) {

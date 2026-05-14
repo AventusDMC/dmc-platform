@@ -283,6 +283,120 @@ test('touring workbook preview accepts normalized ERP workbook shape without leg
   assert.equal(preview.pricings[0].vehicleType === 'Mini Bus', false);
 });
 
+test('original normalized touring workbook shape previews successfully without legacy required-column errors', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.vehicles.push({ id: 'vehicle-minivan-5', name: 'Mini Van 5', vehicleType: 'Mini Van', maxPax: 5 } as any);
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [
+      {
+        TourCode: 'PETRA-FD',
+        TourName: 'Petra Full Day',
+        StartCity: 'Amman',
+        ReturnCity: 'Amman',
+        DurationHours: 12,
+        MainRoute: 'Amman - Petra - Amman',
+        MainDestinations: 'Petra',
+        IncludedKM: 480,
+        IncludedHours: 12,
+        TransportType: 'TOURING_ROUTE',
+      },
+    ],
+    stops: [{ TourCode: 'PETRA-FD', StopOrder: 1, StopName: 'Petra Visitor Center', StopType: 'VISIT', Region: 'Petra', Overnight: 'No' }],
+    rates: [
+      {
+        SupplierName: 'Alpha Transport',
+        TourCode: 'PETRA-FD',
+        VehicleCode: 'MINIVAN5',
+        VehicleName: 'Mini Van 5',
+        PricingBasis: 'PER_VEHICLE',
+        Currency: 'USD',
+        Cost: 220,
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+        IncludedHours: 12,
+      },
+    ],
+    vehicleTypes: [{ VehicleCode: 'MINIVAN5', VehicleName: 'Mini Van 5', VehicleCategory: 'Mini Van', MinPax: 1, MaxPax: 5 }],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'Jordan_Touring_Routes_Complete_Normalized_ERP_Workbook.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.ok(preview.routeCount > 0);
+  assert.ok(preview.stopCount > 0);
+  assert.ok(preview.pricingCount > 0);
+  assert.doesNotMatch(JSON.stringify(preview), /Missing required column|Cost\/BaseCost\/BasePrice|VehicleType/);
+});
+
+test('touring workbook preview accepts ExcelJS normalized four-sheet workbook without legacy column errors', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.suppliers.push({ id: 'supplier-review', name: 'REVIEW_SUPPLIER', type: 'transport' } as any);
+  stores.vehicles.push({ id: 'vehicle-van-9', name: 'Van 9', vehicleType: 'Van', maxPax: 9 } as any);
+  const service = new TouringRoutesService(prisma as any);
+  const workbook = new ExcelJS.Workbook();
+
+  const routeSheet = workbook.addWorksheet('TOURING_ROUTES');
+  routeSheet.addRow([
+    'TourCode',
+    'TourName',
+    'StartCity',
+    'DurationDays',
+    'RouteDescription',
+    'MainDestinations',
+    'IncludedKM',
+    'IncludedHours',
+    'TransportType',
+    'Notes',
+  ]);
+  routeSheet.addRow(['PETRA_FD_TEST', 'Petra Full Day Test', 'Amman', 1, 'Amman → Petra → Amman', 'Petra', 600, 12, 'TOURING_ROUTE', 'Tiny ExcelJS test']);
+
+  const stopSheet = workbook.addWorksheet('TOURING_ROUTE_STOPS');
+  stopSheet.addRow(['TourCode', 'StopOrder', 'StopName', 'Region', 'Overnight', 'Notes']);
+  stopSheet.addRow(['PETRA_FD_TEST', 1, 'Amman', 'Amman', false, 'Departure']);
+  stopSheet.addRow(['PETRA_FD_TEST', 2, 'Petra', 'South Jordan', false, 'Visit']);
+  stopSheet.addRow(['PETRA_FD_TEST', 3, 'Amman', 'Amman', false, 'Return']);
+
+  const rateSheet = workbook.addWorksheet('TOURING_ROUTE_RATES');
+  rateSheet.addRow([
+    'SupplierName',
+    'TourCode',
+    'VehicleCode',
+    'VehicleName',
+    'PricingBasis',
+    'Currency',
+    'Cost',
+    'ValidFrom',
+    'ValidTo',
+    'IncludedKM',
+    'IncludedHours',
+    'ExtraKMRate',
+    'ExtraHourRate',
+    'DriverAccommodationIncluded',
+    'Notes',
+  ]);
+  rateSheet.addRow(['REVIEW_SUPPLIER', 'PETRA_FD_TEST', 'VAN9', 'Van 9', 'PER_VEHICLE', 'JOD', 140, '2026-01-01', '2026-12-31', 600, 12, 0.5, 10, false, 'ExcelJS tiny test']);
+
+  const vehicleSheet = workbook.addWorksheet('VEHICLE_TYPES');
+  vehicleSheet.addRow(['VehicleCode', 'VehicleName', 'VehicleCategory', 'MinPax', 'MaxPax', 'LuggageCapacity', 'Notes']);
+  vehicleSheet.addRow(['VAN9', 'Van 9', 'Van', 1, 9, 9, 'Touring van']);
+
+  const buffer = Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'Tiny_Touring_Route_Import_Test_EXCELJS.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.routeCount, 1);
+  assert.equal(preview.stopCount, 3);
+  assert.equal(preview.pricingCount, 1);
+  assert.equal(preview.stops[0].city, 'Amman');
+  assert.equal(preview.stops[1].location, 'Petra');
+  assert.equal(preview.pricings[0].vehicleId, 'vehicle-van-9');
+  assert.equal(preview.pricings[0].baseCost, 140);
+  assert.equal(preview.pricings[0].currency, 'JOD');
+});
+
 test('touring workbook preview returns structured errors instead of raw 500 on internal parser failure', async () => {
   const { prisma } = createTouringPrismaMock();
   prisma.supplier.findMany = async () => {
