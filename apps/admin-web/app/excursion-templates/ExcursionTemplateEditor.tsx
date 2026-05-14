@@ -290,11 +290,11 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     () =>
       catalogs.touringRoutes
         .filter((route) => route.active !== false)
-        .sort((a, b) => a.startCity.localeCompare(b.startCity) || a.name.localeCompare(b.name) || a.durationDays - b.durationDays)
+        .sort((a, b) => a.startCity.localeCompare(b.startCity) || a.name.localeCompare(b.name) || Number(a.durationDays || 0) - Number(b.durationDays || 0))
         .map((route) => ({
           value: route.id,
           label: formatTouringRouteLabel(route),
-          helper: [route.startCity, route.name, `${route.durationDays}D`, route.code].filter(Boolean).join(' / '),
+          helper: [route.startCity, route.name, route.durationDays ? `${route.durationDays}D` : null, route.code].filter(Boolean).join(' / '),
         })),
     [catalogs.touringRoutes],
   );

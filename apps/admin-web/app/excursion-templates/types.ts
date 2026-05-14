@@ -38,9 +38,27 @@ export type ExcursionTemplateComponent = {
     code?: string | null;
     name: string;
     startCity: string;
-    durationDays: number;
+    durationDays?: number;
+    mainDestinations?: string[] | null;
     includedKm?: number | null;
     includedHours?: number | null;
+    stops?: Array<{ location?: string | null; city?: string | null }>;
+    pricings?: Array<{
+      id: string;
+      pricingBasis?: string | null;
+      minPax?: number | null;
+      maxPax?: number | null;
+      currency: string;
+      baseCost: number;
+      costPerDay?: number | null;
+      includedKm?: number | null;
+      includedHours?: number | null;
+      active?: boolean | null;
+      notes?: string | null;
+      supplier?: { id?: string | null; name?: string | null } | null;
+      vehicle?: { id?: string | null; name?: string | null; vehicleType?: string | null; maxPax?: number | null } | null;
+      transportServiceType?: { id?: string | null; name?: string | null; code?: string | null; classification?: string | null } | null;
+    }>;
   } | null;
   supplierService?: {
     id: string;
@@ -64,10 +82,28 @@ export type ExcursionTemplateCatalogs = {
     code?: string | null;
     name: string;
     startCity: string;
-    durationDays: number;
+    durationDays?: number;
     active?: boolean;
+    mainDestinations?: string[] | null;
     includedKm?: number | null;
     includedHours?: number | null;
+    stops?: Array<{ location?: string | null; city?: string | null }>;
+    pricings?: Array<{
+      id: string;
+      pricingBasis?: string | null;
+      minPax?: number | null;
+      maxPax?: number | null;
+      currency: string;
+      baseCost: number;
+      costPerDay?: number | null;
+      includedKm?: number | null;
+      includedHours?: number | null;
+      active?: boolean | null;
+      notes?: string | null;
+      supplier?: { id?: string | null; name?: string | null } | null;
+      vehicle?: { id?: string | null; name?: string | null; vehicleType?: string | null; maxPax?: number | null } | null;
+      transportServiceType?: { id?: string | null; name?: string | null; code?: string | null; classification?: string | null } | null;
+    }>;
   }>;
   transportServiceTypes: Array<{ id: string; name: string; code?: string | null; classification?: string | null }>;
   activities: Array<{ id: string; name: string; active?: boolean; durationMinutes?: number | null }>;
