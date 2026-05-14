@@ -177,6 +177,42 @@ test('touring workbook preview validates tabs and classifies route and pricing r
   assert.deepEqual(preview.errors, []);
 });
 
+test('touring workbook preview accepts VariantCode for stop and rate route references', async () => {
+  const { prisma } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [
+      {
+        TourCode: 'PETRA-FD',
+        TourName: 'Petra Full Day',
+        StartCity: 'Amman',
+        DurationDays: 1,
+      },
+    ],
+    stops: [{ VariantCode: 'PETRA-FD', StopOrder: 1, City: 'Petra', Location: 'Petra Visitor Center' }],
+    rates: [
+      {
+        VariantCode: 'PETRA-FD',
+        SupplierName: 'Alpha Transport',
+        VehicleType: 'Sedan',
+        PaxFrom: 1,
+        PaxTo: 3,
+        Currency: 'USD',
+        BaseCost: 180,
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+      },
+    ],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'variant-rates.xlsx' })) as any;
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.stopCount, 1);
+  assert.equal(preview.pricingCount, 1);
+  assert.equal(preview.pricings[0].tourCode, 'PETRA_FD');
+});
+
 test('touring workbook preview returns structured errors instead of raw 500 on internal parser failure', async () => {
   const { prisma } = createTouringPrismaMock();
   prisma.supplier.findMany = async () => {

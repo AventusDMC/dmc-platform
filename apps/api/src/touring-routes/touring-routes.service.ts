@@ -896,6 +896,9 @@ export class TouringRoutesService {
         errors.push({ sheet: sheetName, message: `Missing required column ${column}` });
       }
     }
+    if ((sheetName === 'TOURING_ROUTE_STOPS' || sheetName === 'TOURING_ROUTE_RATES') && !['TourCode', 'RouteCode', 'VariantCode'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
+      errors.push({ sheet: sheetName, message: 'Missing required column TourCode, RouteCode, or VariantCode' });
+    }
   }
 
   private normalizeRouteData(data: Partial<TouringRouteInput>, partial = false) {
