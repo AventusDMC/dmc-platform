@@ -7,6 +7,7 @@ import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { CreatePetraFullDayButton } from './CreatePetraFullDayButton';
 import { ExcursionTariffWorkbookSection } from './ExcursionTariffWorkbookSection';
+import { OperationalBlueprintImportPanel } from './OperationalBlueprintImportPanel';
 import { ExcursionTemplate } from './types';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +116,8 @@ export default async function ExcursionTemplatesPage({ searchParams }: Excursion
           }
         >
           <section className="section-stack">
+            <OperationalBlueprintImportPanel />
+
             <WorkspaceSubheader
               eyebrow="Composite Catalog"
               title={activeTab === 'tariff-workbook' ? 'Excursion tariff workbook' : 'Operational excursion templates'}

@@ -5,6 +5,7 @@ import { buildExcursionTariffRowSources, filterExcursionTariffRowSources } from 
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const editorSource = readFileSync(new URL('./ExcursionTemplateEditor.tsx', import.meta.url), 'utf8');
+const operationalBlueprintImportPanelSource = readFileSync(new URL('./OperationalBlueprintImportPanel.tsx', import.meta.url), 'utf8');
 const tariffWorkbookSectionSource = readFileSync(new URL('./ExcursionTariffWorkbookSection.tsx', import.meta.url), 'utf8');
 const tariffWorkbookGridSource = readFileSync(new URL('./ExcursionTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const fillMissingRouteSource = readFileSync(new URL('../api/excursion-templates/[id]/fill-missing-metadata/route.ts', import.meta.url), 'utf8');
@@ -47,6 +48,36 @@ describe('excursion template admin UI', () => {
 
     assert.equal(tariffWorkbookSectionSource.includes("method: 'POST'"), false);
     assert.equal(tariffWorkbookSectionSource.includes('calculate'), false);
+  });
+
+  it('exposes the operational blueprint workbook import workflow without flattening reusable inventory', () => {
+    expectSourceContains(pageSource, [
+      "import { OperationalBlueprintImportPanel } from './OperationalBlueprintImportPanel';",
+      '<OperationalBlueprintImportPanel />',
+    ]);
+
+    expectSourceContains(operationalBlueprintImportPanelSource, [
+      'Operational Blueprint Workbook Import',
+      'Choose File',
+      'Preview Workbook',
+      'Import Workbook',
+      '/api/excursion-templates/operational-blueprint/import-preview',
+      '/api/excursion-templates/operational-blueprint/import',
+      'Excursion templates',
+      'Touring route variants',
+      'Transport components',
+      'Ticket components',
+      'Guide components',
+      'Dining / activity components',
+      'Blocking validation errors',
+      'Review warnings',
+      'Duplicate TemplateCode',
+      'unknown touring route refs',
+      'missing required transport component',
+      'missing reusable',
+      'Reusable inventory references',
+      'Templates stay linked to reusable operational components instead of becoming flat pricing rows.',
+    ]);
   });
 
   it('renders the excursion tariff workbook as a local spreadsheet-style grid with CSV actions', () => {
