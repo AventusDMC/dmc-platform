@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { proxyRequest } from '../../../proxy-request';
+import { proxyTouringWorkbookUpload } from '../proxy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -8,5 +8,5 @@ if (!API_BASE_URL) {
 }
 
 export async function POST(request: NextRequest) {
-  return proxyRequest(request, `${API_BASE_URL}/touring-routes/workbook/preview`, 'POST');
+  return proxyTouringWorkbookUpload(request, `${API_BASE_URL}/touring-routes/workbook/preview`, 'preview');
 }
