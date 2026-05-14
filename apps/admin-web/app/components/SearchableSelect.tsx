@@ -19,6 +19,7 @@ type SearchableSelectProps = {
   required?: boolean;
   disabled?: boolean;
   maxResults?: number;
+  showAllOnFocus?: boolean;
 };
 
 function optionText(option: SearchableSelectOption) {
@@ -36,6 +37,7 @@ export function SearchableSelect({
   required = false,
   disabled = false,
   maxResults = 50,
+  showAllOnFocus = false,
 }: SearchableSelectProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -63,7 +65,13 @@ export function SearchableSelect({
             onChange('');
             setIsOpen(true);
           }}
-          onFocus={() => setIsOpen(!disabled)}
+          onFocus={() => {
+            if (disabled) return;
+            if (showAllOnFocus) {
+              setQuery('');
+            }
+            setIsOpen(true);
+          }}
           onBlur={() => {
             window.setTimeout(() => {
               setIsOpen(false);
