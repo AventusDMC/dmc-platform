@@ -26,6 +26,16 @@ const NON_TRANSPORT_COMPONENT_SECTIONS: Array<{ id: string; title: string; types
   { id: 'activities', title: 'Activities', types: ['ACTIVITY'] },
   { id: 'optional', title: 'Optional', types: ['TICKET', 'ACTIVITY', 'GUIDE', 'DINING'], optionalOnly: true },
 ];
+const ROUTE_CODE_PATTERN = /\b[A-Z][A-Z0-9]*(?:[_-][A-Z0-9]+){1,}\b/;
+const ORIGIN_CODE_LABELS: Record<string, string> = {
+  AMM: 'Amman',
+  AQJ: 'Aqaba',
+  PETRA: 'Petra',
+  JERASH: 'Jerash',
+  DEAD: 'Dead Sea',
+  MADABA: 'Madaba',
+  WADI: 'Wadi Rum',
+};
 
 function catalogText(value: unknown): string {
   if (!value || typeof value !== 'object') {
@@ -72,12 +82,27 @@ function getComponentDurationLabel(component: ExcursionTemplate['components'][nu
   return formatDuration(component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes, component.touringRoute?.durationDays);
 }
 
+function extractVariantRouteCode(value: unknown) {
+  const text = String(value || '').toUpperCase();
+  const match = text.match(ROUTE_CODE_PATTERN);
+  return match?.[0]?.replace(/-/g, '_') || '';
+}
+
+function formatOriginCode(value: string) {
+  const code = value.toUpperCase();
+  return ORIGIN_CODE_LABELS[code] || code.replace(/_/g, ' ');
+}
+
 function getOriginVariantStartCity(component: ExcursionTemplate['components'][number]) {
+  const variantRouteCode = getVariantRouteCode(component);
+  const sourceOriginCode = variantRouteCode.split('_')[0];
+
   return (
     component.touringRoute?.startCity ||
     component.suggestedDepartureCity ||
     component.route?.fromPlace?.name ||
     component.route?.name?.split(/\s*(?:->|→| to )\s*/i)[0] ||
+    (sourceOriginCode ? formatOriginCode(sourceOriginCode) : '') ||
     'Origin pending'
   );
 }
@@ -87,7 +112,15 @@ function getOriginVariantName(component: ExcursionTemplate['components'][number]
 }
 
 function getVariantRouteCode(component: ExcursionTemplate['components'][number]) {
-  return component.touringRoute?.code || component.touringRouteId || component.route?.name?.match(/\b[A-Z][A-Z0-9_]{4,}\b/)?.[0] || '';
+  return (
+    component.touringRoute?.code ||
+    extractVariantRouteCode(component.route?.name) ||
+    extractVariantRouteCode(component.label) ||
+    extractVariantRouteCode(component.operationalNotes) ||
+    extractVariantRouteCode(component.pickupNotes) ||
+    extractVariantRouteCode(component.operationalDependency) ||
+    ''
+  );
 }
 
 function isOriginVariantTransport(component: ExcursionTemplate['components'][number]) {

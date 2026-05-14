@@ -1821,6 +1821,10 @@ export class ExcursionTemplatesService {
       const route = touringRoutes.get(routeCode);
       const pricingMode = normalizeWorkbookText(row.PricingMode);
       const transportServiceType = matches.transportTypeMatches.get(pricingMode);
+      const sourceRouteLabel = routeCode ? `Source route code: ${routeCode}.` : '';
+      const operationalNotes = transportServiceType
+        ? appendOperationalNote(row.Notes, sourceRouteLabel)
+        : appendOperationalNote(row.Notes, [sourceRouteLabel, `Unresolved transport pricing mode: ${pricingMode || 'blank'}. Manual review required.`].filter(Boolean).join(' '));
       if (!transportServiceType) {
         this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'TRANSPORT', name: pricingMode })}`);
       }
@@ -1830,7 +1834,10 @@ export class ExcursionTemplatesService {
         isOptional: !parseWorkbookBoolean(row.Required, true),
         touringRouteId: route?.id || null,
         transportServiceTypeId: transportServiceType?.id || null,
-        operationalNotes: transportServiceType ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved transport pricing mode: ${pricingMode || 'blank'}. Manual review required.`),
+        suggestedDepartureCity: route?.startCity || null,
+        suggestedArrivalCity: Array.isArray(route?.mainDestinations) ? route.mainDestinations[0] || null : null,
+        durationMinutes: route?.durationDays ? route.durationDays * 24 * 60 : null,
+        operationalNotes,
       });
     }
     for (const row of workbook.tickets.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {

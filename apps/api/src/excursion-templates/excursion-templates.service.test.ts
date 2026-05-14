@@ -571,6 +571,8 @@ test('imports operational blueprint workbook as templates, touring routes, and l
   assert.equal(components[0].componentType, 'TRANSPORT');
   assert.equal(components[0].touringRouteId, 'touring-route-AMM_PETRA_2D');
   assert.equal(components[0].transportServiceTypeId, 'transport-full-day');
+  assert.equal(components[0].suggestedDepartureCity, 'Amman');
+  assert.match(components[0].operationalNotes, /Source route code: AMM_PETRA_2D/);
   assert.equal(components[1].componentType, 'TICKET');
   assert.equal(components[1].supplierServiceId, 'ticket-petra');
   assert.equal(components[4].componentType, 'ACTIVITY');
