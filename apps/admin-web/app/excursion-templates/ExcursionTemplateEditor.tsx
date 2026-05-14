@@ -36,6 +36,9 @@ const ORIGIN_CODE_LABELS: Record<string, string> = {
   MADABA: 'Madaba',
   WADI: 'Wadi Rum',
 };
+const TOURING_TRANSPORT_CLASSIFICATIONS = new Set(['TOURING_ROUTE', 'FULL_DAY', 'HALF_DAY', 'DAILY_PACKAGE', 'PROGRAM_SERVICE']);
+const TOURING_TRANSPORT_TEXT_PATTERN = /\b(?:day tour|full day|half day|daily full day|touring route|program service|jordan program)\b/i;
+const ROUTE_MOVEMENT_PATTERN = /\s(?:->|→| to )\s/i;
 
 function catalogText(value: unknown): string {
   if (!value || typeof value !== 'object') {
@@ -123,8 +126,42 @@ function getVariantRouteCode(component: ExcursionTemplate['components'][number])
   );
 }
 
+function getTransportServiceText(component: ExcursionTemplate['components'][number]) {
+  return [
+    component.transportServiceType?.name,
+    component.transportServiceType?.code,
+    component.transportServiceType?.classification,
+    component.label,
+    component.operationalNotes,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasTouringTransportServiceType(component: ExcursionTemplate['components'][number]) {
+  const classification = String(component.transportServiceType?.classification || component.transportServiceType?.code || '').toUpperCase();
+  return TOURING_TRANSPORT_CLASSIFICATIONS.has(classification) || TOURING_TRANSPORT_TEXT_PATTERN.test(getTransportServiceText(component));
+}
+
+function hasRouteMovement(component: ExcursionTemplate['components'][number]) {
+  return Boolean(
+    component.route?.fromPlace?.name ||
+      component.route?.toPlace?.name ||
+      component.suggestedDepartureCity ||
+      component.suggestedArrivalCity ||
+      ROUTE_MOVEMENT_PATTERN.test(component.route?.name || '') ||
+      ROUTE_MOVEMENT_PATTERN.test(component.label || ''),
+  );
+}
+
+function isTouringVariantTransport(component: ExcursionTemplate['components'][number]) {
+  if (component.componentType !== 'TRANSPORT') return false;
+  if (component.touringRouteId || component.touringRoute || getVariantRouteCode(component)) return true;
+  return hasTouringTransportServiceType(component) && hasRouteMovement(component);
+}
+
 function isOriginVariantTransport(component: ExcursionTemplate['components'][number]) {
-  return component.componentType === 'TRANSPORT' && Boolean(component.touringRouteId || component.touringRoute || getVariantRouteCode(component));
+  return isTouringVariantTransport(component);
 }
 
 function getComponentStatusLabel(component: ExcursionTemplate['components'][number]) {
