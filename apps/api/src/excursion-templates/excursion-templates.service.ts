@@ -1666,6 +1666,15 @@ export class ExcursionTemplatesService {
           touringRoute: {
             include: {
               stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+              pricings: {
+                where: { active: true },
+                include: {
+                  supplier: true,
+                  vehicle: true,
+                  transportServiceType: true,
+                },
+                orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+              },
             },
           },
           supplierService: {

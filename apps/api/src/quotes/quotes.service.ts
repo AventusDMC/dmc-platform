@@ -203,6 +203,7 @@ type CreateQuoteItemInput = {
   transportVehicleId?: string;
   routeId?: string;
   touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
   normalizedKey?: string;
   routeName?: string;
   transportAddOns?: Array<{
@@ -242,6 +243,8 @@ type ExpandExcursionTemplateInput = {
   itineraryId?: string | null;
   serviceDate?: Date | null;
   selectedOptionalComponentIds?: string[];
+  selectedTouringRouteId?: string | null;
+  selectedTouringRoutePricingId?: string | null;
   paxCount?: number;
   quantity?: number;
   markupPercent?: number;
@@ -3298,6 +3301,20 @@ export class QuotesService {
               },
             },
             route: true,
+            touringRoute: {
+              include: {
+                stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+                pricings: {
+                  where: { active: true },
+                  include: {
+                    supplier: true,
+                    vehicle: true,
+                    transportServiceType: true,
+                  },
+                  orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+                },
+              },
+            },
             transportServiceType: true,
           },
           orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
@@ -3326,9 +3343,28 @@ export class QuotesService {
     if (invalidOptionalIds.length > 0) {
       throw new BadRequestException('Selected optional excursion components are not available on this template');
     }
+    const selectedTouringRouteId = data.selectedTouringRouteId?.trim() || null;
+    if (selectedTouringRouteId) {
+      const hasSelectedVariant = (template.components || []).some(
+        (component: any) =>
+          component.active !== false &&
+          component.componentType === 'TRANSPORT' &&
+          component.touringRouteId === selectedTouringRouteId,
+      );
+      if (!hasSelectedVariant) {
+        throw new BadRequestException('Selected origin variant is not linked to this excursion template');
+      }
+    }
 
     const selectedComponents = (template.components || [])
       .filter((component: any) => component.active !== false)
+      .filter((component: any) => {
+        if (!selectedTouringRouteId || component.componentType !== 'TRANSPORT' || !component.touringRouteId) {
+          return true;
+        }
+
+        return component.touringRouteId === selectedTouringRouteId;
+      })
       .filter((component: any) => !component.isOptional || selectedOptionalIds.has(component.id))
       .sort((a: any, b: any) => a.sortOrder - b.sortOrder);
 
@@ -3364,6 +3400,7 @@ export class QuotesService {
         paxCount: data.paxCount,
         quantity: data.quantity,
         markupPercent: data.markupPercent,
+        selectedTouringRoutePricingId: data.selectedTouringRoutePricingId,
       });
       createdItems.push(await this.createItem(payload, actor));
     }
@@ -3378,13 +3415,14 @@ export class QuotesService {
 
   private async buildExcursionTemplateQuoteItemPayload(values: {
     quote: { id: string; adults?: number | null; children?: number | null };
-    template: { id: string };
+    template: { id: string; name?: string | null };
     component: any;
     itineraryId?: string;
     serviceDate?: Date | null;
     paxCount?: number;
     quantity?: number;
     markupPercent?: number;
+    selectedTouringRoutePricingId?: string | null;
   }): Promise<CreateQuoteItemInput> {
     const paxCount = Math.max(
       1,
@@ -3406,6 +3444,50 @@ export class QuotesService {
       const service = values.component.supplierService || (await this.findFallbackSupplierServiceForExcursionComponent('TRANSPORT'));
       if (!service) {
         throw new BadRequestException(`Excursion component "${values.component.label}" requires a linked transport service`);
+      }
+      if (values.component.touringRouteId) {
+        const activePricings = (values.component.touringRoute?.pricings || []).filter((pricing: any) => pricing.active !== false);
+        const selectedPricing =
+          (values.selectedTouringRoutePricingId
+            ? activePricings.find((pricing: any) => pricing.id === values.selectedTouringRoutePricingId)
+            : null) ||
+          activePricings.find(
+            (pricing: any) =>
+              Number(pricing.minPax || 1) <= paxCount &&
+              Number(pricing.maxPax || 999) >= paxCount,
+          ) ||
+          activePricings[0] ||
+          null;
+
+        if (!selectedPricing) {
+          throw new BadRequestException(`Excursion origin variant "${values.component.touringRoute?.name || values.component.label}" has no active pricing row`);
+        }
+
+        const transportServiceTypeId =
+          selectedPricing.transportServiceTypeId || values.component.transportServiceTypeId;
+        if (!transportServiceTypeId) {
+          throw new BadRequestException(`Excursion origin variant "${values.component.touringRoute?.name || values.component.label}" requires a transport classification`);
+        }
+
+        return {
+          ...common,
+          serviceId: service.id,
+          touringRouteId: values.component.touringRouteId,
+          touringRoutePricingId: selectedPricing.id,
+          transportServiceTypeId,
+          transportVehicleId: selectedPricing.vehicleId || undefined,
+          overrideCost: Number(selectedPricing.baseCost || 0),
+          overrideReason: [
+            values.template.name ? `Excursion template: ${values.template.name}` : null,
+            'Excursion origin variant pricing',
+            values.component.touringRoute?.name,
+            selectedPricing.vehicle?.name,
+            selectedPricing.supplier?.name,
+          ].filter(Boolean).join(' | '),
+          useOverride: true,
+          currency: selectedPricing.currency || service.currency,
+          dayCount: values.component.touringRoute?.durationDays || 1,
+        };
       }
       if (!values.component.routeId || !values.component.transportServiceTypeId) {
         throw new BadRequestException(`Excursion transport component "${values.component.label}" requires route and transport service type links`);
@@ -4721,6 +4803,60 @@ export class QuotesService {
         throw new BadRequestException('Transport service type is required');
       }
 
+      if (data.touringRouteId) {
+        const touringRoute = await (this.prisma as any).touringRoute.findUnique({
+          where: { id: data.touringRouteId },
+          include: {
+            stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+            pricings: {
+              where: {
+                active: true,
+                ...(data.touringRoutePricingId ? { id: data.touringRoutePricingId } : {}),
+              },
+              include: {
+                supplier: true,
+                vehicle: true,
+                transportServiceType: true,
+              },
+              orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+            },
+          },
+        });
+
+        if (!touringRoute || touringRoute.active === false) {
+          throw new BadRequestException('Touring route variant not found');
+        }
+
+        const selectedPricing =
+          (touringRoute.pricings || []).find((pricing: any) => Number(pricing.minPax || 1) <= paxCount && Number(pricing.maxPax || 999) >= paxCount) ||
+          (touringRoute.pricings || [])[0] ||
+          null;
+
+        if (!selectedPricing) {
+          throw new BadRequestException('Selected touring route variant has no active pricing row');
+        }
+
+        const serviceType = selectedPricing.transportServiceType || { id: data.transportServiceTypeId, name: 'Touring route', code: 'TOURING_ROUTE' };
+        const destinations = Array.isArray(touringRoute.mainDestinations) ? touringRoute.mainDestinations.filter(Boolean) : [];
+        const stopNames = (touringRoute.stops || []).map((stop: any) => stop.location || stop.city).filter(Boolean);
+        const routePath = destinations.length > 0 ? destinations : stopNames;
+        const routeDisplay = routePath.length > 0 ? `${touringRoute.startCity} -> ${routePath.join(' -> ')} -> ${touringRoute.startCity}` : touringRoute.name;
+        baseCost = Number(selectedPricing.baseCost || 0);
+        currency = selectedPricing.currency || currency || 'USD';
+        supplierCostBaseAmount = baseCost;
+        supplierCostCurrency = currency;
+        transportServiceTypeId = selectedPricing.transportServiceTypeId || data.transportServiceTypeId;
+        vehicleId = selectedPricing.vehicleId || data.transportVehicleId || null;
+        pricingDescription = [
+          'Excursion origin variant',
+          routeDisplay,
+          serviceType.name,
+          selectedPricing.vehicle?.name,
+          selectedPricing.pricingBasis,
+          selectedPricing.includedHours ? `${selectedPricing.includedHours} included hours` : null,
+          selectedPricing.includedKm ? `${selectedPricing.includedKm} included km` : null,
+        ].filter(Boolean).join(' | ');
+      } else {
       const routeNormalizedKey = data.normalizedKey || (data.routeName ? normalizeRouteName(data.routeName) : undefined);
 
       if (!data.routeId && !routeNormalizedKey) {
@@ -4840,6 +4976,7 @@ export class QuotesService {
 
       if (transportPricingDescriptionParts.length > 0) {
         pricingDescription = [pricingDescription, ...transportPricingDescriptionParts].filter(Boolean).join(' | ');
+      }
       }
     }
 
@@ -9228,6 +9365,11 @@ export class QuotesService {
               supplier: true,
             },
           },
+          touringRoute: {
+            include: {
+              stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+            },
+          },
         },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
       }), [] as any[]),
@@ -9324,6 +9466,11 @@ export class QuotesService {
                   vehicle: true,
                   serviceType: true,
                   supplier: true,
+                },
+              },
+              touringRoute: {
+                include: {
+                  stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
                 },
               },
             },

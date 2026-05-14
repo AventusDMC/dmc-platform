@@ -221,6 +221,14 @@ type QuoteItem = {
       name?: string | null;
     } | null;
   } | null;
+  touringRoute?: {
+    id: string;
+    name: string;
+    startCity: string;
+    durationDays?: number | null;
+    mainDestinations?: string[] | null;
+    stops?: Array<{ city?: string | null; location?: string | null }>;
+  } | null;
   hotel: {
     name: string;
   } | null;
@@ -358,11 +366,24 @@ function isExternalPackageItem(item: Pick<QuoteItem, 'service'>) {
 }
 
 function getQuoteItemServiceName(item: QuoteItem) {
+  if (item.touringRoute) {
+    const templateName = item.overrideReason?.match(/Excursion template:\s*([^|]+)/)?.[1]?.trim();
+    return templateName || item.touringRoute.name;
+  }
+
   if (item.appliedVehicleRate?.serviceType?.name) {
     return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
+}
+
+function formatQuoteItemTouringRoutePath(route: NonNullable<QuoteItem['touringRoute']>) {
+  const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
+  const stopNames = route.stops?.map((stop) => stop.location || stop.city).filter(Boolean) || [];
+  const routePath = destinations.length > 0 ? destinations : stopNames;
+
+  return routePath.length > 0 ? `${route.startCity} -> ${routePath.join(' -> ')} -> ${route.startCity}` : route.name;
 }
 
 function buildTransportServiceDisplayName(serviceName: string | null | undefined, pricingMode: string, supplierName?: string | null) {
@@ -760,6 +781,11 @@ export function QuoteItemCard({
             <p>
               {currentItem.appliedVehicleRate.routeName} | {formatTransportVehicleDisplay(currentItem.appliedVehicleRate.vehicle)} |{' '}
               {currentItem.appliedVehicleRate.serviceType.name}
+            </p>
+          ) : null}
+          {currentItem.touringRoute ? (
+            <p>
+              Departure: {currentItem.touringRoute.startCity} | Route: {formatQuoteItemTouringRoutePath(currentItem.touringRoute)}
             </p>
           ) : null}
           {currentItem.jordanPassCovered ? (

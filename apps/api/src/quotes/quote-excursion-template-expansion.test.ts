@@ -172,3 +172,98 @@ test('rejects optional component ids that do not belong to the active template',
     /Selected optional excursion components are not available/,
   );
 });
+
+test('expands only the selected excursion origin variant with touring route pricing', async () => {
+  const template: any = createTemplate();
+  template.name = 'Petra Full Day';
+  template.components = [
+    template.components[2],
+    {
+      id: 'component-transport-amman',
+      componentType: 'TRANSPORT',
+      label: 'Amman origin',
+      sortOrder: 20,
+      isOptional: false,
+      active: true,
+      supplierServiceId: 'transport-service-1',
+      touringRouteId: 'touring-route-amman',
+      transportServiceTypeId: 'transport-type-1',
+      supplierService: { id: 'transport-service-1', name: 'Transport service', serviceType: { name: 'Transport' } },
+      touringRoute: {
+        id: 'touring-route-amman',
+        name: 'Amman Petra Full Day',
+        startCity: 'Amman',
+        durationDays: 1,
+        pricings: [
+          {
+            id: 'pricing-amman',
+            active: true,
+            transportServiceTypeId: 'transport-type-1',
+            vehicleId: 'vehicle-sedan',
+            currency: 'USD',
+            baseCost: 120,
+            minPax: 1,
+            maxPax: 3,
+            vehicle: { id: 'vehicle-sedan', name: 'Sedan' },
+            supplier: { id: 'supplier-1', name: 'Supplier' },
+          },
+        ],
+      },
+    },
+    {
+      id: 'component-transport-dead-sea',
+      componentType: 'TRANSPORT',
+      label: 'Dead Sea origin',
+      sortOrder: 30,
+      isOptional: false,
+      active: true,
+      supplierServiceId: 'transport-service-1',
+      touringRouteId: 'touring-route-dead-sea',
+      transportServiceTypeId: 'transport-type-1',
+      supplierService: { id: 'transport-service-1', name: 'Transport service', serviceType: { name: 'Transport' } },
+      touringRoute: {
+        id: 'touring-route-dead-sea',
+        name: 'Dead Sea Petra Full Day',
+        startCity: 'Dead Sea',
+        durationDays: 1,
+        pricings: [
+          {
+            id: 'pricing-dead-sea',
+            active: true,
+            transportServiceTypeId: 'transport-type-1',
+            vehicleId: 'vehicle-van',
+            currency: 'USD',
+            baseCost: 180,
+            minPax: 1,
+            maxPax: 7,
+            vehicle: { id: 'vehicle-van', name: 'Van' },
+            supplier: { id: 'supplier-1', name: 'Supplier' },
+          },
+        ],
+      },
+    },
+  ];
+  const { service, createdPayloads } = createService(template);
+
+  await service.expandExcursionTemplateIntoQuote(
+    {
+      quoteId: 'quote-1',
+      excursionTemplateId: 'template-1',
+      itineraryId: 'day-1',
+      selectedTouringRouteId: 'touring-route-dead-sea',
+      selectedTouringRoutePricingId: 'pricing-dead-sea',
+      paxCount: 2,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.deepEqual(
+    createdPayloads.map((payload) => payload.excursionTemplateComponentId),
+    ['component-ticket', 'component-transport-dead-sea'],
+  );
+  assert.equal(createdPayloads[1].touringRouteId, 'touring-route-dead-sea');
+  assert.equal(createdPayloads[1].touringRoutePricingId, 'pricing-dead-sea');
+  assert.equal(createdPayloads[1].transportVehicleId, 'vehicle-van');
+  assert.equal(createdPayloads[1].overrideCost, 180);
+  assert.match(createdPayloads[1].overrideReason, /Excursion template: Petra Full Day/);
+});

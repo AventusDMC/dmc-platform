@@ -173,6 +173,7 @@ type CreateQuoteItemBody = {
   transportVehicleId?: string;
   routeId?: string;
   touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
   normalizedKey?: string;
   routeName?: string;
   transportAddOns?: Array<{ rateId?: string; quantity?: number }>;
@@ -184,6 +185,8 @@ type ExpandExcursionTemplateBody = {
   itineraryId?: string | null;
   serviceDate?: string | null;
   selectedOptionalComponentIds?: string[];
+  selectedTouringRouteId?: string | null;
+  selectedTouringRoutePricingId?: string | null;
   paxCount?: number;
   quantity?: number;
   markupPercent?: number;
@@ -1061,6 +1064,7 @@ export class QuotesController {
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       touringRouteId: body.touringRouteId === undefined ? undefined : body.touringRouteId || null,
+      touringRoutePricingId: body.touringRoutePricingId === undefined ? undefined : body.touringRoutePricingId || null,
       normalizedKey: body.normalizedKey || undefined,
       routeName: body.routeName || undefined,
       transportAddOns: Array.isArray(body.transportAddOns)
@@ -1128,6 +1132,8 @@ export class QuotesController {
       itineraryId: body.itineraryId || undefined,
       serviceDate: body.serviceDate ? new Date(body.serviceDate) : body.serviceDate === null ? null : undefined,
       selectedOptionalComponentIds: Array.isArray(body.selectedOptionalComponentIds) ? body.selectedOptionalComponentIds : [],
+      selectedTouringRouteId: body.selectedTouringRouteId || null,
+      selectedTouringRoutePricingId: body.selectedTouringRoutePricingId || null,
       paxCount: body.paxCount === undefined ? undefined : Number(body.paxCount),
       quantity: body.quantity === undefined ? undefined : Number(body.quantity),
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
@@ -1222,6 +1228,7 @@ export class QuotesController {
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       vehicleRateId: body.vehicleRateId || undefined,
+      touringRoutePricingId: body.touringRoutePricingId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
@@ -1528,6 +1535,7 @@ export class QuotesController {
       markupPercent: Number(body.markupPercent ?? 0),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       vehicleRateId: body.vehicleRateId || undefined,
+      touringRoutePricingId: body.touringRoutePricingId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
@@ -1626,6 +1634,7 @@ export class QuotesController {
       markupPercent: body.markupPercent === undefined ? undefined : Number(body.markupPercent),
       transportServiceTypeId: body.transportServiceTypeId || undefined,
       vehicleRateId: body.vehicleRateId || undefined,
+      touringRoutePricingId: body.touringRoutePricingId || undefined,
       transportVehicleId: body.transportVehicleId || undefined,
       routeId: body.routeId || undefined,
       normalizedKey: body.normalizedKey || undefined,
