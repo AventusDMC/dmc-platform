@@ -144,6 +144,19 @@ function createTouringPrismaMock() {
             vehicle: stores.vehicles.find((vehicle) => vehicle.id === pricing.vehicleId),
           }));
       },
+      findFirst: async ({ where }: any = {}) =>
+        stores.pricings.find(
+          (pricing) =>
+            pricing.touringRouteId === where?.touringRouteId &&
+            (pricing.supplierId || null) === (where?.supplierId || null) &&
+            (pricing.vehicleId || null) === (where?.vehicleId || null) &&
+            pricing.pricingBasis === where?.pricingBasis &&
+            pricing.minPax === where?.minPax &&
+            pricing.maxPax === where?.maxPax &&
+            pricing.currency === where?.currency &&
+            (pricing.validFrom || null) === (where?.validFrom || null) &&
+            (pricing.validTo || null) === (where?.validTo || null),
+        ) || null,
       create: async ({ data }: any) => {
         const pricing = { id: `pricing-${stores.pricings.length + 1}`, ...data };
         stores.pricings.push(pricing);
@@ -573,6 +586,56 @@ test('touring workbook preview treats missing validity dates as non-blocking war
   assert.equal(preview.pricings[0].validTo, '');
   assert.ok(preview.warnings.some((entry: any) => entry.row === 2 && /ValidFrom is missing/.test(entry.message)));
   assert.ok(preview.warnings.some((entry: any) => entry.row === 2 && /ValidTo is missing/.test(entry.message)));
+});
+
+test('touring workbook import creates pricing with nullable validity dates', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [{ TourCode: 'PETRA-FD', TourName: 'Petra Full Day', StartCity: 'Amman', DurationDays: 1 }],
+    stops: [],
+    rates: [{ TourCode: 'PETRA-FD', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 2, Currency: 'JOD', BaseCost: 95 }],
+  });
+
+  const result = (await service.importWorkbook({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(result.success, true);
+  assert.equal(result.imported.pricings, 1);
+  assert.equal(stores.pricings[0].validFrom, null);
+  assert.equal(stores.pricings[0].validTo, null);
+});
+
+test('touring workbook import skips duplicate existing pricing rows without throwing', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'PETRA_FD', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  stores.pricings.push({
+    id: 'pricing-existing',
+    touringRouteId: 'tour-1',
+    supplierId: 'supplier-1',
+    vehicleId: 'vehicle-1',
+    pricingBasis: 'PER_VEHICLE',
+    minPax: 1,
+    maxPax: 2,
+    currency: 'JOD',
+    baseCost: 95,
+    validFrom: null,
+    validTo: null,
+  });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [{ TourCode: 'PETRA-FD', TourName: 'Petra Full Day', StartCity: 'Amman', DurationDays: 1 }],
+    stops: [],
+    rates: [{ TourCode: 'PETRA-FD', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 2, Currency: 'JOD', BaseCost: 95 }],
+  });
+
+  const result = (await service.importWorkbook({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(result.success, true);
+  assert.equal(result.imported.pricings, 0);
+  assert.equal(result.imported.skippedDuplicates, 1);
+  assert.equal(result.imported.skippedRows, 1);
+  assert.equal(stores.pricings.length, 1);
+  assert.ok(result.skippedRows.some((entry: any) => entry.row === 2 && /duplicate unchanged pricing/.test(entry.message)));
 });
 
 test('touring workbook preview accepts QAIA circular layover routes when route and pricing are valid', async () => {

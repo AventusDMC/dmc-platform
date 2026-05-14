@@ -244,8 +244,10 @@ function parseWorkbookDate(value: unknown, fieldLabel: string, errors: string[],
   return parsed;
 }
 
-function formatWorkbookDate(value: Date | null) {
-  return value ? value.toISOString().slice(0, 10) : '';
+function formatWorkbookDate(value: Date | string | null | undefined) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }
 
 function dateRangesOverlap(
@@ -563,7 +565,7 @@ export class TouringRoutesService {
           pricing.maxPax === maxPax &&
           pricing.currency === currency,
       );
-      const exact = matchingPricings.find((pricing: any) => formatWorkbookDate(new Date(pricing.validFrom)) === formatWorkbookDate(validFrom) && formatWorkbookDate(new Date(pricing.validTo)) === formatWorkbookDate(validTo));
+      const exact = matchingPricings.find((pricing: any) => formatWorkbookDate(pricing.validFrom) === formatWorkbookDate(validFrom) && formatWorkbookDate(pricing.validTo) === formatWorkbookDate(validTo));
       const overlap = !exact && matchingPricings.some((pricing: any) => dateRangesOverlap(validFrom, validTo, pricing.validFrom, pricing.validTo));
       const decision: TouringWorkbookStatus = overlap
         ? 'OVERLAP'
@@ -635,7 +637,19 @@ export class TouringRoutesService {
       })),
       errors,
       warnings,
-      imported: { routes: 0, stops: 0, pricings: 0, updatedRoutes: 0, updatedPricings: 0, skippedOverlaps: 0 },
+      skippedRows: [] as TouringWorkbookIssue[],
+      rowErrors: [] as TouringWorkbookIssue[],
+      imported: {
+        routes: 0,
+        stops: 0,
+        pricings: 0,
+        updatedRoutes: 0,
+        updatedPricings: 0,
+        skippedOverlaps: 0,
+        skippedDuplicates: 0,
+        skippedRows: 0,
+        rowErrors: 0,
+      },
     };
 
     if (mode === 'preview') return summary;
@@ -643,42 +657,40 @@ export class TouringRoutesService {
       throw new BadRequestException(errors.map((error) => `${error.sheet || 'WORKBOOK'}${error.row ? ` row ${error.row}` : ''}: ${error.message}`).join('; '));
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      for (const route of parsedRoutes) {
+    const recordSkippedRow = (issue: TouringWorkbookIssue) => {
+      summary.skippedRows.push(issue);
+      summary.imported.skippedRows += 1;
+    };
+    const recordRowError = (issue: TouringWorkbookIssue) => {
+      summary.rowErrors.push(issue);
+      summary.imported.rowErrors += 1;
+      summary.success = false;
+    };
+    const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+    for (const route of parsedRoutes) {
+      try {
         const existing = routesByCode.get(route.code) as any;
+        const routeData = {
+          name: route.name,
+          startCity: route.startCity,
+          durationDays: route.durationDays,
+          routeDescription: route.routeDescription || null,
+          mainDestinations: route.mainDestinations,
+          includedKm: route.includedKm,
+          includedHours: route.includedHours,
+          active: route.active,
+        };
         const saved = existing
-          ? await (tx as any).touringRoute.update({
-              where: { id: existing.id },
-              data: {
-                name: route.name,
-                startCity: route.startCity,
-                durationDays: route.durationDays,
-                routeDescription: route.routeDescription || null,
-                mainDestinations: route.mainDestinations,
-                includedKm: route.includedKm,
-                includedHours: route.includedHours,
-                active: route.active,
-              },
-            })
-          : await (tx as any).touringRoute.create({
-              data: {
-                code: route.code,
-                name: route.name,
-                startCity: route.startCity,
-                durationDays: route.durationDays,
-                routeDescription: route.routeDescription || null,
-                mainDestinations: route.mainDestinations,
-                includedKm: route.includedKm,
-                includedHours: route.includedHours,
-                active: route.active,
-              },
-            });
+          ? await (this.prisma as any).touringRoute.update({ where: { id: existing.id }, data: routeData })
+          : await (this.prisma as any).touringRoute.create({ data: { code: route.code, ...routeData } });
         if (existing) summary.imported.updatedRoutes += 1;
         else summary.imported.routes += 1;
-        await (tx as any).touringRouteStop.deleteMany({ where: { touringRouteId: saved.id } });
+
+        await (this.prisma as any).touringRouteStop.deleteMany({ where: { touringRouteId: saved.id } });
         const routeStops = stopsByCode.get(route.code) || [];
         if (routeStops.length > 0) {
-          await (tx as any).touringRouteStop.createMany({
+          await (this.prisma as any).touringRouteStop.createMany({
             data: routeStops.map((stop) => ({
               touringRouteId: saved.id,
               order: stop.order,
@@ -690,44 +702,93 @@ export class TouringRoutesService {
           summary.imported.stops += routeStops.length;
         }
         routesByCode.set(route.code, saved);
+      } catch (error) {
+        routesByCode.delete(route.code);
+        recordRowError({ sheet: 'TOURING_ROUTES', row: route.row, message: `${route.code}: ${errorMessage(error)}` });
       }
+    }
 
-      for (const rate of parsedRates) {
-        const route = routesByCode.get(rate.tourCode) as any;
-        if (!route || !rate.vehicleId || !rate.validFrom || !rate.validTo || rate.importDecision === 'UNCHANGED') continue;
-        if (rate.importDecision === 'OVERLAP') {
-          summary.imported.skippedOverlaps += 1;
-          continue;
-        }
-        const data = {
-          touringRouteId: route.id,
-          supplierId: rate.supplierId,
-          vehicleId: rate.vehicleId,
-          pricingBasis: rate.pricingBasis,
-          minPax: rate.minPax,
-          maxPax: rate.maxPax,
-          currency: rate.currency,
-          baseCost: rate.baseCost,
-          costPerDay: rate.costPerDay,
-          includedKm: rate.includedKm,
-          includedHours: rate.includedHours,
-          extraKmRate: rate.extraKmRate,
-          extraHourRate: rate.extraHourRate,
-          validFrom: rate.validFrom,
-          validTo: rate.validTo,
-          active: rate.active,
-          notes: this.buildTouringRoutePricingNotes(rate),
-        };
-        if (rate.existingPricingId) {
-          await (tx as any).touringRoutePricing.update({ where: { id: rate.existingPricingId }, data });
-          summary.imported.updatedPricings += 1;
-        } else {
-          await (tx as any).touringRoutePricing.create({ data });
-          summary.imported.pricings += 1;
+    const rateBatches = this.chunk(parsedRates, 25);
+    for (const batch of rateBatches) {
+      for (const rate of batch) {
+        try {
+          const route = routesByCode.get(rate.tourCode) as any;
+          if (!route) {
+            recordSkippedRow({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: route was not imported or found` });
+            continue;
+          }
+          if (!rate.vehicleId) {
+            recordSkippedRow({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: vehicle mapping missing` });
+            continue;
+          }
+          if (rate.importDecision === 'UNCHANGED') {
+            summary.imported.skippedDuplicates += 1;
+            recordSkippedRow({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: duplicate unchanged pricing already exists` });
+            continue;
+          }
+          if (rate.importDecision === 'OVERLAP') {
+            summary.imported.skippedOverlaps += 1;
+            recordSkippedRow({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: overlapping pricing window skipped` });
+            continue;
+          }
+          const data = {
+            touringRouteId: route.id,
+            supplierId: rate.supplierId,
+            vehicleId: rate.vehicleId,
+            pricingBasis: rate.pricingBasis,
+            minPax: rate.minPax,
+            maxPax: rate.maxPax,
+            currency: rate.currency,
+            baseCost: rate.baseCost,
+            costPerDay: rate.costPerDay,
+            includedKm: rate.includedKm,
+            includedHours: rate.includedHours,
+            extraKmRate: rate.extraKmRate,
+            extraHourRate: rate.extraHourRate,
+            validFrom: rate.validFrom ?? null,
+            validTo: rate.validTo ?? null,
+            active: rate.active,
+            notes: this.buildTouringRoutePricingNotes(rate),
+          };
+          const duplicate = await (this.prisma as any).touringRoutePricing.findFirst({
+            where: {
+              touringRouteId: route.id,
+              supplierId: rate.supplierId,
+              vehicleId: rate.vehicleId,
+              pricingBasis: rate.pricingBasis,
+              minPax: rate.minPax,
+              maxPax: rate.maxPax,
+              currency: rate.currency,
+              validFrom: rate.validFrom ?? null,
+              validTo: rate.validTo ?? null,
+            },
+          });
+          if (rate.existingPricingId) {
+            await (this.prisma as any).touringRoutePricing.update({ where: { id: rate.existingPricingId }, data });
+            summary.imported.updatedPricings += 1;
+          } else if (duplicate) {
+            if (
+              Number(duplicate.baseCost) === Number(rate.baseCost) &&
+              Number(duplicate.extraKmRate || 0) === Number(rate.extraKmRate || 0) &&
+              Number(duplicate.extraHourRate || 0) === Number(rate.extraHourRate || 0)
+            ) {
+              summary.imported.skippedDuplicates += 1;
+              recordSkippedRow({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: duplicate existing pricing row skipped` });
+            } else {
+              await (this.prisma as any).touringRoutePricing.update({ where: { id: duplicate.id }, data });
+              summary.imported.updatedPricings += 1;
+            }
+          } else {
+            await (this.prisma as any).touringRoutePricing.create({ data });
+            summary.imported.pricings += 1;
+          }
+        } catch (error) {
+          recordRowError({ sheet: 'TOURING_ROUTE_RATES', row: rate.row, message: `${rate.tourCode}: ${errorMessage(error)}` });
         }
       }
-      return summary;
-    });
+    }
+
+    return summary;
     } catch (error) {
       this.logger.error(
         `[touring-workbook] ${mode} failed at ${stage}`,
@@ -741,6 +802,14 @@ export class TouringRoutesService {
       }
       throw error;
     }
+  }
+
+  private chunk<T>(items: T[], size: number) {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
   }
 
   private include() {
