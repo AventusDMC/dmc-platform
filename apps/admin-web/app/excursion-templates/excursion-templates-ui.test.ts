@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 import { buildExcursionTariffRowSources, filterExcursionTariffRowSources } from './ExcursionTariffWorkbookSection';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
+const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
+const petraFullDayPageSource = readFileSync(new URL('./petra-full-day/page.tsx', import.meta.url), 'utf8');
 const editorSource = readFileSync(new URL('./ExcursionTemplateEditor.tsx', import.meta.url), 'utf8');
 const operationalBlueprintImportPanelSource = readFileSync(new URL('./OperationalBlueprintImportPanel.tsx', import.meta.url), 'utf8');
 const tariffWorkbookSectionSource = readFileSync(new URL('./ExcursionTariffWorkbookSection.tsx', import.meta.url), 'utf8');
@@ -51,7 +53,11 @@ describe('excursion template admin UI', () => {
       'Activities',
       'Optional',
       'Open route',
+      'formatTouringRouteLabel',
+      'showAllOnFocus={options.originVariant}',
     ]);
+    expectSourceContains(detailPageSource, ['transportType=TOURING_ROUTE&limit=500']);
+    expectSourceContains(petraFullDayPageSource, ['transportType=TOURING_ROUTE&limit=500']);
   });
 
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {

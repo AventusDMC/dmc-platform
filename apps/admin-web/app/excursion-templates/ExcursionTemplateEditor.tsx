@@ -82,6 +82,15 @@ function formatDuration(minutes?: number | null, durationDays?: number | null) {
   return 'Duration pending';
 }
 
+function formatTouringRouteLabel(route: ExcursionTemplateCatalogs['touringRoutes'][number]) {
+  const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
+  const stopNames = route.stops?.map((stop) => stop.location || stop.city).filter(Boolean) || [];
+  const routePath = destinations.length > 0 ? destinations : stopNames;
+  const pathLabel = routePath.length > 0 ? `${route.startCity} -> ${routePath.join(' -> ')} -> ${route.startCity}` : route.name;
+
+  return pathLabel.toLowerCase().includes(route.startCity.toLowerCase()) ? pathLabel : `${route.startCity} -> ${pathLabel}`;
+}
+
 function getComponentDurationLabel(component: ExcursionTemplate['components'][number]) {
   return formatDuration(component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes, component.touringRoute?.durationDays);
 }
@@ -279,11 +288,14 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   );
   const touringRouteOptions = useMemo<SearchableSelectOption[]>(
     () =>
-      catalogs.touringRoutes.map((route) => ({
-        value: route.id,
-        label: route.name,
-        helper: [route.startCity, `${route.durationDays}D`, route.code].filter(Boolean).join(' / '),
-      })),
+      catalogs.touringRoutes
+        .filter((route) => route.active !== false)
+        .sort((a, b) => a.startCity.localeCompare(b.startCity) || a.name.localeCompare(b.name) || a.durationDays - b.durationDays)
+        .map((route) => ({
+          value: route.id,
+          label: formatTouringRouteLabel(route),
+          helper: [route.startCity, route.name, `${route.durationDays}D`, route.code].filter(Boolean).join(' / '),
+        })),
     [catalogs.touringRoutes],
   );
   const transportTypeOptions = useMemo<SearchableSelectOption[]>(
@@ -527,6 +539,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                 }
                 placeholder="Select catalog route"
                 missingText="Selected transport route is missing from the catalog."
+                showAllOnFocus={options.originVariant}
               />
               <SearchableSelect
                 label="Transport type"
@@ -1002,6 +1015,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                   onChange={(value) => (transportProductType === 'TOURING_ROUTE' ? setSelectedTouringRouteId(value) : setSelectedRouteId(value))}
                   placeholder={`Select ${transportProductType === 'TOURING_ROUTE' ? 'touring route' : 'route'}`}
                   missingText="Selected transport route is missing from the catalog."
+                  showAllOnFocus={transportProductType === 'TOURING_ROUTE'}
                   required
                 />
                 <SearchableSelect

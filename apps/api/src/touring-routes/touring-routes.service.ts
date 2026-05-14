@@ -49,6 +49,7 @@ type TouringRouteInput = {
 type FindTouringRoutesInput = {
   search?: string;
   active?: boolean;
+  transportType?: string;
   limit?: number;
 };
 
