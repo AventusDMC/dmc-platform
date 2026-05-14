@@ -514,6 +514,48 @@ test('touring workbook import creates touring routes stops and pricing without t
   assert.equal(stores.pricings.length, 1);
 });
 
+test('touring workbook import allows unresolved supplier mapping as non-blocking review data', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [{ TourCode: 'PETRA-FD', TourName: 'Petra Full Day', StartCity: 'Amman', DurationDays: 1 }],
+    stops: [{ TourCode: 'PETRA-FD', StopOrder: 1, City: 'Petra', Location: 'Petra Visitor Center' }],
+    rates: [
+      {
+        TourCode: 'PETRA-FD',
+        SupplierName: 'Default Supplier',
+        VehicleType: 'Sedan',
+        PaxFrom: 1,
+        PaxTo: 2,
+        Currency: 'JOD',
+        BaseCost: 120,
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+      },
+    ],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.pricingCount, 1);
+  assert.equal(preview.supplierMapping.missing, 1);
+  assert.equal(preview.pricings[0].supplierId, null);
+  assert.equal(preview.pricings[0].vehicleId, 'vehicle-1');
+  assert.ok(preview.warnings.some((entry: any) => /Supplier mapping missing for Default Supplier/.test(entry.message)));
+
+  const result = (await service.importWorkbook({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(result.imported.pricings, 1);
+  assert.equal(stores.pricings.length, 1);
+  assert.equal(stores.pricings[0].supplierId, null);
+  assert.equal(stores.pricings[0].vehicleId, 'vehicle-1');
+  assert.equal(stores.pricings[0].currency, 'JOD');
+  assert.equal(stores.pricings[0].baseCost, 120);
+  assert.equal(stores.pricings[0].notes, 'SupplierName: Default Supplier');
+});
+
 test('touring matrix preview normalizes pax range columns into touring route pricing rows without writing', async () => {
   const { prisma, stores } = createTouringPrismaMock();
   stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });

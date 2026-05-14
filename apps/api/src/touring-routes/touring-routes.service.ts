@@ -534,7 +534,7 @@ export class TouringRoutesService {
         (workbookVehicleType?.vehicleName ? vehiclesByName.get(normalizeWorkbookKey(workbookVehicleType.vehicleName)) : null) ||
         null;
       if (!vehicleCode && !vehicleType && !vehicleName) rowErrors.push('VehicleCode or VehicleName is required');
-      if (!vehicle) rateWarnings.push(`Vehicle mapping missing for ${vehicleCode || vehicleName || vehicleType || '(blank)'}`);
+      if (!vehicle) rowErrors.push(`Vehicle mapping missing for ${vehicleCode || vehicleName || vehicleType || '(blank)'}`);
       const workbookMinPax = workbookVehicleType ? parseWorkbookInteger(workbookVehicleType.minPax, 'VEHICLE_TYPES.MinPax', rowErrors, { min: 1 }) : null;
       const workbookMaxPax = workbookVehicleType ? parseWorkbookInteger(workbookVehicleType.maxPax, 'VEHICLE_TYPES.MaxPax', rowErrors, { min: workbookMinPax ?? 1 }) : null;
       const minPax = parseWorkbookInteger(row.paxFrom, 'PaxFrom', rowErrors, { min: 1 }) ?? workbookMinPax ?? 1;
@@ -716,7 +716,7 @@ export class TouringRoutesService {
           validFrom: rate.validFrom,
           validTo: rate.validTo,
           active: rate.active,
-          notes: rate.notes || null,
+          notes: this.buildTouringRoutePricingNotes(rate),
         };
         if (rate.existingPricingId) {
           await (tx as any).touringRoutePricing.update({ where: { id: rate.existingPricingId }, data });
@@ -1163,7 +1163,7 @@ export class TouringRoutesService {
             validFrom: rate.validFrom,
             validTo: rate.validTo,
             active: rate.active,
-            notes: rate.notes || null,
+            notes: this.buildTouringRoutePricingNotes(rate),
           },
         });
         summary.imported.pricings += 1;
@@ -1214,6 +1214,13 @@ export class TouringRoutesService {
         .find((vehicle: any) => Number(vehicle.maxPax || 0) >= values.maxPax && Number(vehicle.minPax || 1) <= values.minPax) ||
       null
     );
+  }
+
+  private buildTouringRoutePricingNotes(rate: ParsedTouringWorkbookRate | ParsedLegacyMatrixRate) {
+    const notes = normalizeWorkbookText(rate.notes);
+    if (rate.supplierId || !normalizeWorkbookText(rate.supplierName)) return notes || null;
+    const supplierNote = `SupplierName: ${normalizeWorkbookText(rate.supplierName)}`;
+    return [notes, supplierNote].filter(Boolean).join(' | ') || null;
   }
 
   private async readWorkbook(file: { buffer?: Buffer; path?: string }) {
