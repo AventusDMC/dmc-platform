@@ -2,6 +2,7 @@ import test = require('node:test');
 import assert = require('node:assert/strict');
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
 import { TouringRoutesService } from './touring-routes.service';
 
@@ -41,6 +42,28 @@ function buildTouringWorkbookBuffer(rows: {
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows.rates), 'TOURING_ROUTE_RATES');
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows.vehicleTypes || [{ VehicleType: 'Sedan' }]), 'VEHICLE_TYPES');
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
+async function buildExcelJsTouringWorkbookBuffer(rowCount = 3) {
+  const workbook = new ExcelJS.Workbook();
+  const routeSheet = workbook.addWorksheet('TOURING_ROUTES');
+  routeSheet.addRow(['TourCode', 'TourName', 'StartCity', 'DurationDays', 'IncludedKM', 'IncludedHours']);
+  const stopSheet = workbook.addWorksheet('TOURING_ROUTE_STOPS');
+  stopSheet.addRow(['TourCode', 'StopOrder', 'City']);
+  const rateSheet = workbook.addWorksheet('TOURING_ROUTE_RATES');
+  rateSheet.addRow(['TourCode', 'SupplierName', 'VehicleType', 'PaxFrom', 'PaxTo', 'Currency', 'BaseCost', 'ValidFrom', 'ValidTo']);
+  const vehicleSheet = workbook.addWorksheet('VEHICLE_TYPES');
+  vehicleSheet.addRow(['VehicleType']);
+  vehicleSheet.addRow(['Sedan']);
+
+  for (let index = 1; index <= rowCount; index += 1) {
+    const code = `TOUR-${index}`;
+    routeSheet.addRow([code, `Touring Route ${index}`, 'Amman', 1, 120 + index, 8]);
+    stopSheet.addRow([code, 1, 'Amman']);
+    rateSheet.addRow([code, 'Alpha Transport', 'Sedan', 1, 3, 'USD', 100 + index, '2026-01-01', '2026-12-31']);
+  }
+
+  return Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
 }
 
 function createTouringPrismaMock() {
@@ -166,13 +189,50 @@ test('touring workbook preview returns structured errors instead of raw 500 on i
     rates: [{ TourCode: 'PETRA-FD', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 3, Currency: 'USD', BaseCost: 180, ValidFrom: '2026-01-01', ValidTo: '2026-12-31' }],
   });
 
-  const preview = await service.previewWorkbookImport({ buffer, originalname: 'broken-touring.xlsx' });
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'broken-touring.xlsx' })) as any;
 
   assert.equal(preview.success, false);
   assert.equal(preview.errors[0].stage, 'master inventory lookup');
   assert.match(preview.errors[0].message, /Simulated supplier lookup failure/);
   assert.deepEqual(preview.routes, []);
   assert.deepEqual(preview.pricings, []);
+});
+
+test('touring workbook parser has an ExcelJS fallback for modern XLSX compression compatibility', () => {
+  assert.match(serviceSource, /import ExcelJS = require\('exceljs'\)/);
+  assert.match(serviceSource, /XLSX\.read\(buffer,\s*\{\s*type:\s*'buffer'/);
+  assert.match(serviceSource, /readWorkbookWithExcelJs/);
+  assert.match(serviceSource, /excelWorkbook\.xlsx\.load\(buffer as any\)/);
+});
+
+test('touring workbook preview returns structured decompression validation error', async () => {
+  const { prisma } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const preview = (service as any).buildWorkbookDecompressionFailure(
+    { originalname: 'openpyxl-touring.xlsx' },
+    new Error('Unsupported ZIP Compression method'),
+  ) as any;
+
+  assert.equal(preview.success, false);
+  assert.equal(preview.stage, 'workbook decompression');
+  assert.equal(preview.message, 'Unsupported workbook compression format');
+  assert.equal(preview.sourceFileName, 'openpyxl-touring.xlsx');
+  assert.equal(preview.errors[0].stage, 'workbook decompression');
+  assert.equal(preview.errors[0].message, 'Unsupported workbook compression format');
+});
+
+test('touring workbook preview accepts ExcelJS-generated workbooks with multiple touring rows', async () => {
+  const { prisma } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = await buildExcelJsTouringWorkbookBuffer(25);
+
+  const preview = await service.previewWorkbookImport({ buffer, originalname: 'exceljs-touring.xlsx' });
+
+  assert.equal(preview.success, true);
+  assert.equal(preview.routeCount, 25);
+  assert.equal(preview.stopCount, 25);
+  assert.equal(preview.pricingCount, 25);
+  assert.deepEqual(preview.errors, []);
 });
 
 test('touring workbook import creates touring routes stops and pricing without transfer routes', async () => {
@@ -187,7 +247,7 @@ test('touring workbook import creates touring routes stops and pricing without t
     rates: [{ TourCode: 'PETRA-WR-2D', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 3, Currency: 'USD', BaseCost: 320, ValidFrom: '2026-01-01', ValidTo: '2026-12-31' }],
   });
 
-  const result = await service.importWorkbook({ buffer, originalname: 'touring.xlsx' });
+  const result = (await service.importWorkbook({ buffer, originalname: 'touring.xlsx' })) as any;
   assert.equal(result.imported.routes, 1);
   assert.equal(result.imported.stops, 2);
   assert.equal(result.imported.pricings, 1);

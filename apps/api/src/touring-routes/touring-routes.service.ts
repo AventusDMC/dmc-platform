@@ -1,4 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { readFileSync } from 'fs';
+import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +54,12 @@ type FindTouringRoutesInput = {
 
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP';
+type TouringWorkbookDecompressionError = {
+  success: false;
+  stage: 'workbook decompression';
+  message: 'Unsupported workbook compression format';
+  details?: string;
+};
 type TouringWorkbookIssue = { sheet?: string; row?: number; stage?: string; message: string };
 
 type TouringWorkbookRouteRow = {
@@ -302,7 +310,7 @@ export class TouringRoutesService {
     let activeRow: number | undefined;
     try {
     this.logWorkbookStage(mode, stage, { fileName: file.originalname || file.path || 'uploaded workbook' });
-    const workbook = this.readWorkbook(file);
+    const workbook = await this.readWorkbook(file);
     const errors: TouringWorkbookIssue[] = [];
     const warnings: TouringWorkbookIssue[] = [];
     stage = 'workbook tab detection';
@@ -660,6 +668,9 @@ export class TouringRoutesService {
         `[touring-workbook] ${mode} failed at ${stage}`,
         error instanceof Error ? error.stack : String(error),
       );
+      if (this.isUnsupportedWorkbookCompressionError(error)) {
+        return this.buildWorkbookDecompressionFailure(file, error);
+      }
       if (mode === 'preview') {
         return this.buildWorkbookFailureResponse(file, stage, error, sheet, activeRow);
       }
@@ -681,14 +692,82 @@ export class TouringRoutesService {
     };
   }
 
-  private readWorkbook(file: { buffer?: Buffer; path?: string }) {
-    if (file.buffer) {
-      return XLSX.read(file.buffer, { type: 'buffer', cellDates: true });
+  private async readWorkbook(file: { buffer?: Buffer; path?: string }) {
+    const buffer = file.buffer || (file.path ? readFileSync(file.path) : null);
+    if (!buffer) {
+      throw new BadRequestException('Touring workbook file is required');
     }
-    if (file.path) {
-      return XLSX.readFile(file.path, { cellDates: true });
+    try {
+      return XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    } catch (error) {
+      if (!this.isUnsupportedWorkbookCompressionError(error)) {
+        throw error;
+      }
+      this.logger.warn(`[touring-workbook] SheetJS could not decompress workbook, retrying with ExcelJS: ${error instanceof Error ? error.message : String(error)}`);
+      return this.readWorkbookWithExcelJs(buffer);
     }
-    throw new BadRequestException('Touring workbook file is required');
+  }
+
+  private async readWorkbookWithExcelJs(buffer: Buffer) {
+    try {
+      const excelWorkbook = new ExcelJS.Workbook();
+      await excelWorkbook.xlsx.load(buffer as any);
+      const sheetJsWorkbook = XLSX.utils.book_new();
+      excelWorkbook.eachSheet((worksheet) => {
+        const rows: unknown[][] = [];
+        worksheet.eachRow({ includeEmpty: true }, (row) => {
+          const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+          rows.push(values.map((value) => this.normalizeExcelJsCellValue(value)));
+        });
+        XLSX.utils.book_append_sheet(sheetJsWorkbook, XLSX.utils.aoa_to_sheet(rows, { cellDates: true }), worksheet.name);
+      });
+      return sheetJsWorkbook;
+    } catch (error) {
+      if (this.isUnsupportedWorkbookCompressionError(error)) {
+        throw error;
+      }
+      throw new BadRequestException(`Could not read touring workbook: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private normalizeExcelJsCellValue(value: unknown): unknown {
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if (record.result !== undefined) return record.result;
+      if (record.text !== undefined) return record.text;
+      if (Array.isArray(record.richText)) {
+        return record.richText.map((entry: any) => entry?.text || '').join('');
+      }
+      if (record.hyperlink && record.text) return record.text;
+    }
+    return value;
+  }
+
+  private isUnsupportedWorkbookCompressionError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    return /unsupported\s+zip\s+compression|compression\s+method|unsupported.*compression/i.test(message);
+  }
+
+  private buildWorkbookDecompressionFailure(file: { originalname?: string }, error: unknown): TouringWorkbookDecompressionError & Record<string, unknown> {
+    const details = error instanceof Error ? error.message : String(error || '');
+    return {
+      success: false,
+      stage: 'workbook decompression',
+      message: 'Unsupported workbook compression format',
+      details,
+      mode: 'preview',
+      sourceFileName: file.originalname || 'touring-workbook.xlsx',
+      routeCount: 0,
+      stopCount: 0,
+      pricingCount: 0,
+      supplierMapping: { mapped: 0, missing: 0 },
+      routes: [],
+      stops: [],
+      pricings: [],
+      errors: [{ stage: 'workbook decompression', message: 'Unsupported workbook compression format' }],
+      warnings: [],
+      imported: { routes: 0, stops: 0, pricings: 0, updatedRoutes: 0, updatedPricings: 0, skippedOverlaps: 0 },
+    };
   }
 
   private buildWorkbookFailureResponse(
