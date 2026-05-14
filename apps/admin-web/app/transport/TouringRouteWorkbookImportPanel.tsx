@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 type TouringWorkbookPreview = {
   mode: 'preview' | 'import';
@@ -80,19 +80,26 @@ function IssueList({ title, issues }: { title: string; issues?: Array<{ sheet?: 
 
 export function TouringRouteWorkbookImportPanel() {
   const [file, setFile] = useState<File | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState('');
   const [preview, setPreview] = useState<TouringWorkbookPreview | null>(null);
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  function getSelectedFile() {
+    return file || fileInputRef.current?.files?.[0] || null;
+  }
 
   async function previewWorkbook() {
-    if (!file) {
+    const selectedFile = getSelectedFile();
+    if (!selectedFile) {
       setError('Choose a touring route workbook first.');
       return;
     }
     setIsBusy(true);
     setError('');
     try {
-      setPreview(await readTouringWorkbookResponse(await fetch('/api/touring-routes/workbook/preview', { method: 'POST', body: buildUploadBody(file) })));
+      setPreview(await readTouringWorkbookResponse(await fetch('/api/touring-routes/workbook/preview', { method: 'POST', body: buildUploadBody(selectedFile) })));
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'Could not preview touring workbook.');
     } finally {
@@ -101,11 +108,12 @@ export function TouringRouteWorkbookImportPanel() {
   }
 
   async function importWorkbook() {
-    if (!file) return;
+    const selectedFile = getSelectedFile();
+    if (!selectedFile) return;
     setIsBusy(true);
     setError('');
     try {
-      const result = await readTouringWorkbookResponse(await fetch('/api/touring-routes/workbook/import', { method: 'POST', body: buildUploadBody(file) }));
+      const result = await readTouringWorkbookResponse(await fetch('/api/touring-routes/workbook/import', { method: 'POST', body: buildUploadBody(selectedFile) }));
       setPreview(result);
       window.location.href = '/transport?tab=touring-routes&imported=1';
     } catch (caughtError) {
@@ -116,6 +124,8 @@ export function TouringRouteWorkbookImportPanel() {
   }
 
   const hasBlockingErrors = Boolean(preview?.errors?.length);
+  const canPreviewWorkbook = Boolean(selectedFileName) && !isBusy;
+  const canImportWorkbook = canPreviewWorkbook && Boolean(preview) && !hasBlockingErrors;
 
   return (
     <section className="workspace-section">
@@ -131,20 +141,24 @@ export function TouringRouteWorkbookImportPanel() {
         <label>
           Touring workbook
           <input
+            ref={fileInputRef}
             type="file"
             accept=".xlsx,.xls,.xlsm"
             onChange={(event) => {
-              setFile(event.target.files?.[0] || null);
+              const nextFile = event.currentTarget.files?.[0] || null;
+              setFile(nextFile);
+              setSelectedFileName(nextFile?.name || '');
               setPreview(null);
               setError('');
             }}
           />
         </label>
+        {selectedFileName ? <p className="form-success">Selected file ready for preview: {selectedFileName}</p> : null}
         <div className="button-row">
-          <button className="button button-secondary" type="button" onClick={previewWorkbook} disabled={isBusy || !file}>
+          <button className="button button-secondary" type="button" onClick={previewWorkbook} disabled={!canPreviewWorkbook}>
             Preview workbook
           </button>
-          <button className="button" type="button" onClick={importWorkbook} disabled={isBusy || !file || !preview || hasBlockingErrors}>
+          <button className="button" type="button" onClick={importWorkbook} disabled={!canImportWorkbook}>
             Import safely
           </button>
         </div>

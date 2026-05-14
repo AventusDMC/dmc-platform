@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SearchableSelect, type SearchableSelectOption } from '../components/SearchableSelect';
 import { getApiError } from '../lib/api';
 import { ExcursionComponentType, ExcursionTemplate, ExcursionTemplateCatalogs } from './types';
 
@@ -205,6 +206,15 @@ function booleanSelectValue(value: boolean | null | undefined) {
   return '';
 }
 
+function uniqueOptions(options: SearchableSelectOption[]) {
+  const seen = new Set<string>();
+  return options.filter((option) => {
+    if (!option.value || seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
+}
+
 async function parseMutationResponse(response: Response, fallback: string) {
   if (!response.ok) {
     const apiError = await getApiError(response, fallback);
@@ -226,6 +236,10 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   const [selectedTransportServiceTypeId, setSelectedTransportServiceTypeId] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [newComponentRequirement, setNewComponentRequirement] = useState<'REQUIRED' | 'OPTIONAL'>('REQUIRED');
+  const [componentCatalogDrafts, setComponentCatalogDrafts] = useState<
+    Record<string, { originCity?: string; routeId?: string; touringRouteId?: string; transportServiceTypeId?: string; activityId?: string; supplierServiceId?: string; isOptional?: string }>
+  >({});
   const activeComponents = useMemo(
     () => [...(template.components || [])].filter((component) => component.active !== false).sort((a, b) => a.sortOrder - b.sortOrder),
     [template.components],
@@ -254,6 +268,73 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   );
   const ticketServices = useMemo(() => catalogs.services.filter(isTicketService), [catalogs.services]);
   const diningServices = useMemo(() => catalogs.services.filter(isDiningService), [catalogs.services]);
+  const routeOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      catalogs.routes.map((route) => ({
+        value: route.id,
+        label: route.name,
+        helper: route.durationMinutes ? formatDuration(route.durationMinutes) : 'Transfer route',
+      })),
+    [catalogs.routes],
+  );
+  const touringRouteOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      catalogs.touringRoutes.map((route) => ({
+        value: route.id,
+        label: route.name,
+        helper: [route.startCity, `${route.durationDays}D`, route.code].filter(Boolean).join(' / '),
+      })),
+    [catalogs.touringRoutes],
+  );
+  const transportTypeOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      catalogs.transportServiceTypes.map((entry) => ({
+        value: entry.id,
+        label: entry.name,
+        helper: [entry.code, entry.classification].filter(Boolean).join(' / '),
+      })),
+    [catalogs.transportServiceTypes],
+  );
+  const activityOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      catalogs.activities
+        .filter((activity) => activity.active !== false)
+        .map((activity) => ({
+          value: activity.id,
+          label: activity.name,
+          helper: activity.durationMinutes ? formatDuration(activity.durationMinutes) : 'Activity Master',
+        })),
+    [catalogs.activities],
+  );
+  const ticketServiceOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      ticketServices.map((service) => ({
+        value: service.id,
+        label: service.name,
+        helper: [service.category, service.serviceType?.name, service.ticketRateVariants?.length ? 'Ticket inventory' : null].filter(Boolean).join(' / '),
+      })),
+    [ticketServices],
+  );
+  const diningServiceOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      diningServices.map((service) => ({
+        value: service.id,
+        label: service.name,
+        helper: [service.category, service.serviceType?.name].filter(Boolean).join(' / '),
+      })),
+    [diningServices],
+  );
+  const originCityOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      uniqueOptions([
+        ...catalogs.touringRoutes.map((route) => ({ value: route.startCity, label: route.startCity, helper: 'Touring route origin' })),
+        ...activeComponents
+          .map(getOriginVariantStartCity)
+          .filter((city) => city && city !== 'Origin pending')
+          .map((city) => ({ value: city, label: city, helper: 'Saved template origin' })),
+      ]),
+    [activeComponents, catalogs.touringRoutes],
+  );
 
   async function mutate(url: string, init: RequestInit, fallback: string) {
     setError('');
@@ -347,6 +428,42 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
+  function updateComponentDraft(componentId: string, patch: NonNullable<(typeof componentCatalogDrafts)[string]>) {
+    setComponentCatalogDrafts((current) => ({ ...current, [componentId]: { ...(current[componentId] || {}), ...patch } }));
+  }
+
+  function saveComponentCatalogLinks(component: ExcursionTemplate['components'][number], formData: FormData) {
+    const nextIsOptional = formData.get('isOptional') === 'true';
+    const nextTouringRouteId = String(formData.get('touringRouteId') || '');
+    const nextRouteId = String(formData.get('routeId') || '');
+    const nextActivityId = String(formData.get('activityId') || '');
+    const nextSupplierServiceId = String(formData.get('supplierServiceId') || '');
+    const selectedTouringRoute = catalogs.touringRoutes.find((route) => route.id === nextTouringRouteId);
+    const selectedRoute = catalogs.routes.find((route) => route.id === nextRouteId);
+    const selectedActivity = catalogs.activities.find((activity) => activity.id === nextActivityId);
+    const selectedService = catalogs.services.find((service) => service.id === nextSupplierServiceId);
+    const nextLabel = selectedTouringRoute?.name || selectedRoute?.name || selectedActivity?.name || selectedService?.name || component.label;
+
+    void mutate(
+      `/api/excursion-templates/${template.id}/components/${component.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: nextLabel,
+          isOptional: nextIsOptional,
+          suggestedDepartureCity: formData.get('originCity'),
+          routeId: component.componentType === 'TRANSPORT' ? nextRouteId || null : null,
+          touringRouteId: component.componentType === 'TRANSPORT' ? nextTouringRouteId || null : null,
+          transportServiceTypeId: component.componentType === 'TRANSPORT' ? formData.get('transportServiceTypeId') || null : null,
+          activityId: component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE' ? nextActivityId || null : null,
+          supplierServiceId: component.componentType === 'TICKET' || component.componentType === 'DINING' ? nextSupplierServiceId || null : null,
+        }),
+      },
+      'Could not save component catalog links.',
+    );
+  }
+
   function saveComponentOperations(componentId: string, formData: FormData) {
     void mutate(
       `/api/excursion-templates/${template.id}/components/${componentId}`,
@@ -363,6 +480,94 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
         }),
       },
       'Could not save component operations metadata.',
+    );
+  }
+
+  function renderComponentCatalogLinkForm(component: ExcursionTemplate['components'][number], options: { originVariant?: boolean } = {}) {
+    const draft = componentCatalogDrafts[component.id] || {};
+    const resolvedOriginCity = draft.originCity ?? component.suggestedDepartureCity ?? getOriginVariantStartCity(component);
+    const originCity = resolvedOriginCity === 'Origin pending' ? '' : resolvedOriginCity;
+    const routeId = draft.routeId ?? component.routeId ?? component.route?.id ?? '';
+    const touringRouteId = draft.touringRouteId ?? component.touringRouteId ?? component.touringRoute?.id ?? '';
+    const transportServiceTypeId = draft.transportServiceTypeId ?? component.transportServiceTypeId ?? component.transportServiceType?.id ?? '';
+    const activityId = draft.activityId ?? component.activityId ?? component.activity?.id ?? '';
+    const supplierServiceId = draft.supplierServiceId ?? component.supplierServiceId ?? component.supplierService?.id ?? '';
+    const isOptional = draft.isOptional ?? (component.isOptional ? 'true' : 'false');
+    const serviceOptions = component.componentType === 'TICKET' ? ticketServiceOptions : diningServiceOptions;
+
+    return (
+      <form action={(formData) => saveComponentCatalogLinks(component, formData)} className="form-field-stack">
+        <input type="hidden" name="originCity" value={originCity} />
+        <input type="hidden" name="routeId" value={routeId} />
+        <input type="hidden" name="touringRouteId" value={touringRouteId} />
+        <input type="hidden" name="transportServiceTypeId" value={transportServiceTypeId} />
+        <input type="hidden" name="activityId" value={activityId} />
+        <input type="hidden" name="supplierServiceId" value={supplierServiceId} />
+        <div className="form-grid">
+          {options.originVariant ? (
+            <SearchableSelect
+              label="Origin city"
+              value={originCity}
+              options={originCityOptions}
+              onChange={(value) => updateComponentDraft(component.id, { originCity: value })}
+              placeholder="Select origin city"
+              missingText="Saved origin is not in the touring route origin catalog."
+            />
+          ) : null}
+          {component.componentType === 'TRANSPORT' ? (
+            <>
+              <SearchableSelect
+                label={options.originVariant ? 'Touring route variant' : 'Transport route / touring route'}
+                value={touringRouteId || routeId}
+                options={options.originVariant || touringRouteId ? touringRouteOptions : routeOptions}
+                onChange={(value) =>
+                  options.originVariant || touringRouteId
+                    ? updateComponentDraft(component.id, { touringRouteId: value, routeId: '' })
+                    : updateComponentDraft(component.id, { routeId: value, touringRouteId: '' })
+                }
+                placeholder="Select catalog route"
+                missingText="Selected transport route is missing from the catalog."
+              />
+              <SearchableSelect
+                label="Transport type"
+                value={transportServiceTypeId}
+                options={transportTypeOptions}
+                onChange={(value) => updateComponentDraft(component.id, { transportServiceTypeId: value })}
+                placeholder="Select transport type"
+                missingText="Selected transport type is missing from the catalog."
+              />
+            </>
+          ) : component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE' ? (
+            <SearchableSelect
+              label={component.componentType === 'GUIDE' ? 'Guide inventory' : 'Activity Master / Variant'}
+              value={activityId}
+              options={activityOptions}
+              onChange={(value) => updateComponentDraft(component.id, { activityId: value })}
+              placeholder="Select activity record"
+              missingText="Selected activity or guide inventory is missing from the catalog."
+            />
+          ) : (
+            <SearchableSelect
+              label={component.componentType === 'TICKET' ? 'Ticket inventory' : 'Dining/service inventory'}
+              value={supplierServiceId}
+              options={serviceOptions}
+              onChange={(value) => updateComponentDraft(component.id, { supplierServiceId: value })}
+              placeholder="Select service record"
+              missingText="Selected service inventory is missing from the catalog."
+            />
+          )}
+          <label>
+            Required / Optional
+            <select name="isOptional" value={isOptional} onChange={(event) => updateComponentDraft(component.id, { isOptional: event.currentTarget.value })}>
+              <option value="false">Required</option>
+              <option value="true">Optional</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" className="secondary-button" disabled={isSaving}>
+          Save catalog links
+        </button>
+      </form>
     );
   }
 
@@ -466,11 +671,12 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
         <td>
           <strong>{component.label}</strong>
           {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
+          {renderComponentCatalogLinkForm(component)}
           {renderComponentOperationsForm(component)}
         </td>
         <td>{getReferenceLabel(component)}</td>
         <td>{getComponentDurationLabel(component)}</td>
-        <td>{renderOptionalToggle(component)}</td>
+        <td>{component.isOptional ? 'Optional' : 'Required'}</td>
         <td>{renderComponentControls(component)}</td>
       </tr>
     ));
@@ -486,7 +692,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     const selectedService = servicePool.find((service) => service.id === selectedServiceId);
     const basePayload = {
       componentType: type,
-      isOptional: formData.get('isOptional') === 'on',
+      isOptional: formData.get('isOptional') === 'OPTIONAL',
       operationalNotes: formData.get('operationalNotes'),
       requiredArrivalTime: formData.get('requiredArrivalTime'),
       supplierConfirmationRequired: parseBooleanFormValue(formData.get('supplierConfirmationRequired')),
@@ -662,6 +868,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                           <strong>{getOriginVariantName(component)}</strong>
                           <p className="table-cell-copy">{getReferenceLabel(component)}</p>
                           {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
+                          {renderComponentCatalogLinkForm(component, { originVariant: true })}
                           {renderComponentOperationsForm(component)}
                         </td>
                         <td>{getComponentDurationLabel(component)}</td>
@@ -669,7 +876,6 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                           <span className={component.isOptional ? 'status-pill status-pill-muted' : 'status-pill status-pill-success'}>
                             {getComponentStatusLabel(component)}
                           </span>
-                          {renderOptionalToggle(component)}
                         </td>
                         <td>
                           {warnings.length > 0 ? (
@@ -789,73 +995,52 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                     <option value="TOURING_ROUTE">Touring route</option>
                   </select>
                 </label>
-                <label>
-                  {transportProductType === 'TOURING_ROUTE' ? 'Touring route' : 'Transfer route'}
-                  <select
-                    value={transportProductType === 'TOURING_ROUTE' ? selectedTouringRouteId : selectedRouteId}
-                    onChange={(event) =>
-                      transportProductType === 'TOURING_ROUTE'
-                        ? setSelectedTouringRouteId(event.currentTarget.value)
-                        : setSelectedRouteId(event.currentTarget.value)
-                    }
-                    required
-                  >
-                    <option value="">Select {transportProductType === 'TOURING_ROUTE' ? 'touring route' : 'route'}</option>
-                    {transportProductType === 'TOURING_ROUTE'
-                      ? catalogs.touringRoutes.map((route) => (
-                          <option key={route.id} value={route.id}>
-                            {route.name} ({route.durationDays}D)
-                          </option>
-                        ))
-                      : catalogs.routes.map((route) => (
-                          <option key={route.id} value={route.id}>
-                            {route.name}
-                          </option>
-                        ))}
-                  </select>
-                </label>
-                <label>
-                  Transport type
-                  <select value={selectedTransportServiceTypeId} onChange={(event) => setSelectedTransportServiceTypeId(event.currentTarget.value)} required>
-                    <option value="">Select transport type</option>
-                    {catalogs.transportServiceTypes.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <SearchableSelect
+                  label={transportProductType === 'TOURING_ROUTE' ? 'Touring route variant' : 'Transfer route'}
+                  value={transportProductType === 'TOURING_ROUTE' ? selectedTouringRouteId : selectedRouteId}
+                  options={transportProductType === 'TOURING_ROUTE' ? touringRouteOptions : routeOptions}
+                  onChange={(value) => (transportProductType === 'TOURING_ROUTE' ? setSelectedTouringRouteId(value) : setSelectedRouteId(value))}
+                  placeholder={`Select ${transportProductType === 'TOURING_ROUTE' ? 'touring route' : 'route'}`}
+                  missingText="Selected transport route is missing from the catalog."
+                  required
+                />
+                <SearchableSelect
+                  label="Transport type"
+                  value={selectedTransportServiceTypeId}
+                  options={transportTypeOptions}
+                  onChange={setSelectedTransportServiceTypeId}
+                  placeholder="Select transport type"
+                  missingText="Selected transport type is missing from the catalog."
+                  required
+                />
               </>
             ) : componentType === 'ACTIVITY' || componentType === 'GUIDE' ? (
-              <label>
-                Activity Master record
-                <select value={selectedActivityId} onChange={(event) => setSelectedActivityId(event.currentTarget.value)} required>
-                  <option value="">Select activity</option>
-                  {catalogs.activities
-                    .filter((activity) => activity.active !== false)
-                    .map((activity) => (
-                      <option key={activity.id} value={activity.id}>
-                        {activity.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <SearchableSelect
+                label={componentType === 'GUIDE' ? 'Guide inventory' : 'Activity Master / Variant'}
+                value={selectedActivityId}
+                options={activityOptions}
+                onChange={setSelectedActivityId}
+                placeholder="Select activity record"
+                missingText="Selected activity or guide inventory is missing from the catalog."
+                required
+              />
             ) : (
-              <label>
-                Service record
-                <select value={selectedServiceId} onChange={(event) => setSelectedServiceId(event.currentTarget.value)} required>
-                  <option value="">Select service</option>
-                  {(componentType === 'TICKET' ? ticketServices : diningServices).map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SearchableSelect
+                label={componentType === 'TICKET' ? 'Ticket inventory' : 'Dining/service inventory'}
+                value={selectedServiceId}
+                options={componentType === 'TICKET' ? ticketServiceOptions : diningServiceOptions}
+                onChange={setSelectedServiceId}
+                placeholder="Select service record"
+                missingText="Selected service inventory is missing from the catalog."
+                required
+              />
             )}
-            <label className="checkbox-field">
-              <input name="isOptional" type="checkbox" />
-              Optional
+            <label>
+              Required / Optional
+              <select name="isOptional" value={newComponentRequirement} onChange={(event) => setNewComponentRequirement(event.currentTarget.value as 'REQUIRED' | 'OPTIONAL')}>
+                <option value="REQUIRED">Required</option>
+                <option value="OPTIONAL">Optional</option>
+              </select>
             </label>
           </div>
           <label>

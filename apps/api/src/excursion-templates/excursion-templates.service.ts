@@ -429,9 +429,13 @@ export class ExcursionTemplatesService {
   }
 
   async updateComponent(templateId: string, componentId: string, data: Partial<ExcursionTemplateComponentInput>) {
-    await this.ensureComponentBelongsToTemplate(templateId, componentId);
+    const existingComponent = await this.ensureComponentBelongsToTemplate(templateId, componentId);
     const updateData: Record<string, unknown> = {};
+    const nextComponentType = data.componentType || existingComponent.componentType;
 
+    if (data.componentType !== undefined) {
+      updateData.componentType = data.componentType;
+    }
     if (data.label !== undefined) {
       updateData.label = requireTrimmedString(data.label, 'label');
     }
@@ -467,6 +471,49 @@ export class ExcursionTemplatesService {
         data.estimatedDurationMinutes,
         'estimatedDurationMinutes',
       );
+    }
+    if (data.supplierServiceId !== undefined) {
+      updateData.supplierServiceId = normalizeOptionalString(data.supplierServiceId);
+    }
+    if (data.activityId !== undefined) {
+      updateData.activityId = normalizeOptionalString(data.activityId);
+    }
+    if (data.routeId !== undefined) {
+      updateData.routeId = normalizeOptionalString(data.routeId);
+    }
+    if (data.touringRouteId !== undefined) {
+      updateData.touringRouteId = normalizeOptionalString(data.touringRouteId);
+    }
+    if (data.transportServiceTypeId !== undefined) {
+      updateData.transportServiceTypeId = normalizeOptionalString(data.transportServiceTypeId);
+    }
+    if (data.suggestedDepartureCity !== undefined) {
+      updateData.suggestedDepartureCity = normalizeOptionalString(data.suggestedDepartureCity);
+    }
+    if (data.suggestedArrivalCity !== undefined) {
+      updateData.suggestedArrivalCity = normalizeOptionalString(data.suggestedArrivalCity);
+    }
+
+    const catalogReferenceChanged =
+      data.componentType !== undefined ||
+      data.supplierServiceId !== undefined ||
+      data.activityId !== undefined ||
+      data.routeId !== undefined ||
+      data.touringRouteId !== undefined ||
+      data.transportServiceTypeId !== undefined;
+    if (catalogReferenceChanged) {
+      await this.validateComponentReferences(nextComponentType, {
+        ...existingComponent,
+        ...data,
+        supplierServiceId: data.supplierServiceId === undefined ? existingComponent.supplierServiceId : normalizeOptionalString(data.supplierServiceId),
+        activityId: data.activityId === undefined ? existingComponent.activityId : normalizeOptionalString(data.activityId),
+        routeId: data.routeId === undefined ? existingComponent.routeId : normalizeOptionalString(data.routeId),
+        touringRouteId: data.touringRouteId === undefined ? existingComponent.touringRouteId : normalizeOptionalString(data.touringRouteId),
+        transportServiceTypeId:
+          data.transportServiceTypeId === undefined
+            ? existingComponent.transportServiceTypeId
+            : normalizeOptionalString(data.transportServiceTypeId),
+      }, 0);
     }
 
     await (this.prisma as any).excursionTemplateComponent.update({
@@ -2006,11 +2053,20 @@ export class ExcursionTemplatesService {
   private async ensureComponentBelongsToTemplate(templateId: string, componentId: string) {
     const component = await (this.prisma as any).excursionTemplateComponent.findFirst({
       where: { id: componentId, templateId },
-      select: { id: true },
+      select: {
+        id: true,
+        componentType: true,
+        supplierServiceId: true,
+        activityId: true,
+        routeId: true,
+        touringRouteId: true,
+        transportServiceTypeId: true,
+      },
     });
     if (!component) {
       throw new BadRequestException('Excursion template component was not found');
     }
+    return component;
   }
 
   private validateAddedComponentHasLinkedRecord(component: ExcursionTemplateComponentInput) {

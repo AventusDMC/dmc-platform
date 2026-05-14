@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { SearchableSelect, type SearchableSelectOption } from '../../../components/SearchableSelect';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencyOptions';
 import type { TouringRouteCatalogs, TouringRouteDetail, TouringRoutePricingDetail } from '../types';
 
@@ -73,7 +72,7 @@ function optionalNumber(value: string) {
   return value.trim() ? Number(value) : null;
 }
 
-function uniqueTextOptions(values: string[], helper: string): SearchableSelectOption[] {
+function uniqueTextOptions(values: string[]) {
   const seen = new Set<string>();
   return values
     .map((value) => value.trim())
@@ -85,7 +84,7 @@ function uniqueTextOptions(values: string[], helper: string): SearchableSelectOp
       return true;
     })
     .sort((a, b) => a.localeCompare(b))
-    .map((value) => ({ value, label: value, helper }));
+    .map((value) => value);
 }
 
 export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps) {
@@ -113,43 +112,21 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
   );
   const [pricings, setPricings] = useState<PricingDraft[]>((route.pricings || []).map(pricingToDraft));
   const cityOptions = useMemo(
-    () => uniqueTextOptions([route.startCity, ...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.city, stop.location || ''])], 'Saved touring route value'),
+    () => uniqueTextOptions([route.startCity, ...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.city, stop.location || ''])]),
     [route.mainDestinations, route.startCity, route.stops],
   );
   const destinationOptions = useMemo(
-    () => uniqueTextOptions([...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.location || '', stop.city])], 'Route destination / stop'),
+    () => uniqueTextOptions([...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.location || '', stop.city])]),
     [route.mainDestinations, route.stops],
   );
-  const supplierOptions = useMemo<SearchableSelectOption[]>(
-    () => catalogs.suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name, helper: 'Transport supplier' })),
-    [catalogs.suppliers],
-  );
-  const vehicleOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      catalogs.vehicles.map((vehicle) => ({
-        value: vehicle.id,
-        label: vehicle.name,
-        helper: [vehicle.vehicleType, vehicle.maxPax ? `${vehicle.maxPax} pax` : null].filter(Boolean).join(' / '),
-      })),
-    [catalogs.vehicles],
-  );
   const vehicleTypeOptions = useMemo(
-    () => uniqueTextOptions(catalogs.vehicles.map((vehicle) => vehicle.vehicleType || vehicle.name), 'Vehicle catalog'),
+    () => uniqueTextOptions(catalogs.vehicles.map((vehicle) => vehicle.vehicleType || vehicle.name)),
     [catalogs.vehicles],
   );
-  const transportServiceTypeOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      catalogs.transportServiceTypes.map((serviceType) => ({
-        value: serviceType.id,
-        label: serviceType.name,
-        helper: [serviceType.code, serviceType.classification].filter(Boolean).join(' / '),
-      })),
-    [catalogs.transportServiceTypes],
-  );
-  const currencyOptions = useMemo<SearchableSelectOption[]>(
-    () => SUPPORTED_CURRENCIES.map((currency) => ({ value: currency, label: currency, helper: 'Supported currency' })),
-    [],
-  );
+  const validityYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return [currentYear - 1, currentYear, currentYear + 1, currentYear + 2].map((year) => String(year));
+  }, []);
 
   const warnings = useMemo(() => {
     const next: string[] = [];
@@ -233,6 +210,16 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
 
   return (
     <section className="section-stack" id="edit">
+      <datalist id="touring-route-city-options">
+        {cityOptions.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
+      <datalist id="touring-route-destination-options">
+        {destinationOptions.map((option) => (
+          <option key={option} value={option} />
+        ))}
+      </datalist>
       {status ? <p className="form-success">{status}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
 
@@ -253,24 +240,15 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
         </div>
         <div className="form-grid">
           <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-          <SearchableSelect
-            label="Origin / start city"
-            value={startCity}
-            options={cityOptions}
-            onChange={setStartCity}
-            placeholder="Select start city"
-            missingText="Saved start city is not in the known touring route city list."
-            required
-          />
+          <label>
+            Origin / start city
+            <input value={startCity} list="touring-route-city-options" onChange={(event) => setStartCity(event.target.value)} required />
+          </label>
           <label>Duration days<input type="number" min="1" value={durationDays} onChange={(event) => setDurationDays(event.target.value)} /></label>
-          <SearchableSelect
-            label="Main destination"
-            value={destinations.split(',')[0]?.trim() || ''}
-            options={destinationOptions}
-            onChange={(value) => setDestinations(value)}
-            placeholder="Select main destination"
-            missingText="Saved destination is not in the known destination catalog."
-          />
+          <label>
+            Main destination
+            <input value={destinations.split(',')[0]?.trim() || ''} list="touring-route-destination-options" onChange={(event) => setDestinations(event.target.value)} />
+          </label>
           <label>Included KM<input type="number" min="0" value={includedKm} onChange={(event) => setIncludedKm(event.target.value)} /></label>
           <label>Included hours<input type="number" min="0" value={includedHours} onChange={(event) => setIncludedHours(event.target.value)} /></label>
           <label>
@@ -305,24 +283,16 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                 <tr key={stop.id || `new-stop-${index}`}>
                   <td><input type="number" min="1" value={stop.order} onChange={(event) => updateStop(index, { order: Number(event.target.value || index + 1) })} /></td>
                   <td>
-                    <SearchableSelect
-                      label="Region"
-                      value={stop.city}
-                      options={cityOptions}
-                      onChange={(value) => updateStop(index, { city: value })}
-                      placeholder="Select region"
-                      missingText="Saved region is not in the known route city list."
-                    />
+                    <label>
+                      Region
+                      <input value={stop.city} list="touring-route-city-options" onChange={(event) => updateStop(index, { city: event.target.value })} />
+                    </label>
                   </td>
                   <td>
-                    <SearchableSelect
-                      label="Stop"
-                      value={stop.location}
-                      options={destinationOptions}
-                      onChange={(value) => updateStop(index, { location: value })}
-                      placeholder="Select stop"
-                      missingText="Saved stop is not in the known destination list."
-                    />
+                    <label>
+                      Stop
+                      <input value={stop.location} list="touring-route-destination-options" onChange={(event) => updateStop(index, { location: event.target.value })} />
+                    </label>
                   </td>
                   <td>
                     <select value={stop.overnight ? 'true' : 'false'} onChange={(event) => updateStop(index, { overnight: event.target.value === 'true' })}>
@@ -358,19 +328,46 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                   <td>
                     <select value={pricing.supplierId} onChange={(event) => updatePricing(index, { supplierId: event.target.value })}>
                       <option value="">Manual review</option>
-                      {catalogs.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                      {catalogs.suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td>
+                    <select
+                      value={catalogs.vehicles.find((vehicle) => vehicle.id === pricing.vehicleId)?.vehicleType || ''}
+                      onChange={(event) => {
+                        const vehicle = catalogs.vehicles.find((entry) => (entry.vehicleType || entry.name) === event.target.value);
+                        updatePricing(index, { vehicleId: vehicle?.id || '' });
+                      }}
+                    >
+                      <option value="">Vehicle type</option>
+                      {vehicleTypeOptions.map((vehicleType) => (
+                        <option key={vehicleType} value={vehicleType}>
+                          {vehicleType}
+                        </option>
+                      ))}
+                    </select>
                     <select value={pricing.vehicleId} onChange={(event) => updatePricing(index, { vehicleId: event.target.value })}>
                       <option value="">Vehicle pending</option>
-                      {catalogs.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.name}{vehicle.vehicleType ? ` (${vehicle.vehicleType})` : ''}</option>)}
+                      {catalogs.vehicles.map((vehicle) => (
+                        <option key={vehicle.id} value={vehicle.id}>
+                          {vehicle.name}
+                          {vehicle.vehicleType ? ` (${vehicle.vehicleType})` : ''}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td>
                     <select value={pricing.transportServiceTypeId} onChange={(event) => updatePricing(index, { transportServiceTypeId: event.target.value })}>
                       <option value="">Not mapped</option>
-                      {catalogs.transportServiceTypes.map((serviceType) => <option key={serviceType.id} value={serviceType.id}>{serviceType.name}</option>)}
+                      {catalogs.transportServiceTypes.map((serviceType) => (
+                        <option key={serviceType.id} value={serviceType.id}>
+                          {serviceType.name}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td>
@@ -380,9 +377,63 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                     </select>
                   </td>
                   <td><input value={pricing.minPax} onChange={(event) => updatePricing(index, { minPax: event.target.value })} />-<input value={pricing.maxPax} onChange={(event) => updatePricing(index, { maxPax: event.target.value })} /></td>
-                  <td><input value={pricing.currency} onChange={(event) => updatePricing(index, { currency: event.target.value.toUpperCase() })} /><input type="number" min="0" value={pricing.baseCost} onChange={(event) => updatePricing(index, { baseCost: event.target.value })} /></td>
-                  <td><input type="date" value={pricing.validFrom} onChange={(event) => updatePricing(index, { validFrom: event.target.value })} /><input type="date" value={pricing.validTo} onChange={(event) => updatePricing(index, { validTo: event.target.value })} /></td>
-                  <td><input type="checkbox" checked={pricing.active} onChange={(event) => updatePricing(index, { active: event.target.checked })} /></td>
+                  <td>
+                    <select value={pricing.currency} onChange={(event) => updatePricing(index, { currency: event.target.value })}>
+                      {SUPPORTED_CURRENCIES.map((currency) => (
+                        <option key={currency} value={currency}>
+                          {currency}
+                        </option>
+                      ))}
+                    </select>
+                    <input type="number" min="0" value={pricing.baseCost} onChange={(event) => updatePricing(index, { baseCost: event.target.value })} />
+                  </td>
+                  <td>
+                    <select
+                      value={pricing.validFrom ? pricing.validFrom.slice(0, 4) : ''}
+                      onChange={(event) => {
+                        const year = event.target.value;
+                        updatePricing(index, year ? { validFrom: `${year}-01-01`, validTo: `${year}-12-31` } : { validFrom: '', validTo: '' });
+                      }}
+                    >
+                      <option value="">Validity year</option>
+                      {validityYearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={
+                        pricing.validFrom?.slice(5) === '01-01' && pricing.validTo?.slice(5) === '12-31'
+                          ? 'FULL_YEAR'
+                          : pricing.validFrom?.slice(5) === '04-01' && pricing.validTo?.slice(5) === '10-31'
+                            ? 'SUMMER'
+                            : pricing.validFrom?.slice(5) === '11-01' && pricing.validTo?.slice(5) === '03-31'
+                              ? 'WINTER'
+                              : ''
+                      }
+                      onChange={(event) => {
+                        const season = event.target.value;
+                        const year = pricing.validFrom ? pricing.validFrom.slice(0, 4) : String(new Date().getFullYear());
+                        if (season === 'FULL_YEAR') updatePricing(index, { validFrom: `${year}-01-01`, validTo: `${year}-12-31` });
+                        if (season === 'SUMMER') updatePricing(index, { validFrom: `${year}-04-01`, validTo: `${year}-10-31` });
+                        if (season === 'WINTER') updatePricing(index, { validFrom: `${year}-11-01`, validTo: `${Number(year) + 1}-03-31` });
+                      }}
+                    >
+                      <option value="">Validity season</option>
+                      <option value="FULL_YEAR">Full year</option>
+                      <option value="SUMMER">Summer</option>
+                      <option value="WINTER">Winter</option>
+                    </select>
+                    <input type="date" value={pricing.validFrom} onChange={(event) => updatePricing(index, { validFrom: event.target.value })} />
+                    <input type="date" value={pricing.validTo} onChange={(event) => updatePricing(index, { validTo: event.target.value })} />
+                  </td>
+                  <td>
+                    <select value={pricing.active ? 'active' : 'inactive'} onChange={(event) => updatePricing(index, { active: event.target.value === 'active' })}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </td>
                   <td><button type="button" className="secondary-button" onClick={() => setPricings((current) => current.filter((_, pricingIndex) => pricingIndex !== index))}>Remove</button></td>
                 </tr>
               ))}
