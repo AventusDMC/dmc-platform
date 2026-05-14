@@ -158,6 +158,7 @@ type LegacyMatrixPaxColumn = {
   label: string;
   minPax: number;
   maxPax: number;
+  vehicleType?: string;
 };
 
 const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURING_ROUTE_RATES', 'VEHICLE_TYPES'] as const;
@@ -896,12 +897,12 @@ export class TouringRoutesService {
   private findLegacyMatrixSheet(workbook: XLSX.WorkBook) {
     for (const preferredName of LEGACY_MATRIX_SHEETS) {
       const actualName = workbook.SheetNames.find((name) => name.trim().toUpperCase() === preferredName);
-      if (actualName && this.getLegacyMatrixPaxColumns(workbook.Sheets[actualName]).length > 0) {
+      if (actualName && this.getLegacyMatrixPriceColumns(workbook.Sheets[actualName]).length > 0) {
         return actualName;
       }
     }
 
-    return workbook.SheetNames.find((sheetName) => this.getLegacyMatrixPaxColumns(workbook.Sheets[sheetName]).length > 0) || null;
+    return workbook.SheetNames.find((sheetName) => this.getLegacyMatrixPriceColumns(workbook.Sheets[sheetName]).length > 0) || null;
   }
 
   private hasUsableNormalizedWorkbook(workbook: XLSX.WorkBook) {
@@ -956,6 +957,36 @@ export class TouringRoutesService {
       .filter((entry): entry is LegacyMatrixPaxColumn => entry !== null);
   }
 
+  private getLegacyMatrixPriceColumns(sheet?: XLSX.WorkSheet): LegacyMatrixPaxColumn[] {
+    const paxColumns = this.getLegacyMatrixPaxColumns(sheet);
+    if (!sheet) return paxColumns;
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+    const firstRow = rows[0] || {};
+    const vehicleColumns = Object.keys(firstRow)
+      .map((header) => this.getLegacyMatrixVehicleRateColumn(header))
+      .filter((entry): entry is LegacyMatrixPaxColumn => entry !== null);
+    return [...paxColumns, ...vehicleColumns.filter((column) => !paxColumns.some((paxColumn) => paxColumn.key === column.key))];
+  }
+
+  private getLegacyMatrixVehicleRateColumn(header: string): LegacyMatrixPaxColumn | null {
+    const normalized = normalizeWorkbookHeader(header);
+    const columns: Array<{ aliases: string[]; vehicleType: string; minPax: number; maxPax: number }> = [
+      { aliases: ['sedanrate', 'sedanratejod', 'sedan'], vehicleType: 'Sedan', minPax: 1, maxPax: 2 },
+      { aliases: ['vanrate', 'vanratejod', 'van'], vehicleType: 'Van', minPax: 3, maxPax: 6 },
+      { aliases: ['minibusrate', 'minibusratejod', 'minibus'], vehicleType: 'Mini Bus', minPax: 7, maxPax: 20 },
+      { aliases: ['busrate', 'busratejod', 'bus'], vehicleType: 'Bus', minPax: 21, maxPax: 999 },
+    ];
+    const match = columns.find((column) => column.aliases.includes(normalized));
+    if (!match) return null;
+    return {
+      key: header,
+      label: normalizeWorkbookText(header),
+      minPax: match.minPax,
+      maxPax: match.maxPax,
+      vehicleType: match.vehicleType,
+    };
+  }
+
   private async processLegacyMatrixWorkbook(
     file: { buffer?: Buffer; path?: string; originalname?: string },
     workbook: XLSX.WorkBook,
@@ -963,7 +994,7 @@ export class TouringRoutesService {
     mode: TouringWorkbookMode,
   ) {
     const sheet = workbook.Sheets[sheetName];
-    const paxColumns = this.getLegacyMatrixPaxColumns(sheet);
+    const paxColumns = this.getLegacyMatrixPriceColumns(sheet);
     const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
     const warnings: TouringWorkbookIssue[] = [];
     const errors: TouringWorkbookIssue[] = [];
@@ -1019,7 +1050,10 @@ export class TouringRoutesService {
       for (const paxColumn of paxColumns) {
         const priceErrors: string[] = [];
         const baseCost = parseWorkbookNumber(raw[paxColumn.key], paxColumn.label, priceErrors, { min: 0 });
-        const vehicle = this.resolveLegacyMatrixVehicle({ vehicleCode, vehicleName, vehicleType, minPax: paxColumn.minPax, maxPax: paxColumn.maxPax, vehiclesByName, vehiclesByType, vehicles });
+        const columnVehicleType = paxColumn.vehicleType || vehicleType;
+        const vehicle = this.resolveLegacyMatrixVehicle({ vehicleCode, vehicleName, vehicleType: columnVehicleType, minPax: paxColumn.minPax, maxPax: paxColumn.maxPax, vehiclesByName, vehiclesByType, vehicles });
+        const minPax = paxColumn.vehicleType === 'Bus' && vehicle?.minPax ? Number(vehicle.minPax) : paxColumn.minPax;
+        const maxPax = paxColumn.vehicleType === 'Bus' && vehicle?.maxPax ? Number(vehicle.maxPax) : paxColumn.maxPax;
         const skipReason =
           !code || code === 'TOURING_ROUTE'
             ? 'Route code is required'
@@ -1028,11 +1062,11 @@ export class TouringRoutesService {
               : baseCost === null || baseCost <= 0
                 ? `Price is empty or zero for ${paxColumn.label}`
                 : !vehicle
-                  ? `Vehicle type cannot be mapped for ${vehicleCode || vehicleName || vehicleType || `${paxColumn.minPax}-${paxColumn.maxPax} pax`}`
+                  ? `Vehicle type cannot be mapped for ${vehicleCode || vehicleName || columnVehicleType || `${paxColumn.minPax}-${paxColumn.maxPax} pax`}`
                   : !['USD', 'EUR', 'JOD'].includes(currency)
                     ? 'Currency must be USD, EUR, or JOD'
                     : null;
-        const rateKey = [code, supplier?.id || supplierName || 'DEFAULT', vehicle?.id || '', pricingBasis, paxColumn.minPax, paxColumn.maxPax, currency, formatWorkbookDate(validFrom), formatWorkbookDate(validTo)].join('|');
+        const rateKey = [code, supplier?.id || supplierName || 'DEFAULT', vehicle?.id || '', pricingBasis, minPax, maxPax, currency, formatWorkbookDate(validFrom), formatWorkbookDate(validTo)].join('|');
         const duplicateInWorkbook = !skipReason && seenRateKeys.has(rateKey);
         if (!skipReason) seenRateKeys.add(rateKey);
         const exact = existingPricings.find(
@@ -1041,8 +1075,8 @@ export class TouringRoutesService {
             (pricing.supplierId || null) === (supplier?.id || null) &&
             (pricing.vehicleId || null) === (vehicle?.id || null) &&
             pricing.pricingBasis === pricingBasis &&
-            pricing.minPax === paxColumn.minPax &&
-            pricing.maxPax === paxColumn.maxPax &&
+            pricing.minPax === minPax &&
+            pricing.maxPax === maxPax &&
             pricing.currency === currency &&
             formatWorkbookDate(pricing.validFrom ? new Date(pricing.validFrom) : null) === formatWorkbookDate(validFrom) &&
             formatWorkbookDate(pricing.validTo ? new Date(pricing.validTo) : null) === formatWorkbookDate(validTo),
@@ -1058,13 +1092,13 @@ export class TouringRoutesService {
           tourCode: code,
           supplierName: supplier?.name || supplierName,
           vehicleCode,
-          vehicleName: vehicle?.name || vehicleName,
-          vehicleType: vehicle?.vehicleType || vehicleType,
+          vehicleName: vehicle?.name || vehicleName || columnVehicleType,
+          vehicleType: vehicle?.vehicleType || columnVehicleType,
           supplierId: supplier?.id || null,
           vehicleId: vehicle?.id || null,
           pricingBasis,
-          minPax: paxColumn.minPax,
-          maxPax: paxColumn.maxPax,
+          minPax,
+          maxPax,
           currency,
           baseCost: baseCost || 0,
           costPerDay: null,
@@ -1167,10 +1201,13 @@ export class TouringRoutesService {
     vehiclesByType: Map<string, any[]>;
     vehicles: any[];
   }) {
-    return (
+    const explicitVehicle =
       (values.vehicleCode ? values.vehiclesByName.get(normalizeWorkbookKey(values.vehicleCode)) : null) ||
       (values.vehicleName ? values.vehiclesByName.get(normalizeWorkbookKey(values.vehicleName)) : null) ||
-      (values.vehicleType ? (values.vehiclesByType.get(normalizeWorkbookKey(values.vehicleType)) || [])[0] : null) ||
+      (values.vehicleType ? (values.vehiclesByType.get(normalizeWorkbookKey(values.vehicleType)) || [])[0] : null);
+    if (values.vehicleCode || values.vehicleName || values.vehicleType) return explicitVehicle || null;
+
+    return (
       values.vehicles
         .slice()
         .sort((left: any, right: any) => Number(left.maxPax || 999) - Number(right.maxPax || 999))

@@ -93,6 +93,7 @@ function createTouringPrismaMock() {
       { id: 'vehicle-1', name: 'Sedan 3', vehicleType: 'Sedan', minPax: 1, maxPax: 2 },
       { id: 'vehicle-2', name: 'Van 6', vehicleType: 'Van', minPax: 3, maxPax: 6 },
       { id: 'vehicle-3', name: 'Coaster 20', vehicleType: 'Coaster', minPax: 7, maxPax: 20 },
+      { id: 'vehicle-4', name: 'Mini Bus 20', vehicleType: 'Mini Bus', minPax: 7, maxPax: 20 },
     ],
     routes: [] as any[],
     stops: [] as any[],
@@ -596,6 +597,44 @@ test('touring matrix preview wins when normalized sheets are placeholder-only', 
   assert.equal(preview.rowsToCreate[0].baseCost, 120);
   assert.equal(preview.rowsToCreate[1].baseCost, 180);
   assert.deepEqual(preview.errors, []);
+});
+
+test('touring matrix preview normalizes vehicle-rate columns from master tour matrix sheets', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWorkbookBuffer(
+    [
+      {
+        'Tour Code': 'AMM-PET',
+        'Tour Name': 'Petra Full Day',
+        'Departure City': 'Amman',
+        'Return City': 'Amman',
+        'Main Route': 'Amman - Petra - Amman',
+        'Sedan Rate (JOD)': 95,
+        'Van Rate (JOD)': 130,
+        'Mini Bus Rate (JOD)': 150,
+        'Bus Rate (JOD)': '',
+      },
+    ],
+    'Jordan Master Tour Matrix',
+  );
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'Jordan Master Tour Matrix.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.equal(preview.importer, 'LEGACY_TOURING_ROUTE_MATRIX');
+  assert.equal(preview.workbookMode, 'Legacy Matrix Mode');
+  assert.equal(preview.rowsToCreate.length, 3);
+  assert.deepEqual(
+    preview.rowsToCreate.map((row: any) => ({ vehicleType: row.vehicleType, minPax: row.minPax, maxPax: row.maxPax, baseCost: row.baseCost })),
+    [
+      { vehicleType: 'Sedan', minPax: 1, maxPax: 2, baseCost: 95 },
+      { vehicleType: 'Van', minPax: 3, maxPax: 6, baseCost: 130 },
+      { vehicleType: 'Mini Bus', minPax: 7, maxPax: 20, baseCost: 150 },
+    ],
+  );
+  assert.match(preview.skippedRows.map((row: any) => row.reason).join(' | '), /Price is empty or zero for Bus Rate/);
 });
 
 test('touring matrix import creates normalized touring route pricing rows only', async () => {
