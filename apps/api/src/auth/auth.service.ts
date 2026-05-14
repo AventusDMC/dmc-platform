@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedActor, DmcRole, ROLE_NAMES, SessionTokenPayload } from './auth.types';
@@ -11,6 +11,8 @@ const SESSION_COOKIE_HEADER = 'x-dmc-session';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async signup(input: {
@@ -103,6 +105,7 @@ export class AuthService {
   async login(email: string, password: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
+    const startedAt = Date.now();
 
     if (!normalizedEmail || !normalizedPassword) {
       throw new UnauthorizedException('Email and password are required');
@@ -119,8 +122,18 @@ export class AuthService {
         role: true,
       },
     });
+    this.logger.log(
+      `[login] user lookup complete email=${normalizedEmail} found=${user ? 'yes' : 'no'} elapsedMs=${Date.now() - startedAt}`,
+    );
 
-    if (!user || !this.verifyPassword(normalizedPassword, user.password)) {
+    const passwordMatches = user ? this.verifyPassword(normalizedPassword, user.password) : false;
+    this.logger.log(
+      `[login] password compare complete email=${normalizedEmail} matched=${passwordMatches ? 'yes' : 'no'} elapsedMs=${
+        Date.now() - startedAt
+      }`,
+    );
+
+    if (!user || !passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -132,9 +145,11 @@ export class AuthService {
       role: user.role.name,
       companyId: user.companyId,
     });
+    const token = this.createSessionToken(actor);
+    this.logger.log(`[login] session create complete email=${normalizedEmail} actor=${actor.id} elapsedMs=${Date.now() - startedAt}`);
 
     return {
-      token: this.createSessionToken(actor),
+      token,
       actor,
     };
   }

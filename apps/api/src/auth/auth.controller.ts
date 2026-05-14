@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post } from '@nestjs/common';
 import { Actor, Public } from './auth.decorators';
 import { AuthService } from './auth.service';
 import { AuthenticatedActor } from './auth.types';
@@ -26,6 +26,8 @@ type AcceptInviteBody = {
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly authService: AuthService,
     private readonly userInvitationsService: UserInvitationsService,
@@ -33,8 +35,22 @@ export class AuthController {
 
   @Post('login')
   @Public()
-  login(@Body() body: LoginBody) {
-    return this.authService.login(body.email || '', body.password || '');
+  async login(@Body() body: LoginBody) {
+    const email = String(body.email || '').trim().toLowerCase();
+    this.logger.log(`[login] start email=${email || 'missing'}`);
+
+    try {
+      const result = await this.authService.login(email, body.password || '');
+      this.logger.log(`[login] response sent email=${email || 'missing'} actor=${result.actor.id}`);
+      return result;
+    } catch (error) {
+      this.logger.warn(
+        `[login] response sent email=${email || 'missing'} status=error message=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      throw error;
+    }
   }
 
   @Post('signup')
