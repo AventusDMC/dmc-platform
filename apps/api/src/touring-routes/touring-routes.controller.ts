@@ -83,6 +83,16 @@ export class TouringRoutesController {
     return this.touringRoutesService.importWorkbook(file);
   }
 
+  @Post('pricing-normalization/preview')
+  previewTransportPricingRuleNormalization() {
+    return this.touringRoutesService.previewTransportPricingRuleNormalization();
+  }
+
+  @Post('pricing-normalization/import')
+  importTransportPricingRuleNormalization() {
+    return this.touringRoutesService.importTransportPricingRuleNormalization();
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: Partial<TouringRouteBody>) {
     return this.touringRoutesService.update(id, body);

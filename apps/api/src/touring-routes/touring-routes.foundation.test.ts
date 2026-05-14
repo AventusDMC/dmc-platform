@@ -44,6 +44,12 @@ function buildTouringWorkbookBuffer(rows: {
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
+function buildTouringMatrixWorkbookBuffer(rows: Record<string, unknown>[]) {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'TOURING_ROUTE_MATRIX');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
 async function buildExcelJsTouringWorkbookBuffer(rowCount = 3) {
   const workbook = new ExcelJS.Workbook();
   const routeSheet = workbook.addWorksheet('TOURING_ROUTES');
@@ -69,10 +75,15 @@ async function buildExcelJsTouringWorkbookBuffer(rowCount = 3) {
 function createTouringPrismaMock() {
   const stores = {
     suppliers: [{ id: 'supplier-1', name: 'Alpha Transport', type: 'transport' }],
-    vehicles: [{ id: 'vehicle-1', name: 'Sedan 3', vehicleType: 'Sedan' }],
+    vehicles: [
+      { id: 'vehicle-1', name: 'Sedan 3', vehicleType: 'Sedan', minPax: 1, maxPax: 2 },
+      { id: 'vehicle-2', name: 'Van 6', vehicleType: 'Van', minPax: 3, maxPax: 6 },
+      { id: 'vehicle-3', name: 'Coaster 20', vehicleType: 'Coaster', minPax: 7, maxPax: 20 },
+    ],
     routes: [] as any[],
     stops: [] as any[],
     pricings: [] as any[],
+    transportRules: [] as any[],
   };
   const prisma = {
     supplier: {
@@ -128,6 +139,16 @@ function createTouringPrismaMock() {
         Object.assign(pricing, data);
         return pricing;
       },
+    },
+    transportPricingRule: {
+      findMany: async () =>
+        stores.transportRules.map((rule) => ({
+          ...rule,
+          route: stores.routes.find((route) => route.id === rule.routeId),
+          supplier: stores.suppliers.find((supplier) => supplier.id === rule.supplierId),
+          vehicle: stores.vehicles.find((vehicle) => vehicle.id === rule.vehicleId),
+          transportServiceType: rule.transportServiceType || null,
+        })),
     },
     $transaction: async (callback: any) => callback(prisma),
   };
@@ -474,6 +495,125 @@ test('touring workbook import creates touring routes stops and pricing without t
   assert.equal(stores.routes[0].code, 'PETRA_WR_2D');
   assert.equal(stores.stops.length, 2);
   assert.equal(stores.pricings.length, 1);
+});
+
+test('touring matrix preview normalizes pax range columns into touring route pricing rows without writing', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWorkbookBuffer([
+    {
+      RouteCode: 'AMM-PET',
+      SupplierName: 'Alpha Transport',
+      Currency: 'JOD',
+      ValidFrom: '2026-01-01',
+      ValidTo: '2026-12-31',
+      '1–2 Pax': 95,
+      '3–6 Pax': 140,
+      '7–20 Pax': 250,
+    },
+  ]);
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring-matrix.xlsx' })) as any;
+
+  assert.equal(preview.importer, 'LEGACY_TOURING_ROUTE_MATRIX');
+  assert.equal(preview.pricingCount, 3);
+  assert.equal(preview.rowsToCreate[0].minPax, 1);
+  assert.equal(preview.rowsToCreate[0].maxPax, 2);
+  assert.equal(preview.rowsToCreate[0].baseCost, 95);
+  assert.equal(preview.rowsToCreate[1].minPax, 3);
+  assert.equal(preview.rowsToCreate[1].maxPax, 6);
+  assert.equal(preview.rowsToCreate[1].baseCost, 140);
+  assert.equal(preview.rowsToCreate[2].minPax, 7);
+  assert.equal(preview.rowsToCreate[2].maxPax, 20);
+  assert.equal(preview.rowsToCreate[2].baseCost, 250);
+  assert.equal(stores.pricings.length, 0);
+});
+
+test('touring matrix import creates normalized touring route pricing rows only', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWorkbookBuffer([
+    {
+      RouteCode: 'AMM-PET',
+      SupplierName: 'Alpha Transport',
+      Currency: 'JOD',
+      '1-2 Pax': 95,
+    },
+  ]);
+
+  const result = (await service.importWorkbook({ buffer, originalname: 'touring-matrix.xlsx' })) as any;
+
+  assert.equal(result.imported.pricings, 1);
+  assert.equal(stores.pricings.length, 1);
+  assert.equal(stores.pricings[0].touringRouteId, 'tour-1');
+  assert.equal(stores.pricings[0].minPax, 1);
+  assert.equal(stores.pricings[0].maxPax, 2);
+  assert.equal(stores.pricings[0].baseCost, 95);
+});
+
+test('touring matrix preview skips duplicate existing missing route missing vehicle and empty prices', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  stores.pricings.push({
+    id: 'pricing-existing',
+    touringRouteId: 'tour-1',
+    supplierId: 'supplier-1',
+    vehicleId: 'vehicle-1',
+    pricingBasis: 'PER_VEHICLE',
+    minPax: 1,
+    maxPax: 2,
+    currency: 'JOD',
+    baseCost: 95,
+    validFrom: null,
+    validTo: null,
+  });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWorkbookBuffer([
+    { RouteCode: 'AMM-PET', SupplierName: 'Alpha Transport', Currency: 'JOD', '1-2 Pax': 95, '3-6 Pax': 0 },
+    { RouteCode: 'MISSING', SupplierName: 'Alpha Transport', Currency: 'JOD', '1-2 Pax': 95 },
+    { RouteCode: 'AMM-PET', SupplierName: 'Alpha Transport', VehicleType: 'Helicopter', Currency: 'JOD', '7-20 Pax': 400 },
+  ]);
+  stores.vehicles = stores.vehicles.filter((vehicle) => vehicle.id !== 'vehicle-3');
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring-matrix.xlsx' })) as any;
+  const skippedReasons = preview.skippedRows.map((entry: any) => entry.reason).join(' | ');
+
+  assert.match(skippedReasons, /Duplicate existing pricing row/);
+  assert.match(skippedReasons, /Price is empty or zero/);
+  assert.match(skippedReasons, /Route code MISSING does not exist/);
+  assert.match(skippedReasons, /Vehicle type cannot be mapped/);
+  assert.equal(preview.rowsToCreate.length, 0);
+});
+
+test('touring pricing normalization previews existing transport rules into touring route pricing rows', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', routeDescription: 'AMM PET', startCity: 'Amman', durationDays: 1 });
+  stores.transportRules.push({
+    id: 'rule-1',
+    routeId: 'tour-1',
+    supplierId: 'supplier-1',
+    vehicleId: 'vehicle-1',
+    transportServiceTypeId: 'service-type-1',
+    pricingMode: 'POINT_TO_POINT',
+    minPax: 1,
+    maxPax: 2,
+    baseCost: 95,
+    currency: 'JOD',
+    isActive: true,
+  });
+  const service = new TouringRoutesService(prisma as any);
+
+  const preview = (await service.previewTransportPricingRuleNormalization()) as any;
+
+  assert.equal(preview.importer, 'TRANSPORT_PRICING_RULE_TO_TOURING_ROUTE_PRICING');
+  assert.equal(preview.pricingCount, 1);
+  assert.equal(preview.rowsToCreate[0].touringRouteId, 'tour-1');
+  assert.equal(preview.rowsToCreate[0].minPax, 1);
+  assert.equal(preview.rowsToCreate[0].maxPax, 2);
+  assert.equal(preview.rowsToCreate[0].baseCost, 95);
+  assert.equal(stores.pricings.length, 0);
 });
 
 test('touring route update persists edits and archives without hard delete', async () => {

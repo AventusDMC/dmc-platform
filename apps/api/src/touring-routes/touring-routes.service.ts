@@ -54,7 +54,7 @@ type FindTouringRoutesInput = {
 };
 
 type TouringWorkbookMode = 'preview' | 'import';
-type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP';
+type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
 type TouringWorkbookDecompressionError = {
   success: false;
   stage: 'workbook decompression';
@@ -148,7 +148,20 @@ type ParsedTouringWorkbookRate = {
   warnings: string[];
 };
 
+type ParsedLegacyMatrixRate = ParsedTouringWorkbookRate & {
+  sourceColumn: string;
+  skipReason?: string | null;
+};
+
+type LegacyMatrixPaxColumn = {
+  key: string;
+  label: string;
+  minPax: number;
+  maxPax: number;
+};
+
 const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURING_ROUTE_RATES', 'VEHICLE_TYPES'] as const;
+const LEGACY_MATRIX_SHEETS = ['TOURING_ROUTE_MATRIX', 'TOURING_ROUTE_RATES', 'LEGACY_TOURING_ROUTE_MATRIX', 'TRANSPORT_MATRIX'] as const;
 
 function normalizeCode(value: string) {
   return (
@@ -318,6 +331,14 @@ export class TouringRoutesService {
     return this.processWorkbookImport(file, 'import');
   }
 
+  async previewTransportPricingRuleNormalization() {
+    return this.processTransportPricingRuleNormalization('preview');
+  }
+
+  async importTransportPricingRuleNormalization() {
+    return this.processTransportPricingRuleNormalization('import');
+  }
+
   private async processWorkbookImport(file: { buffer?: Buffer; path?: string; originalname?: string }, mode: TouringWorkbookMode) {
     let stage = 'workbook read';
     let sheet: string | undefined;
@@ -329,6 +350,10 @@ export class TouringRoutesService {
     const warnings: TouringWorkbookIssue[] = [];
     stage = 'workbook tab detection';
     this.logWorkbookStage(mode, stage, { sheets: workbook.SheetNames });
+    const legacyMatrixSheet = this.findLegacyMatrixSheet(workbook);
+    if (legacyMatrixSheet) {
+      return this.processLegacyMatrixWorkbook(file, workbook, legacyMatrixSheet, mode);
+    }
     this.validateWorkbookSheets(workbook, errors);
 
     stage = 'worksheet parsing';
@@ -371,11 +396,11 @@ export class TouringRoutesService {
       where: { code: { in: Array.from(routeCodes) } },
       include: this.include(),
     });
-    const routesByCode = new Map(existingRoutes.map((route: any) => [route.code, route]));
+    const routesByCode = new Map<string, any>(existingRoutes.map((route: any) => [route.code, route]));
     const suppliers = await this.prisma.supplier.findMany({ where: { type: { equals: 'transport', mode: 'insensitive' } } });
     const vehicles = await (this.prisma as any).vehicle.findMany();
-    const suppliersByName = new Map(suppliers.map((supplier: any) => [normalizeWorkbookKey(supplier.name), supplier]));
-    const vehiclesByName = new Map(vehicles.map((vehicle: any) => [normalizeWorkbookKey(vehicle.name), vehicle]));
+    const suppliersByName = new Map<string, any>(suppliers.map((supplier: any) => [normalizeWorkbookKey(supplier.name), supplier]));
+    const vehiclesByName = new Map<string, any>(vehicles.map((vehicle: any) => [normalizeWorkbookKey(vehicle.name), vehicle]));
     const vehiclesByType = new Map<string, any[]>();
     for (const vehicle of vehicles) {
       const key = normalizeWorkbookKey(vehicle.vehicleType || vehicle.name);
@@ -726,6 +751,392 @@ export class TouringRoutesService {
         orderBy: [{ active: 'desc' }, { minPax: 'asc' }, { createdAt: 'asc' }],
       },
     };
+  }
+
+  private async processTransportPricingRuleNormalization(mode: TouringWorkbookMode) {
+    const [touringRoutes, transportRules, existingPricings] = await Promise.all([
+      (this.prisma as any).touringRoute.findMany({ include: this.include() }),
+      (this.prisma as any).transportPricingRule.findMany({
+        where: { isActive: true },
+        include: {
+          route: true,
+          supplier: true,
+          vehicle: true,
+          transportServiceType: true,
+        },
+      }),
+      (this.prisma as any).touringRoutePricing.findMany({
+        include: {
+          touringRoute: true,
+          supplier: true,
+          vehicle: true,
+        },
+      }),
+    ]);
+    const skippedRows: Array<{ ruleId: string; routeName?: string | null; reason: string }> = [];
+    const rowsToCreate: any[] = [];
+    const seenKeys = new Set<string>();
+
+    for (const rule of transportRules || []) {
+      const touringRoute = this.matchTouringRouteForTransportRule(rule, touringRoutes || []);
+      const duplicateKey = [
+        touringRoute?.id || '',
+        rule.supplierId || '',
+        rule.vehicleId || '',
+        rule.transportServiceTypeId || '',
+        'PER_VEHICLE',
+        rule.minPax,
+        rule.maxPax,
+        rule.currency,
+        '',
+        '',
+      ].join('|');
+      const existing = existingPricings.some(
+        (pricing: any) =>
+          pricing.touringRouteId === touringRoute?.id &&
+          (pricing.supplierId || null) === (rule.supplierId || null) &&
+          (pricing.vehicleId || null) === (rule.vehicleId || null) &&
+          (pricing.transportServiceTypeId || null) === (rule.transportServiceTypeId || null) &&
+          pricing.pricingBasis === 'PER_VEHICLE' &&
+          pricing.minPax === rule.minPax &&
+          pricing.maxPax === rule.maxPax &&
+          pricing.currency === rule.currency &&
+          !pricing.validFrom &&
+          !pricing.validTo,
+      );
+      const skipReason =
+        !touringRoute
+          ? `No touring route match for transport route ${rule.route?.name || rule.routeId}`
+          : !rule.vehicleId
+            ? 'Vehicle type cannot be mapped'
+            : Number(rule.baseCost || 0) <= 0
+              ? 'Price is empty or zero'
+              : seenKeys.has(duplicateKey)
+                ? 'Duplicate pricing row in transport rules'
+                : existing
+                  ? 'Duplicate existing pricing row'
+                  : null;
+
+      if (skipReason) {
+        skippedRows.push({ ruleId: rule.id, routeName: rule.route?.name || null, reason: skipReason });
+        continue;
+      }
+
+      seenKeys.add(duplicateKey);
+      rowsToCreate.push({
+        sourceRuleId: rule.id,
+        touringRouteId: touringRoute.id,
+        tourCode: touringRoute.code,
+        routeName: rule.route?.name || null,
+        supplierId: rule.supplierId || null,
+        supplierName: rule.supplier?.name || '',
+        vehicleId: rule.vehicleId,
+        vehicleName: rule.vehicle?.name || '',
+        transportServiceTypeId: rule.transportServiceTypeId || null,
+        pricingBasis: 'PER_VEHICLE',
+        minPax: rule.minPax,
+        maxPax: rule.maxPax,
+        currency: rule.currency,
+        baseCost: Number(rule.baseCost || 0),
+        active: true,
+        notes: `Normalized from transport pricing rule ${rule.id}`,
+      });
+    }
+
+    const summary = {
+      success: true,
+      mode,
+      importer: 'TRANSPORT_PRICING_RULE_TO_TOURING_ROUTE_PRICING',
+      pricingCount: rowsToCreate.length,
+      rowsToCreate,
+      skippedRows,
+      imported: { pricings: 0, skippedRows: skippedRows.length },
+    };
+
+    if (mode === 'preview') return summary;
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const row of rowsToCreate) {
+        await (tx as any).touringRoutePricing.create({
+          data: {
+            touringRouteId: row.touringRouteId,
+            supplierId: row.supplierId,
+            vehicleId: row.vehicleId,
+            transportServiceTypeId: row.transportServiceTypeId,
+            pricingBasis: row.pricingBasis,
+            minPax: row.minPax,
+            maxPax: row.maxPax,
+            currency: row.currency,
+            baseCost: row.baseCost,
+            validFrom: null,
+            validTo: null,
+            active: true,
+            notes: row.notes,
+          },
+        });
+        summary.imported.pricings += 1;
+      }
+      return summary;
+    });
+  }
+
+  private matchTouringRouteForTransportRule(rule: any, touringRoutes: any[]) {
+    const routeTexts = [rule.route?.normalizedKey, rule.route?.name].filter(Boolean).map((value) => normalizeWorkbookKey(value));
+    return (
+      touringRoutes.find((route) => routeTexts.includes(normalizeWorkbookKey(route.code))) ||
+      touringRoutes.find((route) => routeTexts.some((text) => text && normalizeWorkbookKey(route.name).includes(text))) ||
+      touringRoutes.find((route) => routeTexts.some((text) => text && normalizeWorkbookKey(route.routeDescription).includes(text))) ||
+      null
+    );
+  }
+
+  private findLegacyMatrixSheet(workbook: XLSX.WorkBook) {
+    for (const preferredName of LEGACY_MATRIX_SHEETS) {
+      const actualName = workbook.SheetNames.find((name) => name.trim().toUpperCase() === preferredName);
+      if (actualName && this.getLegacyMatrixPaxColumns(workbook.Sheets[actualName]).length > 0) {
+        return actualName;
+      }
+    }
+
+    return workbook.SheetNames.find((sheetName) => this.getLegacyMatrixPaxColumns(workbook.Sheets[sheetName]).length > 0) || null;
+  }
+
+  private getLegacyMatrixPaxColumns(sheet?: XLSX.WorkSheet): LegacyMatrixPaxColumn[] {
+    if (!sheet) return [];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+    const firstRow = rows[0] || {};
+    return Object.keys(firstRow)
+      .map((header) => {
+        const match = normalizeWorkbookText(header).match(/(\d+)\s*(?:-|–|—|to)\s*(\d+)\s*pax/i);
+        if (!match) return null;
+        const minPax = Number(match[1]);
+        const maxPax = Number(match[2]);
+        if (!Number.isInteger(minPax) || !Number.isInteger(maxPax) || minPax < 1 || maxPax < minPax) return null;
+        return { key: header, label: normalizeWorkbookText(header), minPax, maxPax };
+      })
+      .filter((entry): entry is LegacyMatrixPaxColumn => entry !== null);
+  }
+
+  private async processLegacyMatrixWorkbook(
+    file: { buffer?: Buffer; path?: string; originalname?: string },
+    workbook: XLSX.WorkBook,
+    sheetName: string,
+    mode: TouringWorkbookMode,
+  ) {
+    const sheet = workbook.Sheets[sheetName];
+    const paxColumns = this.getLegacyMatrixPaxColumns(sheet);
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
+    const warnings: TouringWorkbookIssue[] = [];
+    const errors: TouringWorkbookIssue[] = [];
+    const normalizedRows = rawRows.map((row, index) => ({ raw: row, normalized: this.normalizeRawWorkbookRow(row), rowNumber: index + 2 }));
+    const routeCodes = Array.from(
+      new Set(
+        normalizedRows
+          .map(({ normalized }) => normalizeCode(normalized.routecode || normalized.tourcode || normalized.variantcode || normalized.code || ''))
+          .filter((code) => code && code !== 'TOURING_ROUTE'),
+      ),
+    );
+    const existingRoutes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: routeCodes } },
+      include: this.include(),
+    });
+    const routesByCode = new Map<string, any>(existingRoutes.map((route: any) => [route.code, route]));
+    const suppliers = await this.prisma.supplier.findMany({ where: { type: { equals: 'transport', mode: 'insensitive' } } });
+    const vehicles = await (this.prisma as any).vehicle.findMany();
+    const suppliersByName = new Map<string, any>(suppliers.map((supplier: any) => [normalizeWorkbookKey(supplier.name), supplier]));
+    const vehiclesByName = new Map<string, any>(vehicles.map((vehicle: any) => [normalizeWorkbookKey(vehicle.name), vehicle]));
+    const vehiclesByType = new Map<string, any[]>();
+    for (const vehicle of vehicles) {
+      const key = normalizeWorkbookKey(vehicle.vehicleType || vehicle.name);
+      if (!vehiclesByType.has(key)) vehiclesByType.set(key, []);
+      vehiclesByType.get(key)?.push(vehicle);
+    }
+    for (const entries of vehiclesByType.values()) {
+      entries.sort((left: any, right: any) => Number(left.maxPax || 999) - Number(right.maxPax || 999));
+    }
+    const existingPricings = await (this.prisma as any).touringRoutePricing.findMany({
+      where: { touringRoute: { code: { in: routeCodes } } },
+      include: { touringRoute: true, supplier: true, vehicle: true },
+    });
+    const parsedRates: ParsedLegacyMatrixRate[] = [];
+    const skippedRows: Array<{ sheet: string; row: number; routeCode: string; sourceColumn?: string; reason: string }> = [];
+    const seenRateKeys = new Set<string>();
+
+    for (const { raw, normalized, rowNumber } of normalizedRows) {
+      const code = normalizeCode(normalized.routecode || normalized.tourcode || normalized.variantcode || normalized.code || '');
+      const route = routesByCode.get(code) as any;
+      const supplierName = normalizeWorkbookText(normalized.suppliername || normalized.supplier || normalized.operator || '');
+      const supplier = (supplierName ? suppliersByName.get(normalizeWorkbookKey(supplierName)) : null) || (suppliers.length === 1 ? suppliers[0] : null);
+      const vehicleCode = normalizeWorkbookText(normalized.vehiclecode || '');
+      const vehicleName = normalizeWorkbookText(normalized.vehiclename || normalized.vehicle || '');
+      const vehicleType = normalizeWorkbookText(normalized.vehicletype || normalized.vehiclecategory || '');
+      const currency = normalizeWorkbookText(normalized.currency || 'JOD').toUpperCase();
+      const pricingBasis = normalizeWorkbookText(normalized.pricingbasis || '').toUpperCase() === 'PER_DAY' ? 'PER_DAY' : 'PER_VEHICLE';
+      const active = parseWorkbookBoolean(normalized.active || normalized.status, true);
+      const notes = normalizeWorkbookText(normalized.notes || 'Legacy touring route matrix import');
+      const validFrom = this.parseOptionalWorkbookDate(normalized.validfrom || normalized.from, 'ValidFrom', warnings, sheetName, rowNumber);
+      const validTo = this.parseOptionalWorkbookDate(normalized.validto || normalized.to, 'ValidTo', warnings, sheetName, rowNumber);
+
+      for (const paxColumn of paxColumns) {
+        const priceErrors: string[] = [];
+        const baseCost = parseWorkbookNumber(raw[paxColumn.key], paxColumn.label, priceErrors, { min: 0 });
+        const vehicle = this.resolveLegacyMatrixVehicle({ vehicleCode, vehicleName, vehicleType, minPax: paxColumn.minPax, maxPax: paxColumn.maxPax, vehiclesByName, vehiclesByType, vehicles });
+        const skipReason =
+          !code || code === 'TOURING_ROUTE'
+            ? 'Route code is required'
+            : !route
+              ? `Route code ${code} does not exist`
+              : baseCost === null || baseCost <= 0
+                ? `Price is empty or zero for ${paxColumn.label}`
+                : !vehicle
+                  ? `Vehicle type cannot be mapped for ${vehicleCode || vehicleName || vehicleType || `${paxColumn.minPax}-${paxColumn.maxPax} pax`}`
+                  : !['USD', 'EUR', 'JOD'].includes(currency)
+                    ? 'Currency must be USD, EUR, or JOD'
+                    : null;
+        const rateKey = [code, supplier?.id || supplierName || 'DEFAULT', vehicle?.id || '', pricingBasis, paxColumn.minPax, paxColumn.maxPax, currency, formatWorkbookDate(validFrom), formatWorkbookDate(validTo)].join('|');
+        const duplicateInWorkbook = !skipReason && seenRateKeys.has(rateKey);
+        if (!skipReason) seenRateKeys.add(rateKey);
+        const exact = existingPricings.find(
+          (pricing: any) =>
+            pricing.touringRoute?.code === code &&
+            (pricing.supplierId || null) === (supplier?.id || null) &&
+            (pricing.vehicleId || null) === (vehicle?.id || null) &&
+            pricing.pricingBasis === pricingBasis &&
+            pricing.minPax === paxColumn.minPax &&
+            pricing.maxPax === paxColumn.maxPax &&
+            pricing.currency === currency &&
+            formatWorkbookDate(pricing.validFrom ? new Date(pricing.validFrom) : null) === formatWorkbookDate(validFrom) &&
+            formatWorkbookDate(pricing.validTo ? new Date(pricing.validTo) : null) === formatWorkbookDate(validTo),
+        );
+        const finalSkipReason = skipReason || (duplicateInWorkbook ? 'Duplicate pricing row in workbook' : null) || (exact ? 'Duplicate existing pricing row' : null);
+        if (finalSkipReason) {
+          skippedRows.push({ sheet: sheetName, row: rowNumber, routeCode: code, sourceColumn: paxColumn.label, reason: finalSkipReason });
+          warnings.push({ sheet: sheetName, row: rowNumber, message: finalSkipReason });
+        }
+        parsedRates.push({
+          row: rowNumber,
+          sourceColumn: paxColumn.label,
+          tourCode: code,
+          supplierName: supplier?.name || supplierName,
+          vehicleCode,
+          vehicleName: vehicle?.name || vehicleName,
+          vehicleType: vehicle?.vehicleType || vehicleType,
+          supplierId: supplier?.id || null,
+          vehicleId: vehicle?.id || null,
+          pricingBasis,
+          minPax: paxColumn.minPax,
+          maxPax: paxColumn.maxPax,
+          currency,
+          baseCost: baseCost || 0,
+          costPerDay: null,
+          includedKm: null,
+          includedHours: null,
+          extraKmRate: null,
+          extraHourRate: null,
+          validFrom,
+          validTo,
+          active,
+          notes,
+          importDecision: finalSkipReason ? 'SKIPPED' : 'NEW',
+          existingPricingId: exact?.id || null,
+          warnings: finalSkipReason ? [finalSkipReason] : [],
+          skipReason: finalSkipReason,
+        });
+      }
+    }
+
+    const creatableRates = parsedRates.filter((rate) => rate.importDecision === 'NEW');
+    const summary = {
+      success: true,
+      mode,
+      importer: 'LEGACY_TOURING_ROUTE_MATRIX',
+      sourceFileName: file.originalname || 'touring-route-matrix.xlsx',
+      routeCount: 0,
+      stopCount: 0,
+      pricingCount: creatableRates.length,
+      rowsToCreate: creatableRates.map((rate) => ({ ...rate, validFrom: formatWorkbookDate(rate.validFrom), validTo: formatWorkbookDate(rate.validTo) })),
+      skippedRows,
+      supplierMapping: { mapped: parsedRates.filter((rate) => rate.supplierId).length, missing: parsedRates.filter((rate) => !rate.supplierId).length },
+      routes: [],
+      stops: [],
+      pricings: parsedRates.map((rate) => ({ ...rate, validFrom: formatWorkbookDate(rate.validFrom), validTo: formatWorkbookDate(rate.validTo) })),
+      errors,
+      warnings,
+      imported: { routes: 0, stops: 0, pricings: 0, updatedRoutes: 0, updatedPricings: 0, skippedOverlaps: 0, skippedRows: skippedRows.length },
+    };
+
+    if (mode === 'preview') return summary;
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const rate of creatableRates) {
+        const route = routesByCode.get(rate.tourCode) as any;
+        if (!route || !rate.vehicleId) continue;
+        await (tx as any).touringRoutePricing.create({
+          data: {
+            touringRouteId: route.id,
+            supplierId: rate.supplierId,
+            vehicleId: rate.vehicleId,
+            pricingBasis: rate.pricingBasis,
+            minPax: rate.minPax,
+            maxPax: rate.maxPax,
+            currency: rate.currency,
+            baseCost: rate.baseCost,
+            costPerDay: null,
+            includedKm: null,
+            includedHours: null,
+            extraKmRate: null,
+            extraHourRate: null,
+            validFrom: rate.validFrom,
+            validTo: rate.validTo,
+            active: rate.active,
+            notes: rate.notes || null,
+          },
+        });
+        summary.imported.pricings += 1;
+      }
+      return summary;
+    });
+  }
+
+  private normalizeRawWorkbookRow(row: Record<string, unknown>) {
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(row)) {
+      normalized[normalizeWorkbookHeader(key)] = normalizeWorkbookText(value);
+    }
+    return normalized;
+  }
+
+  private parseOptionalWorkbookDate(value: unknown, fieldLabel: string, warnings: TouringWorkbookIssue[], sheet: string, row: number) {
+    const raw = value instanceof Date ? value : normalizeWorkbookText(value);
+    if (!raw) return null;
+    const parsed = raw instanceof Date ? raw : new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      warnings.push({ sheet, row, message: `${fieldLabel} must be a valid date; importing without ${fieldLabel}` });
+      return null;
+    }
+    return parsed;
+  }
+
+  private resolveLegacyMatrixVehicle(values: {
+    vehicleCode: string;
+    vehicleName: string;
+    vehicleType: string;
+    minPax: number;
+    maxPax: number;
+    vehiclesByName: Map<string, any>;
+    vehiclesByType: Map<string, any[]>;
+    vehicles: any[];
+  }) {
+    return (
+      (values.vehicleCode ? values.vehiclesByName.get(normalizeWorkbookKey(values.vehicleCode)) : null) ||
+      (values.vehicleName ? values.vehiclesByName.get(normalizeWorkbookKey(values.vehicleName)) : null) ||
+      (values.vehicleType ? (values.vehiclesByType.get(normalizeWorkbookKey(values.vehicleType)) || [])[0] : null) ||
+      values.vehicles
+        .slice()
+        .sort((left: any, right: any) => Number(left.maxPax || 999) - Number(right.maxPax || 999))
+        .find((vehicle: any) => Number(vehicle.maxPax || 0) >= values.maxPax && Number(vehicle.minPax || 1) <= values.minPax) ||
+      null
+    );
   }
 
   private async readWorkbook(file: { buffer?: Buffer; path?: string }) {
