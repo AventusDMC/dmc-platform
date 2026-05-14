@@ -50,6 +50,20 @@ function buildTouringMatrixWorkbookBuffer(rows: Record<string, unknown>[], sheet
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
+function buildTouringMatrixWithPlaceholderNormalizedTabsBuffer(rows: Record<string, unknown>[]) {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ TourCode: '', TourName: '', StartCity: '' }]), 'TOURING_ROUTES');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ TourCode: '', StopOrder: '', City: '' }]), 'TOURING_ROUTE_STOPS');
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.json_to_sheet([{ TourCode: '', SupplierName: '', VehicleType: '', PaxFrom: '', PaxTo: '', Currency: '', BaseCost: '' }]),
+    'TOURING_ROUTE_RATES',
+  );
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ VehicleType: '' }]), 'VEHICLE_TYPES');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'TRANSPORT_MATRIX');
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
+}
+
 async function buildExcelJsTouringWorkbookBuffer(rowCount = 3) {
   const workbook = new ExcelJS.Workbook();
   const routeSheet = workbook.addWorksheet('TOURING_ROUTES');
@@ -556,6 +570,31 @@ test('touring matrix preview routes legacy sheet before normalized required-shee
   assert.equal(preview.workbookMode, 'Legacy Matrix Mode');
   assert.equal(preview.rowsToCreate.length, 1);
   assert.equal(preview.rowsToCreate[0].baseCost, 120);
+  assert.deepEqual(preview.errors, []);
+});
+
+test('touring matrix preview wins when normalized sheets are placeholder-only', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWithPlaceholderNormalizedTabsBuffer([
+    {
+      RouteCode: 'AMM-PET',
+      SupplierName: 'Alpha Transport',
+      Currency: 'JOD',
+      '1-2 Pax': 120,
+      '3-6 Pax': 180,
+    },
+  ]);
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'legacy-with-placeholders.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.equal(preview.importer, 'LEGACY_TOURING_ROUTE_MATRIX');
+  assert.equal(preview.workbookMode, 'Legacy Matrix Mode');
+  assert.equal(preview.rowsToCreate.length, 2);
+  assert.equal(preview.rowsToCreate[0].baseCost, 120);
+  assert.equal(preview.rowsToCreate[1].baseCost, 180);
   assert.deepEqual(preview.errors, []);
 });
 

@@ -350,8 +350,8 @@ export class TouringRoutesService {
     const warnings: TouringWorkbookIssue[] = [];
     stage = 'workbook tab detection';
     this.logWorkbookStage(mode, stage, { sheets: workbook.SheetNames });
-    const hasNormalizedWorkbookSheets = this.hasNormalizedWorkbookSheets(workbook);
-    const legacyMatrixSheet = hasNormalizedWorkbookSheets ? null : this.findLegacyMatrixSheet(workbook);
+    const hasUsableNormalizedWorkbook = this.hasUsableNormalizedWorkbook(workbook);
+    const legacyMatrixSheet = hasUsableNormalizedWorkbook ? null : this.findLegacyMatrixSheet(workbook);
     if (legacyMatrixSheet) {
       return this.processLegacyMatrixWorkbook(file, workbook, legacyMatrixSheet, mode);
     }
@@ -904,9 +904,40 @@ export class TouringRoutesService {
     return workbook.SheetNames.find((sheetName) => this.getLegacyMatrixPaxColumns(workbook.Sheets[sheetName]).length > 0) || null;
   }
 
-  private hasNormalizedWorkbookSheets(workbook: XLSX.WorkBook) {
+  private hasUsableNormalizedWorkbook(workbook: XLSX.WorkBook) {
     const sheetNames = new Set(workbook.SheetNames.map((name) => name.trim().toUpperCase()));
-    return TOURING_WORKBOOK_SHEETS.every((sheetName) => sheetNames.has(sheetName));
+    if (!TOURING_WORKBOOK_SHEETS.every((sheetName) => sheetNames.has(sheetName))) return false;
+
+    const routes = this.readSheetRows<TouringWorkbookRouteRow>(workbook, 'TOURING_ROUTES');
+    const rates = this.readSheetRows<TouringWorkbookRateRow>(workbook, 'TOURING_ROUTE_RATES');
+    return routes.some(({ row }) => this.isUsableNormalizedRouteRow(row)) && rates.some(({ row }) => this.isUsableNormalizedRateRow(row));
+  }
+
+  private isUsableNormalizedRouteRow(row: TouringWorkbookRouteRow) {
+    const code = normalizeCode(row.tourCode || '');
+    return (
+      Boolean(code && code !== 'TOURING_ROUTE' && code !== 'TOURCODE' && code !== 'ROUTECODE' && code !== 'VARIANTCODE') &&
+      Boolean(normalizeWorkbookText(row.tourName)) &&
+      normalizeWorkbookKey(row.tourName) !== 'tourname' &&
+      Boolean(normalizeWorkbookText(row.startCity)) &&
+      normalizeWorkbookKey(row.startCity) !== 'startcity'
+    );
+  }
+
+  private isUsableNormalizedRateRow(row: TouringWorkbookRateRow) {
+    const code = normalizeCode(row.tourCode || '');
+    const paxFrom = Number(normalizeWorkbookText(row.paxFrom));
+    const paxTo = Number(normalizeWorkbookText(row.paxTo));
+    const baseCost = Number(normalizeWorkbookText(row.baseCost));
+    return (
+      Boolean(code && code !== 'TOURING_ROUTE' && code !== 'TOURCODE' && code !== 'ROUTECODE' && code !== 'VARIANTCODE') &&
+      Number.isFinite(paxFrom) &&
+      paxFrom >= 1 &&
+      Number.isFinite(paxTo) &&
+      paxTo >= paxFrom &&
+      Number.isFinite(baseCost) &&
+      baseCost > 0
+    );
   }
 
   private getLegacyMatrixPaxColumns(sheet?: XLSX.WorkSheet): LegacyMatrixPaxColumn[] {
