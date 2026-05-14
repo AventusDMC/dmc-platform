@@ -1,4 +1,5 @@
 import { adminPageFetchJson } from '../lib/admin-server';
+import { TouringRouteArchiveButton } from './TouringRouteArchiveButton';
 import { TouringRouteWorkbookImportPanel } from './TouringRouteWorkbookImportPanel';
 
 type TouringRoute = {
@@ -77,6 +78,7 @@ export async function TouringRoutesSection() {
                   <th>Included</th>
                   <th>Pricing</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -99,6 +101,17 @@ export async function TouringRoutesSection() {
                     <td>{formatPricing(route)}</td>
                     <td>
                       <span className="status-badge">{route.active === false ? 'Inactive' : 'Active'}</span>
+                    </td>
+                    <td>
+                      <div className="table-action-group">
+                        <a className="secondary-button" href={`/transport/touring-routes/${encodeURIComponent(route.id)}`}>
+                          Open
+                        </a>
+                        <a className="secondary-button" href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit`}>
+                          Edit
+                        </a>
+                        <TouringRouteArchiveButton routeId={route.id} disabled={route.active === false} />
+                      </div>
                     </td>
                   </tr>
                 ))}

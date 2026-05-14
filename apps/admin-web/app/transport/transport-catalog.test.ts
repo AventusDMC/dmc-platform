@@ -9,6 +9,9 @@ const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.
 const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkbookSection.tsx', import.meta.url), 'utf8');
 const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
+const touringRouteArchiveButtonSource = readFileSync(new URL('./TouringRouteArchiveButton.tsx', import.meta.url), 'utf8');
+const touringRouteDetailPageSource = readFileSync(new URL('./touring-routes/[id]/page.tsx', import.meta.url), 'utf8');
+const touringRouteEditorSource = readFileSync(new URL('./touring-routes/[id]/TouringRouteEditor.tsx', import.meta.url), 'utf8');
 const touringRouteWorkbookImportPanelSource = readFileSync(new URL('./TouringRouteWorkbookImportPanel.tsx', import.meta.url), 'utf8');
 const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
@@ -567,6 +570,56 @@ describe('transport catalog supplier rate-card UX', () => {
       'includedKm',
       'includedHours',
       'pricingBasis',
+      '<th>Actions</th>',
+      'Open',
+      'Edit',
+      '<TouringRouteArchiveButton',
+    ]);
+  });
+
+  it('lets operators open edit and archive imported touring routes', () => {
+    expectSourceContains(touringRoutesSectionSource, [
+      'href={`/transport/touring-routes/${encodeURIComponent(route.id)}`}',
+      'href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit`}',
+      '<TouringRouteArchiveButton routeId={route.id}',
+    ]);
+
+    expectSourceContains(touringRouteArchiveButtonSource, [
+      "'use client';",
+      'Archive this touring route?',
+      "method: 'PATCH'",
+      'body: JSON.stringify({ active: false })',
+      'router.refresh()',
+      'Delete',
+    ]);
+
+    expectSourceContains(touringRouteDetailPageSource, [
+      'Touring route detail',
+      'Operational circuit inventory',
+      'Route detail',
+      'origin',
+      'Main destinations',
+      'Vehicle pricing',
+      'Supplier mapping pending',
+      'Operational warnings',
+      '?mode=edit#edit',
+      '<TouringRouteEditor route={route} catalogs={catalogs} />',
+    ]);
+
+    expectSourceContains(touringRouteEditorSource, [
+      "'use client';",
+      'Save changes',
+      'Add stop',
+      'Overnight',
+      'Add pricing row',
+      'supplierId',
+      'vehicleId',
+      'transportServiceTypeId',
+      'validFrom',
+      'validTo',
+      'await saveRoute(false)',
+      "fetch(`/api/touring-routes/${encodeURIComponent(route.id)}`",
+      "method: 'PATCH'",
     ]);
   });
 

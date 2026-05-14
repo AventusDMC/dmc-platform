@@ -475,3 +475,32 @@ test('touring workbook import creates touring routes stops and pricing without t
   assert.equal(stores.stops.length, 2);
   assert.equal(stores.pricings.length, 1);
 });
+
+test('touring route update persists edits and archives without hard delete', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const created = await service.create({
+    code: 'PETRA-FD',
+    name: 'Petra Full Day',
+    startCity: 'Amman',
+    durationDays: 1,
+    mainDestinations: ['Petra'],
+    stops: [{ order: 1, city: 'Petra', location: 'Petra Visitor Center' }],
+    pricings: [{ supplierId: 'supplier-1', vehicleId: 'vehicle-1', minPax: 1, maxPax: 3, currency: 'USD', baseCost: 180 }],
+  } as any);
+
+  await service.update(created.id, {
+    name: 'Petra Full Day Updated',
+    durationDays: 2,
+    mainDestinations: ['Petra', 'Wadi Rum'],
+    active: false,
+    stops: [{ order: 1, city: 'Petra', location: 'Petra Visitor Center', notes: 'Overnight stop' }],
+    pricings: [{ supplierId: 'supplier-1', vehicleId: 'vehicle-1', minPax: 1, maxPax: 5, currency: 'USD', baseCost: 220 }],
+  } as any);
+
+  assert.equal(stores.routes.length, 1);
+  assert.equal(stores.routes[0].name, 'Petra Full Day Updated');
+  assert.equal(stores.routes[0].durationDays, 2);
+  assert.equal(stores.routes[0].active, false);
+  assert.deepEqual(stores.routes[0].mainDestinations, ['Petra', 'Wadi Rum']);
+});
