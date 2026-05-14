@@ -417,6 +417,7 @@ export class ExcursionTemplatesService {
       },
     ]))[0];
     this.validateAddedComponentHasLinkedRecord(component);
+    await this.validateUniqueOriginVariant(templateId, component);
 
     await (this.prisma as any).excursionTemplateComponent.create({
       data: {
@@ -502,7 +503,7 @@ export class ExcursionTemplatesService {
       data.touringRouteId !== undefined ||
       data.transportServiceTypeId !== undefined;
     if (catalogReferenceChanged) {
-      await this.validateComponentReferences(nextComponentType, {
+      const nextComponent = {
         ...existingComponent,
         ...data,
         supplierServiceId: data.supplierServiceId === undefined ? existingComponent.supplierServiceId : normalizeOptionalString(data.supplierServiceId),
@@ -513,7 +514,23 @@ export class ExcursionTemplatesService {
           data.transportServiceTypeId === undefined
             ? existingComponent.transportServiceTypeId
             : normalizeOptionalString(data.transportServiceTypeId),
-      }, 0);
+        suggestedDepartureCity:
+          data.suggestedDepartureCity === undefined
+            ? (existingComponent as { suggestedDepartureCity?: string | null }).suggestedDepartureCity
+            : normalizeOptionalString(data.suggestedDepartureCity),
+      };
+      await this.validateComponentReferences(nextComponentType, nextComponent, 0);
+      await this.validateUniqueOriginVariant(templateId, nextComponent, componentId);
+    } else if (data.suggestedDepartureCity !== undefined) {
+      await this.validateUniqueOriginVariant(
+        templateId,
+        {
+          ...existingComponent,
+          ...data,
+          suggestedDepartureCity: normalizeOptionalString(data.suggestedDepartureCity),
+        },
+        componentId,
+      );
     }
 
     await (this.prisma as any).excursionTemplateComponent.update({
@@ -2070,6 +2087,7 @@ export class ExcursionTemplatesService {
         routeId: true,
         touringRouteId: true,
         transportServiceTypeId: true,
+        suggestedDepartureCity: true,
       },
     });
     if (!component) {
@@ -2079,14 +2097,45 @@ export class ExcursionTemplatesService {
   }
 
   private validateAddedComponentHasLinkedRecord(component: ExcursionTemplateComponentInput) {
-    if (component.componentType === 'TRANSPORT' && (!(component.routeId || component.touringRouteId) || !component.transportServiceTypeId)) {
-      throw new BadRequestException('TRANSPORT components must link an existing transfer route or touring route and transport service type');
+    if (component.componentType === 'TRANSPORT') {
+      return;
     }
     if ((component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') && !component.activityId) {
       throw new BadRequestException('ACTIVITY and GUIDE components must link an existing Activity Master record');
     }
     if ((component.componentType === 'TICKET' || component.componentType === 'DINING') && !component.supplierServiceId) {
       throw new BadRequestException('TICKET and DINING components must link an existing service catalog record');
+    }
+  }
+
+  private async validateUniqueOriginVariant(
+    templateId: string,
+    component: Partial<ExcursionTemplateComponentInput> & {
+      id?: string;
+      componentType?: string;
+      touringRouteId?: string | null;
+      suggestedDepartureCity?: string | null;
+    },
+    excludingComponentId?: string,
+  ) {
+    if (component.componentType !== 'TRANSPORT' || !component.touringRouteId || !component.suggestedDepartureCity) {
+      return;
+    }
+
+    const existing = await (this.prisma as any).excursionTemplateComponent.findFirst({
+      where: {
+        templateId,
+        active: { not: false },
+        componentType: 'TRANSPORT',
+        touringRouteId: component.touringRouteId,
+        suggestedDepartureCity: { equals: component.suggestedDepartureCity, mode: 'insensitive' },
+        id: excludingComponentId ? { not: excludingComponentId } : undefined,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Duplicate origin variant: this origin city and touring route variant already exist.');
     }
   }
 

@@ -60,6 +60,26 @@ describe('excursion template admin UI', () => {
     expectSourceContains(petraFullDayPageSource, ['transportType=TOURING_ROUTE&limit=500']);
   });
 
+  it('supports add duplicate remove and persistence controls for origin variants', () => {
+    expectSourceContains(editorSource, [
+      'function addOriginVariant()',
+      'function duplicateOriginVariant(component: ExcursionTemplate[\'components\'][number])',
+      'Origin variant draft',
+      'Add Origin Variant',
+      'Duplicate Variant',
+      "renderComponentControls(component, { removeLabel: 'Remove Variant' })",
+      'routeId: null',
+      'touringRouteId: null',
+      'suggestedDepartureCity: null',
+      'supplierConfirmationRequired: component.supplierConfirmationRequired ?? null',
+      'voucherRequired: component.voucherRequired ?? null',
+      'pickupNotes: component.pickupNotes || null',
+      'operationalDependency: component.operationalDependency || null',
+      'Duplicate origin variant: this origin city and touring route variant already exist.',
+      'router.refresh();',
+    ]);
+  });
+
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {
     expectSourceContains(pageSource, [
       "type ExcursionCatalogTab = 'templates' | 'tariff-workbook';",

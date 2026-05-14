@@ -167,6 +167,7 @@ function hasRouteMovement(component: ExcursionTemplate['components'][number]) {
 function isTouringVariantTransport(component: ExcursionTemplate['components'][number]) {
   if (component.componentType !== 'TRANSPORT') return false;
   if (component.touringRouteId || component.touringRoute || getVariantRouteCode(component)) return true;
+  if (hasTouringTransportServiceType(component) && !component.routeId) return true;
   return hasTouringTransportServiceType(component) && hasRouteMovement(component);
 }
 
@@ -347,6 +348,12 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       ]),
     [activeComponents, catalogs.touringRoutes],
   );
+  const defaultOriginTransportServiceTypeId =
+    originVariantComponents.find((component) => component.transportServiceTypeId || component.transportServiceType?.id)?.transportServiceTypeId ||
+    originVariantComponents.find((component) => component.transportServiceTypeId || component.transportServiceType?.id)?.transportServiceType?.id ||
+    catalogs.transportServiceTypes.find((entry) => TOURING_TRANSPORT_CLASSIFICATIONS.has(String(entry.classification || entry.code || '').toUpperCase()))?.id ||
+    catalogs.transportServiceTypes[0]?.id ||
+    '';
 
   async function mutate(url: string, init: RequestInit, fallback: string) {
     setError('');
@@ -455,6 +462,21 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     const selectedActivity = catalogs.activities.find((activity) => activity.id === nextActivityId);
     const selectedService = catalogs.services.find((service) => service.id === nextSupplierServiceId);
     const nextLabel = selectedTouringRoute?.name || selectedRoute?.name || selectedActivity?.name || selectedService?.name || component.label;
+    const nextOriginCity = String(formData.get('originCity') || '');
+
+    if (
+      component.componentType === 'TRANSPORT' &&
+      nextTouringRouteId &&
+      originVariantComponents.some(
+        (entry) =>
+          entry.id !== component.id &&
+          (entry.touringRouteId || entry.touringRoute?.id) === nextTouringRouteId &&
+          getOriginVariantStartCity(entry).trim().toLowerCase() === nextOriginCity.trim().toLowerCase(),
+      )
+    ) {
+      setError('Duplicate origin variant: this origin city and touring route variant already exist.');
+      return;
+    }
 
     void mutate(
       `/api/excursion-templates/${template.id}/components/${component.id}`,
@@ -464,7 +486,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
         body: JSON.stringify({
           label: nextLabel,
           isOptional: nextIsOptional,
-          suggestedDepartureCity: formData.get('originCity'),
+          suggestedDepartureCity: nextOriginCity,
           routeId: component.componentType === 'TRANSPORT' ? nextRouteId || null : null,
           touringRouteId: component.componentType === 'TRANSPORT' ? nextTouringRouteId || null : null,
           transportServiceTypeId: component.componentType === 'TRANSPORT' ? formData.get('transportServiceTypeId') || null : null,
@@ -592,6 +614,56 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
+  function addOriginVariant() {
+    void mutate(
+      `/api/excursion-templates/${template.id}/components`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          componentType: 'TRANSPORT',
+          label: 'Origin variant draft',
+          isOptional: false,
+          transportServiceTypeId: defaultOriginTransportServiceTypeId || null,
+          routeId: null,
+          touringRouteId: null,
+          suggestedDepartureCity: null,
+          operationalNotes: '',
+        }),
+      },
+      'Could not add origin variant.',
+    );
+  }
+
+  function duplicateOriginVariant(component: ExcursionTemplate['components'][number]) {
+    void mutate(
+      `/api/excursion-templates/${template.id}/components`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          componentType: 'TRANSPORT',
+          label: `${component.label || 'Origin variant'} Copy`,
+          isOptional: component.isOptional,
+          transportServiceTypeId: component.transportServiceTypeId || component.transportServiceType?.id || null,
+          routeId: null,
+          touringRouteId: null,
+          suggestedDepartureCity: null,
+          suggestedArrivalCity: component.suggestedArrivalCity || null,
+          durationMinutes: component.durationMinutes ?? null,
+          estimatedDurationMinutes: component.estimatedDurationMinutes ?? null,
+          requiredArrivalTime: component.requiredArrivalTime || null,
+          supplierConfirmationRequired: component.supplierConfirmationRequired ?? null,
+          voucherRequired: component.voucherRequired ?? null,
+          pickupNotes: component.pickupNotes || null,
+          operationalDependency: component.operationalDependency || null,
+          operationalNotes: component.operationalNotes || null,
+        }),
+      },
+      'Could not duplicate origin variant.',
+    );
+  }
+
   function renderComponentOperationsForm(component: ExcursionTemplate['components'][number]) {
     return (
       <form action={(formData) => saveComponentOperations(component.id, formData)} className="form-field-stack">
@@ -636,7 +708,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     );
   }
 
-  function renderComponentControls(component: ExcursionTemplate['components'][number]) {
+  function renderComponentControls(component: ExcursionTemplate['components'][number], options: { removeLabel?: string } = {}) {
     const componentIndex = activeComponents.findIndex((entry) => entry.id === component.id);
 
     return (
@@ -653,7 +725,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
           Down
         </button>
         <button type="button" className="secondary-button" disabled={isSaving} onClick={() => removeComponent(component.id)}>
-          Remove
+          {options.removeLabel || 'Remove'}
         </button>
       </div>
     );
@@ -848,13 +920,15 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
           <p className="form-helper">Fills only blank operational fields with safe defaults. Existing values and pricing are preserved.</p>
         </div>
 
-        {originVariantComponents.length > 0 ? (
-          <section className="excursion-component-section">
+        <section className="excursion-component-section">
             <div className="workspace-section-head">
               <div>
                 <h4>Origin Variants</h4>
                 <p>Transport variants grouped by origin so this remains one excursion with multiple pickup markets.</p>
               </div>
+              <button type="button" className="secondary-button" disabled={isSaving} onClick={addOriginVariant}>
+                Add Origin Variant
+              </button>
             </div>
             <div className="table-scroll">
               <table className="data-table">
@@ -869,6 +943,13 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                   </tr>
                 </thead>
                 <tbody>
+                  {originVariantComponents.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>
+                        <p className="form-helper">No origin variants yet. Add a blank origin variant, then choose its origin city and touring route variant.</p>
+                      </td>
+                    </tr>
+                  ) : null}
                   {originVariantComponents.map((component) => {
                     const warnings = getInventoryWarnings(component);
                     return (
@@ -908,7 +989,10 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                                 Open route
                               </Link>
                             ) : null}
-                            {renderComponentControls(component)}
+                            <button type="button" className="secondary-button" disabled={isSaving} onClick={() => duplicateOriginVariant(component)}>
+                              Duplicate Variant
+                            </button>
+                            {renderComponentControls(component, { removeLabel: 'Remove Variant' })}
                           </div>
                         </td>
                       </tr>
@@ -918,7 +1002,6 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
               </table>
             </div>
           </section>
-        ) : null}
 
         {otherTransportComponents.length > 0 ? (
           <section className="excursion-component-section">

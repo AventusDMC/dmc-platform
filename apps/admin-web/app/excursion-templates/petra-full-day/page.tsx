@@ -18,7 +18,7 @@ async function getPetraFullDayTemplate() {
 async function getCatalogs(): Promise<ExcursionTemplateCatalogs> {
   const [routes, touringRoutes, transportServiceTypes, activities, services] = await Promise.all([
     adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes', 'Petra route catalog', { cache: 'no-store' }),
-    adminPageFetchJson<ExcursionTemplateCatalogs['touringRoutes']>('/api/touring-routes?active=true&limit=200', 'Petra touring route catalog', {
+    adminPageFetchJson<ExcursionTemplateCatalogs['touringRoutes']>('/api/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500', 'Petra touring route catalog', {
       cache: 'no-store',
     }),
     adminPageFetchJson<ExcursionTemplateCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Petra transport type catalog', {

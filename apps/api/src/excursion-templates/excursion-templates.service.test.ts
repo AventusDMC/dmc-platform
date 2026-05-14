@@ -1076,6 +1076,69 @@ test('add component links existing catalog records and appends to active sequenc
   assert.equal(createdComponent.estimatedDurationMinutes, 90);
 });
 
+test('origin variant components can be added as drafts and reject duplicate origin route pairs', async () => {
+  let createdComponent: any;
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      findUnique: async ({ where }: any) => ({
+        id: where.id,
+        components: [{ id: 'component-existing', active: true }],
+      }),
+    },
+    excursionTemplateComponent: {
+      create: async ({ data }: any) => {
+        createdComponent = data;
+        return { id: 'component-new', ...data };
+      },
+      findFirst: async ({ where }: any) => {
+        if (where.id) {
+          return {
+            id: where.id,
+            componentType: 'TRANSPORT',
+            touringRouteId: 'touring-route-amman',
+            transportServiceTypeId: 'transport-full-day',
+            suggestedDepartureCity: 'Amman',
+          };
+        }
+        if (where.touringRouteId === 'touring-route-amman' && where.suggestedDepartureCity?.equals === 'Amman') {
+          return { id: 'component-duplicate' };
+        }
+        return null;
+      },
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+    },
+  });
+
+  await service.addComponent('template-1', {
+    componentType: 'TRANSPORT',
+    label: 'Origin variant draft',
+    isOptional: false,
+    transportServiceTypeId: 'transport-full-day',
+  });
+
+  assert.equal(createdComponent.templateId, 'template-1');
+  assert.equal(createdComponent.componentType, 'TRANSPORT');
+  assert.equal(createdComponent.transportServiceTypeId, 'transport-full-day');
+  assert.equal(createdComponent.touringRouteId, undefined);
+  assert.equal(createdComponent.sortOrder, 1);
+
+  await assert.rejects(
+    () =>
+      service.updateComponent('template-1', 'component-current', {
+        touringRouteId: 'touring-route-amman',
+        suggestedDepartureCity: 'Amman',
+      }),
+    (error: unknown) => error instanceof BadRequestException && /Duplicate origin variant/.test((error as Error).message),
+  );
+});
+
 test('Sindbad Aqaba ensure creates Activity Master records with confirmed supplier variant pricing', async () => {
   const createdActivities: any[] = [];
   const createdTemplates: any[] = [];
