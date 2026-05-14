@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { QuotesService } from './quotes.service';
 import { QuotePricingService } from './quote-pricing.service';
 
@@ -266,4 +267,20 @@ test('expands only the selected excursion origin variant with touring route pric
   assert.equal(createdPayloads[1].transportVehicleId, 'vehicle-van');
   assert.equal(createdPayloads[1].overrideCost, 180);
   assert.match(createdPayloads[1].overrideReason, /Excursion template: Petra Full Day/);
+  assert.match(createdPayloads[1].overrideReason, /Origin: Dead Sea/);
+});
+
+test('quote itinerary reload includes touring route details for excursion origin variants', () => {
+  const source = readFileSync(`${process.cwd()}/src/quotes/quotes.service.ts`, 'utf8');
+
+  assert.match(
+    source,
+    /quoteService:\s*\{\s*include:\s*\{[\s\S]*?touringRoute:\s*\{\s*include:\s*\{\s*stops:/,
+    'quote itinerary day quoteService include must hydrate touringRoute for human-readable origin variant rendering after reload',
+  );
+  assert.match(
+    source,
+    /return\s*\{\s*data:\s*\{[\s\S]*?touringRouteId:[\s\S]*?include:\s*\{[\s\S]*?touringRoute:\s*\{\s*include:\s*\{\s*stops:/,
+    'newly created excursion quote items must return touringRoute details for immediate rendering',
+  );
 });

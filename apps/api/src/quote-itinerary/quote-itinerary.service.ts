@@ -54,6 +54,7 @@ export class QuoteItineraryService {
                     serviceType: true,
                   },
                 },
+                touringRoute: true,
               },
             },
           },
@@ -391,6 +392,7 @@ export class QuoteItineraryService {
                     serviceType: true,
                   },
                 },
+                touringRoute: true,
               },
             },
           },
@@ -427,6 +429,7 @@ export class QuoteItineraryService {
                 serviceType: true,
               },
             },
+            touringRoute: true,
           },
         },
       },
@@ -454,6 +457,7 @@ export class QuoteItineraryService {
             serviceType: true,
           },
         },
+        touringRoute: true,
       },
     });
 
@@ -692,6 +696,7 @@ export class QuoteItineraryService {
       nightCount: quoteService.nightCount,
       dayCount: quoteService.dayCount,
       pricingDescription: quoteService.pricingDescription,
+      overrideReason: quoteService.overrideReason ?? null,
       reconfirmationRequired: quoteService.reconfirmationRequired,
       reconfirmationDueAt: quoteService.reconfirmationDueAt,
       service: quoteService.service
@@ -729,6 +734,13 @@ export class QuoteItineraryService {
             id: quoteService.roomCategory.id,
             name: quoteService.roomCategory.name,
             code: quoteService.roomCategory.code,
+          }
+        : null,
+      touringRoute: quoteService.touringRoute
+        ? {
+            id: quoteService.touringRoute.id,
+            name: quoteService.touringRoute.name,
+            startCity: quoteService.touringRoute.startCity,
           }
         : null,
       appliedVehicleRate: quoteService.appliedVehicleRate

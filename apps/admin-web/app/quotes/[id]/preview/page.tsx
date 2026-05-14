@@ -6,6 +6,7 @@ import { getItineraryDayDisplay } from '../../../lib/itineraryDayDisplay';
 import { getValidatedTripSummary } from '../../../lib/tripSummary';
 import { getAutoItineraryDayCount } from '../QuoteAutoItineraryBuilder.logic';
 import { QuoteHotelOptionSummary, type ProposalReadyQuoteOption } from '../QuoteHotelOptionSummary';
+import { getQuoteItemOriginAwareExcursionName } from '../excursion-origin-display';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../../lib/admin-server';
 
@@ -64,6 +65,7 @@ type QuoteItem = {
   quantity: number;
   baseCost: number;
   overrideCost: number | null;
+  overrideReason?: string | null;
   useOverride: boolean;
   unitCost?: number;
   currency: string;
@@ -83,6 +85,11 @@ type QuoteItem = {
     serviceType: {
       name: string;
     };
+  } | null;
+  touringRoute?: {
+    id?: string;
+    name?: string | null;
+    startCity?: string | null;
   } | null;
   hotel: {
     name: string;
@@ -342,6 +349,14 @@ function getItemSummary(item: QuoteItem) {
 function getItemDisplayTitle(item: QuoteItem) {
   if (item.hotel && item.contract && item.seasonName && item.roomCategory && item.occupancyType && item.mealPlan) {
     return `${item.hotel.name} | ${item.contract.name} | ${item.seasonName} | ${item.roomCategory.name} | ${item.occupancyType} / ${item.mealPlan}`;
+  }
+
+  if (item.touringRoute) {
+    return getQuoteItemOriginAwareExcursionName({
+      serviceName: item.service.name,
+      overrideReason: item.overrideReason,
+      touringRoute: item.touringRoute,
+    });
   }
 
   return item.service.name;

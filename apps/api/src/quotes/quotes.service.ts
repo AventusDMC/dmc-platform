@@ -34,6 +34,7 @@ import { PromotionsService } from '../promotions/promotions.service';
 import { TransportPricingService } from '../transport-pricing/transport-pricing.service';
 import { normalizeRouteName } from '../routes/route-normalization';
 import { buildProposalPricingViewModel } from './proposal-pricing';
+import { formatOriginAwareExcursionName } from './excursion-origin-display';
 import { ProposalV2Document, ProposalV2Renderer, ProposalV2ServiceGroup, ProposalV2ServiceItem } from './proposal-v2.renderer';
 import { QuotePricingService } from './quote-pricing.service';
 import { calculateMultiCurrencyQuoteItemPricing } from './multi-currency-pricing';
@@ -702,6 +703,14 @@ export class QuotesService {
                       supplier: true,
                     },
                   },
+                  touringRoute: true,
+                  touringRoutePricing: {
+                    include: {
+                      supplier: true,
+                      vehicle: true,
+                      transportServiceType: true,
+                    },
+                  },
                 },
               },
             },
@@ -775,6 +784,7 @@ export class QuotesService {
                   serviceChargeIncluded: Boolean((item.quoteService as any).serviceChargeIncluded),
                   tourismFeeAmount: (item.quoteService as any).tourismFeeAmount ?? null,
                   tourismFeeMode: (item.quoteService as any).tourismFeeMode ?? null,
+                  overrideReason: item.quoteService.overrideReason ?? null,
                   service: item.quoteService.service
                     ? {
                         name: item.quoteService.service.name,
@@ -797,6 +807,12 @@ export class QuotesService {
                     ? {
                         name: item.quoteService.roomCategory.name,
                         code: item.quoteService.roomCategory.code,
+                      }
+                    : null,
+                  touringRoute: item.quoteService.touringRoute
+                    ? {
+                        name: item.quoteService.touringRoute.name,
+                        startCity: item.quoteService.touringRoute.startCity,
                       }
                     : null,
                   appliedVehicleRate: item.quoteService.appliedVehicleRate
@@ -3479,6 +3495,7 @@ export class QuotesService {
           overrideCost: Number(selectedPricing.baseCost || 0),
           overrideReason: [
             values.template.name ? `Excursion template: ${values.template.name}` : null,
+            values.component.touringRoute?.startCity ? `Origin: ${values.component.touringRoute.startCity}` : null,
             'Excursion origin variant pricing',
             values.component.touringRoute?.name,
             selectedPricing.vehicle?.name,
@@ -5372,6 +5389,7 @@ export class QuotesService {
             : pricingDescription,
         appliedVehicleRateId,
         touringRouteId: data.touringRouteId === undefined ? undefined : data.touringRouteId || null,
+        touringRoutePricingId: data.touringRoutePricingId === undefined ? undefined : data.touringRoutePricingId || null,
         entranceFeeId,
         jordanPassCovered,
         jordanPassSavingsJod,
@@ -5403,6 +5421,18 @@ export class QuotesService {
             vehicle: true,
             serviceType: true,
             supplier: true,
+          },
+        },
+        touringRoute: {
+          include: {
+            stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+          },
+        },
+        touringRoutePricing: {
+          include: {
+            supplier: true,
+            vehicle: true,
+            transportServiceType: true,
           },
         },
       },
@@ -8689,8 +8719,20 @@ export class QuotesService {
         } | null;
         appliedVehicleRate?: {
           vehicle?: {
+            id?: string | null;
             supplierId?: string | null;
             supplierName?: string | null;
+          } | null;
+        } | null;
+        touringRoutePricing?: {
+          supplierId?: string | null;
+          vehicleId?: string | null;
+          supplier?: {
+            name?: string | null;
+          } | null;
+          vehicle?: {
+            id?: string | null;
+            name?: string | null;
           } | null;
         } | null;
       }>;
@@ -8821,6 +8863,7 @@ export class QuotesService {
           totalSell,
           supplierId,
           supplierName,
+          vehicleId: item.touringRoutePricing?.vehicleId || item.touringRoutePricing?.vehicle?.id || item.appliedVehicleRate?.vehicle?.id || null,
           status: hasResolvedOperationalData ? BookingServiceLifecycleStatus.ready : BookingServiceLifecycleStatus.pending,
           confirmationStatus: BookingServiceStatus.pending,
           confirmationNumber: null,
@@ -8888,11 +8931,16 @@ export class QuotesService {
     } | null;
     appliedVehicleRate?: {
       vehicle?: {
+        id?: string | null;
         supplierId?: string | null;
       } | null;
     } | null;
+    touringRoutePricing?: {
+      supplierId?: string | null;
+    } | null;
   }) {
     return (
+      item.touringRoutePricing?.supplierId?.trim() ||
       item.service?.supplierId?.trim() ||
       item.hotel?.supplierId?.trim() ||
       item.appliedVehicleRate?.vehicle?.supplierId?.trim() ||
@@ -8912,8 +8960,14 @@ export class QuotesService {
         supplierName?: string | null;
       } | null;
     } | null;
+    touringRoutePricing?: {
+      supplier?: {
+        name?: string | null;
+      } | null;
+    } | null;
   }) {
     return (
+      item.touringRoutePricing?.supplier?.name?.trim() ||
       item.service?.supplierName?.trim() ||
       item.hotel?.supplierName?.trim() ||
       item.appliedVehicleRate?.vehicle?.supplierName?.trim() ||
@@ -9370,6 +9424,13 @@ export class QuotesService {
               stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
             },
           },
+          touringRoutePricing: {
+            include: {
+              supplier: true,
+              vehicle: true,
+              transportServiceType: true,
+            },
+          },
         },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }] as any,
       }), [] as any[]),
@@ -9424,6 +9485,18 @@ export class QuotesService {
                       supplier: true,
                     },
                   },
+                  touringRoute: {
+                    include: {
+                      stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+                    },
+                  },
+                  touringRoutePricing: {
+                    include: {
+                      supplier: true,
+                      vehicle: true,
+                      transportServiceType: true,
+                    },
+                  },
                 },
               },
             },
@@ -9471,6 +9544,13 @@ export class QuotesService {
               touringRoute: {
                 include: {
                   stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+                },
+              },
+              touringRoutePricing: {
+                include: {
+                  supplier: true,
+                  vehicle: true,
+                  transportServiceType: true,
                 },
               },
             },
@@ -12502,6 +12582,18 @@ export class QuotesService {
           item.occupancyType ? `Occupancy ${String(item.occupancyType).toUpperCase()}` : null,
         ].filter(Boolean).join(' · ') || 'Accommodation details to be confirmed.',
         meta: item.contract?.name ? `Contract ${this.cleanAccommodationCell(item.contract.name)}` : null,
+      };
+    }
+
+    if (this.isTransportService(item.service) && item.touringRoute) {
+      return {
+        title: this.cleanProposalText(formatOriginAwareExcursionName({
+          serviceName: item.service.name,
+          overrideReason: item.overrideReason,
+          touringRoute: item.touringRoute,
+        })) || 'Excursion',
+        description: this.cleanProposalText(item.touringRoute.name || '') || 'Touring route',
+        meta: this.buildProposalV2OperationalMeta(item),
       };
     }
 

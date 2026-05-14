@@ -11,6 +11,7 @@ import {
   ProposalV3QuotePlannerDay,
   ProposalV3ViewModel,
 } from './proposal-v3.types';
+import { formatOriginAwareExcursionName } from './excursion-origin-display';
 
 const INVALID_TEXT_PATTERNS = [
   /\bimported itinerary\b/i,
@@ -685,7 +686,13 @@ function buildDayGroups(day: ProposalV3Quote['itineraries'][number], dayItems: P
     const items = grouped.get(groupLabel) || [];
     const rawTitle = isExternalPackageItem(item)
       ? cleanText(item.externalPackageCountry || item.service.name || '')
-      : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
+      : item.touringRoute
+        ? cleanText(formatOriginAwareExcursionName({
+            serviceName: item.service.name,
+            overrideReason: item.overrideReason,
+            touringRoute: item.touringRoute,
+          }))
+        : cleanText(item.hotel?.name || item.appliedVehicleRate?.routeName || item.service.name || '');
     const importedDescription = extractImportedDescription(item);
     const activityDescription = getClientSafeActivityDescription(item);
     let description =

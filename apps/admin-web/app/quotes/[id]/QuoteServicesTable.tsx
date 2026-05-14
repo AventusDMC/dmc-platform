@@ -12,6 +12,7 @@ import { RouteOption } from '../../lib/routes';
 import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
+import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
 
 type SupplierService = {
   id: string;
@@ -172,6 +173,14 @@ type QuoteItem = {
       id?: string | null;
       name?: string | null;
     } | null;
+  } | null;
+  touringRoute?: {
+    id: string;
+    name: string;
+    startCity: string;
+    durationDays?: number | null;
+    mainDestinations?: string[] | null;
+    stops?: Array<{ city?: string | null; location?: string | null }>;
   } | null;
   hotel: {
     name: string;
@@ -367,6 +376,14 @@ function getHotelItemSummary(item: Pick<QuoteItem, 'hotel' | 'contract' | 'seaso
 }
 
 function getQuoteItemServiceDisplayName(item: QuoteItem) {
+  if (item.touringRoute) {
+    return getQuoteItemOriginAwareExcursionName({
+      serviceName: item.service?.name,
+      overrideReason: item.overrideReason,
+      touringRoute: item.touringRoute,
+    });
+  }
+
   if (item.appliedVehicleRate?.serviceType?.name) {
     return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);
   }

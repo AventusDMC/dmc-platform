@@ -1,3 +1,5 @@
+import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
+
 type QuoteSummaryItem = {
   id: string;
   itineraryId?: string | null;
@@ -10,6 +12,11 @@ type QuoteSummaryItem = {
     name: string;
     category?: string | null;
   };
+  overrideReason?: string | null;
+  touringRoute?: {
+    name?: string | null;
+    startCity?: string | null;
+  } | null;
 };
 
 type QuoteSummaryPanelProps = {
@@ -101,6 +108,14 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
   const marginPercent = safeTotalSell > 0 ? (profit / safeTotalSell) * 100 : 0;
   const pricePerPax = safePax > 0 ? safeTotalSell / safePax : 0;
   const groupedItems = groupItemsByDay(items);
+  const getDisplayName = (item: QuoteSummaryItem) =>
+    item.touringRoute
+      ? getQuoteItemOriginAwareExcursionName({
+          serviceName: item.service.name,
+          overrideReason: item.overrideReason,
+          touringRoute: item.touringRoute,
+        })
+      : item.service.name;
 
   return (
     <article className="detail-card quote-commercial-summary-panel">
@@ -180,7 +195,7 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
 
                       return (
                         <div key={item.id}>
-                          <span>{item.service.name}</span>
+                          <span>{getDisplayName(item)}</span>
                           <strong>{formatMoney(itemCost, item.currency || currency || 'USD')}</strong>
                           <em>{formatMoney(itemSell, item.currency || currency || 'USD')} sell</em>
                         </div>
@@ -229,7 +244,7 @@ export function QuoteSummaryPanel({ items, totalCost, totalSell, pax, currency =
                   <div className="quote-client-sell-list">
                     {dayItems.map((item) => (
                       <div key={item.id}>
-                        <span>{item.service.name}</span>
+                        <span>{getDisplayName(item)}</span>
                         <strong>{formatMoney(Number(item.totalSell ?? 0), item.currency || currency || 'USD')}</strong>
                       </div>
                     ))}

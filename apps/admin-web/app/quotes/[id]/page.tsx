@@ -364,6 +364,7 @@ type QuoteItem = {
   baseSell?: number | null;
   finalCost?: number | null;
   overrideCost: number | null;
+  overrideReason?: string | null;
   markupAmount?: number | null;
   sellPrice?: number | null;
   useOverride: boolean;
@@ -410,6 +411,14 @@ type QuoteItem = {
       id?: string | null;
       name?: string | null;
     } | null;
+  } | null;
+  touringRoute?: {
+    id: string;
+    name: string;
+    startCity: string;
+    durationDays?: number | null;
+    mainDestinations?: string[] | null;
+    stops?: Array<{ city?: string | null; location?: string | null }>;
   } | null;
   hotel: {
     name: string;
@@ -1049,6 +1058,7 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     baseSell: item?.baseSell ?? null,
     finalCost: item?.finalCost ?? null,
     overrideCost: item?.overrideCost ?? null,
+    overrideReason: item?.overrideReason ?? null,
     markupAmount: item?.markupAmount ?? null,
     sellPrice: item?.sellPrice ?? null,
     useOverride: Boolean(item?.useOverride),
@@ -1108,6 +1118,16 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
                 name: item.appliedVehicleRate.supplier.name || null,
               }
             : null,
+        }
+      : null,
+    touringRoute: item?.touringRoute
+      ? {
+          id: item.touringRoute.id,
+          name: item.touringRoute.name,
+          startCity: item.touringRoute.startCity,
+          durationDays: item.touringRoute.durationDays ?? null,
+          mainDestinations: Array.isArray(item.touringRoute.mainDestinations) ? item.touringRoute.mainDestinations : [],
+          stops: Array.isArray(item.touringRoute.stops) ? item.touringRoute.stops : [],
         }
       : null,
     hotel: item?.hotel ? { name: item.hotel.name } : null,

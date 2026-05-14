@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
-const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'JOD', 'ILS'] as const;
-const SUPPORTED_CURRENCY_MESSAGE = 'USD, EUR, JOD, or ILS';
+const SUPPORTED_CURRENCIES = ['USD', 'JOD', 'EUR', 'AED', 'SAR', 'ILS', 'EGP'] as const;
+const SUPPORTED_CURRENCY_MESSAGE = 'USD, JOD, EUR, AED, SAR, ILS, or EGP';
 
 export function normalizeOptionalString(value?: string | null) {
   if (value === undefined) {

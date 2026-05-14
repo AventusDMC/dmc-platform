@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 export type ExcursionTariffWorkbookRow = {
   id: string;
   activityName: string;
+  originCity?: string | null;
   variant: string;
   category: string;
   cityRegion: string;
@@ -36,6 +37,21 @@ const WORKBOOK_COLUMNS: Array<{ key: keyof ExcursionTariffWorkbookRow; label: st
   { key: 'operationalNotes', label: 'Operational notes', className: 'excursion-tariff-workbook-cell-wide' },
   { key: 'status', label: 'Active / inactive' },
 ];
+
+export function getExcursionTariffDisplayName(row: Pick<ExcursionTariffWorkbookRow, 'activityName' | 'originCity'>) {
+  return row.originCity?.trim() ? `${row.activityName} — From ${row.originCity.trim()}` : row.activityName;
+}
+
+export function buildExcursionTariffCsvRows(rows: ExcursionTariffWorkbookRow[]) {
+  return [
+    WORKBOOK_COLUMNS.map((column) => column.label),
+    ...rows.map((row) =>
+      WORKBOOK_COLUMNS.map((column) =>
+        column.key === 'activityName' ? getExcursionTariffDisplayName(row) : String(row[column.key] ?? ''),
+      ),
+    ),
+  ];
+}
 
 function csvEscape(value: string) {
   if (/[",\n\r]/.test(value)) {
@@ -79,10 +95,7 @@ export function ExcursionTariffWorkbookGrid({ rows }: ExcursionTariffWorkbookGri
   }
 
   function exportWorkbook() {
-    downloadCsv('excursion-tariff-workbook.csv', [
-      WORKBOOK_COLUMNS.map((column) => column.label),
-      ...workbookRows.map((row) => WORKBOOK_COLUMNS.map((column) => String(row[column.key] ?? ''))),
-    ]);
+    downloadCsv('excursion-tariff-workbook.csv', buildExcursionTariffCsvRows(workbookRows));
   }
 
   function exportImportTemplate() {
@@ -144,7 +157,7 @@ export function ExcursionTariffWorkbookGrid({ rows }: ExcursionTariffWorkbookGri
                   <td key={column.key} className={column.className}>
                     <input
                       aria-label={`${column.label} for ${row.activityName} ${row.variant}`}
-                      value={String(row[column.key] ?? '')}
+                      value={column.key === 'activityName' ? getExcursionTariffDisplayName(row) : String(row[column.key] ?? '')}
                       onChange={(event) => updateCell(row.id, column.key, event.target.value)}
                     />
                   </td>

@@ -175,7 +175,15 @@ function isOriginVariantTransport(component: ExcursionTemplate['components'][num
   return isTouringVariantTransport(component);
 }
 
+function isQuoteReadyOriginVariant(component: ExcursionTemplate['components'][number]) {
+  return component.componentType === 'TRANSPORT' && Boolean(component.touringRouteId && component.touringRoute);
+}
+
 function getComponentStatusLabel(component: ExcursionTemplate['components'][number]) {
+  if (isOriginVariantTransport(component) && !isQuoteReadyOriginVariant(component)) {
+    return 'Draft / Missing touring route';
+  }
+
   return component.active === false ? 'Inactive' : component.isOptional ? 'Optional' : 'Required';
 }
 
@@ -970,6 +978,9 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
                           <span className={component.isOptional ? 'status-pill status-pill-muted' : 'status-pill status-pill-success'}>
                             {getComponentStatusLabel(component)}
                           </span>
+                          {!isQuoteReadyOriginVariant(component) ? (
+                            <p className="form-helper">Link a touring route to make this origin available in quotes.</p>
+                          ) : null}
                         </td>
                         <td>
                           {warnings.length > 0 ? (

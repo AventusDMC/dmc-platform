@@ -166,6 +166,22 @@ describe('activities quote and booking UI integration regression', () => {
     ]);
   });
 
+  it('prefers active activity variants while preserving legacy fallback pricing', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./[id]/QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'const activeActivityRateVariants = useMemo(',
+      '(selectedActivity?.rateVariants || []).filter((variant) => variant.active !== false)',
+      'const hasActivityRateVariants = activeActivityRateVariants.length > 0;',
+      'selectedActivityRateVariant?.currency ||',
+      'selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice',
+      'selectedActivityRateVariant?.sellPrice ?? selectedActivity?.sellPrice',
+      'const activityMaxPaxPerUnit = Number(selectedActivityRateVariant?.maxPaxPerUnit || 0);',
+      'Math.ceil(activityParticipantTotal / activityMaxPaxPerUnit)',
+      "{variant.minPax || variant.maxPax ? ` - pax ${variant.minPax || 1}-${variant.maxPax || 'open'}` : ''}",
+    ]);
+  });
+
   it('classifies entrance consistently as a ticketing experience', () => {
     expectSourceContains(serviceTaxonomySource, [
       "normalized.includes('entrance')",

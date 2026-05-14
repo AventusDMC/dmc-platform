@@ -868,6 +868,58 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
   assert.equal(activity.reconfirmationDueAt, '2026-05-09T18:00:00.000Z');
 });
 
+test('buildBookingServicesFromAcceptedVersion carries touring route pricing supplier and vehicle into booking services', async () => {
+  const service = createQuotesService();
+  const supplierId = '22222222-2222-4222-8222-222222222222';
+
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(
+    {
+      travelStartDate: '2026-05-10T00:00:00.000Z',
+      itineraries: [{ id: 'day-1', dayNumber: 1, serviceDate: '2026-05-10T09:00:00.000Z' }],
+      quoteItems: [
+        {
+          id: 'item-origin-variant',
+          itineraryId: 'day-1',
+          quantity: 1,
+          pricingDescription: 'Petra Full Day | Origin: Dead Sea | Van',
+          totalCost: 180,
+          totalSell: 220,
+          service: {
+            name: 'Petra Full Day',
+            category: 'Transport',
+          },
+          touringRoutePricing: {
+            supplierId,
+            vehicleId: 'vehicle-van',
+            supplier: { name: 'Dead Sea Transport Supplier' },
+            vehicle: { id: 'vehicle-van', name: 'Mercedes Vito' },
+          },
+        },
+      ],
+      adults: 2,
+      children: 0,
+    },
+    {
+      supplier: {
+        findUnique: async ({ where }: any) =>
+          where.id === supplierId
+            ? {
+                id: supplierId,
+                name: 'Dead Sea Transport Supplier',
+              }
+            : null,
+      },
+    },
+  );
+
+  assert.equal(bookingServices.length, 1);
+  assert.equal(bookingServices[0].supplierId, supplierId);
+  assert.equal(bookingServices[0].supplierName, 'Dead Sea Transport Supplier');
+  assert.equal(bookingServices[0].vehicleId, 'vehicle-van');
+  assert.equal(bookingServices[0].operationType, 'TRANSPORT');
+  assert.equal(bookingServices[0].status, 'ready');
+});
+
 test('buildBookingServicesFromAcceptedVersion logs unresolved supplier names without blocking conversion', async () => {
   const service = createQuotesService();
   const originalConsoleWarn = console.warn;

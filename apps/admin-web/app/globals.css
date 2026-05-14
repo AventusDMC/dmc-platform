@@ -17331,6 +17331,16 @@ body {
   min-width: 0;
 }
 
+.quote-origin-variant-panel {
+  display: grid;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+  padding: 0.85rem;
+  border: 1px solid rgba(31, 154, 207, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(240, 249, 255, 0.58);
+}
+
 .quote-template-component-meta {
   display: flex;
   flex-wrap: wrap;

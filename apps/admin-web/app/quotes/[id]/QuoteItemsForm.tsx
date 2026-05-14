@@ -105,12 +105,16 @@ type ActivityCatalogItem = {
 type ActivityRateVariant = {
   id: string;
   name: string;
+  supplierCompanyId?: string | null;
   durationMinutes: number | null;
   pricingBasis: 'PER_PERSON' | 'PER_GROUP';
   currency: string;
   costPrice: number;
   sellPrice: number;
+  minPax?: number | null;
+  maxPax?: number | null;
   maxPaxPerUnit: number | null;
+  capacityPricing?: boolean | null;
   active: boolean;
   notes?: string | null;
 };
@@ -3539,6 +3543,7 @@ export function QuoteItemsForm({
                               {variant.name}
                               {variant.currency ? ` - ${variant.currency}` : ''}
                               {variant.durationMinutes ? ` - ${variant.durationMinutes} min` : ''}
+                              {variant.minPax || variant.maxPax ? ` - pax ${variant.minPax || 1}-${variant.maxPax || 'open'}` : ''}
                               {variant.maxPaxPerUnit ? ` - max ${variant.maxPaxPerUnit} pax/unit` : ''}
                             </option>
                           ))}

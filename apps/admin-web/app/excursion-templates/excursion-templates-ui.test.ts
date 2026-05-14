@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { buildExcursionTariffRowSources, filterExcursionTariffRowSources } from './ExcursionTariffWorkbookSection';
+import { buildExcursionTariffCsvRows } from './ExcursionTariffWorkbookGrid';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const detailPageSource = readFileSync(new URL('./[id]/page.tsx', import.meta.url), 'utf8');
@@ -80,6 +81,16 @@ describe('excursion template admin UI', () => {
     ]);
   });
 
+  it('marks unlinked origin variants as draft instead of quote-ready', () => {
+    expectSourceContains(editorSource, [
+      'function isQuoteReadyOriginVariant',
+      "return 'Draft / Missing touring route';",
+      'Link a touring route to make this origin available in quotes.',
+      'touringRouteId: null',
+      'suggestedDepartureCity: null',
+    ]);
+  });
+
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {
     expectSourceContains(pageSource, [
       "type ExcursionCatalogTab = 'templates' | 'tariff-workbook';",
@@ -153,6 +164,29 @@ describe('excursion template admin UI', () => {
     assert.match(cssSource, /\.excursion-tariff-workbook-table\s*{[\s\S]*?min-width:\s*1480px/);
     assert.match(cssSource, /\.excursion-tariff-workbook-table th\s*{[\s\S]*?position:\s*sticky/);
     assert.match(cssSource, /\.excursion-tariff-workbook-table input\s*{[\s\S]*?white-space:\s*nowrap/);
+  });
+
+  it('exports excursion tariff rows with origin-aware display names when an origin variant exists', () => {
+    const csvRows = buildExcursionTariffCsvRows([
+      {
+        id: 'petra-aqaba',
+        activityName: 'Petra Guided Experience',
+        originCity: 'Aqaba',
+        variant: 'Base rate',
+        category: 'Excursion',
+        cityRegion: 'Petra / South Jordan',
+        supplier: 'Supplier name',
+        pricingBasis: 'PER_PERSON',
+        currency: 'JOD',
+        duration: '4 hr',
+        cost: '0.00',
+        sell: '0.00',
+        operationalNotes: '',
+        status: 'Active',
+      },
+    ]);
+
+    assert.equal(csvRows[1][0], 'Petra Guided Experience — From Aqaba');
   });
 
   it('applies excursion tariff workbook category city supplier pricing basis and active filters', () => {

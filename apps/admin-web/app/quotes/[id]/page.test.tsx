@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal-paths';
+import { formatOriginAwareExcursionName } from './excursion-origin-display';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
@@ -19,6 +20,8 @@ const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSu
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quoteSummaryPanelSource = readFileSync(new URL('./QuoteSummaryPanel.tsx', import.meta.url), 'utf8');
+const quotePreviewPageSource = readFileSync(new URL('./preview/page.tsx', import.meta.url), 'utf8');
+const quoteClientItineraryViewSource = readFileSync(new URL('./view/QuoteClientItineraryView.tsx', import.meta.url), 'utf8');
 const quotePricingTableSource = readFileSync(new URL('./QuotePricingTable.tsx', import.meta.url), 'utf8');
 const quotePassengersPanelSource = readFileSync(new URL('./QuotePassengersPanel.tsx', import.meta.url), 'utf8');
 const quoteRoomingPanelSource = readFileSync(new URL('./QuoteRoomingPanel.tsx', import.meta.url), 'utf8');
@@ -794,6 +797,40 @@ describe('quote detail page regression', () => {
       '.slice(0, maxSuggestions)',
       'const sortedCandidates = getSmartTransportSuggestions(normalizedCandidates, currentPax, 3);',
     ]);
+  });
+
+  it('adds excursion templates with selectable origin variants and touring route pricing', () => {
+    expectSourceContains(quoteServicePlannerSource, [
+      'Origin Variant',
+      'Vehicle / pricing option',
+      'selectedTouringRouteId',
+      'selectedTouringRoutePricingId',
+      'formatOriginAwareExcursionName',
+      'formatExcursionTouringRoutePath',
+      'formatExcursionVariantPricing',
+      'selectedTouringRouteId: selectedOriginVariant?.touringRouteId || null',
+      'selectedTouringRoutePricingId: selectedOriginVariantPricing?.id || null',
+      'Excursion template:',
+      'Departure:',
+      'Route:',
+    ]);
+  });
+
+  it('renders selected excursion origin variants with origin-aware quote labels', () => {
+    assert.equal(
+      formatOriginAwareExcursionName({
+        overrideReason: 'Excursion template: Petra Guided Experience | Excursion origin variant pricing',
+        touringRoute: { name: 'Aqaba Petra Full Day', startCity: 'Aqaba' },
+      }),
+      'Petra Guided Experience — From Aqaba',
+    );
+
+    expectSourceContains(quoteServicePlannerSource, ['getQuoteItemOriginAwareExcursionName', 'formatOriginAwareExcursionName']);
+    expectSourceContains(quoteItemCardSource, ['getQuoteItemOriginAwareExcursionName']);
+    expectSourceContains(quoteSummaryPanelSource, ['getQuoteItemOriginAwareExcursionName']);
+    expectSourceContains(quotePreviewPageSource, ['getQuoteItemOriginAwareExcursionName']);
+    expectSourceContains(quoteClientItineraryViewSource, ['getQuoteItemOriginAwareExcursionName']);
+    expectSourceContains(versionPageSource, ['getQuoteItemOriginAwareExcursionName']);
   });
 
   it('ranks QuoteTransportPicker vehicles by pax without hiding manual overrides', () => {

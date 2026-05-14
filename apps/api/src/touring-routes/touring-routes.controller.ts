@@ -46,10 +46,11 @@ export class TouringRoutesController {
   constructor(private readonly touringRoutesService: TouringRoutesService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('limit') limit?: string) {
+  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('transportType') transportType?: string, @Query('limit') limit?: string) {
     return this.touringRoutesService.findAll({
       search,
       active: active === undefined ? undefined : active !== 'false',
+      transportType,
       limit: limit === undefined ? undefined : Number(limit),
     });
   }

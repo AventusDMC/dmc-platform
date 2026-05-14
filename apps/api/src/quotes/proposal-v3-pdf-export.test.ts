@@ -849,6 +849,37 @@ test('proposal V3 maps active planner guide transport meal activity and entrance
   assert.ok(experienceGroup.items.some((item) => item.title === 'Jerash Entrance Ticket'));
 });
 
+test('proposal V3 renders excursion origin variants with origin-aware titles', () => {
+  const excursionTransportItem = createTransportPdfItem({
+    id: 'excursion-transport-aqaba',
+    appliedVehicleRate: null,
+    service: {
+      name: 'Touring route transport',
+      category: 'Transport',
+      serviceType: { name: 'Transport', code: 'TRANSPORT' },
+    },
+    overrideReason: 'Excursion template: Petra Guided Experience | Origin: Aqaba | Excursion origin variant pricing',
+    touringRoute: {
+      name: 'Aqaba Petra Full Day',
+      startCity: 'Aqaba',
+    },
+  });
+  const proposal = mapQuoteToProposalV3(
+    createPdfQuote({
+      quoteItems: [excursionTransportItem],
+      quoteItineraryDays: [
+        createPlannerDay({
+          dayItems: [createPlannerDayItem(excursionTransportItem, { sortOrder: 1 })],
+        }),
+      ],
+    }),
+  );
+
+  const transferGroup = proposal.days[0].groups.find((group) => group.label === 'Transfer');
+  assert.ok(transferGroup);
+  assert.equal(transferGroup.items[0].title, 'Petra Guided Experience — From Aqaba');
+});
+
 test('proposal V3 falls back to legacy QuoteItem itineraryId mapping when active planner days are absent', () => {
   const proposal = mapQuoteToProposalV3(
     createPdfQuote({

@@ -51,7 +51,7 @@ export async function resolveOperationalSupplier({
   if (normalizedSupplierId || normalizedSupplierName) {
     return {
       supplierId: null,
-      supplierName: normalizedSupplierName,
+      supplierName: normalizedSupplierName || normalizedSupplierId,
       supplierStatus: 'unresolved',
     };
   }

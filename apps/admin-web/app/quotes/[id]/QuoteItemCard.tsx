@@ -9,6 +9,7 @@ import { calculateMarginPercent, calculateProfit, formatMarginPercent, getItemMa
 import { RouteOption } from '../../lib/routes';
 import { formatTransportVehicleDisplay } from '../../lib/transport-vehicles';
 import { QuoteItemsForm } from './QuoteItemsForm';
+import { getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
 import {
   ExternalPackageFormState,
   ExternalPackagePricingBasis,
@@ -367,8 +368,11 @@ function isExternalPackageItem(item: Pick<QuoteItem, 'service'>) {
 
 function getQuoteItemServiceName(item: QuoteItem) {
   if (item.touringRoute) {
-    const templateName = item.overrideReason?.match(/Excursion template:\s*([^|]+)/)?.[1]?.trim();
-    return templateName || item.touringRoute.name;
+    return getQuoteItemOriginAwareExcursionName({
+      serviceName: item.service?.name,
+      overrideReason: item.overrideReason,
+      touringRoute: item.touringRoute,
+    });
   }
 
   if (item.appliedVehicleRate?.serviceType?.name) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { closestCenter, DndContext, type DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
@@ -14,6 +14,7 @@ import { DayNavigation, DrawerPanel } from '../../components/ui';
 import { QuoteAutoItineraryBuilder } from './QuoteAutoItineraryBuilder';
 import { getAutoItineraryDayCount } from './QuoteAutoItineraryBuilder.logic';
 import { QuoteItemCard } from './QuoteItemCard';
+import { formatOriginAwareExcursionName, getQuoteItemOriginAwareExcursionName } from './excursion-origin-display';
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
@@ -312,6 +313,14 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
       id?: string | null;
       name?: string | null;
     } | null;
+  } | null;
+  touringRoute?: {
+    id: string;
+    name: string;
+    startCity: string;
+    durationDays?: number | null;
+    mainDestinations?: string[] | null;
+    stops?: Array<{ city?: string | null; location?: string | null }>;
   } | null;
   contract: {
     name: string;
@@ -798,6 +807,7 @@ function getServiceNotes(item: QuoteItem) {
   return (
     item.externalClientDescription ||
     item.externalPackageCountry ||
+    (item.touringRoute ? formatExcursionTouringRoutePath(item.touringRoute) : null) ||
     item.appliedVehicleRate?.routeName ||
     item.pickupLocation ||
     item.meetingPoint ||
@@ -1024,6 +1034,14 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 }
 
 function getItemServiceName(item: QuoteItem) {
+  if (item.touringRoute) {
+    return getQuoteItemOriginAwareExcursionName({
+      serviceName: item.service?.name,
+      overrideReason: item.overrideReason,
+      touringRoute: item.touringRoute,
+    });
+  }
+
   if (item.appliedVehicleRate?.serviceType?.name) {
     return buildTransportServiceDisplayName(
       item.service?.name || null,
@@ -2162,6 +2180,11 @@ function QuoteServiceCard({
           <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
             {getTransportItemDetailLabel(item)}
             {item.appliedVehicleRate.routeName ? ` | Service Area: ${item.appliedVehicleRate.routeName}` : ''}
+          </p>
+        ) : null}
+        {item.touringRoute ? (
+          <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
+            Departure: {item.touringRoute.startCity} | Route: {formatExcursionTouringRoutePath(item.touringRoute)}
           </p>
         ) : null}
       </div>
@@ -3779,6 +3802,46 @@ function getItineraryDayServiceDate(quote: Quote, day: QuoteReadinessDay) {
   return startDate.toISOString().slice(0, 10);
 }
 
+function formatExcursionTouringRoutePath(route: {
+  name: string;
+  startCity: string;
+  mainDestinations?: string[] | null;
+  stops?: Array<{ city?: string | null; location?: string | null }>;
+}) {
+  const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
+  const stopNames = route.stops?.map((stop) => stop.location || stop.city).filter(Boolean) || [];
+  const routePath = destinations.length > 0 ? destinations : stopNames;
+
+  return routePath.length > 0 ? `${route.startCity} -> ${routePath.join(' -> ')} -> ${route.startCity}` : route.name;
+}
+
+function formatExcursionVariantPricing(pricing: NonNullable<NonNullable<ExcursionTemplate['components'][number]['touringRoute']>['pricings']>[number]) {
+  return [
+    pricing.vehicle?.name || 'Vehicle pending',
+    pricing.pricingBasis || 'Pricing basis pending',
+    `${pricing.currency} ${Number(pricing.baseCost || 0).toFixed(2)}`,
+    pricing.includedHours ? `${pricing.includedHours} hrs` : null,
+    pricing.includedKm ? `${pricing.includedKm} km` : null,
+  ].filter(Boolean).join(' | ');
+}
+
+function formatExcursionVariantDuration(durationDays?: number | null) {
+  const days = Number(durationDays || 0);
+  return days > 0 ? `${days} day${days === 1 ? '' : 's'}` : 'Duration pending';
+}
+
+function isQuoteReadyOriginVariant(component: ExcursionTemplate['components'][number]) {
+  return component.componentType === 'TRANSPORT' && Boolean(component.touringRouteId && component.touringRoute);
+}
+
+function isOriginVariantCandidate(component: ExcursionTemplate['components'][number]) {
+  if (isQuoteReadyOriginVariant(component)) {
+    return true;
+  }
+
+  return component.componentType === 'TRANSPORT' && /origin variant/i.test(component.label || '');
+}
+
 function ExcursionTemplateInsertPanel({
   apiBaseUrl,
   quoteId,
@@ -3799,6 +3862,8 @@ function ExcursionTemplateInsertPanel({
   const router = useRouter();
   const activeTemplates = templates.filter((template) => template.active !== false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || '');
+  const [selectedTouringRouteId, setSelectedTouringRouteId] = useState('');
+  const [selectedTouringRoutePricingId, setSelectedTouringRoutePricingId] = useState('');
   const [selectedOptionalComponentIds, setSelectedOptionalComponentIds] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -3807,10 +3872,50 @@ function ExcursionTemplateInsertPanel({
     .filter((component) => component.active !== false)
     .slice()
     .sort((left, right) => left.sortOrder - right.sortOrder);
+  const originVariantCandidateComponents = useMemo(
+    () => components.filter(isOriginVariantCandidate),
+    [components],
+  );
+  const originVariantComponents = useMemo(
+    () => originVariantCandidateComponents.filter(isQuoteReadyOriginVariant),
+    [originVariantCandidateComponents],
+  );
+  const hasOriginVariantCandidates = originVariantCandidateComponents.length > 0;
+  const hasQuoteReadyOriginVariants = originVariantComponents.length > 0;
+  const hasOnlyDraftOriginVariants = hasOriginVariantCandidates && !hasQuoteReadyOriginVariants;
+  const nonVariantComponents = components.filter(
+    (component) => !originVariantCandidateComponents.some((variant) => variant.id === component.id),
+  );
+  const selectedOriginVariant =
+    originVariantComponents.find((component) => component.touringRouteId === selectedTouringRouteId) || originVariantComponents[0] || null;
+  const selectedOriginVariantPricings = (selectedOriginVariant?.touringRoute?.pricings || [])
+    .filter((pricing) => pricing.active !== false)
+    .filter((pricing) => Number(pricing.minPax || 1) <= totalPax && Number(pricing.maxPax || 999) >= totalPax);
+  const selectedOriginVariantPricing =
+    selectedOriginVariantPricings.find((pricing) => pricing.id === selectedTouringRoutePricingId) || selectedOriginVariantPricings[0] || null;
+  const shouldBlockInsertForOriginVariantReadiness = hasOnlyDraftOriginVariants || (hasQuoteReadyOriginVariants && !selectedOriginVariantPricing);
 
   useEffect(() => {
     setSelectedOptionalComponentIds(new Set());
+    setSelectedTouringRouteId('');
+    setSelectedTouringRoutePricingId('');
   }, [selectedTemplateId]);
+
+  useEffect(() => {
+    if (!selectedOriginVariant?.touringRouteId) {
+      setSelectedTouringRouteId('');
+      setSelectedTouringRoutePricingId('');
+      return;
+    }
+
+    if (selectedTouringRouteId !== selectedOriginVariant.touringRouteId) {
+      setSelectedTouringRouteId(selectedOriginVariant.touringRouteId);
+    }
+
+    if (selectedOriginVariantPricing && selectedTouringRoutePricingId !== selectedOriginVariantPricing.id) {
+      setSelectedTouringRoutePricingId(selectedOriginVariantPricing.id);
+    }
+  }, [selectedOriginVariant, selectedOriginVariantPricing, selectedTouringRouteId, selectedTouringRoutePricingId]);
 
   async function handleInsert() {
     if (!selectedTemplate) {
@@ -3832,6 +3937,8 @@ function ExcursionTemplateInsertPanel({
           itineraryId,
           serviceDate,
           selectedOptionalComponentIds: Array.from(selectedOptionalComponentIds),
+          selectedTouringRouteId: selectedOriginVariant?.touringRouteId || null,
+          selectedTouringRoutePricingId: selectedOriginVariantPricing?.id || null,
           paxCount: totalPax,
           quantity: 1,
           markupPercent: 0,
@@ -3859,7 +3966,12 @@ function ExcursionTemplateInsertPanel({
           <h3>Add Excursion Template</h3>
           <p className="detail-copy">Required components insert in order. Optional components stay unchecked until selected.</p>
         </div>
-        <button type="button" className="primary-button" disabled={isSubmitting || !selectedTemplate || !itineraryId || activeTemplates.length === 0} onClick={handleInsert}>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={isSubmitting || !selectedTemplate || !itineraryId || activeTemplates.length === 0 || shouldBlockInsertForOriginVariantReadiness}
+          onClick={handleInsert}
+        >
           {isSubmitting ? 'Adding...' : 'Add selected components'}
         </button>
       </div>
@@ -3881,11 +3993,97 @@ function ExcursionTemplateInsertPanel({
             Target day
             <input value={itineraryId ? (serviceDate ? `Selected itinerary day | ${serviceDate}` : 'Selected itinerary day') : 'No itinerary day selected'} readOnly />
           </label>
+          <section className="quote-origin-variant-panel">
+            <div className="workspace-section-head">
+              <div>
+                <p className="eyebrow">Origin Variant</p>
+                <h4>Choose quote-ready origin</h4>
+              </div>
+            </div>
+            {hasQuoteReadyOriginVariants ? (
+              <>
+                <label>
+                  Origin Variant
+                  <select
+                    value={selectedOriginVariant?.touringRouteId || ''}
+                    onChange={(event) => {
+                      setSelectedTouringRouteId(event.target.value);
+                      setSelectedTouringRoutePricingId('');
+                    }}
+                  >
+                    {originVariantComponents.map((component) => (
+                      <option key={component.id} value={component.touringRouteId || ''}>
+                        {component.touringRoute
+                          ? formatOriginAwareExcursionName({
+                              templateName: selectedTemplate?.name,
+                              touringRoute: component.touringRoute,
+                            })
+                          : component.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              <label>
+                Vehicle / pricing option
+                <select
+                  value={selectedOriginVariantPricing?.id || ''}
+                  onChange={(event) => setSelectedTouringRoutePricingId(event.target.value)}
+                  disabled={selectedOriginVariantPricings.length === 0}
+                >
+                  {selectedOriginVariantPricings.length === 0 ? (
+                    <option value="">No active pricing for {totalPax} pax</option>
+                  ) : (
+                    selectedOriginVariantPricings.map((pricing) => (
+                      <option key={pricing.id} value={pricing.id}>
+                        {formatExcursionVariantPricing(pricing)}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              </>
+            ) : (
+              <p className="form-helper">No quote-ready origin variants. Link touring routes in the excursion template first.</p>
+            )}
+          </section>
         </div>
       )}
+      {selectedOriginVariant?.touringRoute ? (
+        <div className="quote-template-component-preview">
+          <div className="quote-template-component-row">
+            <span className="status-pill">Origin</span>
+            <span className="quote-template-component-main">
+              <strong>{selectedOriginVariant.touringRoute.startCity}</strong>
+              <span className="quote-template-component-meta">
+                <span>{formatExcursionTouringRoutePath(selectedOriginVariant.touringRoute)}</span>
+                <span>{formatExcursionVariantDuration(selectedOriginVariant.touringRoute.durationDays)}</span>
+                <span>{selectedOriginVariant.transportServiceType?.classification || selectedOriginVariant.transportServiceType?.name || 'Touring route'}</span>
+                <span>
+                  {selectedOriginVariantPricings.length > 0
+                    ? `${selectedOriginVariantPricings.length} pricing option${selectedOriginVariantPricings.length === 1 ? '' : 's'}`
+                    : 'Pricing unavailable'}
+                </span>
+              </span>
+              {selectedOriginVariantPricing ? (
+                <span className="form-helper">
+                  {[
+                    selectedOriginVariantPricing.supplier?.name,
+                    selectedOriginVariantPricing.vehicle?.name,
+                    selectedOriginVariantPricing.pricingBasis,
+                    `${selectedOriginVariantPricing.currency} ${Number(selectedOriginVariantPricing.baseCost || 0).toFixed(2)}`,
+                    selectedOriginVariantPricing.notes,
+                  ].filter(Boolean).join(' | ')}
+                </span>
+              ) : (
+                <span className="quote-template-component-warning">No active pricing row is available for the selected origin variant and pax count.</span>
+              )}
+            </span>
+          </div>
+        </div>
+      ) : null}
       {components.length > 0 ? (
         <div className="quote-template-component-preview">
-          {components.map((component) => {
+          {nonVariantComponents.map((component) => {
             const checked = selectedOptionalComponentIds.has(component.id);
             const durationLabel = formatExcursionComponentDuration(component);
             const timingLabel = [component.requiredArrivalTime ? `Arrival ${component.requiredArrivalTime}` : null, durationLabel].filter(Boolean).join(' | ');

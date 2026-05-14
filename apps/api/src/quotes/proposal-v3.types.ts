@@ -19,6 +19,7 @@ export type ProposalV3QuoteItem = {
   totalSell?: number | null;
   finalCost?: number | null;
   overrideCost?: number | null;
+  overrideReason?: string | null;
   useOverride?: boolean | null;
   markupPercent?: number | null;
   markupAmount?: number | null;
@@ -77,6 +78,10 @@ export type ProposalV3QuoteItem = {
       name: string;
       code: string | null;
     } | null;
+  } | null;
+  touringRoute?: {
+    name?: string | null;
+    startCity?: string | null;
   } | null;
 };
 

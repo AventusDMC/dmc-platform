@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { getItineraryDayDisplay } from '../../../lib/itineraryDayDisplay';
 import { getAutoItineraryDayCount } from '../QuoteAutoItineraryBuilder.logic';
+import { getQuoteItemOriginAwareExcursionName } from '../excursion-origin-display';
 
 export type ClientQuoteSummary = {
   title: string;
@@ -53,6 +54,7 @@ type ClientLinkedServiceSummary = {
   serviceChargeIncluded?: boolean | null;
   tourismFeeAmount?: number | null;
   tourismFeeMode?: 'PER_NIGHT_PER_PERSON' | 'PER_NIGHT_PER_ROOM' | null;
+  overrideReason?: string | null;
   service: {
     name: string;
     category: string;
@@ -78,6 +80,10 @@ type ClientLinkedServiceSummary = {
       name: string;
       code: string | null;
     } | null;
+  } | null;
+  touringRoute: {
+    name?: string | null;
+    startCity?: string | null;
   } | null;
 };
 
@@ -291,6 +297,10 @@ function getGlobalPricingNotes(days: ClientQuoteItineraryDay[]) {
 function getServiceTitle(service: ClientLinkedServiceSummary | null) {
   if (!service) {
     return 'Service details unavailable';
+  }
+
+  if (service.touringRoute) {
+    return getQuoteItemOriginAwareExcursionName(service);
   }
 
   if (service.service?.name) {
