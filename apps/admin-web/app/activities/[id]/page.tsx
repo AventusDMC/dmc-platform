@@ -37,6 +37,12 @@ async function getActor() {
   });
 }
 
+async function getActivities() {
+  return adminPageFetchJson<Activity[]>('/api/activities', 'Activities code catalog', {
+    cache: 'no-store',
+  });
+}
+
 function formatDuration(minutes: number | null | undefined) {
   if (!minutes) return 'Pending';
   if (minutes % 60 === 0) return `${minutes / 60} hr`;
@@ -49,7 +55,7 @@ function formatGuideRequirement(value: string | null | undefined) {
 
 export default async function ActivityDetailPage({ params }: ActivityDetailPageProps) {
   const { id } = await params;
-  const [activity, companies, actor] = await Promise.all([getActivity(id), getCompanies(), getActor()]);
+  const [activity, companies, actor, activities] = await Promise.all([getActivity(id), getCompanies(), getActor(), getActivities()]);
 
   if (!activity) {
     notFound();
@@ -200,6 +206,7 @@ export default async function ActivityDetailPage({ params }: ActivityDetailPageP
                   apiBaseUrl={ACTION_API_BASE_URL}
                   activityId={activity.id}
                   companies={companies}
+                  existingActivities={activities}
                   initialValues={activity}
                   submitLabel="Save activity"
                 />

@@ -1,5 +1,19 @@
 export type ActivityPricingBasis = 'PER_PERSON' | 'PER_GROUP';
 
+export const ACTIVITY_CATEGORIES = [
+  'Cultural',
+  'Adventure',
+  'Religious',
+  'Nature',
+  'Marine',
+  'Wellness',
+  'Dining',
+  'Entertainment',
+  'Special Interest',
+] as const;
+
+export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];
+
 export type ActivityCompany = {
   id: string;
   name: string;

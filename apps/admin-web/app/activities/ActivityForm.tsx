@@ -1,19 +1,44 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiValidationError, getApiError } from '../lib/api';
 import { CurrencySelect } from '../components/CurrencySelect';
 import { normalizeSupportedCurrency, type SupportedCurrency } from '../lib/currencyOptions';
-import { Activity, ActivityCompany, ActivityPricingBasis, ActivityRateVariant } from './types';
+import { ACTIVITY_CATEGORIES, Activity, ActivityCompany, ActivityPricingBasis, ActivityRateVariant } from './types';
 
 type ActivityFormProps = {
   apiBaseUrl: string;
   activityId?: string;
   companies: ActivityCompany[];
+  existingActivities?: Pick<Activity, 'id' | 'code'>[];
   submitLabel?: string;
   initialValues?: Activity | null;
 };
+
+const ACTIVITY_CODE_PATTERN = /^[A-Z0-9]+(?:_[A-Z0-9]+)*$/;
+
+function toCodeTokens(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .split(/[\s_-]+/)
+    .map((part) => part.toUpperCase())
+    .filter(Boolean);
+}
+
+function generateActivityCode(city: string, category: string, name: string) {
+  const cityTokens = toCodeTokens(city);
+  const categoryTokens = toCodeTokens(category);
+  let nameTokens = toCodeTokens(name);
+
+  if (cityTokens.length > 0 && cityTokens.every((token, index) => nameTokens[index] === token)) {
+    nameTokens = nameTokens.slice(cityTokens.length);
+  }
+
+  return [...cityTokens, ...categoryTokens, ...nameTokens].join('_');
+}
 
 function toStringValue(value: string | number | null | undefined) {
   return value === null || value === undefined ? '' : String(value);
@@ -73,9 +98,10 @@ function toVariantRow(variant?: Partial<ActivityRateVariant>): ActivityRateVaria
   };
 }
 
-export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, initialValues }: ActivityFormProps) {
+export function ActivityForm({ apiBaseUrl, activityId, companies, existingActivities = [], submitLabel, initialValues }: ActivityFormProps) {
   const router = useRouter();
   const [code, setCode] = useState(initialValues?.code || '');
+  const [codeManuallyEdited, setCodeManuallyEdited] = useState(Boolean(initialValues?.code));
   const [name, setName] = useState(initialValues?.name || '');
   const [category, setCategory] = useState(initialValues?.category || '');
   const [city, setCity] = useState(initialValues?.city || '');
@@ -95,6 +121,20 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
   const [error, setError] = useState('');
   const [validationErrors, setValidationErrors] = useState<ApiValidationError[]>([]);
   const isEditing = Boolean(activityId);
+  const generatedCode = useMemo(() => generateActivityCode(city, category, name), [category, city, name]);
+  const codeIsUnusual = Boolean(code.trim()) && !ACTIVITY_CODE_PATTERN.test(code.trim());
+  const hasLegacyCategory = Boolean(category) && !ACTIVITY_CATEGORIES.includes(category as (typeof ACTIVITY_CATEGORIES)[number]);
+  const duplicateCodeActivity = code.trim()
+    ? existingActivities.find(
+        (activity) => activity.id !== activityId && activity.code?.trim().toUpperCase() === code.trim().toUpperCase(),
+      )
+    : null;
+
+  useEffect(() => {
+    if (!codeManuallyEdited) {
+      setCode(generatedCode);
+    }
+  }, [codeManuallyEdited, generatedCode]);
 
   function updateVariant(index: number, updates: Partial<ActivityRateVariantFormRow>) {
     setSaveState('idle');
@@ -142,6 +182,10 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
 
     if (!name.trim()) {
       setError('Activity name is required.');
+      return;
+    }
+    if (code.trim() && duplicateCodeActivity) {
+      setError(`Activity code ${code.trim().toUpperCase()} already exists.`);
       return;
     }
     if (!supplierCompanyId) {
@@ -285,11 +329,41 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
           </label>
           <label>
             Code
-            <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="PETRA_BY_NIGHT" />
+            <input
+              value={code}
+              onChange={(event) => {
+                setCodeManuallyEdited(true);
+                setCode(event.target.value.toUpperCase().replace(/\s+/g, '_'));
+              }}
+              placeholder={generatedCode || 'PETRA_CULTURAL_BY_NIGHT'}
+            />
+            <span className="form-helper">Suggested: {generatedCode || 'Add city, category, and name to generate a code.'}</span>
+            {codeManuallyEdited ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => {
+                  setCodeManuallyEdited(false);
+                  setCode(generatedCode);
+                }}
+              >
+                Use generated code
+              </button>
+            ) : null}
+            {codeIsUnusual ? <span className="form-helper">Code format is unusual. Use uppercase words separated by underscores.</span> : null}
+            {duplicateCodeActivity ? <span className="form-error">This code is already used by another activity.</span> : null}
           </label>
           <label>
             Category
-            <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Cultural" />
+            <select value={category} onChange={(event) => setCategory(event.target.value)} required>
+              <option value="">Select category</option>
+              {hasLegacyCategory ? <option value={category}>{category} (legacy)</option> : null}
+              {ACTIVITY_CATEGORIES.map((activityCategory) => (
+                <option key={activityCategory} value={activityCategory}>
+                  {activityCategory}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

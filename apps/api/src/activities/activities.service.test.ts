@@ -59,6 +59,7 @@ function createActivitiesService(overrides: Partial<any> = {}) {
         ...data,
         supplierCompany: include?.supplierCompany ? { id: data.supplierCompanyId ?? 'supplier-company-1', name: 'Petra Experiences' } : undefined,
       }),
+      findFirst: async () => null,
     },
     ...overrides,
   };
@@ -525,6 +526,41 @@ test('activity validation rejects unsupported pricing basis and missing supplier
         sellPrice: 15,
       }),
     (error: unknown) => error instanceof BadRequestException && /PER_PERSON or PER_GROUP/.test(error.message),
+  );
+});
+
+test('activity validation rejects duplicate activity codes on create and update', async () => {
+  const createService = createActivitiesService({
+    activity: {
+      findFirst: async () => ({ id: 'existing-activity' }),
+      create: async ({ data }: any) => ({ id: 'activity-1', ...data }),
+    },
+  }).service;
+
+  await assert.rejects(
+    () =>
+      createService.create({
+        name: 'Petra by Night',
+        code: 'PETRA_CULTURAL_BY_NIGHT',
+        supplierCompanyId: 'supplier-company-1',
+        pricingBasis: 'PER_PERSON',
+        costPrice: 10,
+        sellPrice: 15,
+      }),
+    (error: unknown) => error instanceof BadRequestException && /Activity code PETRA_CULTURAL_BY_NIGHT already exists/.test(error.message),
+  );
+
+  const updateService = createActivitiesService({
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findFirst: async () => ({ id: 'other-activity' }),
+      update: async ({ data }: any) => ({ id: 'activity-1', ...data }),
+    },
+  }).service;
+
+  await assert.rejects(
+    () => updateService.update('activity-1', { code: 'PETRA_CULTURAL_BY_NIGHT' }),
+    (error: unknown) => error instanceof BadRequestException && /Activity code PETRA_CULTURAL_BY_NIGHT already exists/.test(error.message),
   );
 });
 

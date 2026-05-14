@@ -101,6 +101,7 @@ export class ActivitiesService {
   async create(data: CreateActivityInput) {
     await this.ensureSupplierCompanyExists(data.supplierCompanyId);
     await this.ensureRateVariantSupplierCompaniesExist(data.rateVariants);
+    await this.ensureActivityCodeAvailable(data.code);
     const defaultVariantCurrency = this.getDefaultActivityCurrency(data);
 
     return (this.prisma as any).activity.create({
@@ -136,6 +137,9 @@ export class ActivitiesService {
     }
     if (data.rateVariants !== undefined) {
       await this.ensureRateVariantSupplierCompaniesExist(data.rateVariants);
+    }
+    if (data.code !== undefined) {
+      await this.ensureActivityCodeAvailable(data.code, id);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -429,6 +433,22 @@ export class ActivitiesService {
 
     if (!company) {
       throw new BadRequestException('Supplier company not found');
+    }
+  }
+
+  private async ensureActivityCodeAvailable(code: string | null | undefined, excludingActivityId?: string) {
+    const normalizedCode = normalizeOptionalString(code);
+    if (!normalizedCode) {
+      return;
+    }
+
+    const existing = await (this.prisma as any).activity.findFirst({
+      where: { code: { equals: normalizedCode, mode: 'insensitive' } },
+      select: { id: true },
+    });
+
+    if (existing && existing.id !== excludingActivityId) {
+      throw new BadRequestException(`Activity code ${normalizedCode} already exists`);
     }
   }
 

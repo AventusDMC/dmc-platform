@@ -6,7 +6,7 @@ import { ModuleSwitcher } from '../../components/ModuleSwitcher';
 import { WorkspaceShell } from '../../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../../components/WorkspaceSubheader';
 import { adminPageFetchJson } from '../../lib/admin-server';
-import { ActivityActor, ActivityCompany, canManageActivities } from '../types';
+import { Activity, ActivityActor, ActivityCompany, canManageActivities } from '../types';
 import { ActivityForm } from '../ActivityForm';
 
 export const dynamic = 'force-dynamic';
@@ -25,8 +25,14 @@ async function getActor() {
   });
 }
 
+async function getActivities() {
+  return adminPageFetchJson<Activity[]>('/api/activities', 'Activities code catalog', {
+    cache: 'no-store',
+  });
+}
+
 export default async function NewActivityPage() {
-  const [companies, actor] = await Promise.all([getCompanies(), getActor()]);
+  const [companies, actor, activities] = await Promise.all([getCompanies(), getActor(), getActivities()]);
 
   if (!canManageActivities(actor)) {
     notFound();
@@ -70,7 +76,7 @@ export default async function NewActivityPage() {
             />
 
             <section className="workspace-section">
-              <ActivityForm apiBaseUrl={ACTION_API_BASE_URL} companies={companies} />
+              <ActivityForm apiBaseUrl={ACTION_API_BASE_URL} companies={companies} existingActivities={activities} />
             </section>
           </section>
         </WorkspaceShell>

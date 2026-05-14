@@ -121,6 +121,35 @@ describe('activities catalog admin UI regression', () => {
     assert.doesNotMatch(typesSource, /defaultStartTime|operationNotes/);
   });
 
+  it('controls activity category and generated code UX', () => {
+    expectSourceContains(typesSource, [
+      'export const ACTIVITY_CATEGORIES = [',
+      "'Cultural'",
+      "'Adventure'",
+      "'Religious'",
+      "'Nature'",
+      "'Marine'",
+      "'Wellness'",
+      "'Dining'",
+      "'Entertainment'",
+      "'Special Interest'",
+    ]);
+    expectSourceContains(formSource, [
+      'function generateActivityCode(city: string, category: string, name: string)',
+      'const [codeManuallyEdited, setCodeManuallyEdited] = useState(Boolean(initialValues?.code));',
+      'const generatedCode = useMemo(() => generateActivityCode(city, category, name), [category, city, name]);',
+      'ACTIVITY_CODE_PATTERN',
+      'duplicateCodeActivity',
+      'Activity code ${code.trim().toUpperCase()} already exists.',
+      'Use generated code',
+      'Code format is unusual. Use uppercase words separated by underscores.',
+      '<select value={category} onChange={(event) => setCategory(event.target.value)} required>',
+      '{ACTIVITY_CATEGORIES.map((activityCategory) => (',
+    ]);
+    expectSourceContains(newPageSource, ['getActivities()', 'existingActivities={activities}']);
+    expectSourceContains(detailPageSource, ['getActivities()', 'existingActivities={activities}']);
+  });
+
   it('loads existing activity detail and wires edit form to PATCH updates', () => {
     expectSourceContains(detailPageSource, [
       'getActivity(id)',
