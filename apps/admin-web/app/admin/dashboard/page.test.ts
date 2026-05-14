@@ -115,13 +115,25 @@ test('dashboard navigation points to canonical admin dashboard route', () => {
 
 test('admin dashboard renders with failed report data using safe defaults', () => {
   assert.match(pageSource, /safeDashboardFetchJson/);
+  assert.match(pageSource, /adminPageFetch/);
   assert.match(pageSource, /catch \(error\)/);
   assert.match(pageSource, /isNextRedirectError\(error\)/);
   assert.match(pageSource, /throw error;/);
   assert.match(pageSource, /\[dashboard\].*unavailable/);
+  assert.match(pageSource, /loading resolved with fallback/);
   assert.match(pageSource, /EMPTY_BOOKING_SUMMARY/);
   assert.match(pageSource, /EMPTY_FINANCE_SUMMARY/);
   assert.match(pageSource, /EMPTY_ALERTS/);
+});
+
+test('admin dashboard fetch wrapper logs parse lifecycle and does not leave loading unresolved', () => {
+  assert.match(pageSource, /new AbortController\(\)/);
+  assert.match(pageSource, /setTimeout\(\(\) => controller\.abort\(\), 10000\)/);
+  assert.match(pageSource, /raw response/);
+  assert.match(pageSource, /parsed response/);
+  assert.match(pageSource, /loading resolved/);
+  assert.match(pageSource, /finally\s*\{[\s\S]*clearTimeout\(timeout\)/);
+  assert.match(pageSource, /bodyText\.trim\(\) \? JSON\.parse\(bodyText\) : fallback/);
 });
 
 test('admin dashboard renders when monthly trends are empty', () => {

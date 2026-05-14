@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
 import { AdminHeaderActions } from '../../components/AdminHeaderActions';
 import { MetricCard } from '../../components/ui';
-import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
+import { adminPageFetch, isNextRedirectError } from '../../lib/admin-server';
 import { calculatePercentChange, formatPercentChange } from './dashboard-metrics';
 
 export const dynamic = 'force-dynamic';
@@ -89,18 +89,50 @@ async function safeDashboardFetchJson<T>(
   input: string,
   label: string,
   fallback: T,
-  normalize: (value: T) => T,
+  normalize: (value: unknown) => T,
 ) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
-    const value = await adminPageFetchJson<T>(input, label, { cache: 'no-store' });
-    return normalize(value);
+    console.info(`[dashboard] ${label} loading start`, { input });
+    const response = await adminPageFetch(input, { cache: 'no-store', signal: controller.signal });
+    const contentType = response.headers.get('content-type') || '';
+    const bodyText = await response.text();
+    console.info(`[dashboard] ${label} raw response`, {
+      status: response.status,
+      ok: response.ok,
+      contentType: contentType || 'unknown',
+      bytes: bodyText.length,
+    });
+
+    if (!response.ok) {
+      throw new Error(`${label} API failed: ${response.status} ${bodyText || response.statusText}`);
+    }
+
+    if (!contentType.toLowerCase().includes('application/json')) {
+      throw new Error(`${label} API returned ${contentType || 'unknown'} instead of JSON.`);
+    }
+
+    const parsed = bodyText.trim() ? JSON.parse(bodyText) : fallback;
+    console.info(`[dashboard] ${label} parsed response`, {
+      shape: Array.isArray(parsed) ? 'array' : typeof parsed,
+      keys: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.keys(parsed).slice(0, 12) : [],
+    });
+
+    const normalized = normalize(parsed);
+    console.info(`[dashboard] ${label} loading resolved`);
+    return normalized;
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
     }
 
     console.error(`[dashboard] ${label} unavailable`, error);
+    console.info(`[dashboard] ${label} loading resolved with fallback`);
     return fallback;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -424,7 +456,7 @@ function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function normalizeBookingSummary(value: BookingSummary) {
+function normalizeBookingSummary(value: unknown) {
   const row = asRecord(value);
 
   return {
@@ -437,7 +469,7 @@ function normalizeBookingSummary(value: BookingSummary) {
   };
 }
 
-function normalizeFinanceSummary(value: FinanceSummary) {
+function normalizeFinanceSummary(value: unknown) {
   const row = asRecord(value);
 
   return {
@@ -446,7 +478,7 @@ function normalizeFinanceSummary(value: FinanceSummary) {
   };
 }
 
-function normalizeAlerts(value: AlertsSummary) {
+function normalizeAlerts(value: unknown) {
   const row = asRecord(value);
 
   return {
@@ -457,7 +489,7 @@ function normalizeAlerts(value: AlertsSummary) {
   };
 }
 
-function normalizeMonthlyTrends(value: MonthlyTrends) {
+function normalizeMonthlyTrends(value: unknown) {
   const row = asRecord(value);
 
   return {
@@ -471,7 +503,7 @@ function normalizeMonthlyTrends(value: MonthlyTrends) {
   };
 }
 
-function normalizeBookings(value: BookingListItem[]) {
+function normalizeBookings(value: unknown) {
   return asArray<BookingListItem>(value);
 }
 
