@@ -66,6 +66,8 @@ type TouringWorkbookRouteRow = {
   tourCode: string;
   tourName: string;
   startCity: string;
+  returnCity: string;
+  durationHours: string;
   durationDays: string;
   routeDescription: string;
   mainDestinations: string;
@@ -78,6 +80,9 @@ type TouringWorkbookStopRow = {
   tourCode: string;
   stopOrder: string;
   city: string;
+  stopName: string;
+  stopType: string;
+  region: string;
   location: string;
   overnight: string;
   notes: string;
@@ -86,6 +91,7 @@ type TouringWorkbookStopRow = {
 type TouringWorkbookRateRow = {
   tourCode: string;
   supplierName: string;
+  vehicleCode: string;
   vehicleName: string;
   vehicleType: string;
   pricingBasis: string;
@@ -104,10 +110,20 @@ type TouringWorkbookRateRow = {
   notes: string;
 };
 
+type TouringWorkbookVehicleTypeRow = {
+  vehicleCode: string;
+  vehicleName: string;
+  vehicleCategory: string;
+  minPax: string;
+  maxPax: string;
+  notes: string;
+};
+
 type ParsedTouringWorkbookRate = {
   row: number;
   tourCode: string;
   supplierName: string;
+  vehicleCode: string;
   vehicleName: string;
   vehicleType: string;
   supplierId: string | null;
@@ -132,9 +148,9 @@ type ParsedTouringWorkbookRate = {
 };
 
 const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURING_ROUTE_RATES', 'VEHICLE_TYPES'] as const;
-const TOURING_ROUTE_COLUMNS = ['TourCode', 'TourName', 'StartCity', 'DurationDays'] as const;
-const TOURING_STOP_COLUMNS = ['StopOrder', 'City'] as const;
-const TOURING_RATE_COLUMNS = ['SupplierName', 'VehicleType', 'PaxFrom', 'PaxTo', 'Currency', 'BaseCost', 'ValidFrom', 'ValidTo'] as const;
+const TOURING_ROUTE_COLUMNS = ['TourCode', 'TourName', 'StartCity'] as const;
+const TOURING_STOP_COLUMNS = ['StopOrder'] as const;
+const TOURING_RATE_COLUMNS = ['SupplierName', 'Currency', 'ValidFrom', 'ValidTo'] as const;
 
 function normalizeCode(value: string) {
   return (
@@ -324,7 +340,9 @@ export class TouringRoutesService {
     const stops = this.readSheetRows<TouringWorkbookStopRow>(workbook, 'TOURING_ROUTE_STOPS');
     sheet = 'TOURING_ROUTE_RATES';
     const rates = this.readSheetRows<TouringWorkbookRateRow>(workbook, 'TOURING_ROUTE_RATES');
-    this.logWorkbookStage(mode, stage, { routes: routes.length, stops: stops.length, rates: rates.length });
+    sheet = 'VEHICLE_TYPES';
+    const vehicleTypes = this.readSheetRows<TouringWorkbookVehicleTypeRow>(workbook, 'VEHICLE_TYPES');
+    this.logWorkbookStage(mode, stage, { routes: routes.length, stops: stops.length, rates: rates.length, vehicleTypes: vehicleTypes.length });
     stage = 'column validation';
     this.validateSheetColumns(workbook, 'TOURING_ROUTES', TOURING_ROUTE_COLUMNS, errors);
     this.validateSheetColumns(workbook, 'TOURING_ROUTE_STOPS', TOURING_STOP_COLUMNS, errors);
@@ -367,6 +385,12 @@ export class TouringRoutesService {
       if (!vehiclesByType.has(key)) vehiclesByType.set(key, []);
       vehiclesByType.get(key)?.push(vehicle);
     }
+    const workbookVehicleTypesByCode = new Map<string, TouringWorkbookVehicleTypeRow>();
+    const workbookVehicleTypesByName = new Map<string, TouringWorkbookVehicleTypeRow>();
+    for (const { row } of vehicleTypes) {
+      if (row.vehicleCode) workbookVehicleTypesByCode.set(normalizeWorkbookKey(row.vehicleCode), row);
+      if (row.vehicleName) workbookVehicleTypesByName.set(normalizeWorkbookKey(row.vehicleName), row);
+    }
 
     stage = 'TOURING_ROUTES normalization';
     sheet = 'TOURING_ROUTES';
@@ -375,15 +399,18 @@ export class TouringRoutesService {
       this.logWorkbookStage(mode, stage, { row: rowNumber }, 'debug');
       const rowErrors: string[] = [];
       const code = normalizeCode(row.tourCode || '');
-      const durationDays = parseWorkbookInteger(row.durationDays, 'DurationDays', rowErrors, { required: true, min: 1 }) ?? 1;
+      const durationDaysValue = parseWorkbookInteger(row.durationDays, 'DurationDays', rowErrors, { min: 1 });
+      const durationHoursValue = parseWorkbookInteger(row.durationHours, 'DurationHours', rowErrors, { min: 1 });
+      if (durationDaysValue === null && durationHoursValue === null) rowErrors.push('DurationDays or DurationHours is required');
+      const durationDays = durationDaysValue ?? Math.max(1, Math.ceil((durationHoursValue ?? 24) / 24));
       const includedKm = parseWorkbookNumber(row.includedKm, 'IncludedKM', rowErrors, { min: 0 });
-      const includedHours = parseWorkbookNumber(row.includedHours, 'IncludedHours', rowErrors, { min: 0 });
+      const includedHours = parseWorkbookNumber(row.includedHours || row.durationHours, 'IncludedHours', rowErrors, { min: 0 });
       if (!normalizeWorkbookText(row.tourName)) rowErrors.push('TourName is required');
       if (!normalizeWorkbookText(row.startCity)) rowErrors.push('StartCity is required');
       for (const message of rowErrors) errors.push({ sheet: 'TOURING_ROUTES', row: rowNumber, message });
 
       const existing = routesByCode.get(code) as any;
-      const mainDestinations = normalizeWorkbookText(row.mainDestinations)
+      const mainDestinations = normalizeWorkbookText(row.mainDestinations || row.returnCity)
         .split(/\s*(?:,|\/|;|\||->|→)\s*/)
         .map((entry) => entry.trim())
         .filter(Boolean);
@@ -423,17 +450,18 @@ export class TouringRoutesService {
       const code = normalizeCode(row.tourCode || '');
       if (!routeCodes.has(code)) rowErrors.push(`TourCode ${code || '(blank)'} does not reference a route in TOURING_ROUTES`);
       const order = parseWorkbookInteger(row.stopOrder, 'StopOrder', rowErrors, { required: true, min: 1 }) ?? 1;
-      const city = normalizeWorkbookText(row.city);
-      if (!city) rowErrors.push('City is required');
+      const stopName = normalizeWorkbookText(row.stopName || row.location || row.city);
+      const city = normalizeWorkbookText(row.city || row.region || stopName);
+      if (!stopName && !city) rowErrors.push('StopName or City is required');
       for (const message of rowErrors) errors.push({ sheet: 'TOURING_ROUTE_STOPS', row: rowNumber, message });
       if (!stopsByCode.has(code)) stopsByCode.set(code, []);
       stopsByCode.get(code)?.push({
         row: rowNumber,
         order,
         city,
-        location: normalizeWorkbookText(row.location),
+        location: stopName,
         overnight: parseWorkbookBoolean(row.overnight, false),
-        notes: normalizeWorkbookText(row.notes),
+        notes: [normalizeWorkbookText(row.stopType), normalizeWorkbookText(row.notes)].filter(Boolean).join(' | '),
       });
     }
 
@@ -467,16 +495,26 @@ export class TouringRoutesService {
       const supplier = suppliersByName.get(normalizeWorkbookKey(supplierName)) || null;
       if (!supplierName) rowErrors.push('SupplierName is required');
       if (!supplier) rateWarnings.push(`Supplier mapping missing for ${supplierName || '(blank)'}`);
+      const vehicleCode = normalizeWorkbookText(row.vehicleCode);
       const vehicleName = normalizeWorkbookText(row.vehicleName);
       const vehicleType = normalizeWorkbookText(row.vehicleType);
+      const workbookVehicleType =
+        (vehicleCode ? workbookVehicleTypesByCode.get(normalizeWorkbookKey(vehicleCode)) : null) ||
+        (vehicleName ? workbookVehicleTypesByName.get(normalizeWorkbookKey(vehicleName)) : null) ||
+        (vehicleType ? workbookVehicleTypesByName.get(normalizeWorkbookKey(vehicleType)) : null) ||
+        null;
       const vehicle =
+        (vehicleCode ? vehiclesByName.get(normalizeWorkbookKey(vehicleCode)) : null) ||
         (vehicleName ? vehiclesByName.get(normalizeWorkbookKey(vehicleName)) : null) ||
         (vehicleType ? (vehiclesByType.get(normalizeWorkbookKey(vehicleType)) || [])[0] : null) ||
+        (workbookVehicleType?.vehicleName ? vehiclesByName.get(normalizeWorkbookKey(workbookVehicleType.vehicleName)) : null) ||
         null;
-      if (!vehicleType && !vehicleName) rowErrors.push('VehicleType or VehicleName is required');
-      if (!vehicle) rowErrors.push(`Vehicle reference not found for ${vehicleName || vehicleType || '(blank)'}`);
-      const minPax = parseWorkbookInteger(row.paxFrom, 'PaxFrom', rowErrors, { required: true, min: 1 }) ?? 1;
-      const maxPax = parseWorkbookInteger(row.paxTo, 'PaxTo', rowErrors, { required: true, min: minPax }) ?? minPax;
+      if (!vehicleCode && !vehicleType && !vehicleName) rowErrors.push('VehicleCode or VehicleName is required');
+      if (!vehicle) rateWarnings.push(`Vehicle mapping missing for ${vehicleCode || vehicleName || vehicleType || '(blank)'}`);
+      const workbookMinPax = workbookVehicleType ? parseWorkbookInteger(workbookVehicleType.minPax, 'VEHICLE_TYPES.MinPax', rowErrors, { min: 1 }) : null;
+      const workbookMaxPax = workbookVehicleType ? parseWorkbookInteger(workbookVehicleType.maxPax, 'VEHICLE_TYPES.MaxPax', rowErrors, { min: workbookMinPax ?? 1 }) : null;
+      const minPax = parseWorkbookInteger(row.paxFrom, 'PaxFrom', rowErrors, { min: 1 }) ?? workbookMinPax ?? 1;
+      const maxPax = parseWorkbookInteger(row.paxTo, 'PaxTo', rowErrors, { min: minPax }) ?? workbookMaxPax ?? vehicle?.maxPax ?? minPax;
       const baseCost = parseWorkbookNumber(row.baseCost, 'BaseCost', rowErrors, { required: true, min: 0 }) ?? 0;
       const validFrom = parseWorkbookDate(row.validFrom, 'ValidFrom', rowErrors);
       const validTo = parseWorkbookDate(row.validTo, 'ValidTo', rowErrors);
@@ -484,7 +522,7 @@ export class TouringRoutesService {
       const pricingBasis = normalizeWorkbookText(row.pricingBasis).toUpperCase() === 'PER_DAY' ? 'PER_DAY' : 'PER_VEHICLE';
       const currency = normalizeWorkbookText(row.currency).toUpperCase();
       if (!['USD', 'EUR', 'JOD'].includes(currency)) rowErrors.push('Currency must be USD, EUR, or JOD');
-      const rateKey = [code, supplier?.id || supplierName, vehicle?.id || vehicleName || vehicleType, pricingBasis, minPax, maxPax, currency, formatWorkbookDate(validFrom), formatWorkbookDate(validTo)].join('|');
+      const rateKey = [code, supplier?.id || supplierName, vehicle?.id || vehicleCode || vehicleName || vehicleType, pricingBasis, minPax, maxPax, currency, formatWorkbookDate(validFrom), formatWorkbookDate(validTo)].join('|');
       if (seenRateKeys.has(rateKey)) {
         rowErrors.push('Duplicate pricing row in workbook');
       }
@@ -515,8 +553,9 @@ export class TouringRoutesService {
         row: rowNumber,
         tourCode: code,
         supplierName,
+        vehicleCode,
         vehicleName,
-        vehicleType,
+        vehicleType: vehicleType || workbookVehicleType?.vehicleCategory || workbookVehicleType?.vehicleName || vehicleCode,
         supplierId: supplier?.id || null,
         vehicleId: vehicle?.id || null,
         pricingBasis,
@@ -854,25 +893,34 @@ export class TouringRoutesService {
       tourCode: normalized.tourcode || normalized.routecode || normalized.variantcode || '',
       tourName: normalized.tourname || normalized.name || '',
       startCity: normalized.startcity || '',
+      returnCity: normalized.returncity || normalized.endcity || '',
+      durationHours: normalized.durationhours || normalized.hours || '',
       durationDays: normalized.durationdays || normalized.days || '',
-      routeDescription: normalized.routedescription || normalized.description || '',
+      routeDescription: normalized.routedescription || normalized.mainroute || normalized.description || '',
       mainDestinations: normalized.maindestinations || normalized.destinations || '',
       includedKm: normalized.includedkm || normalized.includedkilometers || '',
       includedHours: normalized.includedhours || '',
       active: normalized.active || normalized.status || '',
       stopOrder: normalized.stoporder || normalized.order || '',
       city: normalized.city || '',
-      location: normalized.location || '',
+      stopName: normalized.stopname || '',
+      stopType: normalized.stoptype || '',
+      region: normalized.region || '',
+      location: normalized.location || normalized.stopname || '',
       overnight: normalized.overnight || '',
       notes: normalized.notes || '',
       supplierName: normalized.suppliername || normalized.supplier || '',
+      vehicleCode: normalized.vehiclecode || '',
       vehicleName: normalized.vehiclename || normalized.vehicle || '',
-      vehicleType: normalized.vehicletype || '',
+      vehicleCategory: normalized.vehiclecategory || normalized.vehicletype || '',
+      vehicleType: normalized.vehicletype || normalized.vehiclecategory || '',
       pricingBasis: normalized.pricingbasis || '',
+      minPax: normalized.minpax || normalized.paxfrom || '',
+      maxPax: normalized.maxpax || normalized.paxto || '',
       paxFrom: normalized.paxfrom || normalized.minpax || '',
       paxTo: normalized.paxto || normalized.maxpax || '',
       currency: normalized.currency || '',
-      baseCost: normalized.basecost || normalized.cost || normalized.rate || '',
+      baseCost: normalized.basecost || normalized.baseprice || normalized.cost || normalized.rate || '',
       costPerDay: normalized.costperday || '',
       extraKmRate: normalized.extrakmrate || normalized.extrakm || '',
       extraHourRate: normalized.extrahourrate || normalized.extrahour || '',
@@ -896,8 +944,20 @@ export class TouringRoutesService {
         errors.push({ sheet: sheetName, message: `Missing required column ${column}` });
       }
     }
+    if (sheetName === 'TOURING_ROUTES' && !['DurationDays', 'DurationHours'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
+      errors.push({ sheet: sheetName, message: 'Missing required column DurationDays or DurationHours' });
+    }
     if ((sheetName === 'TOURING_ROUTE_STOPS' || sheetName === 'TOURING_ROUTE_RATES') && !['TourCode', 'RouteCode', 'VariantCode'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
       errors.push({ sheet: sheetName, message: 'Missing required column TourCode, RouteCode, or VariantCode' });
+    }
+    if (sheetName === 'TOURING_ROUTE_STOPS' && !['StopName', 'City'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
+      errors.push({ sheet: sheetName, message: 'Missing required column StopName or City' });
+    }
+    if (sheetName === 'TOURING_ROUTE_RATES' && !['VehicleCode', 'VehicleName', 'VehicleType'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
+      errors.push({ sheet: sheetName, message: 'Missing required column VehicleCode, VehicleName, or VehicleType' });
+    }
+    if (sheetName === 'TOURING_ROUTE_RATES' && !['Cost', 'BaseCost', 'BasePrice'].some((column) => headers.has(normalizeWorkbookHeader(column)))) {
+      errors.push({ sheet: sheetName, message: 'Missing required column Cost, BaseCost, or BasePrice' });
     }
   }
 

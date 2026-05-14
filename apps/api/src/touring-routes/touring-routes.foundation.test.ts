@@ -213,6 +213,76 @@ test('touring workbook preview accepts VariantCode for stop and rate route refer
   assert.equal(preview.pricings[0].tourCode, 'PETRA_FD');
 });
 
+test('touring workbook preview accepts normalized ERP workbook shape without legacy aliases', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.vehicles.push({ id: 'vehicle-minivan-5', name: 'Mini Van 5', vehicleType: 'Mini Van', maxPax: 5 } as any);
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [
+      {
+        TourCode: 'PETRA-FD',
+        TourName: 'Petra Full Day',
+        StartCity: 'Amman',
+        ReturnCity: 'Amman',
+        DurationHours: 12,
+        MainRoute: 'Amman - Petra - Amman',
+        MainDestinations: 'Petra',
+        TransportType: 'TOURING_ROUTE',
+      },
+      {
+        TourCode: 'JERASH-HD',
+        TourName: 'Jerash Half Day',
+        StartCity: 'Amman',
+        ReturnCity: 'Amman',
+        DurationHours: 5,
+        MainRoute: 'Amman - Jerash - Amman',
+        MainDestinations: 'Jerash',
+        TransportType: 'TOURING_ROUTE',
+      },
+    ],
+    stops: [
+      { TourCode: 'PETRA-FD', StopOrder: 1, StopName: 'Petra Visitor Center', StopType: 'VISIT', Region: 'Petra', Overnight: 'No', Notes: 'Main visit' },
+      { TourCode: 'JERASH-HD', StopOrder: 1, StopName: 'Jerash Archaeological Site', StopType: 'VISIT', Region: 'Jerash', Overnight: 'No', Notes: '' },
+    ],
+    rates: [
+      {
+        SupplierName: 'Alpha Transport',
+        TourCode: 'PETRA-FD',
+        VehicleCode: 'MINIVAN5',
+        VehicleName: 'Mini Van 5',
+        PricingBasis: 'PER_VEHICLE',
+        Currency: 'USD',
+        Cost: 220,
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+        IncludedHours: 12,
+        Notes: 'Normalized ERP rate',
+      },
+    ],
+    vehicleTypes: [{ VehicleCode: 'MINIVAN5', VehicleName: 'Mini Van 5', VehicleCategory: 'Mini Van', MinPax: 1, MaxPax: 5, Notes: 'Do not normalize to Mini Bus' }],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'Jordan_Touring_Routes_Complete_Normalized_ERP_Workbook.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.routeCount, 2);
+  assert.equal(preview.stopCount, 2);
+  assert.equal(preview.pricingCount, 1);
+  assert.equal(preview.routes[0].durationDays, 1);
+  assert.equal(preview.routes[0].routeDescription, 'Amman - Petra - Amman');
+  assert.equal(preview.stops[0].city, 'Petra');
+  assert.equal(preview.stops[0].location, 'Petra Visitor Center');
+  assert.equal(preview.pricings[0].vehicleId, 'vehicle-minivan-5');
+  assert.equal(preview.pricings[0].vehicleName, 'Mini Van 5');
+  assert.equal(preview.pricings[0].vehicleType, 'Mini Van');
+  assert.equal(preview.pricings[0].minPax, 1);
+  assert.equal(preview.pricings[0].maxPax, 5);
+  assert.equal(preview.pricings[0].baseCost, 220);
+  assert.ok(preview.warnings.some((entry: any) => /JERASH_HD has no pricing rows/.test(entry.message)));
+  assert.equal(preview.pricings[0].vehicleType === 'Mini Bus', false);
+});
+
 test('touring workbook preview returns structured errors instead of raw 500 on internal parser failure', async () => {
   const { prisma } = createTouringPrismaMock();
   prisma.supplier.findMany = async () => {
