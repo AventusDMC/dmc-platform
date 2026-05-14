@@ -28,6 +28,23 @@ describe('excursion template admin UI', () => {
     ]);
   });
 
+  it('groups touring route transport variants by origin on template detail pages', () => {
+    expectSourceContains(editorSource, [
+      'Origin Variants',
+      'originVariantComponents',
+      'isOriginVariantTransport',
+      'getOriginVariantStartCity',
+      'getOriginVariantName',
+      'getInventoryWarnings',
+      'Tickets',
+      'Guides',
+      'Dining',
+      'Activities',
+      'Optional',
+      'Open route',
+    ]);
+  });
+
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {
     expectSourceContains(pageSource, [
       "type ExcursionCatalogTab = 'templates' | 'tariff-workbook';",

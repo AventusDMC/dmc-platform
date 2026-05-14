@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiError } from '../lib/api';
@@ -18,6 +19,13 @@ type FillMissingMetadataResponse = {
 };
 
 const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'GUIDE', 'DINING'];
+const NON_TRANSPORT_COMPONENT_SECTIONS: Array<{ id: string; title: string; types: ExcursionComponentType[]; optionalOnly?: boolean }> = [
+  { id: 'tickets', title: 'Tickets', types: ['TICKET'] },
+  { id: 'guides', title: 'Guides', types: ['GUIDE'] },
+  { id: 'dining', title: 'Dining', types: ['DINING'] },
+  { id: 'activities', title: 'Activities', types: ['ACTIVITY'] },
+  { id: 'optional', title: 'Optional', types: ['TICKET', 'ACTIVITY', 'GUIDE', 'DINING'], optionalOnly: true },
+];
 
 function catalogText(value: unknown): string {
   if (!value || typeof value !== 'object') {
@@ -44,6 +52,75 @@ function getReferenceLabel(component: ExcursionTemplate['components'][number]) {
     return [component.touringRoute?.name || component.route?.name, component.transportServiceType?.name].filter(Boolean).join(' / ') || 'Transport link pending';
   }
   return component.activity?.name || component.supplierService?.name || 'Catalog link pending';
+}
+
+function formatDuration(minutes?: number | null, durationDays?: number | null) {
+  if (minutes && minutes > 0) {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return hours > 0 ? `${hours} hr${remainder ? ` ${remainder} min` : ''}` : `${minutes} min`;
+  }
+
+  if (durationDays && durationDays > 0) {
+    return `${durationDays} day${durationDays === 1 ? '' : 's'}`;
+  }
+
+  return 'Duration pending';
+}
+
+function getComponentDurationLabel(component: ExcursionTemplate['components'][number]) {
+  return formatDuration(component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes, component.touringRoute?.durationDays);
+}
+
+function getOriginVariantStartCity(component: ExcursionTemplate['components'][number]) {
+  return (
+    component.touringRoute?.startCity ||
+    component.suggestedDepartureCity ||
+    component.route?.fromPlace?.name ||
+    component.route?.name?.split(/\s*(?:->|→| to )\s*/i)[0] ||
+    'Origin pending'
+  );
+}
+
+function getOriginVariantName(component: ExcursionTemplate['components'][number]) {
+  return component.touringRoute?.name || component.route?.name || component.label || 'Touring route pending';
+}
+
+function getVariantRouteCode(component: ExcursionTemplate['components'][number]) {
+  return component.touringRoute?.code || component.touringRouteId || component.route?.name?.match(/\b[A-Z][A-Z0-9_]{4,}\b/)?.[0] || '';
+}
+
+function isOriginVariantTransport(component: ExcursionTemplate['components'][number]) {
+  return component.componentType === 'TRANSPORT' && Boolean(component.touringRouteId || component.touringRoute || getVariantRouteCode(component));
+}
+
+function getComponentStatusLabel(component: ExcursionTemplate['components'][number]) {
+  return component.active === false ? 'Inactive' : component.isOptional ? 'Optional' : 'Required';
+}
+
+function getInventoryWarnings(component: ExcursionTemplate['components'][number]) {
+  const warnings: string[] = [];
+
+  if (component.componentType === 'TRANSPORT') {
+    if (!component.touringRouteId && !component.touringRoute && !component.routeId && !component.route) {
+      warnings.push('Touring route link pending');
+    }
+    if (!component.transportServiceTypeId && !component.transportServiceType) {
+      warnings.push('Transport service type pending');
+    }
+  } else if (component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') {
+    if (!component.activityId && !component.activity && !component.supplierServiceId && !component.supplierService) {
+      warnings.push('Activity or guide inventory link pending');
+    }
+  } else if (!component.supplierServiceId && !component.supplierService) {
+    warnings.push('Reusable service link pending');
+  }
+
+  if (!component.estimatedDurationMinutes && !component.durationMinutes && !component.touringRoute?.durationDays && !component.route?.durationMinutes) {
+    warnings.push('Duration pending');
+  }
+
+  return warnings;
 }
 
 function parseBooleanFormValue(value: FormDataEntryValue | null) {
@@ -86,6 +163,24 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
   const removedComponents = useMemo(
     () => [...(template.components || [])].filter((component) => component.active === false).sort((a, b) => a.sortOrder - b.sortOrder),
     [template.components],
+  );
+  const originVariantComponents = useMemo(() => activeComponents.filter(isOriginVariantTransport), [activeComponents]);
+  const otherTransportComponents = useMemo(
+    () => activeComponents.filter((component) => component.componentType === 'TRANSPORT' && !isOriginVariantTransport(component)),
+    [activeComponents],
+  );
+  const nonTransportSections = useMemo(
+    () =>
+      NON_TRANSPORT_COMPONENT_SECTIONS.map((section) => ({
+        ...section,
+        components: activeComponents.filter(
+          (component) =>
+            component.componentType !== 'TRANSPORT' &&
+            section.types.includes(component.componentType) &&
+            (section.optionalOnly ? component.isOptional : !component.isOptional),
+        ),
+      })),
+    [activeComponents],
   );
   const ticketServices = useMemo(() => catalogs.services.filter(isTicketService), [catalogs.services]);
   const diningServices = useMemo(() => catalogs.services.filter(isDiningService), [catalogs.services]);
@@ -207,6 +302,108 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
       { method: 'DELETE' },
       'Could not remove component.',
     );
+  }
+
+  function renderComponentOperationsForm(component: ExcursionTemplate['components'][number]) {
+    return (
+      <form action={(formData) => saveComponentOperations(component.id, formData)} className="form-field-stack">
+        <div className="form-grid">
+          <label>
+            Arrival time
+            <input name="requiredArrivalTime" defaultValue={component.requiredArrivalTime || ''} placeholder="HH:MM" />
+          </label>
+          <label>
+            Est. duration min
+            <input name="estimatedDurationMinutes" type="number" min="0" defaultValue={component.estimatedDurationMinutes ?? ''} />
+          </label>
+          <label>
+            Supplier confirmation
+            <select name="supplierConfirmationRequired" defaultValue={booleanSelectValue(component.supplierConfirmationRequired)}>
+              <option value="">Not set</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label>
+            Voucher
+            <select name="voucherRequired" defaultValue={booleanSelectValue(component.voucherRequired)}>
+              <option value="">Not set</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Pickup notes
+          <input name="pickupNotes" defaultValue={component.pickupNotes || ''} />
+        </label>
+        <label>
+          Operational dependency
+          <input name="operationalDependency" defaultValue={component.operationalDependency || ''} />
+        </label>
+        <button type="submit" className="secondary-button" disabled={isSaving}>
+          Save ops
+        </button>
+      </form>
+    );
+  }
+
+  function renderComponentControls(component: ExcursionTemplate['components'][number]) {
+    const componentIndex = activeComponents.findIndex((entry) => entry.id === component.id);
+
+    return (
+      <div className="table-action-group">
+        <button type="button" className="secondary-button" disabled={componentIndex <= 0 || isSaving} onClick={() => moveComponent(component.id, -1)}>
+          Up
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={componentIndex === activeComponents.length - 1 || componentIndex < 0 || isSaving}
+          onClick={() => moveComponent(component.id, 1)}
+        >
+          Down
+        </button>
+        <button type="button" className="secondary-button" disabled={isSaving} onClick={() => removeComponent(component.id)}>
+          Remove
+        </button>
+      </div>
+    );
+  }
+
+  function renderOptionalToggle(component: ExcursionTemplate['components'][number]) {
+    return (
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={component.isOptional}
+          onChange={(event) => toggleOptional(component.id, event.currentTarget.checked)}
+        />
+        Optional
+      </label>
+    );
+  }
+
+  function renderComponentRows(components: ExcursionTemplate['components'], options: { showType?: boolean } = {}) {
+    return components.map((component) => (
+      <tr key={component.id}>
+        <td>{activeComponents.findIndex((entry) => entry.id === component.id) + 1}</td>
+        {options.showType ? (
+          <td>
+            <span className="status-pill">{component.componentType}</span>
+          </td>
+        ) : null}
+        <td>
+          <strong>{component.label}</strong>
+          {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
+          {renderComponentOperationsForm(component)}
+        </td>
+        <td>{getReferenceLabel(component)}</td>
+        <td>{getComponentDurationLabel(component)}</td>
+        <td>{renderOptionalToggle(component)}</td>
+        <td>{renderComponentControls(component)}</td>
+      </tr>
+    ));
   }
 
   function addComponent(formData: FormData) {
@@ -361,107 +558,133 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
           </button>
           <p className="form-helper">Fills only blank operational fields with safe defaults. Existing values and pricing are preserved.</p>
         </div>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Type</th>
-                <th>Component</th>
-                <th>Linked record</th>
-                <th>Optional</th>
-                <th>Controls</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeComponents.map((component, index) => (
-                <tr key={component.id}>
-                  <td>{index + 1}</td>
-                  <td>
-                    <span className="status-pill">{component.componentType}</span>
-                  </td>
-                  <td>
-                    <strong>{component.label}</strong>
-                    {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
-                    <form action={(formData) => saveComponentOperations(component.id, formData)} className="form-field-stack">
-                      <div className="form-grid">
-                        <label>
-                          Arrival time
-                          <input name="requiredArrivalTime" defaultValue={component.requiredArrivalTime || ''} placeholder="HH:MM" />
-                        </label>
-                        <label>
-                          Est. duration min
-                          <input
-                            name="estimatedDurationMinutes"
-                            type="number"
-                            min="0"
-                            defaultValue={component.estimatedDurationMinutes ?? ''}
-                          />
-                        </label>
-                        <label>
-                          Supplier confirmation
-                          <select name="supplierConfirmationRequired" defaultValue={booleanSelectValue(component.supplierConfirmationRequired)}>
-                            <option value="">Not set</option>
-                            <option value="true">Yes</option>
-                            <option value="false">No</option>
-                          </select>
-                        </label>
-                        <label>
-                          Voucher
-                          <select name="voucherRequired" defaultValue={booleanSelectValue(component.voucherRequired)}>
-                            <option value="">Not set</option>
-                            <option value="true">Yes</option>
-                            <option value="false">No</option>
-                          </select>
-                        </label>
-                      </div>
-                      <label>
-                        Pickup notes
-                        <input name="pickupNotes" defaultValue={component.pickupNotes || ''} />
-                      </label>
-                      <label>
-                        Operational dependency
-                        <input name="operationalDependency" defaultValue={component.operationalDependency || ''} />
-                      </label>
-                      <button type="submit" className="secondary-button" disabled={isSaving}>
-                        Save ops
-                      </button>
-                    </form>
-                  </td>
-                  <td>{getReferenceLabel(component)}</td>
-                  <td>
-                    <label className="checkbox-field">
-                      <input
-                        type="checkbox"
-                        checked={component.isOptional}
-                        onChange={(event) => toggleOptional(component.id, event.currentTarget.checked)}
-                      />
-                      Optional
-                    </label>
-                  </td>
-                  <td>
-                    <div className="table-action-group">
-                      <button type="button" className="secondary-button" disabled={index === 0 || isSaving} onClick={() => moveComponent(component.id, -1)}>
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={index === activeComponents.length - 1 || isSaving}
-                        onClick={() => moveComponent(component.id, 1)}
-                      >
-                        Down
-                      </button>
-                      <button type="button" className="secondary-button" disabled={isSaving} onClick={() => removeComponent(component.id)}>
-                        Remove
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+        {originVariantComponents.length > 0 ? (
+          <section className="excursion-component-section">
+            <div className="workspace-section-head">
+              <div>
+                <h4>Origin Variants</h4>
+                <p>Transport variants grouped by origin so this remains one excursion with multiple pickup markets.</p>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Origin</th>
+                    <th>Route / variant</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Inventory warnings</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {originVariantComponents.map((component) => {
+                    const warnings = getInventoryWarnings(component);
+                    return (
+                      <tr key={component.id}>
+                        <td>
+                          <strong>{getOriginVariantStartCity(component)}</strong>
+                          {component.suggestedArrivalCity ? <p className="table-cell-copy">To {component.suggestedArrivalCity}</p> : null}
+                        </td>
+                        <td>
+                          <strong>{getOriginVariantName(component)}</strong>
+                          <p className="table-cell-copy">{getReferenceLabel(component)}</p>
+                          {component.operationalNotes ? <p className="table-cell-copy">{component.operationalNotes}</p> : null}
+                          {renderComponentOperationsForm(component)}
+                        </td>
+                        <td>{getComponentDurationLabel(component)}</td>
+                        <td>
+                          <span className={component.isOptional ? 'status-pill status-pill-muted' : 'status-pill status-pill-success'}>
+                            {getComponentStatusLabel(component)}
+                          </span>
+                          {renderOptionalToggle(component)}
+                        </td>
+                        <td>
+                          {warnings.length > 0 ? (
+                            warnings.map((warning) => (
+                              <p className="table-cell-copy" key={`${component.id}-${warning}`}>
+                                {warning}
+                              </p>
+                            ))
+                          ) : (
+                            <span className="status-pill status-pill-success">Linked</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="table-action-group">
+                            {component.touringRouteId || component.touringRoute ? (
+                              <Link href="/transport?tab=touring-routes" className="secondary-button">
+                                Open route
+                              </Link>
+                            ) : null}
+                            {renderComponentControls(component)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
+        {otherTransportComponents.length > 0 ? (
+          <section className="excursion-component-section">
+            <div className="workspace-section-head">
+              <div>
+                <h4>Other Transport</h4>
+                <p>Transport rows that are not linked to a touring route variant.</p>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Component</th>
+                    <th>Linked record</th>
+                    <th>Duration</th>
+                    <th>Optional</th>
+                    <th>Controls</th>
+                  </tr>
+                </thead>
+                <tbody>{renderComponentRows(otherTransportComponents)}</tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+
+        {nonTransportSections.map((section) =>
+          section.components.length > 0 ? (
+            <section className="excursion-component-section" key={section.id}>
+              <div className="workspace-section-head">
+                <div>
+                  <h4>{section.title}</h4>
+                </div>
+              </div>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Component</th>
+                      <th>Linked record</th>
+                      <th>Duration</th>
+                      <th>Optional</th>
+                      <th>Controls</th>
+                    </tr>
+                  </thead>
+                  <tbody>{renderComponentRows(section.components)}</tbody>
+                </table>
+              </div>
+            </section>
+          ) : null,
+        )}
+
+        {activeComponents.length === 0 ? <p className="form-helper">No active components are linked yet.</p> : null}
         {removedComponents.length > 0 ? <p className="form-helper">{removedComponents.length} soft-removed component rows preserved.</p> : null}
       </section>
 
