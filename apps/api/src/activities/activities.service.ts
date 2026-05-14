@@ -18,19 +18,25 @@ type ActivityGuideRequirement =
 type ActivityRateVariantInput = {
   id?: string;
   name: string;
+  supplierCompanyId?: string | null;
   durationMinutes?: number | null;
   currency?: string | null;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;
+  minPax?: number | null;
+  maxPax?: number | null;
   maxPaxPerUnit?: number | null;
+  capacityPricing?: boolean | null;
   active?: boolean;
   notes?: string | null;
   difficulty?: string | null;
   guideRequired?: boolean | null;
   guideRequirement?: ActivityGuideRequirement | null;
+  meetingPoint?: string | null;
   startPoint?: string | null;
   endPoint?: string | null;
+  operationalNotes?: string | null;
   suitability?: string | null;
   fitnessNotes?: string | null;
   waterNotes?: string | null;
@@ -94,6 +100,7 @@ export class ActivitiesService {
 
   async create(data: CreateActivityInput) {
     await this.ensureSupplierCompanyExists(data.supplierCompanyId);
+    await this.ensureRateVariantSupplierCompaniesExist(data.rateVariants);
     const defaultVariantCurrency = this.getDefaultActivityCurrency(data);
 
     return (this.prisma as any).activity.create({
@@ -126,6 +133,9 @@ export class ActivitiesService {
 
     if (data.supplierCompanyId !== undefined) {
       await this.ensureSupplierCompanyExists(data.supplierCompanyId);
+    }
+    if (data.rateVariants !== undefined) {
+      await this.ensureRateVariantSupplierCompaniesExist(data.rateVariants);
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -182,18 +192,24 @@ export class ActivitiesService {
           (source.rateVariants || []).map((variant: ActivityRateVariantRecord) => ({
             name: variant.name,
             durationMinutes: variant.durationMinutes,
+            supplierCompanyId: variant.supplierCompanyId,
             currency: variant.currency,
             pricingBasis: variant.pricingBasis,
             costPrice: variant.costPrice,
             sellPrice: variant.sellPrice,
+            minPax: variant.minPax,
+            maxPax: variant.maxPax,
             maxPaxPerUnit: variant.maxPaxPerUnit,
+            capacityPricing: variant.capacityPricing,
             active: variant.active,
             notes: variant.notes,
             difficulty: variant.difficulty,
             guideRequired: variant.guideRequired,
             guideRequirement: variant.guideRequirement,
+            meetingPoint: variant.meetingPoint,
             startPoint: variant.startPoint,
             endPoint: variant.endPoint,
+            operationalNotes: variant.operationalNotes,
             suitability: variant.suitability,
             fitnessNotes: variant.fitnessNotes,
             waterNotes: variant.waterNotes,
@@ -304,6 +320,13 @@ export class ActivitiesService {
   }
 
   private buildRateVariantData(variant: ActivityRateVariantInput, index: number, defaultCurrency: string) {
+    const minPax = this.normalizeOptionalPositiveInteger(variant.minPax, `rateVariants[${index}].minPax`);
+    const maxPax = this.normalizeOptionalPositiveInteger(variant.maxPax, `rateVariants[${index}].maxPax`);
+
+    if (minPax !== undefined && minPax !== null && maxPax !== undefined && maxPax !== null && minPax > maxPax) {
+      throw new BadRequestException(`rateVariants[${index}].minPax cannot be greater than maxPax`);
+    }
+
     const data: Record<string, unknown> = {
       name: requireTrimmedString(variant.name, `rateVariants[${index}].name`),
       durationMinutes: this.normalizeOptionalPositiveInteger(variant.durationMinutes, `rateVariants[${index}].durationMinutes`),
@@ -316,10 +339,24 @@ export class ActivitiesService {
       notes: normalizeOptionalString(variant.notes),
       sortOrder: index,
     };
+    if (variant.supplierCompanyId !== undefined) {
+      data.supplierCompanyId = normalizeOptionalString(variant.supplierCompanyId);
+    }
+    if (variant.minPax !== undefined) {
+      data.minPax = minPax;
+    }
+    if (variant.maxPax !== undefined) {
+      data.maxPax = maxPax;
+    }
+    if (variant.capacityPricing !== undefined) {
+      data.capacityPricing = Boolean(variant.capacityPricing);
+    }
     const optionalTextFields = [
       'difficulty',
+      'meetingPoint',
       'startPoint',
       'endPoint',
+      'operationalNotes',
       'suitability',
       'fitnessNotes',
       'waterNotes',
@@ -392,6 +429,31 @@ export class ActivitiesService {
 
     if (!company) {
       throw new BadRequestException('Supplier company not found');
+    }
+  }
+
+  private async ensureRateVariantSupplierCompaniesExist(variants: ActivityRateVariantInput[] | undefined) {
+    if (!Array.isArray(variants)) {
+      return;
+    }
+
+    const supplierCompanyIds = Array.from(
+      new Set(variants.map((variant) => normalizeOptionalString(variant.supplierCompanyId)).filter((id): id is string => Boolean(id))),
+    );
+
+    if (supplierCompanyIds.length === 0) {
+      return;
+    }
+
+    const companies = await this.prisma.company.findMany({
+      where: { id: { in: supplierCompanyIds } },
+      select: { id: true },
+    });
+    const foundIds = new Set(companies.map((company) => company.id));
+    const missingId = supplierCompanyIds.find((id) => !foundIds.has(id));
+
+    if (missingId) {
+      throw new BadRequestException(`Rate variant supplier company not found: ${missingId}`);
     }
   }
 

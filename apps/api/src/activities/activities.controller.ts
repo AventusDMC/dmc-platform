@@ -12,19 +12,25 @@ type ActivityGuideRequirement =
 type ActivityRateVariantBody = {
   id?: string;
   name: string;
+  supplierCompanyId?: string | null;
   durationMinutes?: number | null;
   currency?: string | null;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;
+  minPax?: number | null;
+  maxPax?: number | null;
   maxPaxPerUnit?: number | null;
+  capacityPricing?: boolean | null;
   active?: boolean;
   notes?: string | null;
   difficulty?: string | null;
   guideRequired?: boolean | null;
   guideRequirement?: ActivityGuideRequirement | null;
+  meetingPoint?: string | null;
   startPoint?: string | null;
   endPoint?: string | null;
+  operationalNotes?: string | null;
   suitability?: string | null;
   fitnessNotes?: string | null;
   waterNotes?: string | null;
@@ -116,6 +122,8 @@ export class ActivitiesController {
           : Number(variant.durationMinutes),
       costPrice: Number(variant.costPrice),
       sellPrice: Number(variant.sellPrice),
+      minPax: variant.minPax === undefined || variant.minPax === null ? variant.minPax : Number(variant.minPax),
+      maxPax: variant.maxPax === undefined || variant.maxPax === null ? variant.maxPax : Number(variant.maxPax),
       maxPaxPerUnit:
         variant.maxPaxPerUnit === undefined || variant.maxPaxPerUnit === null
           ? variant.maxPaxPerUnit

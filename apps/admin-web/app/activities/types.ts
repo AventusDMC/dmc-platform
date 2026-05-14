@@ -30,19 +30,26 @@ export type Activity = {
 export type ActivityRateVariant = {
   id?: string;
   name: string;
+  supplierCompanyId?: string | null;
+  supplierCompany?: ActivityCompany | null;
   durationMinutes: number | null;
   currency: string;
   costPrice: number;
   sellPrice: number;
   pricingBasis: ActivityPricingBasis;
+  minPax?: number | null;
+  maxPax?: number | null;
   maxPaxPerUnit: number | null;
+  capacityPricing?: boolean | null;
   active: boolean;
   notes?: string | null;
   difficulty?: string | null;
   guideRequired?: boolean | null;
   guideRequirement?: string | null;
+  meetingPoint?: string | null;
   startPoint?: string | null;
   endPoint?: string | null;
+  operationalNotes?: string | null;
   suitability?: string | null;
   fitnessNotes?: string | null;
   waterNotes?: string | null;

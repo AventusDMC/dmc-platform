@@ -288,35 +288,42 @@ model Activity {
 }
 
 model ActivityRateVariant {
-  id               String                    @id @default(uuid()) @db.Uuid
-  activityId       String                    @db.Uuid
-  name             String
-  durationMinutes  Int?
-  pricingBasis     ActivityPricingBasis
-  currency         String                    @default("USD")
-  costPrice        Float
-  sellPrice        Float
-  maxPaxPerUnit    Int?
-  active           Boolean                   @default(true)
-  notes            String?
-  difficulty       String?
-  guideRequired    Boolean?
-  guideRequirement ActivityGuideRequirement?
-  startPoint       String?
-  endPoint         String?
-  suitability      String?
-  fitnessNotes     String?
-  waterNotes       String?
-  seasonalNotes    String?
-  inclusions       String?
-  exclusions       String?
-  sortOrder        Int                       @default(0)
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
-  activity         Activity                  @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  quoteItems       QuoteItem[]
+  id                String                    @id @default(uuid()) @db.Uuid
+  activityId        String                    @db.Uuid
+  name              String
+  durationMinutes   Int?
+  pricingBasis      ActivityPricingBasis
+  supplierCompanyId String?                   @db.Uuid
+  currency          String                    @default("USD")
+  costPrice         Float
+  sellPrice         Float
+  minPax            Int?
+  maxPax            Int?
+  maxPaxPerUnit     Int?
+  capacityPricing   Boolean                   @default(false)
+  active            Boolean                   @default(true)
+  notes             String?
+  difficulty        String?
+  guideRequired     Boolean?
+  guideRequirement  ActivityGuideRequirement?
+  meetingPoint      String?
+  startPoint        String?
+  endPoint          String?
+  operationalNotes  String?
+  suitability       String?
+  fitnessNotes      String?
+  waterNotes        String?
+  seasonalNotes     String?
+  inclusions        String?
+  exclusions        String?
+  sortOrder         Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  activity          Activity                  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  quoteItems        QuoteItem[]
 
   @@index([activityId, active, sortOrder])
+  @@index([supplierCompanyId])
   @@map("activity_rate_variants")
 }
 

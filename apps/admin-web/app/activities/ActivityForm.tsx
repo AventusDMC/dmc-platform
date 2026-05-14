@@ -22,34 +22,64 @@ function toStringValue(value: string | number | null | undefined) {
 type ActivityRateVariantFormRow = {
   id?: string;
   name: string;
+  supplierCompanyId: string;
   durationMinutes: string;
   currency: SupportedCurrency;
   costPrice: string;
   sellPrice: string;
   pricingBasis: ActivityPricingBasis;
+  minPax: string;
+  maxPax: string;
   maxPaxPerUnit: string;
+  capacityPricing: boolean;
   active: boolean;
   notes: string;
+  guideRequired: boolean;
+  guideRequirement: string;
+  meetingPoint: string;
+  startPoint: string;
+  endPoint: string;
+  inclusions: string;
+  exclusions: string;
+  operationalNotes: string;
+  seasonalNotes: string;
 };
 
 function toVariantRow(variant?: Partial<ActivityRateVariant>): ActivityRateVariantFormRow {
   return {
     id: variant?.id,
     name: variant?.name || '',
+    supplierCompanyId: variant?.supplierCompanyId || '',
     durationMinutes: toStringValue(variant?.durationMinutes),
     currency: normalizeSupportedCurrency(variant?.currency),
     costPrice: toStringValue(variant?.costPrice),
     sellPrice: toStringValue(variant?.sellPrice),
     pricingBasis: variant?.pricingBasis || 'PER_GROUP',
+    minPax: toStringValue(variant?.minPax),
+    maxPax: toStringValue(variant?.maxPax),
     maxPaxPerUnit: toStringValue(variant?.maxPaxPerUnit),
+    capacityPricing: Boolean(variant?.capacityPricing),
     active: variant?.active ?? true,
     notes: variant?.notes || '',
+    guideRequired: Boolean(variant?.guideRequired),
+    guideRequirement: variant?.guideRequirement || '',
+    meetingPoint: variant?.meetingPoint || '',
+    startPoint: variant?.startPoint || '',
+    endPoint: variant?.endPoint || '',
+    inclusions: variant?.inclusions || '',
+    exclusions: variant?.exclusions || '',
+    operationalNotes: variant?.operationalNotes || '',
+    seasonalNotes: variant?.seasonalNotes || '',
   };
 }
 
 export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, initialValues }: ActivityFormProps) {
   const router = useRouter();
+  const [code, setCode] = useState(initialValues?.code || '');
   const [name, setName] = useState(initialValues?.name || '');
+  const [category, setCategory] = useState(initialValues?.category || '');
+  const [city, setCity] = useState(initialValues?.city || '');
+  const [region, setRegion] = useState(initialValues?.region || '');
   const [description, setDescription] = useState(initialValues?.description || '');
   const [supplierCompanyId, setSupplierCompanyId] = useState(initialValues?.supplierCompanyId || '');
   const [pricingBasis, setPricingBasis] = useState<ActivityPricingBasis>(initialValues?.pricingBasis || 'PER_PERSON');
@@ -129,7 +159,9 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
       const variantCost = Number(variant.costPrice);
       const variantSell = Number(variant.sellPrice);
       const variantDuration = variant.durationMinutes.trim() ? Number(variant.durationMinutes) : null;
-      const variantMaxPax = variant.maxPaxPerUnit.trim() ? Number(variant.maxPaxPerUnit) : null;
+      const variantMinPax = variant.minPax.trim() ? Number(variant.minPax) : null;
+      const variantMaxPax = variant.maxPax.trim() ? Number(variant.maxPax) : null;
+      const variantMaxPaxPerUnit = variant.maxPaxPerUnit.trim() ? Number(variant.maxPaxPerUnit) : null;
 
       if (!variant.name.trim()) {
         setError(`Rate variant ${index + 1} name is required.`);
@@ -143,7 +175,19 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
         setError(`Rate variant ${index + 1} duration must be zero or greater.`);
         return;
       }
+      if (variantMinPax !== null && (!Number.isFinite(variantMinPax) || variantMinPax < 1)) {
+        setError(`Rate variant ${index + 1} minimum pax must be one or greater.`);
+        return;
+      }
       if (variantMaxPax !== null && (!Number.isFinite(variantMaxPax) || variantMaxPax < 1)) {
+        setError(`Rate variant ${index + 1} maximum pax must be one or greater.`);
+        return;
+      }
+      if (variantMinPax !== null && variantMaxPax !== null && variantMinPax > variantMaxPax) {
+        setError(`Rate variant ${index + 1} minimum pax cannot be greater than maximum pax.`);
+        return;
+      }
+      if (variantMaxPaxPerUnit !== null && (!Number.isFinite(variantMaxPaxPerUnit) || variantMaxPaxPerUnit < 1)) {
         setError(`Rate variant ${index + 1} max pax per unit must be one or greater.`);
         return;
       }
@@ -153,12 +197,25 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
         name: variant.name.trim(),
         durationMinutes: variantDuration,
         pricingBasis: variant.pricingBasis,
+        supplierCompanyId: variant.supplierCompanyId || null,
         currency: variant.currency,
         costPrice: variantCost,
         sellPrice: variantSell,
-        maxPaxPerUnit: variantMaxPax,
+        minPax: variantMinPax,
+        maxPax: variantMaxPax,
+        maxPaxPerUnit: variantMaxPaxPerUnit,
+        capacityPricing: variant.capacityPricing,
         active: variant.active,
         notes: variant.notes.trim() || null,
+        guideRequired: variant.guideRequired,
+        guideRequirement: variant.guideRequirement || null,
+        meetingPoint: variant.meetingPoint.trim() || null,
+        startPoint: variant.startPoint.trim() || null,
+        endPoint: variant.endPoint.trim() || null,
+        inclusions: variant.inclusions.trim() || null,
+        exclusions: variant.exclusions.trim() || null,
+        operationalNotes: variant.operationalNotes.trim() || null,
+        seasonalNotes: variant.seasonalNotes.trim() || null,
       });
     }
 
@@ -167,7 +224,11 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
 
     try {
       const payload = {
+        code: code.trim() || null,
         name: name.trim(),
+        category: category.trim() || null,
+        city: city.trim() || null,
+        region: region.trim() || null,
         description: description.trim() || null,
         supplierCompanyId,
         pricingBasis,
@@ -209,53 +270,91 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
-      <label>
-        Name
-        <input value={name} onChange={(event) => setName(event.target.value)} required />
-      </label>
+      <section className="quote-hotel-step-panel">
+        <div className="quote-hotel-step-head">
+          <div>
+            <h3>Activity master</h3>
+            <p className="detail-copy">Operational container fields used to organize activity variants.</p>
+          </div>
+        </div>
 
-      <label>
-        Description
-        <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
-      </label>
+        <div className="form-row form-row-3">
+          <label>
+            Name
+            <input value={name} onChange={(event) => setName(event.target.value)} required />
+          </label>
+          <label>
+            Code
+            <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="PETRA_BY_NIGHT" />
+          </label>
+          <label>
+            Category
+            <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Cultural" />
+          </label>
+        </div>
 
-      <label>
-        Supplier company
-        <select value={supplierCompanyId} onChange={(event) => setSupplierCompanyId(event.target.value)} required>
-          <option value="">Select supplier company</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.id}>
-              {company.name}
-              {company.type ? ` (${company.type})` : ''}
-            </option>
-          ))}
-        </select>
-      </label>
+        <div className="form-row form-row-3">
+          <label>
+            City
+            <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="Petra" />
+          </label>
+          <label>
+            Region
+            <input value={region} onChange={(event) => setRegion(event.target.value)} placeholder="South Jordan" />
+          </label>
+          <label>
+            Supplier company
+            <select value={supplierCompanyId} onChange={(event) => setSupplierCompanyId(event.target.value)} required>
+              <option value="">Select supplier company</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
+                  {company.type ? ` (${company.type})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-      <div className="form-row">
         <label>
-          Pricing basis
-          <select value={pricingBasis} onChange={(event) => setPricingBasis(event.target.value as ActivityPricingBasis)} required>
-            <option value="PER_PERSON">Per person</option>
-            <option value="PER_GROUP">Per group</option>
-          </select>
+          Description
+          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
         </label>
-        <label>
-          Cost price
-          <input value={costPrice} onChange={(event) => setCostPrice(event.target.value)} type="number" min="0" step="0.01" required />
-        </label>
-        <label>
-          Sell price
-          <input value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} type="number" min="0" step="0.01" required />
-        </label>
-      </div>
+      </section>
 
-      <div className="form-row">
-        <label>
-          Duration minutes
-          <input value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} type="number" min="0" />
-        </label>
-      </div>
+      <section className="quote-hotel-step-panel">
+        <div className="quote-hotel-step-head">
+          <div>
+            <h3>Legacy fallback pricing</h3>
+            <p className="detail-copy">Used by existing quotes and only used for new activity quote items when no active variants exist.</p>
+          </div>
+        </div>
+
+        <div className="form-row">
+          <label>
+            Pricing basis
+            <select value={pricingBasis} onChange={(event) => setPricingBasis(event.target.value as ActivityPricingBasis)} required>
+              <option value="PER_PERSON">Per person</option>
+              <option value="PER_GROUP">Per group</option>
+            </select>
+          </label>
+          <label>
+            Cost price
+            <input value={costPrice} onChange={(event) => setCostPrice(event.target.value)} type="number" min="0" step="0.01" required />
+          </label>
+          <label>
+            Sell price
+            <input value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} type="number" min="0" step="0.01" required />
+          </label>
+        </div>
+
+        <div className="form-row">
+          <label>
+            Duration minutes
+            <input value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} type="number" min="0" />
+          </label>
+        </div>
+      </section>
 
       <label className="checkbox-row">
         <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
@@ -315,11 +414,42 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                   </select>
                 </label>
                 <label>
+                  Supplier
+                  <select value={variant.supplierCompanyId} onChange={(event) => updateVariant(index, { supplierCompanyId: event.target.value })}>
+                    <option value="">Use activity supplier</option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
                   Currency
                   <CurrencySelect
                     value={variant.currency}
                     onChange={(value) => updateVariant(index, { currency: (value || 'USD') as SupportedCurrency })}
                     required
+                  />
+                </label>
+                <label>
+                  Min pax
+                  <input
+                    value={variant.minPax}
+                    onChange={(event) => updateVariant(index, { minPax: event.target.value })}
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                  />
+                </label>
+                <label>
+                  Max pax
+                  <input
+                    value={variant.maxPax}
+                    onChange={(event) => updateVariant(index, { maxPax: event.target.value })}
+                    type="number"
+                    min="1"
+                    placeholder="10"
                   />
                 </label>
                 <label>
@@ -352,6 +482,76 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                     type="number"
                     min="1"
                     placeholder="6"
+                  />
+                </label>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={variant.capacityPricing}
+                    onChange={(event) => updateVariant(index, { capacityPricing: event.target.checked })}
+                  />
+                  Capacity pricing
+                </label>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={variant.guideRequired}
+                    onChange={(event) => updateVariant(index, { guideRequired: event.target.checked })}
+                  />
+                  Guide required
+                </label>
+                <label>
+                  Guide requirement
+                  <select value={variant.guideRequirement} onChange={(event) => updateVariant(index, { guideRequirement: event.target.value })}>
+                    <option value="">Not specified</option>
+                    <option value="LOCAL_GUIDE_REQUIRED">Local guide required</option>
+                    <option value="OFFICIAL_ACCOMPANYING_GUIDE_ALLOWED">Official accompanying guide allowed</option>
+                    <option value="BOTH_ACCEPTED">Both accepted</option>
+                    <option value="LOCAL_GUIDE_PLUS_ACCOMPANYING_GUIDE">Local plus accompanying guide</option>
+                  </select>
+                </label>
+                <label>
+                  Meeting point
+                  <input value={variant.meetingPoint} onChange={(event) => updateVariant(index, { meetingPoint: event.target.value })} />
+                </label>
+                <label>
+                  Start point
+                  <input value={variant.startPoint} onChange={(event) => updateVariant(index, { startPoint: event.target.value })} />
+                </label>
+                <label>
+                  End point
+                  <input value={variant.endPoint} onChange={(event) => updateVariant(index, { endPoint: event.target.value })} />
+                </label>
+                <label>
+                  Inclusions
+                  <textarea
+                    value={variant.inclusions}
+                    onChange={(event) => updateVariant(index, { inclusions: event.target.value })}
+                    rows={2}
+                  />
+                </label>
+                <label>
+                  Exclusions
+                  <textarea
+                    value={variant.exclusions}
+                    onChange={(event) => updateVariant(index, { exclusions: event.target.value })}
+                    rows={2}
+                  />
+                </label>
+                <label>
+                  Operational notes
+                  <textarea
+                    value={variant.operationalNotes}
+                    onChange={(event) => updateVariant(index, { operationalNotes: event.target.value })}
+                    rows={2}
+                  />
+                </label>
+                <label>
+                  Seasonal notes
+                  <textarea
+                    value={variant.seasonalNotes}
+                    onChange={(event) => updateVariant(index, { seasonalNotes: event.target.value })}
+                    rows={2}
                   />
                 </label>
                 <label>
@@ -387,7 +587,7 @@ export function ActivityForm({ apiBaseUrl, activityId, companies, submitLabel, i
                       setRateVariants((current) => current.filter((_, rowIndex) => rowIndex !== index));
                     }}
                   >
-                    Remove
+                    {variant.id ? 'Archive' : 'Remove'}
                   </button>
                 </div>
               </div>

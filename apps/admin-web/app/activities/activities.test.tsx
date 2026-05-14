@@ -228,9 +228,17 @@ describe('activities catalog admin UI regression', () => {
       "{variant.active ? 'Active' : 'Inactive'}",
       '<CurrencySelect',
       'currency: variant.currency',
+      'supplierCompanyId: variant.supplierCompanyId || null',
+      'minPax: variantMinPax',
+      'maxPax: variantMaxPax',
+      'capacityPricing: variant.capacityPricing',
+      'meetingPoint: variant.meetingPoint.trim() || null',
+      'operationalNotes: variant.operationalNotes.trim() || null',
+      'Legacy fallback pricing',
       'Move up',
       'Move down',
       'Duplicate',
+      "{variant.id ? 'Archive' : 'Remove'}",
     ]);
   });
 
