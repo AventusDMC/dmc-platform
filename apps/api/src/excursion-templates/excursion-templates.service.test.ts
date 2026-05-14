@@ -293,6 +293,67 @@ test('previews operational blueprint workbook without flattening reusable compon
   assert.ok(preview.warnings.some((entry: any) => /Dining option not found/.test(entry.message)));
 });
 
+test('allows multi-origin operational blueprint templates without template StartCity', async () => {
+  const createdRoutes: any[] = [];
+  const createdTemplates: any[] = [];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      create: async ({ data }: any) => {
+        createdTemplates.push(data);
+        return { id: 'template-created', ...data };
+      },
+      findUnique: async ({ where }: any) => (where.code ? null : { id: where.id, code: 'PETRA_2D', components: [] }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) => createdRoutes.find((route: any) => route.id === where.id || route.code === where.code) || null,
+      create: async ({ data }: any) => {
+        const route = { id: `touring-route-${data.code}`, ...data };
+        createdRoutes.push(route);
+        return route;
+      },
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      findMany: async () => [],
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'ticket-petra', name: 'Petra Entrance Ticket', serviceType: { name: 'Ticket' } }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'activity-petra', name: 'Petra Guided Walk', durationMinutes: 180 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'transport-full-day', name: 'Full Day', code: 'FULL_DAY' }],
+    },
+  });
+  const buffer = buildOperationalBlueprintWorkbook({
+    EXCURSION_TEMPLATES: [
+      {
+        TemplateCode: 'PETRA_2D',
+        TemplateName: 'Petra Two Day',
+        DurationDays: 2,
+        Category: 'Cultural',
+        Description: 'Operational Petra program',
+        Active: 'Active',
+      },
+    ],
+  });
+
+  const preview = await service.previewOperationalBlueprintImport({ buffer, originalname: 'multi-origin-excursions.xlsx' });
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.templates[0].startCity, 'MULTI_ORIGIN');
+  assert.ok(preview.warnings.some((entry: any) => entry.message === 'Template StartCity missing; using MULTI_ORIGIN because route variants define origins.'));
+
+  const imported = await service.importOperationalBlueprintWorkbook({ buffer, originalname: 'multi-origin-excursions.xlsx' });
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.importedTemplates, 1);
+  assert.equal(createdTemplates[0].defaultDepartureCity, 'MULTI_ORIGIN');
+});
+
 test('blocks operational blueprint workbook with duplicate templates and bad required route references', async () => {
   const { service } = createExcursionTemplatesService();
   const buffer = buildOperationalBlueprintWorkbook({

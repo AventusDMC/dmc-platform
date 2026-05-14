@@ -61,7 +61,7 @@ type ExcursionWorkbookTemplateRow = {
   TemplateCode: string;
   TemplateName: string;
   DurationDays: string;
-  StartCity: string;
+  StartCity?: string;
   Category: string;
   Description: string;
   Active: string;
@@ -120,7 +120,7 @@ const EXCURSION_WORKBOOK_SHEETS = {
   optional: 'OPTIONAL_COMPONENTS',
 } as const;
 const EXCURSION_WORKBOOK_REQUIRED_COLUMNS: Record<string, string[]> = {
-  EXCURSION_TEMPLATES: ['TemplateCode', 'TemplateName', 'DurationDays', 'StartCity', 'Category', 'Description', 'Active'],
+  EXCURSION_TEMPLATES: ['TemplateCode', 'TemplateName', 'DurationDays', 'Category', 'Description', 'Active'],
   TOURING_ROUTES: ['RouteCode', 'TemplateCode', 'RouteName', 'StartCity', 'DurationDays', 'RouteDescription', 'MainDestinations', 'IncludedKM', 'IncludedHours'],
   TOURING_ROUTE_STOPS: ['RouteCode', 'StopOrder', 'StopName', 'Region', 'Overnight', 'Notes'],
   TRANSPORT_COMPONENTS: ['TemplateCode', 'RouteCode', 'Required', 'PricingMode', 'Notes'],
@@ -139,6 +139,10 @@ function normalizeWorkbookText(value: unknown) {
 
 function normalizeWorkbookKey(value: unknown) {
   return normalizeWorkbookText(value).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function resolveTemplateStartCity(template: ExcursionWorkbookTemplateRow) {
+  return normalizeWorkbookText(template.StartCity) || 'MULTI_ORIGIN';
 }
 
 function parseWorkbookBoolean(value: unknown, fallback = true) {
@@ -493,6 +497,18 @@ export class ExcursionTemplatesService {
       if (!normalizeWorkbookText(row.Description)) {
         warnings.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, templateCode: normalizeWorkbookKey(row.TemplateCode), message: 'No operational notes/description provided.' });
       }
+      if (!normalizeWorkbookText(row.StartCity)) {
+        const code = normalizeWorkbookKey(row.TemplateCode);
+        const routeVariantsDefineOrigins = workbook.routes.some((route) => normalizeWorkbookKey(route.TemplateCode) === code && normalizeWorkbookText(route.StartCity));
+        const transportVariantsExist = workbook.transport.some((transport) => normalizeWorkbookKey(transport.TemplateCode) === code && normalizeWorkbookText(transport.RouteCode));
+        if (routeVariantsDefineOrigins || transportVariantsExist) {
+          warnings.push({
+            sheet: EXCURSION_WORKBOOK_SHEETS.templates,
+            templateCode: code,
+            message: 'Template StartCity missing; using MULTI_ORIGIN because route variants define origins.',
+          });
+        }
+      }
     }
     for (const code of Array.from(new Set(duplicateTemplateCodes))) {
       errors.push({ sheet: EXCURSION_WORKBOOK_SHEETS.templates, message: `Duplicate TemplateCode: ${code}.` });
@@ -549,7 +565,7 @@ export class ExcursionTemplatesService {
         templateCode: code,
         templateName: normalizeWorkbookText(template.TemplateName),
         durationDays: parseWorkbookPositiveInteger(template.DurationDays, 1),
-        startCity: normalizeWorkbookText(template.StartCity),
+        startCity: resolveTemplateStartCity(template),
         category: normalizeWorkbookText(template.Category),
         active: parseWorkbookBoolean(template.Active),
         routes: workbook.routes.filter((row) => normalizeWorkbookKey(row.TemplateCode) === code).length,
@@ -1677,7 +1693,7 @@ export class ExcursionTemplatesService {
       const data: CreateExcursionTemplateInput = {
         code,
         name: normalizeWorkbookText(templateRow.TemplateName),
-        defaultDepartureCity: normalizeWorkbookText(templateRow.StartCity),
+        defaultDepartureCity: resolveTemplateStartCity(templateRow),
         durationMinutes: parseWorkbookPositiveInteger(templateRow.DurationDays, 1) * 24 * 60,
         description: normalizeWorkbookText(templateRow.Description),
         operationalNotes: [normalizeWorkbookText(templateRow.Category), normalizeWorkbookText(templateRow.Description)].filter(Boolean).join(' | '),
