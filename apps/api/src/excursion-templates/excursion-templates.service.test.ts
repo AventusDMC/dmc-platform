@@ -45,6 +45,7 @@ function buildOperationalBlueprintWorkbook(overrides = {}) {
   };
   const workbook = XLSX.utils.book_new();
   for (const [name, rows] of Object.entries(sheets)) {
+    if (!rows) continue;
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), name);
   }
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
@@ -352,6 +353,98 @@ test('allows multi-origin operational blueprint templates without template Start
   assert.deepEqual(imported.errors, []);
   assert.equal(imported.importedTemplates, 1);
   assert.equal(createdTemplates[0].defaultDepartureCity, 'MULTI_ORIGIN');
+});
+
+test('imports operational blueprint workbook with touring route variants instead of touring routes', async () => {
+  const createdRoutes: any[] = [];
+  const createdTemplates: any[] = [];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      create: async ({ data }: any) => {
+        createdTemplates.push(data);
+        return { id: 'template-created', ...data };
+      },
+      findUnique: async ({ where }: any) => (where.code ? null : { id: where.id, code: 'PETRA_2D', components: [] }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) => createdRoutes.find((route: any) => route.id === where.id || route.code === where.code) || null,
+      create: async ({ data }: any) => {
+        const route = { id: `touring-route-${data.code}`, ...data };
+        createdRoutes.push(route);
+        return route;
+      },
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      findMany: async () => [],
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'ticket-petra', name: 'Petra Entrance Ticket', serviceType: { name: 'Ticket' } }],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'activity-petra', name: 'Petra Guided Walk', durationMinutes: 180 }],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [{ id: 'transport-full-day', name: 'Full Day', code: 'FULL_DAY' }],
+    },
+  });
+  const buffer = buildOperationalBlueprintWorkbook({
+    TOURING_ROUTES: undefined,
+    TOURING_ROUTE_VARIANTS: [
+      {
+        VariantCode: 'AMM_PETRA_2D',
+        TemplateCode: 'PETRA_2D',
+        VariantName: 'Amman Petra Two Day',
+        StartOrigin: 'Amman',
+        EndOrigin: 'Petra',
+        DurationDays: 2,
+        IncludedKM: 480,
+        IncludedHours: 20,
+        RouteDescription: 'Amman origin variant',
+        Notes: 'Variant notes',
+      },
+      {
+        VariantCode: 'AQJ_PETRA_2D',
+        TemplateCode: 'PETRA_2D',
+        VariantName: 'Aqaba Petra Two Day',
+        StartOrigin: 'Aqaba',
+        EndOrigin: 'Petra',
+        DurationDays: 2,
+        IncludedKM: 300,
+        IncludedHours: 16,
+        RouteDescription: 'Aqaba origin variant',
+        Notes: '',
+      },
+    ],
+    TOURING_ROUTE_STOPS: [
+      { RouteCode: 'AMM_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
+      { RouteCode: 'AQJ_PETRA_2D', StopOrder: 1, StopName: 'Petra Visitor Center', Region: 'Petra', Overnight: 'Yes', Notes: 'Main visit' },
+    ],
+    TRANSPORT_COMPONENTS: [
+      { TemplateCode: 'PETRA_2D', VariantCode: 'AMM_PETRA_2D', Required: 'Yes', PricingMode: 'Full Day', Notes: 'Amman vehicle' },
+      { TemplateCode: 'PETRA_2D', VariantCode: 'AQJ_PETRA_2D', Required: 'Yes', PricingMode: 'Full Day', Notes: 'Aqaba vehicle' },
+    ],
+  });
+
+  const preview = await service.previewOperationalBlueprintImport({ buffer, originalname: 'variants.xlsx' });
+
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.counts.touringRoutes, 2);
+  assert.equal(preview.templates[0].routes, 2);
+  assert.equal(preview.templates[0].transportComponents, 2);
+
+  const imported = await service.importOperationalBlueprintWorkbook({ buffer, originalname: 'variants.xlsx' });
+  assert.deepEqual(imported.errors, []);
+  assert.equal(imported.importedTemplates, 1);
+  assert.equal(imported.importedTouringRoutes, 2);
+  assert.equal(createdRoutes[0].code, 'AMM_PETRA_2D');
+  assert.equal(createdRoutes[0].startCity, 'Amman');
+  assert.equal(createdRoutes[1].code, 'AQJ_PETRA_2D');
+  assert.equal(createdTemplates[0].components.create[0].touringRouteId, 'touring-route-AMM_PETRA_2D');
+  assert.equal(createdTemplates[0].components.create[1].touringRouteId, 'touring-route-AQJ_PETRA_2D');
 });
 
 test('blocks operational blueprint workbook with duplicate templates and bad required route references', async () => {

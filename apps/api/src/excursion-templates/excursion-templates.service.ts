@@ -79,6 +79,19 @@ type ExcursionWorkbookRouteRow = {
   IncludedHours: string;
 };
 
+type ExcursionWorkbookRouteVariantRow = {
+  VariantCode: string;
+  TemplateCode: string;
+  VariantName: string;
+  StartOrigin: string;
+  EndOrigin: string;
+  DurationDays: string;
+  IncludedKM: string;
+  IncludedHours: string;
+  RouteDescription: string;
+  Notes: string;
+};
+
 type ExcursionWorkbookStopRow = {
   RouteCode: string;
   StopOrder: string;
@@ -111,6 +124,7 @@ const COMPONENT_TYPES: ExcursionComponentType[] = ['TRANSPORT', 'TICKET', 'ACTIV
 const EXCURSION_WORKBOOK_SHEETS = {
   templates: 'EXCURSION_TEMPLATES',
   routes: 'TOURING_ROUTES',
+  routeVariants: 'TOURING_ROUTE_VARIANTS',
   stops: 'TOURING_ROUTE_STOPS',
   transport: 'TRANSPORT_COMPONENTS',
   tickets: 'TICKET_COMPONENTS',
@@ -122,8 +136,9 @@ const EXCURSION_WORKBOOK_SHEETS = {
 const EXCURSION_WORKBOOK_REQUIRED_COLUMNS: Record<string, string[]> = {
   EXCURSION_TEMPLATES: ['TemplateCode', 'TemplateName', 'DurationDays', 'Category', 'Description', 'Active'],
   TOURING_ROUTES: ['RouteCode', 'TemplateCode', 'RouteName', 'StartCity', 'DurationDays', 'RouteDescription', 'MainDestinations', 'IncludedKM', 'IncludedHours'],
+  TOURING_ROUTE_VARIANTS: ['VariantCode', 'TemplateCode', 'VariantName', 'StartOrigin', 'EndOrigin', 'DurationDays', 'IncludedKM', 'IncludedHours', 'RouteDescription', 'Notes'],
   TOURING_ROUTE_STOPS: ['RouteCode', 'StopOrder', 'StopName', 'Region', 'Overnight', 'Notes'],
-  TRANSPORT_COMPONENTS: ['TemplateCode', 'RouteCode', 'Required', 'PricingMode', 'Notes'],
+  TRANSPORT_COMPONENTS: ['TemplateCode', 'Required', 'PricingMode', 'Notes'],
   TICKET_COMPONENTS: ['TemplateCode', 'TicketName', 'Required', 'Notes'],
   GUIDE_COMPONENTS: ['TemplateCode', 'GuideType', 'Required', 'Notes'],
   DINING_COMPONENTS: ['TemplateCode', 'DiningName', 'Required', 'Optional', 'Notes'],
@@ -143,6 +158,25 @@ function normalizeWorkbookKey(value: unknown) {
 
 function resolveTemplateStartCity(template: ExcursionWorkbookTemplateRow) {
   return normalizeWorkbookText(template.StartCity) || 'MULTI_ORIGIN';
+}
+
+function resolveTransportRouteCode(row: ExcursionWorkbookComponentRow) {
+  return normalizeWorkbookKey(row.RouteCode || row.VariantCode);
+}
+
+function normalizeRouteVariantRow(row: ExcursionWorkbookRouteVariantRow): ExcursionWorkbookRouteRow {
+  const routeDescription = [normalizeWorkbookText(row.RouteDescription), normalizeWorkbookText(row.Notes)].filter(Boolean).join(' | ');
+  return {
+    RouteCode: normalizeWorkbookText(row.VariantCode),
+    TemplateCode: normalizeWorkbookText(row.TemplateCode),
+    RouteName: normalizeWorkbookText(row.VariantName),
+    StartCity: normalizeWorkbookText(row.StartOrigin),
+    DurationDays: normalizeWorkbookText(row.DurationDays),
+    RouteDescription: routeDescription,
+    MainDestinations: normalizeWorkbookText(row.EndOrigin),
+    IncludedKM: normalizeWorkbookText(row.IncludedKM),
+    IncludedHours: normalizeWorkbookText(row.IncludedHours),
+  };
 }
 
 function parseWorkbookBoolean(value: unknown, fallback = true) {
@@ -500,7 +534,7 @@ export class ExcursionTemplatesService {
       if (!normalizeWorkbookText(row.StartCity)) {
         const code = normalizeWorkbookKey(row.TemplateCode);
         const routeVariantsDefineOrigins = workbook.routes.some((route) => normalizeWorkbookKey(route.TemplateCode) === code && normalizeWorkbookText(route.StartCity));
-        const transportVariantsExist = workbook.transport.some((transport) => normalizeWorkbookKey(transport.TemplateCode) === code && normalizeWorkbookText(transport.RouteCode));
+        const transportVariantsExist = workbook.transport.some((transport) => normalizeWorkbookKey(transport.TemplateCode) === code && resolveTransportRouteCode(transport));
         if (routeVariantsDefineOrigins || transportVariantsExist) {
           warnings.push({
             sheet: EXCURSION_WORKBOOK_SHEETS.templates,
@@ -528,7 +562,7 @@ export class ExcursionTemplatesService {
     }
 
     const componentRows = [
-      ...workbook.transport.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.transport, index, row, templateCode: row.TemplateCode, routeCode: row.RouteCode })),
+      ...workbook.transport.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.transport, index, row, templateCode: row.TemplateCode, routeCode: row.RouteCode || row.VariantCode })),
       ...workbook.tickets.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.tickets, index, row, templateCode: row.TemplateCode })),
       ...workbook.guides.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.guides, index, row, templateCode: row.TemplateCode })),
       ...workbook.dining.map((row, index) => ({ sheet: EXCURSION_WORKBOOK_SHEETS.dining, index, row, templateCode: row.TemplateCode })),
@@ -542,7 +576,7 @@ export class ExcursionTemplatesService {
         errors.push({ sheet: entry.sheet, row: entry.index + 2, message: `Component references unknown template ${entry.templateCode}.` });
       }
       if (entry.sheet === EXCURSION_WORKBOOK_SHEETS.transport && parseWorkbookBoolean(entry.row.Required, false) && !routeCodes.has(normalizeWorkbookKey(entry.routeCode))) {
-        errors.push({ sheet: entry.sheet, row: entry.index + 2, message: 'Required transport component must reference a known RouteCode.' });
+        errors.push({ sheet: entry.sheet, row: entry.index + 2, message: 'Required transport component must reference a known RouteCode or VariantCode.' });
       }
     }
 
@@ -1571,7 +1605,22 @@ export class ExcursionTemplatesService {
     }
 
     const workbook = file.buffer ? XLSX.read(file.buffer, { type: 'buffer', cellDates: true }) : XLSX.readFile(file.path!, { cellDates: true });
-    for (const sheet of Object.values(EXCURSION_WORKBOOK_SHEETS)) {
+    const hasRoutesSheet = Boolean(workbook.Sheets[EXCURSION_WORKBOOK_SHEETS.routes]);
+    const hasRouteVariantsSheet = Boolean(workbook.Sheets[EXCURSION_WORKBOOK_SHEETS.routeVariants]);
+    if (!hasRoutesSheet && !hasRouteVariantsSheet) {
+      throw new BadRequestException(`Missing workbook tab: ${EXCURSION_WORKBOOK_SHEETS.routes} or ${EXCURSION_WORKBOOK_SHEETS.routeVariants}`);
+    }
+
+    const requiredSheets: string[] = Object.values(EXCURSION_WORKBOOK_SHEETS).filter(
+      (sheet) => sheet !== EXCURSION_WORKBOOK_SHEETS.routes && sheet !== EXCURSION_WORKBOOK_SHEETS.routeVariants,
+    );
+    if (hasRouteVariantsSheet) {
+      requiredSheets.push(EXCURSION_WORKBOOK_SHEETS.routeVariants);
+    } else {
+      requiredSheets.push(EXCURSION_WORKBOOK_SHEETS.routes);
+    }
+
+    for (const sheet of requiredSheets) {
       if (!workbook.Sheets[sheet]) {
         throw new BadRequestException(`Missing workbook tab: ${sheet}`);
       }
@@ -1587,9 +1636,13 @@ export class ExcursionTemplatesService {
         Object.fromEntries(Object.entries(row).map(([key, value]) => [key, normalizeWorkbookText(value)])),
       ) as T[];
 
+    const routes = hasRouteVariantsSheet
+      ? readSheet<ExcursionWorkbookRouteVariantRow>(EXCURSION_WORKBOOK_SHEETS.routeVariants).map(normalizeRouteVariantRow)
+      : readSheet<ExcursionWorkbookRouteRow>(EXCURSION_WORKBOOK_SHEETS.routes);
+
     return {
       templates: readSheet<ExcursionWorkbookTemplateRow>(EXCURSION_WORKBOOK_SHEETS.templates),
-      routes: readSheet<ExcursionWorkbookRouteRow>(EXCURSION_WORKBOOK_SHEETS.routes),
+      routes,
       stops: readSheet<ExcursionWorkbookStopRow>(EXCURSION_WORKBOOK_SHEETS.stops),
       transport: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.transport),
       tickets: readSheet<ExcursionWorkbookComponentRow>(EXCURSION_WORKBOOK_SHEETS.tickets),
@@ -1722,11 +1775,12 @@ export class ExcursionTemplatesService {
     const components: ExcursionTemplateComponentInput[] = [];
     const push = (component: ExcursionTemplateComponentInput) => components.push({ ...component, sortOrder: components.length });
     for (const row of workbook.transport.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
-      const route = touringRoutes.get(normalizeWorkbookKey(row.RouteCode));
+      const routeCode = resolveTransportRouteCode(row);
+      const route = touringRoutes.get(routeCode);
       const pricingMode = normalizeWorkbookText(row.PricingMode);
       push({
         componentType: 'TRANSPORT',
-        label: route?.name || normalizeWorkbookText(row.RouteCode) || 'Transport component',
+        label: route?.name || normalizeWorkbookText(row.RouteCode || row.VariantCode) || 'Transport component',
         isOptional: !parseWorkbookBoolean(row.Required, true),
         touringRouteId: route?.id || null,
         transportServiceTypeId: matches.transportTypeMatches.get(pricingMode)?.id || null,
