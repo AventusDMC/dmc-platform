@@ -448,6 +448,64 @@ test('imports operational blueprint workbook with touring route variants instead
   assert.equal(createdTemplates[0].components.create[1].touringRouteId, 'touring-route-AQJ_PETRA_2D');
 });
 
+test('imports operational blueprint workbook with missing reusable inventory as warning-only components', async () => {
+  const createdRoutes: any[] = [];
+  const createdTemplates: any[] = [];
+  const { service } = createExcursionTemplatesService({
+    excursionTemplate: {
+      create: async ({ data }: any) => {
+        createdTemplates.push(data);
+        return { id: 'template-created', ...data };
+      },
+      findUnique: async ({ where }: any) => (where.code ? null : { id: where.id, code: 'PETRA_2D', components: [] }),
+      findMany: async () => [],
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) => createdRoutes.find((route: any) => route.id === where.id || route.code === where.code) || null,
+      create: async ({ data }: any) => {
+        const route = { id: `touring-route-${data.code}`, ...data };
+        createdRoutes.push(route);
+        return route;
+      },
+      update: async ({ where, data }: any) => ({ id: where.id, ...data }),
+      findMany: async () => [],
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+    activity: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+    transportServiceType: {
+      findUnique: async ({ where }: any) => ({ id: where.id }),
+      findMany: async () => [],
+    },
+  });
+
+  const imported = await service.importOperationalBlueprintWorkbook({ buffer: buildOperationalBlueprintWorkbook(), originalname: 'missing-inventory.xlsx' });
+
+  assert.equal(imported.success, true);
+  assert.equal(imported.importedTemplates, 1);
+  assert.equal(imported.importedComponents, 6);
+  assert.ok(imported.warnings.some((entry: any) => /Ticket not found/.test(entry.message)));
+  assert.ok(imported.warnings.some((entry: any) => /Transport pricing mode not found/.test(entry.message)));
+  const components = createdTemplates[0].components.create;
+  assert.equal(components[0].transportServiceTypeId, null);
+  assert.match(components[0].operationalNotes, /Unresolved transport pricing mode/);
+  assert.equal(components[1].supplierServiceId, null);
+  assert.match(components[1].operationalNotes, /Unresolved ticket inventory reference/);
+  assert.equal(components[2].activityId, null);
+  assert.equal(components[2].supplierServiceId, null);
+  assert.match(components[2].operationalNotes, /Unresolved guide inventory reference/);
+  assert.equal(components[3].supplierServiceId, null);
+  assert.match(components[3].operationalNotes, /Unresolved dining inventory reference/);
+  assert.equal(components[4].activityId, null);
+  assert.match(components[4].operationalNotes, /Unresolved activity inventory reference/);
+});
+
 test('blocks operational blueprint workbook with duplicate templates and bad required route references', async () => {
   const { service } = createExcursionTemplatesService();
   const buffer = buildOperationalBlueprintWorkbook({

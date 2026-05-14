@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 import * as XLSX from 'xlsx';
@@ -205,8 +205,14 @@ function splitWorkbookList(value: unknown) {
   return normalizeWorkbookText(value).split(/[;,|]/).map((entry) => entry.trim()).filter(Boolean);
 }
 
+function appendOperationalNote(notes: unknown, addition: string) {
+  return [normalizeWorkbookText(notes), addition].filter(Boolean).join(' | ');
+}
+
 @Injectable()
 export class ExcursionTemplatesService {
+  private readonly logger = new Logger(ExcursionTemplatesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   findAll() {
@@ -641,16 +647,42 @@ export class ExcursionTemplatesService {
     };
 
     if (errors.length > 0 || mode === 'preview') {
-      return summary;
+      return {
+        success: errors.length === 0,
+        ...summary,
+      };
     }
 
-    const imported = await this.applyOperationalBlueprintImport(workbook, masterMatches);
-    return {
-      ...summary,
-      importedTemplates: imported.templates,
-      importedTouringRoutes: imported.touringRoutes,
-      importedComponents: imported.components,
-    };
+    try {
+      this.logger.log(`[excursion-blueprint] import start ${JSON.stringify({ templates: workbook.templates.length, routes: workbook.routes.length })}`);
+      const imported = await this.applyOperationalBlueprintImport(workbook, masterMatches);
+      this.logger.log(`[excursion-blueprint] response sent ${JSON.stringify(imported)}`);
+      return {
+        success: true,
+        ...summary,
+        importedTemplates: imported.templates,
+        importedTouringRoutes: imported.touringRoutes,
+        importedComponents: imported.components,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Operational blueprint import failed.';
+      this.logger.error(`[excursion-blueprint] import failed ${message}`, error instanceof Error ? error.stack : undefined);
+      return {
+        success: false,
+        stage: 'operational blueprint import',
+        template: null,
+        componentType: null,
+        message,
+        ...summary,
+        errors: [
+          ...errors,
+          {
+            sheet: 'WORKBOOK',
+            message,
+          },
+        ],
+      };
+    }
   }
 
   async fillMissingOperationalMetadata(templateId: string) {
@@ -1715,6 +1747,7 @@ export class ExcursionTemplatesService {
 
     for (const routeRow of workbook.routes) {
       const code = normalizeWorkbookKey(routeRow.RouteCode);
+      this.logger.log(`[excursion-blueprint] touring route create ${JSON.stringify({ code })}`);
       const stops = workbook.stops
         .filter((stop) => resolveStopRouteCode(stop) === code)
         .map((stop, index) => ({
@@ -1748,6 +1781,7 @@ export class ExcursionTemplatesService {
 
     for (const templateRow of workbook.templates) {
       const code = normalizeWorkbookKey(templateRow.TemplateCode);
+      this.logger.log(`[excursion-blueprint] template create ${JSON.stringify({ code })}`);
       const components = this.buildOperationalBlueprintComponents(code, workbook, touringRoutes, matches);
       const data: CreateExcursionTemplateInput = {
         code,
@@ -1761,8 +1795,10 @@ export class ExcursionTemplatesService {
       };
       const existing = await (this.prisma as any).excursionTemplate.findUnique({ where: { code } });
       if (existing) {
+        this.logger.log(`[excursion-blueprint] template update ${JSON.stringify({ code, components: components.length })}`);
         await this.update(existing.id, data);
       } else {
+        this.logger.log(`[excursion-blueprint] template insert ${JSON.stringify({ code, components: components.length })}`);
         await this.create(data);
       }
       importedTemplates += 1;
@@ -1784,31 +1820,42 @@ export class ExcursionTemplatesService {
       const routeCode = resolveTransportRouteCode(row);
       const route = touringRoutes.get(routeCode);
       const pricingMode = normalizeWorkbookText(row.PricingMode);
+      const transportServiceType = matches.transportTypeMatches.get(pricingMode);
+      if (!transportServiceType) {
+        this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'TRANSPORT', name: pricingMode })}`);
+      }
       push({
         componentType: 'TRANSPORT',
         label: route?.name || normalizeWorkbookText(row.RouteCode || row.VariantCode) || 'Transport component',
         isOptional: !parseWorkbookBoolean(row.Required, true),
         touringRouteId: route?.id || null,
-        transportServiceTypeId: matches.transportTypeMatches.get(pricingMode)?.id || null,
-        operationalNotes: normalizeWorkbookText(row.Notes),
+        transportServiceTypeId: transportServiceType?.id || null,
+        operationalNotes: transportServiceType ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved transport pricing mode: ${pricingMode || 'blank'}. Manual review required.`),
       });
     }
     for (const row of workbook.tickets.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
       const name = normalizeWorkbookText(row.TicketName);
-      push({ componentType: 'TICKET', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), supplierServiceId: matches.ticketMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+      const match = matches.ticketMatches.get(name);
+      if (!match) this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'TICKET', name })}`);
+      push({ componentType: 'TICKET', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), supplierServiceId: match?.id || null, operationalNotes: match ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved ticket inventory reference: ${name || 'blank'}. Manual review required.`) });
     }
     for (const row of workbook.guides.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
       const name = normalizeWorkbookText(row.GuideType);
       const match = matches.guideMatches.get(name);
-      push({ componentType: 'GUIDE', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), activityId: match?.durationMinutes !== undefined ? match.id : null, supplierServiceId: match?.durationMinutes === undefined ? match?.id || null : null, operationalNotes: normalizeWorkbookText(row.Notes) });
+      if (!match) this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'GUIDE', name })}`);
+      push({ componentType: 'GUIDE', label: name, isOptional: !parseWorkbookBoolean(row.Required, true), activityId: match?.durationMinutes !== undefined ? match.id : null, supplierServiceId: match?.durationMinutes === undefined ? match?.id || null : null, operationalNotes: match ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved guide inventory reference: ${name || 'blank'}. Manual review required.`) });
     }
     for (const row of workbook.dining.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
       const name = normalizeWorkbookText(row.DiningName);
-      push({ componentType: 'DINING', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), supplierServiceId: matches.diningMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+      const match = matches.diningMatches.get(name);
+      if (!match) this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'DINING', name })}`);
+      push({ componentType: 'DINING', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), supplierServiceId: match?.id || null, operationalNotes: match ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved dining inventory reference: ${name || 'blank'}. Manual review required.`) });
     }
     for (const row of workbook.activities.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
       const name = normalizeWorkbookText(row.ActivityName);
-      push({ componentType: 'ACTIVITY', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), activityId: matches.activityMatches.get(name)?.id || null, operationalNotes: normalizeWorkbookText(row.Notes) });
+      const match = matches.activityMatches.get(name);
+      if (!match) this.logger.warn(`[excursion-blueprint] missing inventory fallback ${JSON.stringify({ templateCode, componentType: 'ACTIVITY', name })}`);
+      push({ componentType: 'ACTIVITY', label: name, isOptional: parseWorkbookBoolean(row.Optional, !parseWorkbookBoolean(row.Required, true)), activityId: match?.id || null, operationalNotes: match ? normalizeWorkbookText(row.Notes) : appendOperationalNote(row.Notes, `Unresolved activity inventory reference: ${name || 'blank'}. Manual review required.`) });
     }
     for (const row of workbook.optional.filter((entry) => normalizeWorkbookKey(entry.TemplateCode) === templateCode)) {
       const componentType = this.normalizeImportedOptionalComponentType(row.ComponentType);
