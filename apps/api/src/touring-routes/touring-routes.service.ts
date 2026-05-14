@@ -230,10 +230,10 @@ function parseWorkbookInteger(value: unknown, fieldLabel: string, errors: string
   return parsed === null ? null : Math.floor(parsed);
 }
 
-function parseWorkbookDate(value: unknown, fieldLabel: string, errors: string[]) {
+function parseWorkbookDate(value: unknown, fieldLabel: string, errors: string[], warnings?: string[]) {
   const raw = value instanceof Date ? value : normalizeWorkbookText(value);
   if (!raw) {
-    errors.push(`${fieldLabel} is required`);
+    warnings?.push(`${fieldLabel} is missing; importing without ${fieldLabel}`);
     return null;
   }
   const parsed = raw instanceof Date ? raw : new Date(raw);
@@ -540,8 +540,8 @@ export class TouringRoutesService {
       const minPax = parseWorkbookInteger(row.paxFrom, 'PaxFrom', rowErrors, { min: 1 }) ?? workbookMinPax ?? 1;
       const maxPax = parseWorkbookInteger(row.paxTo, 'PaxTo', rowErrors, { min: minPax }) ?? workbookMaxPax ?? vehicle?.maxPax ?? minPax;
       const baseCost = parseWorkbookNumber(row.baseCost, 'BaseCost', rowErrors, { required: true, min: 0 }) ?? 0;
-      const validFrom = parseWorkbookDate(row.validFrom, 'ValidFrom', rowErrors);
-      const validTo = parseWorkbookDate(row.validTo, 'ValidTo', rowErrors);
+      const validFrom = parseWorkbookDate(row.validFrom, 'ValidFrom', rowErrors, rateWarnings);
+      const validTo = parseWorkbookDate(row.validTo, 'ValidTo', rowErrors, rateWarnings);
       if (validFrom && validTo && validFrom > validTo) rowErrors.push('ValidFrom cannot be after ValidTo');
       const pricingBasis = normalizeWorkbookText(row.pricingBasis).toUpperCase() === 'PER_DAY' ? 'PER_DAY' : 'PER_VEHICLE';
       const currency = normalizeWorkbookText(row.currency).toUpperCase();

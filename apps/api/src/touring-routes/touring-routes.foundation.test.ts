@@ -556,6 +556,63 @@ test('touring workbook import allows unresolved supplier mapping as non-blocking
   assert.equal(stores.pricings[0].notes, 'SupplierName: Default Supplier');
 });
 
+test('touring workbook preview treats missing validity dates as non-blocking warnings', async () => {
+  const { prisma } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [{ TourCode: 'PETRA-FD', TourName: 'Petra Full Day', StartCity: 'Amman', DurationDays: 1 }],
+    stops: [],
+    rates: [{ TourCode: 'PETRA-FD', SupplierName: 'Alpha Transport', VehicleType: 'Sedan', PaxFrom: 1, PaxTo: 2, Currency: 'JOD', BaseCost: 95 }],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.pricings[0].validFrom, '');
+  assert.equal(preview.pricings[0].validTo, '');
+  assert.ok(preview.warnings.some((entry: any) => entry.row === 2 && /ValidFrom is missing/.test(entry.message)));
+  assert.ok(preview.warnings.some((entry: any) => entry.row === 2 && /ValidTo is missing/.test(entry.message)));
+});
+
+test('touring workbook preview accepts QAIA circular layover routes when route and pricing are valid', async () => {
+  const { prisma } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringWorkbookBuffer({
+    routes: [
+      {
+        TourCode: 'QAIA-AMM',
+        TourName: 'QAIA Amman Layover',
+        StartCity: 'QAIA',
+        ReturnCity: 'QAIA',
+        DurationHours: 6,
+        RouteDescription: 'QAIA -> Amman -> QAIA',
+      },
+    ],
+    stops: [],
+    rates: [
+      {
+        TourCode: 'QAIA-AMM',
+        SupplierName: 'Alpha Transport',
+        VehicleType: 'Sedan',
+        PaxFrom: 1,
+        PaxTo: 2,
+        Currency: 'JOD',
+        BaseCost: 45,
+        ValidFrom: '2026-01-01',
+        ValidTo: '2026-12-31',
+      },
+    ],
+  });
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.deepEqual(preview.errors, []);
+  assert.equal(preview.routes[0].code, 'QAIA_AMM');
+  assert.equal(preview.pricings[0].tourCode, 'QAIA_AMM');
+});
+
 test('touring matrix preview normalizes pax range columns into touring route pricing rows without writing', async () => {
   const { prisma, stores } = createTouringPrismaMock();
   stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
