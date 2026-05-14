@@ -630,6 +630,8 @@ describe('transport catalog supplier rate-card UX', () => {
       'TOURING_ROUTE_STOPS',
       'TOURING_ROUTE_RATES',
       'VEHICLE_TYPES',
+      'Legacy Matrix Mode',
+      'Normalized Workbook Mode',
       '/api/touring-routes/workbook/preview',
       '/api/touring-routes/workbook/import',
       'Touring routes preview',

@@ -44,9 +44,9 @@ function buildTouringWorkbookBuffer(rows: {
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
-function buildTouringMatrixWorkbookBuffer(rows: Record<string, unknown>[]) {
+function buildTouringMatrixWorkbookBuffer(rows: Record<string, unknown>[], sheetName = 'TOURING_ROUTE_MATRIX') {
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'TOURING_ROUTE_MATRIX');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), sheetName);
   return XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer;
 }
 
@@ -188,8 +188,10 @@ test('touring workbook preview validates tabs and classifies route and pricing r
     ],
   });
 
-  const preview = await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' });
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring.xlsx' })) as any;
   assert.equal(preview.success, true);
+  assert.equal(preview.importer, 'NORMALIZED_TOURING_ROUTE_WORKBOOK');
+  assert.equal(preview.workbookMode, 'Normalized Workbook Mode');
   assert.equal(preview.routeCount, 1);
   assert.equal(preview.stopCount, 1);
   assert.equal(preview.pricingCount, 1);
@@ -517,6 +519,7 @@ test('touring matrix preview normalizes pax range columns into touring route pri
   const preview = (await service.previewWorkbookImport({ buffer, originalname: 'touring-matrix.xlsx' })) as any;
 
   assert.equal(preview.importer, 'LEGACY_TOURING_ROUTE_MATRIX');
+  assert.equal(preview.workbookMode, 'Legacy Matrix Mode');
   assert.equal(preview.pricingCount, 3);
   assert.equal(preview.rowsToCreate[0].minPax, 1);
   assert.equal(preview.rowsToCreate[0].maxPax, 2);
@@ -528,6 +531,32 @@ test('touring matrix preview normalizes pax range columns into touring route pri
   assert.equal(preview.rowsToCreate[2].maxPax, 20);
   assert.equal(preview.rowsToCreate[2].baseCost, 250);
   assert.equal(stores.pricings.length, 0);
+});
+
+test('touring matrix preview routes legacy sheet before normalized required-sheet validation', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({ id: 'tour-1', code: 'AMM_PET', name: 'Petra Full Day', startCity: 'Amman', durationDays: 1 });
+  const service = new TouringRoutesService(prisma as any);
+  const buffer = buildTouringMatrixWorkbookBuffer(
+    [
+      {
+        RouteCode: 'AMM-PET',
+        SupplierName: 'Alpha Transport',
+        Currency: 'JOD',
+        '1-2 Pax': 120,
+      },
+    ],
+    'TRANSPORT_MATRIX',
+  );
+
+  const preview = (await service.previewWorkbookImport({ buffer, originalname: 'legacy-transport-matrix.xlsx' })) as any;
+
+  assert.equal(preview.success, true);
+  assert.equal(preview.importer, 'LEGACY_TOURING_ROUTE_MATRIX');
+  assert.equal(preview.workbookMode, 'Legacy Matrix Mode');
+  assert.equal(preview.rowsToCreate.length, 1);
+  assert.equal(preview.rowsToCreate[0].baseCost, 120);
+  assert.deepEqual(preview.errors, []);
 });
 
 test('touring matrix import creates normalized touring route pricing rows only', async () => {

@@ -350,7 +350,8 @@ export class TouringRoutesService {
     const warnings: TouringWorkbookIssue[] = [];
     stage = 'workbook tab detection';
     this.logWorkbookStage(mode, stage, { sheets: workbook.SheetNames });
-    const legacyMatrixSheet = this.findLegacyMatrixSheet(workbook);
+    const hasNormalizedWorkbookSheets = this.hasNormalizedWorkbookSheets(workbook);
+    const legacyMatrixSheet = hasNormalizedWorkbookSheets ? null : this.findLegacyMatrixSheet(workbook);
     if (legacyMatrixSheet) {
       return this.processLegacyMatrixWorkbook(file, workbook, legacyMatrixSheet, mode);
     }
@@ -614,6 +615,8 @@ export class TouringRoutesService {
     const summary = {
       success: errors.length === 0,
       mode,
+      importer: 'NORMALIZED_TOURING_ROUTE_WORKBOOK',
+      workbookMode: 'Normalized Workbook Mode',
       sourceFileName: file.originalname || 'touring-workbook.xlsx',
       routeCount: parsedRoutes.length,
       stopCount: Array.from(stopsByCode.values()).reduce((total, entries) => total + entries.length, 0),
@@ -901,6 +904,11 @@ export class TouringRoutesService {
     return workbook.SheetNames.find((sheetName) => this.getLegacyMatrixPaxColumns(workbook.Sheets[sheetName]).length > 0) || null;
   }
 
+  private hasNormalizedWorkbookSheets(workbook: XLSX.WorkBook) {
+    const sheetNames = new Set(workbook.SheetNames.map((name) => name.trim().toUpperCase()));
+    return TOURING_WORKBOOK_SHEETS.every((sheetName) => sheetNames.has(sheetName));
+  }
+
   private getLegacyMatrixPaxColumns(sheet?: XLSX.WorkSheet): LegacyMatrixPaxColumn[] {
     if (!sheet) return [];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
@@ -1050,6 +1058,7 @@ export class TouringRoutesService {
       success: true,
       mode,
       importer: 'LEGACY_TOURING_ROUTE_MATRIX',
+      workbookMode: 'Legacy Matrix Mode',
       sourceFileName: file.originalname || 'touring-route-matrix.xlsx',
       routeCount: 0,
       stopCount: 0,

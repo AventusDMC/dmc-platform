@@ -4,6 +4,8 @@ import { useRef, useState } from 'react';
 
 type TouringWorkbookPreview = {
   mode: 'preview' | 'import';
+  importer?: string;
+  workbookMode?: string;
   routeCount: number;
   stopCount: number;
   pricingCount: number;
@@ -24,6 +26,11 @@ type TouringWorkbookPreview = {
 };
 
 const TOURING_WORKBOOK_DECISIONS = ['NEW', 'UPDATED', 'UNCHANGED', 'OVERLAP'] as const;
+
+function workbookModeLabel(preview: TouringWorkbookPreview) {
+  if (preview.workbookMode) return preview.workbookMode;
+  return preview.importer === 'LEGACY_TOURING_ROUTE_MATRIX' ? 'Legacy Matrix Mode' : 'Normalized Workbook Mode';
+}
 
 async function readTouringWorkbookResponse(response: Response) {
   const payload = await response.json().catch(() => null);
@@ -133,7 +140,9 @@ export function TouringRouteWorkbookImportPanel() {
         <div>
           <p className="eyebrow">Upload Touring Workbook</p>
           <h3>Touring route workbook import</h3>
-          <p className="detail-copy">Supports TOURING_ROUTES, TOURING_ROUTE_STOPS, TOURING_ROUTE_RATES, and VEHICLE_TYPES tabs.</p>
+          <p className="detail-copy">
+            Supports normalized workbook tabs (TOURING_ROUTES, TOURING_ROUTE_STOPS, TOURING_ROUTE_RATES, VEHICLE_TYPES) or legacy matrix pricing columns.
+          </p>
         </div>
       </div>
 
@@ -167,6 +176,11 @@ export function TouringRouteWorkbookImportPanel() {
 
       {preview ? (
         <div className="section-stack">
+          <div className="quote-item-override-status quote-item-override-status-active">
+            <strong>{workbookModeLabel(preview)}</strong>
+            <span>{preview.importer || 'NORMALIZED_TOURING_ROUTE_WORKBOOK'}</span>
+          </div>
+
           <div className="summary-strip">
             {[
               { label: 'Touring routes', value: preview.routeCount },
