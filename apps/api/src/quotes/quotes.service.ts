@@ -8768,7 +8768,9 @@ export class QuotesService {
         ]),
     );
 
-    const orderedItems = (snapshot.quoteItems ?? []).map((item, index) => ({ item, index }));
+    const orderedItems = (snapshot.quoteItems ?? [])
+      .filter((item) => this.isPersistedSnapshotQuoteItem(item))
+      .map((item, index) => ({ item, index }));
     const adultCount = Math.max(0, Number(snapshot.adults ?? 0));
     const childCount = Math.max(0, Number(snapshot.children ?? 0));
 
@@ -9072,7 +9074,7 @@ export class QuotesService {
       throw new BadRequestException('Quote workflow requires a valid fixed price per person.');
     }
 
-    const quoteItems = snapshot.quoteItems ?? [];
+    const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
 
     if (quoteItems.length === 0) {
       throw new BadRequestException('Quote workflow requires at least one priced quote item.');
@@ -9135,6 +9137,10 @@ export class QuotesService {
         `Quote workflow is incomplete. Ensure each item has pricing and pax, and complete all activity dates, timing, location, participant counts, and reconfirmation due dates where required (${labels}).`,
       );
     }
+  }
+
+  private isPersistedSnapshotQuoteItem(item: { id?: string | null } | null | undefined) {
+    return Boolean(item?.id?.trim());
   }
 
   private normalizeQuoteFocType(value: string | undefined | null): QuoteFocType {

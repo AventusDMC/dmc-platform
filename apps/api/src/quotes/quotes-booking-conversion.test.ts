@@ -868,6 +868,65 @@ test('buildBookingServicesFromAcceptedVersion carries resolved supplier and read
   assert.equal(activity.reconfirmationDueAt, '2026-05-09T18:00:00.000Z');
 });
 
+test('buildBookingServicesFromAcceptedVersion ignores non-persisted placeholder operational rows', async () => {
+  const service = createQuotesService();
+
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(
+    {
+      travelStartDate: '2026-05-10T00:00:00.000Z',
+      itineraries: [{ id: 'day-1', dayNumber: 1, serviceDate: '2026-05-10T09:00:00.000Z' }],
+      quoteItems: [
+        {
+          itineraryId: 'day-1',
+          quantity: 1,
+          pricingDescription: 'Empty guide section placeholder',
+          totalCost: 0,
+          totalSell: 0,
+          service: {
+            name: 'Guide missing',
+            category: 'Guide',
+          },
+        },
+        {
+          id: '',
+          itineraryId: 'day-1',
+          quantity: 1,
+          pricingDescription: 'Empty dining section placeholder',
+          totalCost: 0,
+          totalSell: 0,
+          service: {
+            name: 'Dining missing',
+            category: 'Dining',
+          },
+        },
+        {
+          id: 'item-hotel-1',
+          itineraryId: 'day-1',
+          quantity: 1,
+          pricingDescription: 'Persisted hotel row',
+          totalCost: 100,
+          totalSell: 130,
+          service: {
+            name: 'Amman Hotel',
+            category: 'Hotel',
+          },
+        },
+      ],
+      adults: 2,
+      children: 0,
+    },
+    {
+      supplier: {
+        findUnique: async () => null,
+      },
+    },
+  );
+
+  assert.equal(bookingServices.length, 1);
+  assert.equal(bookingServices[0].sourceQuoteItemId, 'item-hotel-1');
+  assert.equal(bookingServices[0].operationType, 'HOTEL');
+});
+
 test('buildBookingServicesFromAcceptedVersion carries touring route pricing supplier and vehicle into booking services', async () => {
   const service = createQuotesService();
   const supplierId = '22222222-2222-4222-8222-222222222222';
