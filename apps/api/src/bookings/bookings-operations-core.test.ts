@@ -2558,7 +2558,8 @@ test('service voucher generation creates one supplier voucher per transport serv
   const service = createService({
     bookingService: {
       findFirst: async ({ where }: any) => {
-        assert.equal(where.booking?.quote, undefined);
+        assert.equal(where.id, 'service-1');
+        assert.equal(where.bookingId, 'booking-1');
         return {
           id: 'service-1',
           bookingId: 'booking-1',
