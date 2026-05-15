@@ -794,23 +794,29 @@ describe('quote detail page regression', () => {
     ]);
   });
 
-  it('debounces hotel contract cost calculation and avoids cancelled duplicate requests', () => {
+  it('debounces hotel contract cost calculation and clears stale BB/HB request loading state', () => {
     const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
-    const calculationStart = quoteItemsFormSource.indexOf('fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`)');
+    const calculationStart = quoteItemsFormSource.indexOf('fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`, { signal: abortController.signal })');
     const calculationBlock = quoteItemsFormSource.slice(Math.max(0, calculationStart - 1600), calculationStart + 1800);
 
     expectSourceContains(quoteItemsFormSource, [
       'const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);',
       'const hotelCostInFlightKeyRef = useRef<string | null>(null);',
       'const hotelCostLastRequestedKeyRef = useRef<string | null>(null);',
+      'const hotelCostAbortRef = useRef<AbortController | null>(null);',
       'const requestKey = params.toString();',
-      'if (hotelCostInFlightKeyRef.current === requestKey || hotelCostLastRequestedKeyRef.current === requestKey) {',
+      'if (hotelCostInFlightKeyRef.current === requestKey) {',
+      'hotelCostAbortRef.current?.abort();',
       'hotelCostDebounceRef.current = setTimeout(() => {',
+      'const abortController = new AbortController();',
       '}, 400);',
-      'fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`)',
+      'fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`, { signal: abortController.signal })',
+      "caughtError instanceof Error && caughtError.name === 'AbortError'",
       'if (hotelCostLastRequestedKeyRef.current !== requestKey) {',
+      'setError(caughtError instanceof Error ? caughtError.message : \'Could not calculate hotel contract pricing.\');',
+      'setIsLoadingHotelCost(false);',
     ]);
-    assert.doesNotMatch(calculationBlock, /AbortController|signal:|controller\.abort|AbortError/);
+    assert.match(calculationBlock, /setHotelCostCalculation\(result\)/);
   });
 
   it('preserves a hotel catalog service id when editing saved hotel room counts', () => {

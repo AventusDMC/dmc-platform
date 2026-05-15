@@ -1080,6 +1080,7 @@ export function QuoteItemsForm({
   const hotelCostDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hotelCostInFlightKeyRef = useRef<string | null>(null);
   const hotelCostLastRequestedKeyRef = useRef<string | null>(null);
+  const hotelCostAbortRef = useRef<AbortController | null>(null);
   const externalPackageDefaultsServiceIdRef = useRef<string | null>(isEditing ? initialService?.id || null : null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
 
@@ -1859,6 +1860,8 @@ export function QuoteItemsForm({
       setIsLoadingHotelCost(false);
       hotelCostInFlightKeyRef.current = null;
       hotelCostLastRequestedKeyRef.current = null;
+      hotelCostAbortRef.current?.abort();
+      hotelCostAbortRef.current = null;
       if (hotelCostDebounceRef.current) {
         clearTimeout(hotelCostDebounceRef.current);
         hotelCostDebounceRef.current = null;
@@ -1878,6 +1881,9 @@ export function QuoteItemsForm({
     ) {
       setHotelCostCalculation(null);
       setIsLoadingHotelCost(false);
+      hotelCostAbortRef.current?.abort();
+      hotelCostAbortRef.current = null;
+      hotelCostInFlightKeyRef.current = null;
       if (hotelCostDebounceRef.current) {
         clearTimeout(hotelCostDebounceRef.current);
         hotelCostDebounceRef.current = null;
@@ -1899,22 +1905,27 @@ export function QuoteItemsForm({
     });
     const requestKey = params.toString();
 
-    if (hotelCostInFlightKeyRef.current === requestKey || hotelCostLastRequestedKeyRef.current === requestKey) {
+    if (hotelCostInFlightKeyRef.current === requestKey) {
       return;
     }
 
     setHotelCostCalculation(null);
+    setError('');
+    hotelCostAbortRef.current?.abort();
+    hotelCostAbortRef.current = null;
     if (hotelCostDebounceRef.current) {
       clearTimeout(hotelCostDebounceRef.current);
     }
 
     hotelCostDebounceRef.current = setTimeout(() => {
+      const abortController = new AbortController();
       hotelCostDebounceRef.current = null;
       hotelCostInFlightKeyRef.current = requestKey;
       hotelCostLastRequestedKeyRef.current = requestKey;
+      hotelCostAbortRef.current = abortController;
       setIsLoadingHotelCost(true);
 
-      fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`)
+      fetch(`/api/hotel-rates/calculate-hotel-cost?${requestKey}`, { signal: abortController.signal })
         .then(async (response) => {
           if (!response.ok) {
             throw new Error(await getErrorMessage(response, 'Could not calculate hotel contract pricing.'));
@@ -1930,6 +1941,10 @@ export function QuoteItemsForm({
           setHotelCostCalculation(result);
         })
         .catch((caughtError) => {
+          if (caughtError instanceof Error && caughtError.name === 'AbortError') {
+            return;
+          }
+
           if (hotelCostLastRequestedKeyRef.current !== requestKey) {
             return;
           }
@@ -1941,7 +1956,10 @@ export function QuoteItemsForm({
           if (hotelCostInFlightKeyRef.current === requestKey) {
             hotelCostInFlightKeyRef.current = null;
           }
-          setIsLoadingHotelCost(false);
+          if (hotelCostAbortRef.current === abortController) {
+            hotelCostAbortRef.current = null;
+            setIsLoadingHotelCost(false);
+          }
         });
     }, 400);
 
@@ -1949,6 +1967,12 @@ export function QuoteItemsForm({
       if (hotelCostDebounceRef.current) {
         clearTimeout(hotelCostDebounceRef.current);
         hotelCostDebounceRef.current = null;
+      }
+      if (hotelCostInFlightKeyRef.current === requestKey) {
+        hotelCostAbortRef.current?.abort();
+        hotelCostAbortRef.current = null;
+        hotelCostInFlightKeyRef.current = null;
+        setIsLoadingHotelCost(false);
       }
     };
   }, [contractId, hotelCheckInDate, hotelCheckOutDate, hotelId, isHotelService, mealPlan, nightCount, occupancyType, paxCount, roomCategoryId, roomCount]);
