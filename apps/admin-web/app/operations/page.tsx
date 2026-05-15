@@ -55,6 +55,14 @@ type OperationsReportFilter =
   | 'unpaid_clients'
   | 'unpaid_suppliers';
 type GroupBy = 'booking' | 'supplier';
+type DepartmentKey =
+  | 'hotel-reservations'
+  | 'transport-operations'
+  | 'excursions-activities'
+  | 'documentation-vouchers'
+  | 'supplier-confirmations'
+  | 'passenger-rooming';
+type HotelReservationState = 'Requested' | 'Blocked' | 'Waitlist' | 'Tentative' | 'Confirmed' | 'Released' | 'Cancelled';
 type AuditLog = {
   id: string;
   action: string;
@@ -108,6 +116,7 @@ type Booking = {
   bookingRef: string;
   status: BookingStatus;
   statusNote: string | null;
+  roomCount?: number | null;
   finance: {
     quotedTotalSell: number;
     quotedTotalCost: number;
@@ -242,6 +251,7 @@ type OperationRow = {
   bookingRef: string;
   bookingStatus: BookingStatus;
   bookingStatusNote: string | null;
+  bookingRoomCount: number | null;
   supplierId: string | null;
   supplierName: string | null;
   totalCost: number;
@@ -288,6 +298,25 @@ type BlockedBooking = {
   nextStep: 'Move To In Progress' | 'Complete Booking';
   reasons: string[];
   blockerCount: number;
+};
+
+const HOTEL_RESERVATION_STATES: HotelReservationState[] = [
+  'Requested',
+  'Blocked',
+  'Waitlist',
+  'Tentative',
+  'Confirmed',
+  'Released',
+  'Cancelled',
+];
+
+const DEPARTMENT_LABELS: Record<DepartmentKey, string> = {
+  'hotel-reservations': 'Hotel Reservations',
+  'transport-operations': 'Transport Operations',
+  'excursions-activities': 'Excursions & Activities',
+  'documentation-vouchers': 'Documentation/Vouchers',
+  'supplier-confirmations': 'Supplier Confirmations',
+  'passenger-rooming': 'Passenger/Rooming',
 };
 
 async function getBookings(): Promise<Booking[]> {
@@ -453,6 +482,19 @@ function isActivityService(serviceType: string) {
   return mapBookingServiceTypeToSupplierType(serviceType) === 'activity';
 }
 
+function isHotelService(serviceType: string) {
+  return mapBookingServiceTypeToSupplierType(serviceType) === 'hotel' || /hotel|accommodation|room/i.test(serviceType);
+}
+
+function isTransportService(serviceType: string) {
+  return mapBookingServiceTypeToSupplierType(serviceType) === 'transport' || /transport|transfer|vehicle|car|coach/i.test(serviceType);
+}
+
+function isExcursionActivityService(serviceType: string) {
+  const supplierType = mapBookingServiceTypeToSupplierType(serviceType);
+  return supplierType === 'activity' || supplierType === 'ticketing' || supplierType === 'guide' || /excursion|activity|ticket|entrance|guide/i.test(serviceType);
+}
+
 function hasSupplier(service: Pick<BookingService, 'supplierId' | 'supplierName'> | Pick<OperationRow, 'supplierId' | 'supplierName'>) {
   return Boolean(service.supplierId || service.supplierName?.trim());
 }
@@ -566,6 +608,274 @@ function getWarningLabel(warning: OperationsWarningFilter) {
   }
 
   return 'Missing pricing';
+}
+
+function parseTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function isPastDue(value: string | null | undefined, now = Date.now()) {
+  const timestamp = parseTimestamp(value);
+  return timestamp !== null && timestamp < now;
+}
+
+function isDueWithinDays(value: string | null | undefined, days: number, now = Date.now()) {
+  const timestamp = parseTimestamp(value);
+  if (timestamp === null || timestamp < now) {
+    return false;
+  }
+
+  return timestamp <= now + days * 24 * 60 * 60 * 1000;
+}
+
+function hasMissingTiming(row: OperationRow) {
+  if (row.status === 'cancelled') {
+    return false;
+  }
+
+  if (isTransportService(row.serviceType)) {
+    return !row.pickupTime || (!row.pickupLocation && !row.meetingPoint);
+  }
+
+  if (isExcursionActivityService(row.serviceType)) {
+    return !row.serviceDate || !row.startTime;
+  }
+
+  return false;
+}
+
+function getHotelReservationState(row: OperationRow, now = Date.now()): HotelReservationState {
+  if (row.status === 'cancelled' || row.supplierConfirmationStatus === 'CANCELLED') {
+    return 'Cancelled';
+  }
+
+  if (row.serviceDate && isPastDue(row.serviceDate, now) && row.supplierConfirmationStatus === 'CONFIRMED') {
+    return 'Released';
+  }
+
+  if (row.confirmationStatus === 'confirmed' || row.supplierConfirmationStatus === 'CONFIRMED' || row.status === 'confirmed') {
+    return 'Confirmed';
+  }
+
+  if (row.supplierConfirmationStatus === 'REJECTED') {
+    return 'Waitlist';
+  }
+
+  if (!hasSupplier(row)) {
+    return 'Waitlist';
+  }
+
+  if (isPastDue(row.confirmationDeadline, now)) {
+    return 'Blocked';
+  }
+
+  if (row.confirmationStatus === 'requested' || row.supplierConfirmationStatus === 'SENT' || row.supplierConfirmationStatus === 'ACKNOWLEDGED') {
+    return 'Tentative';
+  }
+
+  return 'Requested';
+}
+
+function getRoomBlockInfo(row: OperationRow, now = Date.now()) {
+  const fallbackRoomCount = Math.ceil(Number(row.participantCount || row.adultCount || row.childCount || 1) / 2);
+  const roomBlockCount = Math.max(1, Number(row.bookingRoomCount || fallbackRoomCount || 1));
+  const releaseDeadline = row.confirmationDeadline || row.reconfirmationDueAt || row.serviceDate;
+  const releaseDeadlineApproaching =
+    row.status !== 'cancelled' &&
+    row.supplierConfirmationStatus !== 'CONFIRMED' &&
+    Boolean(releaseDeadline) &&
+    (isPastDue(releaseDeadline, now) || isDueWithinDays(releaseDeadline, 7, now));
+  const reconfirmationTracking = row.reconfirmationRequired ? row.reconfirmationDueAt || 'Due date not set' : 'Not required';
+  const alternativeHotelTracking =
+    !hasSupplier(row) || row.supplierConfirmationStatus === 'REJECTED' || getHotelReservationState(row, now) === 'Waitlist';
+
+  return {
+    roomBlockCount,
+    releaseDeadline,
+    releaseDeadlineApproaching,
+    reconfirmationTracking,
+    alternativeHotelTracking,
+  };
+}
+
+function getDepartmentForRow(row: OperationRow): DepartmentKey {
+  if (isHotelService(row.serviceType)) {
+    return 'hotel-reservations';
+  }
+
+  if (isTransportService(row.serviceType)) {
+    return 'transport-operations';
+  }
+
+  if (isExcursionActivityService(row.serviceType)) {
+    return 'excursions-activities';
+  }
+
+  return 'supplier-confirmations';
+}
+
+function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], operationsDashboard: OperationsDashboard, now = Date.now()) {
+  const activeRows = rows.filter((row) => row.status !== 'cancelled');
+  const hotelRows = activeRows.filter((row) => getDepartmentForRow(row) === 'hotel-reservations');
+  const transportRows = activeRows.filter((row) => getDepartmentForRow(row) === 'transport-operations');
+  const activityRows = activeRows.filter((row) => getDepartmentForRow(row) === 'excursions-activities');
+  const supplierConfirmationRows = activeRows.filter((row) => row.supplierConfirmationStatus !== 'CONFIRMED');
+  const voucherPendingCount = operationsDashboard.operationalReadiness?.missingVouchers ?? operationsDashboard.alerts.missingVouchers?.count ?? 0;
+  const roomingPendingCount = operationsDashboard.operationalReadiness?.missingRooming ?? operationsDashboard.alerts.missingRooming?.count ?? 0;
+  const hotelStateCounts = HOTEL_RESERVATION_STATES.reduce<Record<HotelReservationState, number>>((counts, state) => {
+    counts[state] = hotelRows.filter((row) => getHotelReservationState(row, now) === state).length;
+    return counts;
+  }, {} as Record<HotelReservationState, number>);
+  const roomBlocks = hotelRows.map((row) => ({ row, ...getRoomBlockInfo(row, now) }));
+
+  const dashboards = [
+    {
+      key: 'hotel-reservations' as DepartmentKey,
+      rows: hotelRows,
+      pendingItems: hotelRows.filter((row) => getHotelReservationState(row, now) === 'Requested' || getHotelReservationState(row, now) === 'Tentative').length,
+      overdueItems: hotelRows.filter((row) => isPastDue(row.confirmationDeadline, now) && row.supplierConfirmationStatus !== 'CONFIRMED').length,
+      reconfirmationDue: hotelRows.filter((row) => row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now)).length,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: hotelRows.filter(hasMissingTiming).length,
+      hotelStateCounts,
+      roomBlockCount: roomBlocks.reduce((total, block) => total + block.roomBlockCount, 0),
+      releaseDeadlineCount: roomBlocks.filter((block) => block.releaseDeadlineApproaching).length,
+      alternativeHotelCount: roomBlocks.filter((block) => block.alternativeHotelTracking).length,
+      examples: roomBlocks.slice(0, 3).map((block) => ({
+        id: block.row.id,
+        label: `${block.row.bookingRef} - ${block.row.description}`,
+        detail: `${block.roomBlockCount} room block${block.roomBlockCount === 1 ? '' : 's'}${
+          block.releaseDeadline ? ` | release deadline ${formatDateTime(block.releaseDeadline)}` : ''
+        } | reconfirmation tracking ${block.reconfirmationTracking}`,
+      })),
+    },
+    {
+      key: 'transport-operations' as DepartmentKey,
+      rows: transportRows,
+      pendingItems: transportRows.filter((row) => row.confirmationStatus !== 'confirmed').length,
+      overdueItems: transportRows.filter((row) => isPastDue(row.confirmationDeadline, now) && row.supplierConfirmationStatus !== 'CONFIRMED').length,
+      reconfirmationDue: transportRows.filter((row) => row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now)).length,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: transportRows.filter(hasMissingTiming).length,
+      examples: transportRows.filter(hasMissingTiming).slice(0, 3).map((row) => ({
+        id: row.id,
+        label: `${row.bookingRef} - ${row.description}`,
+        detail: 'Transport timing incomplete',
+      })),
+    },
+    {
+      key: 'excursions-activities' as DepartmentKey,
+      rows: activityRows,
+      pendingItems: activityRows.filter((row) => row.confirmationStatus !== 'confirmed').length,
+      overdueItems: activityRows.filter((row) => isPastDue(row.confirmationDeadline, now) && row.supplierConfirmationStatus !== 'CONFIRMED').length,
+      reconfirmationDue: activityRows.filter((row) => row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now)).length,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: activityRows.filter(hasMissingTiming).length,
+      examples: activityRows.filter(hasMissingTiming).slice(0, 3).map((row) => ({
+        id: row.id,
+        label: `${row.bookingRef} - ${row.description}`,
+        detail: 'Timing missing',
+      })),
+    },
+    {
+      key: 'documentation-vouchers' as DepartmentKey,
+      rows: activeRows,
+      pendingItems: voucherPendingCount,
+      overdueItems: 0,
+      reconfirmationDue: 0,
+      voucherPending: voucherPendingCount,
+      missingRooming: 0,
+      missingTimings: 0,
+      examples: (operationsDashboard.alerts.missingVouchers?.items || []).slice(0, 3).map((item) => ({
+        id: item.id,
+        label: item.bookingRef || item.title || item.description || item.id,
+        detail: 'Voucher pending',
+      })),
+    },
+    {
+      key: 'supplier-confirmations' as DepartmentKey,
+      rows: supplierConfirmationRows,
+      pendingItems: supplierConfirmationRows.length,
+      overdueItems: supplierConfirmationRows.filter((row) => isPastDue(row.confirmationDeadline, now)).length,
+      reconfirmationDue: supplierConfirmationRows.filter((row) => row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now)).length,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: 0,
+      examples: supplierConfirmationRows.slice(0, 3).map((row) => ({
+        id: row.id,
+        label: `${row.bookingRef} - ${row.description}`,
+        detail: row.confirmationDeadline ? `Confirmation deadline ${formatDateTime(row.confirmationDeadline)}` : 'Supplier confirmation pending',
+      })),
+    },
+    {
+      key: 'passenger-rooming' as DepartmentKey,
+      rows: [],
+      pendingItems: roomingPendingCount + operationsDashboard.missingPassengers.count,
+      overdueItems: 0,
+      reconfirmationDue: 0,
+      voucherPending: 0,
+      missingRooming: roomingPendingCount,
+      missingTimings: 0,
+      examples: bookings
+        .filter((booking) => booking.rooming.badge.count > 0 || booking.operations.badge.count > 0)
+        .slice(0, 3)
+        .map((booking) => ({
+          id: booking.id,
+          label: booking.bookingRef,
+          detail: `Rooming pending ${booking.rooming.badge.count} | Passenger ops ${booking.operations.badge.count}`,
+        })),
+    },
+  ];
+
+  return dashboards;
+}
+
+function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: OperationsDashboard, now = Date.now()) {
+  const hotelReleaseAlerts = rows
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType))
+    .map((row) => ({ row, block: getRoomBlockInfo(row, now) }))
+    .filter((entry) => entry.block.releaseDeadlineApproaching)
+    .slice(0, 5)
+    .map((entry) => ({
+      id: `hotel-release-${entry.row.id}`,
+      label: 'Hotel release deadline approaching',
+      detail: `${entry.row.bookingRef} - ${entry.row.description}${
+        entry.block.releaseDeadline ? ` | ${formatDateTime(entry.block.releaseDeadline)}` : ''
+      }`,
+    }));
+  const supplierReconfirmationAlerts = rows
+    .filter((row) => row.status !== 'cancelled' && row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now))
+    .slice(0, 5)
+    .map((row) => ({
+      id: `supplier-reconfirmation-${row.id}`,
+      label: 'Supplier reconfirmation overdue',
+      detail: `${row.bookingRef} - ${row.description}${row.reconfirmationDueAt ? ` | ${formatDateTime(row.reconfirmationDueAt)}` : ''}`,
+    }));
+  const roomingAlerts = (operationsDashboard.alerts.missingRooming?.items || [])
+    .slice(0, 5)
+    .map((item) => ({
+      id: `rooming-${item.id}`,
+      label: 'Rooming missing before arrival',
+      detail: item.bookingRef || item.title || item.description || item.id,
+    }));
+  const transportTimingAlerts = rows
+    .filter((row) => isTransportService(row.serviceType) && hasMissingTiming(row))
+    .slice(0, 5)
+    .map((row) => ({
+      id: `transport-timing-${row.id}`,
+      label: 'Transport timing incomplete',
+      detail: `${row.bookingRef} - ${row.description}`,
+    }));
+
+  return [...hotelReleaseAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts];
 }
 
 function buildOperationsHref(
@@ -738,6 +1048,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       bookingRef: booking.bookingRef,
       bookingStatus: booking.status,
       bookingStatusNote: booking.statusNote,
+      bookingRoomCount: booking.roomCount ?? null,
       supplierId: service.supplierId,
       supplierName: service.supplierName,
       totalCost: service.totalCost,
@@ -1080,6 +1391,19 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
             : [],
         )
       : [];
+  const departmentDashboards = buildDepartmentDashboards(filteredRows, bookings, operationsDashboard);
+  const operationalAlerts = buildOperationalAlerts(filteredRows, operationsDashboard);
+  const hotelDepartment = departmentDashboards.find((department) => department.key === 'hotel-reservations');
+  const dashboardKpis = {
+    blockedRooms: hotelDepartment?.releaseDeadlineCount ?? 0,
+    waitlistedHotels: hotelDepartment?.hotelStateCounts?.Waitlist ?? 0,
+    overdueConfirmations:
+      operationsDashboard.operationalReadiness?.overdueSupplierConfirmations ??
+      filteredRows.filter((row) => row.status !== 'cancelled' && row.supplierConfirmationStatus !== 'CONFIRMED' && isPastDue(row.confirmationDeadline)).length,
+    unreleasedRoomBlocks: hotelDepartment?.releaseDeadlineCount ?? 0,
+    vouchersPending: operationsDashboard.operationalReadiness?.missingVouchers ?? operationsDashboard.alerts.missingVouchers?.count ?? 0,
+    roomingPending: operationsDashboard.operationalReadiness?.missingRooming ?? operationsDashboard.alerts.missingRooming?.count ?? 0,
+  };
 
   return (
     <main className="page">
@@ -1214,6 +1538,119 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
             </Link>
           ))}
         </section>
+
+        <SummaryStrip
+          items={[
+            { id: 'blocked-rooms', label: 'Blocked rooms', value: String(dashboardKpis.blockedRooms), helper: 'Hotel room blocks needing action' },
+            { id: 'waitlisted-hotels', label: 'Waitlisted hotels', value: String(dashboardKpis.waitlistedHotels), helper: 'Rejected or unassigned hotel reservations' },
+            { id: 'overdue-confirmations', label: 'Overdue confirmations', value: String(dashboardKpis.overdueConfirmations), helper: 'Supplier deadlines already passed' },
+            { id: 'unreleased-room-blocks', label: 'Unreleased room blocks', value: String(dashboardKpis.unreleasedRoomBlocks), helper: 'Release deadlines approaching or overdue' },
+            { id: 'vouchers-pending', label: 'Vouchers pending', value: String(dashboardKpis.vouchersPending), helper: 'Documentation still pending' },
+            { id: 'rooming-pending', label: 'Rooming pending', value: String(dashboardKpis.roomingPending), helper: 'Passenger/rooming actions open' },
+          ]}
+        />
+
+        <section className="operations-content-grid" aria-label="Department execution workspaces">
+          {departmentDashboards.map((department) => (
+            <article key={department.key} className="detail-card operations-exception-card">
+              <div className="operations-card-head">
+                <div>
+                  <p className="eyebrow">Department dashboard</p>
+                  <h2>{DEPARTMENT_LABELS[department.key]}</h2>
+                </div>
+                <span className={department.pendingItems > 0 ? 'dashboard-pill dashboard-pill-alert' : 'dashboard-pill'}>
+                  {department.pendingItems > 0 ? `${department.pendingItems} pending` : 'Clear'}
+                </span>
+              </div>
+              <section className="operations-summary-list" aria-label={`${DEPARTMENT_LABELS[department.key]} operational queues`}>
+                <div>
+                  <span>Pending items</span>
+                  <strong>{department.pendingItems}</strong>
+                </div>
+                <div>
+                  <span>Overdue items</span>
+                  <strong>{department.overdueItems}</strong>
+                </div>
+                <div>
+                  <span>Reconfirmation due</span>
+                  <strong>{department.reconfirmationDue}</strong>
+                </div>
+                <div>
+                  <span>Voucher pending</span>
+                  <strong>{department.voucherPending}</strong>
+                </div>
+                <div>
+                  <span>Missing rooming</span>
+                  <strong>{department.missingRooming}</strong>
+                </div>
+                <div>
+                  <span>Missing timings</span>
+                  <strong>{department.missingTimings}</strong>
+                </div>
+              </section>
+              {department.key === 'hotel-reservations' ? (
+                <>
+                  <div className="operations-filter-row" aria-label="Hotel reservation workflow states">
+                    {HOTEL_RESERVATION_STATES.map((state) => (
+                      <span key={state} className="dashboard-pill">
+                        {state}: {department.hotelStateCounts?.[state] ?? 0}
+                      </span>
+                    ))}
+                  </div>
+                  <section className="operations-summary-list" aria-label="Room block management">
+                    <div>
+                      <span>Room block counts</span>
+                      <strong>{department.roomBlockCount ?? 0}</strong>
+                    </div>
+                    <div>
+                      <span>Release deadlines</span>
+                      <strong>{department.releaseDeadlineCount ?? 0}</strong>
+                    </div>
+                    <div>
+                      <span>Alternative hotel tracking</span>
+                      <strong>{department.alternativeHotelCount ?? 0}</strong>
+                    </div>
+                  </section>
+                </>
+              ) : null}
+              {department.examples.length > 0 ? (
+                <div className="operations-issue-list">
+                  {department.examples.map((item) => (
+                    <div key={item.id} className="operations-issue-item">
+                      <div>
+                        <strong>{item.label}</strong>
+                        <p>{item.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="detail-copy">No open queue rows for this department in the current filter slice.</p>
+              )}
+            </article>
+          ))}
+        </section>
+
+        {operationalAlerts.length > 0 ? (
+          <section className="detail-card operations-exception-card" aria-label="Operational alerts">
+            <div className="operations-card-head">
+              <div>
+                <p className="eyebrow">Operational Alerts</p>
+                <h2>{operationalAlerts.length} active execution alerts</h2>
+              </div>
+            </div>
+            <div className="operations-issue-list">
+              {operationalAlerts.map((alert) => (
+                <div key={alert.id} className="operations-issue-item">
+                  <div>
+                    <strong>{alert.label}</strong>
+                    <p>{alert.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="operations-summary-list" aria-label="Operations alerts">
           <div>
