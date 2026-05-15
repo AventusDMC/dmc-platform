@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { buildActorHeaders } from '../../../bookings/actorHeaders';
-import { forwardProxyJsonResponse } from '../../../proxy-response';
+import { forwardProxyJsonResponse, proxyFetchErrorResponse } from '../../../proxy-response';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -13,12 +13,19 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const response = await fetch(`${API_BASE_URL}/quotes/${id}/convert-to-booking`, {
-    method: 'POST',
-    headers: buildActorHeaders(request),
-    cache: 'no-store',
-    redirect: 'manual',
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/quotes/${id}/convert-to-booking`, {
+      method: 'POST',
+      headers: {
+        ...buildActorHeaders(request),
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+      redirect: 'manual',
+    });
 
-  return forwardProxyJsonResponse(response);
+    return forwardProxyJsonResponse(response);
+  } catch (error) {
+    return proxyFetchErrorResponse(error, 'Could not reach quote conversion API.');
+  }
 }

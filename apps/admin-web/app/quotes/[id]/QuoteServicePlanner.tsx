@@ -1101,17 +1101,20 @@ function getOperationalItemName(item: QuoteItem) {
 }
 
 function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteItem[], templates: ExcursionTemplate[]) {
-  const coverage = OPERATIONAL_COVERAGE_KEYS.map((key) => ({
-    key,
-    label: OPERATIONAL_COVERAGE_LABELS[key],
-    count: items.filter((item) => getOperationalCoverageKeyForItem(item) === key).length,
-  }));
+  const itemCoverageCounts = new Map<OperationalCoverageKey, number>();
+  items.forEach((item) => {
+    const key = getOperationalCoverageKeyForItem(item);
+    if (key) {
+      itemCoverageCounts.set(key, (itemCoverageCounts.get(key) || 0) + 1);
+    }
+  });
   const pricingWarnings = items
     .filter((item) => Number(item.totalCost ?? 0) <= 0 || Number(item.totalSell ?? 0) <= 0)
     .map((item) => `${getOperationalItemName(item)} has missing or zero pricing.`);
   const templateById = new Map(templates.map((template) => [template.id, template]));
   const componentItemIds = new Set(items.map((item) => item.excursionTemplateComponentId).filter(Boolean));
   const templateIds = Array.from(new Set(items.map((item) => item.excursionTemplateId).filter(Boolean) as string[]));
+  const requiredComponentCoverageKeys = new Set<OperationalCoverageKey>();
   const missingRequiredComponents: string[] = [];
   const optionalComponentsNotSelected: string[] = [];
   const timingLines: string[] = [];
@@ -1150,10 +1153,21 @@ function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteI
       }
 
       if (!selected && !component.isOptional) {
+        if (coverageKey) {
+          requiredComponentCoverageKeys.add(coverageKey);
+        }
         missingRequiredComponents.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);
       }
     }
   }
+
+  const coverageKeys = OPERATIONAL_COVERAGE_KEYS.filter((key) => itemCoverageCounts.has(key) || requiredComponentCoverageKeys.has(key));
+  const coverage = coverageKeys.map((key) => ({
+    key,
+    label: OPERATIONAL_COVERAGE_LABELS[key],
+    count: itemCoverageCounts.get(key) || 0,
+    requiredMissing: requiredComponentCoverageKeys.has(key),
+  }));
 
   return {
     dayId: day.id,
@@ -4163,12 +4177,12 @@ function QuoteOperationalIntelligencePanel({
         </div>
       </div>
       <div className="quote-service-day-checklist">
-        {model.coverage.map((entry) => (
-          <div key={entry.key} className={`quote-service-check ${entry.count > 0 ? 'quote-service-check-complete' : 'quote-service-check-missing'}`}>
+        {model.coverage.length > 0 ? model.coverage.map((entry) => (
+          <div key={entry.key} className={`quote-service-check ${entry.requiredMissing ? 'quote-service-check-missing' : 'quote-service-check-complete'}`}>
             <span>{entry.label}</span>
-            <strong>{entry.count > 0 ? `${entry.count} added` : 'Missing'}</strong>
+            <strong>{entry.requiredMissing ? (entry.count > 0 ? `${entry.count} added / required missing` : 'Required missing') : `${entry.count} added`}</strong>
           </div>
-        ))}
+        )) : <p className="form-helper">No operational components attached to this day.</p>}
       </div>
 
       {model.missingRequiredComponents.length > 0 ? (

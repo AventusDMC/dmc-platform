@@ -26,6 +26,8 @@ const quotePricingTableSource = readFileSync(new URL('./QuotePricingTable.tsx', 
 const quotePassengersPanelSource = readFileSync(new URL('./QuotePassengersPanel.tsx', import.meta.url), 'utf8');
 const quoteRoomingPanelSource = readFileSync(new URL('./QuoteRoomingPanel.tsx', import.meta.url), 'utf8');
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
+const convertToBookingButtonSource = readFileSync(new URL('./ConvertToBookingButton.tsx', import.meta.url), 'utf8');
+const convertToBookingApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/convert-to-booking/route.ts', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
 const rowDetailsPanelSource = readFileSync(new URL('../../components/RowDetailsPanel.tsx', import.meta.url), 'utf8');
@@ -75,6 +77,25 @@ describe('quote detail page regression', () => {
 
     assert.equal(getQuoteExportPdfHref('/api', 'quote-123'), '/api/quotes/quote-123/export');
     assert.equal(getDefaultProposalPreviewHref('quote-123'), '/api/quotes/quote-123/proposal-v3/html');
+  });
+
+  it('shows quote conversion progress errors and redirects to the created booking', () => {
+    expectSourceContains(convertToBookingButtonSource, [
+      'onClick={handleClick}',
+      "setNotice({ tone: 'info', message: 'Converting quote to booking...' });",
+      "fetch(`/api/quotes/${quoteId}/convert-to-booking`",
+      "credentials: 'same-origin'",
+      "throw new Error(await getErrorMessage(response, 'Could not convert quote to booking.'));",
+      "throw new Error('Booking conversion succeeded but the response did not include a booking id.');",
+      "setNotice({ tone: 'success', message: 'Booking created. Opening booking detail...' });",
+      "window.location.assign(`/bookings/${booking.id}?created=1`);",
+      "role={notice.tone === 'error' ? 'alert' : 'status'}",
+    ]);
+
+    expectSourceContains(convertToBookingApiRouteSource, [
+      "accept: 'application/json'",
+      "return proxyFetchErrorResponse(error, 'Could not reach quote conversion API.');",
+    ]);
   });
 
   it('prevents cancelled quotes from conversion and mutation affordances', () => {
@@ -184,6 +205,9 @@ describe('quote detail page regression', () => {
       'function buildQuoteOperationalIntelligence',
       'function QuoteOperationalIntelligencePanel',
       '<h4>Day readiness overview</h4>',
+      'No operational components attached to this day.',
+      'requiredMissing: requiredComponentCoverageKeys.has(key)',
+      "entry.requiredMissing ? 'quote-service-check-missing' : 'quote-service-check-complete'",
       'Missing required components',
       'Pricing warnings',
       'Timing summary',
