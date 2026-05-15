@@ -561,9 +561,19 @@ const BOOKING_DASHBOARD_TABS: Array<{ id: BookingDetailTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'itinerary', label: 'Itinerary' },
   { id: 'passengers', label: 'Passengers' },
+  { id: 'rooming', label: 'Rooming' },
   { id: 'services', label: 'Operations' },
   { id: 'documents', label: 'Documents' },
   { id: 'audit-log', label: 'Internal Notes' },
+];
+
+const ROOMING_GROUP_OPTIONS: Array<{ code: string; label: string; occupancy: Booking['roomingEntries'][number]['occupancy'] }> = [
+  { code: 'SGL', label: 'SGL', occupancy: 'single' },
+  { code: 'DBL', label: 'DBL', occupancy: 'double' },
+  { code: 'TWN', label: 'TWN', occupancy: 'double' },
+  { code: 'TRPL', label: 'TRPL', occupancy: 'triple' },
+  { code: 'CWB', label: 'Child with bed', occupancy: 'single' },
+  { code: 'CNB', label: 'Child no bed', occupancy: 'single' },
 ];
 
 async function getBooking(id: string): Promise<Booking | null> {
@@ -688,7 +698,41 @@ function formatRoomOccupancy(value: 'single' | 'double' | 'triple' | 'quad' | 'u
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function getRoomOccupancyCapacity(value: 'single' | 'double' | 'triple' | 'quad' | 'unknown') {
+function normalizeRoomingCode(value?: string | null) {
+  return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function getRoomGroupCode(entry: { roomType: string | null; occupancy: 'single' | 'double' | 'triple' | 'quad' | 'unknown' }) {
+  const code = normalizeRoomingCode(entry.roomType);
+
+  if (['sgl', 'single'].includes(code)) return 'SGL';
+  if (['dbl', 'double'].includes(code)) return 'DBL';
+  if (['twn', 'twin'].includes(code)) return 'TWN';
+  if (['trpl', 'triple'].includes(code)) return 'TRPL';
+  if (['child_with_bed', 'cwb'].includes(code)) return 'CWB';
+  if (['child_no_bed', 'cnb'].includes(code)) return 'CNB';
+  if (entry.occupancy === 'single') return 'SGL';
+  if (entry.occupancy === 'double') return 'DBL';
+  if (entry.occupancy === 'triple') return 'TRPL';
+
+  return 'OTHER';
+}
+
+function getRoomOccupancyCapacity(value: 'single' | 'double' | 'triple' | 'quad' | 'unknown', roomType?: string | null) {
+  const roomingCode = normalizeRoomingCode(roomType);
+
+  if (['sgl', 'single', 'child_with_bed', 'cwb', 'child_no_bed', 'cnb'].includes(roomingCode)) {
+    return 1;
+  }
+
+  if (['dbl', 'double', 'twn', 'twin'].includes(roomingCode)) {
+    return 2;
+  }
+
+  if (['trpl', 'triple'].includes(roomingCode)) {
+    return 3;
+  }
+
   if (value === 'single') {
     return 1;
   }
@@ -1084,6 +1128,19 @@ function getPassengerRoomAssignmentLabel(
   return entry ? getRoomLabel(entry) : 'Unassigned';
 }
 
+function getPassengerCurrentRoom(passengerId: string, roomingEntries: Booking['roomingEntries']) {
+  return roomingEntries.find((room) =>
+    room.assignments.some((assignment) => assignment.bookingPassenger.id === passengerId),
+  ) || null;
+}
+
+function getPassengerRoomingOptionLabel(passenger: Booking['passengers'][number], roomingEntries: Booking['roomingEntries']) {
+  const currentRoom = getPassengerCurrentRoom(passenger.id, roomingEntries);
+  const name = formatPassengerName(passenger);
+
+  return currentRoom ? `${name} - move from ${getRoomLabel(currentRoom)}` : `${name} - unassigned`;
+}
+
 function resolveActiveBookingTab(tab?: string): BookingDetailTab {
   if (tab === 'operations') return 'services';
   if (tab === 'passengers-rooming') return 'passengers';
@@ -1130,6 +1187,15 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const assignedPassengerIds = new Set(
     booking.roomingEntries.flatMap((entry) => entry.assignments.map((assignment) => assignment.bookingPassenger.id)),
   );
+  const roomingGroupBreakdown = ROOMING_GROUP_OPTIONS.map((option) => ({
+    ...option,
+    count: booking.roomingEntries.filter((entry) => getRoomGroupCode(entry) === option.code).length,
+  }));
+  const roomingCapacity = booking.roomingEntries.reduce((total, entry) => {
+    const capacity = getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
+    return capacity === null ? total : total + capacity;
+  }, 0);
+  const unassignedPassengerCount = Math.max(booking.passengers.length - assignedPassengerIds.size, 0);
   const pendingConfirmationsCount = booking.services.filter((service) => service.confirmationStatus !== 'confirmed').length;
   const activityServicesMissingOpsCount = booking.services.filter((service) => {
     const normalized = String(service.serviceType || '').trim().toLowerCase();
@@ -2334,6 +2400,36 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
 
               {activeTab === 'rooming' ? (
                 <section className="section-stack">
+                  <div className="booking-rooming-workspace-summary">
+                    <BookingRoomingSummaryCard
+                      roomCount={booking.roomingEntries.length}
+                      assignedPassengers={assignedPassengerIds.size}
+                      passengerCount={booking.passengers.length}
+                      roomingIssues={roomingIssues}
+                    />
+                    <div className="booking-rooming-type-grid" aria-label="Room group type summary">
+                      {roomingGroupBreakdown.map((group) => (
+                        <div key={group.code} className="booking-rooming-type-card">
+                          <span>{group.label}</span>
+                          <strong>{group.count}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="booking-rooming-live-summary" aria-label="Live rooming summary">
+                      <div>
+                        <span>Total rooms</span>
+                        <strong>{booking.roomingEntries.length}</strong>
+                      </div>
+                      <div>
+                        <span>Occupancy</span>
+                        <strong>{assignedPassengerIds.size}{roomingCapacity > 0 ? ` / ${roomingCapacity}` : ''}</strong>
+                      </div>
+                      <div>
+                        <span>Unassigned passengers</span>
+                        <strong>{unassignedPassengerCount}</strong>
+                      </div>
+                    </div>
+                  </div>
                   <TableSectionShell
                     title="Rooming"
                     description="Room entries, occupancy, and passenger assignments."
@@ -2343,16 +2439,20 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                         <InlineRowEditorShell>
                           <form action={`/api/bookings/${booking.id}/rooming`} method="POST" className="quote-status-form">
                             <label>
-                              Room type
-                              <input type="text" name="roomType" placeholder="DBL Sea View / Family Room" />
+                              Room group
+                              <select name="roomType" defaultValue="DBL">
+                                {ROOMING_GROUP_OPTIONS.map((option) => (
+                                  <option key={option.code} value={option.code}>{option.label}</option>
+                                ))}
+                              </select>
                             </label>
                             <label>
                               Occupancy
-                              <select name="occupancy" defaultValue="unknown">
+                              <select name="occupancy" defaultValue="double">
+                                {ROOMING_GROUP_OPTIONS.map((option) => (
+                                  <option key={option.code} value={option.occupancy}>{option.label} occupancy</option>
+                                ))}
                                 <option value="unknown">Unknown</option>
-                                <option value="single">Single</option>
-                                <option value="double">Double</option>
-                                <option value="triple">Triple</option>
                                 <option value="quad">Quad</option>
                               </select>
                             </label>
@@ -2393,19 +2493,28 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                           </thead>
                           <tbody>
                             {booking.roomingEntries.map((entry) => {
-                              const capacity = getRoomOccupancyCapacity(entry.occupancy);
+                              const capacity = getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
                               const availablePassengers = booking.passengers.filter(
                                 (passenger) =>
-                                  !assignedPassengerIds.has(passenger.id) ||
-                                  entry.assignments.some((assignment) => assignment.bookingPassenger.id === passenger.id),
+                                  !entry.assignments.some((assignment) => assignment.bookingPassenger.id === passenger.id),
                               );
+                              const assignmentStatus =
+                                capacity === null
+                                  ? entry.assignments.length > 0 ? 'Assigned' : 'Needs occupancy'
+                                  : entry.assignments.length === capacity ? 'Valid' : 'Mismatch';
 
                               return (
                                 <tr key={entry.id}>
                                   <td>
                                     <strong>{getRoomLabel(entry)}</strong>
+                                    <span className="table-subcopy">{getRoomGroupCode(entry)}</span>
                                   </td>
-                                  <td>{formatRoomOccupancy(entry.occupancy)}</td>
+                                  <td>
+                                    {formatRoomOccupancy(entry.occupancy)}
+                                    <span className={`booking-rooming-validation booking-rooming-validation-${assignmentStatus.toLowerCase().replace(/\s+/g, '-')}`}>
+                                      {assignmentStatus}
+                                    </span>
+                                  </td>
                                   <td>
                                     {entry.assignments.length}
                                     {capacity ? ` / ${capacity}` : ''}
@@ -2417,8 +2526,13 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                         <form action={`/api/bookings/${booking.id}/rooming/${entry.id}`} method="POST" className="quote-status-form">
                                           <input type="hidden" name="intent" value="update" />
                                           <label>
-                                            Room type
-                                            <input type="text" name="roomType" defaultValue={entry.roomType || ''} />
+                                            Room group
+                                            <select name="roomType" defaultValue={getRoomGroupCode(entry) === 'OTHER' ? entry.roomType || '' : getRoomGroupCode(entry)}>
+                                              {ROOMING_GROUP_OPTIONS.map((option) => (
+                                                <option key={option.code} value={option.code}>{option.label}</option>
+                                              ))}
+                                              {getRoomGroupCode(entry) === 'OTHER' ? <option value={entry.roomType || ''}>{entry.roomType || 'Custom room'}</option> : null}
+                                            </select>
                                           </label>
                                           <label>
                                             Occupancy
@@ -2474,7 +2588,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                       <InlineRowEditorShell>
                                         <form action={`/api/bookings/${booking.id}/rooming/${entry.id}/assignments`} method="POST" className="quote-status-form">
                                           <label>
-                                            Assign passenger
+                                            Assign or move passenger
                                             <select
                                               name="passengerId"
                                               defaultValue=""
@@ -2482,14 +2596,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                             >
                                               <option value="" disabled>
                                                 {availablePassengers.length === 0
-                                                  ? 'No unassigned passengers'
+                                                  ? 'No available passengers'
                                                   : capacity !== null && entry.assignments.length >= capacity
                                                     ? 'Room occupancy is full'
-                                                    : 'Select passenger'}
+                                                    : 'Select passenger to assign or move'}
                                               </option>
                                               {availablePassengers.map((passenger) => (
                                                 <option key={passenger.id} value={passenger.id}>
-                                                  {formatPassengerName(passenger)}
+                                                  {getPassengerRoomingOptionLabel(passenger, booking.roomingEntries)}
                                                 </option>
                                               ))}
                                             </select>
@@ -2499,7 +2613,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                               type="submit"
                                               disabled={availablePassengers.length === 0 || (capacity !== null && entry.assignments.length >= capacity)}
                                             >
-                                              Assign passenger
+                                              Assign / move passenger
                                             </button>
                                           </div>
                                         </form>

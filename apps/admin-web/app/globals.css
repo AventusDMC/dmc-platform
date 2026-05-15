@@ -11747,6 +11747,71 @@ th.money-cell {
   padding: 1.35rem;
 }
 
+.booking-rooming-workspace-summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.booking-rooming-type-grid,
+.booking-rooming-live-summary {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.booking-rooming-type-card,
+.booking-rooming-live-summary div {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  border-radius: 0.5rem;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.booking-rooming-type-card span,
+.booking-rooming-live-summary span {
+  color: rgba(30, 27, 24, 0.56);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.booking-rooming-type-card strong,
+.booking-rooming-live-summary strong {
+  color: rgba(30, 27, 24, 0.96);
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.booking-rooming-validation {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.16rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(229, 231, 235, 0.95);
+  background: #f8fafc;
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.booking-rooming-validation-valid,
+.booking-rooming-validation-assigned {
+  border-color: rgba(34, 197, 94, 0.18);
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.booking-rooming-validation-mismatch,
+.booking-rooming-validation-needs-occupancy {
+  border-color: rgba(217, 119, 6, 0.18);
+  background: #fffaeb;
+  color: #92400e;
+}
+
 .booking-rooming-summary-grid {
   display: grid;
   gap: 0.8rem;

@@ -24,6 +24,14 @@ type UpdateSupplierConfirmationBody = {
   confirmationDeadline?: string | null;
 };
 
+type SupplierConfirmationActionBody = {
+  action: 'prepare_email' | 'mark_requested' | 'mark_confirmed' | 'mark_rejected' | 'reconfirm';
+  supplierReference?: string | null;
+  supplierRemarks?: string | null;
+  confirmationDeadline?: string | null;
+  reconfirmationDueAt?: string | null;
+};
+
 type UpdateBookingServiceOperationalBody = {
   serviceDate?: string | null;
   startTime?: string | null;
@@ -244,6 +252,18 @@ export class BookingsController {
   @Roles('admin', 'finance', 'operations')
   getPaymentProofReconciliationPerformance(@Actor() actor: AuthenticatedActor) {
     return this.bookingsService.getPaymentProofReconciliationPerformance(actor);
+  }
+
+  @Get('operations/supplier-confirmations')
+  @Roles('admin', 'operations')
+  getSupplierConfirmationQueues(
+    @Actor() actor: AuthenticatedActor,
+    @Query('serviceType') serviceType?: string,
+  ) {
+    return this.bookingsService.getSupplierConfirmationQueues({
+      actor,
+      serviceType: serviceType || null,
+    });
   }
 
   @Post('reconciliation/payment-proofs/confirm')
@@ -890,6 +910,24 @@ export class BookingsController {
       supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
       supplierRemarks: body.supplierRemarks === undefined ? undefined : body.supplierRemarks || null,
       confirmationDeadline: body.confirmationDeadline === undefined ? undefined : body.confirmationDeadline || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch('services/:serviceId/supplier-confirmation/action')
+  @Roles('admin', 'operations')
+  supplierConfirmationAction(
+    @Param('serviceId') serviceId: string,
+    @Body() body: SupplierConfirmationActionBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.performSupplierConfirmationAction(serviceId, {
+      action: body.action,
+      supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
+      supplierRemarks: body.supplierRemarks === undefined ? undefined : body.supplierRemarks || null,
+      confirmationDeadline: body.confirmationDeadline === undefined ? undefined : body.confirmationDeadline || null,
+      reconfirmationDueAt: body.reconfirmationDueAt === undefined ? undefined : body.reconfirmationDueAt || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

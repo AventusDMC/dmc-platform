@@ -100,6 +100,7 @@ describe('booking detail page regression', () => {
       "{ id: 'overview', label: 'Overview' }",
       "{ id: 'itinerary', label: 'Itinerary' }",
       "{ id: 'passengers', label: 'Passengers' }",
+      "{ id: 'rooming', label: 'Rooming' }",
       "{ id: 'services', label: 'Operations' }",
       "{ id: 'documents', label: 'Documents' }",
       "{ id: 'audit-log', label: 'Internal Notes' }",
@@ -107,6 +108,7 @@ describe('booking detail page regression', () => {
       "activeTab === 'overview'",
       "activeTab === 'itinerary'",
       "activeTab === 'passengers'",
+      "activeTab === 'rooming'",
       "activeTab === 'services'",
       "activeTab === 'documents'",
       "activeTab === 'audit-log'",
@@ -126,6 +128,42 @@ describe('booking detail page regression', () => {
     ]);
 
     assert.doesNotMatch(passengersSection, /passenger\.passportNumber(?!Masked)/);
+  });
+
+  it('exposes booking rooming workspace controls and live validation', () => {
+    const roomingSection = getTabSection('rooming');
+
+    expectSourceContains(pageSource, [
+      'const ROOMING_GROUP_OPTIONS',
+      "{ code: 'SGL', label: 'SGL', occupancy: 'single' }",
+      "{ code: 'DBL', label: 'DBL', occupancy: 'double' }",
+      "{ code: 'TWN', label: 'TWN', occupancy: 'double' }",
+      "{ code: 'TRPL', label: 'TRPL', occupancy: 'triple' }",
+      "{ code: 'CWB', label: 'Child with bed', occupancy: 'single' }",
+      "{ code: 'CNB', label: 'Child no bed', occupancy: 'single' }",
+    ]);
+
+    expectSourceContains(roomingSection, [
+      'booking-rooming-workspace-summary',
+      'Room group type summary',
+      'Live rooming summary',
+      '<span>Total rooms</span>',
+      '<span>Occupancy</span>',
+      '<span>Unassigned passengers</span>',
+      'booking-rooming-validation',
+      'Assign or move passenger',
+      'getPassengerRoomingOptionLabel(passenger, booking.roomingEntries)',
+      'Assign / move passenger',
+      'Unassign {formatPassengerName(assignment.bookingPassenger)}',
+      'Delete room',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.booking-rooming-type-grid',
+      '.booking-rooming-live-summary',
+      '.booking-rooming-validation-valid',
+      '.booking-rooming-validation-mismatch',
+    ]);
   });
 
   it('keeps the documents section complete without pricing leakage', () => {

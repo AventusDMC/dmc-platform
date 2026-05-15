@@ -318,6 +318,231 @@ test('operations dashboard readiness counts supplier confirmation states', async
   assert.equal(dashboard.operationalReadiness.supplierUnconfirmedServices, 2);
 });
 
+test('supplier confirmation action persists confirmed lifecycle fields', async () => {
+  let updatedData: any;
+  const audits: any[] = [];
+  const service = createService({
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-1',
+        bookingId: 'booking-1',
+        description: 'Hotel stay',
+        serviceType: 'HOTEL',
+        operationType: 'HOTEL',
+        serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+        pickupTime: null,
+        pickupLocation: null,
+        meetingPoint: null,
+        participantCount: 2,
+        supplierId: 'supplier-1',
+        supplierName: 'Hotel Supplier',
+        supplierConfirmationStatus: 'SENT',
+        confirmationStatus: 'requested',
+        confirmationSentAt: new Date('2026-05-20T00:00:00.000Z'),
+        supplierConfirmedAt: null,
+        supplierReference: null,
+        confirmationNumber: null,
+        supplierRemarks: null,
+        confirmationDeadline: new Date('2026-05-25T00:00:00.000Z'),
+        lastSupplierContactAt: new Date('2026-05-20T00:00:00.000Z'),
+        reconfirmationRequired: false,
+        reconfirmationDueAt: null,
+        status: 'in_progress',
+        totalCost: 100,
+        totalSell: 130,
+        confirmationRequestedAt: new Date('2026-05-20T00:00:00.000Z'),
+        confirmationConfirmedAt: null,
+        supplier: { id: 'supplier-1', name: 'Hotel Supplier', email: 'hotel@example.com' },
+        booking: { id: 'booking-1', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
+      }),
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { id: 'service-1', ...data };
+      },
+    },
+    bookingAuditLog: {
+      create: async ({ data }: any) => {
+        audits.push(data);
+        return { id: 'audit-1', ...data };
+      },
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        bookingService: {
+          update: async (args: any) => (service as any).prisma.bookingService.update(args),
+        },
+        bookingAuditLog: {
+          create: async (args: any) => (service as any).prisma.bookingAuditLog.create(args),
+        },
+      }),
+  });
+
+  const updated = await service.performSupplierConfirmationAction('service-1', {
+    action: 'mark_confirmed',
+    supplierReference: 'CN-100',
+    supplierRemarks: 'Confirmed by supplier',
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(updated.supplierConfirmationStatus, 'CONFIRMED');
+  assert.equal(updated.confirmationStatus, 'confirmed');
+  assert.equal(updated.status, 'confirmed');
+  assert.equal(updatedData.supplierReference, 'CN-100');
+  assert.equal(updatedData.confirmationNumber, 'CN-100');
+  assert.ok(updatedData.supplierConfirmedAt);
+  assert.ok(updatedData.confirmationConfirmedAt);
+  assert.equal(audits[0].action, 'service_supplier_confirmation_mark_confirmed');
+});
+
+test('supplier confirmation queues group operational services by service type', async () => {
+  const nowPastDue = new Date('2026-05-10T00:00:00.000Z');
+  const service = createService({
+    bookingService: {
+      findMany: async () => [
+        {
+          id: 'hotel-1',
+          bookingId: 'booking-1',
+          description: 'Hotel',
+          serviceType: 'HOTEL',
+          operationType: 'HOTEL',
+          serviceDate: nowPastDue,
+          supplierId: 'supplier-hotel',
+          supplierName: 'Hotel Supplier',
+          confirmationStatus: 'requested',
+          supplierConfirmationStatus: 'SENT',
+          confirmationSentAt: nowPastDue,
+          supplierConfirmedAt: null,
+          supplierRemarks: null,
+          confirmationDeadline: null,
+          lastSupplierContactAt: nowPastDue,
+          reconfirmationRequired: true,
+          reconfirmationDueAt: nowPastDue,
+          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+        },
+        {
+          id: 'transport-1',
+          bookingId: 'booking-1',
+          description: 'Transfer',
+          serviceType: 'TRANSPORT',
+          operationType: 'TRANSPORT',
+          serviceDate: nowPastDue,
+          supplierId: 'supplier-transport',
+          supplierName: 'Transport Supplier',
+          confirmationStatus: 'confirmed',
+          supplierConfirmationStatus: 'CONFIRMED',
+          confirmationSentAt: nowPastDue,
+          supplierConfirmedAt: nowPastDue,
+          supplierRemarks: null,
+          confirmationDeadline: null,
+          lastSupplierContactAt: nowPastDue,
+          reconfirmationRequired: false,
+          reconfirmationDueAt: null,
+          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+        },
+        {
+          id: 'activity-1',
+          bookingId: 'booking-1',
+          description: 'Excursion',
+          serviceType: 'ACTIVITY',
+          operationType: 'ACTIVITY',
+          serviceDate: nowPastDue,
+          supplierId: 'supplier-activity',
+          supplierName: 'Activity Supplier',
+          confirmationStatus: 'requested',
+          supplierConfirmationStatus: 'REJECTED',
+          confirmationSentAt: nowPastDue,
+          supplierConfirmedAt: null,
+          supplierRemarks: 'No availability',
+          confirmationDeadline: null,
+          lastSupplierContactAt: nowPastDue,
+          reconfirmationRequired: false,
+          reconfirmationDueAt: null,
+          booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: null, endDate: null },
+        },
+      ],
+    },
+  });
+
+  const queues = await service.getSupplierConfirmationQueues({ actor: { companyId: 'company-1' } });
+
+  assert.equal(queues.hotels.count, 1);
+  assert.equal(queues.hotels.unconfirmed, 1);
+  assert.equal(queues.hotels.overdueReconfirmations, 1);
+  assert.equal(queues.transport.count, 1);
+  assert.equal(queues.transport.unconfirmed, 0);
+  assert.equal(queues.activitiesExcursions.count, 1);
+  assert.equal(queues.activitiesExcursions.unconfirmed, 1);
+});
+
+test('supplier reconfirmation action marks service requested with due date', async () => {
+  let updatedData: any;
+  const service = createService({
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-1',
+        bookingId: 'booking-1',
+        description: 'Excursion',
+        serviceType: 'ACTIVITY',
+        operationType: 'ACTIVITY',
+        serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+        pickupTime: '09:00',
+        pickupLocation: 'Hotel lobby',
+        meetingPoint: null,
+        participantCount: 4,
+        supplierId: 'supplier-1',
+        supplierName: 'Activity Supplier',
+        supplierConfirmationStatus: 'CONFIRMED',
+        confirmationStatus: 'confirmed',
+        confirmationSentAt: new Date('2026-05-20T00:00:00.000Z'),
+        supplierConfirmedAt: new Date('2026-05-21T00:00:00.000Z'),
+        supplierReference: 'CN-1',
+        confirmationNumber: 'CN-1',
+        supplierRemarks: null,
+        confirmationDeadline: null,
+        lastSupplierContactAt: new Date('2026-05-21T00:00:00.000Z'),
+        reconfirmationRequired: false,
+        reconfirmationDueAt: null,
+        status: 'confirmed',
+        totalCost: 100,
+        totalSell: 130,
+        confirmationRequestedAt: new Date('2026-05-20T00:00:00.000Z'),
+        confirmationConfirmedAt: new Date('2026-05-21T00:00:00.000Z'),
+        supplier: { id: 'supplier-1', name: 'Activity Supplier', email: 'activity@example.com' },
+        booking: { id: 'booking-1', bookingRef: 'BK-1', startDate: null, endDate: null, snapshotJson: {}, contactSnapshotJson: {} },
+      }),
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { id: 'service-1', ...data };
+      },
+    },
+    bookingAuditLog: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        bookingService: {
+          update: async (args: any) => (service as any).prisma.bookingService.update(args),
+        },
+        bookingAuditLog: {
+          create: async (args: any) => (service as any).prisma.bookingAuditLog.create(args),
+        },
+      }),
+  });
+
+  const updated = await service.performSupplierConfirmationAction('service-1', {
+    action: 'reconfirm',
+    reconfirmationDueAt: '2026-05-30T00:00:00.000Z',
+    supplierRemarks: 'Reconfirm before arrival',
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(updated.supplierConfirmationStatus, 'SENT');
+  assert.equal(updated.confirmationStatus, 'requested');
+  assert.equal(updated.reconfirmationRequired, true);
+  assert.equal(updatedData.reconfirmationDueAt.toISOString(), '2026-05-30T00:00:00.000Z');
+  assert.equal(updated.status, 'in_progress');
+});
+
 test('cancel booking sets status to cancelled without deleting related data', async () => {
   let updateData: any;
   let auditLogData: any;
@@ -857,6 +1082,130 @@ test('rooming assignment validates TWN occupancy and prevents over-assignment', 
     /occupancy limit/i,
   );
   assert.equal(createdAssignments.length, 1);
+});
+
+test('rooming reassignment moves a passenger from the previous room assignment', async () => {
+  const deletedAssignments: string[] = [];
+  const createdAssignments: any[] = [];
+  const auditActions: string[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingRoomingEntry: {
+          findFirst: async () => ({
+            id: 'room-2',
+            bookingId: 'booking-1',
+            roomType: 'DBL',
+            occupancy: 'double',
+            sortOrder: 2,
+            assignments: [],
+          }),
+        },
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'passenger-1',
+            bookingId: 'booking-1',
+            firstName: 'Lina',
+            lastName: 'Haddad',
+            title: null,
+            roomingAssignments: [{ id: 'assignment-old', bookingRoomingEntryId: 'room-1' }],
+          }),
+        },
+        bookingRoomingAssignment: {
+          delete: async ({ where }: any) => {
+            deletedAssignments.push(where.id);
+            return {};
+          },
+          create: async ({ data }: any) => {
+            createdAssignments.push(data);
+            return { id: 'assignment-new', ...data };
+          },
+        },
+        bookingAuditLog: {
+          create: async ({ data }: any) => {
+            auditActions.push(data.action);
+            return {};
+          },
+        },
+      }),
+  });
+
+  const assignment = await service.assignPassengerToRoom('booking-1', 'room-2', 'passenger-1', undefined, { companyId: 'company-1' });
+
+  assert.deepEqual(deletedAssignments, ['assignment-old']);
+  assert.equal(createdAssignments[0].bookingRoomingEntryId, 'room-2');
+  assert.equal(createdAssignments[0].bookingPassengerId, 'passenger-1');
+  assert.equal(assignment.bookingRoomingEntryId, 'room-2');
+  assert.deepEqual(auditActions, ['booking_rooming_assignment_moved']);
+});
+
+test('rooming unassignment removes the passenger assignment', async () => {
+  const deletedAssignments: string[] = [];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingRoomingEntry: {
+          findFirst: async () => ({
+            id: 'room-1',
+            bookingId: 'booking-1',
+            roomType: 'SGL',
+            occupancy: 'single',
+            sortOrder: 1,
+          }),
+        },
+        bookingPassenger: {
+          findFirst: async () => ({
+            id: 'passenger-1',
+            bookingId: 'booking-1',
+            firstName: 'Lina',
+            lastName: 'Haddad',
+            title: null,
+          }),
+        },
+        bookingRoomingAssignment: {
+          findUnique: async () => ({ id: 'assignment-1' }),
+          delete: async ({ where }: any) => {
+            deletedAssignments.push(where.id);
+            return {};
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const result = await service.unassignPassengerFromRoom('booking-1', 'room-1', 'passenger-1', undefined, { companyId: 'company-1' });
+
+  assert.deepEqual(deletedAssignments, ['assignment-1']);
+  assert.equal(result.bookingPassengerId, 'passenger-1');
+});
+
+test('room deletion rules require assignments to be removed first', async () => {
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        bookingRoomingEntry: {
+          findFirst: async () => ({
+            id: 'room-1',
+            bookingId: 'booking-1',
+            roomType: 'DBL',
+            occupancy: 'double',
+            notes: null,
+            sortOrder: 1,
+            assignments: [{ id: 'assignment-1' }],
+          }),
+          delete: async () => {
+            throw new Error('delete should not run while assigned passengers exist');
+          },
+        },
+      }),
+  });
+
+  await assert.rejects(
+    () => service.deleteRoomingEntry('booking-1', 'room-1', undefined, { companyId: 'company-1' }),
+    /Unassign passengers from the room before deleting/i,
+  );
 });
 
 test('operational readiness reports missing passport, unassigned passengers, and room occupancy mismatch', () => {
