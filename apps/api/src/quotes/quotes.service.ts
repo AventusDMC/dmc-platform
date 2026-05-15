@@ -16,7 +16,7 @@ import {
   TransportPricingMode,
 } from '@prisma/client';
 import PDFDocument = require('pdfkit');
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { AuditService } from '../audit/audit.service';
@@ -2172,9 +2172,11 @@ export class QuotesService {
       }
 
       const bookingSnapshot = this.buildBookingSnapshotFromAcceptedVersion(acceptedVersion.snapshotJson);
+      const bookingDayPlan = this.buildBookingDayPlanFromAcceptedVersion(acceptedVersion.snapshotJson);
+      const bookingDays = bookingDayPlan.days;
       let bookingServices: Awaited<ReturnType<typeof this.buildBookingServicesFromAcceptedVersion>>;
       try {
-        bookingServices = await this.buildBookingServicesFromAcceptedVersion(acceptedVersion.snapshotJson, tx);
+        bookingServices = await this.buildBookingServicesFromAcceptedVersion(acceptedVersion.snapshotJson, tx, bookingDayPlan);
         console.log('[quote/convert-to-booking] bookingServices nested create prepared', {
           quoteId: quote.id,
           acceptedVersionId: acceptedVersion.id,
@@ -2184,7 +2186,6 @@ export class QuotesService {
         console.error('[quote/convert-to-booking] bookingServices preparation failed', this.formatConversionError(error));
         throw this.toBookingConversionException(error, 'Booking conversion failed while preparing booking services');
       }
-      const bookingDays = this.buildBookingDaysFromAcceptedVersion(acceptedVersion.snapshotJson);
       const bookingRef = await this.generateNextBookingRef(tx);
       const startDate = this.parseDateLike(bookingSnapshot.travelStartDate);
       const endDate = startDate
@@ -8732,6 +8733,7 @@ export class QuotesService {
   private async buildBookingServicesFromAcceptedVersion(
     snapshotJson: unknown,
     prismaClient: Pick<Prisma.TransactionClient | PrismaService, 'supplier'> = this.prisma,
+    bookingDayPlan = this.buildBookingDayPlanFromAcceptedVersion(snapshotJson),
   ) {
     const snapshot = (snapshotJson || {}) as {
       adults?: number | null;
@@ -8741,6 +8743,18 @@ export class QuotesService {
         id?: string;
         dayNumber?: number | null;
         serviceDate?: string | null;
+      }>;
+      quoteItineraryDays?: Array<{
+        id?: string;
+        dayNumber?: number | null;
+        serviceDate?: string | null;
+        date?: string | null;
+        dayItems?: Array<{
+          quoteServiceId?: string | null;
+          quoteService?: {
+            id?: string | null;
+          } | null;
+        }>;
       }>;
       quoteItems?: Array<{
         id?: string;
@@ -8804,7 +8818,10 @@ export class QuotesService {
     };
 
     const itineraryContextById = new Map(
-      (snapshot.itineraries ?? [])
+      [
+        ...(snapshot.itineraries ?? []),
+        ...(snapshot.quoteItineraryDays ?? []),
+      ]
         .filter(
           (
             day,
@@ -8812,13 +8829,14 @@ export class QuotesService {
             id: string;
             dayNumber: number;
             serviceDate?: string | null;
+            date?: string | null;
           } => Boolean(day.id) && Number.isFinite(day.dayNumber),
         )
         .map((day) => [
           day.id,
           {
             dayNumber: day.dayNumber,
-            serviceDate: day.serviceDate || null,
+            serviceDate: day.serviceDate || day.date || null,
           },
         ]),
     );
@@ -8903,6 +8921,7 @@ export class QuotesService {
         return {
           sourceQuoteItemId: item.id ?? null,
           activityId: item.activityId ?? null,
+          bookingDayId: this.resolveBookingDayIdForSnapshotItem(item, bookingDayPlan, itineraryContextById),
           touringRouteId: item.touringRouteId || item.touringRoute?.id || item.touringRoutePricing?.touringRouteId || null,
           touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || null,
           serviceOrder: index,
@@ -8945,10 +8964,15 @@ export class QuotesService {
   }
 
   private buildBookingDaysFromAcceptedVersion(snapshotJson: unknown) {
+    return this.buildBookingDayPlanFromAcceptedVersion(snapshotJson).days;
+  }
+
+  private buildBookingDayPlanFromAcceptedVersion(snapshotJson: unknown) {
     const snapshot = (snapshotJson || {}) as {
       travelStartDate?: string | Date | null;
       nightCount?: number | null;
       itineraries?: Array<{
+        id?: string | null;
         dayNumber?: number | null;
         title?: string | null;
         description?: string | null;
@@ -8956,16 +8980,53 @@ export class QuotesService {
         notes?: string | null;
         serviceDate?: string | Date | null;
       }>;
+      quoteItineraryDays?: Array<{
+        id?: string | null;
+        dayNumber?: number | null;
+        title?: string | null;
+        description?: string | null;
+        summary?: string | null;
+        notes?: string | null;
+        serviceDate?: string | Date | null;
+        date?: string | Date | null;
+        dayItems?: Array<{
+          quoteServiceId?: string | null;
+          quoteService?: {
+            id?: string | null;
+          } | null;
+        }>;
+      }>;
     };
     const travelStartDate = this.parseDateLike(snapshot.travelStartDate);
-    const byDayNumber = new Map<number, { dayNumber: number; date: Date | null; title: string; notes: string | null; status: BookingDayStatus }>();
+    const byDayNumber = new Map<number, { id: string; dayNumber: number; date: Date | null; title: string; notes: string | null; status: BookingDayStatus }>();
+    const bookingDayIdBySourceDayId = new Map<string, string>();
+    const bookingDayIdByQuoteItemId = new Map<string, string>();
 
-    for (const day of snapshot.itineraries || []) {
+    const addDay = (day: {
+      id?: string | null;
+      dayNumber?: number | null;
+      title?: string | null;
+      description?: string | null;
+      summary?: string | null;
+      notes?: string | null;
+      serviceDate?: string | Date | null;
+      date?: string | Date | null;
+      dayItems?: Array<{
+        quoteServiceId?: string | null;
+        quoteService?: {
+          id?: string | null;
+        } | null;
+      }>;
+    }) => {
       const dayNumber = Math.max(1, Math.floor(Number(day.dayNumber || 1)));
-      const explicitDate = this.parseDateLike(day.serviceDate);
+      const explicitDate = this.parseDateLike(day.serviceDate ?? day.date);
       const date = explicitDate || (travelStartDate ? new Date(travelStartDate.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000) : null);
-      if (!byDayNumber.has(dayNumber)) {
+      const existing = byDayNumber.get(dayNumber);
+      const bookingDayId = existing?.id || randomUUID();
+
+      if (!existing) {
         byDayNumber.set(dayNumber, {
+          id: bookingDayId,
           dayNumber,
           date,
           title: day.title?.trim() || `Day ${dayNumber}`,
@@ -8973,12 +9034,32 @@ export class QuotesService {
           status: BookingDayStatus.PENDING,
         });
       }
+
+      if (day.id?.trim()) {
+        bookingDayIdBySourceDayId.set(day.id.trim(), bookingDayId);
+      }
+
+      for (const dayItem of day.dayItems || []) {
+        const quoteItemId = dayItem.quoteServiceId?.trim() || dayItem.quoteService?.id?.trim() || null;
+        if (quoteItemId) {
+          bookingDayIdByQuoteItemId.set(quoteItemId, bookingDayId);
+        }
+      }
+    };
+
+    for (const day of snapshot.quoteItineraryDays || []) {
+      addDay(day);
+    }
+
+    for (const day of snapshot.itineraries || []) {
+      addDay(day);
     }
 
     const expectedDayCount = Math.max(byDayNumber.size, Math.max(1, Number(snapshot.nightCount || 0) + 1));
     for (let dayNumber = 1; dayNumber <= expectedDayCount; dayNumber += 1) {
       if (!byDayNumber.has(dayNumber)) {
         byDayNumber.set(dayNumber, {
+          id: randomUUID(),
           dayNumber,
           date: travelStartDate ? new Date(travelStartDate.getTime() + (dayNumber - 1) * 24 * 60 * 60 * 1000) : null,
           title: `Day ${dayNumber}`,
@@ -8988,7 +9069,45 @@ export class QuotesService {
       }
     }
 
-    return Array.from(byDayNumber.values()).sort((left, right) => left.dayNumber - right.dayNumber);
+    const days = Array.from(byDayNumber.values()).sort((left, right) => left.dayNumber - right.dayNumber);
+    const bookingDayIdByDayNumber = new Map(days.map((day) => [day.dayNumber, day.id]));
+
+    return {
+      days,
+      bookingDayIdBySourceDayId,
+      bookingDayIdByQuoteItemId,
+      bookingDayIdByDayNumber,
+    };
+  }
+
+  private resolveBookingDayIdForSnapshotItem(
+    item: { id?: string | null; itineraryId?: string | null },
+    bookingDayPlan: ReturnType<typeof this.buildBookingDayPlanFromAcceptedVersion>,
+    itineraryContextById: Map<string, { dayNumber: number; serviceDate?: string | null }>,
+  ) {
+    const quoteItemId = item.id?.trim() || null;
+    const itineraryId = item.itineraryId?.trim() || null;
+
+    if (quoteItemId) {
+      const bookingDayId = bookingDayPlan.bookingDayIdByQuoteItemId.get(quoteItemId);
+      if (bookingDayId) {
+        return bookingDayId;
+      }
+    }
+
+    if (itineraryId) {
+      const bookingDayId = bookingDayPlan.bookingDayIdBySourceDayId.get(itineraryId);
+      if (bookingDayId) {
+        return bookingDayId;
+      }
+
+      const dayNumber = itineraryContextById.get(itineraryId)?.dayNumber;
+      if (dayNumber) {
+        return bookingDayPlan.bookingDayIdByDayNumber.get(dayNumber) || null;
+      }
+    }
+
+    return null;
   }
 
   private getBookingServiceSupplierIdFromSnapshotItem(item: {

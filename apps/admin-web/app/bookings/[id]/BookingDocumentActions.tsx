@@ -20,11 +20,13 @@ export function BookingDocumentActions({
 }: BookingDocumentActionsProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   async function handleDownloadPdf() {
     try {
       setIsDownloading(true);
       setError('');
+      setSuccess('');
       const response = await fetch(`${apiBaseUrl}/bookings/${bookingId}/${documentType}/pdf`, {
         credentials: 'include',
       });
@@ -46,6 +48,7 @@ export function BookingDocumentActions({
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      setSuccess(`${documentLabel} PDF downloaded.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : `Could not download the ${documentLabel.toLowerCase()} right now.`);
     } finally {
@@ -56,6 +59,8 @@ export function BookingDocumentActions({
   }
 
   function handleSendByEmail() {
+    setError('');
+    setSuccess('Email draft prepared.');
     const subject = `${documentLabel} - ${bookingRef}`;
     const body = `Please find the ${documentLabel.toLowerCase()} for booking reference ${bookingRef}.\n\nDocument link:\n${window.location.href}`;
 
@@ -70,7 +75,8 @@ export function BookingDocumentActions({
       <button type="button" className="secondary-button" onClick={handleSendByEmail}>
         Prepare Email
       </button>
-      {error ? <p className="form-helper">{error}</p> : null}
+      {success ? <p className="form-helper">{success}</p> : null}
+      {error ? <p className="form-error">{error}</p> : null}
     </div>
   );
 }

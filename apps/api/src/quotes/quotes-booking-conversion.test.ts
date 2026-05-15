@@ -1122,3 +1122,59 @@ test('buildBookingDaysFromAcceptedVersion creates dated booking days from quote 
   assert.equal(bookingDays[1].title, 'Day 2');
   assert.equal(bookingDays[2].date.toISOString(), '2026-06-03T00:00:00.000Z');
 });
+
+test('booking conversion preserves modern quote itinerary days and assigns services to booking days', async () => {
+  const service = createQuotesService();
+  const snapshot = {
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    nightCount: 1,
+    quoteItineraryDays: Array.from({ length: 7 }, (_, index) => ({
+      id: `planner-day-${index + 1}`,
+      dayNumber: index + 1,
+      title: `Planner Day ${index + 1}`,
+      notes: `Notes ${index + 1}`,
+      dayItems:
+        index === 6
+          ? [
+              {
+                quoteServiceId: 'item-day-7',
+              },
+            ]
+          : [],
+    })),
+    quoteItems: [
+      {
+        id: 'item-day-7',
+        quantity: 1,
+        pricingDescription: 'Day 7 farewell dinner',
+        totalCost: 80,
+        totalSell: 120,
+        service: {
+          name: 'Farewell Dinner',
+          category: 'Dining',
+        },
+      },
+    ],
+    adults: 2,
+    children: 0,
+  };
+
+  const dayPlan = (service as any).buildBookingDayPlanFromAcceptedVersion(snapshot);
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(
+    snapshot,
+    {
+      supplier: {
+        findUnique: async () => null,
+      },
+    },
+    dayPlan,
+  );
+
+  assert.equal(dayPlan.days.length, 7);
+  assert.deepEqual(dayPlan.days.map((day: any) => day.dayNumber), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(dayPlan.days[6].title, 'Planner Day 7');
+  assert.equal(dayPlan.days[6].notes, 'Notes 7');
+  assert.equal(dayPlan.days[6].date.toISOString(), '2026-06-07T00:00:00.000Z');
+  assert.equal(bookingServices.length, 1);
+  assert.equal(bookingServices[0].bookingDayId, dayPlan.days[6].id);
+});

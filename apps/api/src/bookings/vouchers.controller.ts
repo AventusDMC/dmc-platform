@@ -5,7 +5,7 @@ import { BookingsService } from './bookings.service';
 import { OperationalVouchersService } from '../operational-documents/operational-vouchers.service';
 
 type UpdateVoucherStatusBody = {
-  status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
+  status: 'DRAFT' | 'READY' | 'SENT' | 'ISSUED' | 'CANCELLED';
 };
 
 @Controller('vouchers')

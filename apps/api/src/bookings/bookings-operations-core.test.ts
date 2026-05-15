@@ -2594,7 +2594,7 @@ test('service voucher generation creates one supplier voucher per transport serv
   assert.equal(voucher.status, 'DRAFT');
 });
 
-test('service voucher generation validates supplier and required fields', async () => {
+test('service voucher generation allows draft vouchers with unresolved supplier text', async () => {
   const service = createService({
     bookingService: {
       findFirst: async () => ({
@@ -2602,17 +2602,82 @@ test('service voucher generation validates supplier and required fields', async 
         bookingId: 'booking-1',
         operationType: 'HOTEL',
         serviceType: 'HOTEL',
-        supplierId: 'supplier-1',
+        supplierId: null,
+        supplierName: 'Default Supplier',
         confirmationNumber: null,
         supplierReference: null,
       }),
     },
+    $transaction: async (callback: any) =>
+      callback({
+        voucher: {
+          findUnique: async () => null,
+          create: async ({ data }: any) => ({ id: 'voucher-1', ...data }),
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
   });
 
-  await assert.rejects(
-    () => service.createServiceVoucher('booking-1', 'service-1', { companyActor: { companyId: 'company-1' } }),
-    /hotel voucher requires a confirmation number/i,
-  );
+  const voucher = await service.createServiceVoucher('booking-1', 'service-1', { companyActor: { companyId: 'company-1' } });
+
+  assert.equal(voucher.status, 'DRAFT');
+  assert.equal(voucher.supplierId, null);
+});
+
+test('excursion service voucher preserves touring route and vehicle context', async () => {
+  const service = createService({
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-1',
+        bookingId: 'booking-1',
+        operationType: 'ACTIVITY',
+        serviceType: 'Excursion',
+        supplierId: 'supplier-1',
+        serviceDate: new Date('2026-10-02T00:00:00.000Z'),
+        touringRouteId: 'touring-route-1',
+        touringRoutePricingId: 'touring-pricing-1',
+        touringRoute: { name: 'AMM_PET' },
+        touringRoutePricing: {
+          supplier: { name: 'Petra Operator' },
+          vehicle: { name: 'Sedan 2' },
+          touringRoute: { name: 'AMM_PET' },
+        },
+        pickupLocation: 'Amman hotel',
+        participantCount: 2,
+        notes: 'Petra Full Day',
+      }),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        voucher: {
+          findUnique: async () => null,
+          create: async ({ data }: any) => ({
+            id: 'voucher-1',
+            ...data,
+            bookingService: {
+              touringRoute: { name: 'AMM_PET' },
+              touringRoutePricing: {
+                supplier: { name: 'Petra Operator' },
+                vehicle: { name: 'Sedan 2' },
+              },
+            },
+          }),
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const voucher = await service.createServiceVoucher('booking-1', 'service-1', {
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(voucher.type, 'EXCURSION');
+  assert.equal(voucher.bookingService.touringRoute.name, 'AMM_PET');
+  assert.equal(voucher.bookingService.touringRoutePricing.vehicle.name, 'Sedan 2');
 });
 
 test('service voucher PDF includes supplier-facing fields and no pricing leakage', async () => {
@@ -2655,9 +2720,13 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
             description: 'Airport transfer',
             pickupTime: '09:00',
             startTime: null,
+            pickupLocation: 'QAIA arrivals',
+            meetingPoint: null,
             assignedTo: 'Driver Ali',
             guidePhone: '+962799999999',
             vehicle: { name: 'Van' },
+            touringRoute: null,
+            touringRoutePricing: null,
             totalCost: 500,
             totalSell: 700,
           },
@@ -2674,6 +2743,7 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
   assert.match(text, /Client Group/);
   assert.match(text, /QAIA to Dead Sea/);
   assert.match(text, /09:00/);
+  assert.match(text, /QAIA arrivals/);
   assert.match(text, /Driver Ali/);
   assert.match(text, /Van/);
   assert.doesNotMatch(text, /totalCost/);
@@ -2681,7 +2751,7 @@ test('service voucher PDF includes supplier-facing fields and no pricing leakage
   assert.doesNotMatch(text, /margin/i);
 });
 
-test('voucher status transitions draft to issued and blocks cross-company access', async () => {
+test('voucher status transitions draft to ready to sent and blocks cross-company access', async () => {
   const updatedRows: any[] = [];
   const service = createService({
     voucher: {
@@ -2710,10 +2780,15 @@ test('voucher status transitions draft to issued and blocks cross-company access
       }),
   });
 
-  const updated = await service.updateVoucherStatus('voucher-1', 'ISSUED', undefined, { companyId: 'company-1' });
+  const ready = await service.updateVoucherStatus('voucher-1', 'READY', undefined, { companyId: 'company-1' });
 
-  assert.equal(updated.status, 'ISSUED');
-  assert.ok(updatedRows[0].issuedAt instanceof Date);
+  assert.equal(ready.status, 'READY');
+  assert.equal(updatedRows[0].issuedAt, null);
+
+  const sent = await service.updateVoucherStatus('voucher-1', 'SENT', undefined, { companyId: 'company-1' });
+
+  assert.equal(sent.status, 'SENT');
+  assert.ok(updatedRows[1].issuedAt instanceof Date);
 
   const blocked = createService({
     voucher: {
@@ -2726,7 +2801,7 @@ test('voucher status transitions draft to issued and blocks cross-company access
   });
 
   await assert.rejects(
-    () => blocked.updateVoucherStatus('voucher-1', 'ISSUED', undefined, { companyId: 'company-b' }),
+    () => blocked.updateVoucherStatus('voucher-1', 'SENT', undefined, { companyId: 'company-b' }),
     /voucher not found/i,
   );
 });

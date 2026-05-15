@@ -2242,7 +2242,7 @@ model Voucher {
   bookingId        String         @db.Uuid
   bookingServiceId String         @unique @db.Uuid
   type             VoucherType
-  supplierId       String         @db.Uuid
+  supplierId       String?        @db.Uuid
   status           VoucherStatus  @default(DRAFT)
   issuedAt         DateTime?
   notes            String?
@@ -2250,7 +2250,7 @@ model Voucher {
   updatedAt        DateTime       @updatedAt
   booking          Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   bookingService   BookingService @relation(fields: [bookingServiceId], references: [id], onDelete: Cascade)
-  supplier         Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplier         Supplier?      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   @@index([bookingId, status])
   @@index([supplierId])
@@ -2288,6 +2288,7 @@ enum BookingOperationServiceStatus {
 
 enum VoucherType {
   TRANSPORT
+  EXCURSION
   HOTEL
   GUIDE
   ACTIVITY
@@ -2296,6 +2297,8 @@ enum VoucherType {
 
 enum VoucherStatus {
   DRAFT
+  READY
+  SENT
   ISSUED
   CANCELLED
 }

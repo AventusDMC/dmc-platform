@@ -16,6 +16,7 @@ import { formatNightCountLabel } from '../../lib/formatters';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 import { BookingDocumentActions } from './BookingDocumentActions';
+import { BookingServiceVoucherDownloadButton } from './BookingServiceVoucherDownloadButton';
 import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
 import { BookingServiceTimeline } from './BookingServiceTimeline';
 import { BookingPortalLinkActions } from './BookingPortalLinkActions';
@@ -202,9 +203,9 @@ type QuoteSnapshot = {
 type ServiceVoucher = {
   id: string;
   bookingServiceId: string;
-  type: 'TRANSPORT' | 'HOTEL' | 'GUIDE' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
-  supplierId: string;
-  status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
+  type: 'TRANSPORT' | 'EXCURSION' | 'HOTEL' | 'GUIDE' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
+  supplierId: string | null;
+  status: 'DRAFT' | 'READY' | 'SENT' | 'ISSUED' | 'CANCELLED';
   issuedAt: string | null;
   notes: string | null;
   supplier?: Supplier | null;
@@ -548,6 +549,7 @@ type BookingPageProps = {
     warning?: string;
     warningText?: string;
     success?: string;
+    error?: string;
   }>;
 };
 
@@ -930,7 +932,8 @@ function getServicePaxCount(service: Booking['services'][number], booking: Booki
 
 function getVoucherReadinessLabel(service: Booking['services'][number]) {
   const vouchers = service.vouchers || [];
-  if (vouchers.some((voucher) => voucher.status === 'ISSUED')) return 'Voucher sent';
+  if (vouchers.some((voucher) => voucher.status === 'SENT' || voucher.status === 'ISSUED')) return 'Voucher sent';
+  if (vouchers.some((voucher) => voucher.status === 'READY')) return 'Voucher ready';
   if (vouchers.some((voucher) => voucher.status === 'DRAFT')) return 'Draft voucher';
   if (service.operationStatus === 'VOUCHER_SENT') return 'Voucher sent';
   return service.supplierId || service.supplierName ? 'Ready to generate' : 'Supplier pending';
@@ -1172,7 +1175,13 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
       },
       pricing: { unresolved: 0, status: 'ready' },
       transport: { missing: 0, status: 'ready' },
-      vouchers: { eligible: booking.services.length, issued: booking.vouchers?.filter((voucher) => voucher.status === 'ISSUED').length || 0, draft: booking.vouchers?.filter((voucher) => voucher.status === 'DRAFT').length || 0, missing: 0, status: 'ready' },
+      vouchers: {
+        eligible: booking.services.length,
+        issued: booking.vouchers?.filter((voucher) => voucher.status === 'SENT' || voucher.status === 'ISSUED').length || 0,
+        draft: booking.vouchers?.filter((voucher) => voucher.status === 'DRAFT').length || 0,
+        missing: 0,
+        status: 'ready',
+      },
       passengers: { expected: totalPax, received: booking.passengers.length, missingRecords: Math.max(totalPax - booking.passengers.length, 0), unassigned: booking.rooming.badge.breakdown.unassignedPassengers, status: booking.rooming.badge.breakdown.unassignedPassengers > 0 ? 'warning' : 'ready' },
       excursions: { incomplete: activityServicesMissingOpsCount, status: activityServicesMissingOpsCount > 0 ? 'warning' : 'ready' },
     },
@@ -1344,10 +1353,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             </div>
           ) : null}
 
-          {(warningMessage || resolvedSearchParams?.success) ? (
+          {(warningMessage || resolvedSearchParams?.success || resolvedSearchParams?.error) ? (
             <section className="warning-banner">
               {warningMessage ? renderFeedbackMessage(warningMessage, 'form-error') : null}
               {resolvedSearchParams?.success ? renderFeedbackMessage(resolvedSearchParams.success, 'form-helper') : null}
+              {resolvedSearchParams?.error ? renderFeedbackMessage(resolvedSearchParams.error, 'form-error') : null}
             </section>
           ) : null}
 
@@ -1772,9 +1782,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                             <td>{formatDateOnly(voucher.issuedAt)}</td>
                             <td>
                               <div className="quote-status-actions">
-                                <Link href={`/api/vouchers/${voucher.id}/pdf`} className="secondary-button">
-                                  PDF
-                                </Link>
+                                <BookingServiceVoucherDownloadButton voucherId={voucher.id} bookingRef={bookingRef} label="PDF" />
                                 {voucher.type === 'HOTEL' ? (
                                   <Link href={`/vouchers/${voucher.id}/preview`} className="secondary-button">
                                     Preview
@@ -1782,8 +1790,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                 ) : null}
                                 {voucher.status === 'DRAFT' ? (
                                   <form action={`/api/vouchers/${voucher.id}/status`} method="POST">
-                                    <input type="hidden" name="status" value="ISSUED" />
-                                    <button type="submit">Issue</button>
+                                    <input type="hidden" name="status" value="READY" />
+                                    <button type="submit">Mark ready</button>
+                                  </form>
+                                ) : null}
+                                {(voucher.status === 'DRAFT' || voucher.status === 'READY') ? (
+                                  <form action={`/api/vouchers/${voucher.id}/status`} method="POST">
+                                    <input type="hidden" name="status" value="SENT" />
+                                    <button type="submit">Mark sent</button>
                                   </form>
                                 ) : null}
                                 {voucher.status !== 'CANCELLED' ? (
@@ -2046,9 +2060,11 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                         </details>
                                         {service.vouchers && service.vouchers.length > 0 ? (
                                           <div className="quote-status-actions">
-                                            <Link href={`/api/vouchers/${service.vouchers[0].id}/pdf`} className="secondary-button">
-                                              Voucher PDF
-                                            </Link>
+                                            <BookingServiceVoucherDownloadButton
+                                              voucherId={service.vouchers[0].id}
+                                              bookingRef={bookingRef}
+                                              label="Download Voucher PDF"
+                                            />
                                             {service.vouchers[0].type === 'HOTEL' ? (
                                               <Link href={`/vouchers/${service.vouchers[0].id}/preview`} className="secondary-button">
                                                 Preview

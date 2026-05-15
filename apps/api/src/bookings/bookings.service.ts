@@ -142,7 +142,10 @@ const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED',
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
 const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
 type SupplierConfirmationStatusValue = (typeof SUPPLIER_CONFIRMATION_STATUSES)[number];
-const VOUCHER_STATUSES = ['DRAFT', 'ISSUED', 'CANCELLED'] as const;
+const VOUCHER_STATUSES = ['DRAFT', 'READY', 'SENT', 'ISSUED', 'CANCELLED'] as const;
+type VoucherLifecycleStatusValue = (typeof VOUCHER_STATUSES)[number];
+const VOUCHER_STATUS_READY: VoucherLifecycleStatusValue = 'READY';
+const VOUCHER_STATUS_SENT: VoucherLifecycleStatusValue = 'SENT';
 
 @Injectable()
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
@@ -5435,8 +5438,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const normalized = String(service?.operationType || service?.serviceType || '').trim().toUpperCase();
 
     if (normalized === VoucherType.TRANSPORT) return VoucherType.TRANSPORT;
+    if (normalized === 'EXCURSION') return 'EXCURSION' as VoucherType;
     if (normalized === VoucherType.HOTEL) return VoucherType.HOTEL;
     if (normalized === VoucherType.GUIDE) return VoucherType.GUIDE;
+
+    if (service?.touringRouteId || service?.touringRoutePricingId || service?.touringRoute) {
+      return 'EXCURSION' as VoucherType;
+    }
+
     if (normalized === 'ACTIVITY') return 'ACTIVITY' as VoucherType;
     if (normalized === VoucherType.EXTERNAL_PACKAGE) return VoucherType.EXTERNAL_PACKAGE;
 
@@ -5444,17 +5453,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (text.includes('transport') || text.includes('transfer') || text.includes('vehicle')) return VoucherType.TRANSPORT;
     if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
     if (text.includes('guide') || text.includes('escort')) return VoucherType.GUIDE;
-    if (text.includes('activity') || text.includes('tour') || text.includes('experience') || text.includes('excursion')) return 'ACTIVITY' as VoucherType;
+    if (text.includes('excursion')) return 'EXCURSION' as VoucherType;
+    if (text.includes('activity') || text.includes('tour') || text.includes('experience')) return 'ACTIVITY' as VoucherType;
     if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
 
-    throw new BadRequestException('Only transport, hotel, guide, activity, and external package services can generate vouchers');
+    throw new BadRequestException('Only transport, excursion, hotel, guide, activity, and external package services can generate vouchers');
   }
 
-  private normalizeVoucherStatus(status: string | null | undefined): VoucherStatus {
+  private normalizeVoucherStatus(status: string | null | undefined): VoucherLifecycleStatusValue {
     const normalized = String(status || '').trim().toUpperCase();
 
+    if (normalized === 'ISSUED' || normalized === 'VOUCHER_SENT') {
+      return VOUCHER_STATUS_SENT;
+    }
+
     if ((VOUCHER_STATUSES as readonly string[]).includes(normalized)) {
-      return normalized as VoucherStatus;
+      return normalized as VoucherLifecycleStatusValue;
     }
 
     throw new BadRequestException(`Unsupported voucher status: ${status || 'missing'}`);
@@ -5462,10 +5476,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
   private async assertVoucherRequiredFields(service: any, type: VoucherType) {
     if (type === VoucherType.TRANSPORT) {
-      if (!service.referenceId) throw new BadRequestException('Transport voucher requires a route');
-      if (!service.pickupTime) throw new BadRequestException('Transport voucher requires pickup time');
-      if (!service.vehicleId) throw new BadRequestException('Transport voucher requires a vehicle');
-      if (!service.assignedTo) throw new BadRequestException('Transport voucher requires a driver name');
+      if (!service.referenceId && !service.touringRouteId && !service.touringRoute) {
+        throw new BadRequestException('Transport voucher requires a route');
+      }
       return;
     }
 
@@ -5478,9 +5491,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (String(type) === 'ACTIVITY') {
+    if (String(type) === 'EXCURSION' || String(type) === 'ACTIVITY') {
       if (!service.serviceDate && !service.bookingDay?.date) throw new BadRequestException('Activity voucher requires a service date');
-      if (!service.supplierId) throw new BadRequestException('Activity voucher requires a supplier');
       return;
     }
 
@@ -6493,7 +6505,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const voucherEligibleServices = services.filter((service) => this.isOperationalVoucherEligible(service));
     const missingVoucherServices = voucherEligibleServices.filter((service) => !Array.isArray(service.vouchers) || service.vouchers.length === 0);
     const draftVouchers = voucherEligibleServices.flatMap((service) => service.vouchers || []).filter((voucher) => voucher.status === VoucherStatus.DRAFT);
-    const readyVouchers = voucherEligibleServices.flatMap((service) => service.vouchers || []).filter((voucher) => voucher.status === VoucherStatus.ISSUED);
+    const readyVouchers = voucherEligibleServices
+      .flatMap((service) => service.vouchers || [])
+      .filter((voucher) => [VOUCHER_STATUS_READY, VOUCHER_STATUS_SENT, VoucherStatus.ISSUED].includes(voucher.status as VoucherLifecycleStatusValue));
     const excursionIncompleteServices = services.filter((service) => this.isOperationalExcursionIncomplete(service));
     const pendingConfirmations = services.filter((service) => service.confirmationStatus !== BookingServiceStatus.confirmed).length;
     const optionalItemsNotSelected = this.countOptionalItemsNotSelected(booking.snapshotJson);
@@ -7309,12 +7323,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           const notes = [service.notes, service.confirmationNotes].filter(Boolean).join(' | ') || '-';
           const status = this.formatConfirmationStatus(service.confirmationStatus);
           const statusText = service.confirmationStatus === 'confirmed' ? status : `${status} - action required`;
+          const routeName = service.touringRoute?.name || service.touringRoutePricing?.touringRoute?.name || service.referenceId || '-';
+          const vehicleName = service.vehicle?.name || service.touringRoutePricing?.vehicle?.name || '-';
+          const timing = [service.pickupTime || service.startTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-';
+          const servicePax = Number(service.participantCount || 0) || Number(service.adultCount || 0) + Number(service.childCount || 0) || totalPax;
 
           this.writeListItem(doc, detail.title, [
             detail.detail || null,
             `Booking Ref: ${booking.bookingRef || '-'}`,
             `Service Day / Context: ${context}`,
-            `Pax: ${totalPax}`,
+            `Route: ${routeName}`,
+            `Vehicle: ${vehicleName}`,
+            `Timing / pickup: ${timing}`,
+            `Pax: ${servicePax}`,
             `Notes: ${notes}`,
             `Confirmation Status: ${statusText}`,
           ]);
@@ -7497,6 +7518,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         bookingDay: true,
         vehicle: true,
         supplier: true,
+        touringRoute: true,
+        touringRoutePricing: {
+          include: {
+            supplier: true,
+            vehicle: true,
+            touringRoute: true,
+          },
+        },
       },
     });
 
@@ -7506,14 +7535,37 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     const voucherType = this.resolveVoucherType(bookingService);
     const supplierId = this.normalizeOptionalText(bookingService.supplierId);
-    if (!supplierId || !bookingService.supplier) {
-      throw new BadRequestException('Supplier must be resolved before voucher generation');
-    }
-
     await this.assertVoucherRequiredFields(bookingService, voucherType);
     const notes = this.normalizeOptionalText(data.notes) || bookingService.notes || null;
 
     return this.prisma.$transaction(async (tx) => {
+      if (typeof (tx.voucher as any).findUnique === 'function') {
+        const existingVoucher = await (tx.voucher as any).findUnique({
+          where: { bookingServiceId },
+          include: {
+            supplier: true,
+            bookingService: {
+              include: {
+                bookingDay: true,
+                vehicle: true,
+                touringRoute: true,
+                touringRoutePricing: {
+                  include: {
+                    supplier: true,
+                    vehicle: true,
+                    touringRoute: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (existingVoucher) {
+          return existingVoucher;
+        }
+      }
+
       const voucher = await (tx.voucher as any).create({
         data: {
           bookingId,
@@ -7529,6 +7581,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             include: {
               bookingDay: true,
               vehicle: true,
+              touringRoute: true,
+              touringRoutePricing: {
+                include: {
+                  supplier: true,
+                  vehicle: true,
+                  touringRoute: true,
+                },
+              },
             },
           },
         },
@@ -7991,15 +8051,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (voucher.status === VoucherStatus.CANCELLED && normalizedStatus !== VoucherStatus.CANCELLED) {
-      throw new BadRequestException('Cancelled vouchers cannot be reissued');
+      throw new BadRequestException('Cancelled vouchers cannot be changed');
     }
 
-    if (voucher.status === VoucherStatus.DRAFT && normalizedStatus !== VoucherStatus.ISSUED && normalizedStatus !== VoucherStatus.CANCELLED) {
-      throw new BadRequestException('Draft vouchers can only be issued or cancelled');
+    if (voucher.status === VOUCHER_STATUS_SENT && normalizedStatus === VoucherStatus.DRAFT) {
+      throw new BadRequestException('Sent vouchers cannot return to draft');
     }
 
     if (voucher.status === VoucherStatus.ISSUED && normalizedStatus === VoucherStatus.DRAFT) {
-      throw new BadRequestException('Issued vouchers cannot return to draft');
+      throw new BadRequestException('Sent vouchers cannot return to draft');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -8008,7 +8068,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         data: {
           status: normalizedStatus,
           issuedAt:
-            normalizedStatus === VoucherStatus.ISSUED
+            normalizedStatus === VOUCHER_STATUS_SENT
               ? voucher.issuedAt || new Date()
               : normalizedStatus === VoucherStatus.CANCELLED
                 ? null
@@ -8067,6 +8127,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             bookingDay: true,
             vehicle: true,
             supplier: true,
+            touringRoute: true,
+            touringRoutePricing: {
+              include: {
+                supplier: true,
+                vehicle: true,
+                touringRoute: true,
+              },
+            },
           },
         },
       },
@@ -8080,6 +8148,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const booking = voucher.booking;
     const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot & { title?: string | null; travelStartDate?: string | null };
     const brandSnapshot = (booking.brandSnapshotJson || {}) as BookingPdfCompany;
+    const contactSnapshot = (booking.contactSnapshotJson || {}) as BookingPdfContact & { phone?: string | null; email?: string | null };
     const brandCompany = (booking.quote?.brandCompany || {}) as BookingPdfCompany;
     const branding = brandCompany.branding || brandSnapshot.branding || null;
     const companyName = branding?.displayName || branding?.headerTitle || brandSnapshot.name || brandCompany.name || 'DMC';
@@ -8088,7 +8157,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const pax = Number(booking.pax || 0) || Number(booking.adults || 0) + Number(booking.children || 0) || booking.passengers.length;
     const dayTitle = service.bookingDay?.title || this.findServiceDayTitle(booking.days || [], service) || 'Program day';
     const serviceDate = service.serviceDate || service.bookingDay?.date || booking.startDate || snapshot.travelStartDate || null;
-    const routeName = service.referenceId ? await this.getRouteName(service.referenceId) : null;
+    const routeName =
+      service.touringRoute?.name ||
+      service.touringRoutePricing?.touringRoute?.name ||
+      (service.referenceId ? await this.getRouteName(service.referenceId) : null);
+    const vehicleName = service.vehicle?.name || service.touringRoutePricing?.vehicle?.name || null;
+    const supplierName = voucher.supplier?.name || service.supplierName || service.touringRoutePricing?.supplier?.name || '-';
+    const pickup = [service.pickupTime || service.startTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-';
+    const emergencyContact = [branding?.phone, contactSnapshot.phone, branding?.email, contactSnapshot.email].filter(Boolean).join(' | ') || '-';
     const notes = voucher.notes || service.notes || service.confirmationNotes || '-';
 
     return this.createPdf((doc) => {
@@ -8099,44 +8175,65 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         logoBuffer,
       });
       this.writeDocumentTitle(doc, `${voucher.type} Voucher`, `Voucher ${voucher.id}`);
-      this.writeMetaLine(doc, `Booking reference: ${booking.bookingRef || booking.id} | Supplier: ${voucher.supplier?.name || service.supplierName || '-'}`);
+      this.writeMetaLine(doc, `Booking reference: ${booking.bookingRef || booking.id} | Supplier: ${supplierName}`);
 
       if (voucher.type === VoucherType.TRANSPORT) {
         this.writeSectionTitle(doc, 'Transport Voucher');
         this.writeKeyValue(doc, 'Client / group', clientName);
+        this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
         this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
         this.writeKeyValue(doc, 'Route', routeName || service.description || '-');
-        this.writeKeyValue(doc, 'Pickup time', service.pickupTime || service.startTime || '-');
-        this.writeKeyValue(doc, 'Vehicle type', service.vehicle?.name || '-');
+        this.writeKeyValue(doc, 'Pickup / timing', pickup);
+        this.writeKeyValue(doc, 'Vehicle type', vehicleName || '-');
         this.writeKeyValue(doc, 'Driver', [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || '-');
         this.writeKeyValue(doc, 'Pax', String(pax));
+        this.writeKeyValue(doc, 'Supplier', supplierName);
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
         this.writeKeyValue(doc, 'Notes', notes);
       } else if (voucher.type === VoucherType.HOTEL) {
         this.writeSectionTitle(doc, 'Hotel Voucher');
         this.writeKeyValue(doc, 'Client', clientName);
-        this.writeKeyValue(doc, 'Hotel', voucher.supplier?.name || service.supplierName || service.description || '-');
+        this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
+        this.writeKeyValue(doc, 'Hotel', supplierName || service.description || '-');
         this.writeKeyValue(doc, 'Check-in', this.formatManifestDate(booking.startDate || serviceDate));
         this.writeKeyValue(doc, 'Check-out', this.formatManifestDate(booking.endDate || null));
         this.writeKeyValue(doc, 'Rooms / pax', `${booking.roomCount || 0} rooms / ${pax} pax`);
         this.writeKeyValue(doc, 'Confirmation number', service.confirmationNumber || service.supplierReference || '-');
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
         this.writeKeyValue(doc, 'Notes', notes);
       } else if (voucher.type === VoucherType.GUIDE) {
         this.writeSectionTitle(doc, 'Guide Voucher');
-        this.writeKeyValue(doc, 'Guide name', service.assignedTo || voucher.supplier?.name || '-');
+        this.writeKeyValue(doc, 'Guide name', service.assignedTo || supplierName || '-');
         this.writeKeyValue(doc, 'Language', service.supplierReference || 'To be advised');
         this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
         this.writeKeyValue(doc, 'Program', dayTitle);
-        this.writeKeyValue(doc, 'Pickup', [service.pickupTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-');
+        this.writeKeyValue(doc, 'Pickup', pickup);
         this.writeKeyValue(doc, 'Pax', String(pax));
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
         this.writeKeyValue(doc, 'Notes', notes);
+      } else if (String(voucher.type) === 'EXCURSION') {
+        this.writeSectionTitle(doc, 'Excursion Voucher');
+        this.writeKeyValue(doc, 'Excursion', service.description || dayTitle);
+        this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
+        this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
+        this.writeKeyValue(doc, 'Touring route', routeName || '-');
+        this.writeKeyValue(doc, 'Origin variant', service.touringRoutePricing?.originCity || service.pickupLocation || service.meetingPoint || '-');
+        this.writeKeyValue(doc, 'Pickup / dropoff', pickup);
+        this.writeKeyValue(doc, 'Vehicle', vehicleName || '-');
+        this.writeKeyValue(doc, 'Supplier', supplierName);
+        this.writeKeyValue(doc, 'Pax', String(service.participantCount || pax));
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
+        this.writeKeyValue(doc, 'Operational notes', notes);
       } else if (String(voucher.type) === 'ACTIVITY') {
         this.writeSectionTitle(doc, 'Activity Voucher');
         this.writeKeyValue(doc, 'Activity', service.description || dayTitle);
+        this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
         this.writeKeyValue(doc, 'Date', this.formatManifestDate(serviceDate));
         this.writeKeyValue(doc, 'Program', dayTitle);
-        this.writeKeyValue(doc, 'Pickup', [service.pickupTime, service.pickupLocation || service.meetingPoint].filter(Boolean).join(' / ') || '-');
-        this.writeKeyValue(doc, 'Supplier', voucher.supplier?.name || service.supplierName || '-');
+        this.writeKeyValue(doc, 'Pickup', pickup);
+        this.writeKeyValue(doc, 'Supplier', supplierName);
         this.writeKeyValue(doc, 'Pax', String(service.participantCount || pax));
+        this.writeKeyValue(doc, 'Emergency contact', emergencyContact);
         this.writeKeyValue(doc, 'Notes', notes);
       } else {
         this.writeSectionTitle(doc, 'External Package Voucher');
