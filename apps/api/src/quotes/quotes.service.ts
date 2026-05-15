@@ -2991,9 +2991,12 @@ export class QuotesService {
 
     await this.recalculateQuoteTotals(quote.id);
 
+    const sourceIntegrityWarnings = await this.buildDuplicateSourceWarnings(item);
+
     return {
       ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
+      sourceIntegrityWarnings,
     };
   }
 
@@ -3191,9 +3194,25 @@ export class QuotesService {
           : data.sellPrice,
       currency: data.currency === undefined ? existingItem.currency : data.currency,
       markupPercent: data.markupPercent ?? existingItem.markupPercent,
-      transportServiceTypeId: data.transportServiceTypeId,
-      transportVehicleId: data.transportVehicleId,
-      routeId: data.routeId,
+      transportServiceTypeId:
+        data.transportServiceTypeId === undefined
+          ? (existingItem as { transportServiceTypeId?: string | null }).transportServiceTypeId ?? undefined
+          : data.transportServiceTypeId,
+      transportVehicleId:
+        data.transportVehicleId === undefined
+          ? (existingItem as { vehicleId?: string | null }).vehicleId ?? undefined
+          : data.transportVehicleId,
+      routeId: data.routeId === undefined ? (existingItem as { routeId?: string | null }).routeId ?? undefined : data.routeId,
+      touringRouteId:
+        data.touringRouteId === undefined
+          ? (existingItem as { touringRouteId?: string | null }).touringRouteId ?? undefined
+          : data.touringRouteId,
+      touringRoutePricingId:
+        data.touringRoutePricingId === undefined
+          ? data.touringRouteId === null
+            ? null
+            : (existingItem as { touringRoutePricingId?: string | null }).touringRoutePricingId ?? undefined
+          : data.touringRoutePricingId,
       normalizedKey: data.normalizedKey,
       routeName: data.routeName,
       transportAddOns: data.transportAddOns,
@@ -3211,10 +3230,85 @@ export class QuotesService {
 
     await this.recalculateQuoteTotals(quote.id);
 
+    const sourceIntegrityWarnings = await this.buildDuplicateSourceWarnings(item);
+
     return {
       ...this.hydrateOneOffExternalPackageItem(item),
       promotionExplanation: values.promotionExplanation,
+      sourceIntegrityWarnings,
     };
+  }
+
+  private async buildDuplicateSourceWarnings(item: any) {
+    const quoteId = item?.quoteId;
+    if (!quoteId || typeof (this.prisma as any).quoteItem?.findMany !== 'function') {
+      return [];
+    }
+
+    const sourceChecks: Array<{
+      kind: 'ACTIVITY' | 'ENTRANCE_TICKET';
+      where: Record<string, unknown>;
+      message: string;
+    }> = [];
+
+    if (item.activityId) {
+      sourceChecks.push({
+        kind: 'ACTIVITY',
+        where: {
+          activityId: item.activityId,
+          ...(item.activityRateVariantId ? { activityRateVariantId: item.activityRateVariantId } : {}),
+        },
+        message: item.activityRateVariantId
+          ? 'Duplicate activity source on the same quote/date: same activity and rate variant.'
+          : 'Duplicate activity source on the same quote/date: same activity.',
+      });
+    }
+
+    if (item.entranceFeeId) {
+      sourceChecks.push({
+        kind: 'ENTRANCE_TICKET',
+        where: {
+          entranceFeeId: item.entranceFeeId,
+          ...(item.ticketRateVariantId ? { ticketRateVariantId: item.ticketRateVariantId } : {}),
+        },
+        message: item.ticketRateVariantId
+          ? 'Duplicate entrance/ticket source on the same quote/date: same entrance and ticket variant.'
+          : 'Duplicate entrance/ticket source on the same quote/date: same entrance.',
+      });
+    }
+
+    if (sourceChecks.length === 0) {
+      return [];
+    }
+
+    const warnings = [];
+    for (const check of sourceChecks) {
+      try {
+        const duplicates = await (this.prisma as any).quoteItem.findMany({
+          where: {
+            quoteId,
+            id: { not: item.id },
+            serviceDate: item.serviceDate ?? null,
+            ...check.where,
+          },
+          select: { id: true },
+          take: 5,
+        });
+
+        if (duplicates.length > 0) {
+          warnings.push({
+            code: check.kind === 'ACTIVITY' ? 'DUPLICATE_ACTIVITY_SOURCE' : 'DUPLICATE_ENTRANCE_TICKET_SOURCE',
+            severity: 'warning',
+            message: check.message,
+            duplicateQuoteItemIds: duplicates.map((duplicate: any) => duplicate.id).filter(Boolean),
+          });
+        }
+      } catch {
+        return warnings;
+      }
+    }
+
+    return warnings;
   }
 
   async previewPackageTemplateAssembly(quoteId: string, packageTemplateId: string, actor?: CompanyScopedActor) {
@@ -3579,7 +3673,9 @@ export class QuotesService {
         values.component.supplierService ||
         (values.component.activity
           ? await this.findActivityBridgeSupplierService(values.component.activity)
-          : await this.findFallbackSupplierServiceForExcursionComponent(values.component.componentType));
+          : values.component.componentType === 'GUIDE'
+            ? await this.findFallbackSupplierServiceForExcursionComponent(values.component.componentType)
+            : null);
       if (!service) {
         throw new BadRequestException(`Excursion component "${values.component.label}" requires a linked ${values.component.componentType.toLowerCase()} record`);
       }
@@ -3660,6 +3756,20 @@ export class QuotesService {
             include: {
               activity: true,
               route: true,
+              touringRoute: {
+                include: {
+                  stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+                  pricings: {
+                    where: { active: true },
+                    include: {
+                      supplier: true,
+                      vehicle: true,
+                      transportServiceType: true,
+                    },
+                    orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+                  },
+                },
+              },
               supplierService: {
                 include: {
                   serviceType: true,
@@ -3686,6 +3796,20 @@ export class QuotesService {
         },
       },
       route: true,
+      touringRoute: {
+        include: {
+          stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+          pricings: {
+            where: { active: true },
+            include: {
+              supplier: true,
+              vehicle: true,
+              transportServiceType: true,
+            },
+            orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+      },
       transportServiceType: true,
       supplierService: {
         include: {
@@ -3905,6 +4029,80 @@ export class QuotesService {
   }
 
   private async resolvePackageTransportMapping(component: any, quote: { adults?: number | null; children?: number | null }) {
+    if (component.touringRouteId) {
+      const transportService = component.supplierService || (await this.findFallbackSupplierServiceForPackageComponent('TRANSPORT'));
+      if (!transportService || !this.isTransportService(transportService)) {
+        return null;
+      }
+
+      const paxCount = this.getQuotePaxCount(quote);
+      const touringRoute =
+        component.touringRoute ||
+        (await (this.prisma as any).touringRoute.findUnique({
+          where: { id: component.touringRouteId },
+          include: {
+            stops: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] },
+            pricings: {
+              where: { active: true },
+              include: {
+                supplier: true,
+                vehicle: true,
+                transportServiceType: true,
+              },
+              orderBy: [{ baseCost: 'asc' }, { createdAt: 'asc' }],
+            },
+          },
+        }));
+
+      if (!touringRoute || touringRoute.active === false) {
+        return null;
+      }
+
+      const activePricings = (touringRoute.pricings || []).filter((pricing: any) => pricing.active !== false);
+      const selectedPricing =
+        activePricings.find(
+          (pricing: any) =>
+            Number(pricing.minPax || 1) <= paxCount &&
+            Number(pricing.maxPax || 999) >= paxCount,
+        ) ||
+        activePricings[0] ||
+        null;
+
+      if (!selectedPricing) {
+        return null;
+      }
+
+      const transportServiceTypeId = selectedPricing.transportServiceTypeId || component.transportServiceTypeId;
+      if (!transportServiceTypeId) {
+        return null;
+      }
+
+      return {
+        serviceId: transportService.id,
+        touringRouteId: component.touringRouteId,
+        touringRoutePricingId: selectedPricing.id,
+        transportServiceTypeId,
+        transportVehicleId: selectedPricing.vehicleId || undefined,
+        overrideCost: Number(selectedPricing.baseCost || 0),
+        overrideReason: [
+          'Package touring route pricing',
+          touringRoute.startCity ? `Origin: ${touringRoute.startCity}` : null,
+          touringRoute.name,
+          selectedPricing.vehicle?.name,
+          selectedPricing.supplier?.name,
+        ].filter(Boolean).join(' | '),
+        useOverride: true,
+        currency: selectedPricing.currency || transportService.currency,
+        dayCount: touringRoute.durationDays || 1,
+        routeName: touringRoute.name || component.label || null,
+        pricingMode: 'Touring route',
+        serviceName: transportService.name,
+        serviceTypeName: selectedPricing.transportServiceType?.name || component.transportServiceType?.name || 'Touring route',
+        vehicleName: selectedPricing.vehicle?.name || null,
+        rateStatus: `${selectedPricing.currency || transportService.currency} ${Number(selectedPricing.baseCost || 0).toFixed(2)}`,
+      };
+    }
+
     const transportServiceType = await this.resolvePackageTransportServiceType(component);
     if (!component.routeId || !transportServiceType?.id) {
       return null;
@@ -4085,7 +4283,9 @@ export class QuotesService {
       const mapping = await this.resolvePackageTransportMapping(component, quote);
       return mapping
         ? { insertable: true, reason: null }
-        : { insertable: false, reason: `Excursion transport component "${component.label}" needs route, service type, transport service, and a valid rate` };
+        : component.touringRouteId
+          ? { insertable: false, reason: `Excursion transport component "${component.label}" needs touring route pricing, transport service, and transport classification` }
+          : { insertable: false, reason: `Excursion transport component "${component.label}" needs route, service type, transport service, and a valid rate` };
     }
 
     if (component.componentType === 'TICKET') {
@@ -4101,8 +4301,14 @@ export class QuotesService {
     }
 
     if (component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') {
-      if (component.supplierServiceId || component.activityId) {
+      if (component.supplierServiceId) {
         return { insertable: true, reason: null };
+      }
+      if (component.componentType === 'ACTIVITY' && component.activityId) {
+        const bridgeService = await this.findActivityBridgeSupplierService(component.activity || { name: component.label });
+        return bridgeService
+          ? { insertable: true, reason: null, warning: `Activity component "${component.label}" will use inferred legacy SupplierService bridge "${bridgeService.name}".` }
+          : { insertable: false, reason: `Excursion activity component "${component.label}" needs a linked activity service bridge` };
       }
       const fallbackService = await this.findFallbackSupplierServiceForExcursionComponent(component.componentType);
       return fallbackService
@@ -4169,13 +4375,21 @@ export class QuotesService {
   private async findActivityBridgeSupplierService(activity: { name?: string | null }) {
     const services = await this.findFallbackSupplierServicesForExcursionComponents('ACTIVITY');
     const normalizedActivityName = (activity.name || '').trim().toLowerCase();
+    const exactMatch = services.find((service) => service.name.trim().toLowerCase() === normalizedActivityName) || null;
+    if (exactMatch) {
+      return exactMatch;
+    }
 
-    return (
-      services.find((service) => service.name.trim().toLowerCase() === normalizedActivityName) ||
-      services.find((service) => normalizedActivityName && service.name.trim().toLowerCase().includes(normalizedActivityName)) ||
-      services[0] ||
-      null
-    );
+    const inferredMatch = services.find((service) => normalizedActivityName && service.name.trim().toLowerCase().includes(normalizedActivityName)) || null;
+    if (inferredMatch) {
+      console.warn('[quote/source-integrity] inferred legacy activity SupplierService bridge', {
+        activityName: activity.name || null,
+        supplierServiceId: inferredMatch.id,
+        supplierServiceName: inferredMatch.name,
+      });
+    }
+
+    return inferredMatch;
   }
 
   private async findFallbackSupplierServiceForExcursionComponent(componentType: 'TRANSPORT' | 'ACTIVITY' | 'GUIDE') {
@@ -4872,7 +5086,7 @@ export class QuotesService {
     }
 
     if (this.isTransportService(effectiveService)) {
-      if (!data.transportServiceTypeId) {
+      if (!data.transportServiceTypeId && !data.touringRouteId) {
         throw new BadRequestException('Transport service type is required');
       }
 
@@ -4936,6 +5150,11 @@ export class QuotesService {
         throw new BadRequestException('Transport route is required');
       }
 
+      const regularTransportServiceTypeId = data.transportServiceTypeId;
+      if (!regularTransportServiceTypeId) {
+        throw new BadRequestException('Transport service type is required');
+      }
+
       try {
         if (data.vehicleRateId) {
           throw new NotFoundException('Use selected vehicle rate row');
@@ -4944,7 +5163,7 @@ export class QuotesService {
         const resolvedPricing = await this.transportPricingService.resolvePricingRule({
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,
-          transportServiceTypeId: data.transportServiceTypeId,
+          transportServiceTypeId: regularTransportServiceTypeId,
           vehicleId: data.transportVehicleId,
           pax: paxCount,
         });
@@ -5001,7 +5220,7 @@ export class QuotesService {
         }
 
         const vehicleRate = await this.transportPricingService.findMatchingRate({
-          serviceTypeId: data.transportServiceTypeId,
+          serviceTypeId: regularTransportServiceTypeId,
           vehicleRateId: data.vehicleRateId,
           vehicleId: data.transportVehicleId,
           routeId: data.routeId,
@@ -8759,6 +8978,10 @@ export class QuotesService {
       quoteItems?: Array<{
         id?: string;
         activityId?: string | null;
+        activityRateVariantId?: string | null;
+        ticketRateVariantId?: string | null;
+        entranceFeeId?: string | null;
+        appliedVehicleRateId?: string | null;
         optionId?: string | null;
         itineraryId?: string | null;
         quantity?: number | null;
@@ -8787,6 +9010,7 @@ export class QuotesService {
           supplierName?: string | null;
         } | null;
         appliedVehicleRate?: {
+          id?: string | null;
           vehicle?: {
             id?: string | null;
             supplierId?: string | null;
@@ -8904,6 +9128,16 @@ export class QuotesService {
         const operationType = this.inferBookingOperationServiceType(serviceTaxonomy);
         const isActivityService = this.isActivityService(serviceTaxonomy);
         const hasResolvedOperationalData = Boolean(supplierId || supplierName) && (totalCost > 0 || totalSell > 0);
+        const sourceMetadata = {
+          sourceQuoteItemId: item.id ?? null,
+          appliedVehicleRateId: item.appliedVehicleRateId || item.appliedVehicleRate?.id || null,
+          activityId: item.activityId ?? null,
+          activityRateVariantId: item.activityRateVariantId ?? null,
+          ticketRateVariantId: item.ticketRateVariantId ?? null,
+          entranceFeeId: item.entranceFeeId ?? null,
+          touringRouteId: item.touringRouteId || item.touringRoute?.id || item.touringRoutePricing?.touringRouteId || null,
+          touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || null,
+        } satisfies Prisma.InputJsonObject;
 
         const resolvedAdultCount =
           isActivityService && item.adultCount !== undefined && item.adultCount !== null
@@ -8921,9 +9155,10 @@ export class QuotesService {
         return {
           sourceQuoteItemId: item.id ?? null,
           activityId: item.activityId ?? null,
+          sourceMetadata,
           bookingDayId: this.resolveBookingDayIdForSnapshotItem(item, bookingDayPlan, itineraryContextById),
-          touringRouteId: item.touringRouteId || item.touringRoute?.id || item.touringRoutePricing?.touringRouteId || null,
-          touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || null,
+          touringRouteId: sourceMetadata.touringRouteId,
+          touringRoutePricingId: sourceMetadata.touringRoutePricingId,
           serviceOrder: index,
           serviceType: normalizedServiceType,
           operationType,

@@ -2149,6 +2149,7 @@ model BookingService {
   activityId                 String?                       @db.Uuid
   touringRouteId             String?                       @db.Uuid
   touringRoutePricingId      String?                       @db.Uuid
+  sourceMetadata             Json?
   serviceOrder               Int                           @default(0)
   serviceType                String
   operationType              String?

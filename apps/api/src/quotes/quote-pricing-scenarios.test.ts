@@ -876,6 +876,164 @@ test('quote-only EXTERNAL_PACKAGE hotels-only edit keeps pricing stable and serv
   assert.equal((quoteTotals as any)?.totalSell, createdSell);
 });
 
+test('quote item update preserves touring route source metadata when omitted', async () => {
+  const quote = {
+    id: 'quote-1',
+    quoteCurrency: 'USD',
+    adults: 2,
+    children: 0,
+    roomCount: 1,
+    nightCount: 1,
+    travelStartDate: null,
+    createdAt: new Date('2026-05-01T00:00:00.000Z'),
+    focType: 'NONE',
+    focRatio: null,
+    focCount: null,
+    focRoomType: null,
+    pricingType: 'simple',
+    pricingMode: 'SIMPLE',
+    jordanPassType: 'NONE',
+    pricingSlabs: [],
+  };
+  const existingItem = {
+    id: 'item-origin-1',
+    quoteId: quote.id,
+    serviceId: 'transport-service-1',
+    quantity: 1,
+    paxCount: 2,
+    markupPercent: 10,
+    currency: 'USD',
+    serviceDate: null,
+    useOverride: false,
+    overrideCost: null,
+    overrideReason: null,
+    transportServiceTypeId: 'transport-type-1',
+    vehicleId: 'vehicle-van',
+    touringRouteId: 'touring-route-1',
+    touringRoutePricingId: 'touring-pricing-1',
+  };
+  let updatedData: any = null;
+  const service = createQuotesService({
+    quote: {
+      findFirst: async ({ where }: any) => (where.id === quote.id ? quote : null),
+      findUnique: async ({ where }: any) => (where.id === quote.id ? quote : null),
+    },
+    quoteItem: {
+      findFirst: async ({ where }: any) => (where.id === existingItem.id ? existingItem : null),
+      findMany: async () => [],
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { ...existingItem, ...data };
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'transport-service-1'
+          ? {
+              id: 'transport-service-1',
+              name: 'Transport service',
+              category: 'Transport',
+              unitType: 'per_group',
+              baseCost: 0,
+              currency: 'USD',
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              serviceType: { name: 'Transport', code: 'TRANSPORT' },
+            }
+          : null,
+    },
+    touringRoute: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'touring-route-1'
+          ? {
+              id: 'touring-route-1',
+              name: 'Dead Sea Petra Full Day',
+              startCity: 'Dead Sea',
+              active: true,
+              mainDestinations: ['Petra'],
+              durationDays: 1,
+              stops: [],
+              pricings: [
+                {
+                  id: 'touring-pricing-1',
+                  active: true,
+                  baseCost: 180,
+                  currency: 'USD',
+                  minPax: 1,
+                  maxPax: 7,
+                  transportServiceTypeId: 'transport-type-1',
+                  vehicleId: 'vehicle-van',
+                  pricingBasis: 'PER_VEHICLE',
+                  transportServiceType: { id: 'transport-type-1', name: 'Touring Route' },
+                  vehicle: { id: 'vehicle-van', name: 'Van' },
+                },
+              ],
+            }
+          : null,
+    },
+    activity: { findUnique: async () => null },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+  });
+  (service as any).recalculateQuoteTotals = async () => undefined;
+
+  await service.updateItem(
+    existingItem.id,
+    {
+      quoteId: quote.id,
+      quantity: 2,
+      markupPercent: 15,
+    },
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(updatedData.touringRouteId, 'touring-route-1');
+  assert.equal(updatedData.touringRoutePricingId, 'touring-pricing-1');
+  assert.match(updatedData.pricingDescription, /Excursion origin variant/);
+});
+
+test('duplicate source warnings flag same quote date activity and entrance sources without blocking', async () => {
+  const duplicateIds: string[] = [];
+  const service = createQuotesService({
+    quoteItem: {
+      findMany: async ({ where }: any) => {
+        if (where.activityId === 'activity-1' && where.activityRateVariantId === 'variant-1') {
+          duplicateIds.push('activity');
+          return [{ id: 'item-activity-duplicate' }];
+        }
+        if (where.entranceFeeId === 'entrance-1' && where.ticketRateVariantId === 'ticket-variant-1') {
+          duplicateIds.push('ticket');
+          return [{ id: 'item-ticket-duplicate' }];
+        }
+        return [];
+      },
+    },
+  });
+
+  const warnings = await (service as any).buildDuplicateSourceWarnings({
+    id: 'item-new',
+    quoteId: 'quote-1',
+    serviceDate: new Date('2026-05-10T00:00:00.000Z'),
+    activityId: 'activity-1',
+    activityRateVariantId: 'variant-1',
+    entranceFeeId: 'entrance-1',
+    ticketRateVariantId: 'ticket-variant-1',
+  });
+
+  assert.deepEqual(duplicateIds, ['activity', 'ticket']);
+  assert.deepEqual(
+    warnings.map((warning: any) => warning.code),
+    ['DUPLICATE_ACTIVITY_SOURCE', 'DUPLICATE_ENTRANCE_TICKET_SOURCE'],
+  );
+  assert.deepEqual(warnings[0].duplicateQuoteItemIds, ['item-activity-duplicate']);
+  assert.deepEqual(warnings[1].duplicateQuoteItemIds, ['item-ticket-duplicate']);
+});
+
 test('guide item creation supports local full-day and active planner day attachment', async () => {
   const { service, guideServiceId, quoteItineraryDayId, dayLinks, createdItems } = createGuideQuoteService();
 

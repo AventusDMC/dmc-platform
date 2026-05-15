@@ -952,6 +952,10 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
           pricingDescription: 'Petra Full Day | Origin: Dead Sea | Van',
           totalCost: 180,
           totalSell: 220,
+          appliedVehicleRateId: 'vehicle-rate-legacy',
+          activityRateVariantId: 'activity-rate-variant-ignored-for-transport',
+          ticketRateVariantId: 'ticket-rate-ignored-for-transport',
+          entranceFeeId: 'entrance-ignored-for-transport',
           touringRouteId: 'touring-route-dead-sea',
           touringRoutePricingId: 'touring-pricing-van',
           touringRoute: {
@@ -996,6 +1000,16 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
   assert.equal(bookingServices[0].vehicleId, 'vehicle-van');
   assert.equal(bookingServices[0].touringRouteId, 'touring-route-dead-sea');
   assert.equal(bookingServices[0].touringRoutePricingId, 'touring-pricing-van');
+  assert.deepEqual(bookingServices[0].sourceMetadata, {
+    sourceQuoteItemId: 'item-origin-variant',
+    appliedVehicleRateId: 'vehicle-rate-legacy',
+    activityId: null,
+    activityRateVariantId: 'activity-rate-variant-ignored-for-transport',
+    ticketRateVariantId: 'ticket-rate-ignored-for-transport',
+    entranceFeeId: 'entrance-ignored-for-transport',
+    touringRouteId: 'touring-route-dead-sea',
+    touringRoutePricingId: 'touring-pricing-van',
+  });
   assert.equal(bookingServices[0].operationType, 'TRANSPORT');
   assert.equal(bookingServices[0].status, 'ready');
 });

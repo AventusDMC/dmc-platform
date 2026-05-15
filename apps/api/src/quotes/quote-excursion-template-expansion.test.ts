@@ -270,6 +270,51 @@ test('expands only the selected excursion origin variant with touring route pric
   assert.match(createdPayloads[1].overrideReason, /Origin: Dead Sea/);
 });
 
+test('package excursion transport mapping uses touring route pricing without regular transport rates', async () => {
+  const { service } = createService(createTemplate());
+  const mapping = await (service as any).resolvePackageTransportMapping(
+    {
+      id: 'package-component-transport',
+      componentType: 'TRANSPORT',
+      label: 'Dead Sea origin',
+      supplierServiceId: 'transport-service-1',
+      supplierService: { id: 'transport-service-1', name: 'Transport service', serviceType: { name: 'Transport' }, currency: 'USD' },
+      touringRouteId: 'touring-route-dead-sea',
+      touringRoute: {
+        id: 'touring-route-dead-sea',
+        name: 'Dead Sea Petra Full Day',
+        startCity: 'Dead Sea',
+        durationDays: 1,
+        active: true,
+        pricings: [
+          {
+            id: 'pricing-dead-sea',
+            active: true,
+            transportServiceTypeId: 'transport-type-1',
+            vehicleId: 'vehicle-van',
+            currency: 'USD',
+            baseCost: 180,
+            minPax: 1,
+            maxPax: 7,
+            vehicle: { id: 'vehicle-van', name: 'Van' },
+            supplier: { id: 'supplier-1', name: 'Supplier' },
+            transportServiceType: { id: 'transport-type-1', name: 'Touring Route' },
+          },
+        ],
+      },
+    },
+    { adults: 2, children: 0 },
+  );
+
+  assert.equal(mapping.serviceId, 'transport-service-1');
+  assert.equal(mapping.touringRouteId, 'touring-route-dead-sea');
+  assert.equal(mapping.touringRoutePricingId, 'pricing-dead-sea');
+  assert.equal(mapping.transportVehicleId, 'vehicle-van');
+  assert.equal(mapping.overrideCost, 180);
+  assert.equal(mapping.routeId, undefined);
+  assert.equal(mapping.vehicleRateId, undefined);
+});
+
 test('quote itinerary reload includes touring route details for excursion origin variants', () => {
   const source = readFileSync(`${process.cwd()}/src/quotes/quotes.service.ts`, 'utf8');
 
