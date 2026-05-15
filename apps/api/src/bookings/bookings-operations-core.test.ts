@@ -543,6 +543,88 @@ test('supplier reconfirmation action marks service requested with due date', asy
   assert.equal(updated.status, 'in_progress');
 });
 
+test('hotel reservation operations persist room block release alternatives and reconfirmation metadata', async () => {
+  let updatedData: any;
+  const service = createService({
+    booking: {
+      findFirst: async () => null,
+    },
+    bookingService: {
+      findFirst: async () => ({
+        id: 'hotel-service-1',
+        bookingId: 'booking-1',
+        serviceType: 'HOTEL',
+        serviceDate: new Date('2026-06-01T00:00:00.000Z'),
+        startTime: null,
+        pickupTime: null,
+        pickupLocation: null,
+        meetingPoint: null,
+        participantCount: 2,
+        adultCount: 2,
+        childCount: 0,
+        supplierReference: null,
+        sourceMetadata: {
+          hotelReservation: {
+            status: 'Requested',
+            alternativeHotels: [{ name: 'Backup Hotel', status: 'waitlist' }],
+          },
+        },
+        reconfirmationRequired: false,
+        reconfirmationDueAt: null,
+        status: 'pending',
+        totalCost: 100,
+        totalSell: 120,
+        supplierId: 'supplier-1',
+        supplierName: 'Primary Hotel',
+        confirmationStatus: 'pending',
+      }),
+      update: async ({ data }: any) => {
+        updatedData = data;
+        return { id: 'hotel-service-1', ...data };
+      },
+    },
+    bookingAuditLog: {
+      create: async () => ({}),
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async () => null,
+        },
+        bookingService: {
+          update: async (args: any) => (service as any).prisma.bookingService.update(args),
+        },
+        bookingAuditLog: {
+          create: async (args: any) => (service as any).prisma.bookingAuditLog.create(args),
+        },
+      }),
+  });
+
+  await service.updateOperationalDetails('hotel-service-1', {
+    hotelReservationStatus: 'Tentative',
+    blockedRoomCount: 2,
+    roomTypes: ['DBL', 'TWN'],
+    releaseDate: '2026-05-25T12:00:00.000Z',
+    hotelReconfirmationDueAt: '2026-05-28T12:00:00.000Z',
+    hotelReservationNotes: 'Hold under group name.',
+    primaryHotelName: 'Primary Hotel',
+    alternativeHotels: ['Backup Hotel', 'Second Backup'],
+    activateAlternativeHotel: 'Backup Hotel',
+    roomingSent: true,
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(updatedData.sourceMetadata.hotelReservation.status, 'Tentative');
+  assert.equal(updatedData.sourceMetadata.hotelReservation.blockedRoomCount, 2);
+  assert.deepEqual(updatedData.sourceMetadata.hotelReservation.roomTypes, ['DBL', 'TWN']);
+  assert.equal(updatedData.sourceMetadata.hotelReservation.releaseDate, '2026-05-25T12:00:00.000Z');
+  assert.equal(updatedData.confirmationDeadline.toISOString(), '2026-05-25T12:00:00.000Z');
+  assert.equal(updatedData.reconfirmationDueAt.toISOString(), '2026-05-28T12:00:00.000Z');
+  assert.equal(updatedData.reconfirmationRequired, true);
+  assert.equal(updatedData.sourceMetadata.hotelReservation.alternativeHotels[0].status, 'active');
+  assert.ok(updatedData.sourceMetadata.hotelReservation.roomingSentAt);
+});
+
 test('operations dashboard refinement builds department queues KPIs alerts and heatmap', async () => {
   const dashboardDate = new Date('2026-05-12T00:00:00.000Z');
   const services = [

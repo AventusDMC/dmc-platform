@@ -91,6 +91,9 @@ type BookingService = {
   adultCount: number | null;
   childCount: number | null;
   supplierReference: string | null;
+  sourceMetadata?: {
+    hotelReservation?: HotelReservationMetadata | null;
+  } | null;
   reconfirmationRequired: boolean;
   reconfirmationDueAt: string | null;
   totalCost: number;
@@ -245,6 +248,7 @@ type OperationRow = {
   adultCount: number | null;
   childCount: number | null;
   supplierReference: string | null;
+  hotelReservation: HotelReservationMetadata | null;
   reconfirmationRequired: boolean;
   reconfirmationDueAt: string | null;
   bookingId: string;
@@ -271,6 +275,24 @@ type OperationRow = {
   lastSupplierContactAt: string | null;
   warnings: OperationsWarningFilter[];
   auditLogs: AuditLog[];
+};
+
+type HotelReservationMetadata = {
+  status?: HotelReservationState | string | null;
+  blockedRoomCount?: number | null;
+  roomTypes?: string[];
+  releaseDate?: string | null;
+  reconfirmationDueDate?: string | null;
+  notes?: string | null;
+  primaryHotelName?: string | null;
+  alternativeHotels?: Array<{
+    name?: string | null;
+    status?: string | null;
+    notes?: string | null;
+    activatedAt?: string | null;
+    releasedAt?: string | null;
+  }>;
+  roomingSentAt?: string | null;
 };
 
 type BookingSummary = {
@@ -650,6 +672,10 @@ function hasMissingTiming(row: OperationRow) {
 }
 
 function getHotelReservationState(row: OperationRow, now = Date.now()): HotelReservationState {
+  if (row.hotelReservation?.status && HOTEL_RESERVATION_STATES.includes(row.hotelReservation.status as HotelReservationState)) {
+    return row.hotelReservation.status as HotelReservationState;
+  }
+
   if (row.status === 'cancelled' || row.supplierConfirmationStatus === 'CANCELLED') {
     return 'Cancelled';
   }
@@ -683,16 +709,19 @@ function getHotelReservationState(row: OperationRow, now = Date.now()): HotelRes
 
 function getRoomBlockInfo(row: OperationRow, now = Date.now()) {
   const fallbackRoomCount = Math.ceil(Number(row.participantCount || row.adultCount || row.childCount || 1) / 2);
-  const roomBlockCount = Math.max(1, Number(row.bookingRoomCount || fallbackRoomCount || 1));
-  const releaseDeadline = row.confirmationDeadline || row.reconfirmationDueAt || row.serviceDate;
+  const roomBlockCount = Math.max(0, Number(row.hotelReservation?.blockedRoomCount ?? row.bookingRoomCount ?? fallbackRoomCount ?? 1));
+  const releaseDeadline = row.hotelReservation?.releaseDate || row.confirmationDeadline || row.reconfirmationDueAt || row.serviceDate;
   const releaseDeadlineApproaching =
     row.status !== 'cancelled' &&
     row.supplierConfirmationStatus !== 'CONFIRMED' &&
     Boolean(releaseDeadline) &&
     (isPastDue(releaseDeadline, now) || isDueWithinDays(releaseDeadline, 7, now));
-  const reconfirmationTracking = row.reconfirmationRequired ? row.reconfirmationDueAt || 'Due date not set' : 'Not required';
+  const reconfirmationTracking = row.hotelReservation?.reconfirmationDueDate || (row.reconfirmationRequired ? row.reconfirmationDueAt || 'Due date not set' : 'Not required');
   const alternativeHotelTracking =
-    !hasSupplier(row) || row.supplierConfirmationStatus === 'REJECTED' || getHotelReservationState(row, now) === 'Waitlist';
+    Boolean(row.hotelReservation?.alternativeHotels?.some((hotel) => hotel.status !== 'released')) ||
+    !hasSupplier(row) ||
+    row.supplierConfirmationStatus === 'REJECTED' ||
+    getHotelReservationState(row, now) === 'Waitlist';
 
   return {
     roomBlockCount,
@@ -741,16 +770,19 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
       overdueItems: hotelRows.filter((row) => isPastDue(row.confirmationDeadline, now) && row.supplierConfirmationStatus !== 'CONFIRMED').length,
       reconfirmationDue: hotelRows.filter((row) => row.reconfirmationRequired && isPastDue(row.reconfirmationDueAt, now)).length,
       voucherPending: 0,
-      missingRooming: 0,
+      missingRooming: roomingPendingCount,
       missingTimings: hotelRows.filter(hasMissingTiming).length,
       hotelStateCounts,
       roomBlockCount: roomBlocks.reduce((total, block) => total + block.roomBlockCount, 0),
       releaseDeadlineCount: roomBlocks.filter((block) => block.releaseDeadlineApproaching).length,
+      missingRoomBlocks: roomBlocks.filter((block) => block.roomBlockCount <= 0).length,
       alternativeHotelCount: roomBlocks.filter((block) => block.alternativeHotelTracking).length,
       examples: roomBlocks.slice(0, 3).map((block) => ({
         id: block.row.id,
         label: `${block.row.bookingRef} - ${block.row.description}`,
         detail: `${block.roomBlockCount} room block${block.roomBlockCount === 1 ? '' : 's'}${
+          block.row.hotelReservation?.roomTypes?.length ? ` | ${block.row.hotelReservation.roomTypes.join(', ')}` : ''
+        }${
           block.releaseDeadline ? ` | release deadline ${formatDateTime(block.releaseDeadline)}` : ''
         } | reconfirmation tracking ${block.reconfirmationTracking}`,
       })),
@@ -934,6 +966,26 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       actionHref: `/bookings/${row.bookingId}`,
       detail: `${row.bookingRef} - ${row.description}${row.reconfirmationDueAt ? ` | ${formatDateTime(row.reconfirmationDueAt)}` : ''}`,
     }));
+  const waitlistAlerts = rows
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType) && getHotelReservationState(row, now) === 'Waitlist')
+    .slice(0, 5)
+    .map((row) => ({
+      id: `hotel-waitlist-${row.id}`,
+      label: 'Hotel still waitlisted',
+      actionLabel: 'Reconfirm hotel',
+      actionHref: `/bookings/${row.bookingId}`,
+      detail: `${row.bookingRef} - ${row.description}`,
+    }));
+  const roomingNotSentAlerts = rows
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType) && !row.hotelReservation?.roomingSentAt)
+    .slice(0, 5)
+    .map((row) => ({
+      id: `hotel-rooming-not-sent-${row.id}`,
+      label: 'Rooming not sent',
+      actionLabel: 'Resolve rooming',
+      actionHref: `/bookings/${row.bookingId}?tab=rooming`,
+      detail: `${row.bookingRef} - ${row.description}`,
+    }));
   const roomingAlerts = (operationsDashboard.alerts.missingRooming?.items || [])
     .slice(0, 5)
     .map((item) => ({
@@ -954,7 +1006,7 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       detail: `${row.bookingRef} - ${row.description}`,
     }));
 
-  return [...hotelReleaseAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts];
+  return [...hotelReleaseAlerts, ...waitlistAlerts, ...roomingNotSentAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts];
 }
 
 function buildOperationsHref(
@@ -1121,6 +1173,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       adultCount: service.adultCount,
       childCount: service.childCount,
       supplierReference: service.supplierReference,
+      hotelReservation: service.sourceMetadata?.hotelReservation || null,
       reconfirmationRequired: service.reconfirmationRequired,
       reconfirmationDueAt: service.reconfirmationDueAt,
       bookingId: booking.id,
@@ -1671,7 +1724,14 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                   { label: 'Reconfirmation due', value: department.reconfirmationDue, tone: department.reconfirmationDue > 0 ? 'blocker' : 'ready' },
                   { label: 'Voucher pending', value: department.voucherPending, tone: department.voucherPending > 0 ? 'warning' : 'ready' },
                   { label: 'Missing rooming', value: department.missingRooming, tone: department.missingRooming > 0 ? 'warning' : 'ready' },
-                  { label: 'Missing timings', value: department.missingTimings, tone: department.missingTimings > 0 ? 'warning' : 'ready' },
+                  {
+                    label: department.key === 'hotel-reservations' ? 'Missing room blocks' : 'Missing timings',
+                    value: department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.missingTimings,
+                    tone:
+                      (department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.missingTimings) > 0
+                        ? 'warning'
+                        : 'ready',
+                  },
                 ].map((metric) => (
                   <div key={metric.label} className={`operations-queue-metric operations-queue-metric-${metric.tone}`}>
                     <strong>{metric.value}</strong>

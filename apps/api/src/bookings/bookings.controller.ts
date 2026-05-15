@@ -44,6 +44,17 @@ type UpdateBookingServiceOperationalBody = {
   supplierReference?: string | null;
   reconfirmationRequired?: boolean | null;
   reconfirmationDueAt?: string | null;
+  hotelReservationStatus?: string | null;
+  blockedRoomCount?: number | null;
+  roomTypes?: string[] | string | null;
+  releaseDate?: string | null;
+  hotelReconfirmationDueAt?: string | null;
+  hotelReservationNotes?: string | null;
+  primaryHotelName?: string | null;
+  alternativeHotels?: string[] | string | null;
+  activateAlternativeHotel?: string | null;
+  releaseAlternativeHotel?: string | null;
+  roomingSent?: boolean | null;
   note?: string | null;
 };
 
@@ -955,6 +966,17 @@ export class BookingsController {
           ? undefined
           : Boolean(body.reconfirmationRequired),
       reconfirmationDueAt: body.reconfirmationDueAt === undefined ? undefined : body.reconfirmationDueAt || null,
+      hotelReservationStatus: body.hotelReservationStatus === undefined ? undefined : body.hotelReservationStatus || null,
+      blockedRoomCount: body.blockedRoomCount === undefined ? undefined : Number(body.blockedRoomCount),
+      roomTypes: body.roomTypes === undefined ? undefined : body.roomTypes,
+      releaseDate: body.releaseDate === undefined ? undefined : body.releaseDate || null,
+      hotelReconfirmationDueAt: body.hotelReconfirmationDueAt === undefined ? undefined : body.hotelReconfirmationDueAt || null,
+      hotelReservationNotes: body.hotelReservationNotes === undefined ? undefined : body.hotelReservationNotes || null,
+      primaryHotelName: body.primaryHotelName === undefined ? undefined : body.primaryHotelName || null,
+      alternativeHotels: body.alternativeHotels === undefined ? undefined : body.alternativeHotels,
+      activateAlternativeHotel: body.activateAlternativeHotel === undefined ? undefined : body.activateAlternativeHotel || null,
+      releaseAlternativeHotel: body.releaseAlternativeHotel === undefined ? undefined : body.releaseAlternativeHotel || null,
+      roomingSent: body.roomingSent === undefined || body.roomingSent === null ? undefined : Boolean(body.roomingSent),
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,

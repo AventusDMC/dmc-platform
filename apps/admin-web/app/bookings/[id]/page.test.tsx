@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', import.meta.url), 'utf8');
 const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
+const bookingServicesListSource = readFileSync(new URL('./BookingServicesList.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
@@ -229,6 +230,23 @@ describe('booking detail page regression', () => {
       '.booking-operational-readiness-grid',
       'grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));',
       '.booking-dashboard-day-readiness',
+    ]);
+  });
+
+  it('renders hotel reservation operations controls for room blocks and alternatives', () => {
+    expectSourceContains(bookingServicesListSource, [
+      'Hotel reservation operations',
+      'hotelReservationStatus',
+      'blockedRoomCount',
+      'roomTypes',
+      'releaseDate',
+      'hotelReconfirmationDueAt',
+      'primaryHotelName',
+      'alternativeHotels',
+      'activateAlternativeHotel',
+      'releaseAlternativeHotel',
+      'roomingSent',
+      'Save hotel reservation ops',
     ]);
   });
 

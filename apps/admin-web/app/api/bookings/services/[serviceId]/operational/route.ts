@@ -19,6 +19,13 @@ function parseOptionalNumber(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseTextList(value: FormDataEntryValue | null) {
+  return String(value || '')
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ serviceId: string }> },
@@ -43,6 +50,17 @@ export async function POST(
       supplierReference: String(formData.get('supplierReference') || '').trim() || null,
       reconfirmationRequired: formData.get('reconfirmationRequired') === 'on',
       reconfirmationDueAt: String(formData.get('reconfirmationDueAt') || '').trim() || null,
+      hotelReservationStatus: String(formData.get('hotelReservationStatus') || '').trim() || undefined,
+      blockedRoomCount: parseOptionalNumber(formData.get('blockedRoomCount')),
+      roomTypes: parseTextList(formData.get('roomTypes')),
+      releaseDate: String(formData.get('releaseDate') || '').trim() || null,
+      hotelReconfirmationDueAt: String(formData.get('hotelReconfirmationDueAt') || '').trim() || null,
+      hotelReservationNotes: String(formData.get('hotelReservationNotes') || '').trim() || null,
+      primaryHotelName: String(formData.get('primaryHotelName') || '').trim() || null,
+      alternativeHotels: parseTextList(formData.get('alternativeHotels')),
+      activateAlternativeHotel: String(formData.get('activateAlternativeHotel') || '').trim() || null,
+      releaseAlternativeHotel: String(formData.get('releaseAlternativeHotel') || '').trim() || null,
+      roomingSent: formData.get('roomingSent') === 'on',
       note: String(formData.get('note') || '').trim() || null,
     }),
   });

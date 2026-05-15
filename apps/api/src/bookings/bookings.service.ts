@@ -163,6 +163,8 @@ const VOUCHER_STATUSES = ['DRAFT', 'READY', 'SENT', 'ISSUED', 'CANCELLED'] as co
 type VoucherLifecycleStatusValue = (typeof VOUCHER_STATUSES)[number];
 const VOUCHER_STATUS_READY: VoucherLifecycleStatusValue = 'READY';
 const VOUCHER_STATUS_SENT: VoucherLifecycleStatusValue = 'SENT';
+const HOTEL_RESERVATION_STATUSES = ['Requested', 'Blocked', 'Waitlist', 'Tentative', 'Confirmed', 'Released', 'Cancelled'] as const;
+type HotelReservationStatusValue = (typeof HOTEL_RESERVATION_STATUSES)[number];
 
 @Injectable()
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
@@ -272,6 +274,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
               pickupTime: true,
               pickupLocation: true,
               meetingPoint: true,
+              sourceMetadata: true,
               reconfirmationRequired: true,
               reconfirmationDueAt: true,
               status: true,
@@ -4441,6 +4444,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       supplierReference?: string | null;
       reconfirmationRequired?: boolean;
       reconfirmationDueAt?: string | null;
+      hotelReservationStatus?: string | null;
+      blockedRoomCount?: number | null;
+      roomTypes?: string[] | string | null;
+      releaseDate?: string | null;
+      hotelReconfirmationDueAt?: string | null;
+      hotelReservationNotes?: string | null;
+      primaryHotelName?: string | null;
+      alternativeHotels?: string[] | string | null;
+      activateAlternativeHotel?: string | null;
+      releaseAlternativeHotel?: string | null;
+      roomingSent?: boolean;
       note?: string | null;
       actor?: AuditActor;
       companyActor?: CompanyScopedActor;
@@ -4465,6 +4479,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         adultCount: true,
         childCount: true,
         supplierReference: true,
+        sourceMetadata: true,
         reconfirmationRequired: true,
         reconfirmationDueAt: true,
         status: true,
@@ -4498,13 +4513,25 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.meetingPoint === undefined ? bookingService.meetingPoint : this.normalizeOptionalText(data.meetingPoint);
     const supplierReference =
       data.supplierReference === undefined ? bookingService.supplierReference : this.normalizeOptionalText(data.supplierReference);
+    const hotelReservationMetadata = this.isHotelService(bookingService.serviceType)
+      ? this.buildHotelReservationMetadata(bookingService.sourceMetadata, data)
+      : bookingService.sourceMetadata;
+    const hotelReservation = this.getSourceMetadataObject((hotelReservationMetadata as any)?.hotelReservation);
     const reconfirmationRequired =
-      data.reconfirmationRequired === undefined ? bookingService.reconfirmationRequired : Boolean(data.reconfirmationRequired);
+      data.hotelReconfirmationDueAt !== undefined
+        ? Boolean(data.hotelReconfirmationDueAt)
+        : data.reconfirmationRequired === undefined
+          ? bookingService.reconfirmationRequired
+          : Boolean(data.reconfirmationRequired);
     const reconfirmationDueAt = reconfirmationRequired
-      ? data.reconfirmationDueAt === undefined
-        ? bookingService.reconfirmationDueAt
-        : this.normalizeDateTimeInput(data.reconfirmationDueAt)
+      ? data.hotelReconfirmationDueAt !== undefined
+        ? this.normalizeDateTimeInput(data.hotelReconfirmationDueAt)
+        : data.reconfirmationDueAt === undefined
+          ? bookingService.reconfirmationDueAt
+          : this.normalizeDateTimeInput(data.reconfirmationDueAt)
       : null;
+    const confirmationDeadline =
+      data.releaseDate === undefined ? undefined : this.normalizeDateTimeInput(data.releaseDate);
     const note = this.normalizeOptionalText(data.note);
     const nextStatus = this.resolveBookingServiceLifecycleStatus({
       currentStatus: bookingService.status,
@@ -4531,6 +4558,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           childCount: counts.childCount,
           supplierReference,
           confirmationNumber: supplierReference ?? null,
+          sourceMetadata: hotelReservationMetadata as Prisma.InputJsonValue,
+          ...(confirmationDeadline !== undefined ? { confirmationDeadline } : {}),
           reconfirmationRequired,
           reconfirmationDueAt,
           status: nextStatus,
@@ -4558,7 +4587,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           reconfirmationRequired,
           reconfirmationDueAt,
         }),
-        note,
+        note: [note, hotelReservation.status ? `hotel_reservation=${hotelReservation.status}` : null].filter(Boolean).join(' | ') || null,
         actor,
       });
 
@@ -5358,6 +5387,140 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return resolveServiceTaxonomyGroup({ category: serviceType }) === 'activity';
   }
 
+  private isHotelService(serviceType?: string | null) {
+    const normalized = String(serviceType || '').trim().toLowerCase();
+    return resolveServiceTaxonomyGroup({ category: serviceType }) === 'hotel' || normalized.includes('hotel') || normalized.includes('accommodation');
+  }
+
+  private normalizeHotelReservationStatus(value: string | null | undefined, currentValue?: string | null): HotelReservationStatusValue {
+    const raw = this.normalizeOptionalText(value) || currentValue || 'Requested';
+    const normalized = raw.trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const status = HOTEL_RESERVATION_STATUSES.find((entry) => entry.toLowerCase() === normalized);
+
+    if (!status) {
+      throw new BadRequestException(`Unsupported hotel reservation status: ${raw || 'missing'}`);
+    }
+
+    return status;
+  }
+
+  private parseStringList(value: string[] | string | null | undefined) {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.normalizeOptionalText(entry)).filter(Boolean) as string[];
+    }
+
+    return String(value || '')
+      .split(/\r?\n|,/)
+      .map((entry) => this.normalizeOptionalText(entry))
+      .filter(Boolean) as string[];
+  }
+
+  private getSourceMetadataObject(value: unknown): Record<string, any> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string, any>) } : {};
+  }
+
+  private normalizeHotelAlternatives(value: string[] | string | null | undefined, currentAlternatives: any[] = [], now = new Date()) {
+    const activeByName = new Map(
+      currentAlternatives
+        .filter((entry) => entry && typeof entry === 'object' && this.normalizeOptionalText(entry.name))
+        .map((entry) => [String(entry.name).trim().toLowerCase(), entry]),
+    );
+
+    return this.parseStringList(value).map((rawName) => {
+      const existing = activeByName.get(rawName.toLowerCase()) || {};
+      return {
+        name: rawName,
+        status: existing.status || 'waitlist',
+        notes: existing.notes || null,
+        activatedAt: existing.activatedAt || null,
+        releasedAt: existing.releasedAt || null,
+        updatedAt: now.toISOString(),
+      };
+    });
+  }
+
+  private buildHotelReservationMetadata(
+    existingMetadata: unknown,
+    data: {
+      hotelReservationStatus?: string | null;
+      blockedRoomCount?: number | null;
+      roomTypes?: string[] | string | null;
+      releaseDate?: string | null;
+      hotelReconfirmationDueAt?: string | null;
+      hotelReservationNotes?: string | null;
+      primaryHotelName?: string | null;
+      alternativeHotels?: string[] | string | null;
+      activateAlternativeHotel?: string | null;
+      releaseAlternativeHotel?: string | null;
+      roomingSent?: boolean;
+    },
+  ) {
+    const now = new Date();
+    const metadata = this.getSourceMetadataObject(existingMetadata);
+    const existing = this.getSourceMetadataObject(metadata.hotelReservation);
+    const existingAlternatives = Array.isArray(existing.alternativeHotels) ? existing.alternativeHotels : [];
+    const status =
+      data.hotelReservationStatus === undefined
+        ? this.normalizeHotelReservationStatus(null, existing.status)
+        : this.normalizeHotelReservationStatus(data.hotelReservationStatus, existing.status);
+    const blockedRoomCount =
+      data.blockedRoomCount === undefined
+        ? Number(existing.blockedRoomCount || 0)
+        : Math.max(0, Math.floor(Number(data.blockedRoomCount || 0)));
+    const roomTypes = data.roomTypes === undefined ? Array.isArray(existing.roomTypes) ? existing.roomTypes : [] : this.parseStringList(data.roomTypes);
+    const releaseDate =
+      data.releaseDate === undefined
+        ? existing.releaseDate || null
+        : this.normalizeDateTimeInput(data.releaseDate)?.toISOString() || null;
+    const reconfirmationDueDate =
+      data.hotelReconfirmationDueAt === undefined
+        ? existing.reconfirmationDueDate || null
+        : this.normalizeDateTimeInput(data.hotelReconfirmationDueAt)?.toISOString() || null;
+    const alternatives =
+      data.alternativeHotels === undefined
+        ? existingAlternatives
+        : this.normalizeHotelAlternatives(data.alternativeHotels, existingAlternatives, now);
+    const activateName = this.normalizeOptionalText(data.activateAlternativeHotel);
+    const releaseName = this.normalizeOptionalText(data.releaseAlternativeHotel);
+    const nextAlternatives = alternatives.map((alternative: any) => {
+      if (!alternative?.name) {
+        return alternative;
+      }
+
+      if (activateName && alternative.name.toLowerCase() === activateName.toLowerCase()) {
+        return { ...alternative, status: 'active', activatedAt: now.toISOString(), releasedAt: null, updatedAt: now.toISOString() };
+      }
+
+      if (releaseName && alternative.name.toLowerCase() === releaseName.toLowerCase()) {
+        return { ...alternative, status: 'released', releasedAt: now.toISOString(), updatedAt: now.toISOString() };
+      }
+
+      return alternative;
+    });
+
+    return {
+      ...metadata,
+      hotelReservation: {
+        ...existing,
+        status,
+        blockedRoomCount,
+        roomTypes,
+        releaseDate,
+        reconfirmationDueDate,
+        notes: data.hotelReservationNotes === undefined ? existing.notes || null : this.normalizeOptionalText(data.hotelReservationNotes),
+        primaryHotelName: data.primaryHotelName === undefined ? existing.primaryHotelName || null : this.normalizeOptionalText(data.primaryHotelName),
+        alternativeHotels: nextAlternatives,
+        roomingSentAt:
+          data.roomingSent === undefined
+            ? existing.roomingSentAt || null
+            : data.roomingSent
+              ? existing.roomingSentAt || now.toISOString()
+              : null,
+        updatedAt: now.toISOString(),
+      },
+    };
+  }
+
   private getMissingActivityConfirmationData(values: {
     serviceDate: Date | null;
     startTime?: string | null;
@@ -5854,6 +6017,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       operationStatus: service.operationStatus,
       serviceDate: service.serviceDate,
       pickupTime: service.pickupTime,
+      sourceMetadata: service.sourceMetadata || null,
+      hotelReservation: this.getSourceMetadataObject(service.sourceMetadata).hotelReservation || null,
       assignedTo: service.assignedTo,
       supplierId: service.supplierId,
       supplierName: service.supplierName,
@@ -8468,6 +8633,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       startTime: true,
       pickupTime: true,
       assignedTo: true,
+      sourceMetadata: true,
       supplierId: true,
       supplierName: true,
       vehicleId: true,

@@ -17,12 +17,13 @@ describe('operations dashboard department workspace', () => {
   });
 
   it('keeps room block workflow indicators visible', () => {
-    for (const label of ['Room block counts', 'Release deadlines', 'Alternative hotel tracking']) {
+    for (const label of ['Room block counts', 'Release deadlines', 'Alternative hotel tracking', 'Missing room blocks']) {
       assert.match(source, new RegExp(label));
     }
 
     assert.match(source, /roomBlockCount/);
     assert.match(source, /bookingRoomCount/);
+    assert.match(source, /hotelReservation/);
     assert.match(source, /releaseDeadlineApproaching/);
     assert.match(source, /reconfirmationTracking/);
     assert.match(source, /alternativeHotelTracking/);
@@ -53,6 +54,8 @@ describe('operations dashboard department workspace', () => {
       'Missing rooming',
       'Missing timings',
       'Hotel release deadline approaching',
+      'Hotel still waitlisted',
+      'Rooming not sent',
       'Supplier reconfirmation overdue',
       'Rooming missing before arrival',
       'Transport timing incomplete',

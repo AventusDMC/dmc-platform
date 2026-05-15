@@ -34,6 +34,23 @@ type BookingService = {
   confirmationNotes?: string | null;
   confirmationRequestedAt?: string | null;
   confirmationConfirmedAt?: string | null;
+  sourceMetadata?: {
+    hotelReservation?: {
+      status?: string | null;
+      blockedRoomCount?: number | null;
+      roomTypes?: string[];
+      releaseDate?: string | null;
+      reconfirmationDueDate?: string | null;
+      notes?: string | null;
+      primaryHotelName?: string | null;
+      alternativeHotels?: Array<{
+        name?: string | null;
+        status?: string | null;
+        notes?: string | null;
+      }>;
+      roomingSentAt?: string | null;
+    };
+  } | null;
   auditLogs?: AuditLog[];
 };
 
@@ -105,6 +122,10 @@ function formatAuditAction(action: string) {
 
 function isActivityService(serviceType: string) {
   return isActivityTaxonomyGroup({ category: serviceType });
+}
+
+function isHotelService(serviceType: string) {
+  return mapBookingServiceTypeToSupplierType(serviceType) === 'hotel';
 }
 
 function getReconfirmationWarning(service: Pick<BookingService, 'reconfirmationRequired' | 'reconfirmationDueAt' | 'confirmationStatus'>) {
@@ -372,6 +393,106 @@ export function BookingServicesList({
                       </div>
                     </form>
                   </InlineRowEditorShell>
+
+                  {isHotelService(service.serviceType) ? (
+                    <InlineRowEditorShell>
+                      <div className="audit-log-list">
+                        <div className="audit-log-item">
+                          <strong>Hotel reservation operations</strong>
+                          <p>Status: {service.sourceMetadata?.hotelReservation?.status || 'Requested'}</p>
+                          <p>
+                            Room block: {service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? 0}
+                            {service.sourceMetadata?.hotelReservation?.roomTypes?.length
+                              ? ` | ${service.sourceMetadata.hotelReservation.roomTypes.join(', ')}`
+                              : ''}
+                          </p>
+                          <p>
+                            Release: {service.sourceMetadata?.hotelReservation?.releaseDate ? formatDateTime(service.sourceMetadata.hotelReservation.releaseDate) : 'Not set'}
+                            {' | '}
+                            Reconfirm: {service.sourceMetadata?.hotelReservation?.reconfirmationDueDate ? formatDateTime(service.sourceMetadata.hotelReservation.reconfirmationDueDate) : 'Not set'}
+                          </p>
+                          <p>
+                            Alternatives:{' '}
+                            {service.sourceMetadata?.hotelReservation?.alternativeHotels?.length
+                              ? service.sourceMetadata.hotelReservation.alternativeHotels
+                                  .map((hotel) => `${hotel.name || 'Hotel'} (${hotel.status || 'waitlist'})`)
+                                  .join(', ')
+                              : 'None'}
+                          </p>
+                        </div>
+                      </div>
+                      <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
+                        <label>
+                          Reservation status
+                          <select name="hotelReservationStatus" defaultValue={service.sourceMetadata?.hotelReservation?.status || 'Requested'}>
+                            <option value="Requested">Requested</option>
+                            <option value="Blocked">Blocked</option>
+                            <option value="Waitlist">Waitlist</option>
+                            <option value="Tentative">Tentative</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Released">Released</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        </label>
+                        <input
+                          type="number"
+                          name="blockedRoomCount"
+                          min="0"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? ''}
+                          placeholder="Blocked rooms"
+                        />
+                        <input
+                          type="text"
+                          name="roomTypes"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.roomTypes?.join(', ') || ''}
+                          placeholder="Room types"
+                        />
+                        <input
+                          type="datetime-local"
+                          name="releaseDate"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.releaseDate ? service.sourceMetadata.hotelReservation.releaseDate.slice(0, 16) : ''}
+                        />
+                        <input
+                          type="datetime-local"
+                          name="hotelReconfirmationDueAt"
+                          defaultValue={
+                            service.sourceMetadata?.hotelReservation?.reconfirmationDueDate
+                              ? service.sourceMetadata.hotelReservation.reconfirmationDueDate.slice(0, 16)
+                              : service.reconfirmationDueAt
+                                ? service.reconfirmationDueAt.slice(0, 16)
+                                : ''
+                          }
+                        />
+                        <input
+                          type="text"
+                          name="primaryHotelName"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.primaryHotelName || service.supplierName || ''}
+                          placeholder="Primary hotel"
+                        />
+                        <textarea
+                          name="alternativeHotels"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.alternativeHotels?.map((hotel) => hotel.name).filter(Boolean).join('\n') || ''}
+                          placeholder="Backup/waitlist hotels, one per line"
+                          rows={3}
+                        />
+                        <input type="text" name="activateAlternativeHotel" placeholder="Activate alternative hotel by name" />
+                        <input type="text" name="releaseAlternativeHotel" placeholder="Release alternative hotel by name" />
+                        <label>
+                          <input type="checkbox" name="roomingSent" defaultChecked={Boolean(service.sourceMetadata?.hotelReservation?.roomingSentAt)} /> Rooming sent
+                        </label>
+                        <input
+                          type="text"
+                          name="hotelReservationNotes"
+                          defaultValue={service.sourceMetadata?.hotelReservation?.notes || ''}
+                          placeholder="Operational notes"
+                        />
+                        <input type="text" name="note" placeholder="Reason for update" />
+                        <button type="submit" className="secondary-button">
+                          Save hotel reservation ops
+                        </button>
+                      </form>
+                    </InlineRowEditorShell>
+                  ) : null}
 
                   {activityService ? (
                     <InlineRowEditorShell>
