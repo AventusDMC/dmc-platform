@@ -15,6 +15,7 @@ export async function POST(
   const { serviceId } = await params;
   const formData = await request.formData();
   const action = String(formData.get('action') || '').trim();
+  const status = String(formData.get('status') || '').trim();
   const note = String(formData.get('note') || '').trim();
 
   const response = await fetch(`${API_BASE_URL}/bookings/services/${serviceId}/status`, {
@@ -24,7 +25,7 @@ export async function POST(
       ...buildActorHeaders(request),
     },
     body: JSON.stringify({
-      action,
+      ...(status ? { status } : { action }),
       note,
     }),
   });

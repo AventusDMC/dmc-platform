@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Headers, NotFoundException, Param, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import { Actor, Public, Roles } from '../auth/auth.decorators';
 import { AuthService } from '../auth/auth.service';
 import { AuthenticatedActor } from '../auth/auth.types';
@@ -164,8 +164,9 @@ type AssignBookingPassengerToRoomBody = {
 };
 
 type ManualBookingServiceActionBody = {
-  action: 'cancel' | 'reopen' | 'mark_ready';
-  note: string;
+  action?: 'cancel' | 'reopen' | 'mark_ready';
+  status?: string;
+  note?: string;
 };
 
 type BulkBookingServiceActionBody = {
@@ -957,9 +958,22 @@ export class BookingsController {
     @Body() body: ManualBookingServiceActionBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    if (body.status) {
+      return this.bookingsService.updateOperationalServiceStatus(serviceId, {
+        status: body.status,
+        note: body.note || null,
+        actor: this.toAuditActor(actor),
+        companyActor: actor,
+      });
+    }
+
+    if (!body.action) {
+      throw new BadRequestException('Booking service status or action is required');
+    }
+
     return this.bookingsService.updateManualServiceStatus(serviceId, {
       action: body.action,
-      note: body.note,
+      note: body.note || '',
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

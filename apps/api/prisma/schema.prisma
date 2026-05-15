@@ -2006,6 +2006,7 @@ model TouringRoute {
   excursionComponents ExcursionTemplateComponent[]
   packageComponents   PackageTemplateComponent[]
   quoteItems          QuoteItem[]
+  bookingServices     BookingService[]
 
   @@index([active, name])
   @@index([startCity])
@@ -2055,6 +2056,7 @@ model TouringRoutePricing {
   transportServiceType   TransportServiceType?    @relation(fields: [transportServiceTypeId], references: [id], onDelete: SetNull)
   vehicle                Vehicle?                 @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   quoteItems             QuoteItem[]
+  bookingServices        BookingService[]
 
   @@index([touringRouteId])
   @@index([supplierId])
@@ -2145,6 +2147,8 @@ model BookingService {
   bookingDayId               String?                       @db.Uuid
   sourceQuoteItemId          String?                       @db.Uuid
   activityId                 String?                       @db.Uuid
+  touringRouteId             String?                       @db.Uuid
+  touringRoutePricingId      String?                       @db.Uuid
   serviceOrder               Int                           @default(0)
   serviceType                String
   operationType              String?
@@ -2191,6 +2195,8 @@ model BookingService {
   booking                    Booking                       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   bookingDay                 BookingDay?                   @relation(fields: [bookingDayId], references: [id], onDelete: Cascade)
   activity                   Activity?                     @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  touringRoute               TouringRoute?                 @relation(fields: [touringRouteId], references: [id], onDelete: SetNull)
+  touringRoutePricing        TouringRoutePricing?          @relation(fields: [touringRoutePricingId], references: [id], onDelete: SetNull)
   auditLogs                  BookingAuditLog[]
   vouchers                   Voucher[]
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
@@ -2198,6 +2204,8 @@ model BookingService {
 
   @@index([bookingDayId])
   @@index([activityId])
+  @@index([touringRouteId])
+  @@index([touringRoutePricingId])
   @@index([bookingId, serviceOrder])
   @@index([sourceQuoteItemId])
   @@index([supplierId])

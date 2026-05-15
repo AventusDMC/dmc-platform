@@ -1284,6 +1284,47 @@ test('booking operation service statuses support phase one execution workflow', 
   assert.equal((service as any).mapOperationStatusToConfirmationStatus('COMPLETED'), 'confirmed');
 });
 
+test('booking operation service status update persists execution status safely', async () => {
+  let updateData: any;
+  const auditRows: any[] = [];
+  const prisma: any = {
+    bookingService: {
+      findFirst: async () => ({
+        id: 'service-1',
+        bookingId: 'booking-1',
+        operationStatus: 'PENDING',
+        status: 'pending',
+      }),
+      update: async ({ data }: any) => {
+        updateData = data;
+        return { id: 'service-1', ...data };
+      },
+    },
+    bookingAuditLog: {
+      create: async ({ data }: any) => {
+        auditRows.push(data);
+        return data;
+      },
+    },
+    $transaction: async (callback: any) => callback(prisma),
+  };
+  const service = createService(prisma);
+  (service as any).assertLatestBookingAmendment = async () => null;
+
+  const updated = await service.updateOperationalServiceStatus('service-1', {
+    status: 'Voucher Sent',
+    note: 'Voucher emailed to supplier',
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(updated.operationStatus, 'VOUCHER_SENT');
+  assert.equal(updateData.operationStatus, 'VOUCHER_SENT');
+  assert.equal(updateData.status, 'confirmed');
+  assert.equal(updateData.confirmationStatus, 'confirmed');
+  assert.equal(updateData.statusNote, 'Voucher emailed to supplier');
+  assert.ok(auditRows.some((row) => row.action === 'service_operation_status_updated'));
+});
+
 test('operations dashboard requires company scope', async () => {
   const service = createService({});
 

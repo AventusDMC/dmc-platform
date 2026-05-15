@@ -415,6 +415,28 @@ type Booking = {
     assignedTo?: string | null;
     guidePhone?: string | null;
     vehicleId?: string | null;
+    vehicle?: {
+      id: string;
+      name: string;
+      maxPax?: number | null;
+    } | null;
+    touringRouteId?: string | null;
+    touringRoutePricingId?: string | null;
+    touringRoute?: {
+      id: string;
+      code?: string | null;
+      name: string;
+      startCity?: string | null;
+    } | null;
+    touringRoutePricing?: {
+      id: string;
+      currency: string;
+      baseCost: number;
+      minPax: number;
+      maxPax: number;
+      supplier?: Supplier | null;
+      vehicle?: Vehicle | null;
+    } | null;
     serviceDate: string | null;
     startTime: string | null;
     pickupTime: string | null;
@@ -886,6 +908,39 @@ function formatOperationType(value?: string | null) {
     .split('_')
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
     .join(' ');
+}
+
+function formatOperationStatus(value?: string | null) {
+  if (!value) return 'Pending';
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function getServiceVehicleName(service: Booking['services'][number]) {
+  return service.vehicle?.name || service.touringRoutePricing?.vehicle?.name || null;
+}
+
+function getServicePaxCount(service: Booking['services'][number], booking: Booking) {
+  const explicitPax = service.participantCount ?? ((service.adultCount ?? 0) + (service.childCount ?? 0));
+  return explicitPax || booking.adults + booking.children;
+}
+
+function getVoucherReadinessLabel(service: Booking['services'][number]) {
+  const vouchers = service.vouchers || [];
+  if (vouchers.some((voucher) => voucher.status === 'ISSUED')) return 'Voucher sent';
+  if (vouchers.some((voucher) => voucher.status === 'DRAFT')) return 'Draft voucher';
+  if (service.operationStatus === 'VOUCHER_SENT') return 'Voucher sent';
+  return service.supplierId || service.supplierName ? 'Ready to generate' : 'Supplier pending';
+}
+
+function getServiceCostSellLabel(service: Booking['services'][number]) {
+  return {
+    cost: formatMoney(service.totalCost),
+    sell: formatMoney(service.totalSell),
+  };
 }
 
 function renderOperationTypeOptions(defaultValue?: string | null) {
@@ -1819,43 +1874,81 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                               <table className="data-table">
                                 <thead>
                                   <tr>
-                                    <th>Type</th>
-                                    <th>Assignment</th>
+                                    <th>Service</th>
+                                    <th>Date / Day</th>
+                                    <th>Title</th>
                                     <th>Supplier</th>
+                                    <th>Vehicle / Pax</th>
+                                    <th>Cost / Sell</th>
                                     <th>Status</th>
-                                    <th>Notes</th>
-                                    <th>Action</th>
                                     <th>Voucher</th>
+                                    <th>Supplier confirmation</th>
+                                    <th>Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {dayServices.map((service) => (
                                     <tr key={service.id}>
-                                      <td>{formatOperationType(service.operationType || service.serviceType)}</td>
+                                      {(() => {
+                                        const servicePricing = getServiceCostSellLabel(service);
+
+                                        return (
+                                          <>
+                                            <td>
+                                              <strong>{formatOperationType(service.operationType || service.serviceType)}</strong>
+                                              <div className="table-subcopy">{service.serviceType}</div>
+                                            </td>
+                                            <td>
+                                              Day {day.dayNumber}
+                                              <div className="table-subcopy">{formatDateOnly(service.serviceDate || day.date)}</div>
+                                            </td>
+                                            <td>
+                                              <strong>{service.description}</strong>
+                                              <div className="table-subcopy">
+                                                {service.touringRoute?.name || service.activity?.name || service.notes || 'Operational service'}
+                                              </div>
+                                            </td>
+                                            <td>
+                                              {service.supplierName || service.touringRoutePricing?.supplier?.name || 'Not assigned'}
+                                              {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
+                                              {!service.supplierId && service.supplierName ? <div className="table-subcopy">Review unresolved supplier text</div> : null}
+                                              <div className="table-subcopy">{service.supplierReference ? `Ref: ${service.supplierReference}` : 'No supplier ref'}</div>
+                                            </td>
+                                            <td>
+                                              {getServiceVehicleName(service) || 'Not applicable'}
+                                              <div className="table-subcopy">{getServicePaxCount(service, booking)} pax</div>
+                                            </td>
+                                            <td>
+                                              {servicePricing.cost} cost
+                                              <div className="table-subcopy">{servicePricing.sell} sell</div>
+                                            </td>
+                                            <td>
+                                              {formatOperationStatus(service.operationStatus || service.confirmationStatus)}
+                                              <div className="table-subcopy">Lifecycle: {formatBookingServiceStatus(service.status)}</div>
+                                            </td>
+                                            <td>
+                                              {getVoucherReadinessLabel(service)}
+                                              <div className="table-subcopy">{service.vouchers?.[0]?.status || 'No voucher'}</div>
+                                            </td>
+                                            <td>
+                                              {formatSupplierConfirmationStatus(service.supplierConfirmationStatus)}
+                                              {service.supplierConfirmedAt ? <div className="table-subcopy">Confirmed: {formatDateTime(service.supplierConfirmedAt)}</div> : null}
+                                            </td>
+                                          </>
+                                        );
+                                      })()}
                                       <td>
-                                        {service.operationType === 'TRANSPORT'
-                                          ? [service.assignedTo, service.pickupTime].filter(Boolean).join(' / ') || 'Transport pending'
-                                          : service.operationType === 'GUIDE'
-                                            ? [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || 'Guide pending'
-                                            : service.operationType === 'HOTEL'
-                                              ? service.confirmationNumber || 'Confirmation pending'
-                                              : service.activity?.name || service.description}
-                                      </td>
-                                      <td>
-                                        {service.supplierName || 'Not assigned'}
-                                        {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
-                                        <div className="table-subcopy">{service.supplierReference ? `Ref: ${service.supplierReference}` : 'No supplier ref'}</div>
-                                      </td>
-                                      <td>
-                                        {service.operationStatus || service.confirmationStatus.toUpperCase()}
-                                        <div className="table-subcopy">{formatSupplierConfirmationStatus(service.supplierConfirmationStatus)}</div>
-                                      </td>
-                                      <td>
-                                        {service.notes || service.confirmationNotes || service.supplierRemarks || 'No notes'}
+                                        <div>
+                                          {service.operationType === 'TRANSPORT'
+                                            ? [service.assignedTo, service.pickupTime].filter(Boolean).join(' / ') || 'Transport pending'
+                                            : service.operationType === 'GUIDE'
+                                              ? [service.assignedTo, service.guidePhone].filter(Boolean).join(' / ') || 'Guide pending'
+                                              : service.operationType === 'HOTEL'
+                                                ? service.confirmationNumber || 'Confirmation pending'
+                                                : service.activity?.name || service.description}
+                                        </div>
+                                        <div className="table-subcopy">{service.notes || service.confirmationNotes || service.supplierRemarks || 'No notes'}</div>
                                         {service.confirmationSentAt ? <div className="table-subcopy">Sent: {formatDateTime(service.confirmationSentAt)}</div> : null}
-                                        {service.supplierConfirmedAt ? <div className="table-subcopy">Confirmed: {formatDateTime(service.supplierConfirmedAt)}</div> : null}
-                                      </td>
-                                      <td>
                                         {service.operationType === 'EXTERNAL_PACKAGE' ? (
                                           <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
                                             <input type="hidden" name="type" value="EXTERNAL_PACKAGE" />
@@ -1951,8 +2044,6 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                             <button type="submit">Save supplier confirmation</button>
                                           </form>
                                         </details>
-                                      </td>
-                                      <td>
                                         {service.vouchers && service.vouchers.length > 0 ? (
                                           <div className="quote-status-actions">
                                             <Link href={`/api/vouchers/${service.vouchers[0].id}/pdf`} className="secondary-button">
@@ -1975,7 +2066,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                   ))}
                                   {dayServices.length === 0 ? (
                                     <tr>
-                                      <td colSpan={7}>No services assigned to this booking day.</td>
+                                      <td colSpan={10}>No services assigned to this booking day.</td>
                                     </tr>
                                   ) : null}
                                 </tbody>

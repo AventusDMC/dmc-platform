@@ -8725,6 +8725,8 @@ export class QuotesService {
           } | null;
         } | null;
         touringRoutePricing?: {
+          id?: string | null;
+          touringRouteId?: string | null;
           supplierId?: string | null;
           vehicleId?: string | null;
           supplier?: {
@@ -8734,6 +8736,14 @@ export class QuotesService {
             id?: string | null;
             name?: string | null;
           } | null;
+        } | null;
+        touringRouteId?: string | null;
+        touringRoutePricingId?: string | null;
+        touringRoute?: {
+          id?: string | null;
+          code?: string | null;
+          name?: string | null;
+          startCity?: string | null;
         } | null;
       }>;
     };
@@ -8836,6 +8846,8 @@ export class QuotesService {
         return {
           sourceQuoteItemId: item.id ?? null,
           activityId: item.activityId ?? null,
+          touringRouteId: item.touringRouteId || item.touringRoute?.id || item.touringRoutePricing?.touringRouteId || null,
+          touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || null,
           serviceOrder: index,
           serviceType: normalizedServiceType,
           operationType,

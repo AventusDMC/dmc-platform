@@ -884,11 +884,21 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
           pricingDescription: 'Petra Full Day | Origin: Dead Sea | Van',
           totalCost: 180,
           totalSell: 220,
+          touringRouteId: 'touring-route-dead-sea',
+          touringRoutePricingId: 'touring-pricing-van',
+          touringRoute: {
+            id: 'touring-route-dead-sea',
+            code: 'DS_PET',
+            name: 'Dead Sea to Petra Full Day',
+            startCity: 'Dead Sea',
+          },
           service: {
             name: 'Petra Full Day',
             category: 'Transport',
           },
           touringRoutePricing: {
+            id: 'touring-pricing-van',
+            touringRouteId: 'touring-route-dead-sea',
             supplierId,
             vehicleId: 'vehicle-van',
             supplier: { name: 'Dead Sea Transport Supplier' },
@@ -916,6 +926,8 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
   assert.equal(bookingServices[0].supplierId, supplierId);
   assert.equal(bookingServices[0].supplierName, 'Dead Sea Transport Supplier');
   assert.equal(bookingServices[0].vehicleId, 'vehicle-van');
+  assert.equal(bookingServices[0].touringRouteId, 'touring-route-dead-sea');
+  assert.equal(bookingServices[0].touringRoutePricingId, 'touring-pricing-van');
   assert.equal(bookingServices[0].operationType, 'TRANSPORT');
   assert.equal(bookingServices[0].status, 'ready');
 });

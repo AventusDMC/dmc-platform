@@ -396,6 +396,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         include: {
           bookingDay: true,
           vehicle: true,
+          touringRoute: true,
+          touringRoutePricing: {
+            include: {
+              supplier: true,
+              vehicle: true,
+              transportServiceType: true,
+            },
+          },
           vouchers: true,
           auditLogs: {
             orderBy: {
@@ -1221,6 +1229,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             bookingId: amendedBooking.id,
             bookingDayId: service.bookingDayId ? dayIdByOriginalId.get(service.bookingDayId) ?? null : null,
             sourceQuoteItemId: service.sourceQuoteItemId,
+            touringRouteId: service.touringRouteId,
+            touringRoutePricingId: service.touringRoutePricingId,
             serviceOrder: service.serviceOrder,
             serviceType: service.serviceType,
             operationType: service.operationType,
@@ -4350,6 +4360,79 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         bookingServiceId: bookingService.id,
         oldStatus: bookingService.status,
         newStatus: nextStatus,
+        action: 'service_status_recalculated',
+        note,
+        actor,
+      });
+
+      return updatedService;
+    });
+  }
+
+  async updateOperationalServiceStatus(
+    bookingServiceId: string,
+    data: {
+      status: string;
+      note?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const nextOperationStatus = this.normalizeBookingOperationServiceStatus(data.status);
+    const note = data.note === undefined ? null : this.normalizeOptionalText(data.note);
+    const actor = data.actor;
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        operationStatus: true,
+        status: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+    const nextLifecycleStatus = this.mapOperationStatusToLifecycleStatus(nextOperationStatus);
+    const nextConfirmationStatus = this.mapOperationStatusToConfirmationStatus(nextOperationStatus);
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedService = await tx.bookingService.update({
+        where: { id: bookingService.id },
+        data: {
+          operationStatus: nextOperationStatus,
+          status: nextLifecycleStatus,
+          confirmationStatus: nextConfirmationStatus,
+          statusNote: note,
+          confirmationRequestedAt: nextConfirmationStatus === BookingServiceStatus.requested ? now : undefined,
+          confirmationConfirmedAt: nextConfirmationStatus === BookingServiceStatus.confirmed ? now : undefined,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: 'service_operation_status_updated',
+        oldValue: bookingService.operationStatus,
+        newValue: nextOperationStatus,
+        note,
+        actor,
+      });
+
+      await this.createServiceLifecycleAuditIfChanged(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        oldStatus: bookingService.status,
+        newStatus: nextLifecycleStatus,
         action: 'service_status_recalculated',
         note,
         actor,
