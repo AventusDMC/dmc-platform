@@ -735,8 +735,8 @@ export function QuoteItemCard({
           ) : null}
           {currentItem.totalSell > 0 || currentItem.totalCost > 0 ? (
             <div className="quote-item-margin-intelligence">
-              <span>Sell {formatMoney(currentItem.totalSell, currentItem.currency)}</span>
-              <span>Cost {formatMoney(currentItem.totalCost, currentItem.currency)}</span>
+              <span>Total sell {formatMoney(currentItem.totalSell, currentItem.currency)}</span>
+              <span>Total cost {formatMoney(currentItem.totalCost, currentItem.currency)}</span>
               <span>Profit {formatMoney(marginMetrics.profit, currentItem.currency)}</span>
               <span>Margin {formatMarginPercent(marginMetrics.marginPercent)}</span>
               {marginWarning ? <em className={`quote-ui-badge ${marginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{marginWarning}</em> : null}

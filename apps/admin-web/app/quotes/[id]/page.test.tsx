@@ -595,8 +595,7 @@ describe('quote detail page regression', () => {
       'calculateProfit(item.totalSell, item.totalCost)',
       'calculateMarginPercent(item.totalSell, item.totalCost)',
       'getItemMarginWarning(item.totalSell, item.totalCost)',
-      'Sell {formatLiveMoney(item.totalSell',
-      'Cost {formatLiveMoney(item.totalCost',
+      'Total cost <span className="quote-money">{formatLiveMoney(item.totalCost',
       'Profit {formatLiveMoney(itemProfit',
       'Margin {formatMarginPercent(itemMarginPercent)}',
       'getQuoteMarginWarning(summary.totalSell, summary.totalCost)',
@@ -604,8 +603,8 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(quoteItemCardSource, [
       'quote-item-margin-intelligence',
-      'Sell {formatMoney(currentItem.totalSell, currentItem.currency)}',
-      'Cost {formatMoney(currentItem.totalCost, currentItem.currency)}',
+      'Total sell {formatMoney(currentItem.totalSell, currentItem.currency)}',
+      'Total cost {formatMoney(currentItem.totalCost, currentItem.currency)}',
       'Profit {formatMoney(marginMetrics.profit, currentItem.currency)}',
       'Margin {formatMarginPercent(marginMetrics.marginPercent)}',
       'getItemMarginWarning(currentItem.totalSell, currentItem.totalCost)',

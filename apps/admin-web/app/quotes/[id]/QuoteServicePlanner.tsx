@@ -2233,7 +2233,7 @@ function QuoteServiceCard({
           <span>Fallback net <span className="quote-money">{item.externalNetCost !== null && item.externalNetCost !== undefined ? formatLiveMoney(item.externalNetCost, itemCurrency) : 'Not set'}</span></span>
         ) : (
           <>
-            <span>Cost <span className="quote-money">{formatLiveMoney(item.totalCost, itemCurrency)}</span></span>
+            <span>Total cost <span className="quote-money">{formatLiveMoney(item.totalCost, itemCurrency)}</span></span>
             <span>Profit <span className="quote-money">{formatLiveMoney(itemProfit, itemCurrency)}</span></span>
             <span>Margin <span className="quote-money">{formatMarginPercent(itemMarginPercent)}</span></span>
           </>
@@ -2244,10 +2244,11 @@ function QuoteServiceCard({
         {itemMarginWarning && !hasExternalMatrix ? <em className={`quote-ui-badge ${itemMarginWarning === 'Loss' ? 'quote-ui-badge-error' : 'quote-ui-badge-warning'}`}>{itemMarginWarning}</em> : null}
       </div>
       <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`} aria-label="Pricing diagnostics">
-        <span>{pricingDiagnostics.pricingSource}</span>
-        <span>{pricingDiagnostics.pricingMode}</span>
-        <span>{pricingDiagnostics.unitsUsed}</span>
-        <span>{pricingDiagnostics.overrideStatus}</span>
+        {pricingDiagnostics.rows
+          .filter((row) => ['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Calculated total'].includes(row.label))
+          .map((row) => (
+            <span key={row.label}>{row.label}: {row.value}</span>
+          ))}
       </div>
       <details className="quote-service-card-details">
         <summary>Details</summary>
@@ -2329,11 +2330,11 @@ function ActiveServiceDrawerFinancials({
     return (
       <div className="quote-drawer-financial-summary">
         <div>
-          <span>Cost</span>
+          <span>Total cost</span>
           <strong>Awaiting inputs</strong>
         </div>
         <div>
-          <span>Sell</span>
+          <span>Total sell</span>
           <strong>Awaiting inputs</strong>
         </div>
         <div>
@@ -2354,11 +2355,11 @@ function ActiveServiceDrawerFinancials({
     <div className="section-stack">
       <div className="quote-drawer-financial-summary">
         <div>
-          <span>Cost</span>
+          <span>Total cost</span>
           <strong>{formatLiveMoney(item.totalCost, itemCurrency)}</strong>
         </div>
         <div>
-          <span>Sell</span>
+          <span>Total sell</span>
           <strong>{formatLiveMoney(item.totalSell, itemCurrency)}</strong>
         </div>
         <div>

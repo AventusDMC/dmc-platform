@@ -60,8 +60,37 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingSource, 'Transport rate');
     assert.equal(diagnostics.pricingMode, 'CAPACITY UNIT');
     assert.equal(diagnostics.appliedRateSource, 'Amman to Petra | Sprinter | Transfer');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER GROUP'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 120.00'));
     assert.equal(diagnostics.policyEligible, 'Yes');
     assert.equal(diagnostics.suggestedMarkup, '20.00%');
+  });
+
+  it('reports transport per-group card totals as one vehicle unit', () => {
+    const diagnostics = buildPricingDiagnostics({
+      quantity: 1,
+      paxCount: 2,
+      totalCost: 95,
+      totalSell: 95,
+      currency: 'USD',
+      pricingDescription: 'Excursion origin variant | Amman -> Petra -> Amman | Touring route | Sedan 2 | PER_VEHICLE',
+      appliedVehicleRate: {
+        routeName: 'Amman to Petra',
+        vehicle: { name: 'Sedan 2' },
+        serviceType: { name: 'Touring route', code: 'TOURING_ROUTE' },
+      },
+      service: {
+        name: 'Jordan Private Transfer Service',
+        category: 'transport',
+        unitType: 'per_group',
+      },
+    });
+
+    assert.equal(diagnostics.pricingSource, 'Transport rate');
+    assert.equal(diagnostics.pricingMode, 'PER GROUP');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER GROUP'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Units' && row.value === '1 vehicle'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 95.00'));
   });
 
   it('reports hotel room-night diagnostics', () => {
@@ -80,6 +109,11 @@ describe('pricing diagnostics', () => {
 
     assert.equal(diagnostics.pricingSource, 'Hotel rate');
     assert.equal(diagnostics.unitsUsed, '2 rooms x 3 nights');
+    assert.equal(diagnostics.pricingMode, 'Hotel room/night');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER ROOM / NIGHT'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 75.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Nights' && row.value === '3'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 450.00'));
     assert.equal(diagnostics.appliedRateSource, '2026 Contract | High season | DLX | HB');
     assert.equal(diagnostics.policyEligible, 'Yes');
     assert.equal(diagnostics.suggestedMarkup, '15.00%');
@@ -105,11 +139,14 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingSource, 'Hotel rate');
     assert.equal(diagnostics.pricingMode, 'Hotel per person/night');
     assert.equal(diagnostics.unitsUsed, '2 pax x 1 night');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER PERSON / NIGHT'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 45.00'));
-    assert.ok(diagnostics.rows.some((row) => row.label === 'Total price' && row.value === 'USD 90.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '2 pax'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Nights' && row.value === '1'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 90.00'));
   });
 
-  it('reports catalog activity diagnostics', () => {
+  it('reports catalog activity per-person diagnostics', () => {
     const diagnostics = buildPricingDiagnostics({
       activityId: 'activity-1',
       activity: { name: 'Jerash Visit' },
@@ -127,9 +164,38 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingSource, 'Activity catalog');
     assert.equal(diagnostics.pricingMode, 'PER PERSON');
     assert.equal(diagnostics.unitsUsed, '5 pax');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER PERSON'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 20.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '5 pax'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 100.00'));
     assert.equal(diagnostics.appliedRateSource, 'Jerash Visit');
     assert.equal(diagnostics.policyEligible, 'No');
     assert.equal(diagnostics.policySkippedBecause, 'Activities preserve catalog or planner sell pricing.');
+  });
+
+  it('reports catalog activity per-group diagnostics', () => {
+    const diagnostics = buildPricingDiagnostics({
+      activityId: 'activity-1',
+      activity: { name: 'Petra Guided Experience' },
+      paxCount: 2,
+      quantity: 1,
+      totalCost: 70.5,
+      totalSell: 98.7,
+      currency: 'USD',
+      pricingDescription: 'Petra Guided Experience | Activity | PER_GROUP | Capacity 10 pax/unit | Required units 1',
+      service: {
+        name: 'Petra Guided Experience',
+        category: 'activity',
+        unitType: 'PER_GROUP',
+      },
+    });
+
+    assert.equal(diagnostics.pricingSource, 'Activity catalog');
+    assert.equal(diagnostics.pricingMode, 'PER GROUP');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER GROUP'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 70.50'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Units' && row.value === '1 group unit'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 70.50'));
   });
 
   it('shows ticket unit price and aggregated total price separately', () => {
@@ -153,8 +219,10 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingSource, 'Entrance fee');
     assert.equal(diagnostics.pricingMode, 'PER PERSON unit rate');
     assert.equal(diagnostics.unitsUsed, '2 pax');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER PERSON'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 70.50'));
-    assert.ok(diagnostics.rows.some((row) => row.label === 'Total price' && row.value === 'USD 141.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '2 pax'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 141.00'));
   });
 
   it('reports external package diagnostics', () => {
@@ -201,13 +269,14 @@ describe('pricing diagnostics', () => {
     assert.ok(quoteServicePlannerSource.includes('aria-label="Pricing diagnostics"'));
     assert.ok(quoteServicePlannerSource.includes('<span>Pricing diagnostics</span>'));
     assert.ok(quoteServicePlannerSource.includes('const pricingDiagnostics = buildPricingDiagnostics(item);'));
+    assert.ok(quoteServicePlannerSource.includes("['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Calculated total'].includes(row.label)"));
     assert.ok(quoteItemCardSource.includes('buildPricingDiagnostics(currentItem)'));
     assert.ok(quoteServicePlannerSource.includes('buildPricingDiagnostics(item)'));
   });
 
   it('renders quote item cards from saved totals instead of recalculating hotel totals', () => {
-    assert.ok(quoteItemCardSource.includes('Sell {formatMoney(currentItem.totalSell, currentItem.currency)}'));
-    assert.ok(quoteItemCardSource.includes('Cost {formatMoney(currentItem.totalCost, currentItem.currency)}'));
+    assert.ok(quoteItemCardSource.includes('Total sell {formatMoney(currentItem.totalSell, currentItem.currency)}'));
+    assert.ok(quoteItemCardSource.includes('Total cost {formatMoney(currentItem.totalCost, currentItem.currency)}'));
     assert.ok(quoteItemCardSource.includes('<strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>'));
   });
 

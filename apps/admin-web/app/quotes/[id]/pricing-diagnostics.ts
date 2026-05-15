@@ -101,6 +101,15 @@ type PricingDiagnosticsBase = Pick<
   'pricingSource' | 'pricingMode' | 'unitsUsed' | 'appliedRateSource' | 'fallbackStatus' | 'overrideStatus'
 >;
 
+type PricingBreakdownRows = {
+  basis: string;
+  unitPrice: string;
+  pax: string;
+  units: string;
+  nights: string | null;
+  calculatedTotal: string;
+};
+
 function normalize(value: string | null | undefined) {
   return (value || '').trim().toLowerCase();
 }
@@ -168,6 +177,22 @@ function hasHotelData(item: PricingDiagnosticQuoteItem) {
 
 function formatMode(mode: string | null | undefined) {
   return mode ? mode.replace(/_/g, ' ') : 'Not specified';
+}
+
+function formatPricingBasis(mode: string | null | undefined) {
+  const normalizedMode = normalizeCode(mode);
+  if (normalizedMode === 'hotel_per_person_night') return 'PER PERSON / NIGHT';
+  if (normalizedMode === 'hotel_per_room_night') return 'PER ROOM / NIGHT';
+  if (normalizedMode === 'ticket_per_person') return 'PER PERSON';
+  if (normalizedMode === 'per_person') return 'PER PERSON';
+  if (normalizedMode === 'per_room' || normalizedMode === 'hotel_rate') return 'PER ROOM';
+  if (normalizedMode === 'per_group') return 'PER GROUP';
+  if (normalizedMode === 'transport_per_group') return 'PER GROUP';
+  if (normalizedMode === 'capacity_unit') return 'PER GROUP';
+  if (normalizedMode === 'per_day') return 'PER DAY';
+  if (normalizedMode === 'per_night') return 'PER NIGHT';
+  if (normalizedMode === 'per_stay') return 'PER STAY';
+  return formatMode(mode).toUpperCase();
 }
 
 function formatUnitsForMode(mode: string | null | undefined, item: PricingDiagnosticQuoteItem, rate?: PricingDiagnosticRate | null) {
@@ -244,7 +269,31 @@ function getUnitCountForMode(mode: string | null | undefined, item: PricingDiagn
     const maxPaxPerUnit = getPositiveNumber(rate?.maxPaxPerUnit, 0);
     return maxPaxPerUnit > 0 ? Math.ceil(pax / maxPaxPerUnit) : quantity;
   }
+  if (normalizedMode === 'transport_per_group') {
+    return quantity;
+  }
   return quantity;
+}
+
+function formatOperationalUnits(mode: string | null | undefined, item: PricingDiagnosticQuoteItem, rate?: PricingDiagnosticRate | null) {
+  const normalizedMode = normalizeCode(mode);
+  const quantity = getPositiveNumber(item.quantity, 1);
+  const pax = getPositiveNumber(item.paxCount, 1);
+  const rooms = getPositiveNumber(item.roomCount, 1);
+  const nights = getPositiveNumber(item.nightCount, 1);
+  const days = getPositiveNumber(item.dayCount, 1);
+  const count = getUnitCountForMode(mode, item, rate);
+
+  if (normalizedMode === 'hotel_per_person_night') return `${pax} pax x ${nights} night${nights === 1 ? '' : 's'}`;
+  if (normalizedMode === 'hotel_per_room_night' || normalizedMode === 'per_room' || normalizedMode === 'hotel_rate') return `${rooms} room${rooms === 1 ? '' : 's'} x ${nights} night${nights === 1 ? '' : 's'}`;
+  if (normalizedMode === 'ticket_per_person' || normalizedMode === 'per_person') return `${count} person unit${count === 1 ? '' : 's'}`;
+  if (normalizedMode === 'per_day') return `${days} day${days === 1 ? '' : 's'}`;
+  if (normalizedMode === 'per_night') return `${nights} night${nights === 1 ? '' : 's'}`;
+  if (normalizedMode === 'per_stay') return '1 stay';
+  if (normalizedMode === 'capacity_unit') return `${count} vehicle${count === 1 ? '' : 's'}`;
+  if (normalizedMode === 'transport_per_group') return `${count} vehicle${count === 1 ? '' : 's'}`;
+  if (normalizedMode === 'per_group') return `${count} group unit${count === 1 ? '' : 's'}`;
+  return `${quantity} unit${quantity === 1 ? '' : 's'}`;
 }
 
 function formatDiagnosticMoney(value: number | null | undefined, currency: string | null | undefined) {
@@ -254,16 +303,21 @@ function formatDiagnosticMoney(value: number | null | undefined, currency: strin
   return `${currency || 'USD'} ${Number(value).toFixed(2)}`;
 }
 
-function buildPriceSnapshotRows(item: PricingDiagnosticQuoteItem, mode: string | null | undefined, rate?: PricingDiagnosticRate | null) {
+function buildPricingBreakdownRows(item: PricingDiagnosticQuoteItem, mode: string | null | undefined, rate?: PricingDiagnosticRate | null): PricingBreakdownRows {
   const totalPrice = hasNumericValue(item.totalCost) ? Number(item.totalCost) : hasNumericValue(item.finalCost) ? Number(item.finalCost) : hasNumericValue(item.baseCost) ? Number(item.baseCost) : null;
   const unitCount = Math.max(1, getUnitCountForMode(mode, item, rate));
   const unitPrice = hasNumericValue(totalPrice) ? Number((Number(totalPrice) / unitCount).toFixed(2)) : null;
   const currency = item.quoteCurrency || item.currency || item.costCurrency || 'USD';
+  const nights = getPositiveNumber(item.nightCount, 1);
 
-  return [
-    { label: 'Unit price', value: formatDiagnosticMoney(unitPrice, currency) },
-    { label: 'Total price', value: formatDiagnosticMoney(totalPrice, currency) },
-  ];
+  return {
+    basis: formatPricingBasis(mode),
+    unitPrice: formatDiagnosticMoney(unitPrice, currency),
+    pax: `${getPositiveNumber(item.paxCount, 1)} pax`,
+    units: formatOperationalUnits(mode, item, rate),
+    nights: normalizeCode(mode).includes('night') || normalizeCode(mode) === 'per_night' || nights > 1 ? String(nights) : null,
+    calculatedTotal: formatDiagnosticMoney(totalPrice, currency),
+  };
 }
 
 function inferHotelPricingMode(item: PricingDiagnosticQuoteItem) {
@@ -295,12 +349,15 @@ function getOverrideStatus(item: PricingDiagnosticQuoteItem) {
   return statuses.length ? statuses.join(' | ') : 'No override';
 }
 
-function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>, priceSnapshotRows: Array<{ label: string; value: string }>) {
-  return [
+function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>, pricingBreakdown: PricingBreakdownRows) {
+  const rows = [
     { label: 'Source', value: diagnostics.pricingSource },
-    { label: 'Mode', value: diagnostics.pricingMode },
-    { label: 'Units', value: diagnostics.unitsUsed },
-    ...priceSnapshotRows,
+    { label: 'Pricing basis', value: pricingBreakdown.basis },
+    { label: 'Unit price', value: pricingBreakdown.unitPrice },
+    { label: 'Pax', value: pricingBreakdown.pax },
+    { label: 'Units', value: pricingBreakdown.units },
+    ...(pricingBreakdown.nights ? [{ label: 'Nights', value: pricingBreakdown.nights }] : []),
+    { label: 'Calculated total', value: pricingBreakdown.calculatedTotal },
     { label: 'Rate', value: diagnostics.appliedRateSource },
     { label: 'Fallback', value: diagnostics.fallbackStatus },
     { label: 'Override', value: diagnostics.overrideStatus },
@@ -308,6 +365,8 @@ function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>, priceSnapshotR
     { label: 'Suggested markup', value: diagnostics.suggestedMarkup },
     { label: 'Skipped because...', value: diagnostics.policySkippedBecause },
   ];
+
+  return rows;
 }
 
 export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): PricingDiagnostics {
@@ -347,7 +406,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
   } else if (item.appliedVehicleRate || serviceKind === 'transport') {
     const mode = pricingDescription.toLowerCase().includes('capacity') ? 'CAPACITY_UNIT' : 'PER_GROUP';
     const rateParts = [item.appliedVehicleRate?.routeName, item.appliedVehicleRate?.vehicle?.name, item.appliedVehicleRate?.serviceType?.name].filter(Boolean);
-    priceSnapshotMode = 'PER_GROUP';
+    priceSnapshotMode = mode === 'CAPACITY_UNIT' ? mode : 'TRANSPORT_PER_GROUP';
     base = {
       pricingSource: 'Transport rate',
       pricingMode: formatMode(mode),
@@ -422,7 +481,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   }
 
-  const priceSnapshotRows = buildPriceSnapshotRows(item, priceSnapshotMode || base.pricingMode, priceSnapshotRate);
+  const pricingBreakdown = buildPricingBreakdownRows(item, priceSnapshotMode || base.pricingMode, priceSnapshotRate);
 
   return {
     ...base,
@@ -436,7 +495,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
         suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
         policySkippedBecause: pricingPolicy.skippedReason || 'None',
       },
-      priceSnapshotRows,
+      pricingBreakdown,
     ),
   };
 }

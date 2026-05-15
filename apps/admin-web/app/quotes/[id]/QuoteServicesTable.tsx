@@ -737,7 +737,7 @@ function QuoteServiceRow({
         <span>Total sell</span>
         <strong>{formatMoney(currentItem.totalSell, currentItem.currency)}</strong>
         <p>
-          Cost <span className="quote-money">{formatMoney(currentItem.totalCost, currentItem.currency)}</span>
+          Total cost <span className="quote-money">{formatMoney(currentItem.totalCost, currentItem.currency)}</span>
         </p>
         <p style={{ color: getMarginColor(marginMetrics.tone) }}>
           Margin <span className="quote-money">{formatMoney(marginMetrics.margin, currentItem.currency)}</span> ({marginMetrics.marginPercent.toFixed(2)}%)
