@@ -5842,6 +5842,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private mapDashboardService(service: any) {
+    const department = this.getOperationsDepartmentForService(service);
     return {
       id: service.id,
       bookingId: service.bookingId,
@@ -5866,12 +5867,80 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       supplierRemarks: service.supplierRemarks || null,
       confirmationDeadline: service.confirmationDeadline || null,
       lastSupplierContactAt: service.lastSupplierContactAt || null,
+      reconfirmationRequired: Boolean(service.reconfirmationRequired),
+      reconfirmationDueAt: service.reconfirmationDueAt || null,
+      owningDepartment: department.key,
+      departmentLabel: department.label,
+      operationalState: this.getDashboardServiceOperationalState(service),
       vouchers: Array.isArray(service.vouchers) ? service.vouchers : [],
     };
   }
 
   private getBookingServiceSupplierStatus(service: { supplierId?: string | null; supplierName?: string | null }) {
     return !service.supplierId && this.normalizeOptionalText(service.supplierName) ? 'unresolved' : undefined;
+  }
+
+  private getOperationsDepartmentForService(service: { serviceType?: string | null; operationType?: string | null; description?: string | null }) {
+    const key = this.getSupplierConfirmationQueueKey(service);
+    if (key === 'hotels') return { key: 'hotelReservations', label: 'Hotel Reservations' };
+    if (key === 'transport') return { key: 'transportOperations', label: 'Transport Operations' };
+    if (key === 'activitiesExcursions') return { key: 'activitiesExcursions', label: 'Activities & Excursions' };
+    if (key === 'guides') return { key: 'guides', label: 'Guides' };
+    if (key === 'dining') return { key: 'dining', label: 'Dining' };
+    return { key: 'supplierConfirmations', label: 'Supplier Confirmations' };
+  }
+
+  private normalizeDashboardDepartment(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalText(value)?.toLowerCase().replace(/[\s-]+/g, '_');
+    if (!normalized || normalized === 'all') {
+      return null;
+    }
+
+    const aliases: Record<string, string> = {
+      hotel: 'hotelReservations',
+      hotels: 'hotelReservations',
+      hotel_reservations: 'hotelReservations',
+      transport: 'transportOperations',
+      transport_operations: 'transportOperations',
+      activities: 'activitiesExcursions',
+      activity: 'activitiesExcursions',
+      excursions: 'activitiesExcursions',
+      activities_excursions: 'activitiesExcursions',
+      documentation: 'documentationVouchers',
+      vouchers: 'documentationVouchers',
+      documentation_vouchers: 'documentationVouchers',
+      supplier: 'supplierConfirmations',
+      supplier_confirmations: 'supplierConfirmations',
+      passenger_rooming: 'passengerRooming',
+      passengers: 'passengerRooming',
+      rooming: 'passengerRooming',
+    };
+    const department = aliases[normalized];
+
+    if (!department) {
+      throw new BadRequestException(`Unsupported department filter: ${value}`);
+    }
+
+    return department;
+  }
+
+  private getDashboardServiceOperationalState(service: any) {
+    if (service.status === BookingServiceLifecycleStatus.cancelled || service.operationStatus === 'CANCELLED') {
+      return 'cancelled';
+    }
+    if (service.supplierConfirmationStatus === SupplierConfirmationStatus.REJECTED || service.operationStatus === 'REJECTED') {
+      return 'rejected';
+    }
+    if (service.supplierConfirmationStatus === SupplierConfirmationStatus.CONFIRMED || service.confirmationStatus === BookingServiceStatus.confirmed) {
+      return 'confirmed';
+    }
+    if (service.supplierConfirmationStatus === SupplierConfirmationStatus.SENT || service.confirmationStatus === BookingServiceStatus.requested) {
+      return 'requested';
+    }
+    if (!service.supplierId && !this.normalizeOptionalText(service.supplierName)) {
+      return 'supplier_unassigned';
+    }
+    return 'pending';
   }
 
   private getOperationsDashboardBookingTitle(booking: any) {
@@ -6108,6 +6177,186 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     const dueAt = service.reconfirmationDueAt instanceof Date ? service.reconfirmationDueAt : new Date(service.reconfirmationDueAt);
     return !Number.isNaN(dueAt.getTime()) && dueAt.getTime() < referenceDate.getTime();
+  }
+
+  private isSupplierReconfirmationDueToday(service: { reconfirmationRequired?: boolean | null; reconfirmationDueAt?: string | Date | null }, dayStart: Date, dayEnd: Date) {
+    if (!service.reconfirmationRequired || !service.reconfirmationDueAt) {
+      return false;
+    }
+
+    const dueAt = service.reconfirmationDueAt instanceof Date ? service.reconfirmationDueAt : new Date(service.reconfirmationDueAt);
+    return !Number.isNaN(dueAt.getTime()) && dueAt.getTime() >= dayStart.getTime() && dueAt.getTime() < dayEnd.getTime();
+  }
+
+  private isSupplierConfirmationOverdue(service: { supplierConfirmationStatus?: string | null; confirmationDeadline?: string | Date | null }, referenceDate: Date) {
+    if (!service.confirmationDeadline || service.supplierConfirmationStatus === SupplierConfirmationStatus.CONFIRMED) {
+      return false;
+    }
+
+    const deadline = service.confirmationDeadline instanceof Date ? service.confirmationDeadline : new Date(service.confirmationDeadline);
+    return !Number.isNaN(deadline.getTime()) && deadline.getTime() < referenceDate.getTime();
+  }
+
+  private isServiceMissingTiming(service: any) {
+    const department = this.getOperationsDepartmentForService(service).key;
+    if (!['transportOperations', 'activitiesExcursions', 'guides'].includes(department)) {
+      return false;
+    }
+
+    return !this.normalizeOptionalText(service.pickupTime || service.startTime);
+  }
+
+  private isOccupancyMismatchBooking(booking: any) {
+    return this.getMissingRoomingReasons(booking).includes('room occupancy mismatch');
+  }
+
+  private buildOperationsDepartmentQueues(input: {
+    services: any[];
+    bookings: any[];
+    missingPassengers: Array<{ booking: any; reasons: string[] }>;
+    missingRooming: any[];
+    missingVoucherServices: any[];
+    departmentFilter?: string | null;
+  }) {
+    const emptyQueue = () => ({ count: 0, items: [] as any[] });
+    const queues: Record<string, { count: number; items: any[] }> = {
+      hotelReservations: emptyQueue(),
+      transportOperations: emptyQueue(),
+      activitiesExcursions: emptyQueue(),
+      documentationVouchers: emptyQueue(),
+      supplierConfirmations: emptyQueue(),
+      passengerRooming: emptyQueue(),
+    };
+
+    for (const service of input.services) {
+      const department = this.getOperationsDepartmentForService(service);
+      if (queues[department.key]) {
+        queues[department.key].items.push(this.mapDashboardService(service));
+      }
+      if (service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED) {
+        queues.supplierConfirmations.items.push(this.mapDashboardService(service));
+      }
+    }
+
+    for (const service of input.missingVoucherServices) {
+      queues.documentationVouchers.items.push(this.mapDashboardService(service));
+    }
+
+    const passengerRoomingBookings = new Map<string, any>();
+    for (const entry of input.missingPassengers) {
+      passengerRoomingBookings.set(entry.booking.id, {
+        ...this.mapDashboardBooking(entry.booking),
+        reasons: entry.reasons,
+      });
+    }
+    for (const booking of input.missingRooming) {
+      passengerRoomingBookings.set(booking.id, {
+        ...this.mapDashboardBooking(booking),
+        reasons: this.getMissingRoomingReasons(booking),
+      });
+    }
+    queues.passengerRooming.items.push(...passengerRoomingBookings.values());
+
+    for (const queue of Object.values(queues)) {
+      queue.count = queue.items.length;
+    }
+
+    if (input.departmentFilter) {
+      return Object.fromEntries(Object.entries(queues).filter(([key]) => key === input.departmentFilter));
+    }
+
+    return queues;
+  }
+
+  private buildOperationsKpis(input: {
+    bookings: any[];
+    services: any[];
+    missingPassengers: Array<{ booking: any; reasons: string[] }>;
+    missingRooming: any[];
+    missingVoucherServices: any[];
+    dayStart: Date;
+    dayEnd: Date;
+  }) {
+    const unassignedSuppliers = input.services.filter((service) => !service.supplierId && !this.normalizeOptionalText(service.supplierName)).length;
+    const overdueConfirmations = input.services.filter((service) => this.isSupplierConfirmationOverdue(service, input.dayStart)).length;
+    const overdueReconfirmations = input.services.filter((service) => this.isSupplierReconfirmationOverdue(service, input.dayStart)).length;
+    const missingTimings = input.services.filter((service) => this.isServiceMissingTiming(service)).length;
+    const occupancyMismatch = input.missingRooming.filter((booking) => this.isOccupancyMismatchBooking(booking)).length;
+    const unassignedPassengers = input.missingRooming.filter((booking) => this.getMissingRoomingReasons(booking).includes('passengers not assigned to rooms')).length;
+    const operationalExceptions =
+      overdueConfirmations +
+      overdueReconfirmations +
+      input.missingVoucherServices.length +
+      input.missingRooming.length +
+      input.missingPassengers.length +
+      unassignedSuppliers +
+      missingTimings;
+
+    return {
+      bookingsInOperation: input.bookings.length,
+      servicesPendingConfirmation: input.services.filter((service) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED).length,
+      overdueConfirmations,
+      overdueReconfirmations,
+      reconfirmationsDueToday: input.services.filter((service) => this.isSupplierReconfirmationDueToday(service, input.dayStart, input.dayEnd)).length,
+      vouchersPending: input.missingVoucherServices.length,
+      missingRooming: input.missingRooming.length,
+      missingPassengerDocuments: input.missingPassengers.length,
+      unassignedSuppliers,
+      occupancyMismatch,
+      missingTimings,
+      unassignedPassengers,
+      operationalExceptions,
+    };
+  }
+
+  private buildOperationsAlerts(input: {
+    services: any[];
+    missingRooming: any[];
+    missingVoucherServices: any[];
+    dayStart: Date;
+    dayEnd: Date;
+  }) {
+    return {
+      overdueConfirmations: this.buildDashboardBucket(
+        input.services.filter((service) => this.isSupplierConfirmationOverdue(service, input.dayStart)).map((service) => this.mapDashboardService(service)),
+      ),
+      reconfirmationDueToday: this.buildDashboardBucket(
+        input.services.filter((service) => this.isSupplierReconfirmationDueToday(service, input.dayStart, input.dayEnd)).map((service) => this.mapDashboardService(service)),
+      ),
+      occupancyMismatch: this.buildDashboardBucket(
+        input.missingRooming
+          .filter((booking) => this.isOccupancyMismatchBooking(booking))
+          .map((booking) => ({ ...this.mapDashboardBooking(booking), reasons: this.getMissingRoomingReasons(booking) })),
+      ),
+      missingTimings: this.buildDashboardBucket(
+        input.services.filter((service) => this.isServiceMissingTiming(service)).map((service) => this.mapDashboardService(service)),
+      ),
+      unassignedPassengers: this.buildDashboardBucket(
+        input.missingRooming
+          .filter((booking) => this.getMissingRoomingReasons(booking).includes('passengers not assigned to rooms'))
+          .map((booking) => ({ ...this.mapDashboardBooking(booking), reasons: this.getMissingRoomingReasons(booking) })),
+      ),
+    };
+  }
+
+  private buildOperationsReadinessHeatmap(bookings: any[]) {
+    return this.buildDashboardBucket(
+      bookings.map((booking) => {
+        const passengerReasons = this.getMissingPassengerReasons(booking);
+        const roomingReasons = this.getMissingRoomingReasons(booking);
+        const blockers = roomingReasons.filter((reason) => reason.includes('occupancy mismatch'));
+        const warnings = [...passengerReasons, ...roomingReasons.filter((reason) => !blockers.includes(reason))];
+        const health = blockers.length > 0 ? 'red' : warnings.length > 0 ? 'yellow' : 'green';
+
+        return {
+          ...this.mapDashboardBooking(booking),
+          health,
+          status: health === 'red' ? 'blockers' : health === 'yellow' ? 'warnings' : 'ready',
+          blockers,
+          warnings,
+        };
+      }),
+    );
   }
 
   private isMissingServiceAssignment(service: any) {
@@ -8101,6 +8350,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     date?: string | null;
     bookingStatus?: string | null;
     serviceStatus?: string | null;
+    serviceType?: string | null;
+    supplier?: string | null;
+    department?: string | null;
+    status?: string | null;
   }) {
     requireActorCompanyId(input.actor);
     const selectedDate = this.normalizeDashboardDate(input.date);
@@ -8108,8 +8361,43 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
     const borderWindowEnd = new Date(dayStart.getTime() + 48 * 60 * 60 * 1000);
     const bookingStatusFilter = this.normalizeDashboardBookingStatus(input.bookingStatus);
-    const serviceStatusFilter = this.normalizeDashboardServiceStatus(input.serviceStatus);
+    const serviceStatusFilter = this.normalizeDashboardServiceStatus(input.serviceStatus || input.status);
+    const serviceTypeFilter = this.normalizeOptionalText(input.serviceType)?.toUpperCase() || null;
+    const supplierFilter = this.normalizeOptionalText(input.supplier);
+    const departmentFilter = this.normalizeDashboardDepartment(input.department);
     const bookingCompanyWhere: Prisma.BookingWhereInput = {};
+    const serviceFilterAnd: Prisma.BookingServiceWhereInput[] = [];
+
+    if (serviceStatusFilter) {
+      serviceFilterAnd.push({ operationStatus: serviceStatusFilter });
+    }
+
+    if (serviceTypeFilter) {
+      serviceFilterAnd.push({ OR: [{ serviceType: serviceTypeFilter }, { operationType: serviceTypeFilter }] });
+    }
+
+    if (supplierFilter) {
+      serviceFilterAnd.push({
+        OR: [
+          { supplierId: supplierFilter },
+          { supplierName: { contains: supplierFilter, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (departmentFilter && !['documentationVouchers', 'supplierConfirmations', 'passengerRooming'].includes(departmentFilter)) {
+      const departmentTypes: Record<string, string[]> = {
+        hotelReservations: ['HOTEL', 'ACCOMMODATION'],
+        transportOperations: ['TRANSPORT', 'TRANSFER'],
+        activitiesExcursions: ['ACTIVITY', 'EXCURSION', 'TOUR'],
+        guides: ['GUIDE'],
+        dining: ['DINING', 'MEAL', 'RESTAURANT'],
+      };
+      const values = departmentTypes[departmentFilter] || [];
+      serviceFilterAnd.push({
+        OR: values.flatMap((value) => [{ serviceType: value }, { operationType: value }]),
+      });
+    }
 
     const bookingWhere: Prisma.BookingWhereInput = {
       ...bookingCompanyWhere,
@@ -8117,18 +8405,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     };
     const serviceWhere: Prisma.BookingServiceWhereInput = {
       booking: bookingWhere,
-      ...(serviceStatusFilter ? { operationStatus: serviceStatusFilter } : {}),
+      ...(serviceFilterAnd.length > 0 ? { AND: serviceFilterAnd } : {}),
     };
     const activeStatusValues = [BookingStatus.draft, BookingStatus.in_progress].filter(
       (status) => !bookingStatusFilter || status === bookingStatusFilter,
     );
-    const pendingServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
-      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: BookingOperationServiceStatus.PENDING }] }
-      : { operationStatus: BookingOperationServiceStatus.PENDING };
+    const pendingServiceStatusWhere: Prisma.BookingServiceWhereInput = {
+      ...serviceWhere,
+      AND: [...serviceFilterAnd, { operationStatus: BookingOperationServiceStatus.PENDING }],
+    };
     const operationallyConfirmedStatuses = [BookingOperationServiceStatus.CONFIRMED, BookingOperationServiceStatus.DONE, 'VOUCHER_SENT', 'COMPLETED'];
-    const unconfirmedServiceStatusWhere: Prisma.BookingServiceWhereInput = serviceStatusFilter
-      ? { AND: [{ operationStatus: serviceStatusFilter }, { operationStatus: { notIn: operationallyConfirmedStatuses } }] }
-      : { operationStatus: { notIn: operationallyConfirmedStatuses } };
+    const unconfirmedServiceStatusWhere: Prisma.BookingServiceWhereInput = {
+      ...serviceWhere,
+      AND: [...serviceFilterAnd, { operationStatus: { notIn: operationallyConfirmedStatuses } }],
+    };
 
     const bookingSelect = {
       id: true,
@@ -8156,6 +8446,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       roomingEntries: {
         select: {
           id: true,
+          roomType: true,
           occupancy: true,
           assignments: {
             select: {
@@ -8174,6 +8465,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       operationType: true,
       operationStatus: true,
       serviceDate: true,
+      startTime: true,
       pickupTime: true,
       assignedTo: true,
       supplierId: true,
@@ -8187,6 +8479,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       supplierRemarks: true,
       confirmationDeadline: true,
       lastSupplierContactAt: true,
+      reconfirmationRequired: true,
+      reconfirmationDueAt: true,
       vouchers: {
         select: {
           id: true,
@@ -8306,13 +8600,40 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       missingRooming,
       missingVoucherServices,
     });
+    const operationalAlerts = this.buildOperationsAlerts({
+      services: alertServices,
+      missingRooming,
+      missingVoucherServices,
+      dayStart,
+      dayEnd,
+    });
 
     return {
       filters: {
         date: this.formatDashboardDateOnly(dayStart),
         bookingStatus: bookingStatusFilter || 'all',
         serviceStatus: serviceStatusFilter || 'all',
+        serviceType: serviceTypeFilter || 'all',
+        supplier: supplierFilter || 'all',
+        department: departmentFilter || 'all',
       },
+      kpis: this.buildOperationsKpis({
+        bookings: passengerCandidates,
+        services: alertServices,
+        missingPassengers,
+        missingRooming,
+        missingVoucherServices,
+        dayStart,
+        dayEnd,
+      }),
+      departmentQueues: this.buildOperationsDepartmentQueues({
+        services: alertServices,
+        bookings: passengerCandidates,
+        missingPassengers,
+        missingRooming,
+        missingVoucherServices,
+        departmentFilter,
+      }),
       todayArrivals: this.buildDashboardBucket(todayArrivals.map((booking) => this.mapDashboardBooking(booking))),
       todayDepartures: this.buildDashboardBucket(todayDepartures.map((booking) => this.mapDashboardBooking(booking))),
       activeBookings: this.buildDashboardBucket(activeBookings.map((booking) => this.mapDashboardBooking(booking))),
@@ -8325,6 +8646,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         })),
       ),
       operationalReadiness: readinessSummary,
+      readinessHeatmap: this.buildOperationsReadinessHeatmap(passengerCandidates),
       supplierConfirmationQueues: this.buildSupplierConfirmationQueues(alertServices, selectedDate),
       serviceStatusSummary: this.buildOperationsServiceStatusSummary(alertServices),
       upcomingBorderCrossings: this.buildDashboardBucket(
@@ -8351,6 +8673,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         missingVouchers: this.buildDashboardBucket(
           missingVoucherServices.map((service) => this.mapDashboardService(service)),
         ),
+        ...operationalAlerts,
       },
     };
   }

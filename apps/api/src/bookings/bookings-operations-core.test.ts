@@ -543,6 +543,159 @@ test('supplier reconfirmation action marks service requested with due date', asy
   assert.equal(updated.status, 'in_progress');
 });
 
+test('operations dashboard refinement builds department queues KPIs alerts and heatmap', async () => {
+  const dashboardDate = new Date('2026-05-12T00:00:00.000Z');
+  const services = [
+    {
+      id: 'hotel-1',
+      bookingId: 'booking-1',
+      description: 'Hotel stay',
+      serviceType: 'HOTEL',
+      operationType: 'HOTEL',
+      operationStatus: 'REQUESTED',
+      serviceDate: dashboardDate,
+      startTime: null,
+      pickupTime: null,
+      assignedTo: null,
+      supplierId: 'supplier-hotel',
+      supplierName: 'Hotel Supplier',
+      vehicleId: null,
+      status: 'in_progress',
+      confirmationStatus: 'requested',
+      supplierConfirmationStatus: 'SENT',
+      confirmationDeadline: new Date('2026-05-10T00:00:00.000Z'),
+      reconfirmationRequired: true,
+      reconfirmationDueAt: dashboardDate,
+      vouchers: [],
+      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+    {
+      id: 'transport-1',
+      bookingId: 'booking-1',
+      description: 'Airport transfer',
+      serviceType: 'TRANSPORT',
+      operationType: 'TRANSPORT',
+      operationStatus: 'PENDING',
+      serviceDate: dashboardDate,
+      startTime: null,
+      pickupTime: null,
+      assignedTo: null,
+      supplierId: null,
+      supplierName: null,
+      vehicleId: null,
+      status: 'pending',
+      confirmationStatus: 'pending',
+      supplierConfirmationStatus: 'NOT_SENT',
+      confirmationDeadline: null,
+      reconfirmationRequired: false,
+      reconfirmationDueAt: null,
+      vouchers: [],
+      booking: { id: 'booking-1', bookingRef: 'BK-1', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+    {
+      id: 'activity-1',
+      bookingId: 'booking-2',
+      description: 'Excursion',
+      serviceType: 'ACTIVITY',
+      operationType: 'ACTIVITY',
+      operationStatus: 'CONFIRMED',
+      serviceDate: dashboardDate,
+      startTime: '10:00',
+      pickupTime: null,
+      assignedTo: null,
+      supplierId: 'supplier-activity',
+      supplierName: 'Activity Supplier',
+      vehicleId: null,
+      status: 'confirmed',
+      confirmationStatus: 'confirmed',
+      supplierConfirmationStatus: 'CONFIRMED',
+      confirmationDeadline: null,
+      reconfirmationRequired: false,
+      reconfirmationDueAt: null,
+      vouchers: [{ id: 'voucher-1', status: 'ISSUED', type: 'ACTIVITY' }],
+      booking: { id: 'booking-2', bookingRef: 'BK-2', status: 'in_progress', startDate: dashboardDate, endDate: dashboardDate, snapshotJson: {} },
+    },
+  ];
+  const bookings = [
+    {
+      id: 'booking-1',
+      bookingRef: 'BK-1',
+      status: 'in_progress',
+      startDate: dashboardDate,
+      endDate: dashboardDate,
+      pax: 2,
+      adults: 2,
+      children: 0,
+      roomCount: 1,
+      snapshotJson: {},
+      passengers: [
+        { id: 'passenger-1', fullName: 'Lina Haddad', passportNumber: 'P1', passportExpiryDate: new Date('2027-01-01T00:00:00.000Z'), nationality: 'Jordanian' },
+        { id: 'passenger-2', fullName: 'Omar Haddad', passportNumber: null, passportExpiryDate: null, nationality: null },
+      ],
+      roomingEntries: [{ id: 'room-1', roomType: 'DBL', occupancy: 'double', assignments: [{ bookingPassengerId: 'passenger-1' }] }],
+    },
+    {
+      id: 'booking-2',
+      bookingRef: 'BK-2',
+      status: 'in_progress',
+      startDate: dashboardDate,
+      endDate: dashboardDate,
+      pax: 1,
+      adults: 1,
+      children: 0,
+      roomCount: 1,
+      snapshotJson: {},
+      passengers: [{ id: 'passenger-3', fullName: 'Nadia Haddad', passportNumber: 'P3', passportExpiryDate: new Date('2027-01-01T00:00:00.000Z'), nationality: 'Jordanian' }],
+      roomingEntries: [{ id: 'room-2', roomType: 'SGL', occupancy: 'single', assignments: [{ bookingPassengerId: 'passenger-3' }] }],
+    },
+  ];
+  const serviceWheres: any[] = [];
+  const service = createService({
+    booking: {
+      findMany: async () => bookings,
+    },
+    bookingService: {
+      findMany: async (args: any) => {
+        serviceWheres.push(args.where);
+        return services;
+      },
+    },
+  });
+
+  const dashboard = await service.getOperationsDashboard({
+    actor: { companyId: 'company-1' },
+    date: '2026-05-12',
+    department: 'transport',
+    serviceType: 'TRANSPORT',
+    supplier: 'Transport',
+    status: 'PENDING',
+  });
+
+  assert.equal(dashboard.filters.department, 'transportOperations');
+  assert.equal(dashboard.filters.serviceType, 'TRANSPORT');
+  assert.equal(dashboard.kpis.bookingsInOperation, 2);
+  assert.equal(dashboard.kpis.servicesPendingConfirmation, 2);
+  assert.equal(dashboard.kpis.overdueConfirmations, 1);
+  assert.equal(dashboard.kpis.reconfirmationsDueToday, 1);
+  assert.equal(dashboard.kpis.vouchersPending, 2);
+  assert.equal(dashboard.kpis.missingPassengerDocuments, 1);
+  assert.equal(dashboard.kpis.missingRooming, 1);
+  assert.equal(dashboard.kpis.unassignedSuppliers, 1);
+  assert.equal(dashboard.kpis.occupancyMismatch, 1);
+  assert.equal(dashboard.kpis.missingTimings, 1);
+  assert.equal(dashboard.departmentQueues.transportOperations.count, 1);
+  assert.equal(dashboard.departmentQueues.transportOperations.items[0].owningDepartment, 'transportOperations');
+  assert.equal(dashboard.alerts.overdueConfirmations.count, 1);
+  assert.equal(dashboard.alerts.reconfirmationDueToday.count, 1);
+  assert.equal(dashboard.alerts.occupancyMismatch.count, 1);
+  assert.equal(dashboard.alerts.missingTimings.count, 1);
+  assert.equal(dashboard.alerts.unassignedPassengers.count, 1);
+  assert.equal(dashboard.readinessHeatmap.items.find((item: any) => item.id === 'booking-1').health, 'red');
+  assert.equal(dashboard.readinessHeatmap.items.find((item: any) => item.id === 'booking-2').health, 'green');
+  assert.ok(serviceWheres.some((where) => JSON.stringify(where).includes('TRANSPORT')));
+  assert.ok(serviceWheres.some((where) => JSON.stringify(where).includes('Transport')));
+});
+
 test('cancel booking sets status to cancelled without deleting related data', async () => {
   let updateData: any;
   let auditLogData: any;

@@ -14,12 +14,20 @@ export class OperationsDashboardController {
     @Query('date') date?: string,
     @Query('bookingStatus') bookingStatus?: string,
     @Query('serviceStatus') serviceStatus?: string,
+    @Query('serviceType') serviceType?: string,
+    @Query('supplier') supplier?: string,
+    @Query('department') department?: string,
+    @Query('status') status?: string,
   ) {
     return this.bookingsService.getOperationsDashboard({
       actor,
       date,
       bookingStatus,
       serviceStatus,
+      serviceType,
+      supplier,
+      department,
+      status,
     });
   }
 
