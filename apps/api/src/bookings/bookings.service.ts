@@ -101,6 +101,22 @@ type SupplierPaymentStatusValue = 'unpaid' | 'scheduled' | 'paid';
 type PaymentTypeValue = 'CLIENT' | 'SUPPLIER';
 type PaymentStatusValue = 'PENDING' | 'PAID';
 type PaymentMethodValue = 'bank' | 'cash' | 'card';
+type BookingRoomOccupancyInput =
+  | BookingRoomOccupancy
+  | 'single'
+  | 'double'
+  | 'triple'
+  | 'quad'
+  | 'unknown'
+  | 'SGL'
+  | 'DBL'
+  | 'TWN'
+  | 'TWIN'
+  | 'TRPL'
+  | 'CHILD_WITH_BED'
+  | 'CHILD_NO_BED'
+  | 'child_with_bed'
+  | 'child_no_bed';
 type DerivedPaymentRecord = {
   id: string;
   bookingId: string;
@@ -3123,7 +3139,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     bookingId: string,
     data: {
       roomType?: string | null;
-      occupancy?: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
+      occupancy?: BookingRoomOccupancyInput;
       notes?: string | null;
       sortOrder?: number;
       actor?: AuditActor;
@@ -3187,7 +3203,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     roomingEntryId: string,
     data: {
       roomType?: string | null;
-      occupancy?: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
+      occupancy?: BookingRoomOccupancyInput;
       notes?: string | null;
       sortOrder?: number;
       actor?: AuditActor;
@@ -3227,7 +3243,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           bookingRoomingEntryId: roomingEntryId,
         },
       });
-      const nextCapacity = this.getRoomOccupancyCapacity(nextOccupancy);
+      const nextCapacity = this.getRoomOccupancyCapacity(nextOccupancy, nextRoomType);
 
       if (nextCapacity !== null && currentAssignmentCount > nextCapacity) {
         throw new BadRequestException('Room occupancy cannot be reduced below the number of assigned passengers.');
@@ -3378,7 +3394,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException('Passenger is already assigned to another room. Unassign them first.');
       }
 
-      const capacity = this.getRoomOccupancyCapacity(roomingEntry.occupancy);
+      const capacity = this.getRoomOccupancyCapacity(roomingEntry.occupancy, roomingEntry.roomType);
       if (capacity !== null && roomingEntry.assignments.length >= capacity) {
         throw new BadRequestException(`This room is already at its ${this.formatRoomOccupancy(roomingEntry.occupancy).toLowerCase()} occupancy limit.`);
       }
@@ -5698,6 +5714,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       reasons.push('rooming groups without passengers');
     }
 
+    if (
+      roomingEntries.some((entry: any) => {
+        const capacity = this.getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
+        return capacity !== null && Array.isArray(entry.assignments) && entry.assignments.length !== capacity;
+      })
+    ) {
+      reasons.push('room occupancy mismatch');
+    }
+
     return Array.from(new Set(reasons));
   }
 
@@ -6086,10 +6111,29 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return numericValue;
   }
 
-  private normalizeRoomOccupancy(
-    value?: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown' | null,
-  ) {
-    const normalized = String(value || 'unknown').trim().toLowerCase() as BookingRoomOccupancy;
+  private normalizeRoomingCode(value?: string | null) {
+    return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  }
+
+  private normalizeRoomOccupancy(value?: BookingRoomOccupancyInput | null) {
+    const normalizedInput = this.normalizeRoomingCode(String(value || 'unknown'));
+    const aliasMap: Record<string, BookingRoomOccupancy> = {
+      sgl: BookingRoomOccupancy.single,
+      single: BookingRoomOccupancy.single,
+      dbl: BookingRoomOccupancy.double,
+      double: BookingRoomOccupancy.double,
+      twn: BookingRoomOccupancy.double,
+      twin: BookingRoomOccupancy.double,
+      trpl: BookingRoomOccupancy.triple,
+      triple: BookingRoomOccupancy.triple,
+      quad: BookingRoomOccupancy.quad,
+      child_with_bed: BookingRoomOccupancy.single,
+      cwb: BookingRoomOccupancy.single,
+      child_no_bed: BookingRoomOccupancy.single,
+      cnb: BookingRoomOccupancy.single,
+      unknown: BookingRoomOccupancy.unknown,
+    };
+    const normalized = aliasMap[normalizedInput] || (normalizedInput as BookingRoomOccupancy);
     const allowedValues = Object.values(BookingRoomOccupancy) as BookingRoomOccupancy[];
 
     if (!allowedValues.includes(normalized)) {
@@ -6099,7 +6143,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
-  private getRoomOccupancyCapacity(value: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown') {
+  private getRoomOccupancyCapacity(value: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown', roomType?: string | null) {
+    const roomingCode = this.normalizeRoomingCode(roomType);
+
+    if (['sgl', 'single', 'child_with_bed', 'cwb', 'child_no_bed', 'cnb'].includes(roomingCode)) {
+      return 1;
+    }
+
+    if (['dbl', 'double', 'twn', 'twin'].includes(roomingCode)) {
+      return 2;
+    }
+
+    if (['trpl', 'triple'].includes(roomingCode)) {
+      return 3;
+    }
+
     if (value === BookingRoomOccupancy.single) {
       return 1;
     }
@@ -6159,6 +6217,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }>;
       roomingEntries: Array<{
         id: string;
+        roomType?: string | null;
         occupancy: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
         assignments: Array<{
           bookingPassenger: {
@@ -6388,6 +6447,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }>;
     roomingEntries: Array<{
       id: string;
+      roomType?: string | null;
       occupancy: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
       assignments: Array<{
         bookingPassenger: {
@@ -6407,6 +6467,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         })),
         roomingEntries: values.roomingEntries.map((entry) => ({
           id: entry.id,
+          roomType: entry.roomType,
           occupancy: entry.occupancy,
           assignments: entry.assignments.map((assignment) => ({
             bookingPassenger: {
@@ -6471,6 +6532,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }>;
     roomingEntries?: Array<{
       id: string;
+      roomType?: string | null;
       occupancy: BookingRoomOccupancy | 'single' | 'double' | 'triple' | 'quad' | 'unknown';
       assignments?: Array<{
         bookingPassenger: {
@@ -6493,6 +6555,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       })),
       roomingEntries: roomingEntries.map((entry) => ({
         id: entry.id,
+        roomType: entry.roomType,
         occupancy: entry.occupancy,
         assignments: Array.isArray(entry.assignments) ? entry.assignments : [],
       })),
@@ -7193,6 +7256,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         },
         passengers: {
           orderBy: [{ isLead: 'desc' }, { createdAt: 'asc' }],
+          include: {
+            roomingAssignments: {
+              include: {
+                bookingRoomingEntry: true,
+              },
+            },
+          },
+        },
+        roomingEntries: {
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          include: {
+            assignments: {
+              include: {
+                bookingPassenger: true,
+              },
+            },
+          },
         },
       },
     });
@@ -7207,7 +7287,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       booking.bookingRef ||
       'Booking';
     const arrivalDate = this.formatManifestDate(booking.startDate || booking.snapshotJson?.travelStartDate || null);
-    const rows = (booking.passengers || []).map((passenger: any) => ({
+    const departureDate = this.formatManifestDate(booking.endDate || booking.snapshotJson?.travelEndDate || null);
+    const roomLabelForPassenger = (passenger: any) => {
+      const entry = passenger.roomingAssignments?.[0]?.bookingRoomingEntry;
+      if (!entry) {
+        return '';
+      }
+
+      return entry.roomType || `Room ${entry.sortOrder || ''}`.trim();
+    };
+    const passengerRows = (booking.passengers || []).map((passenger: any) => ({
       'Booking Name': bookingName,
       'Arrival Date': arrivalDate,
       'Entry Point': passenger.entryPoint || '',
@@ -7220,8 +7309,47 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       'Expiry Date': this.formatManifestDate(passenger.passportExpiryDate),
       Flight: passenger.arrivalFlight || passenger.departureFlight || '',
       'Visa Status': passenger.visaStatus || '',
+      'Room Assignment': roomLabelForPassenger(passenger),
+      'Emergency Notes': passenger.notes || passenger.roomingNotes || '',
     }));
-    const worksheet = XLSX.utils.json_to_sheet(rows, {
+    const roomingRows = (booking.roomingEntries || []).map((entry: any) => {
+      const passengers = (entry.assignments || []).map((assignment: any) => assignment.bookingPassenger).filter(Boolean);
+      const capacity = this.getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
+      return {
+        Room: entry.roomType || `Room ${entry.sortOrder || ''}`.trim(),
+        'Rooming Type': this.formatRoomOccupancy(entry.occupancy),
+        Capacity: capacity ?? '',
+        Assigned: passengers.length,
+        Status: capacity === null ? (passengers.length > 0 ? 'Assigned' : 'Unassigned') : passengers.length === capacity ? 'Matched' : 'Mismatch',
+        Passengers: passengers.map((passenger: any) => passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' ')).join(', '),
+        Notes: entry.notes || '',
+      };
+    });
+    const movementRows = (booking.passengers || []).map((passenger: any) => ({
+      'Booking Name': bookingName,
+      'Full Name': passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' '),
+      Nationality: passenger.nationality || '',
+      'Passport Number': passenger.passportNumber || '',
+      'Arrival Date': arrivalDate,
+      'Arrival Flight': passenger.arrivalFlight || '',
+      'Entry Point': passenger.entryPoint || '',
+      'Departure Date': departureDate,
+      'Departure Flight': passenger.departureFlight || '',
+    }));
+    const operationalRows = (booking.passengers || []).map((passenger: any) => ({
+      'Full Name': passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' '),
+      Gender: passenger.gender || '',
+      DOB: this.formatManifestDate(passenger.dateOfBirth),
+      Nationality: passenger.nationality || '',
+      'Passport Number': passenger.passportNumber || '',
+      'Room Assignment': roomLabelForPassenger(passenger),
+      'Arrival Flight': passenger.arrivalFlight || '',
+      'Departure Flight': passenger.departureFlight || '',
+      'Visa Status': passenger.visaStatus || '',
+      'Emergency Notes': passenger.notes || '',
+      'Rooming Notes': passenger.roomingNotes || '',
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(passengerRows, {
       header: [
         'Booking Name',
         'Arrival Date',
@@ -7235,6 +7363,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         'Expiry Date',
         'Flight',
         'Visa Status',
+        'Room Assignment',
+        'Emergency Notes',
       ],
     });
     worksheet['!cols'] = [
@@ -7250,9 +7380,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       { wch: 14 },
       { wch: 18 },
       { wch: 16 },
+      { wch: 20 },
+      { wch: 28 },
     ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Passenger Manifest');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(roomingRows, {
+      header: ['Room', 'Rooming Type', 'Capacity', 'Assigned', 'Status', 'Passengers', 'Notes'],
+    }), 'Rooming List');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(movementRows, {
+      header: ['Booking Name', 'Full Name', 'Nationality', 'Passport Number', 'Arrival Date', 'Arrival Flight', 'Entry Point', 'Departure Date', 'Departure Flight'],
+    }), 'Arrival Departure');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(operationalRows, {
+      header: ['Full Name', 'Gender', 'DOB', 'Nationality', 'Passport Number', 'Room Assignment', 'Arrival Flight', 'Departure Flight', 'Visa Status', 'Emergency Notes', 'Rooming Notes'],
+    }), 'Operational Manifest');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
     const safeRef = String(booking.bookingRef || 'booking').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 

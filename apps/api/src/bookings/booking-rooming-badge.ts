@@ -19,6 +19,7 @@ type BookingRoomingPassenger = {
 
 type BookingRoomingEntry = {
   id: string;
+  roomType?: string | null;
   occupancy: 'single' | 'double' | 'triple' | 'quad' | 'unknown';
   assignments: Array<{
     bookingPassenger: {
@@ -27,7 +28,25 @@ type BookingRoomingEntry = {
   }>;
 };
 
-function getRoomOccupancyCapacity(value: BookingRoomingEntry['occupancy']) {
+function normalizeRoomingCode(value?: string | null) {
+  return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function getRoomOccupancyCapacity(value: BookingRoomingEntry['occupancy'], roomType?: string | null) {
+  const roomingCode = normalizeRoomingCode(roomType);
+
+  if (['sgl', 'single', 'child_with_bed', 'cwb', 'child_no_bed', 'cnb'].includes(roomingCode)) {
+    return 1;
+  }
+
+  if (['dbl', 'double', 'twn', 'twin'].includes(roomingCode)) {
+    return 2;
+  }
+
+  if (['trpl', 'triple'].includes(roomingCode)) {
+    return 3;
+  }
+
   if (value === 'single') {
     return 1;
   }
@@ -61,7 +80,7 @@ export function buildRoomingBadge(values: {
   const passengerRoomMap = new Map<string, Set<string>>();
 
   for (const entry of values.roomingEntries) {
-    const capacity = getRoomOccupancyCapacity(entry.occupancy);
+    const capacity = getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
     const assignedPassengerIds = entry.assignments.map((assignment) => assignment.bookingPassenger.id);
 
     if (capacity !== null && assignedPassengerIds.length > capacity) {
@@ -85,7 +104,7 @@ export function buildRoomingBadge(values: {
 
   const missingRoomEntries = Math.max(values.expectedRoomCount - values.roomingEntries.length, 0);
   const incompleteRoomEntries = values.roomingEntries.filter((entry) => {
-    const capacity = getRoomOccupancyCapacity(entry.occupancy);
+    const capacity = getRoomOccupancyCapacity(entry.occupancy, entry.roomType);
     const assignedCount = entry.assignments.length;
 
     if (capacity !== null) {

@@ -701,6 +701,7 @@ test('passenger manifest Excel export contains government-ready columns and valu
         quote: { title: 'Quote title', clientCompany: { id: 'company-1' } },
         passengers: [
           {
+            id: 'passenger-1',
             fullName: 'Lina Haddad',
             firstName: 'Lina',
             lastName: 'Haddad',
@@ -714,6 +715,45 @@ test('passenger manifest Excel export contains government-ready columns and valu
             departureFlight: 'RJ102',
             entryPoint: 'QAIA',
             visaStatus: 'Approved',
+            notes: 'Emergency contact: Omar +962700000000',
+            roomingNotes: 'Near elevator',
+            roomingAssignments: [
+              {
+                bookingRoomingEntry: {
+                  id: 'room-1',
+                  roomType: 'TWN',
+                  occupancy: 'double',
+                  sortOrder: 1,
+                },
+              },
+            ],
+          },
+        ],
+        roomingEntries: [
+          {
+            id: 'room-1',
+            roomType: 'TWN',
+            occupancy: 'double',
+            sortOrder: 1,
+            notes: 'Twin share',
+            assignments: [
+              {
+                bookingPassenger: {
+                  id: 'passenger-1',
+                  fullName: 'Lina Haddad',
+                  firstName: 'Lina',
+                  lastName: 'Haddad',
+                },
+              },
+              {
+                bookingPassenger: {
+                  id: 'passenger-2',
+                  fullName: 'Omar Haddad',
+                  firstName: 'Omar',
+                  lastName: 'Haddad',
+                },
+              },
+            ],
           },
         ],
       }),
@@ -723,6 +763,9 @@ test('passenger manifest Excel export contains government-ready columns and valu
   const exported = await service.exportPassengerManifestExcel('booking-1', { companyId: 'company-1' });
   const workbook = XLSX.read(exported.buffer);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Passenger Manifest']) as any[];
+  const roomingRows = XLSX.utils.sheet_to_json(workbook.Sheets['Rooming List']) as any[];
+  const movementRows = XLSX.utils.sheet_to_json(workbook.Sheets['Arrival Departure']) as any[];
+  const operationalRows = XLSX.utils.sheet_to_json(workbook.Sheets['Operational Manifest']) as any[];
 
   assert.deepEqual(Object.keys(rows[0]), [
     'Booking Name',
@@ -737,12 +780,151 @@ test('passenger manifest Excel export contains government-ready columns and valu
     'Expiry Date',
     'Flight',
     'Visa Status',
+    'Room Assignment',
+    'Emergency Notes',
   ]);
   assert.equal(rows[0]['Booking Name'], 'Jordan Operations Booking');
   assert.equal(rows[0]['Arrival Date'], '2026-10-01');
   assert.equal(rows[0]['Entry Point'], 'QAIA');
   assert.equal(rows[0]['Full Name'], 'Lina Haddad');
   assert.equal(rows[0]['Passport Number'], 'P1234567');
+  assert.equal(rows[0]['Room Assignment'], 'TWN');
+  assert.equal(roomingRows[0].Capacity, 2);
+  assert.equal(roomingRows[0].Status, 'Matched');
+  assert.equal(movementRows[0]['Departure Flight'], 'RJ102');
+  assert.equal(operationalRows[0]['Emergency Notes'], 'Emergency contact: Omar +962700000000');
+});
+
+test('rooming assignment validates TWN occupancy and prevents over-assignment', async () => {
+  const createdRoomingEntries: any[] = [];
+  const createdAssignments: any[] = [];
+  const existingAssignments = [{ bookingPassengerId: 'passenger-1' }];
+  const service = createService({
+    $transaction: async (callback: any) =>
+      callback({
+        booking: {
+          findFirst: async () => ({ id: 'booking-1', roomingEntries: [] }),
+        },
+        bookingRoomingEntry: {
+          create: async ({ data }: any) => {
+            createdRoomingEntries.push(data);
+            return { id: 'room-1', ...data };
+          },
+          findFirst: async () => ({
+            id: 'room-1',
+            bookingId: 'booking-1',
+            roomType: 'TWN',
+            occupancy: 'double',
+            sortOrder: 1,
+            assignments: existingAssignments,
+          }),
+        },
+        bookingPassenger: {
+          findFirst: async ({ where }: any) => ({
+            id: where.id,
+            bookingId: 'booking-1',
+            firstName: where.id === 'passenger-2' ? 'Omar' : 'Nadia',
+            lastName: 'Haddad',
+            title: null,
+            roomingAssignments: [],
+          }),
+        },
+        bookingRoomingAssignment: {
+          create: async ({ data }: any) => {
+            createdAssignments.push(data);
+            existingAssignments.push({ bookingPassengerId: data.bookingPassengerId });
+            return { id: 'assignment-1', ...data };
+          },
+        },
+        bookingAuditLog: {
+          create: async () => ({}),
+        },
+      }),
+  });
+
+  const roomingEntry = await service.createRoomingEntry('booking-1', {
+    roomType: 'TWN',
+    occupancy: 'TWN',
+    companyActor: { companyId: 'company-1' },
+  });
+
+  assert.equal(roomingEntry.occupancy, 'double');
+  assert.equal(createdRoomingEntries[0].roomType, 'TWN');
+  const assignment = await service.assignPassengerToRoom('booking-1', 'room-1', 'passenger-2', undefined, { companyId: 'company-1' });
+  assert.equal(assignment.bookingPassengerId, 'passenger-2');
+  await assert.rejects(
+    () => service.assignPassengerToRoom('booking-1', 'room-1', 'passenger-3', undefined, { companyId: 'company-1' }),
+    /occupancy limit/i,
+  );
+  assert.equal(createdAssignments.length, 1);
+});
+
+test('operational readiness reports missing passport, unassigned passengers, and room occupancy mismatch', () => {
+  const service = createService({});
+  const readiness = (service as any).buildOperationalReadinessDashboard({
+    pax: 2,
+    adults: 2,
+    children: 0,
+    roomCount: 1,
+    snapshotJson: {},
+    days: [],
+    services: [],
+    passengers: [
+      {
+        id: 'passenger-1',
+        firstName: 'Lina',
+        lastName: 'Haddad',
+        nationality: 'Jordanian',
+        passportNumber: 'P1234567',
+        passportExpiryDate: new Date('2030-01-01T00:00:00.000Z'),
+        roomingAssignments: [{ bookingRoomingEntryId: 'room-1' }],
+      },
+      {
+        id: 'passenger-2',
+        firstName: 'Omar',
+        lastName: 'Haddad',
+        nationality: null,
+        passportNumber: null,
+        passportExpiryDate: null,
+        roomingAssignments: [],
+      },
+    ],
+    roomingEntries: [
+      {
+        id: 'room-1',
+        roomType: 'DBL',
+        occupancy: 'double',
+        assignments: [{ bookingPassenger: { id: 'passenger-1' } }],
+      },
+    ],
+  });
+  const passengerSection = readiness.sections.find((section: any) => section.title === 'Passengers');
+  const roomingSection = readiness.sections.find((section: any) => section.title === 'Rooming');
+
+  assert.equal(readiness.summary.passengers.unassigned, 1);
+  assert.equal(readiness.summary.rooming.issues.occupancyIssues, 0);
+  assert.equal(readiness.summary.rooming.issues.unassignedRooms, 1);
+  assert.match(passengerSection.issues.join(' '), /passengers not assigned/i);
+  assert.match(roomingSection.issues.join(' '), /room groups incomplete/i);
+  assert.equal((service as any).getMissingPassengerReasons({
+    pax: 2,
+    passengers: [
+      { fullName: 'Lina Haddad', nationality: 'Jordanian', passportNumber: 'P1234567', passportExpiryDate: new Date('2030-01-01T00:00:00.000Z') },
+      { fullName: 'Omar Haddad', nationality: '', passportNumber: '', passportExpiryDate: null },
+    ],
+  }).includes('missing required passport fields'), true);
+  assert.equal((service as any).getMissingRoomingReasons({
+    roomCount: 1,
+    passengers: [{ id: 'passenger-1' }, { id: 'passenger-2' }],
+    roomingEntries: [
+      {
+        id: 'room-1',
+        roomType: 'DBL',
+        occupancy: 'double',
+        assignments: [{ bookingPassengerId: 'passenger-1' }],
+      },
+    ],
+  }).includes('room occupancy mismatch'), true);
 });
 
 test('DMC admin booking access requires auth without single-client company filtering', async () => {

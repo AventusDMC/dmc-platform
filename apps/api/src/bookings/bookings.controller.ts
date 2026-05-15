@@ -147,14 +147,14 @@ type UpdateBookingPassengerBody = {
 
 type CreateBookingRoomingEntryBody = {
   roomType?: string | null;
-  occupancy?: 'single' | 'double' | 'triple' | 'quad' | 'unknown';
+  occupancy?: 'single' | 'double' | 'triple' | 'quad' | 'unknown' | 'SGL' | 'DBL' | 'TWN' | 'TWIN' | 'TRPL' | 'CHILD_WITH_BED' | 'CHILD_NO_BED' | 'child_with_bed' | 'child_no_bed';
   notes?: string | null;
   sortOrder?: number | null;
 };
 
 type UpdateBookingRoomingEntryBody = {
   roomType?: string | null;
-  occupancy?: 'single' | 'double' | 'triple' | 'quad' | 'unknown';
+  occupancy?: 'single' | 'double' | 'triple' | 'quad' | 'unknown' | 'SGL' | 'DBL' | 'TWN' | 'TWIN' | 'TRPL' | 'CHILD_WITH_BED' | 'CHILD_NO_BED' | 'child_with_bed' | 'child_no_bed';
   notes?: string | null;
   sortOrder?: number | null;
 };
