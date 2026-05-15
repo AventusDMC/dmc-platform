@@ -1864,7 +1864,39 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
   const visibleQuoteItineraryDays = quoteItinerary.days.filter((day) => day.isActive && day.dayNumber <= expectedDayCount);
-  const sharedUnassignedItems = quote.quoteItems.filter((item) => !item.itineraryId);
+  const plannerDayIdByQuoteItemId = new Map<string, string>();
+  for (const day of visibleQuoteItineraryDays) {
+    for (const dayItem of day.dayItems || []) {
+      if (dayItem.quoteServiceId) {
+        plannerDayIdByQuoteItemId.set(dayItem.quoteServiceId, day.id);
+      }
+    }
+  }
+  const isAssignedToPlannerDay = (item: Pick<QuoteItem, 'id' | 'itineraryId'>) => Boolean(item.itineraryId || plannerDayIdByQuoteItemId.has(item.id));
+  const sharedUnassignedItems = quote.quoteItems.filter((item) => !isAssignedToPlannerDay(item));
+  const readinessQuote = {
+    ...quote,
+    itineraries:
+      visibleQuoteItineraryDays.length > 0
+        ? visibleQuoteItineraryDays.map((day) => ({
+            id: day.id,
+            dayNumber: day.dayNumber,
+            title: day.title,
+            description: day.notes || null,
+          }))
+        : quote.itineraries,
+    quoteItems: quote.quoteItems.map((item) => ({
+      ...item,
+      itineraryId: item.itineraryId || plannerDayIdByQuoteItemId.get(item.id) || null,
+    })),
+    quoteOptions: quote.quoteOptions.map((option) => ({
+      ...option,
+      quoteItems: option.quoteItems.map((item) => ({
+        ...item,
+        itineraryId: item.itineraryId || plannerDayIdByQuoteItemId.get(item.id) || null,
+      })),
+    })),
+  };
   const tripSummary = getValidatedTripSummary({
     quoteTitle: quote.title,
     quoteDescription: quote.description,
@@ -1906,12 +1938,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       : null,
   ].filter(Boolean) as string[];
   const quoteUnassignedServicesCount =
-    sharedUnassignedItems.length + quote.quoteOptions.reduce((total, option) => total + option.quoteItems.filter((item) => !item.itineraryId).length, 0);
+    sharedUnassignedItems.length + quote.quoteOptions.reduce((total, option) => total + option.quoteItems.filter((item) => !isAssignedToPlannerDay(item)).length, 0);
   const buildTabHref = (tab: QuoteDetailTab) => `/quotes/${quote.id}?tab=${tab}`;
   const buildStepHref = (step: QuoteWorkspaceStep, params?: Record<string, string | null | undefined>) => {
     return buildQuoteWorkspaceHref(quote.id, step, params);
   };
-  const readiness = buildQuoteReadinessModel(quote, buildStepHref);
+  const readiness = buildQuoteReadinessModel(readinessQuote, buildStepHref);
   const allQuotePricingItems = [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
   const assignedPassengerIds = new Set(quoteRoomingGroups.flatMap((group) => group.assignments.map((assignment) => assignment.quotePassengerId)));
   const assignedPassengerCount = quote.passengers.filter((passenger) => assignedPassengerIds.has(passenger.id)).length;

@@ -9414,12 +9414,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      quote: {
-        clientCompanyId: companyId,
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildPaymentCompanyWhere(actor?: CompanyScopedActor) {

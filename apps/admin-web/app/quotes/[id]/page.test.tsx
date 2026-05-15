@@ -87,6 +87,7 @@ describe('quote detail page regression', () => {
       "credentials: 'same-origin'",
       "throw new Error(await getErrorMessage(response, 'Could not convert quote to booking.'));",
       "throw new Error('Booking conversion succeeded but the response did not include a booking id.');",
+      "throw new Error('Booking conversion did not confirm that the booking was persisted.');",
       "setNotice({ tone: 'success', message: 'Booking created. Opening booking detail...' });",
       "window.location.assign(`/bookings/${booking.id}?created=1`);",
       "role={notice.tone === 'error' ? 'alert' : 'status'}",

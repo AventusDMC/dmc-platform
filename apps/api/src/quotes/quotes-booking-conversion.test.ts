@@ -6,8 +6,16 @@ const { QuotesController } = require('./quotes.controller');
 const { QuotePricingService } = require('./quote-pricing.service');
 
 function createQuotesService(prisma: any = {}) {
+  const prismaWithDefaults = {
+    ...prisma,
+    booking: {
+      findUnique: async ({ where }: any) => ({ id: where.id, bookingRef: null }),
+      ...(prisma.booking || {}),
+    },
+  };
+
   return new QuotesService(
-    prisma,
+    prismaWithDefaults,
     { log: async () => null } as any,
     {} as any,
     {} as any,
@@ -430,6 +438,7 @@ test('accepted quote conversion creates booking with client company pax dates an
   const booking = await service.convertToBooking('quote-1', { companyId: 'dmc-company-1' });
 
   assert.equal(booking.id, 'booking-1');
+  assert.equal((booking as any).persisted, true);
   assert.equal(bookingCreateData.quoteId, 'quote-1');
   assert.equal(bookingCreateData.clientCompanyId, 'client-company-1');
   assert.equal(bookingCreateData.pax, 3);

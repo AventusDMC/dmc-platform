@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import {
   BookingOperationServiceStatus,
   BookingOperationServiceType,
@@ -2099,7 +2099,8 @@ export class QuotesService {
   async convertToBooking(id: string, actor?: CompanyScopedActor) {
     const actorCompanyId = requireActorCompanyId(actor);
     await this.assertLatestQuoteRevision(id);
-    return this.prisma.$transaction(async (tx) => {
+    console.log('[quote/convert-to-booking] transaction start', { quoteId: id, actorCompanyId });
+    const createdBooking = await this.prisma.$transaction(async (tx) => {
       const quote = await tx.quote.findFirst({
         where: {
           id,
@@ -2171,7 +2172,18 @@ export class QuotesService {
       }
 
       const bookingSnapshot = this.buildBookingSnapshotFromAcceptedVersion(acceptedVersion.snapshotJson);
-      const bookingServices = await this.buildBookingServicesFromAcceptedVersion(acceptedVersion.snapshotJson, tx);
+      let bookingServices: Awaited<ReturnType<typeof this.buildBookingServicesFromAcceptedVersion>>;
+      try {
+        bookingServices = await this.buildBookingServicesFromAcceptedVersion(acceptedVersion.snapshotJson, tx);
+        console.log('[quote/convert-to-booking] bookingServices nested create prepared', {
+          quoteId: quote.id,
+          acceptedVersionId: acceptedVersion.id,
+          serviceCount: bookingServices.length,
+        });
+      } catch (error) {
+        console.error('[quote/convert-to-booking] bookingServices preparation failed', this.formatConversionError(error));
+        throw this.toBookingConversionException(error, 'Booking conversion failed while preparing booking services');
+      }
       const bookingDays = this.buildBookingDaysFromAcceptedVersion(acceptedVersion.snapshotJson);
       const bookingRef = await this.generateNextBookingRef(tx);
       const startDate = this.parseDateLike(bookingSnapshot.travelStartDate);
@@ -2179,49 +2191,67 @@ export class QuotesService {
         ? new Date(startDate.getTime() + Math.max(0, bookingSnapshot.nightCount) * 24 * 60 * 60 * 1000)
         : null;
 
-      const createdBooking = await tx.booking.create({
-        data: {
-          bookingRef,
-          accessToken: this.generateBookingAccessToken(),
+      let createdBooking: any;
+      try {
+        console.log('[quote/convert-to-booking] booking.create start', {
           quoteId: quote.id,
-          clientCompanyId: quote.clientCompanyId,
           acceptedVersionId: acceptedVersion.id,
-          bookingType: bookingSnapshot.bookingType,
-          snapshotJson: bookingSnapshot.snapshotJson,
-          clientSnapshotJson: bookingSnapshot.clientSnapshotJson,
-          brandSnapshotJson: bookingSnapshot.brandSnapshotJson ?? Prisma.JsonNull,
-          contactSnapshotJson: bookingSnapshot.contactSnapshotJson,
-          itinerarySnapshotJson: bookingSnapshot.itinerarySnapshotJson,
-          pricingSnapshotJson: bookingSnapshot.pricingSnapshotJson,
-          adults: bookingSnapshot.adults,
-          children: bookingSnapshot.children,
-          pax: bookingSnapshot.adults + bookingSnapshot.children,
-          roomCount: bookingSnapshot.roomCount,
-          nightCount: bookingSnapshot.nightCount,
-          startDate,
-          endDate,
-          days: bookingDays.length > 0 ? { create: bookingDays } : undefined,
-          services: bookingServices.length > 0 ? { create: bookingServices } : undefined,
-        },
-        include: {
-          quote: {
-            include: {
-              clientCompany: {
-                include: {
-                  branding: true,
-                },
-              },
-              brandCompany: {
-                include: {
-                  branding: true,
-                },
-              },
-              contact: true,
-            },
+          bookingRef,
+          dayCount: bookingDays.length,
+          serviceCount: bookingServices.length,
+        });
+        createdBooking = await tx.booking.create({
+          data: {
+            bookingRef,
+            accessToken: this.generateBookingAccessToken(),
+            quoteId: quote.id,
+            clientCompanyId: quote.clientCompanyId,
+            acceptedVersionId: acceptedVersion.id,
+            bookingType: bookingSnapshot.bookingType,
+            snapshotJson: bookingSnapshot.snapshotJson,
+            clientSnapshotJson: bookingSnapshot.clientSnapshotJson,
+            brandSnapshotJson: bookingSnapshot.brandSnapshotJson ?? Prisma.JsonNull,
+            contactSnapshotJson: bookingSnapshot.contactSnapshotJson,
+            itinerarySnapshotJson: bookingSnapshot.itinerarySnapshotJson,
+            pricingSnapshotJson: bookingSnapshot.pricingSnapshotJson,
+            adults: bookingSnapshot.adults,
+            children: bookingSnapshot.children,
+            pax: bookingSnapshot.adults + bookingSnapshot.children,
+            roomCount: bookingSnapshot.roomCount,
+            nightCount: bookingSnapshot.nightCount,
+            startDate,
+            endDate,
+            days: bookingDays.length > 0 ? { create: bookingDays } : undefined,
+            services: bookingServices.length > 0 ? { create: bookingServices } : undefined,
           },
-          acceptedVersion: true,
-        },
-      });
+          include: {
+            quote: {
+              include: {
+                clientCompany: {
+                  include: {
+                    branding: true,
+                  },
+                },
+                brandCompany: {
+                  include: {
+                    branding: true,
+                  },
+                },
+                contact: true,
+              },
+            },
+            acceptedVersion: true,
+          },
+        });
+        console.log('[quote/convert-to-booking] booking.create success', {
+          quoteId: quote.id,
+          bookingId: createdBooking.id,
+          bookingRef: createdBooking.bookingRef,
+        });
+      } catch (error) {
+        console.error('[quote/convert-to-booking] booking.create failed', this.formatConversionError(error));
+        throw this.toBookingConversionException(error, 'Booking conversion failed while creating the booking record');
+      }
 
       const leadPassengerId = await this.createBookingPassengerFoundation(tx, createdBooking.id, bookingSnapshot.contactSnapshotJson);
       await this.createBookingRoomingFoundation(tx, createdBooking.id, bookingSnapshot.roomCount, leadPassengerId);
@@ -2230,20 +2260,45 @@ export class QuotesService {
     }, {
       maxWait: 30000,
       timeout: 30000,
-    }).then(async (createdBooking) => {
-      await this.auditService.log({
-        actor: actor ? { id: (actor as { id?: string }).id ?? null, companyId: actorCompanyId } : null,
-        action: 'booking.created',
-        entity: 'booking',
-        entityId: createdBooking.id,
-        metadata: {
-          quoteId: id,
-          bookingRef: createdBooking.bookingRef || null,
-        },
-      });
-
-      return createdBooking;
     });
+
+    console.log('[quote/convert-to-booking] transaction committed', {
+      quoteId: id,
+      bookingId: createdBooking.id,
+      bookingRef: createdBooking.bookingRef || null,
+    });
+
+    const persistedBooking = await this.prisma.booking.findUnique({
+      where: { id: createdBooking.id },
+      select: { id: true, bookingRef: true },
+    });
+
+    if (!persistedBooking) {
+      console.error('[quote/convert-to-booking] committed booking not found', {
+        quoteId: id,
+        bookingId: createdBooking.id,
+      });
+      throw new InternalServerErrorException('Booking conversion did not persist the booking record.');
+    }
+
+    console.log('[quote/convert-to-booking] persistence confirmed', {
+      quoteId: id,
+      bookingId: persistedBooking.id,
+      bookingRef: persistedBooking.bookingRef || null,
+    });
+
+    await this.auditService.log({
+      actor: actor ? { id: (actor as { id?: string }).id ?? null, companyId: actorCompanyId } : null,
+      action: 'booking.created',
+      entity: 'booking',
+      entityId: createdBooking.id,
+      metadata: {
+        quoteId: id,
+        bookingRef: createdBooking.bookingRef || null,
+      },
+    });
+
+    return { ...createdBooking, persisted: true };
   }
 
   async findItems(quoteId: string) {
@@ -9141,6 +9196,27 @@ export class QuotesService {
 
   private isPersistedSnapshotQuoteItem(item: { id?: string | null } | null | undefined) {
     return Boolean(item?.id?.trim());
+  }
+
+  private formatConversionError(error: unknown) {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      };
+    }
+
+    return { error };
+  }
+
+  private toBookingConversionException(error: unknown, fallback: string) {
+    if (error instanceof BadRequestException) {
+      return error;
+    }
+
+    const message = error instanceof Error && error.message ? error.message : String(error || 'Unknown error');
+    return new BadRequestException(`${fallback}: ${message}`);
   }
 
   private normalizeQuoteFocType(value: string | undefined | null): QuoteFocType {

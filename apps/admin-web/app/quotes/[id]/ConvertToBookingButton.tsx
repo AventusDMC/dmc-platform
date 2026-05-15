@@ -5,6 +5,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 
 type Booking = {
   id: string;
+  persisted?: boolean;
 };
 
 type ConversionNotice = {
@@ -41,6 +42,9 @@ export function ConvertToBookingButton({ quoteId, label = 'Convert to booking' }
       const booking = await readJsonResponse<Booking>(response, 'Could not convert quote to booking.');
       if (!booking.id) {
         throw new Error('Booking conversion succeeded but the response did not include a booking id.');
+      }
+      if (booking.persisted !== true) {
+        throw new Error('Booking conversion did not confirm that the booking was persisted.');
       }
 
       setNotice({ tone: 'success', message: 'Booking created. Opening booking detail...' });
