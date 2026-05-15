@@ -227,6 +227,8 @@ export function getQuoteServiceCategoryKey(
     | 'externalInternalNotes'
     | 'externalHotelsOrSimilar'
     | 'externalClientDescription'
+    | 'activityId'
+    | 'activityRateVariantId'
   >,
 ): ServicePlannerCategory {
   const hasExternalPackagePayload = Boolean(
@@ -246,6 +248,10 @@ export function getQuoteServiceCategoryKey(
 
   if (hasExternalPackagePayload) {
     return 'externalPackage';
+  }
+
+  if (item?.activityId || item?.activityRateVariantId) {
+    return 'activity';
   }
 
   if (!service) {

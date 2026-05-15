@@ -1072,6 +1072,23 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('classifies Activity Master sourced quote items into the Activities lane without legacy supplier matching', () => {
+    expectSourceContains(pageSource, [
+      'activityId: item?.activityId ?? item?.activity?.id ?? null',
+      'activityRateVariantId: item?.activityRateVariantId ?? null',
+    ]);
+    expectSourceContains(quoteReadinessSource, [
+      "| 'activityId'",
+      "| 'activityRateVariantId'",
+      "if (item?.activityId || item?.activityRateVariantId) {\n    return 'activity';\n  }",
+    ]);
+    expectSourceContains(quoteServicePlannerSource, [
+      "function isActivityMasterSourcedItem(item: Pick<QuoteItem, 'activityId' | 'activityRateVariantId' | 'activity'>)",
+      "if (isActivityMasterSourcedItem(item)) {\n    return 'activity';\n  }",
+      "getItemSupplierId(item) === 'import-itinerary-system' && !isActivityMasterSourcedItem(item)",
+    ]);
+  });
+
   it('persists route-first transport picker selections instead of rendering local preview cards', () => {
     const quotesServiceSource = readFileSync(new URL('../../../../api/src/quotes/quotes.service.ts', import.meta.url), 'utf8');
 

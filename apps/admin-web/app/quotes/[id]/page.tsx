@@ -313,6 +313,7 @@ type QuoteItem = {
   id: string;
   itineraryId: string | null;
   activityId?: string | null;
+  activityRateVariantId?: string | null;
   ticketRateVariantId?: string | null;
   excursionTemplateId?: string | null;
   excursionTemplateComponentId?: string | null;
@@ -1006,6 +1007,7 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     id: item?.id || `missing-item-${Math.random().toString(36).slice(2)}`,
     itineraryId: item?.itineraryId ?? null,
     activityId: item?.activityId ?? item?.activity?.id ?? null,
+    activityRateVariantId: item?.activityRateVariantId ?? null,
     excursionTemplateId: item?.excursionTemplateId ?? null,
     excursionTemplateComponentId: item?.excursionTemplateComponentId ?? null,
     excursionTemplateComponentOptional: item?.excursionTemplateComponentOptional ?? null,

@@ -1006,6 +1006,10 @@ function getServiceTypeLabel(service: SupplierService) {
   return service.serviceType?.name || service.category || service.unitType || 'Service';
 }
 
+function isActivityMasterSourcedItem(item: Pick<QuoteItem, 'activityId' | 'activityRateVariantId' | 'activity'>) {
+  return Boolean(item.activityId || item.activityRateVariantId || item.activity);
+}
+
 function getItemCategory(item: QuoteItem): ServicePlannerCategory {
   const hasExternalPackagePayload = Boolean(
     item.externalPackageName ||
@@ -1028,6 +1032,10 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
 
   if (hasExternalPackagePayload) {
     return 'externalPackage';
+  }
+
+  if (isActivityMasterSourcedItem(item)) {
+    return 'activity';
   }
 
   return item.service ? getQuoteServiceCategoryKey(item.service, item) : 'other';
@@ -2175,7 +2183,7 @@ function QuoteServiceCard({
           </span>
         </button>
         {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
-        {getItemSupplierId(item) === 'import-itinerary-system' ? <em>Unmatched</em> : null}
+        {getItemSupplierId(item) === 'import-itinerary-system' && !isActivityMasterSourcedItem(item) ? <em>Unmatched</em> : null}
       </div>
       <div className={`${laneStyles.cardMain} quote-service-mini-card-main`}>
         <div className={`${laneStyles.titleRow} quote-service-mini-card-title-row`}>
