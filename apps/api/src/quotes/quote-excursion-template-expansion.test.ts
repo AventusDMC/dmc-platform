@@ -315,6 +315,27 @@ test('package excursion transport mapping uses touring route pricing without reg
   assert.equal(mapping.vehicleRateId, undefined);
 });
 
+test('visible Activity Master link passes excursion package mapping without legacy service bridge', async () => {
+  const { service } = createService(createTemplate());
+  const status = await (service as any).getExcursionTemplateComponentMappingStatus(
+    {
+      id: 'component-petra-guided',
+      componentType: 'ACTIVITY',
+      label: 'Petra Guided Experience',
+      active: true,
+      isOptional: false,
+      activityId: 'activity-petra-guided',
+      activity: { id: 'activity-petra-guided', name: 'Petra Guided Experience' },
+      supplierServiceId: null,
+      supplierService: null,
+    },
+    { adults: 2, children: 0 },
+  );
+
+  assert.equal(status.insertable, true);
+  assert.equal(status.reason, null);
+});
+
 test('quote itinerary reload includes touring route details for excursion origin variants', () => {
   const source = readFileSync(`${process.cwd()}/src/quotes/quotes.service.ts`, 'utf8');
 

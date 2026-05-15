@@ -2217,6 +2217,78 @@ test('catalog-backed activity ignores generic ServiceRate and keeps Activity pri
   assert.equal(values.data.totalSell, 210);
 });
 
+test('catalog-backed activity can price from Activity Master without legacy SupplierService bridge', async () => {
+  const service = createQuotesService({
+    quote: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'quote-1'
+          ? {
+              id: 'quote-1',
+              quoteCurrency: 'USD',
+              adults: 2,
+              children: 0,
+              roomCount: 1,
+              nightCount: 1,
+              travelStartDate: null,
+              createdAt: new Date('2026-04-27T00:00:00.000Z'),
+              jordanPassType: 'NONE',
+            }
+          : null,
+    },
+    supplierService: {
+      findUnique: async () => null,
+    },
+    activity: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'activity-petra-guided'
+          ? {
+              id: 'activity-petra-guided',
+              name: 'Petra Guided Experience',
+              pricingBasis: 'PER_PERSON',
+              costPrice: 35,
+              sellPrice: 52.5,
+              currency: 'USD',
+              durationMinutes: 240,
+              supplierCompany: null,
+              rateVariants: [
+                {
+                  id: 'variant-standard',
+                  activityId: 'activity-petra-guided',
+                  name: 'Standard Petra Guided Visit',
+                  pricingBasis: 'PER_PERSON',
+                  costPrice: 35,
+                  sellPrice: 52.5,
+                  currency: 'USD',
+                  active: true,
+                },
+              ],
+            }
+          : null,
+    },
+    activityRateVariant: {
+      findUnique: async () => null,
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+  });
+
+  const values = await (service as any).resolveQuoteItemValues({
+    quoteId: 'quote-1',
+    serviceId: null,
+    activityId: 'activity-petra-guided',
+    quantity: 1,
+    paxCount: 2,
+    markupPercent: 0,
+  });
+
+  assert.equal(values.data.serviceId, null);
+  assert.equal(values.data.activityId, 'activity-petra-guided');
+  assert.equal(values.data.activityRateVariantId, 'variant-standard');
+  assert.equal(values.data.totalCost, 70);
+  assert.equal(values.data.totalSell, 105);
+});
+
 test('activity rate variant capacity pricing calculates required jeep units', async () => {
   const values = await resolveServiceRateQuoteItem({
     service: {

@@ -91,6 +91,16 @@ describe('excursion template admin UI', () => {
     ]);
   });
 
+  it('requires catalog link saves to submit persisted source ids, not display labels only', () => {
+    expectSourceContains(editorSource, [
+      'requires a selected Activity Master record',
+      'requires a selected service catalog record',
+      "component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE'",
+      'activityId: component.componentType ===',
+      'required',
+    ]);
+  });
+
   it('adds an excursion tariff workbook without flattening Activity Master variants', () => {
     expectSourceContains(pageSource, [
       "type ExcursionCatalogTab = 'templates' | 'tariff-workbook';",

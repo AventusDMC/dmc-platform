@@ -472,6 +472,16 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
     const nextLabel = selectedTouringRoute?.name || selectedRoute?.name || selectedActivity?.name || selectedService?.name || component.label;
     const nextOriginCity = String(formData.get('originCity') || '');
 
+    if ((component.componentType === 'ACTIVITY' || component.componentType === 'GUIDE') && !nextActivityId) {
+      setError(`${component.label} requires a selected Activity Master record. Choose a catalog option before saving.`);
+      return;
+    }
+
+    if ((component.componentType === 'TICKET' || component.componentType === 'DINING') && !nextSupplierServiceId) {
+      setError(`${component.label} requires a selected service catalog record. Choose a catalog option before saving.`);
+      return;
+    }
+
     if (
       component.componentType === 'TRANSPORT' &&
       nextTouringRouteId &&
@@ -588,6 +598,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
               onChange={(value) => updateComponentDraft(component.id, { activityId: value })}
               placeholder="Select activity record"
               missingText="Selected activity or guide inventory is missing from the catalog."
+              required
             />
           ) : (
             <SearchableSelect
@@ -597,6 +608,7 @@ export function ExcursionTemplateEditor({ template, catalogs }: ExcursionTemplat
               onChange={(value) => updateComponentDraft(component.id, { supplierServiceId: value })}
               placeholder="Select service record"
               missingText="Selected service inventory is missing from the catalog."
+              required
             />
           )}
           <label>

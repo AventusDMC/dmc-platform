@@ -3669,20 +3669,14 @@ export class QuotesService {
     }
 
     if (values.component.componentType === 'ACTIVITY' || values.component.componentType === 'GUIDE') {
-      const service =
-        values.component.supplierService ||
-        (values.component.activity
-          ? await this.findActivityBridgeSupplierService(values.component.activity)
-          : values.component.componentType === 'GUIDE'
-            ? await this.findFallbackSupplierServiceForExcursionComponent(values.component.componentType)
-            : null);
-      if (!service) {
+      const service = values.component.supplierService || null;
+      if (!service && !values.component.activityId) {
         throw new BadRequestException(`Excursion component "${values.component.label}" requires a linked ${values.component.componentType.toLowerCase()} record`);
       }
 
       return {
         ...common,
-        serviceId: service.id,
+        serviceId: service?.id || null,
         activityId: values.component.activityId || undefined,
         participantCount: paxCount,
         adultCount: Math.max(0, Math.floor(Number(values.quote.adults ?? paxCount))),
@@ -4304,11 +4298,8 @@ export class QuotesService {
       if (component.supplierServiceId) {
         return { insertable: true, reason: null };
       }
-      if (component.componentType === 'ACTIVITY' && component.activityId) {
-        const bridgeService = await this.findActivityBridgeSupplierService(component.activity || { name: component.label });
-        return bridgeService
-          ? { insertable: true, reason: null, warning: `Activity component "${component.label}" will use inferred legacy SupplierService bridge "${bridgeService.name}".` }
-          : { insertable: false, reason: `Excursion activity component "${component.label}" needs a linked activity service bridge` };
+      if (component.activityId) {
+        return { insertable: true, reason: null };
       }
       const fallbackService = await this.findFallbackSupplierServiceForExcursionComponent(component.componentType);
       return fallbackService
@@ -4794,7 +4785,10 @@ export class QuotesService {
       throw new BadRequestException('Quote not found');
     }
 
-    const effectiveService = service || (isOneOffExternalPackage ? this.buildOneOffExternalPackageService(data) : null);
+    const effectiveService =
+      service ||
+      (activity ? this.buildActivityMasterQuoteService(activity) : null) ||
+      (isOneOffExternalPackage ? this.buildOneOffExternalPackageService(data) : null);
 
     if (!effectiveService) {
       throw new BadRequestException('Service not found');
@@ -7522,6 +7516,38 @@ export class QuotesService {
       baseCost: Number(data.netCost ?? 0),
       currency,
       costBaseAmount: Number(data.netCost ?? 0),
+      costCurrency: currency,
+      serviceRates: [],
+      entranceFee: null,
+    };
+  }
+
+  private buildActivityMasterQuoteService(activity: {
+    id?: string | null;
+    name?: string | null;
+    supplierCompanyId?: string | null;
+    pricingBasis?: string | null;
+    costPrice?: number | null;
+    currency?: string | null;
+  }) {
+    const currency = activity.currency?.trim().toUpperCase() || 'USD';
+
+    return {
+      id: '',
+      supplierId: activity.supplierCompanyId || '',
+      name: activity.name || 'Activity Master',
+      category: 'activity',
+      serviceTypeId: null,
+      serviceType: {
+        id: null,
+        name: 'Activity',
+        code: 'ACTIVITY',
+        isActive: true,
+      },
+      unitType: activity.pricingBasis === 'PER_GROUP' ? ServiceUnitType.per_group : ServiceUnitType.per_person,
+      baseCost: Number(activity.costPrice ?? 0),
+      currency,
+      costBaseAmount: Number(activity.costPrice ?? 0),
       costCurrency: currency,
       serviceRates: [],
       entranceFee: null,
