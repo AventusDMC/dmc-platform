@@ -1607,8 +1607,18 @@ export function QuoteItemsForm({
     finalCost !== null && finalSellPrice !== null && Number.isFinite(finalCost) && Number.isFinite(finalSellPrice)
       ? Number((finalSellPrice - finalCost).toFixed(2))
       : null;
+  const ticketPricingBasis = selectedTicketRateVariant?.pricingBasis || 'PER_PERSON';
+  const ticketUnitCost = Number(selectedTicketRateVariant?.costPrice ?? baseCost ?? selectedService?.baseCost ?? 0);
+  const ticketUnitSell = Number(selectedTicketRateVariant?.sellPrice ?? 0);
+  const ticketOperationalUnits =
+    ticketPricingBasis === 'PER_GROUP'
+      ? 1
+      : ticketPricingBasis === 'PER_DAY'
+        ? Math.max(1, Number(dayCount || 1))
+        : Math.max(1, Number(paxCount || defaultPaxCount || 1));
   const activityUnitRate = Number(selectedActivityRateVariant?.costPrice ?? selectedActivity?.costPrice ?? baseCost ?? 0);
   const activityUnitSellRate = Number(selectedActivityRateVariant?.sellPrice ?? selectedActivity?.sellPrice ?? 0);
+  const activityPricingBasis = selectedActivityRateVariant?.pricingBasis ?? selectedActivity?.pricingBasis ?? 'PER_PERSON';
   const activityMaxPaxPerUnit = Number(selectedActivityRateVariant?.maxPaxPerUnit || 0);
   const activityCapacityUnits =
     activityMaxPaxPerUnit > 0
@@ -2609,8 +2619,8 @@ export function QuoteItemsForm({
         ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
         quantity: Number(quantity),
         paxCount: isActivityService ? activityParticipantTotal : Number(paxCount),
-        roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount),
-        nightCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(nightCount),
+        roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount),
+        nightCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(nightCount),
         dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
         overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
         overrideReason: useOverride ? overrideReason.trim() || null : null,
@@ -3016,6 +3026,77 @@ export function QuoteItemsForm({
             </section>
           ) : null}
 
+          {hasPrimarySelection && isTicketingService ? (
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Ticket pricing</p>
+                  <h3>Pax, unit, and markup</h3>
+                  <p className="detail-copy">Ticket items use ticket basis and pax. Room and night fields are not used.</p>
+                </div>
+              </div>
+
+              <div className="quote-transport-step-fields">
+                <label>
+                  Pax
+                  <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
+                </label>
+
+                <label>
+                  Service units
+                  <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="1" required />
+                </label>
+
+                <label>
+                  Pricing basis
+                  <input value={ticketPricingBasis.replace(/_/g, ' ')} readOnly />
+                </label>
+
+                <label>
+                  Unit price
+                  <input
+                    value={Number.isFinite(ticketUnitCost) ? `${ticketNativeCurrency} ${ticketUnitCost.toFixed(2)}` : ''}
+                    readOnly
+                    placeholder="Select ticket rate"
+                  />
+                </label>
+
+                <label>
+                  Markup %
+                  <input
+                    value={markupPercent}
+                    onChange={(event) => setMarkupPercent(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="quote-selected-transport-card quote-selected-transport-card-active">
+                <div className="quote-selected-transport-summary">
+                  <div>
+                    <span>Operational units</span>
+                    <strong>{ticketOperationalUnits}</strong>
+                  </div>
+                  <div>
+                    <span>Unit sell</span>
+                    <strong>{ticketUnitSell > 0 ? `${ticketNativeCurrency} ${ticketUnitSell.toFixed(2)}` : 'Markup based'}</strong>
+                  </div>
+                  <div>
+                    <span>Total cost</span>
+                    <strong>{displayCurrency} {finalCost !== null && Number.isFinite(finalCost) ? finalCost.toFixed(2) : '0.00'}</strong>
+                  </div>
+                  <div>
+                    <span>Total sell</span>
+                    <strong>{displayCurrency} {finalSellPrice !== null && Number.isFinite(finalSellPrice) ? finalSellPrice.toFixed(2) : '0.00'}</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {!isEditing && preferredServiceId && activeServiceType !== 'hotel' ? (
             <p className="form-helper">Catalog selection applied. You can keep this service or switch to another option before saving.</p>
           ) : null}
@@ -3106,7 +3187,7 @@ export function QuoteItemsForm({
               <p>Contract, room, season, and pricing controls will appear after this step.</p>
             </div>
           ) : null}
-          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService && !isTicketingService ? (
           <div className="form-row form-row-4">
             {!isTransportService ? (
               <label>
@@ -3156,7 +3237,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService && !isTicketingService ? (
           <div className="form-row form-row-4">
             <label>
               Cost
@@ -3198,7 +3279,7 @@ export function QuoteItemsForm({
           </div>
           ) : null}
 
-          {hasPrimarySelection && !isHotelService && !isMealService && !isTransportService && !isActivityService ? (
+          {hasPrimarySelection && !isHotelService && !isMealService && !isTransportService && !isActivityService && !isTicketingService ? (
             <details className="quote-advanced-settings" open={useOverride}>
               <summary>Advanced cost settings</summary>
 
@@ -3250,7 +3331,7 @@ export function QuoteItemsForm({
             </details>
           ) : null}
 
-          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? (
+          {hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService && !isTicketingService ? (
           <div className="form-row form-row-3">
             <label>
               Pax count
@@ -3560,6 +3641,11 @@ export function QuoteItemsForm({
                       Participant count
                       <input value={participantCount} onChange={(event) => setParticipantCount(event.target.value)} type="number" min="1" required />
                     </label>
+
+                    <label>
+                      Pricing basis
+                      <input value={activityPricingBasis.replace(/_/g, ' ')} readOnly />
+                    </label>
                   </div>
                 )}
               </section>
@@ -3587,9 +3673,19 @@ export function QuoteItemsForm({
                         </span>
                       ) : null}
                       <span>
+                        Pricing basis
+                        <strong>{activityPricingBasis.replace(/_/g, ' ')}</strong>
+                      </span>
+                      <span>
                         Participants
                         <strong>{activityParticipantTotal}</strong>
                       </span>
+                      {activityPricingBasis === 'PER_GROUP' && !activityCapacityUnits ? (
+                        <span>
+                          Charged units
+                          <strong>1 group</strong>
+                        </span>
+                      ) : null}
                       {activityCapacityUnits ? (
                         <span>
                           Required units
@@ -4324,6 +4420,18 @@ export function QuoteItemsForm({
                     <div>
                       <span>Route</span>
                       <strong>{formatRouteLabel(resolvedTransportPricing.routeName)}</strong>
+                    </div>
+                    <div>
+                      <span>Units</span>
+                      <strong>
+                        {resolvedTransportPricing.pricingMode === 'capacity_unit'
+                          ? `${resolvedTransportPricing.unitCount || 1} vehicle${(resolvedTransportPricing.unitCount || 1) === 1 ? '' : 's'}`
+                          : '1 group'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Pax</span>
+                      <strong>{Math.max(1, Number(paxCount || defaultPaxCount || 1))}</strong>
                     </div>
                     <div>
                       <span>Cost</span>

@@ -90,7 +90,9 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingMode, 'PER GROUP');
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER GROUP'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Units' && row.value === '1 vehicle'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 95.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 95.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
   });
 
   it('reports hotel room-night diagnostics', () => {
@@ -113,7 +115,9 @@ describe('pricing diagnostics', () => {
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER ROOM / NIGHT'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 75.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Nights' && row.value === '3'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 450.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 450.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
     assert.equal(diagnostics.appliedRateSource, '2026 Contract | High season | DLX | HB');
     assert.equal(diagnostics.policyEligible, 'Yes');
     assert.equal(diagnostics.suggestedMarkup, '15.00%');
@@ -143,7 +147,9 @@ describe('pricing diagnostics', () => {
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 45.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '2 pax'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Nights' && row.value === '1'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 90.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 90.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
   });
 
   it('reports catalog activity per-person diagnostics', () => {
@@ -167,7 +173,9 @@ describe('pricing diagnostics', () => {
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER PERSON'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 20.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '5 pax'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 100.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 100.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
     assert.equal(diagnostics.appliedRateSource, 'Jerash Visit');
     assert.equal(diagnostics.policyEligible, 'No');
     assert.equal(diagnostics.policySkippedBecause, 'Activities preserve catalog or planner sell pricing.');
@@ -193,9 +201,11 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.pricingSource, 'Activity catalog');
     assert.equal(diagnostics.pricingMode, 'PER GROUP');
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER GROUP'));
-    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 70.50'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 98.70'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Units' && row.value === '1 group unit'));
-    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 70.50'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 98.70'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 98.70'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
   });
 
   it('shows ticket unit price and aggregated total price separately', () => {
@@ -222,7 +232,9 @@ describe('pricing diagnostics', () => {
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pricing basis' && row.value === 'PER PERSON'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 70.50'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Pax' && row.value === '2 pax'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Saved total' && row.value === 'USD 141.00'));
     assert.ok(diagnostics.rows.some((row) => row.label === 'Calculated total' && row.value === 'USD 141.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Status' && row.value === 'Synced'));
   });
 
   it('reports external package diagnostics', () => {
@@ -269,7 +281,7 @@ describe('pricing diagnostics', () => {
     assert.ok(quoteServicePlannerSource.includes('aria-label="Pricing diagnostics"'));
     assert.ok(quoteServicePlannerSource.includes('<span>Pricing diagnostics</span>'));
     assert.ok(quoteServicePlannerSource.includes('const pricingDiagnostics = buildPricingDiagnostics(item);'));
-    assert.ok(quoteServicePlannerSource.includes("['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Calculated total'].includes(row.label)"));
+    assert.ok(quoteServicePlannerSource.includes("['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Saved total', 'Calculated total', 'Status'].includes(row.label)"));
     assert.ok(quoteItemCardSource.includes('buildPricingDiagnostics(currentItem)'));
     assert.ok(quoteServicePlannerSource.includes('buildPricingDiagnostics(item)'));
   });

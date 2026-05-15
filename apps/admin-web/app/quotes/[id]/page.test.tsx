@@ -825,8 +825,25 @@ describe('quote detail page regression', () => {
       'selectedService?.id || filteredServices[0]?.id || serviceId',
       "throw new Error('Hotel catalog service not found for this stay.');",
       'serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId',
-      'roomCount: isTransportService || isGuideService || isMealService || isExternalPackageService ? undefined : Number(roomCount)',
+      'roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount)',
     ]);
+  });
+
+  it('renders quote item drawer fields by service type instead of generic room-night fields', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'Ticket pricing',
+      'Pax, unit, and markup',
+      'Ticket items use ticket basis and pax. Room and night fields are not used.',
+      'value={ticketPricingBasis.replace(/_/g, \' \')}',
+      'roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount)',
+      'nightCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(nightCount)',
+      'value={activityPricingBasis.replace(/_/g, \' \')}',
+      "resolvedTransportPricing.pricingMode === 'capacity_unit'",
+    ]);
+
+    assert.equal(quoteItemsFormSource.includes('{hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? ('), false);
   });
 
   it('keeps Smart Transport Picker suggestions to the smallest fitting capacity', () => {
