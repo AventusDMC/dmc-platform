@@ -28,6 +28,7 @@ const quoteRoomingPanelSource = readFileSync(new URL('./QuoteRoomingPanel.tsx', 
 const quoteAutoItineraryBuilderSource = readFileSync(new URL('./QuoteAutoItineraryBuilder.tsx', import.meta.url), 'utf8');
 const convertToBookingButtonSource = readFileSync(new URL('./ConvertToBookingButton.tsx', import.meta.url), 'utf8');
 const convertToBookingApiRouteSource = readFileSync(new URL('../../api/quotes/[id]/convert-to-booking/route.ts', import.meta.url), 'utf8');
+const quoteReadinessSource = readFileSync(new URL('./quote-readiness.ts', import.meta.url), 'utf8');
 const cancelQuoteButtonSource = readFileSync(new URL('./CancelQuoteButton.tsx', import.meta.url), 'utf8');
 const inlineEntityActionsSource = readFileSync(new URL('../../components/InlineEntityActions.tsx', import.meta.url), 'utf8');
 const rowDetailsPanelSource = readFileSync(new URL('../../components/RowDetailsPanel.tsx', import.meta.url), 'utf8');
@@ -102,12 +103,31 @@ describe('quote detail page regression', () => {
   it('prevents cancelled quotes from conversion and mutation affordances', () => {
     expectSourceContains(pageSource, [
       "const quoteCancelled = quote.status === 'CANCELLED';",
-      'convertBlocked || quoteCancelled ? (',
+      "const quoteAcceptedForConversion = quote.status === 'ACCEPTED';",
+      "Accept the quote before converting to booking.",
+      "Save/accept a version before converting.",
+      'convertBlocked || quoteReadOnly ? (',
       '<button type="button" className="secondary-button" disabled>Convert</button>',
       'Cancelled quotes cannot be converted to bookings.',
-      '<ReviseQuoteButton quoteId={quote.id} disabled={quoteCancelled} />',
-      '{!quoteCancelled ? <CancelQuoteButton quoteId={quote.id} /> : null}',
+      '<ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />',
+      '{!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}',
       'This quote is cancelled. Status changes and booking conversion are disabled.',
+    ]);
+  });
+
+  it('uses planner day links for readiness and warns on duplicate priced services without deleting them', () => {
+    expectSourceContains(pageSource, [
+      'const plannerDayIdByQuoteItemId = new Map<string, string>();',
+      "plannerDayIdByQuoteItemId.set(dayItem.quoteServiceId, day.id);",
+      "const isAssignedToPlannerDay = (item: Pick<QuoteItem, 'id' | 'itineraryId'>) => Boolean(item.itineraryId || plannerDayIdByQuoteItemId.has(item.id));",
+      'const sharedUnassignedItems = quote.quoteItems.filter((item) => !isAssignedToPlannerDay(item));',
+      'const readiness = buildQuoteReadinessModel(readinessQuote, buildStepHref);',
+    ]);
+
+    expectSourceContains(quoteReadinessSource, [
+      "'possible-duplicate-priced-service'",
+      'function findPossibleDuplicatePricedServices(items: QuoteReadinessItem[])',
+      'Review the duplicate priced rows before conversion. This warning is non-blocking and no rows are removed automatically.',
     ]);
   });
 

@@ -61,6 +61,9 @@ export type QuoteReadinessItem = {
   hotel?: {
     name: string;
   } | null;
+  pricingDescription?: string | null;
+  packageTemplateComponentId?: string | null;
+  excursionTemplateComponentId?: string | null;
 };
 
 export type QuoteReadinessDay = {
@@ -104,6 +107,7 @@ export type QuoteReadinessIssue = {
     | 'service-unassigned-day'
     | 'service-low-margin'
     | 'service-negative-margin'
+    | 'possible-duplicate-priced-service'
     | 'service-missing-currency'
     | 'service-date-outside-trip'
     | 'service-operational-details-missing'
@@ -304,6 +308,40 @@ function isLowMargin(item: Pick<QuoteReadinessItem, 'totalCost' | 'totalSell'>) 
 
 function isZeroSell(item: Pick<QuoteReadinessItem, 'totalSell'>) {
   return item.totalSell <= 0;
+}
+
+function buildPossibleDuplicateServiceKey(item: QuoteReadinessItem) {
+  if (item.totalCost <= 0 && item.totalSell <= 0) {
+    return null;
+  }
+
+  return [
+    item.itineraryId || 'unassigned',
+    item.packageTemplateComponentId || item.excursionTemplateComponentId || item.serviceId || item.activityId || item.ticketRateVariantId || 'manual',
+    item.service?.name || item.hotel?.name || item.externalPackageName || 'service',
+    item.pricingDescription || '',
+    item.paxCount ?? '',
+    Number(item.totalCost || 0).toFixed(2),
+    Number(item.totalSell || 0).toFixed(2),
+  ].join('|');
+}
+
+function findPossibleDuplicatePricedServices(items: QuoteReadinessItem[]) {
+  const groups = new Map<string, QuoteReadinessItem[]>();
+
+  for (const item of items) {
+    const key = buildPossibleDuplicateServiceKey(item);
+
+    if (!key) {
+      continue;
+    }
+
+    const group = groups.get(key) || [];
+    group.push(item);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].filter((group) => group.length > 1);
 }
 
 function normalizeDateOnly(value: string | null | undefined) {
@@ -772,6 +810,25 @@ export function buildQuoteReadinessModel(
         action: { type: 'focus-pricing', step: 'pricing', href, focus: 'margin-risk' },
       });
     }
+  }
+
+  for (const duplicates of findPossibleDuplicatePricedServices(allItems)) {
+    const firstItem = duplicates[0];
+    const href = buildIssueHref(buildStepHref, 'services', { day: firstItem.itineraryId || undefined });
+    warnings.push({
+      id: `item-duplicate-priced-${firstItem.id}`,
+      severity: 'warning',
+      code: 'possible-duplicate-priced-service',
+      title: `Possible duplicate priced service: ${getQuoteReadinessItemName(firstItem)} appears ${duplicates.length} times`,
+      description: 'Review the duplicate priced rows before conversion. This warning is non-blocking and no rows are removed automatically.',
+      href,
+      source: 'Service Planner',
+      itemId: firstItem.id,
+      dayId: firstItem.itineraryId || undefined,
+      action: firstItem.itineraryId
+        ? { type: 'focus-day', step: 'services', href, dayId: firstItem.itineraryId }
+        : { type: 'navigate', step: 'services', href },
+    });
   }
 
   if (quote.pricingMode === 'SLAB' && (quote.pricingSlabs.length === 0 || quote.scenarios.length === 0)) {

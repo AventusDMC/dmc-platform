@@ -2025,7 +2025,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const reviewReadyState = readiness.statusLabel;
   const reviewWarningCount = reviewWarnings.length;
   const reviewCleanupCount = reviewCleanupItems.length;
-  const convertBlocked = reviewBlockingIssues.length > 0;
+  const quoteAcceptedForConversion = quote.status === 'ACCEPTED';
+  const conversionRequirementMessage = quoteCancelled
+    ? 'Cancelled quotes cannot be converted to bookings.'
+    : quote.isLatestRevision === false
+      ? 'Only the latest quote revision can be converted to booking.'
+      : !quoteAcceptedForConversion
+        ? 'Accept the quote before converting to booking.'
+        : !quote.acceptedVersionId
+          ? 'Save/accept a version before converting.'
+          : null;
+  const conversionReadinessMessage = reviewBlockingIssues.length > 0 ? 'Resolve blocking issues before conversion.' : null;
+  const convertBlocked = Boolean(conversionRequirementMessage || conversionReadinessMessage);
+  const conversionBlockedMessage = conversionRequirementMessage || conversionReadinessMessage;
   const itineraryExists = quote.itineraries.length > 0 || quoteItinerary.days.length > 0;
   const servicesReadyForNext = itineraryExists;
   const previewReadyForNext = readiness.blockers.length === 0;
@@ -2213,14 +2225,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : null}
               {quote.booking ? (
                 <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
-              ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                convertBlocked || quoteReadOnly ? (
+              ) : convertBlocked || quoteReadOnly ? (
+                <div className="section-stack">
                   <button type="button" className="secondary-button" disabled>Convert</button>
-                ) : (
-                  <ConvertToBookingButton quoteId={quote.id} label="Convert" />
-                )
+                  {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
+                </div>
               ) : (
-                <button type="button" className="secondary-button" disabled>Convert</button>
+                <ConvertToBookingButton quoteId={quote.id} label="Convert" />
               )}
               <ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />
               {!quoteReadOnly ? <CancelQuoteButton quoteId={quote.id} /> : null}
@@ -2960,33 +2971,15 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
-                  ) : quoteReadOnly ? (
+                  ) : quoteReadOnly || convertBlocked ? (
                     <div className="section-stack">
                       <button type="button" className="secondary-button" disabled>
                         Convert to booking
                       </button>
-                      <p className="detail-copy">
-                        {quoteCancelled ? 'Cancelled quotes cannot be converted to bookings.' : 'Only the latest quote revision can be converted to booking.'}
-                      </p>
+                      {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
                     </div>
-                  ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                    convertBlocked ? (
-                      <div className="section-stack">
-                        <button type="button" className="secondary-button" disabled>
-                          Convert to booking
-                        </button>
-                        <p className="form-error">Resolve blocking issues before conversion.</p>
-                      </div>
-                    ) : (
-                      <ConvertToBookingButton quoteId={quote.id} />
-                    )
                   ) : (
-                    <div className="section-stack">
-                      <button type="button" className="secondary-button" disabled>
-                        Convert to booking
-                      </button>
-                      <p className="detail-copy">Mark the quote as accepted before conversion.</p>
-                    </div>
+                    <ConvertToBookingButton quoteId={quote.id} />
                   )}
                   {quote.invoice ? (
                     <Link href={`/invoices/${quote.invoice.id}`} className="secondary-button">
@@ -3245,16 +3238,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
-                    ) : quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED' ? (
-                      convertBlocked || quoteReadOnly ? (
+                    ) : convertBlocked || quoteReadOnly ? (
+                      <div className="section-stack">
                         <button type="button" className="primary-button" disabled>Convert blocked</button>
-                      ) : (
-                        <ConvertToBookingButton quoteId={quote.id} />
-                      )
+                        {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
+                      </div>
                     ) : (
-                      <button type="button" className="primary-button" disabled>
-                        Convert to booking
-                      </button>
+                      <ConvertToBookingButton quoteId={quote.id} />
                     )}
                   </div>
                 }
