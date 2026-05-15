@@ -9804,6 +9804,166 @@ th.money-cell {
   gap: 1rem;
 }
 
+.operations-critical-kpis {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.operations-kpi-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.1rem 1.15rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  background: #FFFFFF;
+  box-shadow: 0 14px 32px rgba(30, 27, 24, 0.05);
+}
+
+.operations-kpi-card span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(30, 27, 24, 0.62);
+}
+
+.operations-kpi-card strong {
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--text-strong);
+}
+
+.operations-kpi-card p {
+  margin: 0;
+  color: rgba(30, 27, 24, 0.68);
+  line-height: 1.4;
+}
+
+.operations-kpi-card-blocker {
+  border-left: 5px solid #b91c1c;
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.92), #FFFFFF);
+}
+
+.operations-kpi-card-warning {
+  border-left: 5px solid #b45309;
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.94), #FFFFFF);
+}
+
+.operations-department-card {
+  gap: 1.15rem;
+  border-radius: 0.85rem;
+  border-left: 5px solid rgba(31, 154, 207, 0.5);
+}
+
+.operations-department-card-blocker {
+  border-left-color: #b91c1c;
+}
+
+.operations-department-card-warning {
+  border-left-color: #b45309;
+}
+
+.operations-department-card-ready {
+  border-left-color: #15803d;
+}
+
+.operations-card-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.operations-priority-action {
+  border-color: rgba(31, 154, 207, 0.28);
+  background: rgba(31, 154, 207, 0.1);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.operations-status-pill {
+  border: 1px solid currentColor;
+}
+
+.operations-status-pill-blocker,
+.operations-queue-metric-blocker {
+  background: rgba(254, 242, 242, 0.95);
+  color: #b91c1c;
+}
+
+.operations-status-pill-warning,
+.operations-queue-metric-warning {
+  background: rgba(255, 251, 235, 0.96);
+  color: #b45309;
+}
+
+.operations-status-pill-ready,
+.operations-queue-metric-ready {
+  background: rgba(240, 253, 244, 0.96);
+  color: #15803d;
+}
+
+.operations-status-pill-info {
+  background: rgba(239, 246, 255, 0.96);
+  color: #1d4ed8;
+}
+
+.operations-queue-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operations-queue-metric {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+}
+
+.operations-queue-metric strong {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.operations-queue-metric span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: currentColor;
+}
+
+.operations-state-strip,
+.operations-room-block-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.operations-room-block-strip div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 120px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(31, 154, 207, 0.12);
+  border-radius: 0.7rem;
+  background: rgba(239, 246, 255, 0.64);
+}
+
+.operations-room-block-strip span {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(30, 27, 24, 0.58);
+}
+
+.operations-queue-disclosure {
+  background: rgba(248, 250, 252, 0.78);
+}
+
 .operations-issue-list {
   display: grid;
   gap: 0.75rem;
@@ -9818,9 +9978,67 @@ th.money-cell {
   background: #FFFFFF;
 }
 
+.operations-issue-item-actionable {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+.operations-alert-item {
+  border-left: 4px solid #b91c1c;
+  background: rgba(254, 242, 242, 0.72);
+}
+
 .operations-issue-item p {
   margin: 0;
   color: rgba(30, 27, 24, 0.72);
+}
+
+.operations-readiness-heatmap {
+  display: grid;
+  gap: 1rem;
+}
+
+.operations-heatmap-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.operations-heatmap-cell {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 96px;
+  padding: 0.9rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(30, 27, 24, 0.08);
+  background: #FFFFFF;
+  color: inherit;
+  text-decoration: none;
+}
+
+.operations-heatmap-cell strong {
+  color: var(--text-strong);
+}
+
+.operations-heatmap-cell span {
+  color: rgba(30, 27, 24, 0.66);
+  font-size: 0.82rem;
+}
+
+.operations-heatmap-cell-blocker {
+  border-color: rgba(185, 28, 28, 0.22);
+  background: rgba(254, 242, 242, 0.82);
+}
+
+.operations-heatmap-cell-warning {
+  border-color: rgba(180, 83, 9, 0.22);
+  background: rgba(255, 251, 235, 0.86);
+}
+
+.operations-heatmap-cell-ready {
+  border-color: rgba(21, 128, 61, 0.2);
+  background: rgba(240, 253, 244, 0.86);
 }
 
 .operations-filter-row {

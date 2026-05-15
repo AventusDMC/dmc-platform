@@ -7,7 +7,7 @@ const credentials = {
   password: 'admin123',
 };
 
-const routes = ['/leads', '/quotes', '/bookings', '/hotels', '/suppliers', '/contacts', '/companies', '/transport', '/users'];
+const routes = ['/leads', '/quotes', '/bookings', '/operations', '/hotels', '/suppliers', '/contacts', '/companies', '/transport', '/users'];
 const loginSuccessPathPattern = /^\/(?:admin\/dashboard|dashboard)$/;
 
 async function login(page: Page) {

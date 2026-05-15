@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 const source = readFileSync(join(process.cwd(), 'app/operations/page.tsx'), 'utf8');
+const cssSource = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
 
 describe('operations dashboard department workspace', () => {
   it('renders the hotel reservation workflow states', () => {
@@ -61,5 +62,29 @@ describe('operations dashboard department workspace', () => {
 
     assert.match(source, /buildOperationalAlerts/);
     assert.match(source, /hasMissingTiming/);
+  });
+
+  it('keeps UX polish affordances for scanability and actionability', () => {
+    for (const token of [
+      'operations-critical-kpis',
+      'operations-department-card',
+      'operations-queue-metrics',
+      'operations-queue-disclosure',
+      'operations-priority-action',
+      'operations-readiness-heatmap',
+      'operations-heatmap-cell',
+    ]) {
+      assert.match(source, new RegExp(token));
+      assert.match(cssSource, new RegExp(`\\.${token}`));
+    }
+
+    for (const colorClass of [
+      'operations-status-pill-blocker',
+      'operations-status-pill-warning',
+      'operations-status-pill-ready',
+      'operations-status-pill-info',
+    ]) {
+      assert.match(cssSource, new RegExp(`\\.${colorClass}`));
+    }
   });
 });

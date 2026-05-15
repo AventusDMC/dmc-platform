@@ -838,6 +838,65 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
   return dashboards;
 }
 
+function getDepartmentTone(department: ReturnType<typeof buildDepartmentDashboards>[number]) {
+  if (department.overdueItems > 0 || department.key === 'hotel-reservations' && (department.releaseDeadlineCount || 0) > 0) {
+    return 'blocker';
+  }
+
+  if (department.pendingItems > 0 || department.reconfirmationDue > 0 || department.voucherPending > 0 || department.missingRooming > 0 || department.missingTimings > 0) {
+    return 'warning';
+  }
+
+  return 'ready';
+}
+
+function getDepartmentPrimaryAction(department: ReturnType<typeof buildDepartmentDashboards>[number], currentFilters: Parameters<typeof buildOperationsHref>[0]) {
+  if (department.key === 'supplier-confirmations') {
+    return {
+      label: 'Confirm supplier',
+      href: buildOperationsHref(currentFilters, { report: 'pending_confirmations', supplierConfirmation: 'awaiting' }),
+    };
+  }
+
+  if (department.key === 'documentation-vouchers') {
+    return {
+      label: 'Send voucher',
+      href: '/bookings',
+    };
+  }
+
+  if (department.key === 'passenger-rooming') {
+    return {
+      label: 'Resolve rooming',
+      href: '/bookings',
+    };
+  }
+
+  if (department.key === 'hotel-reservations') {
+    return {
+      label: 'Reconfirm hotel',
+      href: buildOperationsHref(currentFilters, { report: 'pending_confirmations', supplierConfirmation: 'overdue' }),
+    };
+  }
+
+  return {
+    label: 'Open queue',
+    href: buildOperationsHref(currentFilters, { groupBy: 'booking' }),
+  };
+}
+
+function getBookingReadinessTone(booking: Booking) {
+  if (booking.operations.badge.count > 0 || booking.rooming.badge.count > 0) {
+    return 'blocker';
+  }
+
+  if (booking.finance.badge.count > 0) {
+    return 'warning';
+  }
+
+  return 'ready';
+}
+
 function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: OperationsDashboard, now = Date.now()) {
   const hotelReleaseAlerts = rows
     .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType))
@@ -847,6 +906,20 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
     .map((entry) => ({
       id: `hotel-release-${entry.row.id}`,
       label: 'Hotel release deadline approaching',
+      actionLabel: 'Reconfirm hotel',
+      actionHref: buildOperationsHref(
+        {
+          serviceStatus: 'all',
+          confirmationStatus: 'all',
+          supplierConfirmation: 'overdue',
+          bookingStatus: 'all',
+          serviceTypeScope: 'all',
+          warning: 'all',
+          report: 'pending_confirmations',
+          groupBy: 'booking',
+        },
+        {},
+      ),
       detail: `${entry.row.bookingRef} - ${entry.row.description}${
         entry.block.releaseDeadline ? ` | ${formatDateTime(entry.block.releaseDeadline)}` : ''
       }`,
@@ -857,6 +930,8 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
     .map((row) => ({
       id: `supplier-reconfirmation-${row.id}`,
       label: 'Supplier reconfirmation overdue',
+      actionLabel: 'Confirm supplier',
+      actionHref: `/bookings/${row.bookingId}`,
       detail: `${row.bookingRef} - ${row.description}${row.reconfirmationDueAt ? ` | ${formatDateTime(row.reconfirmationDueAt)}` : ''}`,
     }));
   const roomingAlerts = (operationsDashboard.alerts.missingRooming?.items || [])
@@ -864,6 +939,8 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
     .map((item) => ({
       id: `rooming-${item.id}`,
       label: 'Rooming missing before arrival',
+      actionLabel: 'Resolve rooming',
+      actionHref: item.bookingId ? `/bookings/${item.bookingId}?tab=rooming` : '/bookings',
       detail: item.bookingRef || item.title || item.description || item.id,
     }));
   const transportTimingAlerts = rows
@@ -872,6 +949,8 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
     .map((row) => ({
       id: `transport-timing-${row.id}`,
       label: 'Transport timing incomplete',
+      actionLabel: 'Open booking',
+      actionHref: `/bookings/${row.bookingId}`,
       detail: `${row.bookingRef} - ${row.description}`,
     }));
 
@@ -1404,6 +1483,14 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
     vouchersPending: operationsDashboard.operationalReadiness?.missingVouchers ?? operationsDashboard.alerts.missingVouchers?.count ?? 0,
     roomingPending: operationsDashboard.operationalReadiness?.missingRooming ?? operationsDashboard.alerts.missingRooming?.count ?? 0,
   };
+  const readinessHeatmapRows = activeBookings
+    .map((booking) => ({
+      booking,
+      tone: getBookingReadinessTone(booking),
+      totalIssues: booking.operations.badge.count + booking.rooming.badge.count + booking.finance.badge.count,
+    }))
+    .sort((left, right) => right.totalIssues - left.totalIssues)
+    .slice(0, 12);
 
   return (
     <main className="page">
@@ -1539,65 +1626,71 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
           ))}
         </section>
 
-        <SummaryStrip
-          items={[
-            { id: 'blocked-rooms', label: 'Blocked rooms', value: String(dashboardKpis.blockedRooms), helper: 'Hotel room blocks needing action' },
-            { id: 'waitlisted-hotels', label: 'Waitlisted hotels', value: String(dashboardKpis.waitlistedHotels), helper: 'Rejected or unassigned hotel reservations' },
-            { id: 'overdue-confirmations', label: 'Overdue confirmations', value: String(dashboardKpis.overdueConfirmations), helper: 'Supplier deadlines already passed' },
-            { id: 'unreleased-room-blocks', label: 'Unreleased room blocks', value: String(dashboardKpis.unreleasedRoomBlocks), helper: 'Release deadlines approaching or overdue' },
-            { id: 'vouchers-pending', label: 'Vouchers pending', value: String(dashboardKpis.vouchersPending), helper: 'Documentation still pending' },
-            { id: 'rooming-pending', label: 'Rooming pending', value: String(dashboardKpis.roomingPending), helper: 'Passenger/rooming actions open' },
-          ]}
-        />
+        <section className="operations-critical-kpis" aria-label="Critical operations KPIs">
+          {[
+            { id: 'blocked-rooms', label: 'Blocked rooms', value: dashboardKpis.blockedRooms, helper: 'Hotel room blocks needing action', tone: 'blocker' },
+            { id: 'overdue-confirmations', label: 'Overdue confirmations', value: dashboardKpis.overdueConfirmations, helper: 'Supplier deadlines already passed', tone: 'blocker' },
+            { id: 'unreleased-room-blocks', label: 'Unreleased room blocks', value: dashboardKpis.unreleasedRoomBlocks, helper: 'Release deadlines approaching', tone: 'warning' },
+            { id: 'waitlisted-hotels', label: 'Waitlisted hotels', value: dashboardKpis.waitlistedHotels, helper: 'Rejected or unassigned hotels', tone: 'warning' },
+            { id: 'vouchers-pending', label: 'Vouchers pending', value: dashboardKpis.vouchersPending, helper: 'Documentation still pending', tone: 'warning' },
+            { id: 'rooming-pending', label: 'Rooming pending', value: dashboardKpis.roomingPending, helper: 'Passenger/rooming actions open', tone: 'warning' },
+          ].map((item) => (
+            <article key={item.id} className={`operations-kpi-card operations-kpi-card-${item.tone}`}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              <p>{item.helper}</p>
+            </article>
+          ))}
+        </section>
 
         <section className="operations-content-grid" aria-label="Department execution workspaces">
-          {departmentDashboards.map((department) => (
-            <article key={department.key} className="detail-card operations-exception-card">
+          {departmentDashboards.map((department) => {
+            const departmentTone = getDepartmentTone(department);
+            const primaryAction = getDepartmentPrimaryAction(department, currentFilters);
+
+            return (
+            <article key={department.key} className={`detail-card operations-exception-card operations-department-card operations-department-card-${departmentTone}`}>
               <div className="operations-card-head">
                 <div>
                   <p className="eyebrow">Department dashboard</p>
                   <h2>{DEPARTMENT_LABELS[department.key]}</h2>
                 </div>
-                <span className={department.pendingItems > 0 ? 'dashboard-pill dashboard-pill-alert' : 'dashboard-pill'}>
-                  {department.pendingItems > 0 ? `${department.pendingItems} pending` : 'Clear'}
-                </span>
+                <div className="operations-card-actions">
+                  <span className={`dashboard-pill operations-status-pill operations-status-pill-${departmentTone}`}>
+                    {departmentTone === 'blocker' ? 'Blocker' : departmentTone === 'warning' ? 'Pending' : 'Ready'}
+                  </span>
+                  <Link href={primaryAction.href} className="secondary-button operations-priority-action">
+                    {primaryAction.label}
+                  </Link>
+                </div>
               </div>
-              <section className="operations-summary-list" aria-label={`${DEPARTMENT_LABELS[department.key]} operational queues`}>
-                <div>
-                  <span>Pending items</span>
-                  <strong>{department.pendingItems}</strong>
-                </div>
-                <div>
-                  <span>Overdue items</span>
-                  <strong>{department.overdueItems}</strong>
-                </div>
-                <div>
-                  <span>Reconfirmation due</span>
-                  <strong>{department.reconfirmationDue}</strong>
-                </div>
-                <div>
-                  <span>Voucher pending</span>
-                  <strong>{department.voucherPending}</strong>
-                </div>
-                <div>
-                  <span>Missing rooming</span>
-                  <strong>{department.missingRooming}</strong>
-                </div>
-                <div>
-                  <span>Missing timings</span>
-                  <strong>{department.missingTimings}</strong>
-                </div>
+              <section className="operations-queue-metrics" aria-label={`${DEPARTMENT_LABELS[department.key]} operational queues`}>
+                {[
+                  { label: 'Pending items', value: department.pendingItems, tone: department.pendingItems > 0 ? 'warning' : 'ready' },
+                  { label: 'Overdue items', value: department.overdueItems, tone: department.overdueItems > 0 ? 'blocker' : 'ready' },
+                  { label: 'Reconfirmation due', value: department.reconfirmationDue, tone: department.reconfirmationDue > 0 ? 'blocker' : 'ready' },
+                  { label: 'Voucher pending', value: department.voucherPending, tone: department.voucherPending > 0 ? 'warning' : 'ready' },
+                  { label: 'Missing rooming', value: department.missingRooming, tone: department.missingRooming > 0 ? 'warning' : 'ready' },
+                  { label: 'Missing timings', value: department.missingTimings, tone: department.missingTimings > 0 ? 'warning' : 'ready' },
+                ].map((metric) => (
+                  <div key={metric.label} className={`operations-queue-metric operations-queue-metric-${metric.tone}`}>
+                    <strong>{metric.value}</strong>
+                    <span>{metric.label}</span>
+                  </div>
+                ))}
               </section>
               {department.key === 'hotel-reservations' ? (
                 <>
-                  <div className="operations-filter-row" aria-label="Hotel reservation workflow states">
+                  <div className="operations-state-strip" aria-label="Hotel reservation workflow states">
                     {HOTEL_RESERVATION_STATES.map((state) => (
-                      <span key={state} className="dashboard-pill">
+                      <span key={state} className={`dashboard-pill operations-status-pill operations-status-pill-${
+                        state === 'Blocked' || state === 'Waitlist' ? 'blocker' : state === 'Tentative' || state === 'Requested' ? 'warning' : state === 'Confirmed' || state === 'Released' ? 'ready' : 'info'
+                      }`}>
                         {state}: {department.hotelStateCounts?.[state] ?? 0}
                       </span>
                     ))}
                   </div>
-                  <section className="operations-summary-list" aria-label="Room block management">
+                  <section className="operations-room-block-strip" aria-label="Room block management">
                     <div>
                       <span>Room block counts</span>
                       <strong>{department.roomBlockCount ?? 0}</strong>
@@ -1614,21 +1707,31 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                 </>
               ) : null}
               {department.examples.length > 0 ? (
-                <div className="operations-issue-list">
-                  {department.examples.map((item) => (
-                    <div key={item.id} className="operations-issue-item">
-                      <div>
-                        <strong>{item.label}</strong>
-                        <p>{item.detail}</p>
+                <details className="operations-collapsible-panel operations-queue-disclosure" open={departmentTone === 'blocker'}>
+                  <summary className="operations-collapsible-summary">
+                    Queue details
+                    <span>{department.examples.length} shown</span>
+                  </summary>
+                  <div className="operations-issue-list">
+                    {department.examples.map((item) => (
+                      <div key={item.id} className="operations-issue-item operations-issue-item-actionable">
+                        <div>
+                          <strong>{item.label}</strong>
+                          <p>{item.detail}</p>
+                        </div>
+                        <Link href={primaryAction.href} className="dashboard-issue-link">
+                          {primaryAction.label}
+                        </Link>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </details>
               ) : (
                 <p className="detail-copy">No open queue rows for this department in the current filter slice.</p>
               )}
             </article>
-          ))}
+            );
+          })}
         </section>
 
         {operationalAlerts.length > 0 ? (
@@ -1641,16 +1744,39 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
             </div>
             <div className="operations-issue-list">
               {operationalAlerts.map((alert) => (
-                <div key={alert.id} className="operations-issue-item">
+                <div key={alert.id} className="operations-issue-item operations-issue-item-actionable operations-alert-item">
                   <div>
                     <strong>{alert.label}</strong>
                     <p>{alert.detail}</p>
                   </div>
+                  <Link href={alert.actionHref} className="secondary-button operations-priority-action">
+                    {alert.actionLabel}
+                  </Link>
                 </div>
               ))}
             </div>
           </section>
         ) : null}
+
+        <section className="detail-card operations-readiness-heatmap" aria-label="Booking readiness heatmap">
+          <div className="operations-card-head">
+            <div>
+              <p className="eyebrow">Readiness Heatmap</p>
+              <h2>Booking readiness at a glance</h2>
+            </div>
+            <span className="dashboard-pill operations-status-pill operations-status-pill-info">{readinessHeatmapRows.length} bookings</span>
+          </div>
+          <div className="operations-heatmap-grid">
+            {readinessHeatmapRows.map(({ booking, tone }) => (
+              <Link key={booking.id} href={`/bookings/${booking.id}`} className={`operations-heatmap-cell operations-heatmap-cell-${tone}`}>
+                <strong>{booking.bookingRef}</strong>
+                <span>Ops {booking.operations.badge.count}</span>
+                <span>Rooming {booking.rooming.badge.count}</span>
+                <span>Finance {booking.finance.badge.count}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
 
         <section className="operations-summary-list" aria-label="Operations alerts">
           <div>
