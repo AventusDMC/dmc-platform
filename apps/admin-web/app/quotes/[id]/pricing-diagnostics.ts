@@ -107,7 +107,9 @@ type PricingBreakdownRows = {
   pax: string;
   units: string;
   nights: string | null;
+  savedTotal: string;
   calculatedTotal: string;
+  syncStatus: string;
 };
 
 function normalize(value: string | null | undefined) {
@@ -303,12 +305,36 @@ function formatDiagnosticMoney(value: number | null | undefined, currency: strin
   return `${currency || 'USD'} ${Number(value).toFixed(2)}`;
 }
 
+function roundMoney(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function getSavedDisplayTotal(item: PricingDiagnosticQuoteItem) {
+  if (hasPositiveValue(item.totalSell)) return Number(item.totalSell);
+  if (hasNumericValue(item.totalCost)) return Number(item.totalCost);
+  if (hasNumericValue(item.finalCost)) return Number(item.finalCost);
+  if (hasNumericValue(item.baseCost)) return Number(item.baseCost);
+  return null;
+}
+
+function parseRateAmountFromDescription(description: string | null | undefined) {
+  const match = String(description || '').match(/\bRate\s+([A-Z]{3})\s+([0-9]+(?:\.[0-9]+)?)/i);
+  return match ? Number(match[2]) : null;
+}
+
 function buildPricingBreakdownRows(item: PricingDiagnosticQuoteItem, mode: string | null | undefined, rate?: PricingDiagnosticRate | null): PricingBreakdownRows {
-  const totalPrice = hasNumericValue(item.totalCost) ? Number(item.totalCost) : hasNumericValue(item.finalCost) ? Number(item.finalCost) : hasNumericValue(item.baseCost) ? Number(item.baseCost) : null;
+  const savedTotal = getSavedDisplayTotal(item);
   const unitCount = Math.max(1, getUnitCountForMode(mode, item, rate));
-  const unitPrice = hasNumericValue(totalPrice) ? Number((Number(totalPrice) / unitCount).toFixed(2)) : null;
+  const parsedRateAmount = parseRateAmountFromDescription(item.pricingDescription);
+  const unitPrice = hasNumericValue(parsedRateAmount)
+    ? parsedRateAmount
+    : hasNumericValue(savedTotal)
+      ? roundMoney(Number(savedTotal) / unitCount)
+      : null;
+  const calculatedTotal = hasNumericValue(unitPrice) ? roundMoney(Number(unitPrice) * unitCount) : null;
   const currency = item.quoteCurrency || item.currency || item.costCurrency || 'USD';
   const nights = getPositiveNumber(item.nightCount, 1);
+  const isSynced = hasNumericValue(savedTotal) && hasNumericValue(calculatedTotal) && Math.abs(Number(savedTotal) - Number(calculatedTotal)) <= 0.01;
 
   return {
     basis: formatPricingBasis(mode),
@@ -316,7 +342,9 @@ function buildPricingBreakdownRows(item: PricingDiagnosticQuoteItem, mode: strin
     pax: `${getPositiveNumber(item.paxCount, 1)} pax`,
     units: formatOperationalUnits(mode, item, rate),
     nights: normalizeCode(mode).includes('night') || normalizeCode(mode) === 'per_night' || nights > 1 ? String(nights) : null,
-    calculatedTotal: formatDiagnosticMoney(totalPrice, currency),
+    savedTotal: formatDiagnosticMoney(savedTotal, currency),
+    calculatedTotal: formatDiagnosticMoney(calculatedTotal, currency),
+    syncStatus: isSynced ? 'Synced' : 'Mismatch',
   };
 }
 
@@ -357,7 +385,9 @@ function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>, pricingBreakdo
     { label: 'Pax', value: pricingBreakdown.pax },
     { label: 'Units', value: pricingBreakdown.units },
     ...(pricingBreakdown.nights ? [{ label: 'Nights', value: pricingBreakdown.nights }] : []),
+    { label: 'Saved total', value: pricingBreakdown.savedTotal },
     { label: 'Calculated total', value: pricingBreakdown.calculatedTotal },
+    { label: 'Status', value: pricingBreakdown.syncStatus },
     { label: 'Rate', value: diagnostics.appliedRateSource },
     { label: 'Fallback', value: diagnostics.fallbackStatus },
     { label: 'Override', value: diagnostics.overrideStatus },

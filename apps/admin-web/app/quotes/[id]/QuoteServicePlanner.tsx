@@ -651,6 +651,23 @@ function toDateInputValue(value: string | null | undefined) {
   return value ? value.slice(0, 10) : '';
 }
 
+function isPerPersonHotelQuoteItem(item: Pick<QuoteItem, 'hotelId' | 'hotel' | 'pricingDescription'>) {
+  if (!item.hotelId && !item.hotel) {
+    return false;
+  }
+
+  const description = item.pricingDescription?.toLowerCase() || '';
+  return description.includes(' per person') || /\bx\s*\d+\s*pax\b/.test(description);
+}
+
+function getInitialQuoteItemPaxCount(item: QuoteItem, totalPax: number) {
+  if (isPerPersonHotelQuoteItem(item)) {
+    return Math.max(1, totalPax || item.paxCount || 1);
+  }
+
+  return item.paxCount ?? totalPax;
+}
+
 function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCount: number, nightCount: number): QuoteItemInitialValues {
   const guideValues = parseGuideInitialValues(item.pricingDescription);
 
@@ -663,7 +680,7 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     markupPercent: String(item.markupPercent),
     markupAmount: item.markupAmount === null || item.markupAmount === undefined ? '' : String(item.markupAmount),
     sellPrice: item.sellPrice === null || item.sellPrice === undefined ? '' : String(item.sellPrice),
-    paxCount: String(item.paxCount ?? totalPax),
+    paxCount: String(getInitialQuoteItemPaxCount(item, totalPax)),
     participantCount: String(item.participantCount ?? totalPax),
     adultCount: String(item.adultCount ?? 0),
     childCount: String(item.childCount ?? 0),
@@ -2245,7 +2262,7 @@ function QuoteServiceCard({
       </div>
       <div className={`${laneStyles.pricingSummary} quote-service-card-pricing-summary`} aria-label="Pricing diagnostics">
         {pricingDiagnostics.rows
-          .filter((row) => ['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Calculated total'].includes(row.label))
+          .filter((row) => ['Pricing basis', 'Unit price', 'Pax', 'Units', 'Nights', 'Saved total', 'Calculated total', 'Status'].includes(row.label))
           .map((row) => (
             <span key={row.label}>{row.label}: {row.value}</span>
           ))}

@@ -4858,7 +4858,7 @@ export class QuotesService {
     let itemQuoteItineraryDay = quoteItineraryDay;
 
     const quantity = Math.max(1, data.quantity || 1);
-    const paxCount = Math.max(1, data.paxCount ?? quote.adults + quote.children);
+    let paxCount = Math.max(1, data.paxCount ?? quote.adults + quote.children);
     const roomCount = Math.max(1, data.roomCount ?? quote.roomCount);
     const nightCount = Math.max(1, data.nightCount ?? quote.nightCount);
     const dayCount = Math.max(1, data.dayCount ?? 1);
@@ -5033,6 +5033,9 @@ export class QuotesService {
       tourismFeeMode = (hotelRate as any).tourismFeeMode ?? null;
       hotelRoomRateCost = hotelRate.cost;
       hotelBaseRatePricingBasis = hotelRate.pricingBasis;
+      if (this.isPerPersonHotelRatePricingBasis(hotelRate.pricingBasis)) {
+        paxCount = this.getQuotePaxCount(quote);
+      }
       const hotelPricing = new HotelPricingResolver().resolve({
         pax: paxCount,
         rooms: roomCount,
@@ -5531,12 +5534,14 @@ export class QuotesService {
     const sellPriceOverride = effectiveRequestedSellPriceOverride ?? activitySellPriceOverride;
     const persistedSellPriceOverride = effectiveRequestedSellPriceOverride;
 
+    const isEntranceTicketItem = Boolean(!activity && entranceFee);
     const transportQuantity = transportPricingMode === 'capacity_unit' && unitCount ? unitCount : quantity;
-    const persistedQuantity = activityRequiredUnits ?? transportQuantity;
+    const pricingQuantity = isEntranceTicketItem ? 1 : transportQuantity;
+    const persistedQuantity = isEntranceTicketItem ? 1 : activityRequiredUnits ?? transportQuantity;
 
     const basePricing = this.calculateCentralizedQuoteItemPricing({
       service: effectiveService,
-      quantity: transportQuantity,
+      quantity: pricingQuantity,
       paxCount: activity ? activityPricingPaxCount : paxCount,
       roomCount,
       nightCount,
@@ -5651,7 +5656,7 @@ export class QuotesService {
         pricingDescription:
           this.isHotelService(effectiveService) && hotelRoomRateCost > 0
             ? `${pricingDescription} | Rate ${currency} ${hotelRoomRateCost.toFixed(2)} x ${
-                String(hotelBaseRatePricingBasis || '').toUpperCase() === 'PER_PERSON'
+                this.isPerPersonHotelRatePricingBasis(hotelBaseRatePricingBasis)
                   ? `${paxCount} pax`
                   : `${roomCount} room${roomCount === 1 ? '' : 's'}`
               } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
@@ -7104,11 +7109,18 @@ export class QuotesService {
     roomCount: number,
     nightCount: number,
   ) {
-    const basis = String(pricingBasis || '').trim().toUpperCase();
     const nights = Math.max(1, nightCount);
     const pax = Math.max(1, paxCount);
     const rooms = Math.max(1, roomCount);
-    return basis === 'PER_PERSON' ? pax * nights : rooms * nights;
+    return this.isPerPersonHotelRatePricingBasis(pricingBasis) ? pax * nights : rooms * nights;
+  }
+
+  private isPerPersonHotelRatePricingBasis(pricingBasis: 'PER_PERSON' | 'PER_ROOM' | string | null | undefined) {
+    const basis = String(pricingBasis || '').trim().toUpperCase();
+    return (
+      ['PER_PERSON', 'PER_PERSON_NIGHT', 'PER_PERSON_PER_NIGHT', 'PER_NIGHT_PER_PERSON'].includes(basis) ||
+      (basis.startsWith('PER_PERSON_') && basis.includes('NIGHT'))
+    );
   }
 
   private getHotelPricingUnits(values: {
@@ -7123,7 +7135,7 @@ export class QuotesService {
     if (basis === 'TOTAL') {
       return 1;
     }
-    const isPerPerson = basis === 'PER_PERSON' || (!basis && values.unitType === ServiceUnitType.per_person);
+    const isPerPerson = this.isPerPersonHotelRatePricingBasis(basis) || (!basis && values.unitType === ServiceUnitType.per_person);
 
     return isPerPerson ? Math.max(1, values.paxCount) * nights : Math.max(1, values.roomCount) * nights;
   }
@@ -7269,7 +7281,7 @@ export class QuotesService {
     const isPerPersonPricing =
       values.structuredServiceRatePricingMode === 'PER_PERSON' ||
       values.service.unitType === ServiceUnitType.per_person ||
-      (this.isHotelService(values.service) && values.hotelRatePricingBasis === 'PER_PERSON') ||
+      (this.isHotelService(values.service) && this.isPerPersonHotelRatePricingBasis(values.hotelRatePricingBasis)) ||
       (this.isExternalPackageService(values.service) && values.externalPackagePricingBasis === 'PER_PERSON') ||
       (this.isActivityService(values.service) && values.activityPricingBasis === 'PER_PERSON');
     const capacityUnits =

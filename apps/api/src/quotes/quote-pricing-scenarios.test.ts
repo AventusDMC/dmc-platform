@@ -494,6 +494,34 @@ test('quote hotel pricing uses persisted PER_PERSON rate basis for pax-night uni
   assert.equal(pricing.totalCost, 240);
 });
 
+test('quote hotel pricing uses PER_PERSON_NIGHT basis for quote pax-night units', () => {
+  const service = createQuotesService();
+
+  const pricing = (service as any).calculateCentralizedQuoteItemPricing({
+    service: {
+      category: 'Hotel',
+      unitType: 'per_room',
+      serviceType: { name: 'Hotel', code: 'HOTEL' },
+    },
+    quantity: 1,
+    paxCount: 2,
+    roomCount: 1,
+    nightCount: 1,
+    dayCount: 1,
+    unitCost: 45,
+    markupPercent: 0,
+    quoteCurrency: 'USD',
+    supplierPricing: {
+      costBaseAmount: 45,
+      costCurrency: 'USD',
+    },
+    hotelRatePricingBasis: 'PER_PERSON_NIGHT',
+  });
+
+  assert.equal(pricing.supplierCostTotal, 90);
+  assert.equal(pricing.totalCost, 90);
+});
+
 test('quote hotel pricing uses persisted PER_ROOM rate basis for room-night units', () => {
   const service = createQuotesService();
 
@@ -520,6 +548,34 @@ test('quote hotel pricing uses persisted PER_ROOM rate basis for room-night unit
 
   assert.equal(pricing.supplierCostTotal, 160);
   assert.equal(pricing.totalCost, 160);
+});
+
+test('quote hotel pricing keeps PER_ROOM_NIGHT basis on room-night units', () => {
+  const service = createQuotesService();
+
+  const pricing = (service as any).calculateCentralizedQuoteItemPricing({
+    service: {
+      category: 'Hotel',
+      unitType: 'per_person',
+      serviceType: { name: 'Hotel', code: 'HOTEL' },
+    },
+    quantity: 1,
+    paxCount: 2,
+    roomCount: 1,
+    nightCount: 1,
+    dayCount: 1,
+    unitCost: 45,
+    markupPercent: 0,
+    quoteCurrency: 'USD',
+    supplierPricing: {
+      costBaseAmount: 45,
+      costCurrency: 'USD',
+    },
+    hotelRatePricingBasis: 'PER_ROOM_NIGHT',
+  });
+
+  assert.equal(pricing.supplierCostTotal, 45);
+  assert.equal(pricing.totalCost, 45);
 });
 
 test('quote hotel pricing ignores quantity and stores unit hotel rate semantics for repricing', async () => {
@@ -1606,6 +1662,85 @@ test('quote save accepts HB derived from BB rate plus HB supplement without dire
   assert.equal(result.data.baseCost, 220);
   assert.equal(result.data.totalCost, 220);
   assert.match(result.data.pricingDescription, /DBL \| HB/);
+});
+
+test('quote save recalculates PER_PERSON hotel stay from quote pax when existing item pax is stale', async () => {
+  const service = createQuotesService({
+    quote: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'quote-1'
+          ? {
+              id: 'quote-1',
+              quoteCurrency: 'USD',
+              adults: 2,
+              children: 0,
+              roomCount: 1,
+              nightCount: 1,
+              travelStartDate: null,
+              createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            }
+          : null,
+      findFirst: async () => null,
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'hotel-service'
+          ? {
+              id: 'hotel-service',
+              name: 'Confirmed Hotel Stay',
+              category: 'Hotel',
+              unitType: 'per_room',
+              baseCost: 0,
+              currency: 'USD',
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              serviceType: { name: 'Hotel', code: 'HOTEL' },
+              serviceRates: [],
+              ticketRateVariants: [],
+            }
+          : null,
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+    hotelRate: {
+      findMany: async () => [
+        createHotelLookupRate({
+          cost: 45,
+          pricingBasis: 'PER_PERSON',
+          supplements: [],
+        }),
+      ],
+    },
+  });
+
+  const result = await (service as any).resolveQuoteItemValues({
+    quoteId: 'quote-1',
+    serviceId: 'hotel-service',
+    serviceDate: new Date('2026-06-01T09:00:00.000Z'),
+    hotelId: 'hotel-1',
+    contractId: 'contract-1',
+    seasonName: 'Imported',
+    roomCategoryId: 'room-1',
+    occupancyType: 'DBL',
+    mealPlan: 'BB',
+    quantity: 1,
+    paxCount: 1,
+    roomCount: 1,
+    nightCount: 1,
+    markupPercent: 0,
+  });
+
+  assert.equal(result.data.paxCount, 2);
+  assert.equal(result.data.roomCount, 1);
+  assert.equal(result.data.nightCount, 1);
+  assert.equal(result.data.baseCost, 90);
+  assert.equal(result.data.totalCost, 90);
+  assert.match(result.data.pricingDescription, /Rate USD 45\.00 x 2 pax x 1 night/);
 });
 
 test('quote save calculates PER_PERSON HB stay from per-person base plus per-person supplement', async () => {
