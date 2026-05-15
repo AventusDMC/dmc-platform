@@ -85,6 +85,30 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.suggestedMarkup, '15.00%');
   });
 
+  it('reports hotel per-person-night diagnostics from saved rate description and totals', () => {
+    const diagnostics = buildPricingDiagnostics({
+      paxCount: 2,
+      roomCount: 1,
+      nightCount: 1,
+      totalCost: 90,
+      totalSell: 90,
+      costBaseAmount: 90,
+      currency: 'USD',
+      pricingDescription: 'Corp Amman Hotel Travel Agent Agreement 2026 | Premium Room | DBL | BB | Rate USD 45.00 x 2 pax x 1 night',
+      contract: { name: 'Corp Amman Hotel Travel Agent Agreement 2026' },
+      seasonName: '2026',
+      roomCategory: { name: 'Premium Room' },
+      mealPlan: 'BB',
+      hotel: { name: 'Corp Amman Hotel' },
+    });
+
+    assert.equal(diagnostics.pricingSource, 'Hotel rate');
+    assert.equal(diagnostics.pricingMode, 'Hotel per person/night');
+    assert.equal(diagnostics.unitsUsed, '2 pax x 1 night');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 45.00'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Total price' && row.value === 'USD 90.00'));
+  });
+
   it('reports catalog activity diagnostics', () => {
     const diagnostics = buildPricingDiagnostics({
       activityId: 'activity-1',

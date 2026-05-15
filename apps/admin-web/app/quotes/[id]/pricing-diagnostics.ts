@@ -187,6 +187,14 @@ function formatUnitsForMode(mode: string | null | undefined, item: PricingDiagno
     return `${pax} pax`;
   }
 
+  if (normalizedMode === 'hotel_per_person_night') {
+    return `${pax} pax x ${nights} night${nights === 1 ? '' : 's'}`;
+  }
+
+  if (normalizedMode === 'hotel_per_room_night') {
+    return `${rooms} room${rooms === 1 ? '' : 's'} x ${nights} night${nights === 1 ? '' : 's'}`;
+  }
+
   if (normalizedMode === 'per_day') {
     return `${days} day${days === 1 ? '' : 's'}`;
   }
@@ -220,6 +228,12 @@ function getUnitCountForMode(mode: string | null | undefined, item: PricingDiagn
   if (normalizedMode === 'ticket_per_person') {
     return pax;
   }
+  if (normalizedMode === 'hotel_per_person_night') {
+    return pax * nights;
+  }
+  if (normalizedMode === 'hotel_per_room_night') {
+    return rooms * nights;
+  }
   if (normalizedMode === 'per_day') {
     return quantity * days;
   }
@@ -250,6 +264,18 @@ function buildPriceSnapshotRows(item: PricingDiagnosticQuoteItem, mode: string |
     { label: 'Unit price', value: formatDiagnosticMoney(unitPrice, currency) },
     { label: 'Total price', value: formatDiagnosticMoney(totalPrice, currency) },
   ];
+}
+
+function inferHotelPricingMode(item: PricingDiagnosticQuoteItem) {
+  const description = normalize(item.pricingDescription);
+  if (/\bx\s*\d+\s*pax\b/.test(description) || description.includes('per person')) {
+    return 'HOTEL_PER_PERSON_NIGHT';
+  }
+  return 'HOTEL_PER_ROOM_NIGHT';
+}
+
+function formatHotelPricingMode(mode: string) {
+  return mode === 'HOTEL_PER_PERSON_NIGHT' ? 'Hotel per person/night' : 'Hotel room/night';
 }
 
 function getOverrideStatus(item: PricingDiagnosticQuoteItem) {
@@ -308,11 +334,12 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   } else if (hasHotelData(item) || serviceKind === 'hotel') {
     const rateParts = [item.contract?.name, item.seasonName, item.roomCategory?.name, item.mealPlan].filter(Boolean);
-    priceSnapshotMode = 'PER_ROOM';
+    const hotelPricingMode = inferHotelPricingMode(item);
+    priceSnapshotMode = hotelPricingMode;
     base = {
       pricingSource: 'Hotel rate',
-      pricingMode: 'Hotel room/night',
-      unitsUsed: formatUnitsForMode('PER_ROOM', item),
+      pricingMode: formatHotelPricingMode(hotelPricingMode),
+      unitsUsed: formatUnitsForMode(hotelPricingMode, item),
       appliedRateSource: rateParts.length ? rateParts.join(' | ') : 'Hotel quote row',
       fallbackStatus: hasValue(item.costBaseAmount) ? 'Hotel rate amount captured' : 'Hotel fallback/manual amount',
       overrideStatus,
