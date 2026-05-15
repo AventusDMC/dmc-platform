@@ -1144,6 +1144,90 @@ function getOperationalItemName(item: QuoteItem) {
   return getItemServiceName(item);
 }
 
+function formatOperationalDuration(minutes: number | null | undefined) {
+  if (!minutes || minutes <= 0) {
+    return null;
+  }
+
+  if (minutes % 60 === 0) {
+    return `${minutes / 60} hr`;
+  }
+
+  return `${minutes} min`;
+}
+
+function getSelectedComponentTimingLine(templateName: string, component: ExcursionTemplate['components'][number], item: QuoteItem) {
+  const itemDuration = item.activityRateVariant?.durationMinutes || item.activity?.durationMinutes || null;
+  const componentDuration = component.estimatedDurationMinutes || component.durationMinutes || component.route?.durationMinutes || null;
+  const duration = formatOperationalDuration(itemDuration || componentDuration);
+  const parts = [
+    item.serviceDate ? `date ${item.serviceDate.slice(0, 10)}` : null,
+    item.pickupTime ? `pickup ${item.pickupTime}` : null,
+    item.startTime ? `start ${item.startTime}` : null,
+    component.requiredArrivalTime ? `required arrival ${component.requiredArrivalTime}` : null,
+    duration ? `duration ${duration}` : null,
+    component.pickupNotes ? `pickup notes: ${component.pickupNotes}` : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? `${templateName} / ${component.label}: ${parts.join(' | ')}` : null;
+}
+
+function getSelectedComponentDetailIssues(templateName: string, component: ExcursionTemplate['components'][number], item: QuoteItem) {
+  const label = `${templateName} / ${component.label}`;
+  const issues: string[] = [];
+
+  if (component.componentType === 'TRANSPORT') {
+    const missing = [
+      !item.pickupTime ? 'pickup time missing' : null,
+      !item.pickupLocation ? 'pickup location missing' : null,
+    ].filter(Boolean);
+
+    if (missing.length > 0) {
+      issues.push(`Transport details incomplete: ${label} - ${missing.join(', ')}`);
+    }
+  }
+
+  if (component.componentType === 'ACTIVITY') {
+    const missing = [
+      !item.startTime ? 'start time missing' : null,
+      !item.meetingPoint ? 'meeting point missing' : null,
+    ].filter(Boolean);
+
+    if (missing.length > 0) {
+      issues.push(`Activity timing missing: ${label} - ${missing.join(', ')}`);
+    }
+  }
+
+  if (component.componentType === 'GUIDE' && !item.startTime) {
+    issues.push(`Timing missing: ${label} - guide start time missing`);
+  }
+
+  return issues;
+}
+
+function getComponentOperationalWarnings(templateName: string, component: ExcursionTemplate['components'][number], selected: boolean) {
+  const label = `${templateName} / ${component.label}`;
+  const warnings: string[] = [];
+
+  if (component.supplierConfirmationRequired) {
+    warnings.push(`${label}: supplier confirmation required${selected ? '' : ' when selected'}.`);
+  }
+
+  if (component.voucherRequired) {
+    warnings.push(`${label}: voucher required${selected ? '' : ' when selected'}.`);
+  }
+
+  if (component.operationalNotes?.trim()) {
+    warnings.push(`${label}: ${component.operationalNotes.trim()}`);
+  }
+
+  if (component.operationalDependency?.trim()) {
+    warnings.push(`${label}: dependency - ${component.operationalDependency.trim()}`);
+  }
+
+  return warnings;
+}
+
 function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteItem[], templates: ExcursionTemplate[]) {
   const itemCoverageCounts = new Map<OperationalCoverageKey, number>();
   items.forEach((item) => {
@@ -1157,9 +1241,11 @@ function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteI
     .map((item) => `${getOperationalItemName(item)} has missing or zero pricing.`);
   const templateById = new Map(templates.map((template) => [template.id, template]));
   const componentItemIds = new Set(items.map((item) => item.excursionTemplateComponentId).filter(Boolean));
+  const itemByComponentId = new Map(items.filter((item) => item.excursionTemplateComponentId).map((item) => [item.excursionTemplateComponentId as string, item]));
   const templateIds = Array.from(new Set(items.map((item) => item.excursionTemplateId).filter(Boolean) as string[]));
   const requiredComponentCoverageKeys = new Set<OperationalCoverageKey>();
   const missingRequiredComponents: string[] = [];
+  const operationalDetailIssues: string[] = [];
   const optionalComponentsNotSelected: string[] = [];
   const timingLines: string[] = [];
   const warnings: string[] = [];
@@ -1179,6 +1265,7 @@ function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteI
 
     for (const component of [...(template.components || [])].filter((entry) => entry.active !== false).sort((a, b) => a.sortOrder - b.sortOrder)) {
       const selected = componentItemIds.has(component.id);
+      const selectedItem = itemByComponentId.get(component.id) || null;
       const coverageKey = getOperationalCoverageKeyForComponent(component.componentType);
       const label = `${template.name} / ${component.label}`;
       const timingParts = [
@@ -1191,6 +1278,16 @@ function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteI
       if (timingParts.length > 0) {
         timingLines.push(`${label}: ${timingParts.join(' | ')}`);
       }
+
+      if (selectedItem) {
+        const selectedTimingLine = getSelectedComponentTimingLine(template.name, component, selectedItem);
+        if (selectedTimingLine) {
+          timingLines.push(selectedTimingLine);
+        }
+        operationalDetailIssues.push(...getSelectedComponentDetailIssues(template.name, component, selectedItem));
+      }
+
+      warnings.push(...getComponentOperationalWarnings(template.name, component, selected));
 
       if (!selected && component.isOptional) {
         optionalComponentsNotSelected.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);
@@ -1217,6 +1314,7 @@ function buildQuoteOperationalIntelligence(day: QuoteReadinessDay, items: QuoteI
     dayId: day.id,
     coverage,
     missingRequiredComponents,
+    operationalDetailIssues,
     pricingWarnings,
     timingLines,
     warnings,
@@ -4209,6 +4307,7 @@ function QuoteOperationalIntelligencePanel({
 }) {
   const hasTemplateSignals =
     model.missingRequiredComponents.length > 0 ||
+    model.operationalDetailIssues.length > 0 ||
     model.timingLines.length > 0 ||
     model.warnings.length > 0 ||
     model.optionalComponentsNotSelected.length > 0;
@@ -4225,7 +4324,7 @@ function QuoteOperationalIntelligencePanel({
         {model.coverage.length > 0 ? model.coverage.map((entry) => (
           <div key={entry.key} className={`quote-service-check ${entry.requiredMissing ? 'quote-service-check-missing' : 'quote-service-check-complete'}`}>
             <span>{entry.label}</span>
-            <strong>{entry.requiredMissing ? (entry.count > 0 ? `${entry.count} added / required missing` : 'Required missing') : `${entry.count} added`}</strong>
+            <strong>{entry.requiredMissing ? (entry.count > 0 ? `${entry.count} added / required component missing` : 'Required component missing') : `${entry.count} added`}</strong>
           </div>
         )) : <p className="form-helper">No operational components attached to this day.</p>}
       </div>
@@ -4234,6 +4333,15 @@ function QuoteOperationalIntelligencePanel({
         <div className="form-field-stack">
           <strong>Missing required components</strong>
           {model.missingRequiredComponents.map((line) => (
+            <p key={line} className="form-helper">{line}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {model.operationalDetailIssues.length > 0 ? (
+        <div className="form-field-stack">
+          <strong>Operational details incomplete</strong>
+          {model.operationalDetailIssues.map((line) => (
             <p key={line} className="form-helper">{line}</p>
           ))}
         </div>

@@ -229,6 +229,11 @@ describe('quote detail page regression', () => {
       'No operational components attached to this day.',
       'requiredMissing: requiredComponentCoverageKeys.has(key)',
       "entry.requiredMissing ? 'quote-service-check-missing' : 'quote-service-check-complete'",
+      'Transport details incomplete:',
+      'Activity timing missing:',
+      'Operational details incomplete',
+      'supplier confirmation required',
+      'voucher required',
       'Missing required components',
       'Pricing warnings',
       'Timing summary',
@@ -237,6 +242,24 @@ describe('quote detail page regression', () => {
       'buildQuoteOperationalIntelligence(summary.day, summary.items, plannerProps.excursionTemplates)',
       '<QuoteOperationalIntelligencePanel model={operationalIntelligence} />',
     ]);
+  });
+
+  it('shows exact excursion readiness rows without mislabeling incomplete transport as missing', () => {
+    expectSourceContains(quoteServicePlannerSource, [
+      "if (component.componentType === 'TRANSPORT') {",
+      "!item.pickupTime ? 'pickup time missing' : null",
+      "!item.pickupLocation ? 'pickup location missing' : null",
+      'Transport details incomplete: ${label} - ${missing.join(\', \')}',
+      "if (!selected && !component.isOptional) {",
+      'missingRequiredComponents.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);',
+      'if (!selected && component.isOptional) {',
+      'optionalComponentsNotSelected.push(`${coverageKey ? OPERATIONAL_COVERAGE_LABELS[coverageKey] : component.componentType}: ${label}`);',
+      'const hasTemplateSignals =',
+      'model.operationalDetailIssues.length > 0',
+      'model.warnings.length > 0 ? (',
+      'model.optionalComponentsNotSelected.length > 0 ? (',
+    ]);
+    assert.equal(quoteServicePlannerSource.includes('Optional components not selected</strong>\\n          {model.missingRequiredComponents.map'), false);
   });
 
   it('renders quote-scoped passenger management on the itinerary page', () => {
