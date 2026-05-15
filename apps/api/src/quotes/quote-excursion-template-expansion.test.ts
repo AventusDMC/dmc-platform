@@ -125,7 +125,8 @@ test('expands an excursion template into ordered normal quote item payloads', as
   );
   assert.equal(result.createdItems.length, 3);
   assert.equal(createdPayloads[0].serviceId, 'ticket-service-1');
-  assert.equal(createdPayloads[0].quantity, 21);
+  assert.equal(createdPayloads[0].quantity, 1);
+  assert.equal(createdPayloads[0].paxCount, 21);
   assert.equal(createdPayloads[1].routeId, 'route-1');
   assert.equal(createdPayloads[1].transportServiceTypeId, 'transport-type-1');
   assert.equal(createdPayloads[2].activityId, 'activity-1');

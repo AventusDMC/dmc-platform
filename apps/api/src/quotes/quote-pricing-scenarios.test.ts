@@ -2092,6 +2092,53 @@ test('ticketing per-person variant uses unit ticket cost times pax, not quantity
   assert.equal(values.data.totalSell, 141);
 });
 
+test('excursion template Petra ticket payload prices one service line by pax only', async () => {
+  const values = await resolveServiceRateQuoteItem({
+    quote: {
+      quoteCurrency: 'JOD',
+    },
+    service: {
+      name: 'Petra Entrance Ticket',
+      category: 'ticketing',
+      unitType: 'per_person',
+      baseCost: 50,
+      currency: 'JOD',
+      costBaseAmount: 50,
+      costCurrency: 'JOD',
+      serviceType: { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+      entranceFee: {
+        id: 'entrance-petra',
+        siteName: 'Petra Entrance Ticket',
+        foreignerFeeJod: 50,
+        includedInJordanPass: false,
+      },
+    },
+    serviceRate: null,
+    ticketRateVariant: {
+      id: 'ticket-variant-petra-1-day',
+      label: '1 Day',
+      costPrice: 50,
+      currency: 'JOD',
+      pricingBasis: 'PER_PERSON',
+      includedInJordanPass: false,
+    },
+    item: {
+      excursionTemplateId: 'template-petra',
+      excursionTemplateComponentId: 'component-petra-ticket',
+      ticketRateVariantId: 'ticket-variant-petra-1-day',
+      quantity: 1,
+      paxCount: 2,
+      markupPercent: 0,
+    },
+  });
+
+  assert.equal(values.data.quantity, 1);
+  assert.equal(values.data.paxCount, 2);
+  assert.equal(values.data.costBaseAmount, 50);
+  assert.equal(values.data.totalCost, 100);
+  assert.equal(values.data.totalSell, 100);
+});
+
 test('ticketing service without variants converts entrance fee from JOD into quote currency', async () => {
   const values = await resolveServiceRateQuoteItem({
     quote: {

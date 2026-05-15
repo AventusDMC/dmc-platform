@@ -3694,7 +3694,7 @@ export class QuotesService {
       return {
         ...common,
         serviceId: values.component.supplierService.id,
-        quantity: paxCount,
+        quantity: 1,
         paxCount,
       };
     }
