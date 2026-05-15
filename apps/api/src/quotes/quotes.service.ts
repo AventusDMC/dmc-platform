@@ -8543,6 +8543,7 @@ export class QuotesService {
           tourismFeeCurrency: item.tourismFeeCurrency ?? ticketCurrency,
           tourismFeeMode: item.tourismFeeMode ?? null,
         },
+        structuredServiceRatePricingMode: ((item as any).ticketRateVariant?.pricingBasis as StructuredServiceRatePricingMode | null | undefined) ?? 'PER_PERSON',
         legacyCurrency: ticketCurrency,
       });
 

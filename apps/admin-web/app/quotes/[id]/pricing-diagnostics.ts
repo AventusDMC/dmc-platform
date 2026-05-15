@@ -67,6 +67,8 @@ export type PricingDiagnosticQuoteItem = {
   baseCost?: number | null;
   totalCost?: number | null;
   totalSell?: number | null;
+  currency?: string | null;
+  quoteCurrency?: string | null;
   overrideCost?: number | null;
   finalCost?: number | null;
   markupAmount?: number | null;
@@ -117,6 +119,10 @@ function getPositiveNumber(value: number | null | undefined, fallback: number) {
 
 function hasPositiveValue(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function hasNumericValue(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function getServiceKind(item: PricingDiagnosticQuoteItem) {
@@ -173,6 +179,11 @@ function formatUnitsForMode(mode: string | null | undefined, item: PricingDiagno
   const nights = getPositiveNumber(item.nightCount, 1);
 
   if (normalizedMode === 'per_person') {
+    const units = quantity * pax;
+    return quantity > 1 ? `${quantity} qty x ${pax} pax = ${units} person units` : `${pax} pax`;
+  }
+
+  if (normalizedMode === 'ticket_per_person') {
     return `${pax} pax`;
   }
 
@@ -195,6 +206,52 @@ function formatUnitsForMode(mode: string | null | undefined, item: PricingDiagno
   return `${quantity} unit${quantity === 1 ? '' : 's'}`;
 }
 
+function getUnitCountForMode(mode: string | null | undefined, item: PricingDiagnosticQuoteItem, rate?: PricingDiagnosticRate | null) {
+  const normalizedMode = normalizeCode(mode);
+  const quantity = getPositiveNumber(item.quantity, 1);
+  const pax = getPositiveNumber(item.paxCount, 1);
+  const days = getPositiveNumber(item.dayCount, 1);
+  const rooms = getPositiveNumber(item.roomCount, 1);
+  const nights = getPositiveNumber(item.nightCount, 1);
+
+  if (normalizedMode === 'per_person') {
+    return quantity * pax;
+  }
+  if (normalizedMode === 'ticket_per_person') {
+    return pax;
+  }
+  if (normalizedMode === 'per_day') {
+    return quantity * days;
+  }
+  if (normalizedMode === 'per_room' || normalizedMode === 'hotel_rate') {
+    return rooms * nights;
+  }
+  if (normalizedMode === 'per_group') {
+    const maxPaxPerUnit = getPositiveNumber(rate?.maxPaxPerUnit, 0);
+    return maxPaxPerUnit > 0 ? Math.ceil(pax / maxPaxPerUnit) : quantity;
+  }
+  return quantity;
+}
+
+function formatDiagnosticMoney(value: number | null | undefined, currency: string | null | undefined) {
+  if (!hasNumericValue(value)) {
+    return 'Pricing to be confirmed';
+  }
+  return `${currency || 'USD'} ${Number(value).toFixed(2)}`;
+}
+
+function buildPriceSnapshotRows(item: PricingDiagnosticQuoteItem, mode: string | null | undefined, rate?: PricingDiagnosticRate | null) {
+  const totalPrice = hasNumericValue(item.totalCost) ? Number(item.totalCost) : hasNumericValue(item.finalCost) ? Number(item.finalCost) : hasNumericValue(item.baseCost) ? Number(item.baseCost) : null;
+  const unitCount = Math.max(1, getUnitCountForMode(mode, item, rate));
+  const unitPrice = hasNumericValue(totalPrice) ? Number((Number(totalPrice) / unitCount).toFixed(2)) : null;
+  const currency = item.quoteCurrency || item.currency || item.costCurrency || 'USD';
+
+  return [
+    { label: 'Unit price', value: formatDiagnosticMoney(unitPrice, currency) },
+    { label: 'Total price', value: formatDiagnosticMoney(totalPrice, currency) },
+  ];
+}
+
 function getOverrideStatus(item: PricingDiagnosticQuoteItem) {
   const statuses = [];
   if (item.useOverride && hasValue(item.overrideCost)) {
@@ -212,11 +269,12 @@ function getOverrideStatus(item: PricingDiagnosticQuoteItem) {
   return statuses.length ? statuses.join(' | ') : 'No override';
 }
 
-function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>) {
+function buildRows(diagnostics: Omit<PricingDiagnostics, 'rows'>, priceSnapshotRows: Array<{ label: string; value: string }>) {
   return [
     { label: 'Source', value: diagnostics.pricingSource },
     { label: 'Mode', value: diagnostics.pricingMode },
     { label: 'Units', value: diagnostics.unitsUsed },
+    ...priceSnapshotRows,
     { label: 'Rate', value: diagnostics.appliedRateSource },
     { label: 'Fallback', value: diagnostics.fallbackStatus },
     { label: 'Override', value: diagnostics.overrideStatus },
@@ -234,9 +292,12 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
   const pricingPolicy = getPricingPolicyRecommendation(item);
 
   let base: PricingDiagnosticsBase;
+  let priceSnapshotMode: string | null | undefined;
+  let priceSnapshotRate: PricingDiagnosticRate | null | undefined;
 
   if (hasExternalPackageData(item) || serviceKind === 'external') {
     const mode = item.externalPricingBasis || 'PER_PERSON';
+    priceSnapshotMode = mode;
     base = {
       pricingSource: 'External package',
       pricingMode: formatMode(mode),
@@ -247,6 +308,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   } else if (hasHotelData(item) || serviceKind === 'hotel') {
     const rateParts = [item.contract?.name, item.seasonName, item.roomCategory?.name, item.mealPlan].filter(Boolean);
+    priceSnapshotMode = 'PER_ROOM';
     base = {
       pricingSource: 'Hotel rate',
       pricingMode: 'Hotel room/night',
@@ -258,6 +320,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
   } else if (item.appliedVehicleRate || serviceKind === 'transport') {
     const mode = pricingDescription.toLowerCase().includes('capacity') ? 'CAPACITY_UNIT' : 'PER_GROUP';
     const rateParts = [item.appliedVehicleRate?.routeName, item.appliedVehicleRate?.vehicle?.name, item.appliedVehicleRate?.serviceType?.name].filter(Boolean);
+    priceSnapshotMode = 'PER_GROUP';
     base = {
       pricingSource: 'Transport rate',
       pricingMode: formatMode(mode),
@@ -268,6 +331,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   } else if (item.activityId || item.activity || serviceKind === 'activity') {
     const mode = pricingDescription.includes('PER_GROUP') ? 'PER_GROUP' : 'PER_PERSON';
+    priceSnapshotMode = mode;
     base = {
       pricingSource: item.activityId || item.activity ? 'Activity catalog' : 'Activity service',
       pricingMode: formatMode(mode),
@@ -277,15 +341,17 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
       overrideStatus,
     };
   } else if (serviceKind === 'entrance') {
+    priceSnapshotMode = item.jordanPassCovered ? 'PER_GROUP' : 'TICKET_PER_PERSON';
     base = {
       pricingSource: 'Entrance fee',
-      pricingMode: item.jordanPassCovered ? 'Jordan Pass covered' : 'PER_PERSON',
-      unitsUsed: formatUnitsForMode('PER_PERSON', item),
+      pricingMode: item.jordanPassCovered ? 'Jordan Pass covered' : 'PER PERSON unit rate',
+      unitsUsed: formatUnitsForMode('TICKET_PER_PERSON', item),
       appliedRateSource: item.jordanPassCovered ? 'Jordan Pass coverage' : item.service?.name || 'Entrance quote row',
       fallbackStatus: item.jordanPassCovered ? 'Coverage applied' : 'Entrance amount captured',
       overrideStatus,
     };
   } else if (serviceKind === 'meal') {
+    priceSnapshotMode = 'PER_PERSON';
     base = {
       pricingSource: 'Meal quote row',
       pricingMode: 'PER_PERSON',
@@ -295,6 +361,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
       overrideStatus,
     };
   } else if (serviceKind === 'guide') {
+    priceSnapshotMode = 'PER_DAY';
     base = {
       pricingSource: 'Guide rate table',
       pricingMode: pricingDescription || 'Guide rate',
@@ -305,6 +372,8 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   } else if (latestServiceRate) {
     const mode = latestServiceRate.pricingMode || item.service?.unitType || 'PER_GROUP';
+    priceSnapshotMode = mode;
+    priceSnapshotRate = latestServiceRate;
     base = {
       pricingSource: 'ServiceRate',
       pricingMode: formatMode(mode),
@@ -315,6 +384,7 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   } else {
     const mode = item.service?.unitType || 'PER_GROUP';
+    priceSnapshotMode = mode;
     base = {
       pricingSource: 'SupplierService base cost',
       pricingMode: formatMode(mode),
@@ -325,16 +395,21 @@ export function buildPricingDiagnostics(item: PricingDiagnosticQuoteItem): Prici
     };
   }
 
+  const priceSnapshotRows = buildPriceSnapshotRows(item, priceSnapshotMode || base.pricingMode, priceSnapshotRate);
+
   return {
     ...base,
     policyEligible: pricingPolicy.eligible ? 'Yes' : 'No',
     suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
     policySkippedBecause: pricingPolicy.skippedReason || 'None',
-    rows: buildRows({
-      ...base,
-      policyEligible: pricingPolicy.eligible ? 'Yes' : 'No',
-      suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
-      policySkippedBecause: pricingPolicy.skippedReason || 'None',
-    }),
+    rows: buildRows(
+      {
+        ...base,
+        policyEligible: pricingPolicy.eligible ? 'Yes' : 'No',
+        suggestedMarkup: formatPricingPolicyMarkup(pricingPolicy.markupPercent),
+        policySkippedBecause: pricingPolicy.skippedReason || 'None',
+      },
+      priceSnapshotRows,
+    ),
   };
 }

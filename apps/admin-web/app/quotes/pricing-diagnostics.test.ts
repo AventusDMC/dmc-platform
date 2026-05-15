@@ -108,6 +108,31 @@ describe('pricing diagnostics', () => {
     assert.equal(diagnostics.policySkippedBecause, 'Activities preserve catalog or planner sell pricing.');
   });
 
+  it('shows ticket unit price and aggregated total price separately', () => {
+    const diagnostics = buildPricingDiagnostics({
+      service: {
+        name: 'Petra Entrance Ticket',
+        category: 'Entrance Ticket',
+        unitType: 'per_person',
+        serviceType: { name: 'Entrance Ticket', code: 'ENTRANCE_TICKET' },
+      },
+      quantity: 2,
+      paxCount: 2,
+      costBaseAmount: 50,
+      costCurrency: 'JOD',
+      totalCost: 141,
+      totalSell: 141,
+      currency: 'USD',
+      pricingDescription: 'Petra Entrance Ticket | 1 Day | Entrance fee',
+    });
+
+    assert.equal(diagnostics.pricingSource, 'Entrance fee');
+    assert.equal(diagnostics.pricingMode, 'PER PERSON unit rate');
+    assert.equal(diagnostics.unitsUsed, '2 pax');
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Unit price' && row.value === 'USD 70.50'));
+    assert.ok(diagnostics.rows.some((row) => row.label === 'Total price' && row.value === 'USD 141.00'));
+  });
+
   it('reports external package diagnostics', () => {
     const diagnostics = buildPricingDiagnostics({
       externalPackageName: 'Saudi extension',
