@@ -230,6 +230,17 @@ type QuoteItem = {
     mainDestinations?: string[] | null;
     stops?: Array<{ city?: string | null; location?: string | null }>;
   } | null;
+  touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
+  touringRoutePricing?: {
+    id: string;
+    currency?: string | null;
+    baseCost?: number | null;
+    pricingBasis?: string | null;
+    vehicle?: { name?: string | null; maxPax?: number | null } | null;
+    supplier?: { name?: string | null } | null;
+    transportServiceType?: { name?: string | null; code?: string | null } | null;
+  } | null;
   hotel: {
     name: string;
   } | null;
@@ -288,6 +299,10 @@ type QuoteItemCardProps = {
     markupPercent: string;
     markupAmount?: string;
     sellPrice?: string;
+    touringRouteId?: string;
+    touringRoutePricingId?: string;
+    touringRoute?: QuoteItem['touringRoute'];
+    touringRoutePricing?: QuoteItem['touringRoutePricing'];
     paxCount: string;
     participantCount: string;
     adultCount: string;
@@ -572,6 +587,10 @@ export function QuoteItemCard({
     () => ({
       ...initialValues,
       serviceId: currentItem.serviceId || '',
+      touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || '',
+      touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',
+      touringRoute: currentItem.touringRoute,
+      touringRoutePricing: currentItem.touringRoutePricing,
       externalPackage: {
         packageName: currentItem.externalPackageName || currentItem.service?.name || '',
         country: currentItem.externalPackageCountry || '',

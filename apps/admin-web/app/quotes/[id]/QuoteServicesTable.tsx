@@ -182,6 +182,17 @@ type QuoteItem = {
     mainDestinations?: string[] | null;
     stops?: Array<{ city?: string | null; location?: string | null }>;
   } | null;
+  touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
+  touringRoutePricing?: {
+    id: string;
+    currency?: string | null;
+    baseCost?: number | null;
+    pricingBasis?: string | null;
+    vehicle?: { name?: string | null; maxPax?: number | null } | null;
+    supplier?: { name?: string | null } | null;
+    transportServiceType?: { name?: string | null; code?: string | null } | null;
+  } | null;
   hotel: {
     name: string;
   } | null;
@@ -218,6 +229,10 @@ type SuggestedService = {
 
 type QuoteItemInitialValues = {
   serviceId: string;
+  touringRouteId?: string;
+  touringRoutePricingId?: string;
+  touringRoute?: QuoteItem['touringRoute'];
+  touringRoutePricing?: QuoteItem['touringRoutePricing'];
   quantity: string;
   markupPercent: string;
   paxCount: string;
@@ -344,6 +359,10 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
 
   return {
     serviceId: item.service.id,
+    touringRouteId: item.touringRouteId || item.touringRoute?.id || '',
+    touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || '',
+    touringRoute: item.touringRoute,
+    touringRoutePricing: item.touringRoutePricing,
     quantity: String(item.quantity),
     markupPercent: String(item.markupPercent),
     paxCount: String(getInitialQuoteItemPaxCount(item, totalPax)),

@@ -852,6 +852,42 @@ describe('quote detail page regression', () => {
     assert.equal(quoteItemsFormSource.includes('{hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? ('), false);
   });
 
+  it('reopens touring transport quote items in touring-aware edit mode', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+    const quoteServicePlannerSource = readFileSync(new URL('./QuoteServicePlanner.tsx', import.meta.url), 'utf8');
+    const quoteServicesTableSource = readFileSync(new URL('./QuoteServicesTable.tsx', import.meta.url), 'utf8');
+    const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(pageSource, [
+      'const sourceMetadata = (rawItem?.sourceMetadata && typeof rawItem.sourceMetadata === \'object\' ? rawItem.sourceMetadata : {})',
+      'touringRouteId: item?.touringRouteId ?? item?.touringRoute?.id ?? item?.touringRoutePricing?.touringRouteId ?? sourceMetadata.touringRouteId ?? null',
+      'touringRoutePricingId: item?.touringRoutePricingId ?? item?.touringRoutePricing?.id ?? sourceMetadata.touringRoutePricingId ?? null',
+      'touringRoutePricing: item?.touringRoutePricing',
+    ]);
+    expectSourceContains(quoteServicePlannerSource, [
+      'touringRouteId: item.touringRouteId || item.touringRoute?.id || \'\'',
+      'touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || \'\'',
+    ]);
+    expectSourceContains(quoteServicesTableSource, [
+      'touringRouteId: item.touringRouteId || item.touringRoute?.id || \'\'',
+      'touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || \'\'',
+    ]);
+    expectSourceContains(quoteItemCardSource, [
+      'touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || \'\'',
+      'touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || \'\'',
+    ]);
+    expectSourceContains(quoteItemsFormSource, [
+      'const [touringRouteId] = useState(initialValues?.touringRouteId || initialValues?.touringRoute?.id || \'\');',
+      'const [touringRoutePricingId] = useState(initialValues?.touringRoutePricingId || initialValues?.touringRoutePricing?.id || \'\');',
+      'const isTouringTransportEdit = Boolean(isTransportService && (touringRouteId || touringRoutePricingId || initialValues?.touringRoute));',
+      'Touring route transport',
+      'Regular transfer pricing modes are not used.',
+      'touringRouteId: isTouringTransportEdit ? touringRouteId || initialValues?.touringRoute?.id || undefined : undefined',
+      'touringRoutePricingId: isTouringTransportEdit ? touringRoutePricingId || initialValues?.touringRoutePricing?.id || undefined : undefined',
+      'isTransportService && !isTouringTransportEdit',
+    ]);
+  });
+
   it('keeps Smart Transport Picker suggestions to the smallest fitting capacity', () => {
     const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
 

@@ -393,6 +393,8 @@ type QuoteItem = {
   externalInternalNotes?: string | null;
   externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
+  touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
   service: SupplierService;
   appliedVehicleRate: {
     id: string;
@@ -420,6 +422,24 @@ type QuoteItem = {
     durationDays?: number | null;
     mainDestinations?: string[] | null;
     stops?: Array<{ city?: string | null; location?: string | null }>;
+  } | null;
+  touringRoutePricing?: {
+    id: string;
+    touringRouteId?: string | null;
+    currency?: string | null;
+    baseCost?: number | null;
+    pricingBasis?: string | null;
+    vehicle?: {
+      name?: string | null;
+      maxPax?: number | null;
+    } | null;
+    supplier?: {
+      name?: string | null;
+    } | null;
+    transportServiceType?: {
+      name?: string | null;
+      code?: string | null;
+    } | null;
   } | null;
   hotel: {
     name: string;
@@ -991,6 +1011,10 @@ async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult>
 
 function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteItem {
   const rawItem = item as (Partial<QuoteItem> & Record<string, unknown>) | null | undefined;
+  const sourceMetadata = (rawItem?.sourceMetadata && typeof rawItem.sourceMetadata === 'object' ? rawItem.sourceMetadata : {}) as {
+    touringRouteId?: string | null;
+    touringRoutePricingId?: string | null;
+  };
   const service = item?.service || ({
     id: 'missing-service',
     supplierId: 'import-itinerary-system',
@@ -1088,6 +1112,8 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     externalInternalNotes: item?.externalInternalNotes ?? (typeof rawItem?.internalNotes === 'string' ? rawItem.internalNotes : null),
     externalHotelsOrSimilar: item?.externalHotelsOrSimilar ?? (typeof rawItem?.hotelsOrSimilar === 'string' ? rawItem.hotelsOrSimilar : null),
     externalClientDescription: item?.externalClientDescription ?? (typeof rawItem?.clientDescription === 'string' ? rawItem.clientDescription : null),
+    touringRouteId: item?.touringRouteId ?? item?.touringRoute?.id ?? item?.touringRoutePricing?.touringRouteId ?? sourceMetadata.touringRouteId ?? null,
+    touringRoutePricingId: item?.touringRoutePricingId ?? item?.touringRoutePricing?.id ?? sourceMetadata.touringRoutePricingId ?? null,
     service: {
       ...service,
       serviceType: service.serviceType
@@ -1130,6 +1156,32 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
           durationDays: item.touringRoute.durationDays ?? null,
           mainDestinations: Array.isArray(item.touringRoute.mainDestinations) ? item.touringRoute.mainDestinations : [],
           stops: Array.isArray(item.touringRoute.stops) ? item.touringRoute.stops : [],
+        }
+      : null,
+    touringRoutePricing: item?.touringRoutePricing
+      ? {
+          id: item.touringRoutePricing.id,
+          touringRouteId: item.touringRoutePricing.touringRouteId ?? null,
+          currency: item.touringRoutePricing.currency ?? null,
+          baseCost: item.touringRoutePricing.baseCost ?? null,
+          pricingBasis: item.touringRoutePricing.pricingBasis ?? null,
+          vehicle: item.touringRoutePricing.vehicle
+            ? {
+                name: item.touringRoutePricing.vehicle.name ?? null,
+                maxPax: item.touringRoutePricing.vehicle.maxPax ?? null,
+              }
+            : null,
+          supplier: item.touringRoutePricing.supplier
+            ? {
+                name: item.touringRoutePricing.supplier.name ?? null,
+              }
+            : null,
+          transportServiceType: item.touringRoutePricing.transportServiceType
+            ? {
+                name: item.touringRoutePricing.transportServiceType.name ?? null,
+                code: item.touringRoutePricing.transportServiceType.code ?? null,
+              }
+            : null,
         }
       : null,
     hotel: item?.hotel ? { name: item.hotel.name } : null,

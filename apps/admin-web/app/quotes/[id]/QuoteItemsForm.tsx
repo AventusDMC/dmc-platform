@@ -342,6 +342,25 @@ type QuoteItemInitialValues = {
   activityId?: string;
   activityRateVariantId?: string;
   ticketRateVariantId?: string;
+  touringRouteId?: string;
+  touringRoutePricingId?: string;
+  touringRoute?: {
+    id: string;
+    name: string;
+    startCity: string;
+    durationDays?: number | null;
+    mainDestinations?: string[] | null;
+    stops?: Array<{ city?: string | null; location?: string | null }>;
+  } | null;
+  touringRoutePricing?: {
+    id: string;
+    currency?: string | null;
+    baseCost?: number | null;
+    pricingBasis?: string | null;
+    vehicle?: { name?: string | null; maxPax?: number | null } | null;
+    supplier?: { name?: string | null } | null;
+    transportServiceType?: { name?: string | null; code?: string | null } | null;
+  } | null;
   quantity: string;
   markupPercent: string;
   paxCount: string;
@@ -670,6 +689,14 @@ function getServiceTypeKeyFromText(value: string | null | undefined): ServiceTyp
   }
 
   return getPlannerCategoryForService({ category: value }) as ServiceTypeKey;
+}
+
+function formatTouringRoutePath(route: NonNullable<QuoteItemInitialValues['touringRoute']>) {
+  const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
+  const stops = Array.isArray(route.stops) ? route.stops.map((stop) => stop.location || stop.city).filter(Boolean) : [];
+  const routePath = destinations.length > 0 ? destinations : stops;
+
+  return routePath.length > 0 ? `${route.startCity} -> ${routePath.join(' -> ')} -> ${route.startCity}` : route.name;
 }
 
 function isImportedPlaceholderService(service: Pick<SupplierService, 'supplierId'>) {
@@ -1037,6 +1064,8 @@ export function QuoteItemsForm({
   const [transportServiceTypeId, setTransportServiceTypeId] = useState(
     initialValues?.transportServiceTypeId || (initialActiveServiceType === 'transport' ? transportServiceTypes[0]?.id || '' : ''),
   );
+  const [touringRouteId] = useState(initialValues?.touringRouteId || initialValues?.touringRoute?.id || '');
+  const [touringRoutePricingId] = useState(initialValues?.touringRoutePricingId || initialValues?.touringRoutePricing?.id || '');
   const [routeId, setRouteId] = useState(
     initialRouteId,
   );
@@ -1254,6 +1283,7 @@ export function QuoteItemsForm({
   const isTicketingService = selectedService ? getServiceTypeKey(selectedService) === 'ticketing' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+  const isTouringTransportEdit = Boolean(isTransportService && (touringRouteId || touringRoutePricingId || initialValues?.touringRoute));
   const externalPackageValidationErrors = useMemo(() => validateExternalPackageFormState(externalPackage), [externalPackage]);
   const externalPackageFooterErrors = isExternalPackageService
     ? error
@@ -2141,7 +2171,7 @@ export function QuoteItemsForm({
   }, [isHotelService, mealPlan, mealPlanOptions]);
 
   useEffect(() => {
-    if (!isTransportService) {
+    if (!isTransportService || isTouringTransportEdit) {
       setTransportServiceTypeId('');
       setRouteId('');
       setRouteName('');
@@ -2149,10 +2179,10 @@ export function QuoteItemsForm({
       setIsLoadingTransportCost(false);
       setSelectedTransportAddOns({});
     }
-  }, [isTransportService]);
+  }, [isTouringTransportEdit, isTransportService]);
 
   useEffect(() => {
-    if (!isTransportService || !resolvedTransportPricing?.optionalAddOns) {
+    if (!isTransportService || isTouringTransportEdit || !resolvedTransportPricing?.optionalAddOns) {
       return;
     }
 
@@ -2170,10 +2200,10 @@ export function QuoteItemsForm({
 
       return next;
     });
-  }, [isTransportService, resolvedTransportPricing?.optionalAddOns]);
+  }, [isTouringTransportEdit, isTransportService, resolvedTransportPricing?.optionalAddOns]);
 
   useEffect(() => {
-    if (!isTransportService || routeSelectionManuallyChanged || routeId || routeName.trim() || !smartDefaultTransportRoute) {
+    if (!isTransportService || isTouringTransportEdit || routeSelectionManuallyChanged || routeId || routeName.trim() || !smartDefaultTransportRoute) {
       return;
     }
 
@@ -2181,7 +2211,7 @@ export function QuoteItemsForm({
     setRouteName('');
     setBaseCost('');
     setResolvedTransportPricing(null);
-  }, [isTransportService, routeId, routeName, routeSelectionManuallyChanged, smartDefaultTransportRoute]);
+  }, [isTouringTransportEdit, isTransportService, routeId, routeName, routeSelectionManuallyChanged, smartDefaultTransportRoute]);
 
   function applyTransportCandidate(candidate: (typeof transportCandidates)[number], options?: { userInitiated?: boolean }) {
     const matchingService = findSupplierServiceForTransportSelection(filteredServices, candidate);
@@ -2219,15 +2249,15 @@ export function QuoteItemsForm({
   }
 
   useEffect(() => {
-    if (!isTransportService || isEditing || transportSuggestionOverridden || !routeId || !autoTransportCandidate) {
+    if (!isTransportService || isTouringTransportEdit || isEditing || transportSuggestionOverridden || !routeId || !autoTransportCandidate) {
       return;
     }
 
     applyTransportCandidate(autoTransportCandidate);
-  }, [autoTransportCandidate, isEditing, isTransportService, routeId, transportSuggestionOverridden]);
+  }, [autoTransportCandidate, isEditing, isTouringTransportEdit, isTransportService, routeId, transportSuggestionOverridden]);
 
   useEffect(() => {
-    if (!isTransportService || !routeId) {
+    if (!isTransportService || isTouringTransportEdit || !routeId) {
       return;
     }
 
@@ -2237,10 +2267,10 @@ export function QuoteItemsForm({
       setBaseCost('');
       setResolvedTransportPricing(null);
     }
-  }, [isTransportService, routeId, validTransportRoutes]);
+  }, [isTouringTransportEdit, isTransportService, routeId, validTransportRoutes]);
 
   useEffect(() => {
-    if (!isTransportService) {
+    if (!isTransportService || isTouringTransportEdit) {
       return;
     }
 
@@ -2317,6 +2347,7 @@ export function QuoteItemsForm({
     return () => abortController.abort();
   }, [
     apiBaseUrl,
+    isTouringTransportEdit,
     isTransportService,
     paxCount,
     resolvedTransportMatchesCurrentSelection,
@@ -2508,7 +2539,7 @@ export function QuoteItemsForm({
         }
       }
 
-      if (isTransportService) {
+      if (isTransportService && !isTouringTransportEdit) {
         if (!transportServiceTypeId) {
           throw new Error('Transport service type is required');
         }
@@ -2590,7 +2621,9 @@ export function QuoteItemsForm({
 
       const resolvedTransportServiceId =
         isTransportService
-          ? findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
+          ? isTouringTransportEdit
+            ? selectedService?.id || serviceId
+            : findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
           : serviceId;
       const resolvedHotelServiceId =
         isHotelService
@@ -2601,7 +2634,7 @@ export function QuoteItemsForm({
         throw new Error('Hotel catalog service not found for this stay.');
       }
 
-      if (isTransportService && !resolvedTransportServiceId) {
+      if (isTransportService && !isTouringTransportEdit && !resolvedTransportServiceId) {
         throw new Error('Transport rate found, but no matching transport catalog service exists for this supplier/pricing mode. No generic fallback transport item was saved.');
       }
 
@@ -2653,12 +2686,14 @@ export function QuoteItemsForm({
         sellPrice: isActivityService && activityRateVariantId && !hasManualSellOverride ? null : hasManualSellOverride ? Number(sellPrice) : null,
         sellPriceOverrideExplicit: hasManualSellOverride,
         markupPercent: Number(markupPercent),
-        transportServiceTypeId: isTransportService ? transportServiceTypeId : undefined,
-        vehicleRateId: isTransportService ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,
-        transportVehicleId: isTransportService ? selectedTransportVehicleId : undefined,
-        routeId: isTransportService ? routeId || undefined : undefined,
-        routeName: isTransportService ? routeName.trim() : undefined,
-        transportAddOns: isTransportService ? selectedTransportAddOnPayload : undefined,
+        transportServiceTypeId: isTransportService && !isTouringTransportEdit ? transportServiceTypeId : undefined,
+        vehicleRateId: isTransportService && !isTouringTransportEdit ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,
+        transportVehicleId: isTransportService && !isTouringTransportEdit ? selectedTransportVehicleId : undefined,
+        routeId: isTransportService && !isTouringTransportEdit ? routeId || undefined : undefined,
+        routeName: isTransportService && !isTouringTransportEdit ? routeName.trim() : undefined,
+        touringRouteId: isTouringTransportEdit ? touringRouteId || initialValues?.touringRoute?.id || undefined : undefined,
+        touringRoutePricingId: isTouringTransportEdit ? touringRoutePricingId || initialValues?.touringRoutePricing?.id || undefined : undefined,
+        transportAddOns: isTransportService && !isTouringTransportEdit ? selectedTransportAddOnPayload : undefined,
         guideType: isGuideService ? guideType : undefined,
         guideDuration: isGuideService ? guideDuration : undefined,
         overnight: isGuideService ? overnight === 'yes' : undefined,
@@ -4270,7 +4305,75 @@ export function QuoteItemsForm({
             </section>
           ) : null}
 
-          {isTransportService ? (
+          {isTouringTransportEdit ? (
+            <section className="quote-hotel-step-panel quote-transport-step-panel">
+              <div className="quote-hotel-step-head">
+                <div>
+                  <p className="eyebrow">Touring route transport</p>
+                  <h3>{initialValues?.touringRoute?.name || 'Touring route'}</h3>
+                  <p className="detail-copy">This quote item is sourced from Touring Routes / TouringRoutePricing. Regular transfer pricing modes are not used.</p>
+                </div>
+                <span className="page-tab-badge">Touring source</span>
+              </div>
+
+              <div className="quote-selected-transport-card quote-selected-transport-card-active">
+                <div className="quote-selected-transport-summary">
+                  <div>
+                    <span>Origin</span>
+                    <strong>{initialValues?.touringRoute?.startCity || 'Origin variant'}</strong>
+                  </div>
+                  <div>
+                    <span>Route</span>
+                    <strong>{initialValues?.touringRoute ? formatTouringRoutePath(initialValues.touringRoute) : initialValues?.routeName || 'Touring route'}</strong>
+                  </div>
+                  <div>
+                    <span>Pricing source</span>
+                    <strong>{touringRoutePricingId || 'TouringRoutePricing'}</strong>
+                  </div>
+                  <div>
+                    <span>Vehicle</span>
+                    <strong>{initialValues?.touringRoutePricing?.vehicle?.name || 'Vehicle from touring pricing'}</strong>
+                  </div>
+                  <div>
+                    <span>Pricing basis</span>
+                    <strong>{(initialValues?.touringRoutePricing?.pricingBasis || 'PER_GROUP').replace(/_/g, ' ')}</strong>
+                  </div>
+                  <div>
+                    <span>Total cost</span>
+                    <strong>{displayCurrency} {finalCost !== null && Number.isFinite(finalCost) ? finalCost.toFixed(2) : Number(baseCost || 0).toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="quote-transport-step-fields">
+                <label>
+                  Pax
+                  <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
+                </label>
+
+                <label>
+                  Units
+                  <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="1" required />
+                </label>
+
+                <label>
+                  Markup %
+                  <input value={markupPercent} onChange={(event) => setMarkupPercent(event.target.value)} type="number" min="0" step="0.01" required />
+                </label>
+
+                <label>
+                  Sell price override
+                  <input value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Optional" />
+                </label>
+              </div>
+
+              <button className="quote-transport-add-button" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save Touring Transport'}
+              </button>
+            </section>
+          ) : null}
+
+          {isTransportService && !isTouringTransportEdit ? (
             <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
@@ -4353,7 +4456,7 @@ export function QuoteItemsForm({
             </section>
           ) : null}
 
-          {isTransportService ? (
+          {isTransportService && !isTouringTransportEdit ? (
             <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
@@ -4419,7 +4522,7 @@ export function QuoteItemsForm({
             </section>
           ) : null}
 
-          {isTransportService ? (
+          {isTransportService && !isTouringTransportEdit ? (
             <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
@@ -4510,7 +4613,7 @@ export function QuoteItemsForm({
             </section>
           ) : null}
 
-          {isTransportService ? (
+          {isTransportService && !isTouringTransportEdit ? (
             <details className="quote-advanced-settings">
               <summary>More options</summary>
 
@@ -4670,7 +4773,7 @@ export function QuoteItemsForm({
           {hasPrimarySelection && isHotelService && !selectedHotelBaseRate && !manualHotelRateDraft ? (
             <p className="form-error">No hotel rate matches the selected contract, season, room category, occupancy, and meal plan.</p>
           ) : null}
-          {hasPrimarySelection && isTransportService && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (
+          {hasPrimarySelection && isTransportService && !isTouringTransportEdit && !baseCost && !isLoadingTransportCost && transportServiceTypeId && (routeId || routeName.trim()) ? (
             <p className="form-error">No transport pricing rule matches the selected route, service type, and pax count.</p>
           ) : null}
           {hasPrimarySelection && isExternalPackageService ? (
