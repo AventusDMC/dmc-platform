@@ -3,7 +3,7 @@
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
-import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
+import { isActivityTaxonomyGroup, resolveServiceTaxonomyGroup } from '../../lib/service-taxonomy';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 
@@ -34,6 +34,7 @@ type BookingService = {
   supplierName: string | null;
   supplierStatus?: 'unresolved' | null;
   serviceType: string;
+  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
   serviceDate: string | null;
   startTime?: string | null;
   pickupTime?: string | null;
@@ -52,6 +53,23 @@ type BookingService = {
   confirmationNotes?: string | null;
   confirmationRequestedAt?: string | null;
   confirmationConfirmedAt?: string | null;
+  sourceMetadata?: {
+    hotelReservation?: {
+      status?: string | null;
+      blockedRoomCount?: number | null;
+      roomTypes?: string[];
+      releaseDate?: string | null;
+      reconfirmationDueDate?: string | null;
+      notes?: string | null;
+      primaryHotelName?: string | null;
+      alternativeHotels?: Array<{
+        name?: string | null;
+        status?: string | null;
+        notes?: string | null;
+      }>;
+      roomingSentAt?: string | null;
+    };
+  } | null;
   auditLogs?: AuditLog[];
 };
 
@@ -67,8 +85,8 @@ type ServiceGroup = {
   services: BookingService[];
 };
 
-function mapBookingServiceTypeToSupplierType(serviceType: string): Supplier['type'] | null {
-  const normalized = serviceType.trim().toLowerCase();
+function mapBookingServiceTypeToSupplierType(serviceType: string, operationType?: string | null): Supplier['type'] | null {
+  const normalized = [operationType, serviceType].filter(Boolean).join(' ').trim().toLowerCase();
 
   if (!normalized) {
     return null;
@@ -91,6 +109,28 @@ function formatAuditAction(action: string) {
 
 function isActivityService(serviceType: string) {
   return isActivityTaxonomyGroup({ category: serviceType });
+}
+
+function isHotelService(service: Pick<BookingService, 'serviceType' | 'operationType' | 'sourceMetadata'>) {
+  return (
+    resolveServiceTaxonomyGroup({ category: service.operationType || service.serviceType }) === 'hotel' ||
+    mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType) === 'hotel' ||
+    Boolean(service.sourceMetadata?.hotelReservation)
+  );
+}
+
+function getHotelReservationMetadata(service: Pick<BookingService, 'sourceMetadata' | 'reconfirmationDueAt' | 'supplierName'>) {
+  return {
+    status: service.sourceMetadata?.hotelReservation?.status || 'Requested',
+    blockedRoomCount: service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? 0,
+    roomTypes: service.sourceMetadata?.hotelReservation?.roomTypes || [],
+    releaseDate: service.sourceMetadata?.hotelReservation?.releaseDate || null,
+    reconfirmationDueDate: service.sourceMetadata?.hotelReservation?.reconfirmationDueDate || service.reconfirmationDueAt || null,
+    notes: service.sourceMetadata?.hotelReservation?.notes || '',
+    primaryHotelName: service.sourceMetadata?.hotelReservation?.primaryHotelName || service.supplierName || '',
+    alternativeHotels: service.sourceMetadata?.hotelReservation?.alternativeHotels || [],
+    roomingSentAt: service.sourceMetadata?.hotelReservation?.roomingSentAt || null,
+  };
 }
 
 function getReconfirmationWarning(service: Pick<BookingService, 'reconfirmationRequired' | 'reconfirmationDueAt' | 'confirmationStatus'>) {
@@ -195,8 +235,10 @@ export function BookingServiceTimeline({
               const supplierReference = service.supplierReference || service.confirmationNumber;
               const marginMetrics = getMarginMetrics(service.totalSell, service.totalCost);
               const executionDetails = buildExecutionDetails(service);
-              const supplierType = mapBookingServiceTypeToSupplierType(service.serviceType);
+              const supplierType = mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType);
               const supplierOptions = supplierType ? suppliers.filter((supplier) => supplier.type === supplierType) : suppliers;
+              const hotelService = isHotelService(service);
+              const hotelReservation = getHotelReservationMetadata(service);
               const hasOpsIssue =
                 activityService &&
                 (!service.serviceDate || (!service.startTime && !service.pickupTime) || (!service.pickupLocation && !service.meetingPoint));
@@ -349,6 +391,98 @@ export function BookingServiceTimeline({
                             </div>
                           </form>
                         </InlineRowEditorShell>
+
+                        {hotelService ? (
+                          <InlineRowEditorShell>
+                            <div className="audit-log-list">
+                              <div className="audit-log-item">
+                                <h3>Hotel Reservation Operations</h3>
+                                <p>Status: {hotelReservation.status}</p>
+                                <p>
+                                  Room block: {hotelReservation.blockedRoomCount}
+                                  {hotelReservation.roomTypes.length ? ` | ${hotelReservation.roomTypes.join(', ')}` : ''}
+                                </p>
+                                <p>
+                                  Release: {hotelReservation.releaseDate ? formatDateTime(hotelReservation.releaseDate) : 'Not set'}
+                                  {' | '}
+                                  Reconfirm: {hotelReservation.reconfirmationDueDate ? formatDateTime(hotelReservation.reconfirmationDueDate) : 'Not set'}
+                                </p>
+                                <p>
+                                  Alternatives:{' '}
+                                  {hotelReservation.alternativeHotels.length
+                                    ? hotelReservation.alternativeHotels
+                                        .map((hotel) => `${hotel.name || 'Hotel'} (${hotel.status || 'waitlist'})`)
+                                        .join(', ')
+                                    : 'None'}
+                                </p>
+                              </div>
+                            </div>
+                            <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
+                              <label>
+                                Reservation status
+                                <select name="hotelReservationStatus" defaultValue={hotelReservation.status}>
+                                  <option value="Requested">Requested</option>
+                                  <option value="Blocked">Blocked</option>
+                                  <option value="Waitlist">Waitlist</option>
+                                  <option value="Tentative">Tentative</option>
+                                  <option value="Confirmed">Confirmed</option>
+                                  <option value="Released">Released</option>
+                                  <option value="Cancelled">Cancelled</option>
+                                </select>
+                              </label>
+                              <input
+                                type="number"
+                                name="blockedRoomCount"
+                                min="0"
+                                defaultValue={hotelReservation.blockedRoomCount || ''}
+                                placeholder="Blocked rooms"
+                              />
+                              <input
+                                type="text"
+                                name="roomTypes"
+                                defaultValue={hotelReservation.roomTypes.join(', ')}
+                                placeholder="Room types"
+                              />
+                              <input
+                                type="datetime-local"
+                                name="releaseDate"
+                                defaultValue={hotelReservation.releaseDate ? hotelReservation.releaseDate.slice(0, 16) : ''}
+                              />
+                              <input
+                                type="datetime-local"
+                                name="hotelReconfirmationDueAt"
+                                defaultValue={hotelReservation.reconfirmationDueDate ? hotelReservation.reconfirmationDueDate.slice(0, 16) : ''}
+                              />
+                              <input
+                                type="text"
+                                name="primaryHotelName"
+                                defaultValue={hotelReservation.primaryHotelName}
+                                placeholder="Primary hotel"
+                              />
+                              <textarea
+                                name="alternativeHotels"
+                                defaultValue={hotelReservation.alternativeHotels.map((hotel) => hotel.name).filter(Boolean).join('\n')}
+                                placeholder="Backup/waitlist hotels, one per line"
+                                rows={3}
+                              />
+                              <input type="text" name="activateAlternativeHotel" placeholder="Activate alternative hotel by name" />
+                              <input type="text" name="releaseAlternativeHotel" placeholder="Release alternative hotel by name" />
+                              <label>
+                                <input type="checkbox" name="roomingSent" defaultChecked={Boolean(hotelReservation.roomingSentAt)} /> Rooming sent
+                              </label>
+                              <input
+                                type="text"
+                                name="hotelReservationNotes"
+                                defaultValue={hotelReservation.notes}
+                                placeholder="Operational notes"
+                              />
+                              <input type="text" name="note" placeholder="Reason for update" />
+                              <button type="submit" className="secondary-button">
+                                Save hotel reservation ops
+                              </button>
+                            </form>
+                          </InlineRowEditorShell>
+                        ) : null}
 
                         {activityService ? (
                           <InlineRowEditorShell>

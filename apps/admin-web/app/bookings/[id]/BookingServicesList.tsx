@@ -419,7 +419,7 @@ export function BookingServicesList({
                     <InlineRowEditorShell>
                       <div className="audit-log-list">
                         <div className="audit-log-item">
-                          <strong>Hotel reservation operations</strong>
+                          <h3>Hotel Reservation Operations</h3>
                           <p>Status: {hotelReservation.status}</p>
                           <p>
                             Room block: {hotelReservation.blockedRoomCount}
