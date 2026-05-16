@@ -25,6 +25,16 @@ type Supplier = {
   type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 };
 
+type Guide = {
+  id: string;
+  fullName: string;
+  languages: string[];
+  regions: string[];
+  phone: string | null;
+  active: boolean;
+  guideType: string;
+};
+
 type BookingService = {
   id: string;
   description: string;
@@ -54,6 +64,14 @@ type BookingService = {
   confirmationNotes?: string | null;
   confirmationRequestedAt?: string | null;
   confirmationConfirmedAt?: string | null;
+  assignedTo?: string | null;
+  guidePhone?: string | null;
+  guideId?: string | null;
+  guideConfirmationStatus?: string | null;
+  guideRequiredLanguages?: string[];
+  guideReportingTime?: string | null;
+  guide?: Guide | null;
+  guideWarnings?: string[];
   sourceMetadata?: {
     hotelReservation?: {
       status?: string | null;
@@ -84,6 +102,7 @@ type BookingService = {
 type BookingServiceTimelineProps = {
   services: BookingService[];
   suppliers: Supplier[];
+  guides: Guide[];
   highlightServiceId?: string;
 };
 
@@ -117,6 +136,14 @@ function formatAuditAction(action: string) {
 
 function isActivityService(serviceType: string) {
   return isActivityTaxonomyGroup({ category: serviceType });
+}
+
+function isGuideService(service: Pick<BookingService, 'serviceType' | 'operationType' | 'guideId'>) {
+  return (
+    resolveServiceTaxonomyGroup({ category: service.operationType || service.serviceType }) === 'guide' ||
+    mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType) === 'guide' ||
+    Boolean(service.guideId)
+  );
 }
 
 function isHotelService(service: Pick<BookingService, 'serviceType' | 'operationType' | 'sourceMetadata'>) {
@@ -225,6 +252,7 @@ function formatDateTime(value: string) {
 export function BookingServiceTimeline({
   services,
   suppliers,
+  guides,
   highlightServiceId,
 }: BookingServiceTimelineProps) {
   if (services.length === 0) {
@@ -260,6 +288,9 @@ export function BookingServiceTimeline({
               const executionDetails = buildExecutionDetails(service);
               const supplierType = mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType);
               const supplierOptions = supplierType ? suppliers.filter((supplier) => supplier.type === supplierType) : suppliers;
+              const guideService = isGuideService(service);
+              const guideOptions = guides.filter((guide) => guide.active || guide.id === service.guideId);
+              const selectedGuide = service.guide || guideOptions.find((guide) => guide.id === service.guideId) || null;
               const hotelService = isHotelService(service);
               const hotelReservation = getHotelReservationMetadata(service);
               const hasOpsIssue =
@@ -417,6 +448,95 @@ export function BookingServiceTimeline({
                             </form>
                           </InlineRowEditorShell>
                         </BookingServiceDetailSection>
+
+                        {guideService ? (
+                          <BookingServiceDetailSection title="Guide Operations">
+                            {service.guideWarnings && service.guideWarnings.length > 0 ? (
+                              <div className="booking-service-card-alerts">
+                                {service.guideWarnings.map((warning) => (
+                                  <p key={warning}>{warning}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                            <div className="booking-service-hotel-summary">
+                              <div>
+                                <span>Assigned guide</span>
+                                <strong>{selectedGuide?.fullName || service.assignedTo || 'Unassigned'}</strong>
+                              </div>
+                              <div>
+                                <span>Confirmation</span>
+                                <strong>{service.guideConfirmationStatus || 'PENDING'}</strong>
+                              </div>
+                              <div>
+                                <span>Languages</span>
+                                <strong>{selectedGuide?.languages?.length ? selectedGuide.languages.join(', ') : 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Regions</span>
+                                <strong>{selectedGuide?.regions?.length ? selectedGuide.regions.join(', ') : 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Contact</span>
+                                <strong>{selectedGuide?.phone || service.guidePhone || 'Not set'}</strong>
+                              </div>
+                            </div>
+                            <InlineRowEditorShell>
+                              <form action={`/api/bookings/services/${service.id}/guide-assignment`} method="POST" className="operations-inline-form">
+                                <label>
+                                  Assign guide
+                                  <select name="guideId" defaultValue={service.guideId || ''}>
+                                    <option value="">No guide assigned</option>
+                                    {guideOptions.map((guide) => (
+                                      <option key={guide.id} value={guide.id}>
+                                        {guide.fullName} ({guide.guideType})
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  Guide confirmation status
+                                  <select name="guideConfirmationStatus" defaultValue={service.guideConfirmationStatus || 'PENDING'}>
+                                    <option value="PENDING">Pending</option>
+                                    <option value="REQUESTED">Requested</option>
+                                    <option value="CONFIRMED">Confirmed</option>
+                                    <option value="REJECTED">Rejected</option>
+                                    <option value="CANCELLED">Cancelled</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Required languages
+                                  <input
+                                    type="text"
+                                    name="guideRequiredLanguages"
+                                    defaultValue={(service.guideRequiredLanguages || []).join(', ')}
+                                    placeholder="English, Arabic"
+                                  />
+                                </label>
+                                <label>
+                                  Guide contact
+                                  <input type="text" name="guidePhone" defaultValue={service.guidePhone || selectedGuide?.phone || ''} placeholder="Phone or WhatsApp" />
+                                </label>
+                                <label>
+                                  Reporting time
+                                  <input type="time" name="guideReportingTime" defaultValue={service.guideReportingTime || ''} />
+                                </label>
+                                <label>
+                                  Pickup time
+                                  <input type="time" name="pickupTime" defaultValue={service.pickupTime || ''} />
+                                </label>
+                                <label>
+                                  Assignment note
+                                  <input type="text" name="note" placeholder="Reason for assignment or reassignment" />
+                                </label>
+                                <div className="quote-status-actions">
+                                  <button type="submit" className="secondary-button">
+                                    Save guide assignment
+                                  </button>
+                                </div>
+                              </form>
+                            </InlineRowEditorShell>
+                          </BookingServiceDetailSection>
+                        ) : null}
 
                         {hotelService ? (
                           <BookingServiceDetailSection title="Hotel Reservation Operations">

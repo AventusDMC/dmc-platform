@@ -79,6 +79,16 @@ type Supplier = {
   type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 };
 
+type Guide = {
+  id: string;
+  fullName: string;
+  languages: string[];
+  regions: string[];
+  phone: string | null;
+  active: boolean;
+  guideType: string;
+};
+
 type Vehicle = {
   id: string;
   supplierId: string;
@@ -415,6 +425,12 @@ type Booking = {
     referenceId?: string | null;
     assignedTo?: string | null;
     guidePhone?: string | null;
+    guideId?: string | null;
+    guideConfirmationStatus?: string | null;
+    guideRequiredLanguages?: string[];
+    guideReportingTime?: string | null;
+    guide?: Guide | null;
+    guideWarnings?: string[];
     vehicleId?: string | null;
     vehicle?: {
       id: string;
@@ -609,6 +625,12 @@ async function getBooking(id: string): Promise<Booking | null> {
 
 async function getSuppliers(): Promise<Supplier[]> {
   return adminPageFetchJson<Supplier[]>('/api/suppliers', 'Suppliers', {
+    cache: 'no-store',
+  });
+}
+
+async function getGuides(): Promise<Guide[]> {
+  return adminPageFetchJson<Guide[]>('/api/guides', 'Guides', {
     cache: 'no-store',
   });
 }
@@ -1172,7 +1194,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveBookingTab(resolvedSearchParams?.tab);
   const highlightServiceId = resolvedSearchParams?.service?.trim() || undefined;
-  const [booking, suppliers, vehicles, transportRoutes] = await Promise.all([getBooking(bookingId), getSuppliers(), getVehicles(), getRoutes()]);
+  const [booking, suppliers, guides, vehicles, transportRoutes] = await Promise.all([getBooking(bookingId), getSuppliers(), getGuides(), getVehicles(), getRoutes()]);
   const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
 
   if (!booking) {
@@ -2236,6 +2258,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                     <BookingServiceTimeline
                       services={booking.services}
                       suppliers={suppliers}
+                      guides={guides}
                       highlightServiceId={highlightServiceId}
                     />
                   </section>

@@ -3551,6 +3551,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       referenceId?: string | null;
       assignedTo?: string | null;
       guidePhone?: string | null;
+      guideId?: string | null;
+      guideConfirmationStatus?: string | null;
+      guideRequiredLanguages?: string[] | string | null;
+      guideReportingTime?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -3600,6 +3604,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           referenceId: normalized.referenceId,
           assignedTo: normalized.assignedTo,
           guidePhone: normalized.guidePhone,
+          guideId: normalized.guideId,
+          guideConfirmationStatus: normalized.guideConfirmationStatus,
+          guideRequiredLanguages: normalized.guideRequiredLanguages,
+          guideReportingTime: normalized.guideReportingTime,
           vehicleId: normalized.vehicleId,
           serviceDate: bookingDay.date,
           pickupTime: normalized.pickupTime,
@@ -3663,6 +3671,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       referenceId?: string | null;
       assignedTo?: string | null;
       guidePhone?: string | null;
+      guideId?: string | null;
+      guideConfirmationStatus?: string | null;
+      guideRequiredLanguages?: string[] | string | null;
+      guideReportingTime?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -3682,6 +3694,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       include: {
         supplier: true,
         vehicle: true,
+        guide: true,
         bookingDay: true,
       },
     });
@@ -3717,6 +3730,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           referenceId: normalized.referenceId,
           assignedTo: normalized.assignedTo,
           guidePhone: normalized.guidePhone,
+          guideId: normalized.guideId,
+          guideConfirmationStatus: normalized.guideConfirmationStatus,
+          guideRequiredLanguages: normalized.guideRequiredLanguages,
+          guideReportingTime: normalized.guideReportingTime,
           vehicleId: normalized.vehicleId,
           pickupTime: normalized.pickupTime,
           supplierId: normalized.supplierId,
@@ -3732,6 +3749,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         include: {
           supplier: true,
           vehicle: true,
+          guide: true,
           bookingDay: true,
         },
       });
@@ -3787,6 +3805,107 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return { id: bookingServiceId, deleted: true };
     });
+  }
+
+  async updateGuideAssignment(
+    bookingServiceId: string,
+    data: {
+      guideId?: string | null;
+      assignedTo?: string | null;
+      guidePhone?: string | null;
+      guideConfirmationStatus?: string | null;
+      guideRequiredLanguages?: string[] | string | null;
+      guideReportingTime?: string | null;
+      pickupTime?: string | null;
+      note?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: {
+        guide: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    if (!this.isOperationServiceType(bookingService, BookingOperationServiceType.GUIDE)) {
+      throw new BadRequestException('Guide assignment is only available for guide services');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    const guideId = data.guideId === undefined ? bookingService.guideId : this.normalizeOptionalText(data.guideId);
+    let guide = guideId ? await this.prisma.guide.findUnique({ where: { id: guideId } }) : null;
+    if (guideId && !guide) {
+      throw new NotFoundException('Guide not found');
+    }
+    if (guide && !guide.active) {
+      throw new BadRequestException('Inactive guides cannot be assigned');
+    }
+
+    const assignedTo =
+      data.assignedTo === undefined ? guide?.fullName || bookingService.assignedTo : this.normalizeOptionalText(data.assignedTo) || guide?.fullName || null;
+    const guidePhone =
+      data.guidePhone === undefined ? guide?.phone || bookingService.guidePhone : this.normalizeOptionalText(data.guidePhone) || guide?.phone || null;
+    const guideConfirmationStatus =
+      data.guideConfirmationStatus === undefined
+        ? bookingService.guideConfirmationStatus
+        : this.normalizeGuideConfirmationStatus(data.guideConfirmationStatus);
+    const guideRequiredLanguages =
+      data.guideRequiredLanguages === undefined
+        ? bookingService.guideRequiredLanguages
+        : this.parseStringList(data.guideRequiredLanguages);
+    const guideReportingTime =
+      data.guideReportingTime === undefined
+        ? bookingService.guideReportingTime
+        : this.normalizeTimeInput(data.guideReportingTime, 'Guide reporting time');
+    const pickupTime = data.pickupTime === undefined ? bookingService.pickupTime : this.normalizeTimeInput(data.pickupTime, 'Pickup/reporting time');
+
+    if (!assignedTo) {
+      throw new BadRequestException('Guide booking service requires an assigned guide');
+    }
+
+    const updatedService = await this.prisma.bookingService.update({
+      where: { id: bookingServiceId },
+      data: {
+        guideId,
+        assignedTo,
+        guidePhone,
+        guideConfirmationStatus,
+        guideRequiredLanguages,
+        guideReportingTime,
+        pickupTime,
+        operationStatus: guideConfirmationStatus === 'CONFIRMED' ? BookingOperationServiceStatus.CONFIRMED : bookingService.operationStatus,
+      },
+      include: {
+        guide: true,
+      },
+    });
+
+    await this.createAuditLog(this.prisma, {
+      bookingId: bookingService.bookingId,
+      bookingServiceId,
+      entityType: BookingAuditEntityType.booking_service,
+      entityId: bookingServiceId,
+      action: 'guide_assignment_updated',
+      oldValue: [bookingService.assignedTo, bookingService.guideConfirmationStatus].filter(Boolean).join(' | ') || null,
+      newValue: [assignedTo, guideConfirmationStatus].filter(Boolean).join(' | ') || null,
+      note: this.normalizeOptionalText(data.note),
+      actor: data.actor,
+    });
+
+    return {
+      ...updatedService,
+      guideWarnings: await this.getGuideReadinessWarnings(updatedService),
+    };
   }
 
   assignSupplier(
@@ -5662,6 +5781,125 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return normalized as SupplierConfirmationWorkflowAction;
   }
 
+  private normalizeGuideConfirmationStatus(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase().replace(/[\s-]+/g, '_');
+    const allowed = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED'];
+    if (!normalized || !allowed.includes(normalized)) {
+      throw new BadRequestException(`Unsupported guide confirmation status: ${value || 'missing'}`);
+    }
+    return normalized;
+  }
+
+  private isGuideLanguageMismatch(service: any) {
+    const required = Array.isArray(service.guideRequiredLanguages) ? service.guideRequiredLanguages : [];
+    if (required.length === 0 || !service.guide) {
+      return false;
+    }
+    const guideLanguages = new Set((Array.isArray(service.guide.languages) ? service.guide.languages : []).map((entry: string) => entry.toLowerCase()));
+    return required.some((entry: string) => !guideLanguages.has(String(entry).toLowerCase()));
+  }
+
+  private async hasGuideOverlap(service: any) {
+    if (!service.guideId || !service.serviceDate) {
+      return false;
+    }
+    const dayStart = this.startOfUtcDay(service.serviceDate instanceof Date ? service.serviceDate : new Date(service.serviceDate));
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    const [assignmentCount, blockCount] = await Promise.all([
+      this.prisma.bookingService.count({
+        where: {
+          id: { not: service.id },
+          guideId: service.guideId,
+          status: { not: BookingServiceLifecycleStatus.cancelled },
+          serviceDate: { gte: dayStart, lt: dayEnd },
+        },
+      }),
+      this.prisma.guideBlockedDate.count({
+        where: {
+          guideId: service.guideId,
+          startDate: { lt: dayEnd },
+          endDate: { gte: dayStart },
+        },
+      }),
+    ]);
+    return assignmentCount > 0 || blockCount > 0;
+  }
+
+  private async getGuideReadinessWarnings(service: any) {
+    if (!this.isOperationServiceType(service, BookingOperationServiceType.GUIDE)) {
+      return [];
+    }
+    const warnings: string[] = [];
+    if (!service.guideId && !this.normalizeOptionalText(service.assignedTo)) {
+      warnings.push('no guide assigned');
+    }
+    if (service.guideConfirmationStatus !== 'CONFIRMED') {
+      warnings.push('guide not confirmed');
+    }
+    if (this.isGuideLanguageMismatch(service)) {
+      warnings.push('wrong language');
+    }
+    if (await this.hasGuideOverlap(service)) {
+      warnings.push('overlapping guide assignment');
+    }
+    return warnings;
+  }
+
+  private getGuideReadinessWarningsSync(service: any) {
+    if (!this.isOperationServiceType(service, BookingOperationServiceType.GUIDE)) {
+      return [];
+    }
+    const warnings: string[] = [];
+    if (!service.guideId && !this.normalizeOptionalText(service.assignedTo)) {
+      warnings.push('no guide assigned');
+    }
+    if (service.guideConfirmationStatus !== 'CONFIRMED') {
+      warnings.push('guide not confirmed');
+    }
+    if (this.isGuideLanguageMismatch(service)) {
+      warnings.push('wrong language');
+    }
+    if (service.guideOverlap || this.isGuideBlockedOnServiceDate(service)) {
+      warnings.push('overlapping guide assignment');
+    }
+    return warnings;
+  }
+
+  private getGuideOverlapServiceIds(services: any[]) {
+    const ids = new Set<string>();
+    const byGuideDay = new Map<string, any[]>();
+    for (const service of services) {
+      if (!this.isOperationServiceType(service, BookingOperationServiceType.GUIDE) || !service.guideId || !service.serviceDate) {
+        continue;
+      }
+      const date = service.serviceDate instanceof Date ? service.serviceDate : new Date(service.serviceDate);
+      if (Number.isNaN(date.getTime())) {
+        continue;
+      }
+      const key = `${service.guideId}:${date.toISOString().slice(0, 10)}`;
+      byGuideDay.set(key, [...(byGuideDay.get(key) || []), service]);
+    }
+    for (const entries of byGuideDay.values()) {
+      if (entries.length > 1) {
+        entries.forEach((entry) => ids.add(entry.id));
+      }
+    }
+    return ids;
+  }
+
+  private isGuideBlockedOnServiceDate(service: any) {
+    if (!service.serviceDate || !service.guide?.blockedDates?.length) {
+      return false;
+    }
+    const dayStart = this.startOfUtcDay(service.serviceDate instanceof Date ? service.serviceDate : new Date(service.serviceDate));
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    return service.guide.blockedDates.some((block: any) => {
+      const start = block.startDate instanceof Date ? block.startDate : new Date(block.startDate);
+      const end = block.endDate instanceof Date ? block.endDate : new Date(block.endDate);
+      return start.getTime() < dayEnd.getTime() && end.getTime() >= dayStart.getTime();
+    });
+  }
+
   private buildSupplierConfirmationEmailPreview(service: any) {
     const bookingRef = service.booking?.bookingRef || service.bookingId;
     const lines = [
@@ -5689,6 +5927,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       referenceId?: string | null;
       assignedTo?: string | null;
       guidePhone?: string | null;
+      guideId?: string | null;
+      guideConfirmationStatus?: string | null;
+      guideRequiredLanguages?: string[] | string | null;
+      guideReportingTime?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -5702,8 +5944,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const referenceId =
       data.referenceId === undefined ? currentService?.referenceId ?? null : this.normalizeOptionalText(data.referenceId);
     const vehicleId = data.vehicleId === undefined ? currentService?.vehicleId ?? null : this.normalizeOptionalText(data.vehicleId);
-    const guidePhone = data.guidePhone === undefined ? currentService?.guidePhone ?? null : this.normalizeOptionalText(data.guidePhone);
-    const assignedTo = data.assignedTo === undefined ? currentService?.assignedTo ?? null : this.normalizeOptionalText(data.assignedTo);
+    let guidePhone = data.guidePhone === undefined ? currentService?.guidePhone ?? null : this.normalizeOptionalText(data.guidePhone);
+    let assignedTo = data.assignedTo === undefined ? currentService?.assignedTo ?? null : this.normalizeOptionalText(data.assignedTo);
+    let guideId = data.guideId === undefined ? currentService?.guideId ?? null : this.normalizeOptionalText(data.guideId);
+    const guideConfirmationStatus =
+      data.guideConfirmationStatus === undefined
+        ? currentService?.guideConfirmationStatus || 'PENDING'
+        : this.normalizeGuideConfirmationStatus(data.guideConfirmationStatus);
+    const guideRequiredLanguages =
+      data.guideRequiredLanguages === undefined
+        ? Array.isArray(currentService?.guideRequiredLanguages)
+          ? currentService.guideRequiredLanguages
+          : []
+        : this.parseStringList(data.guideRequiredLanguages);
+    const guideReportingTime =
+      data.guideReportingTime === undefined
+        ? currentService?.guideReportingTime ?? null
+        : this.normalizeTimeInput(data.guideReportingTime, 'Guide reporting time');
     const pickupTime =
       data.pickupTime === undefined ? currentService?.pickupTime ?? null : this.normalizeTimeInput(data.pickupTime, 'Pickup time');
     const confirmationNumber =
@@ -5761,7 +6018,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     supplierName = resolvedSupplier.supplierName;
 
     if (type === BookingOperationServiceType.GUIDE && !assignedTo) {
-      throw new BadRequestException('Guide booking service requires assignedTo');
+      if (guideId) {
+        const guide = await this.prisma.guide.findUnique({ where: { id: guideId } });
+        if (!guide) {
+          throw new NotFoundException('Guide not found');
+        }
+        if (!guide.active) {
+          throw new BadRequestException('Inactive guides cannot be assigned');
+        }
+        assignedTo = guide.fullName;
+        guidePhone = guide.phone || guidePhone;
+      }
+      if (!assignedTo) {
+        throw new BadRequestException('Guide booking service requires assignedTo');
+      }
+    } else if (type !== BookingOperationServiceType.GUIDE) {
+      guideId = null;
     }
 
     if (type !== BookingOperationServiceType.TRANSPORT) {
@@ -5775,6 +6047,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         referenceId: null,
         assignedTo: null,
         guidePhone: null,
+        guideId: null,
+        guideConfirmationStatus: 'PENDING',
+        guideRequiredLanguages: [],
+        guideReportingTime: null,
         vehicleId: null,
         vehicleName: null,
         routeName: null,
@@ -5792,6 +6068,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       referenceId,
       assignedTo,
       guidePhone,
+      guideId,
+      guideConfirmationStatus,
+      guideRequiredLanguages,
+      guideReportingTime,
       vehicleId: type === BookingOperationServiceType.TRANSPORT ? vehicleId : null,
       vehicleName,
       routeName,
@@ -6068,6 +6348,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       operationStatus: service.operationStatus,
       serviceDate: service.serviceDate,
       pickupTime: service.pickupTime,
+      guideId: service.guideId || null,
+      guide: service.guide
+        ? {
+            id: service.guide.id,
+            fullName: service.guide.fullName,
+            languages: service.guide.languages || [],
+            phone: service.guide.phone || null,
+            active: Boolean(service.guide.active),
+            guideType: service.guide.guideType || null,
+          }
+        : null,
+      guideConfirmationStatus: service.guideConfirmationStatus || 'PENDING',
+      guideRequiredLanguages: Array.isArray(service.guideRequiredLanguages) ? service.guideRequiredLanguages : [],
+      guideReportingTime: service.guideReportingTime || null,
+      guideWarnings: this.getGuideReadinessWarningsSync(service),
       sourceMetadata: service.sourceMetadata || null,
       hotelReservation: this.getSourceMetadataObject(service.sourceMetadata).hotelReservation || null,
       assignedTo: service.assignedTo,
@@ -6101,7 +6396,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (key === 'hotels') return { key: 'hotelReservations', label: 'Hotel Reservations' };
     if (key === 'transport') return { key: 'transportOperations', label: 'Transport Operations' };
     if (key === 'activitiesExcursions') return { key: 'activitiesExcursions', label: 'Activities & Excursions' };
-    if (key === 'guides') return { key: 'guides', label: 'Guides' };
+    if (key === 'guides') return { key: 'guideOperations', label: 'Guide Operations' };
     if (key === 'dining') return { key: 'dining', label: 'Dining' };
     return { key: 'supplierConfirmations', label: 'Supplier Confirmations' };
   }
@@ -6127,6 +6422,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       documentation_vouchers: 'documentationVouchers',
       supplier: 'supplierConfirmations',
       supplier_confirmations: 'supplierConfirmations',
+      guide: 'guideOperations',
+      guides: 'guideOperations',
+      guide_operations: 'guideOperations',
       passenger_rooming: 'passengerRooming',
       passengers: 'passengerRooming',
       rooming: 'passengerRooming',
@@ -6415,7 +6713,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
   private isServiceMissingTiming(service: any) {
     const department = this.getOperationsDepartmentForService(service).key;
-    if (!['transportOperations', 'activitiesExcursions', 'guides'].includes(department)) {
+    if (!['transportOperations', 'activitiesExcursions', 'guideOperations'].includes(department)) {
       return false;
     }
 
@@ -6439,6 +6737,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       hotelReservations: emptyQueue(),
       transportOperations: emptyQueue(),
       activitiesExcursions: emptyQueue(),
+      guideOperations: emptyQueue(),
       documentationVouchers: emptyQueue(),
       supplierConfirmations: emptyQueue(),
       passengerRooming: emptyQueue(),
@@ -6547,6 +6846,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       missingTimings: this.buildDashboardBucket(
         input.services.filter((service) => this.isServiceMissingTiming(service)).map((service) => this.mapDashboardService(service)),
       ),
+      guideReadinessAlerts: this.buildDashboardBucket(
+        input.services
+          .filter((service) => this.isOperationServiceType(service, BookingOperationServiceType.GUIDE))
+          .map((service) => this.mapDashboardService(service))
+          .filter((service) => Array.isArray(service.guideWarnings) && service.guideWarnings.length > 0),
+      ),
       unassignedPassengers: this.buildDashboardBucket(
         input.missingRooming
           .filter((booking) => this.getMissingRoomingReasons(booking).includes('passengers not assigned to rooms'))
@@ -6576,16 +6881,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isMissingServiceAssignment(service: any) {
+    if (this.isOperationServiceType(service, BookingOperationServiceType.GUIDE)) {
+      return !this.normalizeOptionalText(service.assignedTo) && !service.guideId;
+    }
+
     if (!service.supplierId) {
       return true;
     }
 
     if (this.isOperationServiceType(service, BookingOperationServiceType.TRANSPORT)) {
       return this.isMissingTransportAssignment(service);
-    }
-
-    if (this.isOperationServiceType(service, BookingOperationServiceType.GUIDE)) {
-      return !this.normalizeOptionalText(service.assignedTo);
     }
 
     return false;
@@ -8606,7 +8911,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         hotelReservations: ['HOTEL', 'ACCOMMODATION'],
         transportOperations: ['TRANSPORT', 'TRANSFER'],
         activitiesExcursions: ['ACTIVITY', 'EXCURSION', 'TOUR'],
-        guides: ['GUIDE'],
+        guideOperations: ['GUIDE'],
         dining: ['DINING', 'MEAL', 'RESTAURANT'],
       };
       const values = departmentTypes[departmentFilter] || [];
@@ -8684,6 +8989,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       startTime: true,
       pickupTime: true,
       assignedTo: true,
+      guideId: true,
+      guideConfirmationStatus: true,
+      guideRequiredLanguages: true,
+      guideReportingTime: true,
+      guide: {
+        select: {
+          id: true,
+          fullName: true,
+          languages: true,
+          phone: true,
+          active: true,
+          guideType: true,
+          blockedDates: {
+            select: {
+              id: true,
+              startDate: true,
+              endDate: true,
+              reason: true,
+            },
+          },
+        },
+      },
       sourceMetadata: true,
       supplierId: true,
       supplierName: true,
@@ -8807,18 +9134,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }))
       .filter((entry) => entry.reasons.length > 0);
     const missingRooming = passengerCandidates.filter((booking) => this.getMissingRoomingReasons(booking).length > 0);
-    const servicesWithoutAssignment = alertServices.filter((service) => this.isMissingServiceAssignment(service));
+    const guideOverlapIds = this.getGuideOverlapServiceIds(alertServices);
+    const dashboardServices = alertServices.map((service: any) => ({ ...service, guideOverlap: guideOverlapIds.has(service.id) }));
+    const servicesWithoutAssignment = dashboardServices.filter((service) => this.isMissingServiceAssignment(service));
     const missingTransportAssignmentForToday = todayTransportServices.filter((service) => this.isMissingTransportAssignment(service));
-    const missingVoucherServices = alertServices.filter((service) => this.isOperationalVoucherMissing(service));
+    const missingVoucherServices = dashboardServices.filter((service) => this.isOperationalVoucherMissing(service));
     const readinessSummary = this.buildOperationsDashboardReadinessSummary({
       bookings: passengerCandidates,
-      services: alertServices,
+      services: dashboardServices,
       missingPassengers,
       missingRooming,
       missingVoucherServices,
     });
     const operationalAlerts = this.buildOperationsAlerts({
-      services: alertServices,
+      services: dashboardServices,
       missingRooming,
       missingVoucherServices,
       dayStart,
@@ -8836,7 +9165,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       },
       kpis: this.buildOperationsKpis({
         bookings: passengerCandidates,
-        services: alertServices,
+        services: dashboardServices,
         missingPassengers,
         missingRooming,
         missingVoucherServices,
@@ -8844,7 +9173,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         dayEnd,
       }),
       departmentQueues: this.buildOperationsDepartmentQueues({
-        services: alertServices,
+        services: dashboardServices,
         bookings: passengerCandidates,
         missingPassengers,
         missingRooming,
@@ -8855,7 +9184,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       todayDepartures: this.buildDashboardBucket(todayDepartures.map((booking) => this.mapDashboardBooking(booking))),
       activeBookings: this.buildDashboardBucket(activeBookings.map((booking) => this.mapDashboardBooking(booking))),
       pendingServices: this.buildDashboardBucket(pendingServices.map((service) => this.mapDashboardService(service))),
-      unconfirmedServices: this.buildDashboardBucket(unconfirmedServices.map((service) => this.mapDashboardService(service))),
+      unconfirmedServices: this.buildDashboardBucket(unconfirmedServices.map((service) => this.mapDashboardService({ ...service, guideOverlap: guideOverlapIds.has(service.id) }))),
       missingPassengers: this.buildDashboardBucket(
         missingPassengers.map((entry) => ({
           ...this.mapDashboardBooking(entry.booking),
@@ -8864,8 +9193,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       ),
       operationalReadiness: readinessSummary,
       readinessHeatmap: this.buildOperationsReadinessHeatmap(passengerCandidates),
-      supplierConfirmationQueues: this.buildSupplierConfirmationQueues(alertServices, selectedDate),
-      serviceStatusSummary: this.buildOperationsServiceStatusSummary(alertServices),
+      supplierConfirmationQueues: this.buildSupplierConfirmationQueues(dashboardServices, selectedDate),
+      serviceStatusSummary: this.buildOperationsServiceStatusSummary(dashboardServices),
       upcomingBorderCrossings: this.buildDashboardBucket(
         upcomingBorderCrossings.map((booking) => this.mapDashboardBooking(booking)),
       ),

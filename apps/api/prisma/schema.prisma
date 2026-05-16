@@ -2157,6 +2157,10 @@ model BookingService {
   referenceId                String?                       @db.Uuid
   assignedTo                 String?
   guidePhone                 String?
+  guideId                    String?                       @db.Uuid
+  guideConfirmationStatus    String                        @default("PENDING")
+  guideRequiredLanguages     String[]                      @default([])
+  guideReportingTime         String?
   vehicleId                  String?                       @db.Uuid
   serviceDate                DateTime?
   startTime                  String?
@@ -2202,6 +2206,7 @@ model BookingService {
   vouchers                   Voucher[]
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  guide                      Guide?                        @relation(fields: [guideId], references: [id], onDelete: SetNull)
 
   @@index([bookingDayId])
   @@index([activityId])
@@ -2211,8 +2216,46 @@ model BookingService {
   @@index([sourceQuoteItemId])
   @@index([supplierId])
   @@index([vehicleId])
+  @@index([guideId])
+  @@index([operationType, guideConfirmationStatus])
   @@index([operationType, operationStatus])
   @@map("booking_services")
+}
+
+model Guide {
+  id              String              @id @default(uuid()) @db.Uuid
+  fullName        String
+  languages       String[]            @default([])
+  certifications  String[]            @default([])
+  regions         String[]            @default([])
+  specialties     String[]            @default([])
+  email           String?
+  phone           String?
+  active          Boolean             @default(true)
+  guideType       String              @default("licensed")
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  bookingServices BookingService[]
+  blockedDates    GuideBlockedDate[]
+
+  @@index([active, fullName])
+  @@index([guideType])
+  @@map("guides")
+}
+
+model GuideBlockedDate {
+  id        String   @id @default(uuid()) @db.Uuid
+  guideId   String   @db.Uuid
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  guide     Guide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
+
+  @@index([guideId, startDate, endDate])
+  @@map("guide_blocked_dates")
 }
 
 model BookingAuditLog {

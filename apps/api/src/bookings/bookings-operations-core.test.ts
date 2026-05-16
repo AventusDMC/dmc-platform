@@ -1,5 +1,7 @@
 import test = require('node:test');
 import assert = require('node:assert/strict');
+import fs = require('node:fs');
+import path = require('node:path');
 import * as XLSX from 'xlsx';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { mapQuoteToProposalV3 } from '../quotes/proposal-v3.mapper';
@@ -3572,4 +3574,37 @@ test('voucher status transitions draft to ready to sent and blocks cross-company
     () => blocked.updateVoucherStatus('voucher-1', 'SENT', undefined, { companyId: 'company-b' }),
     /voucher not found/i,
   );
+});
+
+test('guide operations phase one wires assignment overlap language dashboard readiness regressions', () => {
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+  const guidesSource = fs.readFileSync(path.join(__dirname, '..', 'guides', 'guides.service.ts'), 'utf8');
+
+  for (const token of [
+    'updateGuideAssignment',
+    'guide-assignment',
+    'guideConfirmationStatus',
+    'guideRequiredLanguages',
+    'guideReportingTime',
+  ]) {
+    assert.match(`${bookingsSource}\n${controllerSource}`, new RegExp(token));
+  }
+
+  for (const token of [
+    'isGuideLanguageMismatch',
+    'getGuideOverlapServiceIds',
+    'guideOperations',
+    'guideReadinessAlerts',
+    'no guide assigned',
+    'wrong language',
+    'overlapping guide assignment',
+    'guide not confirmed',
+  ]) {
+    assert.match(bookingsSource, new RegExp(token));
+  }
+
+  for (const token of ['blockedDates', 'availability', 'overlappingAssignments']) {
+    assert.match(guidesSource, new RegExp(token));
+  }
 });

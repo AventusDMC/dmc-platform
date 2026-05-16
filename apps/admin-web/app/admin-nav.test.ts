@@ -81,6 +81,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Activities', '/activities'],
       ['Excursion Templates', '/excursion-templates'],
       ['Transport', '/transport'],
+      ['Guides', '/guides'],
       ['Routes', '/routes'],
       ['Services', '/catalog?tab=services'],
       ['Suppliers', '/suppliers'],
@@ -94,6 +95,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
   assert.equal(catalogGroup.children.find((child) => child.label === 'Transport Pricing')?.href, '/transport?tab=pricing-rules');
   assert.equal(getActiveNavGroup('/routes', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/suppliers', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/guides', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/contracts/import', 'admin').label, 'Product Catalog');
 });
 

@@ -269,6 +269,29 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('renders guide operations controls inside booking service manage panel', () => {
+    expectSourceContains(pageSource, [
+      'type Guide',
+      'getGuides',
+      'guides={guides}',
+    ]);
+
+    expectSourceContains(bookingServiceTimelineSource, [
+      'type Guide',
+      'guides: Guide[]',
+      'isGuideService',
+      'BookingServiceDetailSection title="Guide Operations"',
+      'guide-assignment',
+      'name="guideId"',
+      'name="guideConfirmationStatus"',
+      'name="guideRequiredLanguages"',
+      'name="guideReportingTime"',
+      'name="pickupTime"',
+      'guideWarnings',
+      'Save guide assignment',
+    ]);
+  });
+
   it('keeps booking service manage panel scrollable so hotel controls are accessible', () => {
     expectSourceContains(bookingServiceTimelineSource, [
       'bodyClassName="operations-row-details-body booking-service-detail-body"',

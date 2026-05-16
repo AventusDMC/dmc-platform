@@ -58,6 +58,17 @@ type UpdateBookingServiceOperationalBody = {
   note?: string | null;
 };
 
+type UpdateGuideAssignmentBody = {
+  guideId?: string | null;
+  assignedTo?: string | null;
+  guidePhone?: string | null;
+  guideConfirmationStatus?: string | null;
+  guideRequiredLanguages?: string[] | string | null;
+  guideReportingTime?: string | null;
+  pickupTime?: string | null;
+  note?: string | null;
+};
+
 type SendBookingDocumentEmailBody = {
   email: string;
   bookingId: string;
@@ -921,6 +932,27 @@ export class BookingsController {
       supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
       supplierRemarks: body.supplierRemarks === undefined ? undefined : body.supplierRemarks || null,
       confirmationDeadline: body.confirmationDeadline === undefined ? undefined : body.confirmationDeadline || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch('services/:serviceId/guide-assignment')
+  @Roles('admin', 'operations')
+  updateGuideAssignment(
+    @Param('serviceId') serviceId: string,
+    @Body() body: UpdateGuideAssignmentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updateGuideAssignment(serviceId, {
+      guideId: body.guideId === undefined ? undefined : body.guideId || null,
+      assignedTo: body.assignedTo === undefined ? undefined : body.assignedTo || null,
+      guidePhone: body.guidePhone === undefined ? undefined : body.guidePhone || null,
+      guideConfirmationStatus: body.guideConfirmationStatus === undefined ? undefined : body.guideConfirmationStatus || null,
+      guideRequiredLanguages: body.guideRequiredLanguages === undefined ? undefined : body.guideRequiredLanguages,
+      guideReportingTime: body.guideReportingTime === undefined ? undefined : body.guideReportingTime || null,
+      pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });

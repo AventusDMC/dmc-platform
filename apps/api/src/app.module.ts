@@ -40,6 +40,8 @@ import { ExcursionTemplatesController } from './excursion-templates/excursion-te
 import { ExcursionTemplatesService } from './excursion-templates/excursion-templates.service';
 import { GalleryController } from './gallery/gallery.controller';
 import { GalleryService } from './gallery/gallery.service';
+import { GuidesController } from './guides/guides.controller';
+import { GuidesService } from './guides/guides.service';
 import { HotelCategoriesController } from './hotel-categories/hotel-categories.controller';
 import { HotelCategoriesService } from './hotel-categories/hotel-categories.service';
 import { HotelContractsController } from './hotel-contracts/hotel-contracts.controller';
@@ -127,6 +129,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesController,
     ContractSupplementsController,
     GalleryController,
+    GuidesController,
     HotelCategoriesController,
     LeadsController,
     PlacesController,
@@ -188,6 +191,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesService,
     ContractSupplementsService,
     GalleryService,
+    GuidesService,
     HotelCategoriesService,
     LeadsService,
     PlacesService,

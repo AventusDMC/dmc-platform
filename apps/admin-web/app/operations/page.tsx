@@ -57,6 +57,7 @@ type OperationsReportFilter =
 type GroupBy = 'booking' | 'supplier';
 type DepartmentKey =
   | 'hotel-reservations'
+  | 'guide-operations'
   | 'transport-operations'
   | 'excursions-activities'
   | 'documentation-vouchers'
@@ -80,6 +81,7 @@ type BookingService = {
   id: string;
   description: string;
   serviceType: string;
+  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
   supplierId: string | null;
   supplierName: string | null;
   serviceDate: string | null;
@@ -111,6 +113,12 @@ type BookingService = {
   supplierRemarks: string | null;
   confirmationDeadline: string | null;
   lastSupplierContactAt: string | null;
+  assignedTo?: string | null;
+  guideId?: string | null;
+  guidePhone?: string | null;
+  guideConfirmationStatus?: string | null;
+  guideRequiredLanguages?: string[];
+  guideWarnings?: string[];
   auditLogs: AuditLog[];
 };
 
@@ -214,6 +222,7 @@ type OperationsDashboard = {
     missingTransportAssignmentForToday: OperationsDashboardBucket;
     missingRooming?: OperationsDashboardBucket;
     missingVouchers?: OperationsDashboardBucket;
+    guideReadinessAlerts?: OperationsDashboardBucket;
   };
 };
 
@@ -239,6 +248,7 @@ type OperationRow = {
   id: string;
   description: string;
   serviceType: string;
+  operationType?: string | null;
   serviceDate: string | null;
   startTime: string | null;
   pickupTime: string | null;
@@ -273,6 +283,12 @@ type OperationRow = {
   supplierRemarks: string | null;
   confirmationDeadline: string | null;
   lastSupplierContactAt: string | null;
+  assignedTo?: string | null;
+  guideId?: string | null;
+  guidePhone?: string | null;
+  guideConfirmationStatus?: string | null;
+  guideRequiredLanguages?: string[];
+  guideWarnings?: string[];
   warnings: OperationsWarningFilter[];
   auditLogs: AuditLog[];
 };
@@ -334,6 +350,7 @@ const HOTEL_RESERVATION_STATES: HotelReservationState[] = [
 
 const DEPARTMENT_LABELS: Record<DepartmentKey, string> = {
   'hotel-reservations': 'Hotel Reservations',
+  'guide-operations': 'Guide Operations',
   'transport-operations': 'Transport Operations',
   'excursions-activities': 'Excursions & Activities',
   'documentation-vouchers': 'Documentation/Vouchers',
@@ -490,8 +507,8 @@ function formatAuditAction(action: string) {
     .join(' ');
 }
 
-function mapBookingServiceTypeToSupplierType(serviceType: string): Supplier['type'] | null {
-  const group = resolveServiceTaxonomyGroup({ category: serviceType });
+function mapBookingServiceTypeToSupplierType(serviceType: string, operationType?: string | null): Supplier['type'] | null {
+  const group = resolveServiceTaxonomyGroup({ category: operationType || serviceType });
 
   if (group === 'other') {
     return null;
@@ -504,17 +521,23 @@ function isActivityService(serviceType: string) {
   return mapBookingServiceTypeToSupplierType(serviceType) === 'activity';
 }
 
-function isHotelService(serviceType: string) {
-  return mapBookingServiceTypeToSupplierType(serviceType) === 'hotel' || /hotel|accommodation|room/i.test(serviceType);
+function isHotelService(serviceType: string, operationType?: string | null) {
+  return mapBookingServiceTypeToSupplierType(serviceType, operationType) === 'hotel' || /hotel|accommodation|room/i.test([operationType, serviceType].filter(Boolean).join(' '));
 }
 
-function isTransportService(serviceType: string) {
-  return mapBookingServiceTypeToSupplierType(serviceType) === 'transport' || /transport|transfer|vehicle|car|coach/i.test(serviceType);
+function isGuideService(row: Pick<OperationRow, 'serviceType' | 'operationType' | 'guideId'>) {
+  const normalized = [row.operationType, row.serviceType].filter(Boolean).join(' ');
+  return mapBookingServiceTypeToSupplierType(row.serviceType, row.operationType) === 'guide' || /guide|escort/i.test(normalized) || Boolean(row.guideId);
 }
 
-function isExcursionActivityService(serviceType: string) {
-  const supplierType = mapBookingServiceTypeToSupplierType(serviceType);
-  return supplierType === 'activity' || supplierType === 'ticketing' || supplierType === 'guide' || /excursion|activity|ticket|entrance|guide/i.test(serviceType);
+function isTransportService(serviceType: string, operationType?: string | null) {
+  return mapBookingServiceTypeToSupplierType(serviceType, operationType) === 'transport' || /transport|transfer|vehicle|car|coach/i.test([operationType, serviceType].filter(Boolean).join(' '));
+}
+
+function isExcursionActivityService(serviceType: string, operationType?: string | null) {
+  const supplierType = mapBookingServiceTypeToSupplierType(serviceType, operationType);
+  const normalized = [operationType, serviceType].filter(Boolean).join(' ');
+  return supplierType === 'activity' || supplierType === 'ticketing' || /excursion|activity|ticket|entrance/i.test(normalized);
 }
 
 function hasSupplier(service: Pick<BookingService, 'supplierId' | 'supplierName'> | Pick<OperationRow, 'supplierId' | 'supplierName'>) {
@@ -660,11 +683,15 @@ function hasMissingTiming(row: OperationRow) {
     return false;
   }
 
-  if (isTransportService(row.serviceType)) {
+  if (isTransportService(row.serviceType, row.operationType)) {
     return !row.pickupTime || (!row.pickupLocation && !row.meetingPoint);
   }
 
-  if (isExcursionActivityService(row.serviceType)) {
+  if (isGuideService(row)) {
+    return !row.pickupTime && !row.startTime;
+  }
+
+  if (isExcursionActivityService(row.serviceType, row.operationType)) {
     return !row.serviceDate || !row.startTime;
   }
 
@@ -733,15 +760,19 @@ function getRoomBlockInfo(row: OperationRow, now = Date.now()) {
 }
 
 function getDepartmentForRow(row: OperationRow): DepartmentKey {
-  if (isHotelService(row.serviceType)) {
+  if (isHotelService(row.serviceType, row.operationType)) {
     return 'hotel-reservations';
   }
 
-  if (isTransportService(row.serviceType)) {
+  if (isGuideService(row)) {
+    return 'guide-operations';
+  }
+
+  if (isTransportService(row.serviceType, row.operationType)) {
     return 'transport-operations';
   }
 
-  if (isExcursionActivityService(row.serviceType)) {
+  if (isExcursionActivityService(row.serviceType, row.operationType)) {
     return 'excursions-activities';
   }
 
@@ -751,6 +782,7 @@ function getDepartmentForRow(row: OperationRow): DepartmentKey {
 function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], operationsDashboard: OperationsDashboard, now = Date.now()) {
   const activeRows = rows.filter((row) => row.status !== 'cancelled');
   const hotelRows = activeRows.filter((row) => getDepartmentForRow(row) === 'hotel-reservations');
+  const guideRows = activeRows.filter((row) => getDepartmentForRow(row) === 'guide-operations');
   const transportRows = activeRows.filter((row) => getDepartmentForRow(row) === 'transport-operations');
   const activityRows = activeRows.filter((row) => getDepartmentForRow(row) === 'excursions-activities');
   const supplierConfirmationRows = activeRows.filter((row) => row.supplierConfirmationStatus !== 'CONFIRMED');
@@ -786,6 +818,32 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
           block.releaseDeadline ? ` | release deadline ${formatDateTime(block.releaseDeadline)}` : ''
         } | reconfirmation tracking ${block.reconfirmationTracking}`,
       })),
+    },
+    {
+      key: 'guide-operations' as DepartmentKey,
+      rows: guideRows,
+      pendingItems:
+        operationsDashboard.alerts.guideReadinessAlerts?.count ??
+        guideRows.filter((row) => !row.guideId || row.guideConfirmationStatus !== 'CONFIRMED' || (row.guideWarnings || []).length > 0).length,
+      overdueItems: guideRows.filter((row) => (row.guideWarnings || []).some((warning) => /overlap|wrong language/i.test(warning))).length,
+      reconfirmationDue: 0,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: guideRows.filter(hasMissingTiming).length,
+      examples:
+        operationsDashboard.alerts.guideReadinessAlerts?.items.slice(0, 3).map((item) => ({
+          id: item.id,
+          label: item.bookingRef || item.title || item.description || item.id,
+          detail: item.reasons?.join(', ') || 'Guide readiness alert',
+        })) ||
+        guideRows
+          .filter((row) => !row.guideId || row.guideConfirmationStatus !== 'CONFIRMED' || (row.guideWarnings || []).length > 0)
+          .slice(0, 3)
+          .map((row) => ({
+            id: row.id,
+            label: `${row.bookingRef} - ${row.description}`,
+            detail: (row.guideWarnings || []).join(', ') || (row.guideId ? 'Guide not confirmed' : 'No guide assigned'),
+          })),
     },
     {
       key: 'transport-operations' as DepartmentKey,
@@ -911,6 +969,13 @@ function getDepartmentPrimaryAction(department: ReturnType<typeof buildDepartmen
     };
   }
 
+  if (department.key === 'guide-operations') {
+    return {
+      label: 'Assign guide',
+      href: '/bookings',
+    };
+  }
+
   return {
     label: 'Open queue',
     href: buildOperationsHref(currentFilters, { groupBy: 'booking' }),
@@ -931,7 +996,7 @@ function getBookingReadinessTone(booking: Booking) {
 
 function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: OperationsDashboard, now = Date.now()) {
   const hotelReleaseAlerts = rows
-    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType))
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType, row.operationType))
     .map((row) => ({ row, block: getRoomBlockInfo(row, now) }))
     .filter((entry) => entry.block.releaseDeadlineApproaching)
     .slice(0, 5)
@@ -967,7 +1032,7 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       detail: `${row.bookingRef} - ${row.description}${row.reconfirmationDueAt ? ` | ${formatDateTime(row.reconfirmationDueAt)}` : ''}`,
     }));
   const waitlistAlerts = rows
-    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType) && getHotelReservationState(row, now) === 'Waitlist')
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType, row.operationType) && getHotelReservationState(row, now) === 'Waitlist')
     .slice(0, 5)
     .map((row) => ({
       id: `hotel-waitlist-${row.id}`,
@@ -977,7 +1042,7 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       detail: `${row.bookingRef} - ${row.description}`,
     }));
   const roomingNotSentAlerts = rows
-    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType) && !row.hotelReservation?.roomingSentAt)
+    .filter((row) => row.status !== 'cancelled' && isHotelService(row.serviceType, row.operationType) && !row.hotelReservation?.roomingSentAt)
     .slice(0, 5)
     .map((row) => ({
       id: `hotel-rooming-not-sent-${row.id}`,
@@ -996,7 +1061,7 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       detail: item.bookingRef || item.title || item.description || item.id,
     }));
   const transportTimingAlerts = rows
-    .filter((row) => isTransportService(row.serviceType) && hasMissingTiming(row))
+    .filter((row) => isTransportService(row.serviceType, row.operationType) && hasMissingTiming(row))
     .slice(0, 5)
     .map((row) => ({
       id: `transport-timing-${row.id}`,
@@ -1005,8 +1070,17 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       actionHref: `/bookings/${row.bookingId}`,
       detail: `${row.bookingRef} - ${row.description}`,
     }));
+  const guideReadinessAlerts = (operationsDashboard.alerts.guideReadinessAlerts?.items || [])
+    .slice(0, 5)
+    .map((item) => ({
+      id: `guide-readiness-${item.id}`,
+      label: 'Guide readiness alert',
+      actionLabel: 'Assign guide',
+      actionHref: item.bookingId ? `/bookings/${item.bookingId}` : '/bookings',
+      detail: item.reasons?.join(', ') || item.bookingRef || item.title || item.description || item.id,
+    }));
 
-  return [...hotelReleaseAlerts, ...waitlistAlerts, ...roomingNotSentAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts];
+  return [...hotelReleaseAlerts, ...waitlistAlerts, ...roomingNotSentAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts, ...guideReadinessAlerts];
 }
 
 function buildOperationsHref(
@@ -1164,6 +1238,7 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       id: service.id,
       description: service.description,
       serviceType: service.serviceType,
+      operationType: service.operationType,
       serviceDate: service.serviceDate,
       startTime: service.startTime,
       pickupTime: service.pickupTime,
@@ -1198,6 +1273,12 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       supplierRemarks: service.supplierRemarks,
       confirmationDeadline: service.confirmationDeadline,
       lastSupplierContactAt: service.lastSupplierContactAt,
+      assignedTo: service.assignedTo,
+      guideId: service.guideId,
+      guidePhone: service.guidePhone,
+      guideConfirmationStatus: service.guideConfirmationStatus,
+      guideRequiredLanguages: service.guideRequiredLanguages || [],
+      guideWarnings: service.guideWarnings || [],
       warnings: getWarnings(service),
       auditLogs: service.auditLogs || [],
     })),
