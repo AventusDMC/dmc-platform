@@ -236,6 +236,8 @@ describe('booking detail page regression', () => {
   it('renders hotel reservation operations controls for room blocks and alternatives', () => {
     expectSourceContains(bookingServicesListSource, [
       'Hotel reservation operations',
+      'operationType',
+      'getHotelReservationMetadata',
       'hotelReservationStatus',
       'blockedRoomCount',
       'roomTypes',

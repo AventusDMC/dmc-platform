@@ -463,6 +463,23 @@ type Booking = {
     supplierRemarks: string | null;
     confirmationDeadline: string | null;
     lastSupplierContactAt: string | null;
+    sourceMetadata?: {
+      hotelReservation?: {
+        status?: string | null;
+        blockedRoomCount?: number | null;
+        roomTypes?: string[];
+        releaseDate?: string | null;
+        reconfirmationDueDate?: string | null;
+        notes?: string | null;
+        primaryHotelName?: string | null;
+        alternativeHotels?: Array<{
+          name?: string | null;
+          status?: string | null;
+          notes?: string | null;
+        }>;
+        roomingSentAt?: string | null;
+      };
+    } | null;
     vouchers?: ServiceVoucher[];
     auditLogs: AuditLog[];
   }>;

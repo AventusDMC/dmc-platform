@@ -534,6 +534,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private attachBookingServiceProfitAliases(service: any, booking: any) {
+    const sourceMetadata = this.initializeHotelReservationMetadata(service);
     const currency =
       service.currency ||
       booking?.pricingSnapshotJson?.currency ||
@@ -547,6 +548,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...service,
+      sourceMetadata,
       supplierStatus: this.getBookingServiceSupplierStatus(service),
       supplierCost,
       sellPrice,
@@ -3603,6 +3605,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           pickupTime: normalized.pickupTime,
           supplierId: normalized.supplierId,
           supplierName: normalized.supplierName,
+          ...(this.isHotelService(normalized.type, normalized.type)
+            ? {
+                sourceMetadata: this.initializeHotelReservationMetadata({
+                  serviceType: normalized.type,
+                  operationType: normalized.type,
+                  supplierName: normalized.supplierName,
+                }) as Prisma.InputJsonValue,
+              }
+            : {}),
           confirmationNumber: normalized.confirmationNumber,
           supplierReference: normalized.confirmationNumber,
           description,
@@ -4470,6 +4481,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         id: true,
         bookingId: true,
         serviceType: true,
+        operationType: true,
         serviceDate: true,
         startTime: true,
         pickupTime: true,
@@ -4513,7 +4525,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.meetingPoint === undefined ? bookingService.meetingPoint : this.normalizeOptionalText(data.meetingPoint);
     const supplierReference =
       data.supplierReference === undefined ? bookingService.supplierReference : this.normalizeOptionalText(data.supplierReference);
-    const hotelReservationMetadata = this.isHotelService(bookingService.serviceType)
+    const hotelReservationMetadata = this.isHotelService(bookingService.serviceType, bookingService.operationType)
       ? this.buildHotelReservationMetadata(bookingService.sourceMetadata, data)
       : bookingService.sourceMetadata;
     const hotelReservation = this.getSourceMetadataObject((hotelReservationMetadata as any)?.hotelReservation);
@@ -5387,9 +5399,48 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return resolveServiceTaxonomyGroup({ category: serviceType }) === 'activity';
   }
 
-  private isHotelService(serviceType?: string | null) {
-    const normalized = String(serviceType || '').trim().toLowerCase();
-    return resolveServiceTaxonomyGroup({ category: serviceType }) === 'hotel' || normalized.includes('hotel') || normalized.includes('accommodation');
+  private isHotelService(serviceType?: string | null, operationType?: string | null) {
+    const normalized = [operationType, serviceType].filter(Boolean).join(' ').trim().toLowerCase();
+    return (
+      resolveServiceTaxonomyGroup({ category: operationType || serviceType }) === 'hotel' ||
+      normalized.includes('hotel') ||
+      normalized.includes('accommodation')
+    );
+  }
+
+  private initializeHotelReservationMetadata(service: {
+    serviceType?: string | null;
+    operationType?: string | null;
+    sourceMetadata?: unknown;
+    supplierName?: string | null;
+    reconfirmationDueAt?: Date | string | null;
+  }) {
+    if (!this.isHotelService(service.serviceType, service.operationType)) {
+      return service.sourceMetadata || null;
+    }
+
+    const metadata = this.getSourceMetadataObject(service.sourceMetadata);
+    const existing = this.getSourceMetadataObject(metadata.hotelReservation);
+    const reconfirmationDueAt =
+      service.reconfirmationDueAt instanceof Date
+        ? service.reconfirmationDueAt.toISOString()
+        : service.reconfirmationDueAt || null;
+
+    return {
+      ...metadata,
+      hotelReservation: {
+        status: existing.status || 'Requested',
+        blockedRoomCount: Number(existing.blockedRoomCount || 0),
+        roomTypes: Array.isArray(existing.roomTypes) ? existing.roomTypes : [],
+        releaseDate: existing.releaseDate || null,
+        reconfirmationDueDate: existing.reconfirmationDueDate || reconfirmationDueAt,
+        notes: existing.notes || null,
+        primaryHotelName: existing.primaryHotelName || service.supplierName || null,
+        alternativeHotels: Array.isArray(existing.alternativeHotels) ? existing.alternativeHotels : [],
+        roomingSentAt: existing.roomingSentAt || null,
+        updatedAt: existing.updatedAt || null,
+      },
+    };
   }
 
   private normalizeHotelReservationStatus(value: string | null | undefined, currentValue?: string | null): HotelReservationStatusValue {

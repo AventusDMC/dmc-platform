@@ -553,7 +553,8 @@ test('hotel reservation operations persist room block release alternatives and r
       findFirst: async () => ({
         id: 'hotel-service-1',
         bookingId: 'booking-1',
-        serviceType: 'HOTEL',
+        serviceType: 'SERVICE',
+        operationType: 'HOTEL',
         serviceDate: new Date('2026-06-01T00:00:00.000Z'),
         startTime: null,
         pickupTime: null,

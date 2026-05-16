@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
-import { isActivityTaxonomyGroup } from '../../lib/service-taxonomy';
+import { isActivityTaxonomyGroup, resolveServiceTaxonomyGroup } from '../../lib/service-taxonomy';
 
 type BookingService = {
   id: string;
@@ -16,6 +16,7 @@ type BookingService = {
   supplierName: string | null;
   supplierStatus?: 'unresolved' | null;
   serviceType: string;
+  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
   serviceDate?: string | null;
   startTime?: string | null;
   pickupTime?: string | null;
@@ -71,8 +72,8 @@ type Supplier = {
   type: 'hotel' | 'transport' | 'activity' | 'guide' | 'other';
 };
 
-function mapBookingServiceTypeToSupplierType(serviceType: string): Supplier['type'] | null {
-  const normalized = serviceType.trim().toLowerCase();
+function mapBookingServiceTypeToSupplierType(serviceType: string, operationType?: string | null): Supplier['type'] | null {
+  const normalized = [operationType, serviceType].filter(Boolean).join(' ').trim().toLowerCase();
 
   if (!normalized) {
     return null;
@@ -124,8 +125,26 @@ function isActivityService(serviceType: string) {
   return isActivityTaxonomyGroup({ category: serviceType });
 }
 
-function isHotelService(serviceType: string) {
-  return mapBookingServiceTypeToSupplierType(serviceType) === 'hotel';
+function isHotelService(service: Pick<BookingService, 'serviceType' | 'operationType' | 'sourceMetadata'>) {
+  return (
+    resolveServiceTaxonomyGroup({ category: service.operationType || service.serviceType }) === 'hotel' ||
+    mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType) === 'hotel' ||
+    Boolean(service.sourceMetadata?.hotelReservation)
+  );
+}
+
+function getHotelReservationMetadata(service: Pick<BookingService, 'sourceMetadata' | 'reconfirmationDueAt' | 'supplierName'>) {
+  return {
+    status: service.sourceMetadata?.hotelReservation?.status || 'Requested',
+    blockedRoomCount: service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? 0,
+    roomTypes: service.sourceMetadata?.hotelReservation?.roomTypes || [],
+    releaseDate: service.sourceMetadata?.hotelReservation?.releaseDate || null,
+    reconfirmationDueDate: service.sourceMetadata?.hotelReservation?.reconfirmationDueDate || service.reconfirmationDueAt || null,
+    notes: service.sourceMetadata?.hotelReservation?.notes || '',
+    primaryHotelName: service.sourceMetadata?.hotelReservation?.primaryHotelName || service.supplierName || '',
+    alternativeHotels: service.sourceMetadata?.hotelReservation?.alternativeHotels || [],
+    roomingSentAt: service.sourceMetadata?.hotelReservation?.roomingSentAt || null,
+  };
 }
 
 function getReconfirmationWarning(service: Pick<BookingService, 'reconfirmationRequired' | 'reconfirmationDueAt' | 'confirmationStatus'>) {
@@ -251,11 +270,13 @@ export function BookingServicesList({
         </thead>
         <tbody>
       {localServices.map((service) => {
-        const mappedSupplierType = mapBookingServiceTypeToSupplierType(service.serviceType);
+        const mappedSupplierType = mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType);
         const matchingSuppliers = mappedSupplierType ? suppliers.filter((supplier) => supplier.type === mappedSupplierType) : [];
         const supplierOptions = matchingSuppliers.length > 0 ? matchingSuppliers : suppliers;
         const marginMetrics = getMarginMetrics(service.totalSell, service.totalCost);
         const activityService = isActivityService(service.serviceType);
+        const hotelService = isHotelService(service);
+        const hotelReservation = getHotelReservationMetadata(service);
         const supplierReference = service.supplierReference || service.confirmationNumber;
         const reconfirmationWarning = getReconfirmationWarning(service);
 
@@ -394,27 +415,27 @@ export function BookingServicesList({
                     </form>
                   </InlineRowEditorShell>
 
-                  {isHotelService(service.serviceType) ? (
+                  {hotelService ? (
                     <InlineRowEditorShell>
                       <div className="audit-log-list">
                         <div className="audit-log-item">
                           <strong>Hotel reservation operations</strong>
-                          <p>Status: {service.sourceMetadata?.hotelReservation?.status || 'Requested'}</p>
+                          <p>Status: {hotelReservation.status}</p>
                           <p>
-                            Room block: {service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? 0}
-                            {service.sourceMetadata?.hotelReservation?.roomTypes?.length
-                              ? ` | ${service.sourceMetadata.hotelReservation.roomTypes.join(', ')}`
+                            Room block: {hotelReservation.blockedRoomCount}
+                            {hotelReservation.roomTypes.length
+                              ? ` | ${hotelReservation.roomTypes.join(', ')}`
                               : ''}
                           </p>
                           <p>
-                            Release: {service.sourceMetadata?.hotelReservation?.releaseDate ? formatDateTime(service.sourceMetadata.hotelReservation.releaseDate) : 'Not set'}
+                            Release: {hotelReservation.releaseDate ? formatDateTime(hotelReservation.releaseDate) : 'Not set'}
                             {' | '}
-                            Reconfirm: {service.sourceMetadata?.hotelReservation?.reconfirmationDueDate ? formatDateTime(service.sourceMetadata.hotelReservation.reconfirmationDueDate) : 'Not set'}
+                            Reconfirm: {hotelReservation.reconfirmationDueDate ? formatDateTime(hotelReservation.reconfirmationDueDate) : 'Not set'}
                           </p>
                           <p>
                             Alternatives:{' '}
-                            {service.sourceMetadata?.hotelReservation?.alternativeHotels?.length
-                              ? service.sourceMetadata.hotelReservation.alternativeHotels
+                            {hotelReservation.alternativeHotels.length
+                              ? hotelReservation.alternativeHotels
                                   .map((hotel) => `${hotel.name || 'Hotel'} (${hotel.status || 'waitlist'})`)
                                   .join(', ')
                               : 'None'}
@@ -424,7 +445,7 @@ export function BookingServicesList({
                       <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
                         <label>
                           Reservation status
-                          <select name="hotelReservationStatus" defaultValue={service.sourceMetadata?.hotelReservation?.status || 'Requested'}>
+                          <select name="hotelReservationStatus" defaultValue={hotelReservation.status}>
                             <option value="Requested">Requested</option>
                             <option value="Blocked">Blocked</option>
                             <option value="Waitlist">Waitlist</option>
@@ -438,52 +459,46 @@ export function BookingServicesList({
                           type="number"
                           name="blockedRoomCount"
                           min="0"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.blockedRoomCount ?? ''}
+                          defaultValue={hotelReservation.blockedRoomCount || ''}
                           placeholder="Blocked rooms"
                         />
                         <input
                           type="text"
                           name="roomTypes"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.roomTypes?.join(', ') || ''}
+                          defaultValue={hotelReservation.roomTypes.join(', ')}
                           placeholder="Room types"
                         />
                         <input
                           type="datetime-local"
                           name="releaseDate"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.releaseDate ? service.sourceMetadata.hotelReservation.releaseDate.slice(0, 16) : ''}
+                          defaultValue={hotelReservation.releaseDate ? hotelReservation.releaseDate.slice(0, 16) : ''}
                         />
                         <input
                           type="datetime-local"
                           name="hotelReconfirmationDueAt"
-                          defaultValue={
-                            service.sourceMetadata?.hotelReservation?.reconfirmationDueDate
-                              ? service.sourceMetadata.hotelReservation.reconfirmationDueDate.slice(0, 16)
-                              : service.reconfirmationDueAt
-                                ? service.reconfirmationDueAt.slice(0, 16)
-                                : ''
-                          }
+                          defaultValue={hotelReservation.reconfirmationDueDate ? hotelReservation.reconfirmationDueDate.slice(0, 16) : ''}
                         />
                         <input
                           type="text"
                           name="primaryHotelName"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.primaryHotelName || service.supplierName || ''}
+                          defaultValue={hotelReservation.primaryHotelName}
                           placeholder="Primary hotel"
                         />
                         <textarea
                           name="alternativeHotels"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.alternativeHotels?.map((hotel) => hotel.name).filter(Boolean).join('\n') || ''}
+                          defaultValue={hotelReservation.alternativeHotels.map((hotel) => hotel.name).filter(Boolean).join('\n')}
                           placeholder="Backup/waitlist hotels, one per line"
                           rows={3}
                         />
                         <input type="text" name="activateAlternativeHotel" placeholder="Activate alternative hotel by name" />
                         <input type="text" name="releaseAlternativeHotel" placeholder="Release alternative hotel by name" />
                         <label>
-                          <input type="checkbox" name="roomingSent" defaultChecked={Boolean(service.sourceMetadata?.hotelReservation?.roomingSentAt)} /> Rooming sent
+                          <input type="checkbox" name="roomingSent" defaultChecked={Boolean(hotelReservation.roomingSentAt)} /> Rooming sent
                         </label>
                         <input
                           type="text"
                           name="hotelReservationNotes"
-                          defaultValue={service.sourceMetadata?.hotelReservation?.notes || ''}
+                          defaultValue={hotelReservation.notes}
                           placeholder="Operational notes"
                         />
                         <input type="text" name="note" placeholder="Reason for update" />
