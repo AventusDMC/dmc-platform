@@ -252,7 +252,11 @@ describe('booking detail page regression', () => {
       'Save hotel reservation ops',
     ]);
     expectSourceContains(bookingServiceTimelineSource, [
+      'BookingServiceDetailSection title="Overview"',
+      'BookingServiceDetailSection title="Supplier Confirmation"',
       'Hotel Reservation Operations',
+      'BookingServiceDetailSection title="Voucher/Documents"',
+      'BookingServiceDetailSection title="Notes"',
       'operationType',
       'getHotelReservationMetadata',
       'hotelReservationStatus',

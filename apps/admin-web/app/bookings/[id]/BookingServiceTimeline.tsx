@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
@@ -70,6 +71,13 @@ type BookingService = {
       roomingSentAt?: string | null;
     };
   } | null;
+  vouchers?: Array<{
+    id: string;
+    type: 'TRANSPORT' | 'EXCURSION' | 'HOTEL' | 'GUIDE' | 'ACTIVITY' | 'EXTERNAL_PACKAGE';
+    status: 'DRAFT' | 'READY' | 'SENT' | 'ISSUED' | 'CANCELLED';
+    issuedAt?: string | null;
+    notes?: string | null;
+  }>;
   auditLogs?: AuditLog[];
 };
 
@@ -190,6 +198,21 @@ function buildExecutionDetails(service: BookingService) {
 
 function formatMoney(amount: number, currency = 'USD') {
   return `${currency} ${amount.toFixed(2)}`;
+}
+
+function BookingServiceDetailSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="booking-service-detail-section">
+      <h3>{title}</h3>
+      <div className="booking-service-detail-section-body">{children}</div>
+    </section>
+  );
 }
 
 function formatDateTime(value: string) {
@@ -323,98 +346,109 @@ export function BookingServiceTimeline({
                     <RowDetailsPanel
                       summary={service.supplierStatus === 'unresolved' ? 'Assign supplier' : 'Manage'}
                       className="operations-row-details"
-                      bodyClassName="operations-row-details-body"
+                      bodyClassName="operations-row-details-body booking-service-detail-body"
                     >
-                      <div className="section-stack">
-                        <div className="quote-preview-total-list">
-                          <div>
-                            <span>Lifecycle</span>
-                            <strong>{service.status}</strong>
-                          </div>
-                          <div>
-                            <span>Confirmation</span>
-                            <strong>{service.confirmationStatus}</strong>
-                          </div>
-                          <div>
-                            <span>Cost</span>
-                            <strong>{formatMoney(service.totalCost)}</strong>
-                          </div>
-                          <div>
-                            <span>Sell</span>
-                            <strong>{formatMoney(service.totalSell)}</strong>
-                          </div>
-                        </div>
-
-                        <InlineRowEditorShell>
-                          <form action={`/api/bookings/services/${service.id}/assign-supplier`} method="POST">
-                            <label>
-                              Supplier
-                              <select name="supplierId" defaultValue={service.supplierId || ''}>
-                                <option value="">Select supplier</option>
-                                {supplierOptions.map((supplier) => (
-                                  <option key={supplier.id} value={supplier.id}>
-                                    {supplier.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <div className="quote-status-actions">
-                              <button type="submit" className="secondary-button">
-                                Assign supplier
-                              </button>
+                      <div className="booking-service-detail-sections">
+                        <BookingServiceDetailSection title="Overview">
+                          <div className="quote-preview-total-list">
+                            <div>
+                              <span>Lifecycle</span>
+                              <strong>{service.status}</strong>
                             </div>
-                          </form>
-                        </InlineRowEditorShell>
-
-                        <InlineRowEditorShell>
-                          <form action={`/api/bookings/services/${service.id}/confirmation`} method="POST">
-                            <label>
-                              Confirmation status
-                              <select name="confirmationStatus" defaultValue={service.confirmationStatus}>
-                                <option value="pending">Pending</option>
-                                <option value="requested">Requested</option>
-                                <option value="confirmed">Confirmed</option>
-                              </select>
-                            </label>
-                            <label>
-                              Supplier reference
-                              <input type="text" name="supplierReference" defaultValue={supplierReference || ''} placeholder="Supplier reference" />
-                            </label>
-                            <label>
-                              Confirmation note
-                              <input type="text" name="notes" defaultValue={service.confirmationNotes || ''} placeholder="Confirmation note" />
-                            </label>
-                            <div className="quote-status-actions">
-                              <button type="submit" className="secondary-button">
-                                Save confirmation
-                              </button>
+                            <div>
+                              <span>Supplier</span>
+                              <strong>{service.supplierName || 'Unassigned'}</strong>
                             </div>
-                          </form>
-                        </InlineRowEditorShell>
+                            <div>
+                              <span>Reference</span>
+                              <strong>{supplierReference || 'Pending'}</strong>
+                            </div>
+                            <div>
+                              <span>Service</span>
+                              <strong>{service.operationType || service.serviceType}</strong>
+                            </div>
+                          </div>
+                          <InlineRowEditorShell>
+                            <form action={`/api/bookings/services/${service.id}/assign-supplier`} method="POST">
+                              <label>
+                                Supplier
+                                <select name="supplierId" defaultValue={service.supplierId || ''}>
+                                  <option value="">Select supplier</option>
+                                  {supplierOptions.map((supplier) => (
+                                    <option key={supplier.id} value={supplier.id}>
+                                      {supplier.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div className="quote-status-actions">
+                                <button type="submit" className="secondary-button">
+                                  Assign supplier
+                                </button>
+                              </div>
+                            </form>
+                          </InlineRowEditorShell>
+                        </BookingServiceDetailSection>
+
+                        <BookingServiceDetailSection title="Supplier Confirmation">
+                          <InlineRowEditorShell>
+                            <form action={`/api/bookings/services/${service.id}/confirmation`} method="POST">
+                              <label>
+                                Confirmation status
+                                <select name="confirmationStatus" defaultValue={service.confirmationStatus}>
+                                  <option value="pending">Pending</option>
+                                  <option value="requested">Requested</option>
+                                  <option value="confirmed">Confirmed</option>
+                                </select>
+                              </label>
+                              <label>
+                                Supplier reference
+                                <input type="text" name="supplierReference" defaultValue={supplierReference || ''} placeholder="Supplier reference" />
+                              </label>
+                              <label>
+                                Confirmation note
+                                <input type="text" name="notes" defaultValue={service.confirmationNotes || ''} placeholder="Confirmation note" />
+                              </label>
+                              <div className="quote-status-actions">
+                                <button type="submit" className="secondary-button">
+                                  Save confirmation
+                                </button>
+                              </div>
+                            </form>
+                          </InlineRowEditorShell>
+                        </BookingServiceDetailSection>
 
                         {hotelService ? (
-                          <InlineRowEditorShell>
-                            <div className="audit-log-list">
-                              <div className="audit-log-item">
-                                <h3>Hotel Reservation Operations</h3>
-                                <p>Status: {hotelReservation.status}</p>
-                                <p>
-                                  Room block: {hotelReservation.blockedRoomCount}
+                          <BookingServiceDetailSection title="Hotel Reservation Operations">
+                            <div className="booking-service-hotel-summary">
+                              <div>
+                                <span>Status</span>
+                                <strong>{hotelReservation.status}</strong>
+                              </div>
+                              <div>
+                                <span>Room block</span>
+                                <strong>
+                                  {hotelReservation.blockedRoomCount}
                                   {hotelReservation.roomTypes.length ? ` | ${hotelReservation.roomTypes.join(', ')}` : ''}
-                                </p>
-                                <p>
-                                  Release: {hotelReservation.releaseDate ? formatDateTime(hotelReservation.releaseDate) : 'Not set'}
-                                  {' | '}
-                                  Reconfirm: {hotelReservation.reconfirmationDueDate ? formatDateTime(hotelReservation.reconfirmationDueDate) : 'Not set'}
-                                </p>
-                                <p>
-                                  Alternatives:{' '}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Release date</span>
+                                <strong>{hotelReservation.releaseDate ? formatDateTime(hotelReservation.releaseDate) : 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Reconfirmation due</span>
+                                <strong>{hotelReservation.reconfirmationDueDate ? formatDateTime(hotelReservation.reconfirmationDueDate) : 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Alternative hotels</span>
+                                <strong>
                                   {hotelReservation.alternativeHotels.length
                                     ? hotelReservation.alternativeHotels
                                         .map((hotel) => `${hotel.name || 'Hotel'} (${hotel.status || 'waitlist'})`)
                                         .join(', ')
                                     : 'None'}
-                                </p>
+                                </strong>
                               </div>
                             </div>
                             <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
@@ -481,80 +515,111 @@ export function BookingServiceTimeline({
                                 Save hotel reservation ops
                               </button>
                             </form>
-                          </InlineRowEditorShell>
+                          </BookingServiceDetailSection>
                         ) : null}
 
                         {activityService ? (
+                          <BookingServiceDetailSection title="Activity Operations">
+                            <InlineRowEditorShell>
+                              <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
+                                <input type="datetime-local" name="serviceDate" defaultValue={service.serviceDate ? service.serviceDate.slice(0, 16) : ''} />
+                                <input type="text" name="startTime" defaultValue={service.startTime || ''} placeholder="Start HH:MM" />
+                                <input type="text" name="pickupTime" defaultValue={service.pickupTime || ''} placeholder="Pickup HH:MM" />
+                                <input type="text" name="pickupLocation" defaultValue={service.pickupLocation || ''} placeholder="Pickup location" />
+                                <input type="text" name="meetingPoint" defaultValue={service.meetingPoint || ''} placeholder="Meeting point" />
+                                <input type="number" name="participantCount" min="0" defaultValue={service.participantCount ?? ''} placeholder="Participants" />
+                                <input type="number" name="adultCount" min="0" defaultValue={service.adultCount ?? ''} placeholder="Adults" />
+                                <input type="number" name="childCount" min="0" defaultValue={service.childCount ?? ''} placeholder="Children" />
+                                <label>
+                                  <input type="checkbox" name="reconfirmationRequired" defaultChecked={Boolean(service.reconfirmationRequired)} /> Reconfirm
+                                </label>
+                                <input
+                                  type="datetime-local"
+                                  name="reconfirmationDueAt"
+                                  defaultValue={service.reconfirmationDueAt ? service.reconfirmationDueAt.slice(0, 16) : ''}
+                                />
+                                <input type="text" name="note" placeholder="Reason for update" />
+                                <button type="submit" className="secondary-button">
+                                  Save activity ops
+                                </button>
+                              </form>
+                            </InlineRowEditorShell>
+                          </BookingServiceDetailSection>
+                        ) : null}
+
+                        <BookingServiceDetailSection title="Voucher/Documents">
+                          {service.vouchers && service.vouchers.length > 0 ? (
+                            <div className="booking-service-document-list">
+                              {service.vouchers.map((voucher) => (
+                                <div key={voucher.id}>
+                                  <strong>{voucher.type} voucher</strong>
+                                  <span>{voucher.status}</span>
+                                  <div className="quote-status-actions">
+                                    <a href={`/api/vouchers/${voucher.id}/pdf`} className="secondary-button">
+                                      Download PDF
+                                    </a>
+                                    {voucher.type === 'HOTEL' ? (
+                                      <a href={`/vouchers/${voucher.id}/preview`} className="secondary-button">
+                                        Preview
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="table-subcopy">No vouchers or service documents generated yet.</p>
+                          )}
+                        </BookingServiceDetailSection>
+
+                        <BookingServiceDetailSection title="Notes">
                           <InlineRowEditorShell>
-                            <form action={`/api/bookings/services/${service.id}/operational`} method="POST" className="operations-inline-form">
-                              <input type="datetime-local" name="serviceDate" defaultValue={service.serviceDate ? service.serviceDate.slice(0, 16) : ''} />
-                              <input type="text" name="startTime" defaultValue={service.startTime || ''} placeholder="Start HH:MM" />
-                              <input type="text" name="pickupTime" defaultValue={service.pickupTime || ''} placeholder="Pickup HH:MM" />
-                              <input type="text" name="pickupLocation" defaultValue={service.pickupLocation || ''} placeholder="Pickup location" />
-                              <input type="text" name="meetingPoint" defaultValue={service.meetingPoint || ''} placeholder="Meeting point" />
-                              <input type="number" name="participantCount" min="0" defaultValue={service.participantCount ?? ''} placeholder="Participants" />
-                              <input type="number" name="adultCount" min="0" defaultValue={service.adultCount ?? ''} placeholder="Adults" />
-                              <input type="number" name="childCount" min="0" defaultValue={service.childCount ?? ''} placeholder="Children" />
+                            <form action={`/api/bookings/services/${service.id}/status`} method="POST">
                               <label>
-                                <input type="checkbox" name="reconfirmationRequired" defaultChecked={Boolean(service.reconfirmationRequired)} /> Reconfirm
+                                Manual action
+                                <select name="action" defaultValue="">
+                                  <option value="" disabled>
+                                    Select action
+                                  </option>
+                                  <option value="cancel">Cancel service</option>
+                                  <option value="reopen">Reopen service</option>
+                                  <option value="mark_ready">Mark ready manually</option>
+                                </select>
                               </label>
-                              <input
-                                type="datetime-local"
-                                name="reconfirmationDueAt"
-                                defaultValue={service.reconfirmationDueAt ? service.reconfirmationDueAt.slice(0, 16) : ''}
-                              />
-                              <input type="text" name="note" placeholder="Reason for update" />
-                              <button type="submit" className="secondary-button">
-                                Save activity ops
-                              </button>
+                              <label>
+                                Reason
+                                <input type="text" name="note" placeholder="Reason for manual override" required minLength={3} />
+                              </label>
+                              <div className="quote-status-actions">
+                                <button type="submit" className="secondary-button">
+                                  Apply override
+                                </button>
+                              </div>
                             </form>
                           </InlineRowEditorShell>
-                        ) : null}
 
-                        <InlineRowEditorShell>
-                          <form action={`/api/bookings/services/${service.id}/status`} method="POST">
-                            <label>
-                              Manual action
-                              <select name="action" defaultValue="">
-                                <option value="" disabled>
-                                  Select action
-                                </option>
-                                <option value="cancel">Cancel service</option>
-                                <option value="reopen">Reopen service</option>
-                                <option value="mark_ready">Mark ready manually</option>
-                              </select>
-                            </label>
-                            <label>
-                              Reason
-                              <input type="text" name="note" placeholder="Reason for manual override" required minLength={3} />
-                            </label>
-                            <div className="quote-status-actions">
-                              <button type="submit" className="secondary-button">
-                                Apply override
-                              </button>
-                            </div>
-                          </form>
-                        </InlineRowEditorShell>
-
-                        {service.auditLogs && service.auditLogs.length > 0 ? (
-                          <div className="audit-log-list">
-                            {service.auditLogs.map((auditLog) => (
-                              <div key={auditLog.id} className="audit-log-item">
-                                <strong>{formatAuditAction(auditLog.action)}</strong>
-                                <p>
-                                  {formatDateTime(auditLog.createdAt)}
-                                  {auditLog.actor ? ` | ${auditLog.actor}` : ''}
-                                </p>
-                                {auditLog.oldValue || auditLog.newValue ? (
+                          {service.auditLogs && service.auditLogs.length > 0 ? (
+                            <div className="audit-log-list">
+                              {service.auditLogs.map((auditLog) => (
+                                <div key={auditLog.id} className="audit-log-item">
+                                  <strong>{formatAuditAction(auditLog.action)}</strong>
                                   <p>
-                                    {auditLog.oldValue || '-'} to {auditLog.newValue || '-'}
+                                    {formatDateTime(auditLog.createdAt)}
+                                    {auditLog.actor ? ` | ${auditLog.actor}` : ''}
                                   </p>
-                                ) : null}
-                                {auditLog.note ? <p>{auditLog.note}</p> : null}
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
+                                  {auditLog.oldValue || auditLog.newValue ? (
+                                    <p>
+                                      {auditLog.oldValue || '-'} to {auditLog.newValue || '-'}
+                                    </p>
+                                  ) : null}
+                                  {auditLog.note ? <p>{auditLog.note}</p> : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="table-subcopy">No service notes or audit entries yet.</p>
+                          )}
+                        </BookingServiceDetailSection>
                       </div>
                     </RowDetailsPanel>
                   </div>
