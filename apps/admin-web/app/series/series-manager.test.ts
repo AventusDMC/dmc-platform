@@ -12,6 +12,15 @@ describe('series manager operations UI', () => {
     }
   });
 
+  it('renders visible submit actions for add and clone forms', () => {
+    for (const token of ['Create Departure', 'Execute Clone Departure', 'series-departure-actions']) {
+      assert.match(source, new RegExp(token));
+    }
+
+    assert.match(source, /form id=\{`add-departure-\$\{item\.id\}`\}/);
+    assert.match(source, /form id=\{`clone-departure-\$\{item\.id\}`\}/);
+  });
+
   it('shows upcoming departures and operational counts', () => {
     for (const token of ['Upcoming departures', 'Pax:', 'Rooming:', 'Vouchers pending:', 'Confirmations pending:']) {
       assert.match(source, new RegExp(token));

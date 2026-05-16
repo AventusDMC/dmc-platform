@@ -270,6 +270,11 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <input name="paxCount" type="number" min="0" placeholder="Pax" />
                           <input name="lowOccupancyThreshold" type="number" min="0" placeholder="Low occupancy threshold" />
                           <input name="operationalNotes" placeholder="Operational notes" />
+                          <div className="quote-status-actions series-departure-actions">
+                            <button className="secondary-button" type="submit" disabled={busyAction === `add-${item.id}`}>
+                              Create Departure
+                            </button>
+                          </div>
                         </form>
 
                         <form id={`clone-departure-${item.id}`} className="operations-inline-form" onSubmit={(event) => cloneDeparture(event, item.id)}>
@@ -291,6 +296,11 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <label className="checkbox-field">
                             <input name="cloneRooming" type="checkbox" /> Clone rooming shell
                           </label>
+                          <div className="quote-status-actions series-departure-actions">
+                            <button className="secondary-button" type="submit" disabled={!departures.length || busyAction === `clone-${item.id}`}>
+                              Execute Clone Departure
+                            </button>
+                          </div>
                         </form>
                       </div>
                     </td>
