@@ -57,6 +57,7 @@ type OperationsReportFilter =
 type GroupBy = 'booking' | 'supplier';
 type DepartmentKey =
   | 'hotel-reservations'
+  | 'series-operations'
   | 'guide-operations'
   | 'dining-operations'
   | 'transport-operations'
@@ -230,6 +231,7 @@ type OperationsDashboard = {
     missingVouchers?: OperationsDashboardBucket;
     guideReadinessAlerts?: OperationsDashboardBucket;
     diningReadinessAlerts?: OperationsDashboardBucket;
+    seriesOperations?: OperationsDashboardBucket;
   };
 };
 
@@ -360,8 +362,11 @@ const HOTEL_RESERVATION_STATES: HotelReservationState[] = [
   'Cancelled',
 ];
 
+const SERIES_OPERATION_REASON_LABELS = ['low occupancy', 'rooming pending', 'unreconfirmed departure', 'voucher pending'];
+
 const DEPARTMENT_LABELS: Record<DepartmentKey, string> = {
   'hotel-reservations': 'Hotel Reservations',
+  'series-operations': 'Series Operations',
   'guide-operations': 'Guide Operations',
   'dining-operations': 'Dining Operations',
   'transport-operations': 'Transport Operations',
@@ -823,6 +828,21 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
 
   const dashboards = [
     {
+      key: 'series-operations' as DepartmentKey,
+      rows: [],
+      pendingItems: operationsDashboard.alerts.seriesOperations?.count ?? 0,
+      overdueItems: 0,
+      reconfirmationDue: 0,
+      voucherPending: operationsDashboard.alerts.seriesOperations?.items.filter((item) => item.reasons?.includes('voucher pending')).length ?? 0,
+      missingRooming: operationsDashboard.alerts.seriesOperations?.items.filter((item) => item.reasons?.includes('rooming pending')).length ?? 0,
+      missingTimings: 0,
+      examples: (operationsDashboard.alerts.seriesOperations?.items || []).slice(0, 3).map((item) => ({
+        id: item.id,
+        label: item.bookingRef || item.title || item.description || item.id,
+        detail: item.reasons?.join(', ') || 'Upcoming recurring departure',
+      })),
+    },
+    {
       key: 'hotel-reservations' as DepartmentKey,
       rows: hotelRows,
       pendingItems: hotelRows.filter((row) => getHotelReservationState(row, now) === 'Requested' || getHotelReservationState(row, now) === 'Tentative').length,
@@ -1019,6 +1039,13 @@ function getDepartmentPrimaryAction(department: ReturnType<typeof buildDepartmen
     return {
       label: 'Reconfirm hotel',
       href: buildOperationsHref(currentFilters, { report: 'pending_confirmations', supplierConfirmation: 'overdue' }),
+    };
+  }
+
+  if (department.key === 'series-operations') {
+    return {
+      label: 'Open departures',
+      href: '/series',
     };
   }
 

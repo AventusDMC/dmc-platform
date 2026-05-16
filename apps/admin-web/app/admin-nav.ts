@@ -36,12 +36,13 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Operations',
     href: '/bookings',
-    match: ['/bookings', '/operations'],
-    helper: 'Bookings, passengers, documents, and service follow-up',
+    match: ['/bookings', '/operations', '/series'],
+    helper: 'Bookings, series, passengers, documents, and service follow-up',
     roles: ['admin', 'operations'],
     children: [
       { label: 'Bookings', href: '/bookings' },
       { label: 'Operations', href: '/operations' },
+      { label: 'Series', href: '/series' },
       { label: 'Passengers & Documents', href: '/bookings' },
     ],
   },

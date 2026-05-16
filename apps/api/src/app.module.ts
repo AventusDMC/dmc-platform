@@ -44,6 +44,8 @@ import { GuidesController } from './guides/guides.controller';
 import { GuidesService } from './guides/guides.service';
 import { RestaurantsController } from './restaurants/restaurants.controller';
 import { RestaurantsService } from './restaurants/restaurants.service';
+import { SeriesController } from './series/series.controller';
+import { SeriesService } from './series/series.service';
 import { HotelCategoriesController } from './hotel-categories/hotel-categories.controller';
 import { HotelCategoriesService } from './hotel-categories/hotel-categories.service';
 import { HotelContractsController } from './hotel-contracts/hotel-contracts.controller';
@@ -133,6 +135,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     GalleryController,
     GuidesController,
     RestaurantsController,
+    SeriesController,
     HotelCategoriesController,
     LeadsController,
     PlacesController,
@@ -196,6 +199,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     GalleryService,
     GuidesService,
     RestaurantsService,
+    SeriesService,
     HotelCategoriesService,
     LeadsService,
     PlacesService,

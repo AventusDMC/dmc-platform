@@ -6568,6 +6568,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       startDate: booking.startDate,
       endDate: booking.endDate,
       pax: booking.pax || Number(booking.adults || 0) + Number(booking.children || 0),
+      seriesDeparture: booking.seriesDeparture || null,
     };
   }
 
@@ -6689,6 +6690,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       dining_operations: 'diningOperations',
       restaurant: 'diningOperations',
       restaurants: 'diningOperations',
+      series: 'seriesOperations',
+      series_operations: 'seriesOperations',
+      recurring_groups: 'seriesOperations',
       passenger_rooming: 'passengerRooming',
       passengers: 'passengerRooming',
       rooming: 'passengerRooming',
@@ -6822,6 +6826,39 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return counts;
+  }
+
+  private buildSeriesOperationsQueue(bookings: any[], missingRooming: any[], missingVoucherServices: any[]) {
+    const missingRoomingIds = new Set(missingRooming.map((booking: any) => booking.id));
+    const voucherBookingIds = new Set(missingVoucherServices.map((service: any) => service.bookingId).filter(Boolean));
+    const items = bookings
+      .filter((booking: any) => booking.seriesDeparture)
+      .map((booking: any) => {
+        const departure = booking.seriesDeparture;
+        const pax = Number(departure.paxCount || booking.pax || booking.adults + booking.children || 0);
+        const threshold = Number(departure.lowOccupancyThreshold || 0);
+        const unreconfirmed = (booking.services || []).some((service: any) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED);
+        const reasons = [
+          threshold > 0 && pax < threshold ? 'low occupancy' : null,
+          missingRoomingIds.has(booking.id) ? 'rooming pending' : null,
+          unreconfirmed ? 'unreconfirmed departure' : null,
+          voucherBookingIds.has(booking.id) ? 'voucher pending' : null,
+        ].filter(Boolean) as string[];
+        return {
+          ...this.mapDashboardBooking(booking),
+          seriesId: departure.series?.id || null,
+          seriesCode: departure.series?.seriesCode || null,
+          seriesName: departure.series?.seriesName || null,
+          departureId: departure.id,
+          departureCode: departure.departureCode || null,
+          departureDate: departure.departureDate || booking.startDate,
+          pax,
+          reasons,
+        };
+      })
+      .filter((item: any) => item.reasons.length > 0 || item.departureDate);
+
+    return this.buildDashboardBucket(items);
   }
 
   private buildOperationsDashboardReadinessSummary(input: {
@@ -9193,7 +9230,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    if (departmentFilter && !['documentationVouchers', 'supplierConfirmations', 'passengerRooming'].includes(departmentFilter)) {
+    if (departmentFilter && !['documentationVouchers', 'supplierConfirmations', 'passengerRooming', 'seriesOperations'].includes(departmentFilter)) {
       const departmentTypes: Record<string, string[]> = {
         hotelReservations: ['HOTEL', 'ACCOMMODATION'],
         transportOperations: ['TRANSPORT', 'TRANSFER'],
@@ -9259,6 +9296,31 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           assignments: {
             select: {
               bookingPassengerId: true,
+            },
+          },
+        },
+      },
+      services: {
+        select: {
+          id: true,
+          bookingId: true,
+          supplierConfirmationStatus: true,
+          operationStatus: true,
+        },
+      },
+      seriesDeparture: {
+        select: {
+          id: true,
+          departureCode: true,
+          departureDate: true,
+          paxCount: true,
+          lowOccupancyThreshold: true,
+          status: true,
+          series: {
+            select: {
+              id: true,
+              seriesCode: true,
+              seriesName: true,
             },
           },
         },
@@ -9447,6 +9509,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const servicesWithoutAssignment = dashboardServices.filter((service) => this.isMissingServiceAssignment(service));
     const missingTransportAssignmentForToday = todayTransportServices.filter((service) => this.isMissingTransportAssignment(service));
     const missingVoucherServices = dashboardServices.filter((service) => this.isOperationalVoucherMissing(service));
+    const seriesOperations = this.buildSeriesOperationsQueue(passengerCandidates, missingRooming, missingVoucherServices);
     const readinessSummary = this.buildOperationsDashboardReadinessSummary({
       bookings: passengerCandidates,
       services: dashboardServices,
@@ -9480,14 +9543,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         dayStart,
         dayEnd,
       }),
-      departmentQueues: this.buildOperationsDepartmentQueues({
+      departmentQueues: {
+        ...this.buildOperationsDepartmentQueues({
         services: dashboardServices,
         bookings: passengerCandidates,
         missingPassengers,
         missingRooming,
         missingVoucherServices,
         departmentFilter,
-      }),
+        }),
+        ...(departmentFilter && departmentFilter !== 'seriesOperations' ? {} : { seriesOperations }),
+      },
       todayArrivals: this.buildDashboardBucket(todayArrivals.map((booking) => this.mapDashboardBooking(booking))),
       todayDepartures: this.buildDashboardBucket(todayDepartures.map((booking) => this.mapDashboardBooking(booking))),
       activeBookings: this.buildDashboardBucket(activeBookings.map((booking) => this.mapDashboardBooking(booking))),
@@ -9527,6 +9593,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         missingVouchers: this.buildDashboardBucket(
           missingVoucherServices.map((service) => this.mapDashboardService(service)),
         ),
+        seriesOperations,
         ...operationalAlerts,
       },
     };

@@ -47,6 +47,7 @@ model Booking {
   passengers            BookingPassenger[]
   payments              Payment[]
   roomingEntries        BookingRoomingEntry[]
+  seriesDeparture       SeriesDeparture?
 
   @@index([bookingType])
   @@index([clientCompanyId])
@@ -56,6 +57,48 @@ model Booking {
   @@index([supplierPaymentStatus])
   @@index([status])
   @@map("bookings")
+}
+
+model Series {
+  id                String              @id @default(uuid()) @db.Uuid
+  seriesCode        String              @unique
+  seriesName        String
+  active            Boolean             @default(true)
+  recurringSchedule String?
+  destinationCountry String?
+  operationalNotes  String?
+  packageTemplateId String?             @db.Uuid
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  packageTemplate   PackageTemplate?    @relation(fields: [packageTemplateId], references: [id], onDelete: SetNull)
+  departures        SeriesDeparture[]
+
+  @@index([active, seriesName])
+  @@index([destinationCountry])
+  @@index([packageTemplateId])
+  @@map("series")
+}
+
+model SeriesDeparture {
+  id             String   @id @default(uuid()) @db.Uuid
+  seriesId       String   @db.Uuid
+  bookingId      String   @unique @db.Uuid
+  departureCode  String?
+  departureDate  DateTime?
+  paxCount       Int      @default(0)
+  lowOccupancyThreshold Int?
+  status         String   @default("PLANNED")
+  operationalNotes String?
+  templateSnapshotJson Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  series         Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  booking        Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([seriesId, departureDate])
+  @@index([departureDate])
+  @@index([status])
+  @@map("series_departures")
 }
 
 model BookingDay {
@@ -1850,6 +1893,7 @@ model PackageTemplate {
   updatedAt        DateTime                   @updatedAt
   components       PackageTemplateComponent[]
   days             PackageTemplateDay[]
+  series           Series[]
 
   @@index([active, name])
   @@index([targetMarket, season])

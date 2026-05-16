@@ -3642,3 +3642,30 @@ test('dining operations phase one wires restaurant assignment capacity dietary d
     assert.match(restaurantsSource, new RegExp(token));
   }
 });
+
+test('series operations phase one wires recurring departures cloning templates and dashboard grouping', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const seriesSource = fs.readFileSync(path.join(__dirname, '..', 'series', 'series.service.ts'), 'utf8');
+  const dashboardSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+
+  for (const token of ['model Series', 'model SeriesDeparture', 'seriesCode', 'recurringSchedule', 'destinationCountry', 'packageTemplateId']) {
+    assert.match(schemaSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'cloneDeparture',
+    'regenerateOperationalServices',
+    'cloneServiceData',
+    'sourceMetadata',
+    'templateSnapshotJson',
+    'bookingRoomingEntry',
+    'vouchers',
+    'supplierConfirmationStatus',
+  ]) {
+    assert.match(seriesSource, new RegExp(token));
+  }
+
+  for (const token of ['seriesOperations', 'buildSeriesOperationsQueue', 'low occupancy', 'rooming pending', 'unreconfirmed departure', 'voucher pending']) {
+    assert.match(dashboardSource, new RegExp(token));
+  }
+});

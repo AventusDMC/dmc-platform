@@ -32,6 +32,7 @@ describe('operations dashboard department workspace', () => {
   it('groups operational work by execution department', () => {
     for (const label of [
       'Hotel Reservations',
+      'Series Operations',
       'Guide Operations',
       'Dining Operations',
       'Transport Operations',
@@ -67,6 +68,11 @@ describe('operations dashboard department workspace', () => {
       'guideReadinessAlerts',
       'Dining readiness alert',
       'diningReadinessAlerts',
+      'seriesOperations',
+      'low occupancy',
+      'rooming pending',
+      'unreconfirmed departure',
+      'voucher pending',
     ]) {
       assert.match(source, new RegExp(label));
     }
