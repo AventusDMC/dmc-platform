@@ -111,6 +111,8 @@ export class SeriesService {
         series: { include: { packageTemplate: { include: { days: true, components: true } } } },
         booking: {
           include: {
+            quote: true,
+            acceptedVersion: true,
             days: { orderBy: [{ dayNumber: 'asc' }, { id: 'asc' }] },
             roomingEntries: { include: { assignments: true }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] },
             services: { orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }] },
@@ -119,92 +121,108 @@ export class SeriesService {
       },
     });
     if (!source) throw new NotFoundException('Series departure not found');
+    if (!source.bookingId || !source.booking) throw new BadRequestException('Source series departure is missing a linked booking');
+    if (!source.booking.quote) throw new BadRequestException('Source booking is missing quote details required for clone');
+
+    const targetDepartureCode = this.optional(data.departureCode);
+    if (targetDepartureCode) {
+      const existingDeparture = await this.prisma.seriesDeparture.findFirst({
+        where: { seriesId, departureCode: targetDepartureCode },
+        select: { id: true },
+      });
+      if (existingDeparture) throw new BadRequestException(`Departure code ${targetDepartureCode} already exists for this series`);
+    }
 
     const targetStartDate = this.dateOrNull(data.departureDate) || source.booking.startDate || source.departureDate;
     const sourceStartDate = source.booking.startDate || source.departureDate;
     const shiftMs = targetStartDate && sourceStartDate ? targetStartDate.getTime() - sourceStartDate.getTime() : 0;
     const paxCount = this.nonNegativeInt(data.paxCount, source.paxCount || source.booking.pax || source.booking.adults + source.booking.children || 0) ?? 0;
 
-    return this.prisma.$transaction(async (tx) => {
-      const clonedBooking = await tx.booking.create({
-        data: {
-          bookingRef: await this.nextBookingRef(tx),
-          accessToken: this.randomToken(),
-          quoteId: source.booking.quoteId,
-          acceptedVersionId: source.booking.acceptedVersionId,
-          clientCompanyId: source.booking.clientCompanyId,
-          bookingType: source.booking.bookingType,
-          status: source.booking.status,
-          clientInvoiceStatus: source.booking.clientInvoiceStatus,
-          supplierPaymentStatus: source.booking.supplierPaymentStatus,
-          statusNote: source.booking.statusNote,
-          snapshotJson: source.booking.snapshotJson,
-          clientSnapshotJson: source.booking.clientSnapshotJson,
-          brandSnapshotJson: source.booking.brandSnapshotJson ?? Prisma.JsonNull,
-          contactSnapshotJson: source.booking.contactSnapshotJson,
-          itinerarySnapshotJson: source.booking.itinerarySnapshotJson,
-          pricingSnapshotJson: source.booking.pricingSnapshotJson,
-          adults: paxCount,
-          children: 0,
-          pax: paxCount,
-          roomCount: source.booking.roomCount,
-          nightCount: source.booking.nightCount,
-          startDate: this.shiftDate(source.booking.startDate, shiftMs),
-          endDate: this.shiftDate(source.booking.endDate, shiftMs),
-        } as any,
-      });
-
-      const dayIds = new Map<string, string>();
-      for (const day of source.booking.days || []) {
-        const clonedDay = await tx.bookingDay.create({
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { clonedQuote, clonedVersion } = await this.createDepartureQuoteClone(tx, source);
+        const clonedBooking = await tx.booking.create({
           data: {
-            bookingId: clonedBooking.id,
-            dayNumber: day.dayNumber,
-            date: this.shiftDate(day.date, shiftMs),
-            title: day.title,
-            notes: day.notes,
-            status: 'PENDING',
-          },
+            bookingRef: await this.nextBookingRef(tx),
+            accessToken: this.randomToken(),
+            quoteId: clonedQuote.id,
+            acceptedVersionId: clonedVersion.id,
+            clientCompanyId: source.booking.clientCompanyId,
+            bookingType: source.booking.bookingType,
+            status: source.booking.status,
+            clientInvoiceStatus: source.booking.clientInvoiceStatus,
+            supplierPaymentStatus: source.booking.supplierPaymentStatus,
+            statusNote: source.booking.statusNote,
+            snapshotJson: source.booking.snapshotJson,
+            clientSnapshotJson: source.booking.clientSnapshotJson,
+            brandSnapshotJson: source.booking.brandSnapshotJson ?? Prisma.JsonNull,
+            contactSnapshotJson: source.booking.contactSnapshotJson,
+            itinerarySnapshotJson: source.booking.itinerarySnapshotJson,
+            pricingSnapshotJson: source.booking.pricingSnapshotJson,
+            adults: paxCount,
+            children: 0,
+            pax: paxCount,
+            roomCount: source.booking.roomCount,
+            nightCount: source.booking.nightCount,
+            startDate: this.shiftDate(source.booking.startDate, shiftMs),
+            endDate: this.shiftDate(source.booking.endDate, shiftMs),
+          } as any,
         });
-        dayIds.set(day.id, clonedDay.id);
-      }
 
-      if (data.cloneRooming) {
-        for (const room of source.booking.roomingEntries || []) {
-          await tx.bookingRoomingEntry.create({
+        const dayIds = new Map<string, string>();
+        for (const day of source.booking.days || []) {
+          const clonedDay = await tx.bookingDay.create({
             data: {
               bookingId: clonedBooking.id,
-              roomType: room.roomType,
-              occupancy: room.occupancy,
-              notes: room.notes,
-              sortOrder: room.sortOrder,
+              dayNumber: day.dayNumber,
+              date: this.shiftDate(day.date, shiftMs),
+              title: day.title,
+              notes: day.notes,
+              status: 'PENDING',
             },
           });
+          dayIds.set(day.id, clonedDay.id);
         }
-      }
 
-      for (const service of source.booking.services || []) {
-        await tx.bookingService.create({
-          data: this.cloneServiceData(service, clonedBooking.id, dayIds.get(service.bookingDayId || '') || null, shiftMs),
+        if (data.cloneRooming) {
+          for (const room of source.booking.roomingEntries || []) {
+            await tx.bookingRoomingEntry.create({
+              data: {
+                bookingId: clonedBooking.id,
+                roomType: room.roomType,
+                occupancy: room.occupancy,
+                notes: room.notes,
+                sortOrder: room.sortOrder,
+              },
+            });
+          }
+        }
+
+        for (const service of source.booking.services || []) {
+          await tx.bookingService.create({
+            data: this.cloneServiceData(service, clonedBooking.id, dayIds.get(service.bookingDayId || '') || null, shiftMs),
+          });
+        }
+
+        const departure = await tx.seriesDeparture.create({
+          data: {
+            seriesId,
+            bookingId: clonedBooking.id,
+            departureCode: targetDepartureCode || `${source.series.seriesCode}-${clonedBooking.bookingRef}`,
+            departureDate: targetStartDate,
+            paxCount,
+            lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, source.lowOccupancyThreshold ?? undefined),
+            operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
+            templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
+          },
+          include: this.departureInclude(),
         });
-      }
 
-      const departure = await tx.seriesDeparture.create({
-        data: {
-          seriesId,
-          bookingId: clonedBooking.id,
-          departureCode: this.optional(data.departureCode) || `${source.series.seriesCode}-${clonedBooking.bookingRef}`,
-          departureDate: targetStartDate,
-          paxCount,
-          lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, source.lowOccupancyThreshold ?? undefined),
-          operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
-          templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
-        },
-        include: this.departureInclude(),
+        return departure;
       });
-
-      return departure;
-    });
+    } catch (error) {
+      throw this.toCloneFailureException(error);
+    }
   }
 
   async regenerateOperationalServices(seriesId: string, departureId: string) {
@@ -353,6 +371,68 @@ export class SeriesService {
     } as any;
   }
 
+  private async createDepartureQuoteClone(tx: any, source: any) {
+    const quote = source.booking.quote;
+    const acceptedVersion = source.booking.acceptedVersion;
+    const clonedQuote = await tx.quote.create({
+      data: {
+        clientCompanyId: quote.clientCompanyId,
+        contactId: quote.contactId,
+        agentId: quote.agentId,
+        quoteType: quote.quoteType,
+        jordanPassType: quote.jordanPassType,
+        bookingType: quote.bookingType,
+        title: quote.title,
+        description: quote.description,
+        totalPrice: quote.totalPrice,
+        quoteCurrency: quote.quoteCurrency,
+        status: quote.status,
+        adults: source.booking.adults,
+        children: source.booking.children,
+        roomCount: source.booking.roomCount,
+        nightCount: source.booking.nightCount,
+        totalCost: quote.totalCost,
+        totalSell: quote.totalSell,
+        pricePerPax: quote.pricePerPax,
+        revisionNumber: 1,
+        revisedFromId: quote.id,
+        singleSupplement: quote.singleSupplement,
+        pricingType: quote.pricingType,
+        focType: quote.focType,
+        focRatio: quote.focRatio,
+        focCount: quote.focCount,
+        focRoomType: quote.focRoomType,
+        brandCompanyId: quote.brandCompanyId,
+        pricingMode: quote.pricingMode,
+        fixedPricePerPerson: quote.fixedPricePerPerson,
+        inclusionsText: quote.inclusionsText,
+        exclusionsText: quote.exclusionsText,
+        termsNotesText: quote.termsNotesText,
+        travelStartDate: this.shiftDate(quote.travelStartDate, 0),
+        validUntil: quote.validUntil,
+        sentAt: quote.sentAt,
+        acceptedAt: quote.acceptedAt,
+        publicEnabled: false,
+      },
+    });
+
+    const clonedVersion = await tx.quoteVersion.create({
+      data: {
+        quoteId: clonedQuote.id,
+        versionNumber: 1,
+        label: acceptedVersion?.label || 'Series departure clone',
+        snapshotJson: acceptedVersion?.snapshotJson ?? source.booking.snapshotJson ?? {},
+      },
+    });
+
+    await tx.quote.update({
+      where: { id: clonedQuote.id },
+      data: { acceptedVersionId: clonedVersion.id },
+    });
+
+    return { clonedQuote, clonedVersion };
+  }
+
   private mapTemplateComponentToOperationType(component: any) {
     const text = [component.componentType, component.label, component.operationalNotes].filter(Boolean).join(' ').toLowerCase();
     if (component.componentType === 'HOTEL') return 'HOTEL';
@@ -438,5 +518,18 @@ export class SeriesService {
 
   private randomToken() {
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  private toCloneFailureException(error: unknown) {
+    if (error instanceof BadRequestException || error instanceof NotFoundException) return error;
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      const target = Array.isArray(error.meta?.target) ? error.meta?.target.join(', ') : String(error.meta?.target || '').trim();
+      if (error.code === 'P2002') {
+        return new BadRequestException(`Series departure clone failed: duplicate value for ${target || 'unique field'}`);
+      }
+      return new BadRequestException(`Series departure clone failed: ${error.message}`);
+    }
+    if (error instanceof Error && error.message) return new BadRequestException(`Series departure clone failed: ${error.message}`);
+    return new BadRequestException('Series departure clone failed');
   }
 }
