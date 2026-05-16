@@ -59,6 +59,20 @@ describe('series manager operations UI', () => {
     }
   });
 
+  it('normalizes blank capacity form values before submit', () => {
+    assert.match(source, /function optionalFormString\(formData: FormData, key: string\)/);
+    for (const token of [
+      "totalCapacity: optionalFormString(formData, 'totalCapacity')",
+      "guaranteedMinimumPax: optionalFormString(formData, 'guaranteedMinimumPax')",
+      "sharedCoachCapacity: optionalFormString(formData, 'sharedCoachCapacity')",
+      "totalCapacity: optionalFormString(formData, 'cloneTotalCapacity')",
+      "guaranteedMinimumPax: optionalFormString(formData, 'cloneGuaranteedMinimumPax')",
+      "sharedCoachCapacity: optionalFormString(formData, 'cloneSharedCoachCapacity')",
+    ]) {
+      assert.match(source, new RegExp(token.replace(/[()]/g, '\\$&')));
+    }
+  });
+
   it('submits clone source departure id while showing the departure code label', () => {
     assert.match(source, /<select name="departureId" defaultValue="">/);
     assert.match(source, /<option key=\{departure\.id\} value=\{departure\.id\} data-departure-code=\{departure\.departureCode \|\| ''\}>/);

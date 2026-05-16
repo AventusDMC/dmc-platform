@@ -92,25 +92,36 @@ export class SeriesService {
     const series = await this.findOne(seriesId);
     const booking = await this.prisma.booking.findUnique({ where: { id: this.required(data.bookingId, 'Booking is required') } });
     if (!booking) throw new NotFoundException('Booking not found');
+    const existingDeparture = await this.prisma.seriesDeparture.findFirst({
+      where: { bookingId: booking.id },
+      select: { id: true, departureCode: true },
+    });
+    if (existingDeparture) {
+      throw new BadRequestException(`Booking is already linked to series departure ${existingDeparture.departureCode || existingDeparture.id}`);
+    }
 
     const departureCount = await this.prisma.seriesDeparture.count({ where: { seriesId } });
 
-    return this.prisma.seriesDeparture.create({
-      data: {
-        seriesId,
-        bookingId: booking.id,
-        departureCode: this.optional(data.departureCode) || `${series.seriesCode}-${departureCount + 1}`,
-        departureDate: this.dateOrNull(data.departureDate) || booking.startDate,
-        paxCount: this.nonNegativeInt(data.paxCount, booking.pax || booking.adults + booking.children || 0) ?? 0,
-        lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, undefined),
-        totalCapacity: this.nonNegativeInt(data.totalCapacity, undefined),
-        guaranteedMinimumPax: this.nonNegativeInt(data.guaranteedMinimumPax, undefined),
-        sharedCoachCapacity: this.nonNegativeInt(data.sharedCoachCapacity, undefined),
-        operationalNotes: this.optional(data.operationalNotes),
-        templateSnapshotJson: this.buildTemplateSnapshot(series) as Prisma.InputJsonValue,
-      } as any,
-      include: this.departureInclude(),
-    });
+    try {
+      return await this.prisma.seriesDeparture.create({
+        data: {
+          seriesId,
+          bookingId: booking.id,
+          departureCode: this.optional(data.departureCode) || `${series.seriesCode}-${departureCount + 1}`,
+          departureDate: this.dateOrNull(data.departureDate) || booking.startDate,
+          paxCount: this.nonNegativeInt(data.paxCount, booking.pax || booking.adults + booking.children || 0, 'Pax') ?? 0,
+          lowOccupancyThreshold: this.nullableNonNegativeInt(data.lowOccupancyThreshold, 'Low occupancy threshold'),
+          totalCapacity: this.nullableNonNegativeInt(data.totalCapacity, 'Total capacity'),
+          guaranteedMinimumPax: this.nullableNonNegativeInt(data.guaranteedMinimumPax, 'Guaranteed minimum pax'),
+          sharedCoachCapacity: this.nullableNonNegativeInt(data.sharedCoachCapacity, 'Shared coach capacity'),
+          operationalNotes: this.optional(data.operationalNotes),
+          templateSnapshotJson: this.buildTemplateSnapshot(series) as Prisma.InputJsonValue,
+        } as any,
+        include: this.departureInclude(),
+      });
+    } catch (error) {
+      throw this.toSeriesDepartureFailureException(error, 'Series departure could not be created');
+    }
   }
 
   async cloneDeparture(seriesId: string, departureId: string, data: CloneDepartureInput) {
@@ -145,7 +156,7 @@ export class SeriesService {
     const targetStartDate = this.dateOrNull(data.departureDate) || source.booking.startDate || source.departureDate;
     const sourceStartDate = source.booking.startDate || source.departureDate;
     const shiftMs = targetStartDate && sourceStartDate ? targetStartDate.getTime() - sourceStartDate.getTime() : 0;
-    const paxCount = this.nonNegativeInt(data.paxCount, source.paxCount || source.booking.pax || source.booking.adults + source.booking.children || 0) ?? 0;
+    const paxCount = this.nonNegativeInt(data.paxCount, source.paxCount || source.booking.pax || source.booking.adults + source.booking.children || 0, 'Pax') ?? 0;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -220,10 +231,10 @@ export class SeriesService {
             departureCode: targetDepartureCode || `${source.series.seriesCode}-${clonedBooking.bookingRef}`,
             departureDate: targetStartDate,
             paxCount,
-            lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, source.lowOccupancyThreshold ?? undefined),
-            totalCapacity: this.nonNegativeInt(data.totalCapacity, (source as any).totalCapacity ?? undefined),
-            guaranteedMinimumPax: this.nonNegativeInt(data.guaranteedMinimumPax, (source as any).guaranteedMinimumPax ?? undefined),
-            sharedCoachCapacity: this.nonNegativeInt(data.sharedCoachCapacity, (source as any).sharedCoachCapacity ?? undefined),
+            lowOccupancyThreshold: this.nullableNonNegativeInt(data.lowOccupancyThreshold, 'Low occupancy threshold', source.lowOccupancyThreshold ?? null),
+            totalCapacity: this.nullableNonNegativeInt(data.totalCapacity, 'Total capacity', (source as any).totalCapacity ?? null),
+            guaranteedMinimumPax: this.nullableNonNegativeInt(data.guaranteedMinimumPax, 'Guaranteed minimum pax', (source as any).guaranteedMinimumPax ?? null),
+            sharedCoachCapacity: this.nullableNonNegativeInt(data.sharedCoachCapacity, 'Shared coach capacity', (source as any).sharedCoachCapacity ?? null),
             operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
             templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
           } as any,
@@ -233,7 +244,7 @@ export class SeriesService {
         return departure;
       });
     } catch (error) {
-      throw this.toCloneFailureException(error);
+      throw this.toSeriesDepartureFailureException(error, 'Series departure clone failed');
     }
   }
 
@@ -505,10 +516,18 @@ export class SeriesService {
     return parsed;
   }
 
-  private nonNegativeInt(value: number | string | null | undefined, fallback: number | undefined) {
+  private nonNegativeInt(value: number | string | null | undefined, fallback: number | undefined, label = 'Value') {
     if (value === undefined || value === null || value === '') return fallback;
     const numeric = Number(value);
-    if (!Number.isInteger(numeric) || numeric < 0) throw new BadRequestException('Value must be a non-negative integer');
+    if (!Number.isInteger(numeric) || numeric < 0) throw new BadRequestException(`${label} must be a non-negative integer`);
+    return numeric;
+  }
+
+  private nullableNonNegativeInt(value: number | string | null | undefined, label: string, fallback: number | null = null) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric) || numeric < 0) throw new BadRequestException(`${label} must be a non-negative integer`);
     return numeric;
   }
 
@@ -532,16 +551,17 @@ export class SeriesService {
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
 
-  private toCloneFailureException(error: unknown) {
+  private toSeriesDepartureFailureException(error: unknown, fallback: string) {
     if (error instanceof BadRequestException || error instanceof NotFoundException) return error;
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       const target = Array.isArray(error.meta?.target) ? error.meta?.target.join(', ') : String(error.meta?.target || '').trim();
       if (error.code === 'P2002') {
-        return new BadRequestException(`Series departure clone failed: duplicate value for ${target || 'unique field'}`);
+        if (target === 'bookingId') return new BadRequestException('Booking is already linked to a series departure');
+        return new BadRequestException(`${fallback}: duplicate value for ${target || 'unique field'}`);
       }
-      return new BadRequestException(`Series departure clone failed: ${error.message}`);
+      return new BadRequestException(`${fallback}: ${error.message}`);
     }
-    if (error instanceof Error && error.message) return new BadRequestException(`Series departure clone failed: ${error.message}`);
-    return new BadRequestException('Series departure clone failed');
+    if (error instanceof Error && error.message) return new BadRequestException(`${fallback}: ${error.message}`);
+    return new BadRequestException(fallback);
   }
 }

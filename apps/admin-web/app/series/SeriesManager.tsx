@@ -50,6 +50,11 @@ function getDepartureLabel(departure: SeriesDeparture) {
   return departure.departureCode || departure.booking?.bookingRef || departure.id;
 }
 
+function optionalFormString(formData: FormData, key: string) {
+  const value = String(formData.get(key) || '').trim();
+  return value || null;
+}
+
 export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
   const [series, setSeries] = useState(initialSeries);
   const [error, setError] = useState('');
@@ -102,10 +107,10 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         departureCode: String(formData.get('departureCode') || ''),
         departureDate: String(formData.get('departureDate') || ''),
         paxCount: String(formData.get('paxCount') || ''),
-        lowOccupancyThreshold: String(formData.get('lowOccupancyThreshold') || ''),
-        totalCapacity: String(formData.get('totalCapacity') || ''),
-        guaranteedMinimumPax: String(formData.get('guaranteedMinimumPax') || ''),
-        sharedCoachCapacity: String(formData.get('sharedCoachCapacity') || ''),
+        lowOccupancyThreshold: optionalFormString(formData, 'lowOccupancyThreshold'),
+        totalCapacity: optionalFormString(formData, 'totalCapacity'),
+        guaranteedMinimumPax: optionalFormString(formData, 'guaranteedMinimumPax'),
+        sharedCoachCapacity: optionalFormString(formData, 'sharedCoachCapacity'),
         operationalNotes: String(formData.get('operationalNotes') || ''),
       }),
     });
@@ -136,10 +141,10 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         departureCode: String(formData.get('cloneDepartureCode') || ''),
         departureDate: String(formData.get('cloneDepartureDate') || ''),
         paxCount: String(formData.get('clonePaxCount') || ''),
-        lowOccupancyThreshold: String(formData.get('cloneLowOccupancyThreshold') || ''),
-        totalCapacity: String(formData.get('cloneTotalCapacity') || ''),
-        guaranteedMinimumPax: String(formData.get('cloneGuaranteedMinimumPax') || ''),
-        sharedCoachCapacity: String(formData.get('cloneSharedCoachCapacity') || ''),
+        lowOccupancyThreshold: optionalFormString(formData, 'cloneLowOccupancyThreshold'),
+        totalCapacity: optionalFormString(formData, 'cloneTotalCapacity'),
+        guaranteedMinimumPax: optionalFormString(formData, 'cloneGuaranteedMinimumPax'),
+        sharedCoachCapacity: optionalFormString(formData, 'cloneSharedCoachCapacity'),
         operationalNotes: String(formData.get('cloneOperationalNotes') || ''),
         cloneRooming: formData.has('cloneRooming'),
       }),

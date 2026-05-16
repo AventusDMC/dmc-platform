@@ -244,4 +244,65 @@ describe('SeriesService clone departure', () => {
       (error: unknown) => error instanceof BadRequestException && error.message === 'Departure code JOR-HL-2026-002 already exists for this series',
     );
   });
+
+  it('creates departures with empty capacity fields as null and filled fields as numbers', async () => {
+    const createdPayloads: any[] = [];
+    const service = new SeriesService({
+      series: {
+        findUnique: async () => ({ id: 'series-id', seriesCode: 'JOR-HL-2026', seriesName: 'Jordan Highlights', packageTemplate: null }),
+      },
+      booking: {
+        findUnique: async () => ({
+          id: 'booking-id',
+          startDate: new Date('2026-05-22T00:00:00.000Z'),
+          pax: 20,
+          adults: 20,
+          children: 0,
+        }),
+      },
+      seriesDeparture: {
+        findFirst: async () => null,
+        count: async () => 1,
+        create: async ({ data }: any) => {
+          createdPayloads.push(data);
+          return { id: 'departure-id', ...data };
+        },
+      },
+    } as any);
+
+    await service.addDeparture('series-id', {
+      bookingId: 'booking-id',
+      totalCapacity: '',
+      guaranteedMinimumPax: '12',
+      sharedCoachCapacity: '48',
+      lowOccupancyThreshold: '',
+    });
+
+    assert.equal(createdPayloads[0].totalCapacity, null);
+    assert.equal(createdPayloads[0].lowOccupancyThreshold, null);
+    assert.equal(createdPayloads[0].guaranteedMinimumPax, 12);
+    assert.equal(createdPayloads[0].sharedCoachCapacity, 48);
+  });
+
+  it('returns a clear error when adding a booking already linked to a departure', async () => {
+    const service = new SeriesService({
+      series: {
+        findUnique: async () => ({ id: 'series-id', seriesCode: 'JOR-HL-2026', seriesName: 'Jordan Highlights', packageTemplate: null }),
+      },
+      booking: {
+        findUnique: async () => ({ id: 'booking-id', pax: 20, adults: 20, children: 0 }),
+      },
+      seriesDeparture: {
+        findFirst: async () => ({ id: 'existing-departure-id', departureCode: 'JOR-HL-2026-001' }),
+        count: async () => {
+          throw new Error('count should not run');
+        },
+      },
+    } as any);
+
+    await assert.rejects(
+      () => service.addDeparture('series-id', { bookingId: 'booking-id', totalCapacity: '24' }),
+      (error: unknown) => error instanceof BadRequestException && error.message === 'Booking is already linked to series departure JOR-HL-2026-001',
+    );
+  });
 });
