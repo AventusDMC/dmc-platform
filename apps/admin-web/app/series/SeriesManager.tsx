@@ -26,6 +26,26 @@ type Series = {
   }>;
 };
 
+type SeriesDeparture = NonNullable<Series['departures']>[number];
+
+async function readActionError(response: Response, fallback: string) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const body = await response.json().catch(() => null);
+    const message = body?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+    if (Array.isArray(message) && message.length) return message.join(', ');
+    if (typeof body?.error === 'string' && body.error.trim()) return body.error;
+  }
+
+  const text = await response.text().catch(() => '');
+  return text.trim() || fallback;
+}
+
+function getDepartureLabel(departure: SeriesDeparture) {
+  return departure.departureCode || departure.booking?.bookingRef || departure.id;
+}
+
 export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
   const [series, setSeries] = useState(initialSeries);
   const [error, setError] = useState('');
@@ -84,7 +104,7 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
     });
     setBusyAction('');
     if (!response.ok) {
-      setError('Departure could not be created. Check the booking ID and try again.');
+      setError(await readActionError(response, 'Departure could not be created. Check the booking ID and try again.'));
       return;
     }
     form.reset();
@@ -116,14 +136,14 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
     });
     setBusyAction('');
     if (!response.ok) {
-      setError('Departure could not be cloned.');
+      setError(await readActionError(response, 'Departure could not be cloned.'));
       return;
     }
     form.reset();
     await refreshSeries();
   }
 
-  function getDepartureCounts(departure: NonNullable<Series['departures']>[number]) {
+  function getDepartureCounts(departure: SeriesDeparture) {
     const vouchersPending = (departure.booking?.vouchers || []).filter((voucher) => voucher.status !== 'ISSUED' && voucher.status !== 'CANCELLED').length;
     const confirmationsPending = (departure.booking?.services || []).filter((service) => service.supplierConfirmationStatus !== 'CONFIRMED').length;
     return {
@@ -283,11 +303,12 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                               Select departure to clone
                             </option>
                             {departures.map((departure) => (
-                              <option key={departure.id} value={departure.id}>
-                                {departure.departureCode || departure.booking?.bookingRef || departure.id}
+                              <option key={departure.id} value={departure.id} data-departure-code={departure.departureCode || ''}>
+                                {getDepartureLabel(departure)}
                               </option>
                             ))}
                           </select>
+                          <p className="table-subcopy">Departure code is shown for operations; clone submits the source departure ID.</p>
                           <input name="cloneDepartureCode" placeholder="New departure code" />
                           <input name="cloneDepartureDate" type="date" />
                           <input name="clonePaxCount" type="number" min="0" placeholder="Pax" />

@@ -40,4 +40,17 @@ describe('series manager operations UI', () => {
       assert.match(source, new RegExp(token.replace(/[${}]/g, '\\$&')));
     }
   });
+
+  it('submits clone source departure id while showing the departure code label', () => {
+    assert.match(source, /<select name="departureId" defaultValue="">/);
+    assert.match(source, /<option key=\{departure\.id\} value=\{departure\.id\} data-departure-code=\{departure\.departureCode \|\| ''\}>/);
+    assert.match(source, /getDepartureLabel\(departure\)/);
+    assert.match(source, /clone submits the source departure ID/);
+  });
+
+  it('surfaces exact backend errors for departure actions', () => {
+    assert.match(source, /async function readActionError\(response: Response, fallback: string\)/);
+    assert.match(source, /setError\(await readActionError\(response, 'Departure could not be cloned\.'\)\)/);
+    assert.match(source, /setError\(await readActionError\(response, 'Departure could not be created\. Check the booking ID and try again\.'\)\)/);
+  });
 });
