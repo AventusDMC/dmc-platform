@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, Fragment, useState } from 'react';
 
 type Series = {
   id: string;
@@ -29,6 +29,14 @@ type Series = {
 export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
   const [series, setSeries] = useState(initialSeries);
   const [error, setError] = useState('');
+  const [busyAction, setBusyAction] = useState('');
+
+  async function refreshSeries() {
+    const response = await fetch('/api/series', { cache: 'no-store' });
+    if (response.ok) {
+      setSeries(await response.json());
+    }
+  }
 
   async function createSeries(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,6 +62,76 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
     const created = await response.json();
     setSeries((current) => [created, ...current]);
     form.reset();
+  }
+
+  async function addDeparture(event: FormEvent<HTMLFormElement>, seriesId: string) {
+    event.preventDefault();
+    setError('');
+    setBusyAction(`add-${seriesId}`);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const response = await fetch(`/api/series/${seriesId}/departures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bookingId: String(formData.get('bookingId') || ''),
+        departureCode: String(formData.get('departureCode') || ''),
+        departureDate: String(formData.get('departureDate') || ''),
+        paxCount: String(formData.get('paxCount') || ''),
+        lowOccupancyThreshold: String(formData.get('lowOccupancyThreshold') || ''),
+        operationalNotes: String(formData.get('operationalNotes') || ''),
+      }),
+    });
+    setBusyAction('');
+    if (!response.ok) {
+      setError('Departure could not be created. Check the booking ID and try again.');
+      return;
+    }
+    form.reset();
+    await refreshSeries();
+  }
+
+  async function cloneDeparture(event: FormEvent<HTMLFormElement>, seriesId: string) {
+    event.preventDefault();
+    setError('');
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const departureId = String(formData.get('departureId') || '');
+    if (!departureId) {
+      setError('Select a departure to clone.');
+      return;
+    }
+    setBusyAction(`clone-${seriesId}`);
+    const response = await fetch(`/api/series/${seriesId}/departures/${departureId}/clone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        departureCode: String(formData.get('cloneDepartureCode') || ''),
+        departureDate: String(formData.get('cloneDepartureDate') || ''),
+        paxCount: String(formData.get('clonePaxCount') || ''),
+        lowOccupancyThreshold: String(formData.get('cloneLowOccupancyThreshold') || ''),
+        operationalNotes: String(formData.get('cloneOperationalNotes') || ''),
+        cloneRooming: formData.has('cloneRooming'),
+      }),
+    });
+    setBusyAction('');
+    if (!response.ok) {
+      setError('Departure could not be cloned.');
+      return;
+    }
+    form.reset();
+    await refreshSeries();
+  }
+
+  function getDepartureCounts(departure: NonNullable<Series['departures']>[number]) {
+    const vouchersPending = (departure.booking?.vouchers || []).filter((voucher) => voucher.status !== 'ISSUED' && voucher.status !== 'CANCELLED').length;
+    const confirmationsPending = (departure.booking?.services || []).filter((service) => service.supplierConfirmationStatus !== 'CONFIRMED').length;
+    return {
+      pax: departure.paxCount || 0,
+      rooming: departure.booking?.roomingEntries?.length || 0,
+      vouchersPending,
+      confirmationsPending,
+    };
   }
 
   return (
@@ -106,20 +184,118 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
               const voucherPending = departures.filter((departure) => (departure.booking?.vouchers || []).some((voucher) => voucher.status !== 'ISSUED')).length;
 
               return (
-                <tr key={item.id}>
-                  <td>
-                    <strong>{item.seriesCode}</strong>
-                    <p className="table-subcopy">{item.seriesName}</p>
-                    <p className="table-subcopy">{item.destinationCountry || 'Destination pending'}</p>
-                  </td>
-                  <td>{item.recurringSchedule || 'Not set'}</td>
-                  <td>{departures.length}</td>
-                  <td>
-                    <p className="table-subcopy">{unreconfirmed} unreconfirmed</p>
-                    <p className="table-subcopy">{voucherPending} voucher pending</p>
-                  </td>
-                  <td>{item.active ? 'Active' : 'Inactive'}</td>
-                </tr>
+                <Fragment key={item.id}>
+                  <tr key={item.id} id={`series-${item.id}`}>
+                    <td>
+                      <strong>{item.seriesCode}</strong>
+                      <p className="table-subcopy">{item.seriesName}</p>
+                      <p className="table-subcopy">{item.destinationCountry || 'Destination pending'}</p>
+                    </td>
+                    <td>{item.recurringSchedule || 'Not set'}</td>
+                    <td>{departures.length}</td>
+                    <td>
+                      <p className="table-subcopy">{unreconfirmed} unreconfirmed</p>
+                      <p className="table-subcopy">{voucherPending} voucher pending</p>
+                    </td>
+                    <td>
+                      <p>{item.active ? 'Active' : 'Inactive'}</p>
+                      <div className="quote-status-actions">
+                        <a className="secondary-button" href={`#series-${item.id}`}>
+                          Open Series
+                        </a>
+                        <button className="secondary-button" type="submit" form={`add-departure-${item.id}`} disabled={busyAction === `add-${item.id}`}>
+                          Add Departure
+                        </button>
+                        <button className="secondary-button" type="submit" form={`clone-departure-${item.id}`} disabled={!departures.length || busyAction === `clone-${item.id}`}>
+                          Clone Departure
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr key={`${item.id}-departures`}>
+                    <td colSpan={5}>
+                      <div className="section-stack">
+                        <div>
+                          <strong>Upcoming departures</strong>
+                          {departures.length ? (
+                            <div className="table-card">
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Departure</th>
+                                    <th>Operational counts</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {departures.map((departure) => {
+                                    const counts = getDepartureCounts(departure);
+                                    return (
+                                      <tr key={departure.id}>
+                                        <td>
+                                          <strong>{departure.departureCode || departure.booking?.bookingRef || 'Departure'}</strong>
+                                          <p className="table-subcopy">{departure.departureDate ? new Date(departure.departureDate).toLocaleDateString() : 'Date pending'}</p>
+                                          <p className="table-subcopy">{departure.booking?.bookingRef || 'Booking pending'}</p>
+                                        </td>
+                                        <td>
+                                          <p className="table-subcopy">Pax: {counts.pax}</p>
+                                          <p className="table-subcopy">Rooming: {counts.rooming}</p>
+                                          <p className="table-subcopy">Vouchers pending: {counts.vouchersPending}</p>
+                                          <p className="table-subcopy">Confirmations pending: {counts.confirmationsPending}</p>
+                                        </td>
+                                        <td>{departure.booking?.status || 'Planned'}</td>
+                                        <td>
+                                          {departure.booking?.id ? (
+                                            <a className="secondary-button" href={`/bookings/${departure.booking.id}`}>
+                                              Open Departure
+                                            </a>
+                                          ) : null}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="table-subcopy">No departure instances yet.</p>
+                          )}
+                        </div>
+
+                        <form id={`add-departure-${item.id}`} className="operations-inline-form" onSubmit={(event) => addDeparture(event, item.id)}>
+                          <input name="bookingId" placeholder="Existing booking ID" required />
+                          <input name="departureCode" placeholder="Departure code" />
+                          <input name="departureDate" type="date" />
+                          <input name="paxCount" type="number" min="0" placeholder="Pax" />
+                          <input name="lowOccupancyThreshold" type="number" min="0" placeholder="Low occupancy threshold" />
+                          <input name="operationalNotes" placeholder="Operational notes" />
+                        </form>
+
+                        <form id={`clone-departure-${item.id}`} className="operations-inline-form" onSubmit={(event) => cloneDeparture(event, item.id)}>
+                          <select name="departureId" defaultValue="">
+                            <option value="" disabled>
+                              Select departure to clone
+                            </option>
+                            {departures.map((departure) => (
+                              <option key={departure.id} value={departure.id}>
+                                {departure.departureCode || departure.booking?.bookingRef || departure.id}
+                              </option>
+                            ))}
+                          </select>
+                          <input name="cloneDepartureCode" placeholder="New departure code" />
+                          <input name="cloneDepartureDate" type="date" />
+                          <input name="clonePaxCount" type="number" min="0" placeholder="Pax" />
+                          <input name="cloneLowOccupancyThreshold" type="number" min="0" placeholder="Low occupancy threshold" />
+                          <input name="cloneOperationalNotes" placeholder="Operational notes" />
+                          <label className="checkbox-field">
+                            <input name="cloneRooming" type="checkbox" /> Clone rooming shell
+                          </label>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
