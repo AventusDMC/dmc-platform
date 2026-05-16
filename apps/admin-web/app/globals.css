@@ -18998,6 +18998,12 @@ body {
 .booking-service-detail-body {
   width: min(100%, 920px);
   margin-left: auto;
+  max-height: min(76dvh, 760px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .booking-service-detail-sections {

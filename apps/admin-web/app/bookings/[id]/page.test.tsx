@@ -269,6 +269,28 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('keeps booking service manage panel scrollable so hotel controls are accessible', () => {
+    expectSourceContains(bookingServiceTimelineSource, [
+      'bodyClassName="operations-row-details-body booking-service-detail-body"',
+      'Hotel Reservation Operations',
+      'hotelReservationStatus',
+      'blockedRoomCount',
+      'releaseDate',
+      'hotelReconfirmationDueAt',
+      'alternativeHotels',
+      'roomingSent',
+    ]);
+
+    expectSourceContains(cssSource, [
+      '.booking-service-detail-body',
+      'max-height: min(76dvh, 760px);',
+      'overflow-y: auto;',
+      'overflow-x: hidden;',
+      'overscroll-behavior-y: auto;',
+      'scrollbar-gutter: stable;',
+    ]);
+  });
+
   it('keeps responsive dashboard layout and mobile action access', () => {
     expectSourceContains(pageSource, [
       '<AdminHeaderActions className="booking-dashboard-actions">',
