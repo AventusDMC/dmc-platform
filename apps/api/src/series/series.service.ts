@@ -21,6 +21,17 @@ type DepartureInput = {
   totalCapacity?: number | string | null;
   guaranteedMinimumPax?: number | string | null;
   sharedCoachCapacity?: number | string | null;
+  reservedSeats?: number | string | null;
+  stopSaleThreshold?: number | string | null;
+  hotelAllotments?: unknown;
+  sharedInventory?: unknown;
+  blockedRoomInventory?: number | string | null;
+  roomTypeInventory?: string | null;
+  releaseDeadline?: string | null;
+  stopSale?: boolean | string | null;
+  allotmentNotes?: string | null;
+  allotmentStatus?: string | null;
+  sharedRestaurantCapacity?: number | string | null;
   operationalNotes?: string | null;
 };
 
@@ -32,6 +43,17 @@ type CloneDepartureInput = {
   totalCapacity?: number | string | null;
   guaranteedMinimumPax?: number | string | null;
   sharedCoachCapacity?: number | string | null;
+  reservedSeats?: number | string | null;
+  stopSaleThreshold?: number | string | null;
+  hotelAllotments?: unknown;
+  sharedInventory?: unknown;
+  blockedRoomInventory?: number | string | null;
+  roomTypeInventory?: string | null;
+  releaseDeadline?: string | null;
+  stopSale?: boolean | string | null;
+  allotmentNotes?: string | null;
+  allotmentStatus?: string | null;
+  sharedRestaurantCapacity?: number | string | null;
   operationalNotes?: string | null;
   cloneRooming?: boolean | null;
 };
@@ -114,6 +136,10 @@ export class SeriesService {
           totalCapacity: this.nullableNonNegativeInt(data.totalCapacity, 'Total capacity'),
           guaranteedMinimumPax: this.nullableNonNegativeInt(data.guaranteedMinimumPax, 'Guaranteed minimum pax'),
           sharedCoachCapacity: this.nullableNonNegativeInt(data.sharedCoachCapacity, 'Shared coach capacity'),
+          reservedSeats: this.nullableNonNegativeInt(data.reservedSeats, 'Reserved seats'),
+          stopSaleThreshold: this.nullableNonNegativeInt(data.stopSaleThreshold, 'Stop sale threshold'),
+          hotelAllotmentsJson: this.buildHotelAllotmentsJson(data) as Prisma.InputJsonValue,
+          sharedInventoryJson: this.buildSharedInventoryJson(data) as Prisma.InputJsonValue,
           operationalNotes: this.optional(data.operationalNotes),
           templateSnapshotJson: this.buildTemplateSnapshot(series) as Prisma.InputJsonValue,
         } as any,
@@ -235,6 +261,10 @@ export class SeriesService {
             totalCapacity: this.nullableNonNegativeInt(data.totalCapacity, 'Total capacity', (source as any).totalCapacity ?? null),
             guaranteedMinimumPax: this.nullableNonNegativeInt(data.guaranteedMinimumPax, 'Guaranteed minimum pax', (source as any).guaranteedMinimumPax ?? null),
             sharedCoachCapacity: this.nullableNonNegativeInt(data.sharedCoachCapacity, 'Shared coach capacity', (source as any).sharedCoachCapacity ?? null),
+            reservedSeats: this.nullableNonNegativeInt(data.reservedSeats, 'Reserved seats', (source as any).reservedSeats ?? null),
+            stopSaleThreshold: this.nullableNonNegativeInt(data.stopSaleThreshold, 'Stop sale threshold', (source as any).stopSaleThreshold ?? null),
+            hotelAllotmentsJson: this.buildHotelAllotmentsJson(data, (source as any).hotelAllotmentsJson) as Prisma.InputJsonValue,
+            sharedInventoryJson: this.buildSharedInventoryJson(data, (source as any).sharedInventoryJson) as Prisma.InputJsonValue,
             operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
             templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
           } as any,
@@ -529,6 +559,65 @@ export class SeriesService {
     const numeric = Number(value);
     if (!Number.isInteger(numeric) || numeric < 0) throw new BadRequestException(`${label} must be a non-negative integer`);
     return numeric;
+  }
+
+  private buildHotelAllotmentsJson(data: DepartureInput | CloneDepartureInput, fallback: unknown = null) {
+    if (data.hotelAllotments !== undefined) return this.normalizeJsonValue(data.hotelAllotments, 'Hotel allotments');
+    const blockedRooms = this.nullableNonNegativeInt(data.blockedRoomInventory, 'Blocked room inventory');
+    const roomTypes = this.parseRoomTypeInventory(data.roomTypeInventory);
+    const releaseDeadline = this.dateOrNull(data.releaseDeadline)?.toISOString() || null;
+    const stopSale = this.booleanOrFalse(data.stopSale);
+    const notes = this.optional(data.allotmentNotes);
+    const status = this.optional(data.allotmentStatus);
+
+    if (blockedRooms === null && roomTypes.length === 0 && !releaseDeadline && !stopSale && !notes && !status) {
+      return fallback ?? Prisma.JsonNull;
+    }
+
+    return [
+      {
+        blockedRooms: blockedRooms ?? 0,
+        roomTypes,
+        releaseDeadline,
+        stopSale,
+        notes,
+        status: status || (stopSale ? 'stop sale' : 'active'),
+      },
+    ];
+  }
+
+  private buildSharedInventoryJson(data: DepartureInput | CloneDepartureInput, fallback: unknown = null) {
+    if (data.sharedInventory !== undefined) return this.normalizeJsonValue(data.sharedInventory, 'Shared inventory');
+    const restaurantCapacity = this.nullableNonNegativeInt(data.sharedRestaurantCapacity, 'Shared restaurant capacity');
+    if (restaurantCapacity === null) return fallback ?? Prisma.JsonNull;
+    return { restaurantCapacity };
+  }
+
+  private parseRoomTypeInventory(value: string | null | undefined) {
+    return String(value || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [roomType, count] = entry.split(':').map((part) => part.trim());
+        return { roomType, count: this.nullableNonNegativeInt(count || '0', 'Room type inventory count') ?? 0 };
+      });
+  }
+
+  private normalizeJsonValue(value: unknown, label: string) {
+    if (value === undefined || value === null || value === '') return Prisma.JsonNull;
+    if (typeof value !== 'string') return value as Prisma.InputJsonValue;
+    try {
+      return JSON.parse(value) as Prisma.InputJsonValue;
+    } catch {
+      throw new BadRequestException(`${label} must be valid JSON`);
+    }
+  }
+
+  private booleanOrFalse(value: boolean | string | null | undefined) {
+    if (value === true) return true;
+    if (typeof value === 'string') return ['true', 'on', '1', 'yes'].includes(value.toLowerCase());
+    return false;
   }
 
   private optional(value: string | null | undefined) {

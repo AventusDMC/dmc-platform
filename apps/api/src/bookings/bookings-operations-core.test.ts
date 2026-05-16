@@ -3695,3 +3695,29 @@ test('series capacity phase one wires seat calculations guarantee status and das
     assert.match(dashboardSource, new RegExp(token));
   }
 });
+
+test('series allotment inventory phase one wires allotment tracking stop sale and dashboard grouping', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const seriesSource = fs.readFileSync(path.join(__dirname, '..', 'series', 'series.service.ts'), 'utf8');
+  const dashboardSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+
+  for (const token of ['reservedSeats', 'stopSaleThreshold', 'hotelAllotmentsJson', 'sharedInventoryJson']) {
+    assert.match(schemaSource, new RegExp(token));
+    assert.match(seriesSource, new RegExp(token));
+    assert.match(dashboardSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'buildHotelAllotmentsJson',
+    'blockedRoomInventory',
+    'roomTypeInventory',
+    'releaseDeadline',
+    'allotment exhausted',
+    'overbooked hotel category',
+    'departure stop sale triggered',
+    'release deadline approaching',
+    'getSeriesDepartureInventory',
+  ]) {
+    assert.match(seriesSource + dashboardSource, new RegExp(token));
+  }
+});

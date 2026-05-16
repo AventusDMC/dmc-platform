@@ -19,6 +19,15 @@ type Series = {
     guaranteedMinimumPax?: number | null;
     sharedCoachCapacity?: number | null;
     lowOccupancyThreshold?: number | null;
+    reservedSeats?: number | null;
+    stopSaleThreshold?: number | null;
+    hotelAllotmentsJson?: Array<{
+      blockedRooms?: number;
+      releaseDeadline?: string | null;
+      stopSale?: boolean;
+      status?: string | null;
+      roomTypes?: Array<{ roomType?: string | null; count?: number }>;
+    }> | null;
     booking?: {
       id: string;
       bookingRef: string;
@@ -111,6 +120,15 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         totalCapacity: optionalFormString(formData, 'totalCapacity'),
         guaranteedMinimumPax: optionalFormString(formData, 'guaranteedMinimumPax'),
         sharedCoachCapacity: optionalFormString(formData, 'sharedCoachCapacity'),
+        reservedSeats: optionalFormString(formData, 'reservedSeats'),
+        stopSaleThreshold: optionalFormString(formData, 'stopSaleThreshold'),
+        blockedRoomInventory: optionalFormString(formData, 'blockedRoomInventory'),
+        roomTypeInventory: optionalFormString(formData, 'roomTypeInventory'),
+        releaseDeadline: optionalFormString(formData, 'releaseDeadline'),
+        stopSale: formData.has('stopSale'),
+        allotmentNotes: String(formData.get('allotmentNotes') || ''),
+        allotmentStatus: optionalFormString(formData, 'allotmentStatus'),
+        sharedRestaurantCapacity: optionalFormString(formData, 'sharedRestaurantCapacity'),
         operationalNotes: String(formData.get('operationalNotes') || ''),
       }),
     });
@@ -145,6 +163,15 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         totalCapacity: optionalFormString(formData, 'cloneTotalCapacity'),
         guaranteedMinimumPax: optionalFormString(formData, 'cloneGuaranteedMinimumPax'),
         sharedCoachCapacity: optionalFormString(formData, 'cloneSharedCoachCapacity'),
+        reservedSeats: optionalFormString(formData, 'cloneReservedSeats'),
+        stopSaleThreshold: optionalFormString(formData, 'cloneStopSaleThreshold'),
+        blockedRoomInventory: optionalFormString(formData, 'cloneBlockedRoomInventory'),
+        roomTypeInventory: optionalFormString(formData, 'cloneRoomTypeInventory'),
+        releaseDeadline: optionalFormString(formData, 'cloneReleaseDeadline'),
+        stopSale: formData.has('cloneStopSale'),
+        allotmentNotes: String(formData.get('cloneAllotmentNotes') || ''),
+        allotmentStatus: optionalFormString(formData, 'cloneAllotmentStatus'),
+        sharedRestaurantCapacity: optionalFormString(formData, 'cloneSharedRestaurantCapacity'),
         operationalNotes: String(formData.get('cloneOperationalNotes') || ''),
         cloneRooming: formData.has('cloneRooming'),
       }),
@@ -164,10 +191,14 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
     const seatsSold = departure.paxCount || 0;
     const totalCapacity = departure.totalCapacity || 0;
     const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : 0;
+    const blockedRooms = (departure.hotelAllotmentsJson || []).reduce((total, allotment) => total + Number(allotment.blockedRooms || 0), 0);
+    const stopSale = Boolean((departure.hotelAllotmentsJson || []).some((allotment) => allotment.stopSale));
     return {
       pax: seatsSold,
       totalCapacity,
       seatsRemaining,
+      blockedRooms,
+      stopSale,
       rooming: departure.booking?.roomingEntries?.length || 0,
       vouchersPending,
       confirmationsPending,
@@ -283,6 +314,8 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                                           <p className="table-subcopy">Seats remaining: {counts.totalCapacity ? counts.seatsRemaining : 'Capacity pending'}</p>
                                           <p className="table-subcopy">Total capacity: {counts.totalCapacity || 'Not set'}</p>
                                           <p className="table-subcopy">Guaranteed minimum: {departure.guaranteedMinimumPax || 'Not set'}</p>
+                                          <p className="table-subcopy">Blocked rooms: {counts.blockedRooms || 'Not set'}</p>
+                                          <p className="table-subcopy">Stop sale: {counts.stopSale ? 'Active' : 'No'}</p>
                                           <p className="table-subcopy">Rooming: {counts.rooming}</p>
                                           <p className="table-subcopy">Vouchers pending: {counts.vouchersPending}</p>
                                           <p className="table-subcopy">Confirmations pending: {counts.confirmationsPending}</p>
@@ -315,6 +348,17 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <input name="totalCapacity" type="number" min="0" placeholder="Total capacity" />
                           <input name="guaranteedMinimumPax" type="number" min="0" placeholder="Guaranteed minimum pax" />
                           <input name="sharedCoachCapacity" type="number" min="0" placeholder="Shared coach capacity" />
+                          <input name="reservedSeats" type="number" min="0" placeholder="Reserved seats" />
+                          <input name="stopSaleThreshold" type="number" min="0" placeholder="Stop sale threshold" />
+                          <input name="blockedRoomInventory" type="number" min="0" placeholder="Blocked room inventory" />
+                          <input name="roomTypeInventory" placeholder="Room type inventory e.g. DBL:10,TWN:8" />
+                          <input name="releaseDeadline" type="date" />
+                          <input name="allotmentStatus" placeholder="Allotment status" />
+                          <input name="sharedRestaurantCapacity" type="number" min="0" placeholder="Shared restaurant capacity" />
+                          <label className="checkbox-field">
+                            <input name="stopSale" type="checkbox" /> Stop sale
+                          </label>
+                          <input name="allotmentNotes" placeholder="Allotment notes" />
                           <input name="operationalNotes" placeholder="Operational notes" />
                           <div className="quote-status-actions series-departure-actions">
                             <button className="secondary-button" type="submit" disabled={busyAction === `add-${item.id}`}>
@@ -342,6 +386,17 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <input name="cloneTotalCapacity" type="number" min="0" placeholder="Total capacity" />
                           <input name="cloneGuaranteedMinimumPax" type="number" min="0" placeholder="Guaranteed minimum pax" />
                           <input name="cloneSharedCoachCapacity" type="number" min="0" placeholder="Shared coach capacity" />
+                          <input name="cloneReservedSeats" type="number" min="0" placeholder="Reserved seats" />
+                          <input name="cloneStopSaleThreshold" type="number" min="0" placeholder="Stop sale threshold" />
+                          <input name="cloneBlockedRoomInventory" type="number" min="0" placeholder="Blocked room inventory" />
+                          <input name="cloneRoomTypeInventory" placeholder="Room type inventory e.g. DBL:10,TWN:8" />
+                          <input name="cloneReleaseDeadline" type="date" />
+                          <input name="cloneAllotmentStatus" placeholder="Allotment status" />
+                          <input name="cloneSharedRestaurantCapacity" type="number" min="0" placeholder="Shared restaurant capacity" />
+                          <label className="checkbox-field">
+                            <input name="cloneStopSale" type="checkbox" /> Stop sale
+                          </label>
+                          <input name="cloneAllotmentNotes" placeholder="Allotment notes" />
                           <input name="cloneOperationalNotes" placeholder="Operational notes" />
                           <label className="checkbox-field">
                             <input name="cloneRooming" type="checkbox" /> Clone rooming shell

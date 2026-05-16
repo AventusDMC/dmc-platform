@@ -59,6 +59,23 @@ describe('series manager operations UI', () => {
     }
   });
 
+  it('exposes allotment and inventory controls', () => {
+    for (const token of [
+      'Blocked room inventory',
+      'Room type inventory',
+      'Stop sale threshold',
+      'Stop sale',
+      'Allotment status',
+      'Allotment notes',
+      'Shared restaurant capacity',
+      'Blocked rooms:',
+      'cloneBlockedRoomInventory',
+      'cloneStopSaleThreshold',
+    ]) {
+      assert.match(source, new RegExp(token));
+    }
+  });
+
   it('normalizes blank capacity form values before submit', () => {
     assert.match(source, /function optionalFormString\(formData: FormData, key: string\)/);
     for (const token of [

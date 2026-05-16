@@ -6836,6 +6836,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .map((booking: any) => {
         const departure = booking.seriesDeparture;
         const capacity = this.getSeriesDepartureCapacity(departure, booking);
+        const inventory = this.getSeriesDepartureInventory(departure, capacity);
         const unreconfirmed = (booking.services || []).some((service: any) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED);
         const reasons = [
           capacity.guaranteedMinimumPax > 0 && capacity.seatsSold < capacity.guaranteedMinimumPax ? 'departure below minimum guarantee' : null,
@@ -6844,6 +6845,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           capacity.seatsRemaining === 0 && capacity.totalCapacity > 0 ? 'sold out departure' : null,
           capacity.seatsRemaining > 0 && capacity.seatsRemaining <= 3 ? 'low remaining seats' : null,
           capacity.sharedCoachCapacity > 0 && capacity.seatsSold > capacity.sharedCoachCapacity ? 'transport capacity mismatch' : null,
+          inventory.releaseDeadlineApproaching ? 'release deadline approaching' : null,
+          inventory.allotmentExhausted ? 'allotment exhausted' : null,
+          inventory.overbookedHotelCategory ? 'overbooked hotel category' : null,
+          inventory.stopSaleTriggered ? 'departure stop sale triggered' : null,
           missingRoomingIds.has(booking.id) ? 'rooming pending' : null,
           unreconfirmed ? 'unreconfirmed departure' : null,
           voucherBookingIds.has(booking.id) ? 'voucher pending' : null,
@@ -6862,6 +6867,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           seatsRemaining: capacity.seatsRemaining,
           guaranteedMinimumPax: capacity.guaranteedMinimumPax || null,
           sharedCoachCapacity: capacity.sharedCoachCapacity || null,
+          reservedSeats: inventory.reservedSeats,
+          availableSeats: inventory.availableSeats,
+          stopSaleThreshold: inventory.stopSaleThreshold || null,
+          blockedRooms: inventory.blockedRooms,
+          releaseDeadlineCount: inventory.releaseDeadlineCount,
+          lowInventory: inventory.lowInventory,
+          stopSale: inventory.stopSaleTriggered,
+          hotelAllotments: inventory.hotelAllotments,
           capacityStatus: capacity.status,
           reasons,
         };
@@ -6901,6 +6914,55 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       sharedCoachCapacity,
       status,
     };
+  }
+
+  private getSeriesDepartureInventory(departure: any, capacity: any) {
+    const reservedSeats = Number(departure.reservedSeats || capacity.seatsSold || 0);
+    const stopSaleThreshold = Number(departure.stopSaleThreshold || 0);
+    const availableSeats = capacity.totalCapacity > 0 ? Math.max(capacity.totalCapacity - reservedSeats, 0) : 0;
+    const hotelAllotments = this.normalizeSeriesHotelAllotments(departure.hotelAllotmentsJson);
+    const now = Date.now();
+    const blockedRooms = hotelAllotments.reduce((total, allotment) => total + allotment.blockedRooms, 0);
+    const releaseDeadlineCount = hotelAllotments.filter((allotment) => allotment.releaseDeadline && this.isDueWithinDays(allotment.releaseDeadline, 7, now)).length;
+    const allotmentExhausted = hotelAllotments.some((allotment) => allotment.blockedRooms <= reservedSeats || allotment.status === 'exhausted');
+    const overbookedHotelCategory = hotelAllotments.some((allotment) => allotment.roomTypes.some((roomType: any) => roomType.count > allotment.blockedRooms));
+    const stopSaleTriggered = hotelAllotments.some((allotment) => allotment.stopSale) || (stopSaleThreshold > 0 && availableSeats <= stopSaleThreshold);
+    const lowInventory = (capacity.totalCapacity > 0 && availableSeats <= Math.max(stopSaleThreshold, 3)) || allotmentExhausted;
+
+    return {
+      reservedSeats,
+      availableSeats,
+      stopSaleThreshold,
+      blockedRooms,
+      releaseDeadlineCount,
+      releaseDeadlineApproaching: releaseDeadlineCount > 0,
+      allotmentExhausted,
+      overbookedHotelCategory,
+      stopSaleTriggered,
+      lowInventory,
+      hotelAllotments,
+    };
+  }
+
+  private normalizeSeriesHotelAllotments(value: any) {
+    const allotments = Array.isArray(value) ? value : [];
+    return allotments.map((allotment) => ({
+      blockedRooms: Math.max(Number(allotment?.blockedRooms || allotment?.blockedRoomInventory || 0), 0),
+      releaseDeadline: allotment?.releaseDeadline || allotment?.releaseDate || null,
+      stopSale: Boolean(allotment?.stopSale),
+      status: String(allotment?.status || '').toLowerCase(),
+      roomTypes: Array.isArray(allotment?.roomTypes)
+        ? allotment.roomTypes.map((roomType: any) => ({ roomType: roomType.roomType || roomType.type || null, count: Math.max(Number(roomType.count || 0), 0) }))
+        : [],
+    }));
+  }
+
+  private isDueWithinDays(value: string | Date | null | undefined, days: number, now = Date.now()) {
+    if (!value) return false;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    const diff = date.getTime() - now;
+    return diff >= 0 && diff <= days * 24 * 60 * 60 * 1000;
   }
 
   private buildOperationsDashboardReadinessSummary(input: {
@@ -9360,6 +9422,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           totalCapacity: true,
           guaranteedMinimumPax: true,
           sharedCoachCapacity: true,
+          reservedSeats: true,
+          stopSaleThreshold: true,
+          hotelAllotmentsJson: true,
+          sharedInventoryJson: true,
           status: true,
           series: {
             select: {

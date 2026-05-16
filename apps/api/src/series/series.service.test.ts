@@ -276,12 +276,29 @@ describe('SeriesService clone departure', () => {
       guaranteedMinimumPax: '12',
       sharedCoachCapacity: '48',
       lowOccupancyThreshold: '',
+      reservedSeats: '10',
+      stopSaleThreshold: '2',
+      blockedRoomInventory: '12',
+      roomTypeInventory: 'DBL:8,TWN:4',
+      releaseDeadline: '2026-05-20',
+      stopSale: 'true',
+      allotmentStatus: 'blocked',
+      sharedRestaurantCapacity: '44',
     });
 
     assert.equal(createdPayloads[0].totalCapacity, null);
     assert.equal(createdPayloads[0].lowOccupancyThreshold, null);
     assert.equal(createdPayloads[0].guaranteedMinimumPax, 12);
     assert.equal(createdPayloads[0].sharedCoachCapacity, 48);
+    assert.equal(createdPayloads[0].reservedSeats, 10);
+    assert.equal(createdPayloads[0].stopSaleThreshold, 2);
+    assert.equal(createdPayloads[0].hotelAllotmentsJson[0].blockedRooms, 12);
+    assert.deepEqual(createdPayloads[0].hotelAllotmentsJson[0].roomTypes, [
+      { roomType: 'DBL', count: 8 },
+      { roomType: 'TWN', count: 4 },
+    ]);
+    assert.equal(createdPayloads[0].hotelAllotmentsJson[0].stopSale, true);
+    assert.equal(createdPayloads[0].sharedInventoryJson.restaurantCapacity, 44);
   });
 
   it('returns a clear error when adding a booking already linked to a departure', async () => {

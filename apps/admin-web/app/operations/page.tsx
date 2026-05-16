@@ -185,6 +185,13 @@ type OperationsDashboardItem = {
   seatsRemaining?: number | null;
   guaranteedMinimumPax?: number | null;
   sharedCoachCapacity?: number | null;
+  reservedSeats?: number | null;
+  availableSeats?: number | null;
+  stopSaleThreshold?: number | null;
+  blockedRooms?: number | null;
+  releaseDeadlineCount?: number | null;
+  lowInventory?: boolean | null;
+  stopSale?: boolean | null;
   capacityStatus?: string | null;
   reasons?: string[];
 };
@@ -373,6 +380,10 @@ const SERIES_OPERATION_REASON_LABELS = [
   'departure over capacity',
   'low remaining seats',
   'transport capacity mismatch',
+  'release deadline approaching',
+  'allotment exhausted',
+  'overbooked hotel category',
+  'departure stop sale triggered',
   'low occupancy',
   'sold out departure',
   'rooming pending',
@@ -854,6 +865,10 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
       missingRooming: seriesItems.filter((item) => item.reasons?.includes('rooming pending')).length,
       missingTimings: 0,
       seatsRemaining: seriesItems.reduce((total, item) => total + Number(item.seatsRemaining || 0), 0),
+      blockedRooms: seriesItems.reduce((total, item) => total + Number(item.blockedRooms || 0), 0),
+      releaseDeadlines: seriesItems.reduce((total, item) => total + Number(item.releaseDeadlineCount || 0), 0),
+      lowInventoryDepartures: seriesItems.filter((item) => item.lowInventory || item.reasons?.includes('low inventory') || item.reasons?.includes('allotment exhausted')).length,
+      stopSaleDepartures: seriesItems.filter((item) => item.stopSale || item.reasons?.includes('departure stop sale triggered')).length,
       lowOccupancyDepartures: seriesItems.filter((item) => item.reasons?.includes('low occupancy')).length,
       soldOutDepartures: seriesItems.filter((item) => item.capacityStatus === 'sold out' || item.reasons?.includes('sold out departure')).length,
       guaranteedDepartures: seriesItems.filter((item) => item.capacityStatus === 'guaranteed').length,
@@ -1957,6 +1972,10 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                     { label: 'Low occupancy departures', value: department.lowOccupancyDepartures ?? 0, tone: 'warning' },
                     { label: 'Sold out departures', value: department.soldOutDepartures ?? 0, tone: 'blocker' },
                     { label: 'Guaranteed departures', value: department.guaranteedDepartures ?? 0, tone: 'ready' },
+                    { label: 'Blocked rooms', value: department.blockedRooms ?? 0, tone: 'info' },
+                    { label: 'Release deadlines', value: department.releaseDeadlines ?? 0, tone: (department.releaseDeadlines ?? 0) > 0 ? 'warning' : 'ready' },
+                    { label: 'Low inventory', value: department.lowInventoryDepartures ?? 0, tone: 'warning' },
+                    { label: 'Stop sale departures', value: department.stopSaleDepartures ?? 0, tone: 'blocker' },
                   ].map((status) => (
                     <span key={status.label} className={`dashboard-pill operations-status-pill operations-status-pill-${status.tone}`}>
                       {status.label}: {status.value}
