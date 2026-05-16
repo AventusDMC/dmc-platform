@@ -291,6 +291,19 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('gives the booking service manage drawer desktop width for operational forms', () => {
+    expectSourceContains(cssSource, [
+      '.booking-service-card:has(.operations-row-details[open])',
+      'grid-template-columns: minmax(0, 1fr);',
+      'grid-column: 1 / -1;',
+      'width: min(100%, 1180px);',
+      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));',
+      'grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));',
+      'min-width: max-content;',
+      'white-space: normal;',
+    ]);
+  });
+
   it('keeps responsive dashboard layout and mobile action access', () => {
     expectSourceContains(pageSource, [
       '<AdminHeaderActions className="booking-dashboard-actions">',

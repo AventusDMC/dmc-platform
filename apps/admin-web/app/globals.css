@@ -12598,6 +12598,15 @@ th.money-cell {
   align-self: start;
 }
 
+.booking-service-card:has(.operations-row-details[open]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.booking-service-card:has(.operations-row-details[open]) .booking-service-card-actions {
+  grid-column: 1 / -1;
+  justify-content: stretch;
+}
+
 .booking-service-card-actions .operations-row-details {
   width: auto;
   min-width: 0;
@@ -12609,6 +12618,7 @@ th.money-cell {
 
 .booking-service-card-actions .operations-row-details[open] {
   flex-basis: 100%;
+  width: 100%;
 }
 
 .booking-service-card-actions .operations-row-summary {
@@ -12626,7 +12636,8 @@ th.money-cell {
 
 .booking-service-card-actions button,
 .booking-service-card-actions .compact-button {
-  min-width: 0;
+  min-width: max-content;
+  white-space: normal;
 }
 
 .booking-financial-stat-grid {
@@ -18996,8 +19007,9 @@ body {
 }
 
 .booking-service-detail-body {
-  width: min(100%, 920px);
+  width: min(100%, 1180px);
   margin-left: auto;
+  margin-right: auto;
   max-height: min(76dvh, 760px);
   overflow-x: hidden;
   overflow-y: auto;
@@ -19013,8 +19025,8 @@ body {
 
 .booking-service-detail-section {
   display: grid;
-  gap: 0.75rem;
-  padding: 0.95rem;
+  gap: 1rem;
+  padding: 1.1rem;
   border: 1px solid rgba(30, 27, 24, 0.08);
   border-radius: 0.85rem;
   background: rgba(255, 255, 255, 0.9);
@@ -19035,8 +19047,8 @@ body {
 .booking-service-hotel-summary,
 .booking-service-document-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
-  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.75rem;
 }
 
 .booking-service-hotel-summary > div,
@@ -19061,6 +19073,31 @@ body {
 .booking-service-document-list strong {
   overflow-wrap: anywhere;
   font-size: 0.9rem;
+}
+
+.booking-service-detail-body .operations-inline-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.booking-service-detail-body .operations-inline-form label,
+.booking-service-detail-body .operations-inline-form input,
+.booking-service-detail-body .operations-inline-form select,
+.booking-service-detail-body .operations-inline-form textarea,
+.booking-service-detail-body .operations-inline-form button {
+  min-width: 0;
+  width: 100%;
+}
+
+.booking-service-detail-body .operations-inline-form textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.booking-service-detail-body .quote-status-actions {
+  justify-content: flex-start;
 }
 
 .quote-service-planner .quote-service-day-card:not([open]) .quote-preview-total-list,
