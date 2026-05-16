@@ -89,6 +89,20 @@ type Guide = {
   guideType: string;
 };
 
+type Restaurant = {
+  id: string;
+  name: string;
+  city: string | null;
+  region: string | null;
+  cuisineType: string | null;
+  capacity: number | null;
+  mealTypes: string[];
+  active: boolean;
+  halalSupport: boolean;
+  vegetarianSupport: boolean;
+  veganSupport: boolean;
+};
+
 type Vehicle = {
   id: string;
   supplierId: string;
@@ -420,7 +434,7 @@ type Booking = {
       active?: boolean;
     } | null;
     serviceType: string;
-    operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
+    operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'DINING' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
     operationStatus?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
     referenceId?: string | null;
     assignedTo?: string | null;
@@ -431,6 +445,14 @@ type Booking = {
     guideReportingTime?: string | null;
     guide?: Guide | null;
     guideWarnings?: string[];
+    restaurantId?: string | null;
+    restaurant?: Restaurant | null;
+    mealConfirmationStatus?: string | null;
+    mealTiming?: string | null;
+    mealSeatingNotes?: string | null;
+    mealDietaryRequirements?: string[];
+    mealOperationalNotes?: string | null;
+    mealWarnings?: string[];
     vehicleId?: string | null;
     vehicle?: {
       id: string;
@@ -631,6 +653,12 @@ async function getSuppliers(): Promise<Supplier[]> {
 
 async function getGuides(): Promise<Guide[]> {
   return adminPageFetchJson<Guide[]>('/api/guides', 'Guides', {
+    cache: 'no-store',
+  });
+}
+
+async function getRestaurants(): Promise<Restaurant[]> {
+  return adminPageFetchJson<Restaurant[]>('/api/restaurants', 'Restaurants', {
     cache: 'no-store',
   });
 }
@@ -1034,6 +1062,7 @@ function renderOperationTypeOptions(defaultValue?: string | null) {
     <select name="type" defaultValue={defaultValue || 'TRANSPORT'} required>
       <option value="TRANSPORT">Transport</option>
       <option value="GUIDE">Guide</option>
+      <option value="DINING">Dining / Meal</option>
       <option value="HOTEL">Hotel</option>
       <option value="ACTIVITY">Activity</option>
       <option value="SERVICE">Service supplier</option>
@@ -1194,7 +1223,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveBookingTab(resolvedSearchParams?.tab);
   const highlightServiceId = resolvedSearchParams?.service?.trim() || undefined;
-  const [booking, suppliers, guides, vehicles, transportRoutes] = await Promise.all([getBooking(bookingId), getSuppliers(), getGuides(), getVehicles(), getRoutes()]);
+  const [booking, suppliers, guides, restaurants, vehicles, transportRoutes] = await Promise.all([
+    getBooking(bookingId),
+    getSuppliers(),
+    getGuides(),
+    getRestaurants(),
+    getVehicles(),
+    getRoutes(),
+  ]);
   const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
 
   if (!booking) {
@@ -2259,6 +2295,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       services={booking.services}
                       suppliers={suppliers}
                       guides={guides}
+                      restaurants={restaurants}
                       highlightServiceId={highlightServiceId}
                     />
                   </section>

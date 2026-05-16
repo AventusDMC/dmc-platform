@@ -292,6 +292,29 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('renders dining operations controls inside booking service manage panel', () => {
+    expectSourceContains(pageSource, [
+      'type Restaurant',
+      'getRestaurants',
+      'restaurants={restaurants}',
+    ]);
+
+    expectSourceContains(bookingServiceTimelineSource, [
+      'type Restaurant',
+      'restaurants: Restaurant[]',
+      'isMealService',
+      'BookingServiceDetailSection title="Dining Operations"',
+      'restaurant-assignment',
+      'name="restaurantId"',
+      'name="mealConfirmationStatus"',
+      'name="mealTiming"',
+      'name="mealDietaryRequirements"',
+      'name="mealSeatingNotes"',
+      'mealWarnings',
+      'Save restaurant assignment',
+    ]);
+  });
+
   it('keeps booking service manage panel scrollable so hotel controls are accessible', () => {
     expectSourceContains(bookingServiceTimelineSource, [
       'bodyClassName="operations-row-details-body booking-service-detail-body"',

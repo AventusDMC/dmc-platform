@@ -69,6 +69,17 @@ type UpdateGuideAssignmentBody = {
   note?: string | null;
 };
 
+type UpdateRestaurantAssignmentBody = {
+  restaurantId?: string | null;
+  mealConfirmationStatus?: string | null;
+  mealTiming?: string | null;
+  mealSeatingNotes?: string | null;
+  mealDietaryRequirements?: string[] | string | null;
+  mealOperationalNotes?: string | null;
+  participantCount?: number | string | null;
+  note?: string | null;
+};
+
 type SendBookingDocumentEmailBody = {
   email: string;
   bookingId: string;
@@ -952,6 +963,27 @@ export class BookingsController {
       guideRequiredLanguages: body.guideRequiredLanguages === undefined ? undefined : body.guideRequiredLanguages,
       guideReportingTime: body.guideReportingTime === undefined ? undefined : body.guideReportingTime || null,
       pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      note: body.note === undefined ? undefined : body.note || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch('services/:serviceId/restaurant-assignment')
+  @Roles('admin', 'operations')
+  updateRestaurantAssignment(
+    @Param('serviceId') serviceId: string,
+    @Body() body: UpdateRestaurantAssignmentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updateRestaurantAssignment(serviceId, {
+      restaurantId: body.restaurantId === undefined ? undefined : body.restaurantId || null,
+      mealConfirmationStatus: body.mealConfirmationStatus === undefined ? undefined : body.mealConfirmationStatus || null,
+      mealTiming: body.mealTiming === undefined ? undefined : body.mealTiming || null,
+      mealSeatingNotes: body.mealSeatingNotes === undefined ? undefined : body.mealSeatingNotes || null,
+      mealDietaryRequirements: body.mealDietaryRequirements === undefined ? undefined : body.mealDietaryRequirements,
+      mealOperationalNotes: body.mealOperationalNotes === undefined ? undefined : body.mealOperationalNotes || null,
+      participantCount: body.participantCount === undefined ? undefined : body.participantCount,
       note: body.note === undefined ? undefined : body.note || null,
       actor: this.toAuditActor(actor),
       companyActor: actor,

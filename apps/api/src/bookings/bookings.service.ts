@@ -152,7 +152,7 @@ const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
 const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
 const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
-const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'SERVICE', 'EXTERNAL_PACKAGE'] as const;
+const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'DINING', 'SERVICE', 'EXTERNAL_PACKAGE'] as const;
 type BookingOperationalServiceType = (typeof BOOKING_OPERATION_SERVICE_TYPES)[number];
 const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
@@ -3536,6 +3536,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       include: {
         supplier: true,
         vehicle: true,
+        restaurant: true,
         bookingDay: true,
       },
       orderBy: [{ serviceOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
@@ -3555,6 +3556,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideConfirmationStatus?: string | null;
       guideRequiredLanguages?: string[] | string | null;
       guideReportingTime?: string | null;
+      restaurantId?: string | null;
+      mealConfirmationStatus?: string | null;
+      mealTiming?: string | null;
+      mealSeatingNotes?: string | null;
+      mealDietaryRequirements?: string[] | string | null;
+      mealOperationalNotes?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -3608,6 +3615,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           guideConfirmationStatus: normalized.guideConfirmationStatus,
           guideRequiredLanguages: normalized.guideRequiredLanguages,
           guideReportingTime: normalized.guideReportingTime,
+          restaurantId: normalized.restaurantId,
+          mealConfirmationStatus: normalized.mealConfirmationStatus,
+          mealTiming: normalized.mealTiming,
+          mealSeatingNotes: normalized.mealSeatingNotes,
+          mealDietaryRequirements: normalized.mealDietaryRequirements,
+          mealOperationalNotes: normalized.mealOperationalNotes,
           vehicleId: normalized.vehicleId,
           serviceDate: bookingDay.date,
           pickupTime: normalized.pickupTime,
@@ -3675,6 +3688,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideConfirmationStatus?: string | null;
       guideRequiredLanguages?: string[] | string | null;
       guideReportingTime?: string | null;
+      restaurantId?: string | null;
+      mealConfirmationStatus?: string | null;
+      mealTiming?: string | null;
+      mealSeatingNotes?: string | null;
+      mealDietaryRequirements?: string[] | string | null;
+      mealOperationalNotes?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -3695,6 +3714,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         supplier: true,
         vehicle: true,
         guide: true,
+        restaurant: true,
         bookingDay: true,
       },
     });
@@ -3734,6 +3754,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           guideConfirmationStatus: normalized.guideConfirmationStatus,
           guideRequiredLanguages: normalized.guideRequiredLanguages,
           guideReportingTime: normalized.guideReportingTime,
+          restaurantId: normalized.restaurantId,
+          mealConfirmationStatus: normalized.mealConfirmationStatus,
+          mealTiming: normalized.mealTiming,
+          mealSeatingNotes: normalized.mealSeatingNotes,
+          mealDietaryRequirements: normalized.mealDietaryRequirements,
+          mealOperationalNotes: normalized.mealOperationalNotes,
           vehicleId: normalized.vehicleId,
           pickupTime: normalized.pickupTime,
           supplierId: normalized.supplierId,
@@ -3750,6 +3776,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           supplier: true,
           vehicle: true,
           guide: true,
+          restaurant: true,
           bookingDay: true,
         },
       });
@@ -3905,6 +3932,104 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return {
       ...updatedService,
       guideWarnings: await this.getGuideReadinessWarnings(updatedService),
+    };
+  }
+
+  async updateRestaurantAssignment(
+    bookingServiceId: string,
+    data: {
+      restaurantId?: string | null;
+      mealConfirmationStatus?: string | null;
+      mealTiming?: string | null;
+      mealSeatingNotes?: string | null;
+      mealDietaryRequirements?: string[] | string | null;
+      mealOperationalNotes?: string | null;
+      participantCount?: number | string | null;
+      note?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const bookingService = await this.prisma.bookingService.findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: {
+        restaurant: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    if (!this.isOperationServiceType(bookingService, BookingOperationServiceType.DINING)) {
+      throw new BadRequestException('Restaurant assignment is only available for dining or meal services');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    const restaurantId = data.restaurantId === undefined ? bookingService.restaurantId : this.normalizeOptionalText(data.restaurantId);
+    const restaurant = restaurantId ? await this.prisma.restaurant.findUnique({ where: { id: restaurantId } }) : null;
+    if (restaurantId && !restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+    if (restaurant && !restaurant.active) {
+      throw new BadRequestException('Inactive restaurants cannot be assigned');
+    }
+
+    const mealConfirmationStatus =
+      data.mealConfirmationStatus === undefined
+        ? bookingService.mealConfirmationStatus
+        : this.normalizeMealConfirmationStatus(data.mealConfirmationStatus);
+    const mealTiming =
+      data.mealTiming === undefined ? bookingService.mealTiming : this.normalizeTimeInput(data.mealTiming, 'Meal timing');
+    const mealSeatingNotes =
+      data.mealSeatingNotes === undefined ? bookingService.mealSeatingNotes : this.normalizeOptionalText(data.mealSeatingNotes);
+    const mealDietaryRequirements =
+      data.mealDietaryRequirements === undefined
+        ? bookingService.mealDietaryRequirements
+        : this.parseStringList(data.mealDietaryRequirements);
+    const mealOperationalNotes =
+      data.mealOperationalNotes === undefined ? bookingService.mealOperationalNotes : this.normalizeOptionalText(data.mealOperationalNotes);
+    const participantCount =
+      data.participantCount === undefined ? bookingService.participantCount : this.normalizeOptionalInteger(data.participantCount, 'Participant count');
+
+    const updatedService = await this.prisma.bookingService.update({
+      where: { id: bookingServiceId },
+      data: {
+        restaurantId,
+        supplierName: restaurant?.name || bookingService.supplierName,
+        mealConfirmationStatus,
+        mealTiming,
+        mealSeatingNotes,
+        mealDietaryRequirements,
+        mealOperationalNotes,
+        participantCount,
+        pickupTime: mealTiming || bookingService.pickupTime,
+        operationStatus: mealConfirmationStatus === 'CONFIRMED' ? BookingOperationServiceStatus.CONFIRMED : bookingService.operationStatus,
+      },
+      include: {
+        restaurant: true,
+      },
+    });
+
+    await this.createAuditLog(this.prisma, {
+      bookingId: bookingService.bookingId,
+      bookingServiceId,
+      entityType: BookingAuditEntityType.booking_service,
+      entityId: bookingServiceId,
+      action: 'restaurant_assignment_updated',
+      oldValue: [bookingService.supplierName, bookingService.mealConfirmationStatus].filter(Boolean).join(' | ') || null,
+      newValue: [restaurant?.name || bookingService.supplierName, mealConfirmationStatus].filter(Boolean).join(' | ') || null,
+      note: this.normalizeOptionalText(data.note),
+      actor: data.actor,
+    });
+
+    return {
+      ...updatedService,
+      mealWarnings: this.getMealReadinessWarningsSync(updatedService),
     };
   }
 
@@ -5790,6 +5915,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return normalized;
   }
 
+  private normalizeMealConfirmationStatus(value: string | null | undefined) {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase().replace(/[\s-]+/g, '_');
+    const allowed = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED'];
+    if (!normalized || !allowed.includes(normalized)) {
+      throw new BadRequestException(`Unsupported meal confirmation status: ${value || 'missing'}`);
+    }
+    return normalized;
+  }
+
   private isGuideLanguageMismatch(service: any) {
     const required = Array.isArray(service.guideRequiredLanguages) ? service.guideRequiredLanguages : [];
     if (required.length === 0 || !service.guide) {
@@ -5900,6 +6034,49 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  private isMealCapacityExceeded(service: any) {
+    const capacity = Number(service.restaurant?.capacity || 0);
+    if (!capacity) {
+      return false;
+    }
+    const pax = Number(service.participantCount || 0) || Number(service.adultCount || 0) + Number(service.childCount || 0) || 1;
+    return pax > capacity;
+  }
+
+  private isMealDietaryMismatch(service: any) {
+    const requirements = Array.isArray(service.mealDietaryRequirements) ? service.mealDietaryRequirements : [];
+    if (requirements.length === 0 || !service.restaurant) {
+      return false;
+    }
+    const normalized = requirements.map((entry: string) => String(entry).toLowerCase());
+    return normalized.some((entry: string) => {
+      if (entry.includes('halal')) return !service.restaurant.halalSupport;
+      if (entry.includes('vegetarian')) return !service.restaurant.vegetarianSupport;
+      if (entry.includes('vegan')) return !service.restaurant.veganSupport;
+      return false;
+    });
+  }
+
+  private getMealReadinessWarningsSync(service: any) {
+    if (!this.isOperationServiceType(service, BookingOperationServiceType.DINING)) {
+      return [];
+    }
+    const warnings: string[] = [];
+    if (!service.restaurantId && !this.normalizeOptionalText(service.supplierName)) {
+      warnings.push('no restaurant assigned');
+    }
+    if (this.isMealCapacityExceeded(service)) {
+      warnings.push('capacity exceeded');
+    }
+    if (this.isMealDietaryMismatch(service)) {
+      warnings.push('dietary requirement unresolved');
+    }
+    if (service.mealConfirmationStatus !== 'CONFIRMED') {
+      warnings.push('restaurant not confirmed');
+    }
+    return warnings;
+  }
+
   private buildSupplierConfirmationEmailPreview(service: any) {
     const bookingRef = service.booking?.bookingRef || service.bookingId;
     const lines = [
@@ -5931,6 +6108,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideConfirmationStatus?: string | null;
       guideRequiredLanguages?: string[] | string | null;
       guideReportingTime?: string | null;
+      restaurantId?: string | null;
+      mealConfirmationStatus?: string | null;
+      mealTiming?: string | null;
+      mealSeatingNotes?: string | null;
+      mealDietaryRequirements?: string[] | string | null;
+      mealOperationalNotes?: string | null;
       vehicleId?: string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
@@ -5947,10 +6130,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     let guidePhone = data.guidePhone === undefined ? currentService?.guidePhone ?? null : this.normalizeOptionalText(data.guidePhone);
     let assignedTo = data.assignedTo === undefined ? currentService?.assignedTo ?? null : this.normalizeOptionalText(data.assignedTo);
     let guideId = data.guideId === undefined ? currentService?.guideId ?? null : this.normalizeOptionalText(data.guideId);
+    let restaurantId = data.restaurantId === undefined ? currentService?.restaurantId ?? null : this.normalizeOptionalText(data.restaurantId);
     const guideConfirmationStatus =
       data.guideConfirmationStatus === undefined
         ? currentService?.guideConfirmationStatus || 'PENDING'
         : this.normalizeGuideConfirmationStatus(data.guideConfirmationStatus);
+    const mealConfirmationStatus =
+      data.mealConfirmationStatus === undefined
+        ? currentService?.mealConfirmationStatus || 'PENDING'
+        : this.normalizeMealConfirmationStatus(data.mealConfirmationStatus);
     const guideRequiredLanguages =
       data.guideRequiredLanguages === undefined
         ? Array.isArray(currentService?.guideRequiredLanguages)
@@ -5961,6 +6149,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.guideReportingTime === undefined
         ? currentService?.guideReportingTime ?? null
         : this.normalizeTimeInput(data.guideReportingTime, 'Guide reporting time');
+    const mealTiming =
+      data.mealTiming === undefined ? currentService?.mealTiming ?? null : this.normalizeTimeInput(data.mealTiming, 'Meal timing');
+    const mealSeatingNotes =
+      data.mealSeatingNotes === undefined ? currentService?.mealSeatingNotes ?? null : this.normalizeOptionalText(data.mealSeatingNotes);
+    const mealDietaryRequirements =
+      data.mealDietaryRequirements === undefined
+        ? Array.isArray(currentService?.mealDietaryRequirements)
+          ? currentService.mealDietaryRequirements
+          : []
+        : this.parseStringList(data.mealDietaryRequirements);
+    const mealOperationalNotes =
+      data.mealOperationalNotes === undefined ? currentService?.mealOperationalNotes ?? null : this.normalizeOptionalText(data.mealOperationalNotes);
     const pickupTime =
       data.pickupTime === undefined ? currentService?.pickupTime ?? null : this.normalizeTimeInput(data.pickupTime, 'Pickup time');
     const confirmationNumber =
@@ -6036,6 +6236,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideId = null;
     }
 
+    if (type === BookingOperationServiceType.DINING && restaurantId) {
+      const restaurant = await this.prisma.restaurant.findUnique({ where: { id: restaurantId } });
+      if (!restaurant) {
+        throw new NotFoundException('Restaurant not found');
+      }
+      if (!restaurant.active) {
+        throw new BadRequestException('Inactive restaurants cannot be assigned');
+      }
+      supplierName = restaurant.name;
+    } else if (type !== BookingOperationServiceType.DINING) {
+      restaurantId = null;
+    }
+
     if (type !== BookingOperationServiceType.TRANSPORT) {
       routeName = null;
     }
@@ -6051,6 +6264,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         guideConfirmationStatus: 'PENDING',
         guideRequiredLanguages: [],
         guideReportingTime: null,
+        restaurantId: null,
+        mealConfirmationStatus: 'PENDING',
+        mealTiming: null,
+        mealSeatingNotes: null,
+        mealDietaryRequirements: [],
+        mealOperationalNotes: null,
         vehicleId: null,
         vehicleName: null,
         routeName: null,
@@ -6072,11 +6291,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideConfirmationStatus,
       guideRequiredLanguages,
       guideReportingTime,
+      restaurantId,
+      mealConfirmationStatus,
+      mealTiming,
+      mealSeatingNotes,
+      mealDietaryRequirements,
+      mealOperationalNotes,
       vehicleId: type === BookingOperationServiceType.TRANSPORT ? vehicleId : null,
       vehicleName,
       routeName,
       pickupTime:
-        type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY || type === 'SERVICE' ? pickupTime : null,
+        type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY || type === BookingOperationServiceType.DINING || type === 'SERVICE'
+          ? pickupTime
+          : null,
       supplierId,
       supplierName,
       confirmationNumber,
@@ -6091,6 +6318,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleName?: string | null;
       routeName?: string | null;
       confirmationNumber?: string | null;
+      supplierName?: string | null;
     },
   ) {
     if (type === BookingOperationServiceType.TRANSPORT) {
@@ -6103,6 +6331,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (type === BookingOperationServiceType.HOTEL) {
       return values.confirmationNumber ? `Hotel confirmation ${values.confirmationNumber}` : 'Hotel confirmation';
+    }
+
+    if (type === BookingOperationServiceType.DINING) {
+      return values.supplierName ? `Meal: ${values.supplierName}` : 'Meal reservation';
     }
 
     if (type === BookingOperationServiceType.EXTERNAL_PACKAGE) {
@@ -6157,6 +6389,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     if (type === BookingOperationServiceType.GUIDE) {
       return text.includes('guide') || text.includes('escort');
+    }
+
+    if (type === BookingOperationServiceType.DINING) {
+      return text.includes('meal') || text.includes('dining') || text.includes('restaurant') || text.includes('lunch') || text.includes('dinner');
     }
 
     return false;
@@ -6363,6 +6599,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guideRequiredLanguages: Array.isArray(service.guideRequiredLanguages) ? service.guideRequiredLanguages : [],
       guideReportingTime: service.guideReportingTime || null,
       guideWarnings: this.getGuideReadinessWarningsSync(service),
+      restaurantId: service.restaurantId || null,
+      restaurant: service.restaurant
+        ? {
+            id: service.restaurant.id,
+            name: service.restaurant.name,
+            city: service.restaurant.city || null,
+            region: service.restaurant.region || null,
+            cuisineType: service.restaurant.cuisineType || null,
+            capacity: service.restaurant.capacity || null,
+            mealTypes: service.restaurant.mealTypes || [],
+            active: Boolean(service.restaurant.active),
+            halalSupport: Boolean(service.restaurant.halalSupport),
+            vegetarianSupport: Boolean(service.restaurant.vegetarianSupport),
+            veganSupport: Boolean(service.restaurant.veganSupport),
+          }
+        : null,
+      mealConfirmationStatus: service.mealConfirmationStatus || 'PENDING',
+      mealTiming: service.mealTiming || null,
+      mealSeatingNotes: service.mealSeatingNotes || null,
+      mealDietaryRequirements: Array.isArray(service.mealDietaryRequirements) ? service.mealDietaryRequirements : [],
+      mealOperationalNotes: service.mealOperationalNotes || null,
+      mealWarnings: this.getMealReadinessWarningsSync(service),
       sourceMetadata: service.sourceMetadata || null,
       hotelReservation: this.getSourceMetadataObject(service.sourceMetadata).hotelReservation || null,
       assignedTo: service.assignedTo,
@@ -6397,7 +6655,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (key === 'transport') return { key: 'transportOperations', label: 'Transport Operations' };
     if (key === 'activitiesExcursions') return { key: 'activitiesExcursions', label: 'Activities & Excursions' };
     if (key === 'guides') return { key: 'guideOperations', label: 'Guide Operations' };
-    if (key === 'dining') return { key: 'dining', label: 'Dining' };
+    if (key === 'dining') return { key: 'diningOperations', label: 'Dining Operations' };
     return { key: 'supplierConfirmations', label: 'Supplier Confirmations' };
   }
 
@@ -6425,6 +6683,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       guide: 'guideOperations',
       guides: 'guideOperations',
       guide_operations: 'guideOperations',
+      dining: 'diningOperations',
+      meals: 'diningOperations',
+      meal: 'diningOperations',
+      dining_operations: 'diningOperations',
+      restaurant: 'diningOperations',
+      restaurants: 'diningOperations',
       passenger_rooming: 'passengerRooming',
       passengers: 'passengerRooming',
       rooming: 'passengerRooming',
@@ -6713,7 +6977,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
   private isServiceMissingTiming(service: any) {
     const department = this.getOperationsDepartmentForService(service).key;
-    if (!['transportOperations', 'activitiesExcursions', 'guideOperations'].includes(department)) {
+    if (!['transportOperations', 'activitiesExcursions', 'guideOperations', 'diningOperations'].includes(department)) {
       return false;
     }
 
@@ -6738,6 +7002,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       transportOperations: emptyQueue(),
       activitiesExcursions: emptyQueue(),
       guideOperations: emptyQueue(),
+      diningOperations: emptyQueue(),
       documentationVouchers: emptyQueue(),
       supplierConfirmations: emptyQueue(),
       passengerRooming: emptyQueue(),
@@ -6852,6 +7117,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           .map((service) => this.mapDashboardService(service))
           .filter((service) => Array.isArray(service.guideWarnings) && service.guideWarnings.length > 0),
       ),
+      diningReadinessAlerts: this.buildDashboardBucket(
+        input.services
+          .filter((service) => this.isOperationServiceType(service, BookingOperationServiceType.DINING))
+          .map((service) => this.mapDashboardService(service))
+          .filter((service) => Array.isArray(service.mealWarnings) && service.mealWarnings.length > 0),
+      ),
       unassignedPassengers: this.buildDashboardBucket(
         input.missingRooming
           .filter((booking) => this.getMissingRoomingReasons(booking).includes('passengers not assigned to rooms'))
@@ -6885,6 +7156,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return !this.normalizeOptionalText(service.assignedTo) && !service.guideId;
     }
 
+    if (this.isOperationServiceType(service, BookingOperationServiceType.DINING)) {
+      return !this.normalizeOptionalText(service.supplierName) && !service.restaurantId;
+    }
+
     if (!service.supplierId) {
       return true;
     }
@@ -6898,6 +7173,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
   private isMissingTransportAssignment(service: any) {
     return !service.supplierId || !service.vehicleId || !this.normalizeOptionalText(service.assignedTo) || !this.normalizeOptionalText(service.pickupTime);
+  }
+
+  private normalizeOptionalInteger(value: number | string | null | undefined, fieldLabel: string) {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new BadRequestException(`${fieldLabel} must be a non-negative integer`);
+    }
+    return parsed;
   }
 
   private normalizeOptionalText(value: string | null | undefined) {
@@ -8581,9 +8867,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         },
         services: {
           include: {
-            supplier: true,
-            vehicle: true,
-          },
+        supplier: true,
+        vehicle: true,
+        restaurant: true,
+      },
           orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
         },
       },
@@ -8912,7 +9199,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         transportOperations: ['TRANSPORT', 'TRANSFER'],
         activitiesExcursions: ['ACTIVITY', 'EXCURSION', 'TOUR'],
         guideOperations: ['GUIDE'],
-        dining: ['DINING', 'MEAL', 'RESTAURANT'],
+        diningOperations: ['DINING', 'MEAL', 'RESTAURANT'],
       };
       const values = departmentTypes[departmentFilter] || [];
       serviceFilterAnd.push({
@@ -9009,6 +9296,27 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
               reason: true,
             },
           },
+        },
+      },
+      restaurantId: true,
+      mealConfirmationStatus: true,
+      mealTiming: true,
+      mealSeatingNotes: true,
+      mealDietaryRequirements: true,
+      mealOperationalNotes: true,
+      restaurant: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          region: true,
+          cuisineType: true,
+          capacity: true,
+          mealTypes: true,
+          active: true,
+          halalSupport: true,
+          vegetarianSupport: true,
+          veganSupport: true,
         },
       },
       sourceMetadata: true,

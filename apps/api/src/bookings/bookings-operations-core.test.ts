@@ -3608,3 +3608,37 @@ test('guide operations phase one wires assignment overlap language dashboard rea
     assert.match(guidesSource, new RegExp(token));
   }
 });
+
+test('dining operations phase one wires restaurant assignment capacity dietary dashboard readiness regressions', () => {
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+  const restaurantsSource = fs.readFileSync(path.join(__dirname, '..', 'restaurants', 'restaurants.service.ts'), 'utf8');
+
+  for (const token of [
+    'updateRestaurantAssignment',
+    'restaurant-assignment',
+    'restaurantId',
+    'mealConfirmationStatus',
+    'mealTiming',
+    'mealDietaryRequirements',
+  ]) {
+    assert.match(`${bookingsSource}\n${controllerSource}`, new RegExp(token));
+  }
+
+  for (const token of [
+    'isMealCapacityExceeded',
+    'isMealDietaryMismatch',
+    'diningOperations',
+    'diningReadinessAlerts',
+    'no restaurant assigned',
+    'capacity exceeded',
+    'dietary requirement unresolved',
+    'restaurant not confirmed',
+  ]) {
+    assert.match(bookingsSource, new RegExp(token));
+  }
+
+  for (const token of ['capacityConflicts', 'mealTypes', 'halalSupport', 'vegetarianSupport', 'veganSupport']) {
+    assert.match(restaurantsSource, new RegExp(token));
+  }
+});

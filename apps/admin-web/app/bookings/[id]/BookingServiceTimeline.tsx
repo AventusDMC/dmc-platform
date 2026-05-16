@@ -35,6 +35,20 @@ type Guide = {
   guideType: string;
 };
 
+type Restaurant = {
+  id: string;
+  name: string;
+  city: string | null;
+  region: string | null;
+  cuisineType: string | null;
+  capacity: number | null;
+  mealTypes: string[];
+  active: boolean;
+  halalSupport: boolean;
+  vegetarianSupport: boolean;
+  veganSupport: boolean;
+};
+
 type BookingService = {
   id: string;
   description: string;
@@ -45,7 +59,7 @@ type BookingService = {
   supplierName: string | null;
   supplierStatus?: 'unresolved' | null;
   serviceType: string;
-  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
+  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'DINING' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
   serviceDate: string | null;
   startTime?: string | null;
   pickupTime?: string | null;
@@ -72,6 +86,14 @@ type BookingService = {
   guideReportingTime?: string | null;
   guide?: Guide | null;
   guideWarnings?: string[];
+  restaurantId?: string | null;
+  restaurant?: Restaurant | null;
+  mealConfirmationStatus?: string | null;
+  mealTiming?: string | null;
+  mealSeatingNotes?: string | null;
+  mealDietaryRequirements?: string[];
+  mealOperationalNotes?: string | null;
+  mealWarnings?: string[];
   sourceMetadata?: {
     hotelReservation?: {
       status?: string | null;
@@ -103,6 +125,7 @@ type BookingServiceTimelineProps = {
   services: BookingService[];
   suppliers: Supplier[];
   guides: Guide[];
+  restaurants: Restaurant[];
   highlightServiceId?: string;
 };
 
@@ -143,6 +166,15 @@ function isGuideService(service: Pick<BookingService, 'serviceType' | 'operation
     resolveServiceTaxonomyGroup({ category: service.operationType || service.serviceType }) === 'guide' ||
     mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType) === 'guide' ||
     Boolean(service.guideId)
+  );
+}
+
+function isMealService(service: Pick<BookingService, 'serviceType' | 'operationType' | 'restaurantId'>) {
+  const normalized = [service.operationType, service.serviceType].filter(Boolean).join(' ');
+  return (
+    resolveServiceTaxonomyGroup({ category: service.operationType || service.serviceType }) === 'meal' ||
+    mapBookingServiceTypeToSupplierType(service.serviceType, service.operationType) === 'other' && /meal|dining|restaurant|lunch|dinner/i.test(normalized) ||
+    Boolean(service.restaurantId)
   );
 }
 
@@ -253,6 +285,7 @@ export function BookingServiceTimeline({
   services,
   suppliers,
   guides,
+  restaurants,
   highlightServiceId,
 }: BookingServiceTimelineProps) {
   if (services.length === 0) {
@@ -291,6 +324,9 @@ export function BookingServiceTimeline({
               const guideService = isGuideService(service);
               const guideOptions = guides.filter((guide) => guide.active || guide.id === service.guideId);
               const selectedGuide = service.guide || guideOptions.find((guide) => guide.id === service.guideId) || null;
+              const mealService = isMealService(service);
+              const restaurantOptions = restaurants.filter((restaurant) => restaurant.active || restaurant.id === service.restaurantId);
+              const selectedRestaurant = service.restaurant || restaurantOptions.find((restaurant) => restaurant.id === service.restaurantId) || null;
               const hotelService = isHotelService(service);
               const hotelReservation = getHotelReservationMetadata(service);
               const hasOpsIssue =
@@ -531,6 +567,106 @@ export function BookingServiceTimeline({
                                 <div className="quote-status-actions">
                                   <button type="submit" className="secondary-button">
                                     Save guide assignment
+                                  </button>
+                                </div>
+                              </form>
+                            </InlineRowEditorShell>
+                          </BookingServiceDetailSection>
+                        ) : null}
+
+                        {mealService ? (
+                          <BookingServiceDetailSection title="Dining Operations">
+                            {service.mealWarnings && service.mealWarnings.length > 0 ? (
+                              <div className="booking-service-card-alerts">
+                                {service.mealWarnings.map((warning) => (
+                                  <p key={warning}>{warning}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                            <div className="booking-service-hotel-summary">
+                              <div>
+                                <span>Restaurant</span>
+                                <strong>{selectedRestaurant?.name || service.supplierName || 'Unassigned'}</strong>
+                              </div>
+                              <div>
+                                <span>Confirmation</span>
+                                <strong>{service.mealConfirmationStatus || 'PENDING'}</strong>
+                              </div>
+                              <div>
+                                <span>Capacity</span>
+                                <strong>{selectedRestaurant?.capacity ?? 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Meal timing</span>
+                                <strong>{service.mealTiming || service.pickupTime || 'Not set'}</strong>
+                              </div>
+                              <div>
+                                <span>Dietary support</span>
+                                <strong>
+                                  {[
+                                    selectedRestaurant?.halalSupport ? 'Halal' : null,
+                                    selectedRestaurant?.vegetarianSupport ? 'Vegetarian' : null,
+                                    selectedRestaurant?.veganSupport ? 'Vegan' : null,
+                                  ].filter(Boolean).join(', ') || 'Not set'}
+                                </strong>
+                              </div>
+                            </div>
+                            <InlineRowEditorShell>
+                              <form action={`/api/bookings/services/${service.id}/restaurant-assignment`} method="POST" className="operations-inline-form">
+                                <label>
+                                  Assign restaurant
+                                  <select name="restaurantId" defaultValue={service.restaurantId || ''}>
+                                    <option value="">No restaurant assigned</option>
+                                    {restaurantOptions.map((restaurant) => (
+                                      <option key={restaurant.id} value={restaurant.id}>
+                                        {restaurant.name}
+                                        {restaurant.capacity ? ` (${restaurant.capacity} seats)` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  Reconfirmation status
+                                  <select name="mealConfirmationStatus" defaultValue={service.mealConfirmationStatus || 'PENDING'}>
+                                    <option value="PENDING">Pending</option>
+                                    <option value="REQUESTED">Requested</option>
+                                    <option value="CONFIRMED">Confirmed</option>
+                                    <option value="REJECTED">Rejected</option>
+                                    <option value="CANCELLED">Cancelled</option>
+                                  </select>
+                                </label>
+                                <label>
+                                  Seating capacity
+                                  <input type="number" name="participantCount" min="0" defaultValue={service.participantCount ?? ''} />
+                                </label>
+                                <label>
+                                  Meal timing
+                                  <input type="time" name="mealTiming" defaultValue={service.mealTiming || service.pickupTime || ''} />
+                                </label>
+                                <label>
+                                  Special dietary requests
+                                  <input
+                                    type="text"
+                                    name="mealDietaryRequirements"
+                                    defaultValue={(service.mealDietaryRequirements || []).join(', ')}
+                                    placeholder="Halal, vegetarian, vegan"
+                                  />
+                                </label>
+                                <label>
+                                  Seating notes
+                                  <input type="text" name="mealSeatingNotes" defaultValue={service.mealSeatingNotes || ''} placeholder="Table layout or seating note" />
+                                </label>
+                                <label>
+                                  Operational notes
+                                  <input type="text" name="mealOperationalNotes" defaultValue={service.mealOperationalNotes || ''} placeholder="Restaurant operations note" />
+                                </label>
+                                <label>
+                                  Assignment note
+                                  <input type="text" name="note" placeholder="Reason for assignment or reconfirmation" />
+                                </label>
+                                <div className="quote-status-actions">
+                                  <button type="submit" className="secondary-button">
+                                    Save restaurant assignment
                                   </button>
                                 </div>
                               </form>

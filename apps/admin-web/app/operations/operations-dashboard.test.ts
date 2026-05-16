@@ -33,6 +33,7 @@ describe('operations dashboard department workspace', () => {
     for (const label of [
       'Hotel Reservations',
       'Guide Operations',
+      'Dining Operations',
       'Transport Operations',
       'Excursions & Activities',
       'Documentation/Vouchers',
@@ -45,6 +46,7 @@ describe('operations dashboard department workspace', () => {
     assert.match(source, /buildDepartmentDashboards/);
     assert.match(source, /getDepartmentForRow/);
     assert.match(source, /isGuideService/);
+    assert.match(source, /isMealService/);
   });
 
   it('shows department queue filters and operational alerts', () => {
@@ -63,6 +65,8 @@ describe('operations dashboard department workspace', () => {
       'Transport timing incomplete',
       'Guide readiness alert',
       'guideReadinessAlerts',
+      'Dining readiness alert',
+      'diningReadinessAlerts',
     ]) {
       assert.match(source, new RegExp(label));
     }

@@ -2161,6 +2161,12 @@ model BookingService {
   guideConfirmationStatus    String                        @default("PENDING")
   guideRequiredLanguages     String[]                      @default([])
   guideReportingTime         String?
+  restaurantId               String?                       @db.Uuid
+  mealConfirmationStatus     String                        @default("PENDING")
+  mealTiming                 String?
+  mealSeatingNotes           String?
+  mealDietaryRequirements    String[]                      @default([])
+  mealOperationalNotes       String?
   vehicleId                  String?                       @db.Uuid
   serviceDate                DateTime?
   startTime                  String?
@@ -2207,6 +2213,7 @@ model BookingService {
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   guide                      Guide?                        @relation(fields: [guideId], references: [id], onDelete: SetNull)
+  restaurant                 Restaurant?                   @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
 
   @@index([bookingDayId])
   @@index([activityId])
@@ -2217,7 +2224,9 @@ model BookingService {
   @@index([supplierId])
   @@index([vehicleId])
   @@index([guideId])
+  @@index([restaurantId])
   @@index([operationType, guideConfirmationStatus])
+  @@index([operationType, mealConfirmationStatus])
   @@index([operationType, operationStatus])
   @@map("booking_services")
 }
@@ -2256,6 +2265,32 @@ model GuideBlockedDate {
 
   @@index([guideId, startDate, endDate])
   @@map("guide_blocked_dates")
+}
+
+model Restaurant {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String
+  city            String?
+  region          String?
+  cuisineType     String?
+  capacity        Int?
+  email           String?
+  phone           String?
+  mealTypes       String[]         @default([])
+  active          Boolean          @default(true)
+  indoor          Boolean          @default(true)
+  outdoor         Boolean          @default(false)
+  halalSupport    Boolean          @default(false)
+  vegetarianSupport Boolean        @default(false)
+  veganSupport    Boolean          @default(false)
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  bookingServices BookingService[]
+
+  @@index([active, name])
+  @@index([city, region])
+  @@map("restaurants")
 }
 
 model BookingAuditLog {
@@ -2320,6 +2355,7 @@ enum BookingOperationServiceType {
   GUIDE
   HOTEL
   ACTIVITY
+  DINING
   EXTERNAL_PACKAGE
 }
 

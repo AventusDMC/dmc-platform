@@ -58,6 +58,7 @@ type GroupBy = 'booking' | 'supplier';
 type DepartmentKey =
   | 'hotel-reservations'
   | 'guide-operations'
+  | 'dining-operations'
   | 'transport-operations'
   | 'excursions-activities'
   | 'documentation-vouchers'
@@ -81,7 +82,7 @@ type BookingService = {
   id: string;
   description: string;
   serviceType: string;
-  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
+  operationType?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'DINING' | 'SERVICE' | 'EXTERNAL_PACKAGE' | null;
   supplierId: string | null;
   supplierName: string | null;
   serviceDate: string | null;
@@ -119,6 +120,11 @@ type BookingService = {
   guideConfirmationStatus?: string | null;
   guideRequiredLanguages?: string[];
   guideWarnings?: string[];
+  restaurantId?: string | null;
+  mealConfirmationStatus?: string | null;
+  mealTiming?: string | null;
+  mealDietaryRequirements?: string[];
+  mealWarnings?: string[];
   auditLogs: AuditLog[];
 };
 
@@ -223,6 +229,7 @@ type OperationsDashboard = {
     missingRooming?: OperationsDashboardBucket;
     missingVouchers?: OperationsDashboardBucket;
     guideReadinessAlerts?: OperationsDashboardBucket;
+    diningReadinessAlerts?: OperationsDashboardBucket;
   };
 };
 
@@ -289,6 +296,11 @@ type OperationRow = {
   guideConfirmationStatus?: string | null;
   guideRequiredLanguages?: string[];
   guideWarnings?: string[];
+  restaurantId?: string | null;
+  mealConfirmationStatus?: string | null;
+  mealTiming?: string | null;
+  mealDietaryRequirements?: string[];
+  mealWarnings?: string[];
   warnings: OperationsWarningFilter[];
   auditLogs: AuditLog[];
 };
@@ -351,6 +363,7 @@ const HOTEL_RESERVATION_STATES: HotelReservationState[] = [
 const DEPARTMENT_LABELS: Record<DepartmentKey, string> = {
   'hotel-reservations': 'Hotel Reservations',
   'guide-operations': 'Guide Operations',
+  'dining-operations': 'Dining Operations',
   'transport-operations': 'Transport Operations',
   'excursions-activities': 'Excursions & Activities',
   'documentation-vouchers': 'Documentation/Vouchers',
@@ -530,6 +543,11 @@ function isGuideService(row: Pick<OperationRow, 'serviceType' | 'operationType' 
   return mapBookingServiceTypeToSupplierType(row.serviceType, row.operationType) === 'guide' || /guide|escort/i.test(normalized) || Boolean(row.guideId);
 }
 
+function isMealService(row: Pick<OperationRow, 'serviceType' | 'operationType' | 'restaurantId'>) {
+  const normalized = [row.operationType, row.serviceType].filter(Boolean).join(' ');
+  return resolveServiceTaxonomyGroup({ category: row.operationType || row.serviceType }) === 'meal' || /meal|dining|restaurant|lunch|dinner/i.test(normalized) || Boolean(row.restaurantId);
+}
+
 function isTransportService(serviceType: string, operationType?: string | null) {
   return mapBookingServiceTypeToSupplierType(serviceType, operationType) === 'transport' || /transport|transfer|vehicle|car|coach/i.test([operationType, serviceType].filter(Boolean).join(' '));
 }
@@ -691,6 +709,10 @@ function hasMissingTiming(row: OperationRow) {
     return !row.pickupTime && !row.startTime;
   }
 
+  if (isMealService(row)) {
+    return !row.mealTiming && !row.pickupTime && !row.startTime;
+  }
+
   if (isExcursionActivityService(row.serviceType, row.operationType)) {
     return !row.serviceDate || !row.startTime;
   }
@@ -768,6 +790,10 @@ function getDepartmentForRow(row: OperationRow): DepartmentKey {
     return 'guide-operations';
   }
 
+  if (isMealService(row)) {
+    return 'dining-operations';
+  }
+
   if (isTransportService(row.serviceType, row.operationType)) {
     return 'transport-operations';
   }
@@ -783,6 +809,7 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
   const activeRows = rows.filter((row) => row.status !== 'cancelled');
   const hotelRows = activeRows.filter((row) => getDepartmentForRow(row) === 'hotel-reservations');
   const guideRows = activeRows.filter((row) => getDepartmentForRow(row) === 'guide-operations');
+  const diningRows = activeRows.filter((row) => getDepartmentForRow(row) === 'dining-operations');
   const transportRows = activeRows.filter((row) => getDepartmentForRow(row) === 'transport-operations');
   const activityRows = activeRows.filter((row) => getDepartmentForRow(row) === 'excursions-activities');
   const supplierConfirmationRows = activeRows.filter((row) => row.supplierConfirmationStatus !== 'CONFIRMED');
@@ -843,6 +870,32 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
             id: row.id,
             label: `${row.bookingRef} - ${row.description}`,
             detail: (row.guideWarnings || []).join(', ') || (row.guideId ? 'Guide not confirmed' : 'No guide assigned'),
+          })),
+    },
+    {
+      key: 'dining-operations' as DepartmentKey,
+      rows: diningRows,
+      pendingItems:
+        operationsDashboard.alerts.diningReadinessAlerts?.count ??
+        diningRows.filter((row) => !row.restaurantId || row.mealConfirmationStatus !== 'CONFIRMED' || (row.mealWarnings || []).length > 0).length,
+      overdueItems: diningRows.filter((row) => (row.mealWarnings || []).some((warning) => /capacity|dietary/i.test(warning))).length,
+      reconfirmationDue: 0,
+      voucherPending: 0,
+      missingRooming: 0,
+      missingTimings: diningRows.filter(hasMissingTiming).length,
+      examples:
+        operationsDashboard.alerts.diningReadinessAlerts?.items.slice(0, 3).map((item) => ({
+          id: item.id,
+          label: item.bookingRef || item.title || item.description || item.id,
+          detail: item.reasons?.join(', ') || 'Dining readiness alert',
+        })) ||
+        diningRows
+          .filter((row) => !row.restaurantId || row.mealConfirmationStatus !== 'CONFIRMED' || (row.mealWarnings || []).length > 0)
+          .slice(0, 3)
+          .map((row) => ({
+            id: row.id,
+            label: `${row.bookingRef} - ${row.description}`,
+            detail: (row.mealWarnings || []).join(', ') || (row.restaurantId ? 'Restaurant not confirmed' : 'No restaurant assigned'),
           })),
     },
     {
@@ -976,6 +1029,13 @@ function getDepartmentPrimaryAction(department: ReturnType<typeof buildDepartmen
     };
   }
 
+  if (department.key === 'dining-operations') {
+    return {
+      label: 'Assign restaurant',
+      href: '/bookings',
+    };
+  }
+
   return {
     label: 'Open queue',
     href: buildOperationsHref(currentFilters, { groupBy: 'booking' }),
@@ -1079,8 +1139,26 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       actionHref: item.bookingId ? `/bookings/${item.bookingId}` : '/bookings',
       detail: item.reasons?.join(', ') || item.bookingRef || item.title || item.description || item.id,
     }));
+  const diningReadinessAlerts = (operationsDashboard.alerts.diningReadinessAlerts?.items || [])
+    .slice(0, 5)
+    .map((item) => ({
+      id: `dining-readiness-${item.id}`,
+      label: 'Dining readiness alert',
+      actionLabel: 'Assign restaurant',
+      actionHref: item.bookingId ? `/bookings/${item.bookingId}` : '/bookings',
+      detail: item.reasons?.join(', ') || item.bookingRef || item.title || item.description || item.id,
+    }));
 
-  return [...hotelReleaseAlerts, ...waitlistAlerts, ...roomingNotSentAlerts, ...supplierReconfirmationAlerts, ...roomingAlerts, ...transportTimingAlerts, ...guideReadinessAlerts];
+  return [
+    ...hotelReleaseAlerts,
+    ...waitlistAlerts,
+    ...roomingNotSentAlerts,
+    ...supplierReconfirmationAlerts,
+    ...roomingAlerts,
+    ...transportTimingAlerts,
+    ...guideReadinessAlerts,
+    ...diningReadinessAlerts,
+  ];
 }
 
 function buildOperationsHref(
@@ -1279,6 +1357,11 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
       guideConfirmationStatus: service.guideConfirmationStatus,
       guideRequiredLanguages: service.guideRequiredLanguages || [],
       guideWarnings: service.guideWarnings || [],
+      restaurantId: service.restaurantId,
+      mealConfirmationStatus: service.mealConfirmationStatus,
+      mealTiming: service.mealTiming,
+      mealDietaryRequirements: service.mealDietaryRequirements || [],
+      mealWarnings: service.mealWarnings || [],
       warnings: getWarnings(service),
       auditLogs: service.auditLogs || [],
     })),

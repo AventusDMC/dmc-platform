@@ -82,6 +82,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Excursion Templates', '/excursion-templates'],
       ['Transport', '/transport'],
       ['Guides', '/guides'],
+      ['Restaurants', '/restaurants'],
       ['Routes', '/routes'],
       ['Services', '/catalog?tab=services'],
       ['Suppliers', '/suppliers'],
@@ -96,6 +97,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
   assert.equal(getActiveNavGroup('/routes', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/suppliers', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/guides', 'admin').label, 'Product Catalog');
+  assert.equal(getActiveNavGroup('/restaurants', 'admin').label, 'Product Catalog');
   assert.equal(getActiveNavGroup('/contracts/import', 'admin').label, 'Product Catalog');
 });
 
