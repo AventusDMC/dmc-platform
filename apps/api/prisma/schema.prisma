@@ -87,6 +87,9 @@ model SeriesDeparture {
   departureDate  DateTime?
   paxCount       Int      @default(0)
   lowOccupancyThreshold Int?
+  totalCapacity  Int?
+  guaranteedMinimumPax Int?
+  sharedCoachCapacity Int?
   status         String   @default("PLANNED")
   operationalNotes String?
   templateSnapshotJson Json?

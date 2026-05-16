@@ -3669,3 +3669,29 @@ test('series operations phase one wires recurring departures cloning templates a
     assert.match(dashboardSource, new RegExp(token));
   }
 });
+
+test('series capacity phase one wires seat calculations guarantee status and dashboard alerts', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const seriesSource = fs.readFileSync(path.join(__dirname, '..', 'series', 'series.service.ts'), 'utf8');
+  const dashboardSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+
+  for (const token of ['totalCapacity', 'guaranteedMinimumPax', 'sharedCoachCapacity', 'lowOccupancyThreshold']) {
+    assert.match(schemaSource, new RegExp(token));
+    assert.match(seriesSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'getSeriesDepartureCapacity',
+    'seatsSold',
+    'seatsRemaining',
+    'guaranteedMinimumPax',
+    'sold out',
+    'departure below minimum guarantee',
+    'departure over capacity',
+    'low remaining seats',
+    'transport capacity mismatch',
+    'capacityStatus',
+  ]) {
+    assert.match(dashboardSource, new RegExp(token));
+  }
+});

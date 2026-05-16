@@ -15,6 +15,10 @@ type Series = {
     departureCode: string | null;
     departureDate: string | null;
     paxCount: number;
+    totalCapacity?: number | null;
+    guaranteedMinimumPax?: number | null;
+    sharedCoachCapacity?: number | null;
+    lowOccupancyThreshold?: number | null;
     booking?: {
       id: string;
       bookingRef: string;
@@ -99,6 +103,9 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         departureDate: String(formData.get('departureDate') || ''),
         paxCount: String(formData.get('paxCount') || ''),
         lowOccupancyThreshold: String(formData.get('lowOccupancyThreshold') || ''),
+        totalCapacity: String(formData.get('totalCapacity') || ''),
+        guaranteedMinimumPax: String(formData.get('guaranteedMinimumPax') || ''),
+        sharedCoachCapacity: String(formData.get('sharedCoachCapacity') || ''),
         operationalNotes: String(formData.get('operationalNotes') || ''),
       }),
     });
@@ -130,6 +137,9 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
         departureDate: String(formData.get('cloneDepartureDate') || ''),
         paxCount: String(formData.get('clonePaxCount') || ''),
         lowOccupancyThreshold: String(formData.get('cloneLowOccupancyThreshold') || ''),
+        totalCapacity: String(formData.get('cloneTotalCapacity') || ''),
+        guaranteedMinimumPax: String(formData.get('cloneGuaranteedMinimumPax') || ''),
+        sharedCoachCapacity: String(formData.get('cloneSharedCoachCapacity') || ''),
         operationalNotes: String(formData.get('cloneOperationalNotes') || ''),
         cloneRooming: formData.has('cloneRooming'),
       }),
@@ -146,8 +156,13 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
   function getDepartureCounts(departure: SeriesDeparture) {
     const vouchersPending = (departure.booking?.vouchers || []).filter((voucher) => voucher.status !== 'ISSUED' && voucher.status !== 'CANCELLED').length;
     const confirmationsPending = (departure.booking?.services || []).filter((service) => service.supplierConfirmationStatus !== 'CONFIRMED').length;
+    const seatsSold = departure.paxCount || 0;
+    const totalCapacity = departure.totalCapacity || 0;
+    const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : 0;
     return {
-      pax: departure.paxCount || 0,
+      pax: seatsSold,
+      totalCapacity,
+      seatsRemaining,
       rooming: departure.booking?.roomingEntries?.length || 0,
       vouchersPending,
       confirmationsPending,
@@ -260,6 +275,9 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                                         </td>
                                         <td>
                                           <p className="table-subcopy">Pax: {counts.pax}</p>
+                                          <p className="table-subcopy">Seats remaining: {counts.totalCapacity ? counts.seatsRemaining : 'Capacity pending'}</p>
+                                          <p className="table-subcopy">Total capacity: {counts.totalCapacity || 'Not set'}</p>
+                                          <p className="table-subcopy">Guaranteed minimum: {departure.guaranteedMinimumPax || 'Not set'}</p>
                                           <p className="table-subcopy">Rooming: {counts.rooming}</p>
                                           <p className="table-subcopy">Vouchers pending: {counts.vouchersPending}</p>
                                           <p className="table-subcopy">Confirmations pending: {counts.confirmationsPending}</p>
@@ -289,6 +307,9 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <input name="departureDate" type="date" />
                           <input name="paxCount" type="number" min="0" placeholder="Pax" />
                           <input name="lowOccupancyThreshold" type="number" min="0" placeholder="Low occupancy threshold" />
+                          <input name="totalCapacity" type="number" min="0" placeholder="Total capacity" />
+                          <input name="guaranteedMinimumPax" type="number" min="0" placeholder="Guaranteed minimum pax" />
+                          <input name="sharedCoachCapacity" type="number" min="0" placeholder="Shared coach capacity" />
                           <input name="operationalNotes" placeholder="Operational notes" />
                           <div className="quote-status-actions series-departure-actions">
                             <button className="secondary-button" type="submit" disabled={busyAction === `add-${item.id}`}>
@@ -313,6 +334,9 @@ export function SeriesManager({ initialSeries }: { initialSeries: Series[] }) {
                           <input name="cloneDepartureDate" type="date" />
                           <input name="clonePaxCount" type="number" min="0" placeholder="Pax" />
                           <input name="cloneLowOccupancyThreshold" type="number" min="0" placeholder="Low occupancy threshold" />
+                          <input name="cloneTotalCapacity" type="number" min="0" placeholder="Total capacity" />
+                          <input name="cloneGuaranteedMinimumPax" type="number" min="0" placeholder="Guaranteed minimum pax" />
+                          <input name="cloneSharedCoachCapacity" type="number" min="0" placeholder="Shared coach capacity" />
                           <input name="cloneOperationalNotes" placeholder="Operational notes" />
                           <label className="checkbox-field">
                             <input name="cloneRooming" type="checkbox" /> Clone rooming shell

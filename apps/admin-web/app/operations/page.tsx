@@ -180,6 +180,12 @@ type OperationsDashboardItem = {
   endDate?: string | null;
   serviceDate?: string | null;
   pax?: number | null;
+  totalCapacity?: number | null;
+  seatsSold?: number | null;
+  seatsRemaining?: number | null;
+  guaranteedMinimumPax?: number | null;
+  sharedCoachCapacity?: number | null;
+  capacityStatus?: string | null;
   reasons?: string[];
 };
 
@@ -362,7 +368,17 @@ const HOTEL_RESERVATION_STATES: HotelReservationState[] = [
   'Cancelled',
 ];
 
-const SERIES_OPERATION_REASON_LABELS = ['low occupancy', 'rooming pending', 'unreconfirmed departure', 'voucher pending'];
+const SERIES_OPERATION_REASON_LABELS = [
+  'departure below minimum guarantee',
+  'departure over capacity',
+  'low remaining seats',
+  'transport capacity mismatch',
+  'low occupancy',
+  'sold out departure',
+  'rooming pending',
+  'unreconfirmed departure',
+  'voucher pending',
+];
 
 const DEPARTMENT_LABELS: Record<DepartmentKey, string> = {
   'hotel-reservations': 'Hotel Reservations',
@@ -820,6 +836,7 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
   const supplierConfirmationRows = activeRows.filter((row) => row.supplierConfirmationStatus !== 'CONFIRMED');
   const voucherPendingCount = operationsDashboard.operationalReadiness?.missingVouchers ?? operationsDashboard.alerts.missingVouchers?.count ?? 0;
   const roomingPendingCount = operationsDashboard.operationalReadiness?.missingRooming ?? operationsDashboard.alerts.missingRooming?.count ?? 0;
+  const seriesItems = operationsDashboard.alerts.seriesOperations?.items || [];
   const hotelStateCounts = HOTEL_RESERVATION_STATES.reduce<Record<HotelReservationState, number>>((counts, state) => {
     counts[state] = hotelRows.filter((row) => getHotelReservationState(row, now) === state).length;
     return counts;
@@ -831,15 +848,19 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
       key: 'series-operations' as DepartmentKey,
       rows: [],
       pendingItems: operationsDashboard.alerts.seriesOperations?.count ?? 0,
-      overdueItems: 0,
+      overdueItems: seriesItems.filter((item) => item.reasons?.includes('departure below minimum guarantee') || item.reasons?.includes('departure over capacity')).length,
       reconfirmationDue: 0,
-      voucherPending: operationsDashboard.alerts.seriesOperations?.items.filter((item) => item.reasons?.includes('voucher pending')).length ?? 0,
-      missingRooming: operationsDashboard.alerts.seriesOperations?.items.filter((item) => item.reasons?.includes('rooming pending')).length ?? 0,
+      voucherPending: seriesItems.filter((item) => item.reasons?.includes('voucher pending')).length,
+      missingRooming: seriesItems.filter((item) => item.reasons?.includes('rooming pending')).length,
       missingTimings: 0,
-      examples: (operationsDashboard.alerts.seriesOperations?.items || []).slice(0, 3).map((item) => ({
+      seatsRemaining: seriesItems.reduce((total, item) => total + Number(item.seatsRemaining || 0), 0),
+      lowOccupancyDepartures: seriesItems.filter((item) => item.reasons?.includes('low occupancy')).length,
+      soldOutDepartures: seriesItems.filter((item) => item.capacityStatus === 'sold out' || item.reasons?.includes('sold out departure')).length,
+      guaranteedDepartures: seriesItems.filter((item) => item.capacityStatus === 'guaranteed').length,
+      examples: seriesItems.slice(0, 3).map((item) => ({
         id: item.id,
         label: item.bookingRef || item.title || item.description || item.id,
-        detail: item.reasons?.join(', ') || 'Upcoming recurring departure',
+        detail: item.reasons?.join(', ') || `Seats remaining: ${item.seatsRemaining ?? '-'}`,
       })),
     },
     {
@@ -1916,10 +1937,10 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                   { label: 'Voucher pending', value: department.voucherPending, tone: department.voucherPending > 0 ? 'warning' : 'ready' },
                   { label: 'Missing rooming', value: department.missingRooming, tone: department.missingRooming > 0 ? 'warning' : 'ready' },
                   {
-                    label: department.key === 'hotel-reservations' ? 'Missing room blocks' : 'Missing timings',
-                    value: department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.missingTimings,
+                    label: department.key === 'hotel-reservations' ? 'Missing room blocks' : department.key === 'series-operations' ? 'Seats remaining' : 'Missing timings',
+                    value: department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.key === 'series-operations' ? department.seatsRemaining ?? 0 : department.missingTimings,
                     tone:
-                      (department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.missingTimings) > 0
+                      (department.key === 'hotel-reservations' ? department.missingRoomBlocks ?? 0 : department.key === 'series-operations' ? 0 : department.missingTimings) > 0
                         ? 'warning'
                         : 'ready',
                   },
@@ -1930,6 +1951,19 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                   </div>
                 ))}
               </section>
+              {department.key === 'series-operations' ? (
+                <div className="operations-state-strip" aria-label="Series capacity status">
+                  {[
+                    { label: 'Low occupancy departures', value: department.lowOccupancyDepartures ?? 0, tone: 'warning' },
+                    { label: 'Sold out departures', value: department.soldOutDepartures ?? 0, tone: 'blocker' },
+                    { label: 'Guaranteed departures', value: department.guaranteedDepartures ?? 0, tone: 'ready' },
+                  ].map((status) => (
+                    <span key={status.label} className={`dashboard-pill operations-status-pill operations-status-pill-${status.tone}`}>
+                      {status.label}: {status.value}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {department.key === 'hotel-reservations' ? (
                 <>
                   <div className="operations-state-strip" aria-label="Hotel reservation workflow states">

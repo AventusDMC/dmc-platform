@@ -18,6 +18,9 @@ type DepartureInput = {
   departureDate?: string | null;
   paxCount?: number | string | null;
   lowOccupancyThreshold?: number | string | null;
+  totalCapacity?: number | string | null;
+  guaranteedMinimumPax?: number | string | null;
+  sharedCoachCapacity?: number | string | null;
   operationalNotes?: string | null;
 };
 
@@ -26,6 +29,9 @@ type CloneDepartureInput = {
   departureCode?: string | null;
   paxCount?: number | string | null;
   lowOccupancyThreshold?: number | string | null;
+  totalCapacity?: number | string | null;
+  guaranteedMinimumPax?: number | string | null;
+  sharedCoachCapacity?: number | string | null;
   operationalNotes?: string | null;
   cloneRooming?: boolean | null;
 };
@@ -97,9 +103,12 @@ export class SeriesService {
         departureDate: this.dateOrNull(data.departureDate) || booking.startDate,
         paxCount: this.nonNegativeInt(data.paxCount, booking.pax || booking.adults + booking.children || 0) ?? 0,
         lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, undefined),
+        totalCapacity: this.nonNegativeInt(data.totalCapacity, undefined),
+        guaranteedMinimumPax: this.nonNegativeInt(data.guaranteedMinimumPax, undefined),
+        sharedCoachCapacity: this.nonNegativeInt(data.sharedCoachCapacity, undefined),
         operationalNotes: this.optional(data.operationalNotes),
         templateSnapshotJson: this.buildTemplateSnapshot(series) as Prisma.InputJsonValue,
-      },
+      } as any,
       include: this.departureInclude(),
     });
   }
@@ -212,9 +221,12 @@ export class SeriesService {
             departureDate: targetStartDate,
             paxCount,
             lowOccupancyThreshold: this.nonNegativeInt(data.lowOccupancyThreshold, source.lowOccupancyThreshold ?? undefined),
+            totalCapacity: this.nonNegativeInt(data.totalCapacity, (source as any).totalCapacity ?? undefined),
+            guaranteedMinimumPax: this.nonNegativeInt(data.guaranteedMinimumPax, (source as any).guaranteedMinimumPax ?? undefined),
+            sharedCoachCapacity: this.nonNegativeInt(data.sharedCoachCapacity, (source as any).sharedCoachCapacity ?? undefined),
             operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
             templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
-          },
+          } as any,
           include: this.departureInclude(),
         });
 

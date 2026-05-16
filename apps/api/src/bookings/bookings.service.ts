@@ -6835,11 +6835,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .filter((booking: any) => booking.seriesDeparture)
       .map((booking: any) => {
         const departure = booking.seriesDeparture;
-        const pax = Number(departure.paxCount || booking.pax || booking.adults + booking.children || 0);
-        const threshold = Number(departure.lowOccupancyThreshold || 0);
+        const capacity = this.getSeriesDepartureCapacity(departure, booking);
         const unreconfirmed = (booking.services || []).some((service: any) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED);
         const reasons = [
-          threshold > 0 && pax < threshold ? 'low occupancy' : null,
+          capacity.guaranteedMinimumPax > 0 && capacity.seatsSold < capacity.guaranteedMinimumPax ? 'departure below minimum guarantee' : null,
+          capacity.lowOccupancyThreshold > 0 && capacity.seatsSold < capacity.lowOccupancyThreshold ? 'low occupancy' : null,
+          capacity.totalCapacity > 0 && capacity.seatsSold > capacity.totalCapacity ? 'departure over capacity' : null,
+          capacity.seatsRemaining === 0 && capacity.totalCapacity > 0 ? 'sold out departure' : null,
+          capacity.seatsRemaining > 0 && capacity.seatsRemaining <= 3 ? 'low remaining seats' : null,
+          capacity.sharedCoachCapacity > 0 && capacity.seatsSold > capacity.sharedCoachCapacity ? 'transport capacity mismatch' : null,
           missingRoomingIds.has(booking.id) ? 'rooming pending' : null,
           unreconfirmed ? 'unreconfirmed departure' : null,
           voucherBookingIds.has(booking.id) ? 'voucher pending' : null,
@@ -6852,13 +6856,51 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           departureId: departure.id,
           departureCode: departure.departureCode || null,
           departureDate: departure.departureDate || booking.startDate,
-          pax,
+          pax: capacity.seatsSold,
+          totalCapacity: capacity.totalCapacity || null,
+          seatsSold: capacity.seatsSold,
+          seatsRemaining: capacity.seatsRemaining,
+          guaranteedMinimumPax: capacity.guaranteedMinimumPax || null,
+          sharedCoachCapacity: capacity.sharedCoachCapacity || null,
+          capacityStatus: capacity.status,
           reasons,
         };
       })
       .filter((item: any) => item.reasons.length > 0 || item.departureDate);
 
     return this.buildDashboardBucket(items);
+  }
+
+  private getSeriesDepartureCapacity(departure: any, booking: any) {
+    const seatsSold = Number(departure.paxCount || booking.pax || booking.adults + booking.children || 0);
+    const totalCapacity = Number(departure.totalCapacity || 0);
+    const guaranteedMinimumPax = Number(departure.guaranteedMinimumPax || 0);
+    const lowOccupancyThreshold = Number(departure.lowOccupancyThreshold || 0);
+    const sharedCoachCapacity = Number(departure.sharedCoachCapacity || 0);
+    const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : 0;
+    const effectiveLowThreshold = lowOccupancyThreshold || guaranteedMinimumPax;
+    const status =
+      totalCapacity > 0 && seatsSold > totalCapacity
+        ? 'overbooked'
+        : totalCapacity > 0 && seatsRemaining === 0
+          ? 'sold out'
+          : totalCapacity > 0 && String(departure.status || '').toUpperCase() === 'CLOSED'
+            ? 'closed'
+            : effectiveLowThreshold > 0 && seatsSold < effectiveLowThreshold
+              ? 'low occupancy'
+              : guaranteedMinimumPax > 0 && seatsSold >= guaranteedMinimumPax
+                ? 'guaranteed'
+                : 'open';
+
+    return {
+      totalCapacity,
+      seatsSold,
+      seatsRemaining,
+      guaranteedMinimumPax,
+      lowOccupancyThreshold,
+      sharedCoachCapacity,
+      status,
+    };
   }
 
   private buildOperationsDashboardReadinessSummary(input: {
@@ -9315,6 +9357,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           departureDate: true,
           paxCount: true,
           lowOccupancyThreshold: true,
+          totalCapacity: true,
+          guaranteedMinimumPax: true,
+          sharedCoachCapacity: true,
           status: true,
           series: {
             select: {
@@ -9325,7 +9370,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           },
         },
       },
-    } satisfies Prisma.BookingSelect;
+    } as any;
 
     const serviceSelect = {
       id: true,

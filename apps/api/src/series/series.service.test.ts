@@ -13,6 +13,9 @@ function buildSourceDeparture() {
     departureDate: baseDate,
     paxCount: 16,
     lowOccupancyThreshold: 8,
+    totalCapacity: 24,
+    guaranteedMinimumPax: 12,
+    sharedCoachCapacity: 24,
     operationalNotes: 'Source notes',
     series: {
       id: 'series-id',
@@ -204,6 +207,9 @@ describe('SeriesService clone departure', () => {
       departureDate: '2026-05-29',
       paxCount: 20,
       lowOccupancyThreshold: 8,
+      totalCapacity: 24,
+      guaranteedMinimumPax: 12,
+      sharedCoachCapacity: 24,
       cloneRooming: true,
     });
 
@@ -216,6 +222,9 @@ describe('SeriesService clone departure', () => {
     assert.equal(bookingCall?.data.acceptedVersionId, 'cloned-version-id');
     assert.equal(bookingCall?.data.pax, 20);
     assert.equal(departureCall?.data.bookingId, 'cloned-booking-id');
+    assert.equal(departureCall?.data.totalCapacity, 24);
+    assert.equal(departureCall?.data.guaranteedMinimumPax, 12);
+    assert.equal(departureCall?.data.sharedCoachCapacity, 24);
     assert.equal(serviceCall?.data.sourceMetadata.hotelReservation.status, 'Blocked');
     assert.ok(calls.some((call) => call.model === 'quote.update' && call.data.acceptedVersionId === 'cloned-version-id'));
   });

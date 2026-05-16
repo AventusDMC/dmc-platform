@@ -36,8 +36,26 @@ describe('series manager operations UI', () => {
       'bookingId',
       'departureDate',
       'lowOccupancyThreshold',
+      'totalCapacity',
+      'guaranteedMinimumPax',
+      'sharedCoachCapacity',
     ]) {
       assert.match(source, new RegExp(token.replace(/[${}]/g, '\\$&')));
+    }
+  });
+
+  it('exposes departure capacity fields and seat counts', () => {
+    for (const token of [
+      'Total capacity',
+      'Guaranteed minimum pax',
+      'Shared coach capacity',
+      'Seats remaining:',
+      'Guaranteed minimum:',
+      'cloneTotalCapacity',
+      'cloneGuaranteedMinimumPax',
+      'cloneSharedCoachCapacity',
+    ]) {
+      assert.match(source, new RegExp(token));
     }
   });
 
