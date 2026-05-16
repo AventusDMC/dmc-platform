@@ -192,6 +192,10 @@ type OperationsDashboardItem = {
   releaseDeadlineCount?: number | null;
   lowInventory?: boolean | null;
   stopSale?: boolean | null;
+  paxByCategory?: Record<string, number>;
+  paxByBranch?: Record<string, number>;
+  sharedServices?: unknown[];
+  splitServices?: unknown[];
   capacityStatus?: string | null;
   reasons?: string[];
 };
@@ -869,6 +873,16 @@ function buildDepartmentDashboards(rows: OperationRow[], bookings: Booking[], op
       releaseDeadlines: seriesItems.reduce((total, item) => total + Number(item.releaseDeadlineCount || 0), 0),
       lowInventoryDepartures: seriesItems.filter((item) => item.lowInventory || item.reasons?.includes('low inventory') || item.reasons?.includes('allotment exhausted')).length,
       stopSaleDepartures: seriesItems.filter((item) => item.stopSale || item.reasons?.includes('departure stop sale triggered')).length,
+      paxByCategory: seriesItems.reduce<Record<string, number>>((counts, item) => {
+        for (const [key, value] of Object.entries(item.paxByCategory || {})) counts[key] = (counts[key] || 0) + Number(value || 0);
+        return counts;
+      }, {}),
+      paxByBranch: seriesItems.reduce<Record<string, number>>((counts, item) => {
+        for (const [key, value] of Object.entries(item.paxByBranch || {})) counts[key] = (counts[key] || 0) + Number(value || 0);
+        return counts;
+      }, {}),
+      sharedServices: seriesItems.reduce((total, item) => total + (item.sharedServices?.length || 0), 0),
+      splitServices: seriesItems.reduce((total, item) => total + (item.splitServices?.length || 0), 0),
       lowOccupancyDepartures: seriesItems.filter((item) => item.reasons?.includes('low occupancy')).length,
       soldOutDepartures: seriesItems.filter((item) => item.capacityStatus === 'sold out' || item.reasons?.includes('sold out departure')).length,
       guaranteedDepartures: seriesItems.filter((item) => item.capacityStatus === 'guaranteed').length,
@@ -1976,9 +1990,23 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                     { label: 'Release deadlines', value: department.releaseDeadlines ?? 0, tone: (department.releaseDeadlines ?? 0) > 0 ? 'warning' : 'ready' },
                     { label: 'Low inventory', value: department.lowInventoryDepartures ?? 0, tone: 'warning' },
                     { label: 'Stop sale departures', value: department.stopSaleDepartures ?? 0, tone: 'blocker' },
+                    { label: 'Shared services', value: department.sharedServices ?? 0, tone: 'info' },
+                    { label: 'Split services', value: department.splitServices ?? 0, tone: 'warning' },
                   ].map((status) => (
                     <span key={status.label} className={`dashboard-pill operations-status-pill operations-status-pill-${status.tone}`}>
                       {status.label}: {status.value}
+                    </span>
+                  ))}
+                </div>
+                <div className="operations-state-strip" aria-label="Series passenger splits">
+                  {Object.entries(department.paxByCategory || {}).map(([category, pax]) => (
+                    <span key={`category-${category}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
+                      Pax by category {category}: {pax}
+                    </span>
+                  ))}
+                  {Object.entries(department.paxByBranch || {}).map(([branch, pax]) => (
+                    <span key={`branch-${branch}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
+                      Pax by branch {branch}: {pax}
                     </span>
                   ))}
                 </div>

@@ -60,18 +60,21 @@ model Booking {
 }
 
 model Series {
-  id                 String            @id @default(uuid()) @db.Uuid
-  seriesCode         String            @unique
-  seriesName         String
-  active             Boolean           @default(true)
-  recurringSchedule  String?
-  destinationCountry String?
-  operationalNotes   String?
-  packageTemplateId  String?           @db.Uuid
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  packageTemplate    PackageTemplate?  @relation(fields: [packageTemplateId], references: [id], onDelete: SetNull)
-  departures         SeriesDeparture[]
+  id                     String            @id @default(uuid()) @db.Uuid
+  seriesCode             String            @unique
+  seriesName             String
+  active                 Boolean           @default(true)
+  recurringSchedule      String?
+  destinationCountry     String?
+  operationalNotes       String?
+  packageTemplateId      String?           @db.Uuid
+  programVariantsJson    Json?
+  branchExtensionsJson   Json?
+  sharedCoreServicesJson Json?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  packageTemplate        PackageTemplate?  @relation(fields: [packageTemplateId], references: [id], onDelete: SetNull)
+  departures             SeriesDeparture[]
 
   @@index([active, seriesName])
   @@index([destinationCountry])
@@ -94,6 +97,7 @@ model SeriesDeparture {
   stopSaleThreshold     Int?
   hotelAllotmentsJson   Json?
   sharedInventoryJson   Json?
+  splitServicesJson     Json?
   status                String    @default("PLANNED")
   operationalNotes      String?
   templateSnapshotJson  Json?
@@ -128,31 +132,35 @@ model BookingDay {
 }
 
 model BookingPassenger {
-  id                 String                     @id @default(uuid()) @db.Uuid
-  bookingId          String                     @db.Uuid
-  fullName           String?
-  firstName          String
-  lastName           String
-  title              String?
-  gender             String?
-  dateOfBirth        DateTime?
-  nationality        String?
-  passportNumber     String?
-  passportIssueDate  DateTime?
-  passportExpiryDate DateTime?
-  arrivalFlight      String?
-  departureFlight    String?
-  entryPoint         String?
-  visaStatus         String?
-  roomingNotes       String?
-  isLead             Boolean                    @default(false)
-  notes              String?
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
-  booking            Booking                    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  roomingAssignments BookingRoomingAssignment[]
+  id                   String                     @id @default(uuid()) @db.Uuid
+  bookingId            String                     @db.Uuid
+  fullName             String?
+  firstName            String
+  lastName             String
+  title                String?
+  gender               String?
+  dateOfBirth          DateTime?
+  nationality          String?
+  passportNumber       String?
+  passportIssueDate    DateTime?
+  passportExpiryDate   DateTime?
+  arrivalFlight        String?
+  departureFlight      String?
+  entryPoint           String?
+  visaStatus           String?
+  roomingNotes         String?
+  hotelCategoryVariant String?
+  branchExtension      String?
+  isLead               Boolean                    @default(false)
+  notes                String?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  booking              Booking                    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomingAssignments   BookingRoomingAssignment[]
 
   @@index([bookingId, isLead])
+  @@index([hotelCategoryVariant])
+  @@index([branchExtension])
   @@map("booking_passengers")
 }
 

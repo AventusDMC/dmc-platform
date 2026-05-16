@@ -142,6 +142,29 @@ function buildSourceDeparture() {
 }
 
 describe('SeriesService clone departure', () => {
+  it('creates series with regular tour variants branches and shared core defaults', async () => {
+    const createdPayloads: any[] = [];
+    const service = new SeriesService({
+      series: {
+        create: async ({ data }: any) => {
+          createdPayloads.push(data);
+          return { id: 'series-id', ...data };
+        },
+      },
+    } as any);
+
+    await service.create({ seriesCode: 'JOR-SIC', seriesName: 'Jordan SIC' });
+
+    assert.deepEqual(createdPayloads[0].programVariantsJson.map((variant: any) => variant.label), ['3 star', '4 star', '5 star', '5 star luxury']);
+    assert.deepEqual(createdPayloads[0].branchExtensionsJson.map((branch: any) => branch.label), [
+      'Dead Sea extension',
+      'Aqaba extension',
+      'Wadi Rum overnight',
+      'Border departure variants',
+    ]);
+    assert.deepEqual(createdPayloads[0].sharedCoreServicesJson, []);
+  });
+
   it('clones a JOR-HL-2026-001 style departure with an independent quote/version and booking', async () => {
     const source = buildSourceDeparture();
     const calls: Array<{ model: string; data: any }> = [];

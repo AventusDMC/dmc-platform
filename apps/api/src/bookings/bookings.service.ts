@@ -6837,6 +6837,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         const departure = booking.seriesDeparture;
         const capacity = this.getSeriesDepartureCapacity(departure, booking);
         const inventory = this.getSeriesDepartureInventory(departure, capacity);
+        const structure = this.getSeriesDepartureStructure(departure, booking);
         const unreconfirmed = (booking.services || []).some((service: any) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED);
         const reasons = [
           capacity.guaranteedMinimumPax > 0 && capacity.seatsSold < capacity.guaranteedMinimumPax ? 'departure below minimum guarantee' : null,
@@ -6875,6 +6876,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           lowInventory: inventory.lowInventory,
           stopSale: inventory.stopSaleTriggered,
           hotelAllotments: inventory.hotelAllotments,
+          paxByCategory: structure.paxByCategory,
+          paxByBranch: structure.paxByBranch,
+          sharedServices: structure.sharedServices,
+          splitServices: structure.splitServices,
           capacityStatus: capacity.status,
           reasons,
         };
@@ -6955,6 +6960,33 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         ? allotment.roomTypes.map((roomType: any) => ({ roomType: roomType.roomType || roomType.type || null, count: Math.max(Number(roomType.count || 0), 0) }))
         : [],
     }));
+  }
+
+  private getSeriesDepartureStructure(departure: any, booking: any) {
+    const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+    const paxByCategory = this.countBy(passengers, 'hotelCategoryVariant', 'unassigned');
+    const paxByBranch = this.countBy(passengers, 'branchExtension', 'core');
+    const sharedServices = Array.isArray(departure.series?.sharedCoreServicesJson)
+      ? departure.series.sharedCoreServicesJson
+      : Array.isArray(departure.series?.programVariantsJson)
+        ? ['shared coach', 'shared guide', 'shared entrances']
+        : [];
+    const splitServices = Array.isArray(departure.splitServicesJson) ? departure.splitServicesJson : [];
+
+    return {
+      paxByCategory,
+      paxByBranch,
+      sharedServices,
+      splitServices,
+    };
+  }
+
+  private countBy(items: any[], key: string, fallback: string) {
+    return items.reduce<Record<string, number>>((counts, item) => {
+      const value = String(item?.[key] || fallback);
+      counts[value] = (counts[value] || 0) + 1;
+      return counts;
+    }, {});
   }
 
   private isDueWithinDays(value: string | Date | null | undefined, days: number, now = Date.now()) {
@@ -9390,6 +9422,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           passportNumber: true,
           passportExpiryDate: true,
           entryPoint: true,
+          hotelCategoryVariant: true,
+          branchExtension: true,
         },
       },
       roomingEntries: {
@@ -9426,12 +9460,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           stopSaleThreshold: true,
           hotelAllotmentsJson: true,
           sharedInventoryJson: true,
+          splitServicesJson: true,
           status: true,
           series: {
             select: {
               id: true,
               seriesCode: true,
               seriesName: true,
+              programVariantsJson: true,
+              branchExtensionsJson: true,
+              sharedCoreServicesJson: true,
             },
           },
         },

@@ -10,6 +10,9 @@ type SeriesInput = {
   destinationCountry?: string | null;
   operationalNotes?: string | null;
   packageTemplateId?: string | null;
+  programVariants?: unknown;
+  branchExtensions?: unknown;
+  sharedCoreServices?: unknown;
 };
 
 type DepartureInput = {
@@ -25,6 +28,7 @@ type DepartureInput = {
   stopSaleThreshold?: number | string | null;
   hotelAllotments?: unknown;
   sharedInventory?: unknown;
+  splitServices?: unknown;
   blockedRoomInventory?: number | string | null;
   roomTypeInventory?: string | null;
   releaseDeadline?: string | null;
@@ -47,6 +51,7 @@ type CloneDepartureInput = {
   stopSaleThreshold?: number | string | null;
   hotelAllotments?: unknown;
   sharedInventory?: unknown;
+  splitServices?: unknown;
   blockedRoomInventory?: number | string | null;
   roomTypeInventory?: string | null;
   releaseDeadline?: string | null;
@@ -88,6 +93,9 @@ export class SeriesService {
         destinationCountry: this.optional(data.destinationCountry),
         operationalNotes: this.optional(data.operationalNotes),
         packageTemplateId: this.optional(data.packageTemplateId),
+        programVariantsJson: this.normalizeJsonValue(data.programVariants ?? this.defaultProgramVariants(), 'Series program variants'),
+        branchExtensionsJson: this.normalizeJsonValue(data.branchExtensions ?? this.defaultBranchExtensions(), 'Series branch extensions'),
+        sharedCoreServicesJson: this.normalizeJsonValue(data.sharedCoreServices ?? [], 'Shared core services'),
       },
       include: this.seriesInclude(),
     });
@@ -105,6 +113,9 @@ export class SeriesService {
         destinationCountry: data.destinationCountry === undefined ? undefined : this.optional(data.destinationCountry),
         operationalNotes: data.operationalNotes === undefined ? undefined : this.optional(data.operationalNotes),
         packageTemplateId: data.packageTemplateId === undefined ? undefined : this.optional(data.packageTemplateId),
+        programVariantsJson: data.programVariants === undefined ? undefined : this.normalizeJsonValue(data.programVariants, 'Series program variants'),
+        branchExtensionsJson: data.branchExtensions === undefined ? undefined : this.normalizeJsonValue(data.branchExtensions, 'Series branch extensions'),
+        sharedCoreServicesJson: data.sharedCoreServices === undefined ? undefined : this.normalizeJsonValue(data.sharedCoreServices, 'Shared core services'),
       },
       include: this.seriesInclude(),
     });
@@ -140,6 +151,7 @@ export class SeriesService {
           stopSaleThreshold: this.nullableNonNegativeInt(data.stopSaleThreshold, 'Stop sale threshold'),
           hotelAllotmentsJson: this.buildHotelAllotmentsJson(data) as Prisma.InputJsonValue,
           sharedInventoryJson: this.buildSharedInventoryJson(data) as Prisma.InputJsonValue,
+          splitServicesJson: this.normalizeJsonValue(data.splitServices ?? [], 'Split services'),
           operationalNotes: this.optional(data.operationalNotes),
           templateSnapshotJson: this.buildTemplateSnapshot(series) as Prisma.InputJsonValue,
         } as any,
@@ -265,6 +277,7 @@ export class SeriesService {
             stopSaleThreshold: this.nullableNonNegativeInt(data.stopSaleThreshold, 'Stop sale threshold', (source as any).stopSaleThreshold ?? null),
             hotelAllotmentsJson: this.buildHotelAllotmentsJson(data, (source as any).hotelAllotmentsJson) as Prisma.InputJsonValue,
             sharedInventoryJson: this.buildSharedInventoryJson(data, (source as any).sharedInventoryJson) as Prisma.InputJsonValue,
+            splitServicesJson: this.normalizeJsonValue(data.splitServices ?? (source as any).splitServicesJson ?? [], 'Split services') as Prisma.InputJsonValue,
             operationalNotes: this.optional(data.operationalNotes) || source.operationalNotes,
             templateSnapshotJson: this.buildTemplateSnapshot(source.series) as Prisma.InputJsonValue,
           } as any,
@@ -618,6 +631,24 @@ export class SeriesService {
     if (value === true) return true;
     if (typeof value === 'string') return ['true', 'on', '1', 'yes'].includes(value.toLowerCase());
     return false;
+  }
+
+  private defaultProgramVariants() {
+    return [
+      { code: '3_star', label: '3 star' },
+      { code: '4_star', label: '4 star' },
+      { code: '5_star', label: '5 star' },
+      { code: '5_star_luxury', label: '5 star luxury' },
+    ];
+  }
+
+  private defaultBranchExtensions() {
+    return [
+      { code: 'dead_sea', label: 'Dead Sea extension' },
+      { code: 'aqaba', label: 'Aqaba extension' },
+      { code: 'wadi_rum_overnight', label: 'Wadi Rum overnight' },
+      { code: 'border_departure', label: 'Border departure variants' },
+    ];
   }
 
   private optional(value: string | null | undefined) {

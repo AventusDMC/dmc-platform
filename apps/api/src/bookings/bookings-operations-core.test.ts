@@ -3721,3 +3721,21 @@ test('series allotment inventory phase one wires allotment tracking stop sale an
     assert.match(seriesSource + dashboardSource, new RegExp(token));
   }
 });
+
+test('regular tour SIC structure phase one wires variants branches shared and split services', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const seriesSource = fs.readFileSync(path.join(__dirname, '..', 'series', 'series.service.ts'), 'utf8');
+  const dashboardSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+
+  for (const token of ['programVariantsJson', 'branchExtensionsJson', 'sharedCoreServicesJson', 'splitServicesJson', 'hotelCategoryVariant', 'branchExtension']) {
+    assert.match(schemaSource, new RegExp(token));
+  }
+
+  for (const token of ['3 star', '4 star', '5 star', '5 star luxury', 'Dead Sea extension', 'Aqaba extension', 'Wadi Rum overnight', 'Border departure variants']) {
+    assert.match(seriesSource, new RegExp(token));
+  }
+
+  for (const token of ['getSeriesDepartureStructure', 'paxByCategory', 'paxByBranch', 'sharedServices', 'splitServices', 'hotelCategoryVariant', 'branchExtension']) {
+    assert.match(dashboardSource, new RegExp(token));
+  }
+});
