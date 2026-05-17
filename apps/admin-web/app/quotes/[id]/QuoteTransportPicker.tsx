@@ -172,15 +172,90 @@ function isProgramOrDisposalRouteOption(route: RouteOption) {
   return isSameAreaRouteOption(route) || normalized.includes('program') || normalized.includes('disposal') || normalized.includes('day_services');
 }
 
-function formatRouteSelectionLabel(route: RouteOption) {
-  if (isSameAreaRouteOption(route)) {
-    return `${getRouteAreaName(route)} City`;
+function isTouringRouteOption(route: RouteOption) {
+  return normalizeType(route.canonicalRouteType || route.routeType) === normalizeType('TOURING_ROUTE');
+}
+
+function formatDisposalAreaName(value: string) {
+  const clean = value.trim();
+  if (/disposal$/i.test(clean)) {
+    return clean;
+  }
+  if (/^dead sea city$/i.test(clean)) {
+    return 'Dead Sea Disposal';
+  }
+  return `${clean} Disposal`;
+}
+
+function getDisposalRouteBaseName(route: RouteOption) {
+  const normalizedName = normalizeTransportRouteText(route.name);
+  if (normalizedName.includes('city') || normalizedName.includes('disposal') || normalizedName.includes('day_services')) {
+    return route.name.replace(/\s+disposal$/i, '').trim();
+  }
+  return getRouteAreaName(route);
+}
+
+function getDisposalAreaKey(route: RouteOption) {
+  const area = getDisposalRouteBaseName(route);
+  const region = route.routeOperations?.region || route.fromPlace.city || route.toPlace.city || area;
+  return normalizeTransportRouteText(`${formatDisposalAreaName(area)} ${region}`);
+}
+
+function getTransferRouteKey(route: RouteOption) {
+  return normalizeTransportRouteText(`${route.fromPlace.name} ${route.fromPlace.city || ''} ${route.toPlace.name} ${route.toPlace.city || ''}`);
+}
+
+export function formatRouteSelectionLabel(route: RouteOption) {
+  if (isProgramOrDisposalRouteOption(route)) {
+    return formatDisposalAreaName(getDisposalRouteBaseName(route));
   }
 
   const normalized = normalizeTransportRouteText(route.name);
   if (normalized.includes('jordan_program')) return 'Jordan Program';
   if (normalized.includes('disposal') || normalized.includes('day_services')) return 'Disposal / Day Services';
   return formatRoute(route);
+}
+
+export function getQuoteTransportRouteSelectorGroups(routes: RouteOption[]) {
+  const transferReviewIds: string[] = [];
+  const seenTransferRoutes = new Set<string>();
+  const transferRoutes = routes.filter((route) => {
+    if (isTouringRouteOption(route) || isProgramOrDisposalRouteOption(route)) {
+      return false;
+    }
+
+    const key = getTransferRouteKey(route);
+    if (seenTransferRoutes.has(key)) {
+      transferReviewIds.push(route.id);
+      return false;
+    }
+
+    seenTransferRoutes.add(key);
+    return true;
+  });
+  const disposalReviewIds: string[] = [];
+  const seenServiceAreas = new Set<string>();
+  const serviceAreas = routes.filter((route) => {
+    if (isTouringRouteOption(route) || !isProgramOrDisposalRouteOption(route)) {
+      return false;
+    }
+
+    const key = getDisposalAreaKey(route);
+    if (seenServiceAreas.has(key)) {
+      disposalReviewIds.push(route.id);
+      return false;
+    }
+
+    seenServiceAreas.add(key);
+    return true;
+  });
+
+  return {
+    transferRoutes,
+    serviceAreas,
+    transferReviewIds,
+    disposalReviewIds,
+  };
 }
 
 function formatMoney(value: number, currency: string) {
@@ -886,8 +961,9 @@ export function QuoteTransportPicker({
   }, []);
 
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) || null;
-  const routeTransferOptions = useMemo(() => routes.filter((route) => !isProgramOrDisposalRouteOption(route)), [routes]);
-  const serviceAreaOptions = useMemo(() => routes.filter(isProgramOrDisposalRouteOption), [routes]);
+  const routeSelectorGroups = useMemo(() => getQuoteTransportRouteSelectorGroups(routes), [routes]);
+  const routeTransferOptions = routeSelectorGroups.transferRoutes;
+  const serviceAreaOptions = routeSelectorGroups.serviceAreas;
   const allVehicles = useMemo(() => propVehicles.filter(isActiveVehicle), [propVehicles]);
   const loadedSupplierRates = useMemo(
     () => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards)],
@@ -1214,15 +1290,15 @@ export function QuoteTransportPicker({
                 <div>
                   <p className="eyebrow">Route / Service Area</p>
                   <h3>Choose movement or service area</h3>
-                  <p className="detail-copy">Use route transfers for point-to-point movement. Use service areas for disposal modes like Full Day, Half Day, and Day Tour.</p>
+                  <p className="detail-copy">Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Full Day, Half Day, and Day Tour modes.</p>
                 </div>
               </div>
               <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routes.length === 0}>
-                {routes.length > 0 ? <option value="">Select route</option> : null}
+                {routes.length > 0 ? <option value="">Select Transfer Route or Disposal / Service Area</option> : null}
                 {routesLoadFailed ? <option value="">Routes failed to load</option> : null}
                 {routeListIsConfirmedEmpty ? <option value="">No routes available</option> : null}
                 {routeTransferOptions.length > 0 ? (
-                  <optgroup label="Route transfers">
+                  <optgroup label="Transfer Routes">
                     {routeTransferOptions.map((route) => (
                       <option key={route.id} value={route.id}>
                         {formatRoute(route)}
@@ -1231,7 +1307,7 @@ export function QuoteTransportPicker({
                   </optgroup>
                 ) : null}
                 {serviceAreaOptions.length > 0 ? (
-                  <optgroup label="Program / disposal service areas">
+                  <optgroup label="Disposal / Service Areas">
                     {serviceAreaOptions.map((route) => (
                       <option key={route.id} value={route.id}>
                         {formatRouteSelectionLabel(route)}
@@ -1240,6 +1316,12 @@ export function QuoteTransportPicker({
                   </optgroup>
                 ) : null}
               </select>
+              {routeSelectorGroups.transferReviewIds.length + routeSelectorGroups.disposalReviewIds.length > 0 ? (
+                <p className="form-helper">
+                  {routeSelectorGroups.transferReviewIds.length + routeSelectorGroups.disposalReviewIds.length} duplicate transfer route or disposal area entries hidden for
+                  cleanup review.
+                </p>
+              ) : null}
               {routesLoadFailed ? (
                 <p className="form-error">{transportDataStatus.routes.message || 'Routes could not load after retry. Refresh this quote to retry.'}</p>
               ) : null}

@@ -8,6 +8,8 @@ import {
   getQuoteTransportRateBillableDays,
   getTransportPricingModeOptionLabel,
   formatVehicleOptionLabel,
+  formatRouteSelectionLabel,
+  getQuoteTransportRouteSelectorGroups,
   getRankedVehicles,
   transportRateMatchesSelectedRoute,
 } from './QuoteTransportPicker';
@@ -25,6 +27,16 @@ const route = {
 const ammanRoute = {
   id: 'route-amman-amman',
   name: 'Amman -> Amman',
+  fromPlaceId: 'amman-from',
+  toPlaceId: 'amman-to',
+  fromPlace: { id: 'amman-from', name: 'Amman', city: 'Amman', country: 'Jordan' },
+  toPlace: { id: 'amman-to', name: 'Amman', city: 'Amman', country: 'Jordan' },
+} as any;
+
+const ammanDisposalRoute = {
+  id: 'route-amman-disposal',
+  name: 'Amman City',
+  routeType: 'TRANSFER_ROUTE',
   fromPlaceId: 'amman-from',
   toPlaceId: 'amman-to',
   fromPlace: { id: 'amman-from', name: 'Amman', city: 'Amman', country: 'Jordan' },
@@ -51,6 +63,42 @@ function rate(vehicleName: string, pricingMode = 'Point-to-Point', overrides: Re
 }
 
 describe('QuoteTransportPicker transport pricing mode matching', () => {
+  it('groups transfer routes and disposal service areas without touring routes', () => {
+    const duplicateAmmanDisposal = {
+      ...ammanDisposalRoute,
+      id: 'route-amman-disposal-duplicate',
+      name: 'Amman City Disposal',
+    };
+    const touringRoute = {
+      ...route,
+      id: 'route-petra-tour',
+      name: 'Petra Full Day Touring',
+      routeType: 'TOURING_ROUTE',
+      canonicalRouteType: 'TOURING_ROUTE',
+    };
+    const duplicateTransferRoute = {
+      ...route,
+      id: 'route-aqaba-petra-duplicate',
+      name: 'Aqaba - Petra',
+    };
+    const groups = getQuoteTransportRouteSelectorGroups([route, duplicateTransferRoute, ammanDisposalRoute, duplicateAmmanDisposal, touringRoute]);
+
+    assert.deepEqual(groups.transferRoutes.map((entry) => entry.id), ['route-aqaba-petra']);
+    assert.deepEqual(groups.serviceAreas.map((entry) => entry.id), ['route-amman-disposal']);
+    assert.deepEqual(groups.transferReviewIds, ['route-aqaba-petra-duplicate']);
+    assert.deepEqual(groups.disposalReviewIds, ['route-amman-disposal-duplicate']);
+    assert.equal(formatRouteSelectionLabel(ammanDisposalRoute), 'Amman City Disposal');
+    assert.equal(
+      formatRouteSelectionLabel({
+        ...ammanDisposalRoute,
+        name: 'Dead Sea City',
+        fromPlace: { id: 'dead-sea-from', name: 'Dead Sea', city: 'Dead Sea City', country: 'Jordan' },
+        toPlace: { id: 'dead-sea-to', name: 'Dead Sea', city: 'Dead Sea City', country: 'Jordan' },
+      } as any),
+      'Dead Sea Disposal',
+    );
+  });
+
   it('maps legacy coach rows to Coach pricing modes without exact vehicle id matching', () => {
     const modes = getAvailableTransportPricingModesForSelection({
       rates: [rate('Medium 30'), rate('Large 49', 'Full Day')],
@@ -169,6 +217,27 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.ok(modes.includes('Full Day'));
     assert.ok(modes.includes('Half Day'));
     assert.ok(modes.includes('Stationary / Waiting'));
+  });
+
+  it('keeps disposal service area pricing available after selector cleanup', () => {
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates: [
+        rate('Medium 30', 'Full Day', {
+          id: 'full-amman-disposal',
+          routeId: ammanDisposalRoute.id,
+          routeName: ammanDisposalRoute.name,
+          route: ammanDisposalRoute,
+          maxPax: 30,
+          serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+        }),
+      ],
+      route: ammanDisposalRoute,
+      selectedCanonicalVehicleType: 'Coach',
+      requestedPax: 20,
+      now: activeDate,
+    });
+
+    assert.deepEqual(modes, ['Full Day']);
   });
 
   it('normalizes daily package full-day disposal rows and labels the minimum rule', () => {

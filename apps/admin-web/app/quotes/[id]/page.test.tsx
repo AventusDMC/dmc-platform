@@ -1018,13 +1018,17 @@ describe('quote detail page regression', () => {
   it('separates route transfers from program disposal service areas in QuoteTransportPicker', () => {
     expectSourceContains(pageSource, ["`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`", 'Quote detail transfer routes']);
     expectSourceContains(quoteTransportPickerSource, [
-      'function formatRouteSelectionLabel(route: RouteOption)',
+      'export function formatRouteSelectionLabel(route: RouteOption)',
+      'export function getQuoteTransportRouteSelectorGroups(routes: RouteOption[])',
       'function isProgramOrDisposalRouteOption(route: RouteOption)',
-      'const routeTransferOptions = useMemo',
-      'const serviceAreaOptions = useMemo',
-      '<optgroup label="Route transfers">',
-      '<optgroup label="Program / disposal service areas">',
-      'Use route transfers for point-to-point movement. Use service areas for disposal modes like Full Day, Half Day, and Day Tour.',
+      'function isTouringRouteOption(route: RouteOption)',
+      'const routeSelectorGroups = useMemo(() => getQuoteTransportRouteSelectorGroups(routes), [routes]);',
+      'const routeTransferOptions = routeSelectorGroups.transferRoutes;',
+      'const serviceAreaOptions = routeSelectorGroups.serviceAreas;',
+      '<optgroup label="Transfer Routes">',
+      '<optgroup label="Disposal / Service Areas">',
+      'Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Full Day, Half Day, and Day Tour modes.',
+      'duplicate transfer route or disposal area entries hidden',
     ]);
   });
 
