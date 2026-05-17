@@ -5,6 +5,10 @@ import { describe, it } from 'node:test';
 const agentIndexSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const dashboardSource = readFileSync(new URL('./dashboard/page.tsx', import.meta.url), 'utf8');
 const invoicesSource = readFileSync(new URL('./invoices/page.tsx', import.meta.url), 'utf8');
+const departuresSource = readFileSync(new URL('./departures/page.tsx', import.meta.url), 'utf8');
+const departureRequestFormSource = readFileSync(new URL('./departures/AgentDepartureRequestForm.tsx', import.meta.url), 'utf8');
+const bookingRequestsProxySource = readFileSync(new URL('../api/agent/booking-requests/route.ts', import.meta.url), 'utf8');
+const departureRequestProxySource = readFileSync(new URL('../api/agent/departures/[id]/booking-requests/route.ts', import.meta.url), 'utf8');
 
 describe('agent portal routing', () => {
   it('exposes a default /agent route that lands on the dashboard', () => {
@@ -31,8 +35,24 @@ describe('agent portal routing', () => {
     assert.match(dashboardSource, /safeAgentFetch<AgentInvoice\[\]>\('invoices', getInvoices, \[\]\)/);
     assert.match(dashboardSource, /safeAgentFetch<AgentProposal\[\]>\('proposals', getProposals, \[\]\)/);
     assert.match(dashboardSource, /safeAgentFetch<AgentDeparture\[\]>\('departures', getDepartures, \[\]\)/);
+    assert.match(dashboardSource, /safeAgentFetch<AgentBookingRequest\[\]>\('booking requests', getBookingRequests, \[\]\)/);
+    assert.match(dashboardSource, /Booking requests/);
+    assert.match(dashboardSource, /Waitlisted/);
+    assert.match(dashboardSource, /Low availability/);
     assert.match(dashboardSource, /departure\.availability\?\.stopSale/);
     assert.match(dashboardSource, /departure\.availability\?\.seatsRemaining/);
+  });
+
+  it('exposes request-only live departure booking actions', () => {
+    assert.match(departuresSource, /Live regular tour availability with request-only booking workflow/);
+    assert.match(departuresSource, /hotelCategoryAvailability/);
+    assert.match(departuresSource, /branchAvailability/);
+    assert.match(departuresSource, /<AgentDepartureRequestForm/);
+    assert.match(departureRequestFormSource, /Request Seats/);
+    assert.match(departureRequestFormSource, /Request waitlisted for admin review/);
+    assert.match(departureRequestFormSource, /Request submitted for admin approval/);
+    assert.match(bookingRequestsProxySource, /\/agent\/booking-requests/);
+    assert.match(departureRequestProxySource, /\/agent\/departures\/\$\{id\}\/booking-requests/);
   });
 
   it('keeps /agent/invoices resilient without agent context or invoice data', () => {

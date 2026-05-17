@@ -255,7 +255,7 @@ nodeTestAgent.test('agent portal phase one isolates visibility and exposes finan
 
   agentAssert.deepEqual(seenBookingWhere[0].quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
   agentAssert.equal(seenBookingWhere[0].quote.clientCompanyId, 'company-1');
-  agentAssert.deepEqual(seenDepartureWhere[0].booking.quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
+  agentAssert.deepEqual(seenDepartureWhere[0], { series: { active: true } });
   agentAssert.equal(booking.finance.remainingBalance, 1800);
   agentAssert.equal(booking.passengers[0].passportStatus, 'on_file');
   agentAssert.equal('passportNumber' in booking.passengers[0], false);
@@ -263,6 +263,98 @@ nodeTestAgent.test('agent portal phase one isolates visibility and exposes finan
   agentAssert.equal(booking.amendmentRequests.enabled, true);
   agentAssert.equal(departures[0].availability.seatsRemaining, 10);
   agentAssert.deepEqual(departures[0].hotelCategories, ['4 star']);
+});
+
+nodeTestAgent.test('agent booking requests enforce stop sale, waitlist over-capacity, and create request audit log', async () => {
+  const createdLogs: any[] = [];
+  const service = createAgentService({
+    prisma: {
+      seriesDeparture: {
+        findFirst: async () => ({
+          id: 'departure-1',
+          bookingId: 'booking-1',
+          departureCode: 'JOR-001',
+          departureDate: '2026-05-29',
+          paxCount: 28,
+          totalCapacity: 30,
+          reservedSeats: 28,
+          stopSaleThreshold: 0,
+          status: 'PLANNED',
+          hotelAllotmentsJson: [{ category: '4 star', blockedRooms: 40, stopSale: false }],
+          series: {
+            seriesCode: 'JOR',
+            seriesName: 'Jordan Series',
+            active: true,
+            programVariantsJson: [{ label: '4 star' }],
+            branchExtensionsJson: [{ label: 'Dead Sea extension' }],
+          },
+          booking: {
+            pax: 28,
+            pricingSnapshotJson: { totalSell: 28000, currency: 'USD' },
+            passengers: [],
+          },
+        }),
+      },
+      bookingAuditLog: {
+        create: async ({ data }: any) => {
+          createdLogs.push(data);
+          return { id: 'request-log-1', createdAt: new Date('2026-05-17T00:00:00Z'), ...data };
+        },
+      },
+    },
+  });
+  const actor = {
+    id: 'agent-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  };
+
+  const request = await service.requestDepartureSeats('departure-1', actor as any, {
+    passengerCount: 4,
+    hotelCategory: '4 star',
+    extension: 'Dead Sea extension',
+  });
+
+  agentAssert.equal(request.status, 'waitlisted');
+  agentAssert.equal(request.passengerCount, 4);
+  agentAssert.equal(createdLogs[0].action, 'agent.booking_request.created');
+  agentAssert.equal(createdLogs[0].bookingId, 'booking-1');
+  agentAssert.match(createdLogs[0].newValue, /"status":"waitlisted"/);
+});
+
+nodeTestAgent.test('agent booking requests reject stop-sale departures before creating audit records', async () => {
+  let createCalled = false;
+  const service = createAgentService({
+    prisma: {
+      seriesDeparture: {
+        findFirst: async () => ({
+          id: 'departure-stop',
+          bookingId: 'booking-1',
+          paxCount: 10,
+          totalCapacity: 20,
+          status: 'STOP_SALE',
+          series: { seriesName: 'Jordan Series', active: true },
+          booking: { passengers: [] },
+        }),
+      },
+      bookingAuditLog: {
+        create: async () => {
+          createCalled = true;
+        },
+      },
+    },
+  });
+
+  await agentAssert.rejects(
+    () => service.requestDepartureSeats('departure-stop', { id: 'agent-1', email: 'agent@example.com', auditLabel: 'Agent' } as any, { passengerCount: 1 }),
+    /Departure is currently stop sale/,
+  );
+  agentAssert.equal(createCalled, false);
 });
 
 nodeTestAgent.test('agent document access validates assigned invoice and booking before PDF generation', async () => {

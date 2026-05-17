@@ -154,9 +154,6 @@ export class AgentService {
         series: {
           active: true,
         },
-        booking: {
-          quote: this.buildAssignedQuoteWhere(actor),
-        },
       },
       include: {
         series: true,
@@ -175,6 +172,113 @@ export class AgentService {
     });
 
     return departures.map((departure: any) => this.mapAgentDepartureSummary(departure));
+  }
+
+  async getBookingRequests(actor: AuthenticatedActor) {
+    const logs = await (this.prisma as any).bookingAuditLog.findMany({
+      where: {
+        action: 'agent.booking_request.created',
+        actorUserId: actor.id,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
+
+    return logs.map((log: any) => this.mapAgentBookingRequestLog(log));
+  }
+
+  async requestDepartureSeats(
+    departureId: string,
+    actor: AuthenticatedActor,
+    input: {
+      passengerCount?: number | string | null;
+      hotelCategory?: string | null;
+      extension?: string | null;
+      notes?: string | null;
+    },
+  ) {
+    const departure = await (this.prisma as any).seriesDeparture.findFirst({
+      where: {
+        id: departureId,
+        series: { active: true },
+      },
+      include: {
+        series: true,
+        booking: {
+          include: {
+            passengers: {
+              select: {
+                hotelCategoryVariant: true,
+                branchExtension: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!departure) {
+      throw new NotFoundException('Departure not found');
+    }
+
+    const passengerCount = this.normalizePassengerCount(input.passengerCount);
+    const availability = this.buildDepartureAvailability(departure);
+    const hotelCategory = this.normalizeSelection(input.hotelCategory);
+    const extension = this.normalizeSelection(input.extension);
+    const selectedCategory = hotelCategory
+      ? this.buildHotelCategoryAvailability(departure, availability.seatsRemaining)
+          .find((category) => category.name.toLowerCase() === hotelCategory.toLowerCase())
+      : null;
+
+    if (availability.stopSale) {
+      throw new BadRequestException('Departure is currently stop sale');
+    }
+
+    if (selectedCategory?.stopSale) {
+      throw new BadRequestException('Selected hotel category is currently stop sale');
+    }
+
+    if (selectedCategory?.availableRooms !== null && selectedCategory?.availableRooms !== undefined && selectedCategory.availableRooms <= 0) {
+      throw new BadRequestException('Selected hotel category has no available inventory');
+    }
+
+    const status = availability.seatsRemaining !== null && passengerCount > availability.seatsRemaining ? 'waitlisted' : 'pending';
+    const payload = {
+      requestId: `BR-${Date.now()}`,
+      status,
+      departureId: departure.id,
+      departureCode: departure.departureCode || null,
+      seriesCode: departure.series?.seriesCode || null,
+      seriesName: departure.series?.seriesName || 'Series departure',
+      departureDate: departure.departureDate || null,
+      passengerCount,
+      hotelCategory,
+      extension,
+      notes: this.normalizeSelection(input.notes),
+      availability,
+      financials: this.estimateDepartureFinancials(departure, passengerCount),
+      agent: {
+        id: actor.id,
+        email: actor.email,
+        companyId: actor.companyId || null,
+      },
+    };
+
+    const log = await (this.prisma as any).bookingAuditLog.create({
+      data: {
+        bookingId: departure.bookingId,
+        entityType: 'booking',
+        entityId: departure.bookingId,
+        oldValue: null,
+        newValue: JSON.stringify(payload),
+        action: 'agent.booking_request.created',
+        note: status === 'waitlisted' ? 'Agent booking request waitlisted due to capacity' : 'Agent booking request pending admin approval',
+        actorUserId: actor.id,
+        actor: actor.auditLabel || actor.email,
+      },
+    });
+
+    return this.mapAgentBookingRequestLog(log);
   }
 
   async getInvoicePdf(id: string, actor: AuthenticatedActor) {
@@ -544,13 +648,8 @@ export class AgentService {
   }
 
   private mapAgentDepartureSummary(departure: any) {
-    const totalCapacity = Number(departure.totalCapacity || departure.sharedCoachCapacity || 0);
-    const paxCount = Number(departure.paxCount || departure.booking?.passengers?.length || 0);
-    const reservedSeats = Number(departure.reservedSeats || 0);
-    const seatsSold = Math.max(paxCount, reservedSeats);
-    const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : null;
-    const stopSale = Boolean(departure.status === 'STOP_SALE' || (totalCapacity > 0 && seatsRemaining === 0));
     const passengers = departure.booking?.passengers || [];
+    const availability = this.buildDepartureAvailability(departure);
 
     return {
       id: departure.id,
@@ -560,15 +659,168 @@ export class AgentService {
       departureCode: departure.departureCode || null,
       departureDate: departure.departureDate || null,
       status: departure.status,
-      availability: {
-        totalCapacity,
-        seatsSold,
-        seatsRemaining,
-        stopSale,
+      availability,
+      guaranteed: availability.guaranteed,
+      soldOut: availability.soldOut,
+      hotelCategories: this.uniqueValues([
+        ...this.extractProgramVariantNames(departure.series?.programVariantsJson),
+        ...passengers.map((passenger: any) => passenger.hotelCategoryVariant),
+      ]),
+      branchExtensions: this.uniqueValues([
+        ...this.extractBranchExtensionNames(departure.series?.branchExtensionsJson),
+        ...passengers.map((passenger: any) => passenger.branchExtension),
+      ]),
+      hotelCategoryAvailability: this.buildHotelCategoryAvailability(departure, availability.seatsRemaining),
+      branchAvailability: this.buildBranchAvailability(departure),
+      bookingRequest: {
+        endpoint: `/api/agent/departures/${departure.id}/booking-requests`,
+        requestOnly: true,
       },
-      hotelCategories: this.uniqueValues(passengers.map((passenger: any) => passenger.hotelCategoryVariant)),
-      branchExtensions: this.uniqueValues(passengers.map((passenger: any) => passenger.branchExtension)),
+      financials: this.estimateDepartureFinancials(departure, 1),
     };
+  }
+
+  private buildDepartureAvailability(departure: any) {
+    const totalCapacity = Number(departure.totalCapacity || departure.sharedCoachCapacity || 0);
+    const paxCount = Number(departure.paxCount || departure.booking?.passengers?.length || departure.booking?.pax || 0);
+    const reservedSeats = Math.max(Number(departure.reservedSeats || 0), paxCount);
+    const seatsSold = Math.max(paxCount, reservedSeats);
+    const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : null;
+    const stopSaleThreshold = Number(departure.stopSaleThreshold || 0);
+    const allotmentStopSale = this.parseHotelAllotments(departure.hotelAllotmentsJson).some((allotment) => allotment.stopSale);
+    const stopSale = Boolean(
+      String(departure.status || '').toUpperCase() === 'STOP_SALE' ||
+      allotmentStopSale ||
+      (totalCapacity > 0 && seatsRemaining === 0) ||
+      (stopSaleThreshold > 0 && seatsRemaining !== null && seatsRemaining <= stopSaleThreshold),
+    );
+    const guaranteedMinimumPax = Number(departure.guaranteedMinimumPax || 0);
+
+    return {
+      totalCapacity,
+      seatsSold,
+      reservedSeats,
+      seatsRemaining,
+      guaranteedMinimumPax,
+      guaranteed: guaranteedMinimumPax > 0 && seatsSold >= guaranteedMinimumPax,
+      soldOut: totalCapacity > 0 && seatsRemaining === 0,
+      lowAvailability: seatsRemaining !== null && seatsRemaining > 0 && seatsRemaining <= Math.max(stopSaleThreshold, 3),
+      stopSale,
+      stopSaleThreshold,
+    };
+  }
+
+  private buildHotelCategoryAvailability(departure: any, seatsRemaining: number | null) {
+    const allotments = this.parseHotelAllotments(departure.hotelAllotmentsJson);
+    const passengers = departure.booking?.passengers || [];
+    const names = this.uniqueValues([
+      ...this.extractProgramVariantNames(departure.series?.programVariantsJson),
+      ...allotments.map((allotment) => allotment.category || allotment.status || null),
+      ...passengers.map((passenger: any) => passenger.hotelCategoryVariant),
+    ]);
+
+    return (names.length ? names : ['Standard']).map((name) => {
+      const matching = allotments.filter((allotment) => [allotment.category, allotment.status].some((value) => value && value.toLowerCase() === name.toLowerCase()));
+      const blockedRooms = matching.reduce((total, allotment) => total + allotment.blockedRooms, 0);
+      const stopSale = matching.some((allotment) => allotment.stopSale);
+      const availableRooms = blockedRooms > 0 ? Math.max(blockedRooms - Number(departure.reservedSeats || departure.paxCount || 0), 0) : seatsRemaining;
+      return {
+        name,
+        blockedRooms: blockedRooms || null,
+        availableRooms,
+        stopSale,
+        status: stopSale ? 'stop_sale' : availableRooms === 0 ? 'sold_out' : 'available',
+      };
+    });
+  }
+
+  private buildBranchAvailability(departure: any) {
+    return this.extractBranchExtensionNames(departure.series?.branchExtensionsJson).map((name) => ({
+      name,
+      status: 'on_request',
+    }));
+  }
+
+  private estimateDepartureFinancials(departure: any, passengerCount: number) {
+    const snapshot = departure.booking?.pricingSnapshotJson || departure.booking?.snapshotJson || {};
+    const totalSell = Number(snapshot.totalSell || snapshot.totalPrice || 0);
+    const basePax = Number(departure.booking?.pax || departure.paxCount || 0);
+    const perPerson = totalSell > 0 && basePax > 0 ? totalSell / basePax : 0;
+    const estimatedTotal = Number((perPerson * passengerCount).toFixed(2));
+    const depositDue = Number((estimatedTotal * 0.2).toFixed(2));
+    return {
+      estimatedTotal,
+      depositDue,
+      balanceDue: Math.max(estimatedTotal - depositDue, 0),
+      currency: snapshot.quoteCurrency || snapshot.currency || 'USD',
+      invoiceStatus: 'not_issued',
+    };
+  }
+
+  private mapAgentBookingRequestLog(log: any) {
+    const payload = this.parseJson(log.newValue) || {};
+    return {
+      id: log.id,
+      createdAt: log.createdAt,
+      status: payload.status || 'pending',
+      departureId: payload.departureId || null,
+      departureCode: payload.departureCode || null,
+      seriesCode: payload.seriesCode || null,
+      seriesName: payload.seriesName || 'Series departure',
+      departureDate: payload.departureDate || null,
+      passengerCount: Number(payload.passengerCount || 0),
+      hotelCategory: payload.hotelCategory || null,
+      extension: payload.extension || null,
+      financials: payload.financials || null,
+    };
+  }
+
+  private normalizePassengerCount(value: number | string | null | undefined) {
+    const count = Number(value || 0);
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new BadRequestException('Passenger count must be a positive integer');
+    }
+    return count;
+  }
+
+  private normalizeSelection(value: string | null | undefined) {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+  }
+
+  private parseJson(value: unknown) {
+    if (!value) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value as any;
+  }
+
+  private parseHotelAllotments(value: unknown) {
+    const parsed = this.parseJson(value);
+    const allotments = Array.isArray(parsed) ? parsed : [];
+    return allotments.map((allotment: any) => ({
+      category: allotment.category || allotment.hotelCategory || allotment.hotelCategoryVariant || null,
+      blockedRooms: Math.max(Number(allotment.blockedRooms || allotment.blockedRoomInventory || 0), 0),
+      stopSale: Boolean(allotment.stopSale),
+      status: allotment.status || null,
+    }));
+  }
+
+  private extractProgramVariantNames(value: unknown) {
+    const parsed = this.parseJson(value);
+    const variants = Array.isArray(parsed) ? parsed : [];
+    return variants.map((variant: any) => variant.label || variant.name || variant.code || null).filter(Boolean);
+  }
+
+  private extractBranchExtensionNames(value: unknown) {
+    const parsed = this.parseJson(value);
+    const branches = Array.isArray(parsed) ? parsed : [];
+    return branches.map((branch: any) => branch.label || branch.name || branch.code || null).filter(Boolean);
   }
 
   private listPaymentMethods() {

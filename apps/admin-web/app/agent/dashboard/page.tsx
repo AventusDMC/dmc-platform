@@ -51,8 +51,18 @@ type AgentDeparture = {
   departureDate: string | null;
   availability: {
     seatsRemaining: number | null;
+    lowAvailability?: boolean;
     stopSale: boolean;
   };
+};
+
+type AgentBookingRequest = {
+  id: string;
+  status: 'pending' | 'waitlisted' | string;
+  departureCode: string | null;
+  seriesName: string;
+  departureDate: string | null;
+  passengerCount: number;
 };
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +99,10 @@ async function getDepartures() {
   return adminPageFetchJson<AgentDeparture[]>('/api/agent/departures', 'Agent departures', { cache: 'no-store' });
 }
 
+async function getBookingRequests() {
+  return adminPageFetchJson<AgentBookingRequest[]>('/api/agent/booking-requests', 'Agent booking requests', { cache: 'no-store' });
+}
+
 async function safeAgentFetch<T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> {
   try {
     return await load();
@@ -103,13 +117,14 @@ async function safeAgentFetch<T>(label: string, load: () => Promise<T>, fallback
 }
 
 export default async function AgentDashboardPage() {
-  const [me, quotes, bookings, invoices, proposals, departures] = await Promise.all([
+  const [me, quotes, bookings, invoices, proposals, departures, bookingRequests] = await Promise.all([
     safeAgentFetch<AgentMe | null>('profile', getMe, null),
     safeAgentFetch<AgentQuote[]>('quotes', getQuotes, []),
     safeAgentFetch<AgentBooking[]>('bookings', getBookings, []),
     safeAgentFetch<AgentInvoice[]>('invoices', getInvoices, []),
     safeAgentFetch<AgentProposal[]>('proposals', getProposals, []),
     safeAgentFetch<AgentDeparture[]>('departures', getDepartures, []),
+    safeAgentFetch<AgentBookingRequest[]>('booking requests', getBookingRequests, []),
   ]);
 
   if (!me) {
@@ -138,6 +153,9 @@ export default async function AgentDashboardPage() {
   const unpaidInvoices = invoices.filter((invoice) => invoice.status === 'ISSUED').length;
   const pendingBalances = invoices.filter((invoice: any) => Number(invoice.balanceDue ?? invoice.totalAmount ?? 0) > 0).length;
   const travelAlerts = departures.filter((departure) => departure.availability?.stopSale || departure.availability?.seatsRemaining === 0).length;
+  const pendingBookingRequests = bookingRequests.filter((request) => request.status === 'pending').length;
+  const waitlistedDepartures = bookingRequests.filter((request) => request.status === 'waitlisted').length;
+  const lowAvailabilityAlerts = departures.filter((departure) => departure.availability?.lowAvailability).length;
   const voucherReadyBookings = bookings.filter((booking: any) => booking.voucherReadiness === 'ready' || booking.voucherReadiness === 'sent').length;
 
   return (
@@ -174,9 +192,53 @@ export default async function AgentDashboardPage() {
               <strong>{travelAlerts}</strong>
             </article>
             <article className="quote-client-summary-card">
+              <span>Booking requests</span>
+              <strong>{pendingBookingRequests}</strong>
+            </article>
+            <article className="quote-client-summary-card">
+              <span>Waitlisted</span>
+              <strong>{waitlistedDepartures}</strong>
+            </article>
+            <article className="quote-client-summary-card">
+              <span>Low availability</span>
+              <strong>{lowAvailabilityAlerts}</strong>
+            </article>
+            <article className="quote-client-summary-card">
               <span>Voucher readiness</span>
               <strong>{voucherReadyBookings}</strong>
             </article>
+          </section>
+
+          <section className="detail-card">
+            <p className="eyebrow">Booking Requests</p>
+            <h2>Pending requests</h2>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Departure</th>
+                    <th>Date</th>
+                    <th>Pax</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookingRequests.slice(0, 5).map((request) => (
+                    <tr key={request.id}>
+                      <td>{request.departureCode || request.seriesName}</td>
+                      <td>{request.departureDate ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(request.departureDate)) : 'Date pending'}</td>
+                      <td>{request.passengerCount}</td>
+                      <td><span className="status-badge">{request.status}</span></td>
+                    </tr>
+                  ))}
+                  {bookingRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>No booking requests yet.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="quote-preview-grid">

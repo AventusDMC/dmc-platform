@@ -93,6 +93,20 @@ export class AgentController {
     return this.agentService.getDepartures(actor);
   }
 
+  @Get('booking-requests')
+  getBookingRequests(@Actor() actor: AuthenticatedActor) {
+    return this.agentService.getBookingRequests(actor);
+  }
+
+  @Post('departures/:id/booking-requests')
+  requestDepartureSeats(
+    @Param('id') id: string,
+    @Body() body: { passengerCount?: number | string | null; hotelCategory?: string | null; extension?: string | null; notes?: string | null },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.agentService.requestDepartureSeats(id, actor, body);
+  }
+
   @Get('proposals')
   getProposals(@Actor() actor: AuthenticatedActor) {
     return this.agentService.getProposals(actor);

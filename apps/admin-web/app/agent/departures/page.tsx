@@ -1,4 +1,5 @@
 import { adminPageFetchJson } from '../../lib/admin-server';
+import { AgentDepartureRequestForm } from './AgentDepartureRequestForm';
 
 type AgentDeparture = {
   id: string;
@@ -11,10 +12,36 @@ type AgentDeparture = {
     totalCapacity: number;
     seatsSold: number;
     seatsRemaining: number | null;
+    guaranteed: boolean;
+    soldOut: boolean;
+    lowAvailability: boolean;
     stopSale: boolean;
   };
+  guaranteed: boolean;
+  soldOut: boolean;
   hotelCategories: string[];
   branchExtensions: string[];
+  hotelCategoryAvailability?: Array<{
+    name: string;
+    availableRooms: number | null;
+    stopSale: boolean;
+    status: string;
+  }>;
+  branchAvailability?: Array<{
+    name: string;
+    status: string;
+  }>;
+  bookingRequest: {
+    endpoint: string;
+    requestOnly: boolean;
+  };
+  financials: {
+    estimatedTotal: number;
+    depositDue: number;
+    balanceDue: number;
+    currency: string;
+    invoiceStatus: string;
+  };
 };
 
 function formatDate(value: string | null) {
@@ -36,7 +63,7 @@ export default async function AgentDeparturesPage() {
             <div>
               <p className="eyebrow">Agent Portal</p>
               <h1>Series departures</h1>
-              <p className="detail-copy">Read-only regular tour visibility for dates, seats remaining, hotel categories, branch extensions, and stop sale status.</p>
+              <p className="detail-copy">Live regular tour availability with request-only booking workflow. Admin confirmation is required before seats are confirmed.</p>
             </div>
           </div>
 
@@ -50,7 +77,9 @@ export default async function AgentDeparturesPage() {
                   <th>Availability</th>
                   <th>Hotel categories</th>
                   <th>Branches</th>
+                  <th>Financials</th>
                   <th>Status</th>
+                  <th>Request</th>
                 </tr>
               </thead>
               <tbody>
@@ -59,10 +88,29 @@ export default async function AgentDeparturesPage() {
                     <td>{departure.seriesCode ? `${departure.seriesCode} | ${departure.seriesName}` : departure.seriesName}</td>
                     <td>{departure.departureCode || departure.id}</td>
                     <td>{formatDate(departure.departureDate)}</td>
-                    <td>{departure.availability.seatsRemaining === null ? 'On request' : `${departure.availability.seatsRemaining} seats remaining`}</td>
-                    <td>{departure.hotelCategories.join(', ') || 'Category pending'}</td>
-                    <td>{departure.branchExtensions.join(', ') || 'Core program'}</td>
-                    <td><span className="status-badge">{departure.availability.stopSale ? 'Stop sale' : departure.status}</span></td>
+                    <td>
+                      {departure.availability.seatsRemaining === null ? 'On request' : `${departure.availability.seatsRemaining} seats remaining`}
+                      {departure.availability.lowAvailability ? <span className="status-badge">Low availability</span> : null}
+                    </td>
+                    <td>
+                      {(departure.hotelCategoryAvailability || []).map((category) => `${category.name}: ${category.stopSale ? 'stop sale' : category.availableRooms === null ? 'on request' : `${category.availableRooms} rooms`}`).join(', ') || 'Category pending'}
+                    </td>
+                    <td>{(departure.branchAvailability || []).map((branch) => `${branch.name}: ${branch.status}`).join(', ') || departure.branchExtensions.join(', ') || 'Core program'}</td>
+                    <td>
+                      {departure.financials.estimatedTotal > 0 ? `${departure.financials.currency} ${departure.financials.estimatedTotal.toFixed(2)} est.` : 'On request'}
+                      <br />
+                      Deposit: {departure.financials.depositDue > 0 ? `${departure.financials.currency} ${departure.financials.depositDue.toFixed(2)}` : 'On request'}
+                    </td>
+                    <td><span className="status-badge">{departure.availability.stopSale ? 'Stop sale' : departure.soldOut ? 'Sold out' : departure.guaranteed ? 'Guaranteed' : departure.status}</span></td>
+                    <td>
+                      <AgentDepartureRequestForm
+                        departureId={departure.id}
+                        endpoint={departure.bookingRequest.endpoint}
+                        disabled={departure.availability.stopSale}
+                        hotelCategories={departure.hotelCategories}
+                        branchExtensions={departure.branchExtensions}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
