@@ -18,7 +18,7 @@ async function getPlaces(): Promise<PlaceOption[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes`, 'Transport routes', {
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`, 'Transfer routes', {
     cache: 'no-store',
   });
 }
@@ -40,15 +40,15 @@ export async function RoutesSection() {
 
   return (
     <TableSectionShell
-      title="Route Library"
-      description="Central route records define movement from one place to another. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards."
-      context={<p>{routes.length} routes in scope - Standardized places keep routes, supplier rates, and quotes aligned.</p>}
+      title="Transfer Routes"
+      description="Transfer route records define pure movement from one place to another. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards."
+      context={<p>{routes.length} transfer routes in scope - Standardized places keep transfer routes, supplier rates, and quotes aligned.</p>}
       createPanel={
-        <CollapsibleCreatePanel title="Create route" description="Add reusable transport routes with saved place pairs." triggerLabelOpen="Add route">
+        <CollapsibleCreatePanel title="Create transfer route" description="Add reusable transfer routes with saved place pairs." triggerLabelOpen="Add transfer route">
           <RoutesForm apiBaseUrl={ACTION_API_BASE_URL} places={places} cities={cities} placeTypes={placeTypes} />
         </CollapsibleCreatePanel>
       }
-      emptyState={routes.length === 0 ? <p className="empty-state">No routes yet.</p> : undefined}
+      emptyState={routes.length === 0 ? <p className="empty-state">No transfer routes yet.</p> : undefined}
     >
       {routes.length > 0 ? <RoutesTable apiBaseUrl={ACTION_API_BASE_URL} routes={routes} places={places} cities={cities} placeTypes={placeTypes} /> : null}
     </TableSectionShell>

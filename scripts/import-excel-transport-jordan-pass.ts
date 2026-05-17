@@ -361,7 +361,7 @@ async function ensureRouteFromText(routeText: string) {
       toPlaceId: toPlace.id,
       name: `${endpoints.from} → ${endpoints.to}`,
       normalizedKey,
-      routeType: 'transfer',
+      routeType: 'TRANSFER_ROUTE',
       notes: `Imported from transport_contract_template final.xlsx. Source route: ${routeText}`,
       isActive: true,
     },

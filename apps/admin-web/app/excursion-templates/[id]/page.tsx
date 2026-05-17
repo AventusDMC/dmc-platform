@@ -21,7 +21,7 @@ async function getTemplate(id: string) {
 
 async function getCatalogs(): Promise<ExcursionTemplateCatalogs> {
   const [routes, touringRoutes, transportServiceTypes, activities, services] = await Promise.all([
-    adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes', 'Excursion route catalog', { cache: 'no-store' }),
+    adminPageFetchJson<ExcursionTemplateCatalogs['routes']>('/api/routes?type=TRANSFER_ROUTE', 'Excursion template transfer route catalog', { cache: 'no-store' }),
     adminPageFetchJson<ExcursionTemplateCatalogs['touringRoutes']>('/api/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500', 'Excursion touring route catalog', {
       cache: 'no-store',
     }),

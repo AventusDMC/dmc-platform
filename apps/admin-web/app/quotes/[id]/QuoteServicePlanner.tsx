@@ -927,7 +927,7 @@ function getServiceLaneEmptyCopy(category: ServicePlannerCategory) {
     case 'hotel':
       return 'No hotel added for this day yet.';
     case 'transport':
-      return 'No transport added yet. Add route-based transport using Route > Vehicle Type > Pricing Mode > Supplier > Price.';
+      return 'No transport added yet. Add transfer route transport using Transfer Route > Vehicle Type > Pricing Mode > Supplier > Price.';
     case 'meal':
       return 'No meal service added for this day yet.';
     case 'activity':

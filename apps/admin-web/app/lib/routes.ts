@@ -14,6 +14,15 @@ export type RouteOption = {
   isActive: boolean;
   fromPlace: PlaceOption;
   toPlace: PlaceOption;
+  canonicalRouteType?: 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | null;
+  routeOperations?: {
+    region: string | null;
+    overnight: boolean;
+    sicPossible: boolean;
+    longDistance: boolean;
+    guideRecommended: boolean;
+    taxonomyReview: string | null;
+  };
 };
 
 export function formatRouteLabel(route: Pick<RouteOption, 'name' | 'routeType' | 'fromPlace' | 'toPlace'>) {

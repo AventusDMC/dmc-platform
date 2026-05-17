@@ -15,7 +15,7 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
             name: 'QAIA to Petra',
             fromPlaceId: 'place-qaia',
             toPlaceId: 'place-petra',
-            routeType: 'transfer',
+            routeType: 'TRANSFER_ROUTE',
             notes: null,
             isActive: true,
             fromPlace: { name: 'QAIA' },
@@ -30,7 +30,7 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
           name: 'QAIA to Petra',
           fromPlaceId: 'place-qaia',
           toPlaceId: 'place-petra',
-          routeType: 'transfer',
+          routeType: 'TRANSFER_ROUTE',
           notes: null,
           isActive: true,
           fromPlace: { name: 'QAIA' },
@@ -41,7 +41,7 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
     },
   } as any);
 
-  const routes = await service.findAll({ active: true, type: 'transfer' });
+  const routes = await service.findAll({ active: true, type: 'TRANSFER_ROUTE' });
   const route = await service.findOne('route-1');
 
   assert.equal(routes.length, 1);
@@ -67,4 +67,75 @@ test('route catalog supports searchable larger route selector batches', async ()
   assert.equal(findManyArgs.take, 200);
   assert.ok(findManyArgs.where.OR.some((entry: any) => entry.fromPlace?.is?.city?.contains === 'Amman'));
   assert.ok(findManyArgs.where.OR.some((entry: any) => entry.toPlace?.is?.city?.contains === 'Amman'));
+});
+
+test('route catalog normalizes legacy transfer labels to TRANSFER_ROUTE on write', async () => {
+  let createdData: any;
+  const service = new RoutesService({
+    place: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: where.id === 'place-qaia' ? 'QAIA' : 'Petra' }),
+    },
+    route: {
+      findUnique: async () => null,
+      create: async (args: any) => {
+        createdData = args.data;
+        return { id: 'route-1', ...args.data };
+      },
+    },
+  } as any);
+
+  await service.create({
+    fromPlaceId: 'place-qaia',
+    toPlaceId: 'place-petra',
+    routeType: 'private-transfer',
+  });
+
+  assert.equal(createdData.routeType, 'TRANSFER_ROUTE');
+});
+
+test('route catalog rejects excursion as a transport route type', async () => {
+  const service = new RoutesService({
+    place: {
+      findUnique: async ({ where }: any) => ({ id: where.id, name: where.id === 'place-amman' ? 'Amman' : 'Petra' }),
+    },
+  } as any);
+
+  await assert.rejects(
+    () =>
+      service.create({
+        fromPlaceId: 'place-amman',
+        toPlaceId: 'place-petra',
+        routeType: 'Excursion',
+      }),
+    /Excursions must be created as Excursion Templates/,
+  );
+});
+
+test('route catalog returns derived operational review flags without deleting legacy rows', async () => {
+  const service = new RoutesService({
+    route: {
+      findMany: async () => [
+        {
+          id: 'route-legacy',
+          name: 'Petra full day sightseeing',
+          fromPlaceId: 'place-amman',
+          toPlaceId: 'place-petra',
+          routeType: 'Excursion',
+          notes: 'Guide recommended',
+          durationMinutes: 600,
+          distanceKm: 240,
+          isActive: true,
+          fromPlace: { name: 'Amman', city: 'Amman' },
+          toPlace: { name: 'Petra', city: 'Petra' },
+        },
+      ],
+    },
+  } as any);
+
+  const routes = (await service.findAll({ type: 'debug' })) as any[];
+
+  assert.equal(routes[0].canonicalRouteType, null);
+  assert.equal(routes[0].routeOperations.taxonomyReview, 'REVIEW_ROUTE_TAXONOMY');
+  assert.equal(routes[0].routeOperations.longDistance, true);
+  assert.equal(routes[0].routeOperations.guideRecommended, true);
 });

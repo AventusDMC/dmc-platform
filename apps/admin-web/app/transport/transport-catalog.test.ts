@@ -18,6 +18,8 @@ const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.t
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
 const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.tsx', import.meta.url), 'utf8');
 const pricingRuleFormSource = readFileSync(new URL('../transport-pricing/TransportPricingRuleForm.tsx', import.meta.url), 'utf8');
+const routesFormSource = readFileSync(new URL('../routes/RoutesForm.tsx', import.meta.url), 'utf8');
+const transportRoutesSource = readFileSync(new URL('../lib/transport-routes.ts', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -26,6 +28,50 @@ function expectSourceContains(source: string, fragments: string[]) {
 }
 
 describe('transport catalog supplier rate-card UX', () => {
+  it('aligns transport workspace labels and counts to route taxonomy', () => {
+    expectSourceContains(pageSource, [
+      "{ id: 'routes', label: 'Transfer Routes' }",
+      "{ id: 'touring-routes', label: 'Touring Routes' }",
+      "{ id: 'excursion-templates', label: 'Excursion Templates', href: '/excursion-templates', helper: 'Sellable products' }",
+      "`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`",
+      "`${API_BASE_URL}/excursion-templates`",
+      "label: 'Transfer Routes'",
+      "label: 'Touring Routes'",
+      "label: 'Excursion Templates'",
+      'summary.excursionTemplates',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('./RoutesSection.tsx', import.meta.url), 'utf8'), [
+      'title="Transfer Routes"',
+      'transfer routes in scope',
+      'Create transfer route',
+      'Add transfer route',
+      'No transfer routes yet.',
+      '/routes?type=TRANSFER_ROUTE',
+    ]);
+  });
+
+  it('keeps route type options limited to transfer and touring routes', () => {
+    expectSourceContains(transportRoutesSource, ["'TRANSFER_ROUTE'", "'TOURING_ROUTE'", 'MOVEMENT_ROUTE_TYPE_LABELS']);
+    expectSourceContains(routesFormSource, [
+      'MOVEMENT_ROUTE_TYPES.map((option)',
+      'getMovementRouteTypeLabel(option)',
+      'Legacy route type',
+      'needs taxonomy review before it can be saved.',
+    ]);
+    expectSourceContains(readFileSync(new URL('./RoutesTable.tsx', import.meta.url), 'utf8'), [
+      'function formatRouteOperations(route: RouteOption)',
+      'operations.sicPossible ? \'SIC possible\'',
+      'operations.longDistance ? \'Long distance\'',
+      'operations.guideRecommended ? \'Guide recommended\'',
+      'Review taxonomy',
+    ]);
+
+    assert.equal(transportRoutesSource.includes("'Excursion'"), false);
+    assert.equal(transportRoutesSource.includes("'Other'"), false);
+    assert.equal(routesFormSource.includes('otherRouteType'), false);
+  });
+
   it('labels the rates tab as Supplier Rate Cards', () => {
     expectSourceContains(pageSource, [
       "{ id: 'rates', label: 'Supplier Rate Cards' }",
@@ -558,7 +604,7 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(pageSource, [
       "{ id: 'touring-routes', label: 'Touring Routes' }",
       '<TouringRoutesSection />',
-      'Touring routes',
+      'Touring Routes',
       'summary.touringRoutes',
     ]);
 

@@ -30,6 +30,21 @@ function formatDistance(value: number | null) {
   return value === null ? '—' : `${value} km`;
 }
 
+function formatRouteOperations(route: RouteOption) {
+  const operations = route.routeOperations;
+  if (!operations) {
+    return [];
+  }
+
+  return [
+    operations.region ? `Region: ${operations.region}` : null,
+    operations.overnight ? 'Overnight' : null,
+    operations.sicPossible ? 'SIC possible' : null,
+    operations.longDistance ? 'Long distance' : null,
+    operations.guideRecommended ? 'Guide recommended' : null,
+  ].filter((item): item is string => Boolean(item));
+}
+
 function buildSelectHref(returnTo: string, routeId: string) {
   const url = new URL(returnTo, 'https://dmc.local');
   url.searchParams.set('catalogRouteId', routeId);
@@ -97,6 +112,7 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
               const isEditing = editingId === route.id;
               const suspiciousPricingRoute = isSuspiciousPricingRoute(route);
               const canonicalRouteLabel = getCanonicalRouteLabel(route.fromPlace.name, route.toPlace.name);
+              const operationFlags = formatRouteOperations(route);
 
               return (
                 <Fragment key={route.id}>
@@ -105,7 +121,9 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
                       <strong>{canonicalRouteLabel}</strong>
                       {route.name && route.name !== canonicalRouteLabel ? <div className="table-subcopy">{route.name}</div> : null}
                       {suspiciousPricingRoute ? <span className="page-tab-badge page-tab-badge-warning">Pricing item?</span> : null}
+                      {route.routeOperations?.taxonomyReview ? <span className="page-tab-badge page-tab-badge-warning">Review taxonomy</span> : null}
                       {route.notes ? <div className="table-subcopy">{route.notes}</div> : null}
+                      {operationFlags.length > 0 ? <div className="table-subcopy">{operationFlags.join(' | ')}</div> : null}
                     </td>
                     <td>
                       {route.fromPlace.name}

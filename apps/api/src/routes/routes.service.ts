@@ -12,6 +12,11 @@ type FindRoutesInput = {
   search?: string;
   active?: boolean;
   type?: string;
+  region?: string;
+  overnight?: boolean;
+  sicPossible?: boolean;
+  longDistance?: boolean;
+  guideRecommended?: boolean;
   limit?: number;
 };
 
@@ -28,8 +33,103 @@ type CreateRouteInput = {
 
 type UpdateRouteInput = Partial<CreateRouteInput>;
 
+const ROUTE_TYPE_TRANSFER = 'TRANSFER_ROUTE';
+const ROUTE_TYPE_TOURING = 'TOURING_ROUTE';
+const SUPPORTED_ROUTE_TYPES = [ROUTE_TYPE_TRANSFER, ROUTE_TYPE_TOURING] as const;
+
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
   return formatRouteName(fromPlaceName, toPlaceName);
+}
+
+function normalizeRouteTypeValue(value: string | null | undefined) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function normalizeTransportRouteTypeForWrite(value: string | null | undefined) {
+  const normalized = normalizeRouteTypeValue(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === ROUTE_TYPE_TRANSFER || normalized === 'TRANSFER' || normalized === 'ROUTE_TRANSFER') {
+    return ROUTE_TYPE_TRANSFER;
+  }
+
+  if (normalized === ROUTE_TYPE_TOURING || normalized === 'TOURING' || normalized === 'SIGHTSEEING_ROUTE') {
+    return ROUTE_TYPE_TOURING;
+  }
+
+  if (
+    [
+      'AIRPORT_TRANSFER',
+      'BORDER_TRANSFER',
+      'CITY_TRANSFER',
+      'INTERCITY',
+      'INTERCITY_TRANSFER',
+      'LOCAL_TRANSFER',
+      'POINT_TO_POINT',
+      'PRIVATE_TRANSFER',
+    ].includes(normalized)
+  ) {
+    return ROUTE_TYPE_TRANSFER;
+  }
+
+  if (normalized.includes('EXCURSION') || normalized.includes('PRODUCT') || normalized.includes('SELLABLE')) {
+    throw new BadRequestException('Excursions must be created as Excursion Templates, not transport routes.');
+  }
+
+  throw new BadRequestException('Transport routes only support TRANSFER_ROUTE or TOURING_ROUTE.');
+}
+
+function getCanonicalRouteType(routeType: string | null | undefined) {
+  try {
+    return normalizeTransportRouteTypeForWrite(routeType);
+  } catch {
+    return null;
+  }
+}
+
+function hasSellableRouteSignal(value: string) {
+  const normalized = value.toLowerCase();
+  return /\b(excursion|tour package|sellable|product|activity|full day|half day|sightseeing)\b/.test(normalized);
+}
+
+function buildRouteOperationalFlags(route: {
+  name: string;
+  routeType: string | null;
+  notes: string | null;
+  distanceKm?: number | null;
+  durationMinutes?: number | null;
+  fromPlace?: { name: string; city?: string | null; region?: string | null } | null;
+  toPlace?: { name: string; city?: string | null; region?: string | null } | null;
+}) {
+  const text = [route.name, route.routeType, route.notes, route.fromPlace?.name, route.toPlace?.name].filter(Boolean).join(' ');
+  const canonicalRouteType = getCanonicalRouteType(route.routeType);
+  const region = route.fromPlace?.region || route.toPlace?.region || route.fromPlace?.city || route.toPlace?.city || null;
+  const overnight = /\bovernight|wadi rum camp|camp\b/i.test(text);
+  const sicPossible = /\bsic|seat in coach|shared coach|regular tour\b/i.test(text);
+  const longDistance = Number(route.distanceKm || 0) >= 150 || Number(route.durationMinutes || 0) >= 180 || /\bborder|aqaba|petra|wadi rum\b/i.test(text);
+  const guideRecommended = /\bguide|guided|sightseeing|touring|petra|jerash|wadi rum|dead sea\b/i.test(text);
+  const taxonomyReview =
+    !canonicalRouteType || hasSellableRouteSignal(text) || isSpecialPricingRouteText(text)
+      ? 'REVIEW_ROUTE_TAXONOMY'
+      : null;
+
+  return {
+    canonicalRouteType,
+    routeOperations: {
+      region,
+      overnight,
+      sicPossible,
+      longDistance,
+      guideRecommended,
+      taxonomyReview,
+    },
+  };
 }
 
 function isSpecialPricingRouteText(value: string) {
@@ -67,7 +167,8 @@ function isValidTransferRoute(route: {
     return false;
   }
 
-  const routeType = (route.routeType || '').trim().toLowerCase();
+  const routeType = normalizeRouteTypeValue(route.routeType);
+  const canonicalRouteType = getCanonicalRouteType(route.routeType);
   const routeText = [route.name, route.routeType, route.fromPlace.name, route.toPlace.name, route.notes]
     .filter(Boolean)
     .join(' ')
@@ -80,7 +181,7 @@ function isValidTransferRoute(route: {
     return false;
   }
 
-  if (routeType && !/(transfer|airport|border|intercity|excursion|private|local)/.test(routeType)) {
+  if (canonicalRouteType !== ROUTE_TYPE_TRANSFER) {
     return false;
   }
 
@@ -93,9 +194,9 @@ export class RoutesService {
 
   async findAll(filters: FindRoutesInput = {}) {
     const search = filters.search?.trim();
-    const type = filters.type?.trim().toLowerCase();
+    const type = normalizeRouteTypeValue(filters.type);
 
-    if (type && !['all', 'debug', 'transfer'].includes(type)) {
+    if (type && !['ALL', 'DEBUG', 'TRANSFER', 'ROUTE_TRANSFER', ...SUPPORTED_ROUTE_TYPES].includes(type)) {
       throw new BadRequestException('Unsupported route type filter');
     }
 
@@ -129,11 +230,36 @@ export class RoutesService {
       ...(limit === undefined ? {} : { take: limit }),
     });
 
-    if (type === 'transfer') {
-      return routes.filter(isValidTransferRoute);
+    const flaggedRoutes = routes.map((route) => ({
+      ...route,
+      ...buildRouteOperationalFlags(route),
+    }));
+
+    let filteredRoutes = flaggedRoutes;
+
+    if (type === 'TRANSFER' || type === 'ROUTE_TRANSFER' || type === ROUTE_TYPE_TRANSFER) {
+      filteredRoutes = filteredRoutes.filter(isValidTransferRoute);
+    } else if (type === ROUTE_TYPE_TOURING) {
+      filteredRoutes = filteredRoutes.filter((route) => route.canonicalRouteType === ROUTE_TYPE_TOURING);
     }
 
-    return routes;
+    if (filters.region?.trim()) {
+      const region = filters.region.trim().toLowerCase();
+      filteredRoutes = filteredRoutes.filter((route) => route.routeOperations.region?.toLowerCase().includes(region));
+    }
+
+    for (const [key, value] of [
+      ['overnight', filters.overnight],
+      ['sicPossible', filters.sicPossible],
+      ['longDistance', filters.longDistance],
+      ['guideRecommended', filters.guideRecommended],
+    ] as const) {
+      if (value !== undefined) {
+        filteredRoutes = filteredRoutes.filter((route) => route.routeOperations[key] === value);
+      }
+    }
+
+    return filteredRoutes;
   }
 
   async findOne(id: string) {
@@ -263,7 +389,7 @@ export class RoutesService {
       toPlaceId: toPlace.id,
       name: normalizeRouteDisplayName(data.name, fromPlace.name, toPlace.name),
       normalizedKey: buildRouteNormalizedKey(fromPlace.name, toPlace.name),
-      routeType: normalizeOptionalString(data.routeType),
+      routeType: normalizeTransportRouteTypeForWrite(data.routeType),
       durationMinutes,
       distanceKm,
       notes: normalizeOptionalString(data.notes),

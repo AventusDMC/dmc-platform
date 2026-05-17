@@ -8,6 +8,7 @@ import {
   getQuoteTransportRateBillableDays,
   getTransportPricingModeOptionLabel,
   formatVehicleOptionLabel,
+  getRankedVehicles,
   transportRateMatchesSelectedRoute,
 } from './QuoteTransportPicker';
 import { normalizeTransportRouteText } from '../../lib/transport-routes';
@@ -74,6 +75,28 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     for (const [vehicle, expected] of examples) {
       assert.equal(formatVehicleOptionLabel({ vehicle, group: 'Available', isRecommended: false, isTooSmall: false } as any, []), expected);
     }
+  });
+
+  it('suggests every overlapping Jordan vehicle capacity match without blocking override choices', () => {
+    const ranked = getRankedVehicles(
+      [
+        { id: 'sedan', name: 'Sedan', maxPax: 2 },
+        { id: 'mini-van', name: 'Mini Van', maxPax: 6 },
+        { id: 'van', name: 'Van', maxPax: 9 },
+        { id: 'coaster', name: 'Toyota Coaster', maxPax: 17 },
+        { id: 'medium-bus', name: 'Medium Bus', maxPax: 29 },
+        { id: 'large-bus', name: 'Large Bus', maxPax: 48 },
+        { id: 'large-bus-x', name: 'Large Bus X', maxPax: 51 },
+      ] as any,
+      9,
+    );
+
+    assert.deepEqual(
+      ranked.filter((entry) => entry.isRecommended).map((entry) => entry.vehicle.id),
+      ['van', 'coaster'],
+    );
+    assert.equal(ranked.find((entry) => entry.vehicle.id === 'sedan')?.isTooSmall, true);
+    assert.match(formatVehicleOptionLabel(ranked.find((entry) => entry.vehicle.id === 'sedan') as any, []), /Manual override/);
   });
 
   it('previews Full Day costs as a daily rate with editable billable days', () => {

@@ -312,7 +312,7 @@ export async function TransportTariffWorkbookSection({ filters }: TransportTarif
         items={[
           { id: 'rate-lines', label: 'Rate lines', value: String(workbookRows.length), helper: 'Workbook rows' },
           { id: 'suppliers', label: 'Suppliers', value: String(new Set(visibleRates.map(getSupplierLabel)).size), helper: 'In scope' },
-          { id: 'routes', label: 'Routes', value: String(new Set(visibleRates.map(getRouteLabel)).size), helper: 'Geographic routes' },
+          { id: 'routes', label: 'Transfer Routes', value: String(new Set(visibleRates.map(getRouteLabel)).size), helper: 'Geographic transfer routes' },
           { id: 'pricing-modes', label: 'Pricing modes', value: String(new Set(visibleRates.map(getPricingMode)).size), helper: 'Operational behavior' },
         ]}
       />

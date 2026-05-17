@@ -75,7 +75,7 @@ export default async function TouringRouteDetailPage({ params, searchParams }: T
               ariaLabel="Transport modules"
               activeId="touring-routes"
               items={[
-                { id: 'routes', label: 'Routes', href: '/transport?tab=routes', helper: 'Transfer library' },
+                { id: 'routes', label: 'Transfer Routes', href: '/transport?tab=routes', helper: 'Transfer route library' },
                 { id: 'touring-routes', label: 'Touring Routes', href: '/transport?tab=touring-routes', helper: 'Operational tours' },
                 { id: 'rates', label: 'Supplier Rate Cards', href: '/transport?tab=rates', helper: 'Supplier contracts' },
               ]}

@@ -880,7 +880,7 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?limit=200`, 'Quote detail routes', {
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`, 'Quote detail transfer routes', {
     cache: 'no-store',
   });
 }

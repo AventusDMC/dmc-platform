@@ -19,11 +19,26 @@ export class RoutesController {
   constructor(private readonly routesService: RoutesService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('type') type?: string, @Query('limit') limit?: string) {
+  findAll(
+    @Query('search') search?: string,
+    @Query('active') active?: string,
+    @Query('type') type?: string,
+    @Query('region') region?: string,
+    @Query('overnight') overnight?: string,
+    @Query('sicPossible') sicPossible?: string,
+    @Query('longDistance') longDistance?: string,
+    @Query('guideRecommended') guideRecommended?: string,
+    @Query('limit') limit?: string,
+  ) {
     return this.routesService.findAll({
       search,
       active: active === undefined ? undefined : active !== 'false',
       type,
+      region,
+      overnight: overnight === undefined ? undefined : overnight === 'true',
+      sicPossible: sicPossible === undefined ? undefined : sicPossible === 'true',
+      longDistance: longDistance === undefined ? undefined : longDistance === 'true',
+      guideRecommended: guideRecommended === undefined ? undefined : guideRecommended === 'true',
       limit: limit === undefined ? undefined : Number(limit),
     });
   }

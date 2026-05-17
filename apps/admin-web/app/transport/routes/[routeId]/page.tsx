@@ -37,7 +37,7 @@ function resolveActiveTab(tab?: string): RouteWorkspaceTab {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes`, 'Transport route workspace routes', {
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`, 'Transfer route workspace routes', {
     cache: 'no-store',
   });
 }
@@ -76,7 +76,7 @@ export default async function TransportRouteWorkspacePage({ params, searchParams
     <main className={`page ${activeTab === 'supplier-rate-cards' ? 'transport-contracts-page' : ''}`}>
       <section className="panel workspace-panel workspace-panel-wide">
         <WorkspaceShell
-          eyebrow="Transport Route"
+          eyebrow="Transfer Route"
           title={route.name || `${route.fromPlace.name} → ${route.toPlace.name}`}
           description={`${formatPlace(route, 'fromPlace')} | ${formatPlace(route, 'toPlace')}`}
           switcher={<AdminPageTabs ariaLabel="Transport route workspace sections" activeTab={activeTab} tabs={tabs} />}
@@ -85,7 +85,7 @@ export default async function TransportRouteWorkspacePage({ params, searchParams
               items={[
                 { id: 'from', label: 'From', value: route.fromPlace.name, helper: route.fromPlace.city || 'Origin' },
                 { id: 'to', label: 'To', value: route.toPlace.name, helper: route.toPlace.city || 'Destination' },
-                { id: 'type', label: 'Route type', value: route.routeType || '—', helper: route.isActive ? 'Active' : 'Inactive' },
+                { id: 'type', label: 'Transfer route type', value: route.routeType || '—', helper: route.isActive ? 'Active' : 'Inactive' },
                 { id: 'duration', label: 'Duration', value: formatDuration(route.durationMinutes), helper: formatDistance(route.distanceKm) },
               ]}
             />
@@ -97,17 +97,17 @@ export default async function TransportRouteWorkspacePage({ params, searchParams
                 <section className="detail-card">
                   <div className="workspace-section-head">
                     <div>
-                      <p className="eyebrow">Route details</p>
+                      <p className="eyebrow">Transfer route details</p>
                       <h2>
                         {route.name}
                         {suspiciousPricingRoute ? <span className="page-tab-badge page-tab-badge-warning">Pricing item?</span> : null}
                       </h2>
                       <p className="detail-copy">
-                        Routes define movement only. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards.
+                        Transfer Routes define movement only. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards.
                       </p>
                     </div>
                     <Link href="/transport?tab=routes" className="secondary-button">
-                      Back to routes
+                      Back to Transfer Routes
                     </Link>
                   </div>
 
@@ -121,7 +121,7 @@ export default async function TransportRouteWorkspacePage({ params, searchParams
                       <strong>{formatPlace(route, 'toPlace')}</strong>
                     </div>
                     <div>
-                      <span>Route type</span>
+                      <span>Transfer route type</span>
                       <strong>{route.routeType || '—'}</strong>
                     </div>
                     <div>

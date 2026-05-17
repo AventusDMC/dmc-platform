@@ -1,14 +1,19 @@
 import type { RouteOption } from './routes';
 
 export const MOVEMENT_ROUTE_TYPES = [
-  'Airport Transfer',
-  'Point-to-Point',
-  'City Transfer',
-  'Excursion',
-  'Intercity',
-  'Border Transfer',
-  'Other',
+  'TRANSFER_ROUTE',
+  'TOURING_ROUTE',
 ];
+
+export const MOVEMENT_ROUTE_TYPE_LABELS: Record<(typeof MOVEMENT_ROUTE_TYPES)[number], string> = {
+  TRANSFER_ROUTE: 'Transfer route',
+  TOURING_ROUTE: 'Touring route',
+};
+
+export function getMovementRouteTypeLabel(value?: string | null) {
+  const key = String(value || '').trim() as (typeof MOVEMENT_ROUTE_TYPES)[number];
+  return MOVEMENT_ROUTE_TYPE_LABELS[key] || value || '';
+}
 
 const PRICING_ROUTE_TERMS = [
   'extra km',

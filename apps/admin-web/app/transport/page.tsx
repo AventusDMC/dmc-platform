@@ -28,7 +28,7 @@ type TransportPageProps = {
 };
 
 const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
-  { id: 'routes', label: 'Routes' },
+  { id: 'routes', label: 'Transfer Routes' },
   { id: 'touring-routes', label: 'Touring Routes' },
   { id: 'vehicles', label: 'Vehicle Fleet' },
   { id: 'vehicle-types', label: 'Vehicle Types' },
@@ -43,7 +43,9 @@ async function getVehiclesCount() {
 }
 
 async function getRoutesCount() {
-  const routes = await adminPageFetchJson<Array<{ id: string; isActive?: boolean }>>(`${API_BASE_URL}/routes`, 'Transport routes', { cache: 'no-store' });
+  const routes = await adminPageFetchJson<Array<{ id: string; isActive?: boolean }>>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`, 'Transfer routes', {
+    cache: 'no-store',
+  });
   return {
     total: routes.length,
     active: routes.filter((route) => route.isActive !== false).length,
@@ -51,11 +53,12 @@ async function getRoutesCount() {
 }
 
 async function getTransportSummary() {
-  const [vehicles, routesResponse, serviceTypes, touringRoutes, pricingRules, vehicleRatesSummary] = await Promise.all([
+  const [vehicles, routesResponse, serviceTypes, touringRoutes, excursionTemplates, pricingRules, vehicleRatesSummary] = await Promise.all([
     getVehiclesCount(),
     getRoutesCount(),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-service-types`, 'Transport service types', { cache: 'no-store' }),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/touring-routes`, 'Touring routes', { cache: 'no-store' }),
+    adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/excursion-templates`, 'Excursion templates', { cache: 'no-store' }),
     adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/transport-pricing/rules`, 'Transport pricing rules', { cache: 'no-store' }),
     adminPageFetchJson<{ rateLines: number }>(`${API_BASE_URL}/vehicle-rates/summary`, 'Transport vehicle rates summary', { cache: 'no-store' }),
   ]);
@@ -65,6 +68,7 @@ async function getTransportSummary() {
     routes: routesResponse,
     serviceTypes: serviceTypes.length,
     touringRoutes: touringRoutes.length,
+    excursionTemplates: excursionTemplates.length,
     pricingRules: pricingRules.length,
     vehicleRates: vehicleRatesSummary.rateLines,
   };
@@ -90,6 +94,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
       pricingRules: 0,
       vehicleRates: 0,
       touringRoutes: 0,
+      excursionTemplates: 0,
     };
   });
 
@@ -104,33 +109,37 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             <ModuleSwitcher
               ariaLabel="Transport modules"
               activeId={activeTab}
-              items={TRANSPORT_TABS.map((tab) => ({
-                id: tab.id,
-                label: tab.label,
-                href: `/transport?tab=${tab.id}`,
-                helper:
-                  tab.id === 'routes'
-                      ? 'Transfer library'
+              items={[
+                ...TRANSPORT_TABS.map((tab) => ({
+                  id: tab.id,
+                  label: tab.label,
+                  href: `/transport?tab=${tab.id}`,
+                  helper:
+                    tab.id === 'routes'
+                      ? 'Transfer route library'
                       : tab.id === 'touring-routes'
-                        ? 'Operational tours'
+                        ? 'Touring route workspace'
                       : tab.id === 'vehicles'
                         ? 'Fleet'
                       : tab.id === 'vehicle-types'
                         ? 'Fleet taxonomy'
                       : tab.id === 'pricing-rules'
                         ? 'Commercial logic'
-                        : tab.id === 'rates'
-                          ? 'Supplier rate cards'
-                          : 'Bulk maintenance',
-              }))}
+                      : tab.id === 'rates'
+                        ? 'Supplier rate cards'
+                        : 'Bulk maintenance',
+                })),
+                { id: 'excursion-templates', label: 'Excursion Templates', href: '/excursion-templates', helper: 'Sellable products' },
+              ]}
             />
           }
           summary={
             <SummaryStrip
               items={[
                 { id: 'vehicles', label: 'Vehicles', value: String(summary.vehicles), helper: 'Fleet records' },
-                { id: 'routes', label: 'Routes', value: String(summary.routes.total), helper: `${summary.routes.active} active` },
-                { id: 'touring-routes', label: 'Touring routes', value: String(summary.touringRoutes), helper: 'Touring inventory' },
+                { id: 'routes', label: 'Transfer Routes', value: String(summary.routes.total), helper: `${summary.routes.active} active` },
+                { id: 'touring-routes', label: 'Touring Routes', value: String(summary.touringRoutes), helper: 'Touring route inventory' },
+                { id: 'excursion-templates', label: 'Excursion Templates', value: String(summary.excursionTemplates), helper: 'Sellable products' },
                 { id: 'service-types', label: 'Service types', value: String(summary.serviceTypes), helper: 'Reusable labels' },
                 { id: 'pricing-rules', label: 'Pricing rules', value: String(summary.pricingRules), helper: `${summary.vehicleRates} rate lines` },
               ]}

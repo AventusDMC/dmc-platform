@@ -9,7 +9,12 @@ import { RouteOption } from '../../lib/routes';
 import { formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
 import { formatSupplierName } from '../../lib/transport-formatters';
 import { normalizeTransportRouteText, transportRoutePairsMatch } from '../../lib/transport-routes';
-import { normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../../lib/vehicle-types';
+import {
+  getJordanVehicleCapacityRange,
+  normalizeVehicleTypeLabel,
+  readStoredVehicleTypeOptions,
+  type VehicleTypeOption,
+} from '../../lib/vehicle-types';
 import { MANUAL_SUPPLIER_RATE_CARDS_CHANGED_EVENT, readManualSupplierRateCards } from '../../lib/manual-supplier-rate-cards';
 import { resolveSupplierNameById, SUPPLIER_STANDARDIZATION_HELPER_TEXT } from '../../lib/transport-suppliers';
 import {
@@ -109,6 +114,8 @@ type RankedVehicle = {
   group: VehicleRecommendationGroup;
   isRecommended: boolean;
   isTooSmall: boolean;
+  capacityRangeLabel: string | null;
+  standardCapacityMatch: boolean;
 };
 
 type QuoteTransportPickerProps = {
@@ -689,7 +696,9 @@ function isActiveVehicle(vehicle: Vehicle) {
 }
 
 export function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[]) {
-  return `${formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)}${entry.isTooSmall ? ' — Too small' : ''}`;
+  const capacityGuidance = entry.capacityRangeLabel ? ` | ${entry.capacityRangeLabel}` : '';
+  const recommendation = entry.isRecommended ? ' — Suggested' : entry.isTooSmall ? ' — Manual override' : '';
+  return `${formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)}${capacityGuidance}${recommendation}`;
 }
 
 function formatSupplierRateOptionLabel(
@@ -713,7 +722,7 @@ function formatSupplierRateOptionLabel(
   return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getQuoteTransportPersistedCostPreview(rate, pax, billableDays), rate.currency)}`;
 }
 
-function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
+export function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
   const requestedPax = Math.max(1, Math.floor(pax || 1));
   const fittingVehicles = vehicles.filter((vehicle) => vehicle.maxPax >= requestedPax);
   const recommendedCapacity = fittingVehicles.reduce<number | null>(
@@ -723,13 +732,17 @@ function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[] {
 
   return vehicles
     .map((vehicle) => {
+      const capacityRange = getJordanVehicleCapacityRange(`${vehicle.vehicleType || ''} ${vehicle.name || ''}`, vehicle.maxPax);
       const isTooSmall = vehicle.maxPax < requestedPax;
-      const isRecommended = recommendedCapacity !== null && vehicle.maxPax === recommendedCapacity;
+      const standardCapacityMatch = Boolean(capacityRange && requestedPax >= capacityRange.minPax && requestedPax <= capacityRange.maxPax);
+      const isRecommended = standardCapacityMatch || (recommendedCapacity !== null && vehicle.maxPax === recommendedCapacity);
       return {
         vehicle,
-        group: isTooSmall ? 'Too small' : isRecommended ? 'Recommended' : 'Available',
+        group: isRecommended ? 'Recommended' : isTooSmall ? 'Too small' : 'Available',
         isRecommended,
         isTooSmall,
+        capacityRangeLabel: capacityRange ? `${capacityRange.label} ${capacityRange.minPax}-${capacityRange.maxPax} pax` : null,
+        standardCapacityMatch,
       } satisfies RankedVehicle;
     })
     .sort((left, right) => {
@@ -900,7 +913,7 @@ export function QuoteTransportPicker({
 
     const selectedRankedVehicle = rankedVehicles.find((entry) => entry.vehicle.id === selectedVehicleId);
 
-    if (selectedVehicleId && (!selectedRankedVehicle || selectedRankedVehicle.isTooSmall)) {
+    if (selectedVehicleId && !selectedRankedVehicle) {
       setSelectedVehicleId('');
     }
   }, [rankedVehicles, selectedRoute, selectedVehicleId]);
@@ -1000,8 +1013,7 @@ export function QuoteTransportPicker({
   const routeListIsConfirmedEmpty = !routesLoadFailed && routes.length === 0;
   const vehicleListIsConfirmedEmpty = !vehiclesLoadFailed && allVehicles.length === 0;
   const supplierRateListIsConfirmedEmpty = !supplierRatesLoadFailed && loadedSupplierRates.length === 0;
-  const availableVehicleOptions = rankedVehicles.filter((entry) => !entry.isTooSmall);
-  const vehicleListForRouteIsEmpty = Boolean(selectedRoute && !vehiclesLoadFailed && availableVehicleOptions.length === 0);
+  const vehicleListForRouteIsEmpty = Boolean(selectedRoute && !vehiclesLoadFailed && rankedVehicles.length === 0);
   const pricingModesForVehicle = useMemo(() => {
     if (!selectedRoute || !selectedVehicle || !selectedVehicleTypeForMatch) {
       return [] as PricingMode[];
@@ -1241,7 +1253,7 @@ export function QuoteTransportPicker({
                   <div>
                     <p className="eyebrow">Vehicle Type</p>
                     <h3>Match capacity and type</h3>
-                    <p className="detail-copy">Pax ranks vehicles by closest fitting capacity. Larger vehicles remain available for manual override.</p>
+                    <p className="detail-copy">Pax highlights matching Jordan capacity bands. Operators can still override when operations require it.</p>
                   </div>
                 </div>
               {vehiclesLoadFailed ? (
@@ -1269,7 +1281,7 @@ export function QuoteTransportPicker({
                     <select value={selectedVehicleId} onChange={(event) => handleVehicleChange(event.target.value)} disabled={!selectedRoute || vehicleListForRouteIsEmpty}>
                       <option value="">Select vehicle / capacity</option>
                       {rankedVehicles.map((entry) => (
-                        <option key={entry.vehicle.id} value={entry.vehicle.id} disabled={entry.isTooSmall}>
+                        <option key={entry.vehicle.id} value={entry.vehicle.id}>
                           {formatVehicleOptionLabel(entry, vehicleTypes)}
                         </option>
                       ))}

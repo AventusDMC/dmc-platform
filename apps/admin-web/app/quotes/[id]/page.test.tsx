@@ -971,16 +971,17 @@ describe('quote detail page regression', () => {
       'function getRankedVehicles(vehicles: Vehicle[], pax: number): RankedVehicle[]',
       'const fittingVehicles = vehicles.filter((vehicle) => vehicle.maxPax >= requestedPax);',
       'const recommendedCapacity = fittingVehicles.reduce<number | null>',
-      "group: isTooSmall ? 'Too small' : isRecommended ? 'Recommended' : 'Available'",
+      "group: isRecommended ? 'Recommended' : isTooSmall ? 'Too small' : 'Available'",
       'const selectedVehicle = allVehicles.find((vehicle) => vehicle.id === selectedVehicleId) || null;',
       'const [paxInput, setPaxInput] = useState',
       'export function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: VehicleTypeOption[])',
+      'getJordanVehicleCapacityRange',
+      'standardCapacityMatch',
       'formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)',
       'Pax',
       'Select vehicle / capacity',
       '{formatVehicleOptionLabel(entry, vehicleTypes)}',
-      'disabled={entry.isTooSmall}',
-      'Too small',
+      'Manual override',
     ]);
   });
 
@@ -1015,6 +1016,7 @@ describe('quote detail page regression', () => {
   });
 
   it('separates route transfers from program disposal service areas in QuoteTransportPicker', () => {
+    expectSourceContains(pageSource, ["`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`", 'Quote detail transfer routes']);
     expectSourceContains(quoteTransportPickerSource, [
       'function formatRouteSelectionLabel(route: RouteOption)',
       'function isProgramOrDisposalRouteOption(route: RouteOption)',

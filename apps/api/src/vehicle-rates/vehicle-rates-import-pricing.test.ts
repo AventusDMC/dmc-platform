@@ -490,6 +490,25 @@ test('transfer service labels derive point-to-point pricing mode for import and 
   assert.equal(priced.price, 520);
 });
 
+test('transport contract import creates transfer routes with canonical route type', async () => {
+  const { prisma, stores } = createPrismaMock();
+  const importService = new VehicleRatesService(prisma as any);
+  const transferRow = {
+    ...activeImportRow,
+    serviceName: 'Private Transfer',
+    pricingMode: '',
+    routeName: 'Amman -> Petra',
+    origin: 'Amman',
+    destination: 'Petra',
+  };
+
+  const resolved = await (importService as any).findOrCreateTransportImportRoute(transferRow);
+
+  assert.equal(resolved.created, true);
+  assert.equal(resolved.route.routeType, 'TRANSFER_ROUTE');
+  assert.equal(stores.routes[0].routeType, 'TRANSFER_ROUTE');
+});
+
 test('transport contract import matches equivalent normalized route labels without duplicating routes', async () => {
   const { prisma, stores } = createPrismaMock();
   const importService = new VehicleRatesService(prisma as any);

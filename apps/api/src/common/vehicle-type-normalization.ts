@@ -1,4 +1,18 @@
 export const DEFAULT_VEHICLE_TYPE_LABELS = ['Sedan', 'SUV', 'Mini Van', 'Van', 'Mini Bus', 'Coach', 'Luxury'] as const;
+export const JORDAN_VEHICLE_CAPACITY_RANGES = [
+  { label: 'Sedan', minPax: 1, maxPax: 2, aliases: ['sedan', 'saloon', 'car', 'camry'] },
+  { label: 'Mini Van', minPax: 3, maxPax: 6, aliases: ['mini van', 'minivan', 'h1', 'staria'] },
+  { label: 'Van', minPax: 6, maxPax: 9, aliases: ['van', 'sprinter', 'v class', 'h350'] },
+  { label: 'Mini Bus / Toyota Coaster', minPax: 9, maxPax: 17, aliases: ['mini bus', 'minibus', 'mini coach', 'toyota coaster', 'coaster', 'small 17'] },
+  { label: 'Medium Bus', minPax: 14, maxPax: 29, aliases: ['medium bus', 'medium coach', 'medium 29', 'medium 30', 'large vip 29', 'large vvip 29'] },
+  { label: 'Large Bus', minPax: 30, maxPax: 48, aliases: ['large bus', 'large coach', 'coach', 'bus', 'large 48', 'large 49'] },
+  { label: 'Large Bus X', minPax: 30, maxPax: 51, aliases: ['large bus x', 'large 51', 'bus x', 'coach x'] },
+] as const;
+
+export function getJordanVehicleCapacityMatches(pax: number) {
+  const requestedPax = Math.max(1, Math.floor(Number(pax) || 1));
+  return JORDAN_VEHICLE_CAPACITY_RANGES.filter((range) => requestedPax >= range.minPax && requestedPax <= range.maxPax);
+}
 
 const VEHICLE_TYPE_ALIASES: Record<string, string> = {
   minivan5: 'Mini Van',

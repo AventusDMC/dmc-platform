@@ -31,11 +31,8 @@ export const contactTypes: ReferenceOption[] = [
 ];
 
 export const routeTypes: ReferenceOption[] = [
-  { value: 'Airport Transfer', label: 'Airport Transfer' },
-  { value: 'City Transfer', label: 'City Transfer' },
-  { value: 'Intercity Transfer', label: 'Intercity Transfer' },
-  { value: 'Sightseeing Route', label: 'Sightseeing Route' },
-  { value: OTHER_REFERENCE_VALUE, label: 'Other' },
+  { value: 'TRANSFER_ROUTE', label: 'Transfer route' },
+  { value: 'TOURING_ROUTE', label: 'Touring route' },
 ];
 
 export const countries = [

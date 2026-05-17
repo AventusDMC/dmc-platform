@@ -1246,7 +1246,7 @@ export class VehicleRatesService {
     const [suppliers, vehicles, routes] = await Promise.all([
       this.prisma.supplier.findMany({ where: { type: { equals: 'transport', mode: 'insensitive' } }, orderBy: { name: 'asc' } }),
       this.prisma.vehicle.findMany({ orderBy: { name: 'asc' } }),
-      this.prisma.route.findMany({ where: { routeType: 'transfer' }, orderBy: { name: 'asc' } }),
+      this.prisma.route.findMany({ where: { routeType: 'TRANSFER_ROUTE' }, orderBy: { name: 'asc' } }),
     ]);
     const vehicleTypeLabels = getVehicleTypeCatalogLabels(vehicles.map((vehicle) => (vehicle as any).vehicleType));
     const alphaSupplierName = suppliers.find((supplier) => normalizeSupplierName(supplier.name).includes('alpha'))?.name || 'Alpha Bus and Limo Co';
@@ -2343,7 +2343,7 @@ export class VehicleRatesService {
         toPlaceId: toPlace.id,
         name: formatRouteName(fromPlace.name, toPlace.name),
         normalizedKey: buildRouteNormalizedKey(`${row.country} ${row.origin}`, `${row.country} ${row.destination}`),
-        routeType: 'transfer',
+        routeType: 'TRANSFER_ROUTE',
         notes: row.notes || null,
         isActive: true,
       },

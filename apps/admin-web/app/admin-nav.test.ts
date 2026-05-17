@@ -83,7 +83,7 @@ test('product catalog navigation uses canonical catalog destinations', () => {
       ['Transport', '/transport'],
       ['Guides', '/guides'],
       ['Restaurants', '/restaurants'],
-      ['Routes', '/routes'],
+      ['Transfer Routes', '/routes'],
       ['Services', '/catalog?tab=services'],
       ['Suppliers', '/suppliers'],
       ['Transport Pricing', '/transport?tab=pricing-rules'],

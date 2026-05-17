@@ -7,7 +7,13 @@ import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
 import { fetchPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
-import { buildMovementRouteName, containsPricingRouteTerm, isFixedMovementRouteType, MOVEMENT_ROUTE_TYPES } from '../lib/transport-routes';
+import {
+  buildMovementRouteName,
+  containsPricingRouteTerm,
+  getMovementRouteTypeLabel,
+  isFixedMovementRouteType,
+  MOVEMENT_ROUTE_TYPES,
+} from '../lib/transport-routes';
 
 type RoutesFormProps = {
   apiBaseUrl: string;
@@ -35,8 +41,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
   const [name, setName] = useState(initialValues?.name || '');
   const initialRouteType = initialValues?.routeType || '';
-  const [routeType, setRouteType] = useState(initialRouteType && !isFixedMovementRouteType(initialRouteType) ? 'Other' : initialRouteType);
-  const [otherRouteType, setOtherRouteType] = useState(initialRouteType && !isFixedMovementRouteType(initialRouteType) ? initialRouteType : '');
+  const [routeType, setRouteType] = useState(initialRouteType && isFixedMovementRouteType(initialRouteType) ? initialRouteType : '');
   const [durationMinutes, setDurationMinutes] = useState(initialValues?.durationMinutes || '');
   const [distanceKm, setDistanceKm] = useState(initialValues?.distanceKm || '');
   const [notes, setNotes] = useState(initialValues?.notes || '');
@@ -44,7 +49,8 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(routeId);
-  const hasPricingConcept = containsPricingRouteTerm([name, routeType, otherRouteType, notes].join(' '));
+  const hasPricingConcept = containsPricingRouteTerm([name, routeType, notes].join(' '));
+  const legacyRouteTypeNeedsReview = Boolean(initialRouteType && !isFixedMovementRouteType(initialRouteType));
 
   useEffect(() => {
     setAvailablePlaces(places);
@@ -117,7 +123,6 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
         setToPlaceId('');
         setName('');
         setRouteType('');
-        setOtherRouteType('');
         setDurationMinutes('');
         setDistanceKm('');
         setNotes('');
@@ -135,7 +140,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
       <p className="form-helper">
-        Routes define movement only. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards.
+        Transfer Routes define movement only. Touring Routes belong in the touring route workspace. Excursion Templates are sellable products.
       </p>
       {hasPricingConcept ? (
         <p className="form-helper">
@@ -176,7 +181,8 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
 
       <section className="app-form-section">
         <div className="app-form-section-head">
-          <h3>Route Details</h3>
+          <h3>Transfer Route Details</h3>
+          {legacyRouteTypeNeedsReview ? <p>Legacy route type "{initialRouteType}" needs taxonomy review before it can be saved.</p> : null}
         </div>
         <label>
           Route Name
@@ -190,15 +196,12 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
               value={routeType}
               onChange={(event) => {
                 setRouteType(event.target.value);
-                if (event.target.value !== 'Other') {
-                  setOtherRouteType('');
-                }
               }}
             >
               <option value="">Select route type</option>
               {MOVEMENT_ROUTE_TYPES.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {getMovementRouteTypeLabel(option)}
                 </option>
               ))}
             </select>
@@ -214,13 +217,6 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
             <input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} type="number" min="0" step="0.1" />
           </label>
         </div>
-
-        {routeType === 'Other' ? (
-          <label>
-            Other route type
-            <input value={otherRouteType} onChange={(event) => setOtherRouteType(event.target.value)} placeholder="Internal note only" />
-          </label>
-        ) : null}
 
         <label className="checkbox-field">
           <input checked={isActive} onChange={(event) => setIsActive(event.target.checked)} type="checkbox" />
@@ -239,7 +235,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
       </section>
 
       <button type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save route' : 'Add route')}
+        {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save transfer route' : 'Add transfer route')}
       </button>
 
       {error ? <p className="form-error">{error}</p> : null}
