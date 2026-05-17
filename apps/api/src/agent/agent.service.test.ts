@@ -253,9 +253,9 @@ nodeTestAgent.test('agent portal phase one isolates visibility and exposes finan
   const booking = await service.getBooking('booking-1', actor as any);
   const departures = await service.getDepartures(actor as any);
 
-  agentAssert.equal(seenBookingWhere[0].quote.agentId, 'agent-1');
+  agentAssert.deepEqual(seenBookingWhere[0].quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
   agentAssert.equal(seenBookingWhere[0].quote.clientCompanyId, 'company-1');
-  agentAssert.equal(seenDepartureWhere[0].booking.quote.agentId, 'agent-1');
+  agentAssert.deepEqual(seenDepartureWhere[0].booking.quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
   agentAssert.equal(booking.finance.remainingBalance, 1800);
   agentAssert.equal(booking.passengers[0].passportStatus, 'on_file');
   agentAssert.equal('passportNumber' in booking.passengers[0], false);
@@ -271,13 +271,13 @@ nodeTestAgent.test('agent document access validates assigned invoice and booking
     prisma: {
       invoice: {
         findFirst: async ({ where }: any) => {
-          agentAssert.equal(where.quote.agentId, 'agent-1');
+          agentAssert.deepEqual(where.quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
           return { id: where.id };
         },
       },
       booking: {
         findFirst: async ({ where }: any) => {
-          agentAssert.equal(where.quote.agentId, 'agent-1');
+          agentAssert.deepEqual(where.quote.OR, [{ agentId: 'agent-1' }, { agentId: null }]);
           return { id: where.id, bookingRef: 'BK-1' };
         },
       },
@@ -310,4 +310,63 @@ nodeTestAgent.test('agent document access validates assigned invoice and booking
   await service.getBookingVoucherPdf('booking-1', actor as any);
 
   agentAssert.deepEqual(calls, ['invoice', 'voucher']);
+});
+
+nodeTestAgent.test('agent portal includes unassigned company records as admin demo fallback but excludes other assigned agents', async () => {
+  const seenQuoteWhere: any[] = [];
+  const service = createAgentService({
+    prisma: {
+      quote: {
+        findMany: async ({ where }: any) => {
+          seenQuoteWhere.push(where);
+          return [
+            {
+              id: 'quote-unassigned',
+              title: 'Unassigned company quote',
+              status: 'SENT',
+              clientCompanyId: 'company-1',
+              agentId: null,
+              clientCompany: { id: 'company-1', name: 'Agency Co' },
+              contact: null,
+            },
+          ];
+        },
+      },
+    },
+    quotesService: {
+      findOne: async (_id: string) => ({
+        id: 'quote-unassigned',
+        title: 'Unassigned company quote',
+        status: 'SENT',
+        clientCompanyId: 'company-1',
+        agentId: null,
+        clientCompany: { id: 'company-1', name: 'Agency Co' },
+        contact: null,
+        itineraries: [],
+        quoteItems: [],
+      }),
+    },
+  });
+  const actor = {
+    id: 'agent-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  };
+
+  const quotes = await service.getQuotes(actor as any);
+  const quote = await service.getQuote('quote-unassigned', actor as any);
+  const otherAgentQuote = await (service as any).canActorViewQuote({ clientCompanyId: 'company-1', agentId: 'agent-2' }, actor);
+
+  agentAssert.deepEqual(seenQuoteWhere[0], {
+    clientCompanyId: 'company-1',
+    OR: [{ agentId: 'agent-1' }, { agentId: null }],
+  });
+  agentAssert.equal(quotes.length, 1);
+  agentAssert.ok(quote);
+  agentAssert.equal(otherAgentQuote, false);
 });

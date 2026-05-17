@@ -448,6 +448,16 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('exposes agent portal ownership linkage on booking documents', () => {
+    expectSourceContains(pageSource, [
+      'Agent Portal Ownership',
+      'booking.quote.agent?.email',
+      'Fallback company visibility applies until an agent is assigned.',
+      'Assign quote agent/company',
+      'href={`/quotes/${booking.quote.id}`}',
+    ]);
+  });
+
   it('uses booking UUID rather than booking display code for financial document PDF downloads', () => {
     expectSourceContains(pageSource, [
       '<BookingFinancialsTab',

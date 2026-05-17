@@ -374,6 +374,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           clientCompany: true,
           brandCompany: true,
           contact: true,
+          agent: true,
         },
       }), null),
       safeLoad('acceptedVersion', () => (this.prisma.quoteVersion as any).findUnique({

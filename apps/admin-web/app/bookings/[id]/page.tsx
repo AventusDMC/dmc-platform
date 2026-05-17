@@ -578,6 +578,13 @@ type Booking = {
     status: string;
     company: Company;
     contact: Contact;
+    agent?: {
+      id: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      name?: string | null;
+    } | null;
   };
   acceptedVersion: {
     id: string;
@@ -1736,6 +1743,21 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                         <p className="eyebrow">Portal</p>
                         <p className="detail-copy">{portalUrl}</p>
                         <BookingPortalLinkActions apiBaseUrl={ACTION_API_BASE_URL} bookingId={booking.id} portalUrl={portalUrl} />
+                      </article>
+                      <article className="detail-card">
+                        <p className="eyebrow">Agent Portal Ownership</p>
+                        <h3>{booking.quote.agent?.name || [booking.quote.agent?.firstName, booking.quote.agent?.lastName].filter(Boolean).join(' ') || 'Unassigned agent'}</h3>
+                        <p className="detail-copy">
+                          Company: <strong>{booking.quote.company?.name || 'Company unavailable'}</strong>
+                        </p>
+                        <p className="detail-copy">
+                          Agent: <strong>{booking.quote.agent?.email || 'Fallback company visibility applies until an agent is assigned.'}</strong>
+                        </p>
+                        <div className="workspace-document-actions">
+                          <Link href={`/quotes/${booking.quote.id}`} className="secondary-button">
+                            Assign quote agent/company
+                          </Link>
+                        </div>
                       </article>
                       <article className="detail-card">
                         <p className="eyebrow">Voucher</p>

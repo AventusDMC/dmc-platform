@@ -56,7 +56,7 @@ export class AgentService {
   async getQuote(id: string, actor: AuthenticatedActor) {
     const quote = await this.quotesService.findOne(id, actor);
 
-    if (!quote || (quote as any).agentId !== actor.id) {
+    if (!quote || !this.canActorViewQuote(quote as any, actor)) {
       return null;
     }
 
@@ -131,12 +131,14 @@ export class AgentService {
         quote: {
           include: {
             clientCompany: true,
-            booking: {
+            bookings: {
               include: {
                 payments: {
                   orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
                 },
               },
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
             },
           },
         },
@@ -415,7 +417,8 @@ export class AgentService {
   }
 
   private mapAgentInvoiceSummary(invoice: any) {
-    const payments = invoice.quote?.booking?.payments || [];
+    const booking = this.getInvoiceBooking(invoice);
+    const payments = booking?.payments || [];
     const paidAmount = payments
       .filter((payment: any) => payment.type === 'CLIENT' && payment.status === 'PAID')
       .reduce((total: number, payment: any) => total + Number(payment.amount || 0), 0);
@@ -423,7 +426,7 @@ export class AgentService {
     const balanceDue = Math.max(totalAmount - paidAmount, 0);
     return {
       id: invoice.id,
-      invoiceNumber: `INV-${invoice.quote?.booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id}`,
+      invoiceNumber: `INV-${booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id}`,
       totalAmount,
       depositsReceived: paidAmount,
       balanceDue,
@@ -450,10 +453,10 @@ export class AgentService {
         clientCompany: {
           name: invoice.quote?.clientCompany?.name || 'Client',
         },
-        booking: invoice.quote?.booking
+        booking: booking
           ? {
-              id: invoice.quote.booking.id,
-              status: invoice.quote.booking.status,
+              id: booking.id,
+              status: booking.status,
             }
           : null,
       },
@@ -484,11 +487,33 @@ export class AgentService {
     };
   }
 
+  private canActorViewQuote(quote: any, actor: AuthenticatedActor) {
+    const quoteCompanyId = quote.clientCompanyId || quote.company?.id || quote.clientCompany?.id || null;
+    if (actor.companyId && quoteCompanyId !== actor.companyId) {
+      return false;
+    }
+
+    return !quote.agentId || quote.agentId === actor.id;
+  }
+
   private buildAssignedQuoteWhere(actor: AuthenticatedActor) {
+    if (!actor.companyId) {
+      return {
+        agentId: actor.id,
+      };
+    }
+
     return {
-      clientCompanyId: actor.companyId ?? undefined,
-      agentId: actor.id,
+      clientCompanyId: actor.companyId,
+      OR: [
+        { agentId: actor.id },
+        { agentId: null },
+      ],
     };
+  }
+
+  private getInvoiceBooking(invoice: any) {
+    return invoice.quote?.booking || invoice.quote?.bookings?.[0] || null;
   }
 
   private async getBookingRaw(id: string, actor: AuthenticatedActor) {
