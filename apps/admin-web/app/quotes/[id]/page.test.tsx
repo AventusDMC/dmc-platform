@@ -1070,10 +1070,15 @@ describe('quote detail page regression', () => {
   });
 
 
-  it('shows visible transport pricing diagnostics when pricing modes are empty', () => {
+  it('keeps transport pricing mode select interactive and diagnostics collapsed', () => {
     expectSourceContains(quoteTransportPickerSource, [
-      'aria-label="Transport pricing diagnostics"',
-      '<strong>Transport pricing diagnostics</strong>',
+      'aria-label="Select pricing mode"',
+      'className="quote-transport-pricing-mode-select"',
+      'disabled={!selectedRoute || !selectedVehicle}',
+      "pricingModesForVehicleIsEmpty ? 'No pricing modes available' : 'Select pricing mode'",
+      "className=\"quote-transport-diagnostics\" aria-label=\"Transport pricing diagnostics\"",
+      '<summary>Transport pricing diagnostics</summary>',
+      "const SHOW_TRANSPORT_PRICING_DIAGNOSTICS = process.env.NODE_ENV !== 'production';",
       'Vehicle rates loaded: {noPricingModesDiagnostics.vehicleRatesLoaded}',
       'Rows for this route: {noPricingModesDiagnostics.routeMatchingRowsCount}',
       'Legacy labels for route:',
@@ -1085,6 +1090,7 @@ describe('quote detail page regression', () => {
       '`Full Day ${reason}`',
       "reject('missing pricingMode')",
     ]);
+    assert.equal(quoteTransportPickerSource.includes('disabled={!selectedRoute || !selectedVehicle || pricingModesForVehicleIsEmpty}'), false);
   });
 
   it('saves and displays transport items with pricing-mode specific supplier service labels', () => {

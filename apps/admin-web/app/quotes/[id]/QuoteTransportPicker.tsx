@@ -24,6 +24,8 @@ import {
   type TransportPricingMode as PricingMode,
 } from '../../lib/transport-pricing-modes';
 
+const SHOW_TRANSPORT_PRICING_DIAGNOSTICS = process.env.NODE_ENV !== 'production';
+
 type Vehicle = {
   id: string;
   supplierId?: string | null;
@@ -1206,14 +1208,21 @@ export function QuoteTransportPicker({
           {transportDataLoadFailed ? (
             <p className="form-error">Transport setup data could not load after retry. Refresh the quote to retry.</p>
           ) : null}
-          <p className="form-helper">
-            Debug: {routes.length} routes, {allVehicles.length} vehicles, {loadedSupplierRates.length} supplier rates loaded
-          </p>
-          <p className="form-helper">
-            Selected vehicle type: {selectedVehicleTypeForMatch || '—'} | Normalized: {debugSelectedTypeNormalized || '—'}<br />
-            Rate vehicle type: {debugRateVehicleType || '—'} | Normalized: {debugRateTypeNormalized || '—'}<br />
-            Match: {debugTypeMatches ? 'YES' : 'NO'}
-          </p>
+          {SHOW_TRANSPORT_PRICING_DIAGNOSTICS ? (
+            <details className="quote-transport-diagnostics" aria-label="Transport picker diagnostics">
+              <summary>Transport diagnostics</summary>
+              <div className="section-stack">
+                <p className="form-helper">
+                  Debug: {routes.length} routes, {allVehicles.length} vehicles, {loadedSupplierRates.length} supplier rates loaded
+                </p>
+                <p className="form-helper">
+                  Selected vehicle type: {selectedVehicleTypeForMatch || '—'} | Normalized: {debugSelectedTypeNormalized || '—'}<br />
+                  Rate vehicle type: {debugRateVehicleType || '—'} | Normalized: {debugRateTypeNormalized || '—'}<br />
+                  Match: {debugTypeMatches ? 'YES' : 'NO'}
+                </p>
+              </div>
+            </details>
+          ) : null}
 
           <section className="quote-drawer-section quote-drawer-section-pricing">
             <header className="quote-drawer-section-head">
@@ -1383,11 +1392,13 @@ export function QuoteTransportPicker({
                   </div>
                 </div>
                 <select
+                  aria-label="Select pricing mode"
+                  className="quote-transport-pricing-mode-select"
                   value={selectedPricingMode}
                   onChange={(event) => handlePricingModeChange(event.target.value as PricingMode)}
-                  disabled={!selectedRoute || !selectedVehicle || pricingModesForVehicleIsEmpty}
+                  disabled={!selectedRoute || !selectedVehicle}
                 >
-                  <option value="">Select pricing mode</option>
+                  <option value="">{pricingModesForVehicleIsEmpty ? 'No pricing modes available' : 'Select pricing mode'}</option>
                   {pricingModesForVehicle.map((mode) => (
                     <option key={mode} value={mode}>
                       {getTransportPricingModeOptionLabel({
@@ -1402,13 +1413,12 @@ export function QuoteTransportPicker({
                   ))}
                 </select>
                 {pricingModesForVehicleIsEmpty ? (
-                  <div className="empty-state" aria-label="Transport pricing diagnostics">
-                    <p>
-                      <strong>Transport pricing diagnostics</strong>
-                    </p>
+                  <div className="empty-state">
                     <p>No pricing modes for vehicle.</p>
-                    {noPricingModesDiagnostics ? (
-                      <div className="section-stack">
+                    {SHOW_TRANSPORT_PRICING_DIAGNOSTICS && noPricingModesDiagnostics ? (
+                      <details className="quote-transport-diagnostics" aria-label="Transport pricing diagnostics">
+                        <summary>Transport pricing diagnostics</summary>
+                        <div className="section-stack">
                         <p>
                           Route: {noPricingModesDiagnostics.selectedRouteName} / routeId: {noPricingModesDiagnostics.selectedRouteId}
                           <br />
@@ -1477,7 +1487,8 @@ export function QuoteTransportPicker({
                             <p>No rejected rows. Matching rows have no usable pricing mode.</p>
                           )}
                         </div>
-                      </div>
+                        </div>
+                      </details>
                     ) : null}
                   </div>
                 ) : null}

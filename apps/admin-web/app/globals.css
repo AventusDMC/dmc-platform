@@ -3266,6 +3266,33 @@ select option:checked {
   overflow-x: hidden;
 }
 
+.quote-transport-diagnostics {
+  position: static;
+  z-index: 0;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 8px;
+  background: #F8FAFC;
+}
+
+.quote-transport-diagnostics summary {
+  cursor: pointer;
+  color: rgba(30, 27, 24, 0.72);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.quote-transport-diagnostics[open] {
+  margin-block: 0.25rem;
+}
+
+.quote-transport-pricing-mode-select {
+  position: relative;
+  z-index: 1;
+}
+
 .quote-transport-editor-panel .quote-drawer-section,
 .quote-transport-editor-panel .quote-hotel-step-panel,
 .quote-transport-editor-panel select,
