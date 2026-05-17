@@ -7,6 +7,7 @@ const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', i
 const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
 const bookingServicesListSource = readFileSync(new URL('./BookingServicesList.tsx', import.meta.url), 'utf8');
 const bookingServiceTimelineSource = readFileSync(new URL('./BookingServiceTimeline.tsx', import.meta.url), 'utf8');
+const bookingPaymentsSectionSource = readFileSync(new URL('./BookingPaymentsSection.tsx', import.meta.url), 'utf8');
 const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
@@ -406,6 +407,24 @@ describe('booking detail page regression', () => {
     expectSourceContains(cssSource, [
       '.booking-payment-proof-card-grid',
       'grid-template-columns: repeat(2, minmax(0, 1fr));',
+    ]);
+  });
+
+  it('supports finance reconciliation phase one payment methods and statuses', () => {
+    expectSourceContains(bookingPaymentsSectionSource, [
+      'bank_transfer',
+      'CliQ',
+      'mb_way',
+      'MB WAY',
+      'credit_card',
+      'custom_manual',
+      'Custom/manual',
+    ]);
+    expectSourceContains(pageSource, [
+      'depositsReceived?: number;',
+      'remainingBalance?: number;',
+      "clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid';",
+      "supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid';",
     ]);
   });
 

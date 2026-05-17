@@ -100,7 +100,7 @@ type ClientInvoiceStatusValue = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatusValue = 'unpaid' | 'scheduled' | 'paid';
 type PaymentTypeValue = 'CLIENT' | 'SUPPLIER';
 type PaymentStatusValue = 'PENDING' | 'PAID';
-type PaymentMethodValue = 'bank' | 'cash' | 'card';
+type PaymentMethodValue = 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual';
 type BookingRoomOccupancyInput =
   | BookingRoomOccupancy
   | 'single'
@@ -151,7 +151,7 @@ const CLIENT_INVOICE_STATUSES = ['unbilled', 'invoiced', 'paid'] as const;
 const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
 const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
-const PAYMENT_METHODS = ['bank', 'cash', 'card'] as const;
+const PAYMENT_METHODS = ['bank', 'cash', 'card', 'bank_transfer', 'cliq', 'mb_way', 'credit_card', 'custom_manual'] as const;
 const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'DINING', 'SERVICE', 'EXTERNAL_PACKAGE'] as const;
 type BookingOperationalServiceType = (typeof BOOKING_OPERATION_SERVICE_TYPES)[number];
 const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
@@ -1729,6 +1729,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           overdueClientAmount: number;
           overdueSupplierCount: number;
           overdueSupplierAmount: number;
+          partiallyPaidBookings: number;
+          unpaidSuppliers: number;
           currentPeriod: {
             revenue: number;
             collected: number;
@@ -1806,6 +1808,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         summary.overdueClientAmount += metrics.overdueClientAmount;
         summary.overdueSupplierCount += metrics.overdueSupplierPayments.length;
         summary.overdueSupplierAmount += metrics.overdueSupplierAmount;
+        if (metrics.clientPaymentStatus === 'partially_paid' || metrics.clientPaymentStatus === 'deposit_paid') {
+          summary.partiallyPaidBookings += 1;
+        }
+        if (metrics.hasUnpaidSupplierObligation) {
+          summary.unpaidSuppliers += 1;
+        }
 
         if (this.isDateInRange(booking.createdAt, period.currentStart, period.currentEnd)) {
           summary.currentPeriod.revenue += metrics.effectiveTotalSell;
@@ -1891,6 +1899,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         overdueClientAmount: 0,
         overdueSupplierCount: 0,
         overdueSupplierAmount: 0,
+        partiallyPaidBookings: 0,
+        unpaidSuppliers: 0,
         currentPeriod: {
           revenue: 0,
           collected: 0,
@@ -1972,6 +1982,25 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         totalOutstanding,
         totalOverdue,
         supplierPayable,
+        outstandingBalances: totalOutstanding,
+        unpaidSuppliers: {
+          count: aggregate.unpaidSuppliers,
+          amount: supplierPayable,
+        },
+        partiallyPaidBookings: {
+          count: aggregate.partiallyPaidBookings,
+          amount: totalOutstanding,
+        },
+        overdueBalances: totalOverdue,
+        revenueSnapshots: {
+          totalRevenue,
+          totalCollected,
+          totalOutstanding,
+          supplierPayable,
+          profit,
+          margin,
+        },
+        paymentMethods: this.listPaymentMethodOptions(),
         profit,
         margin,
         trends: {
@@ -8250,6 +8279,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       status: BookingServiceLifecycleStatus;
       totalCost: number;
       totalSell: number;
+      supplierPayableAmount?: number | null;
+      supplierPayableStatus?: string | null;
+      supplierPaymentNotes?: string | null;
     }>;
     payments: Array<{
       type: PaymentTypeValue;
@@ -8305,6 +8337,35 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     );
     const clientOutstanding = this.roundMoney(Math.max(effectiveTotalSell - clientPaidTotal, 0));
     const supplierOutstanding = this.roundMoney(Math.max(effectiveTotalCost - supplierPaidTotal, 0));
+    const depositsReceived = clientPaidTotal;
+    const remainingBalance = clientOutstanding;
+    const clientPaymentStatus =
+      effectiveTotalSell <= 0 || clientPaidTotal <= 0
+        ? 'unpaid'
+        : clientPaidTotal >= effectiveTotalSell
+          ? 'paid'
+          : clientPayments.some((payment) => payment.status === 'PAID')
+            ? 'partially_paid'
+            : 'deposit_paid';
+    const supplierPayableStatus =
+      effectiveTotalCost <= 0 || supplierPaidTotal <= 0
+        ? 'unpaid'
+        : supplierPaidTotal >= effectiveTotalCost
+          ? 'paid'
+          : 'partially_paid';
+    const paymentMethods = this.listPaymentMethodOptions();
+    const supplierPayables = activeServices.map((service, index) => {
+      const payableAmount = this.roundMoney(Number(service.supplierPayableAmount ?? service.totalCost ?? 0));
+      const servicePaidTotal = supplierPayableStatus === 'paid' ? payableAmount : 0;
+      return {
+        serviceIndex: index,
+        supplierPayableAmount: payableAmount,
+        supplierPayableStatus: service.supplierPayableStatus || (payableAmount <= 0 ? 'unpaid' : supplierPayableStatus),
+        supplierPaymentNotes: service.supplierPaymentNotes || null,
+        paidAmount: servicePaidTotal,
+        remainingAmount: this.roundMoney(Math.max(payableAmount - servicePaidTotal, 0)),
+      };
+    });
     const overdueClientAmount = this.roundMoney(
       overdueClientPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     );
@@ -8343,10 +8404,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       realizedMarginPercent,
       effectiveTotalSell,
       effectiveTotalCost,
+      totalSell: effectiveTotalSell,
+      depositsReceived,
+      remainingBalance,
       clientPaidTotal,
       supplierPaidTotal,
       clientOutstanding,
       supplierOutstanding,
+      clientPaymentStatus,
+      supplierPayableStatus,
+      paymentStatus: clientPaymentStatus,
+      paymentMethods,
+      supplierPayables,
       overdueClientAmount,
       overdueSupplierAmount,
       overdueClientPayments,
@@ -8378,6 +8447,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       status: BookingServiceLifecycleStatus;
       totalCost: number;
       totalSell: number;
+      supplierPayableAmount?: number | null;
+      supplierPayableStatus?: string | null;
+      supplierPaymentNotes?: string | null;
     }>;
     payments: Array<{
       type: PaymentTypeValue;
@@ -11974,6 +12046,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return normalized;
+  }
+
+  private listPaymentMethodOptions() {
+    return PAYMENT_METHODS.map((value) => ({
+      value,
+      label:
+        value === 'bank'
+          ? 'Bank'
+          : value === 'bank_transfer'
+            ? 'Bank transfer'
+            : value === 'cash'
+              ? 'Cash'
+              : value === 'card' || value === 'credit_card'
+                ? 'Credit card'
+                : value === 'cliq'
+                  ? 'CliQ'
+                  : value === 'mb_way'
+                    ? 'MB WAY'
+                    : 'Custom/manual',
+    }));
   }
 
   private normalizePaymentAmount(value: number | string) {

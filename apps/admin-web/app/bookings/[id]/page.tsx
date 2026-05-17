@@ -297,6 +297,11 @@ type Booking = {
     realizedTotalCost: number;
     realizedMargin: number;
     realizedMarginPercent: number;
+    totalSell?: number;
+    depositsReceived?: number;
+    remainingBalance?: number;
+    clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid';
+    supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid';
     clientInvoiceStatus: ClientInvoiceStatus;
     supplierPaymentStatus: SupplierPaymentStatus;
     hasLowMargin: boolean;

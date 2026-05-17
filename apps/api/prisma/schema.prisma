@@ -2251,6 +2251,9 @@ model BookingService {
   unitSell                   Float
   totalCost                  Float
   totalSell                  Float
+  supplierPayableAmount      Float?
+  supplierPayableStatus      String                        @default("unpaid")
+  supplierPaymentNotes       String?
   status                     BookingServiceLifecycleStatus @default(pending)
   supplierId                 String?                       @db.Uuid
   supplierName               String?
@@ -2474,6 +2477,11 @@ enum PaymentMethod {
   bank
   cash
   card
+  bank_transfer
+  cliq
+  mb_way
+  credit_card
+  custom_manual
 }
 
 enum BookingServiceStatus {

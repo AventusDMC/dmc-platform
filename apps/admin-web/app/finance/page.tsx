@@ -30,6 +30,11 @@ type Booking = {
     realizedTotalCost: number;
     realizedMargin: number;
     realizedMarginPercent: number;
+    totalSell?: number;
+    depositsReceived?: number;
+    remainingBalance?: number;
+    clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid';
+    supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid';
     clientInvoiceStatus: 'unbilled' | 'invoiced' | 'paid';
     supplierPaymentStatus: 'unpaid' | 'scheduled' | 'paid';
     hasLowMargin: boolean;
@@ -156,6 +161,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     const lowMarginCount = bookings.filter((booking) => booking.finance.hasLowMargin || booking.finance.badge.breakdown.negativeMargin > 0).length;
     const unpaidClientCount = bookings.filter((booking) => booking.finance.hasUnpaidClientBalance).length;
     const unpaidSupplierCount = bookings.filter((booking) => booking.finance.hasUnpaidSupplierObligation).length;
+    const partiallyPaidCount = bookings.filter((booking) => booking.finance.clientPaymentStatus === 'deposit_paid' || booking.finance.clientPaymentStatus === 'partially_paid').length;
+    const outstandingBalanceTotal = bookings.reduce((total, booking) => total + Number(booking.finance.remainingBalance || 0), 0);
     const overdueClientCount = bookings.reduce((total, booking) => total + booking.finance.overdueClientPaymentsCount, 0);
     const overdueSupplierCount = bookings.reduce((total, booking) => total + booking.finance.overdueSupplierPaymentsCount, 0);
     const clearCount = bookings.filter((booking) => booking.finance.badge.tone === 'none').length;
@@ -191,6 +198,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
                 { id: 'low-margin', label: 'Low margin', value: String(lowMarginCount), helper: 'Margin pressure' },
                 { id: 'unpaid-clients', label: 'Unpaid clients', value: String(unpaidClientCount), helper: 'Open receivables' },
                 { id: 'unpaid-suppliers', label: 'Unpaid suppliers', value: String(unpaidSupplierCount), helper: 'Open payables' },
+                { id: 'partial-payments', label: 'Partially paid', value: String(partiallyPaidCount), helper: 'Deposits or partials' },
+                { id: 'outstanding-balances', label: 'Outstanding balances', value: outstandingBalanceTotal.toLocaleString('en-US'), helper: 'Remaining client balance' },
                 { id: 'overdue-clients', label: 'Overdue clients', value: String(overdueClientCount), helper: 'Late receivables' },
                 { id: 'overdue-suppliers', label: 'Overdue suppliers', value: String(overdueSupplierCount), helper: 'Late payables' },
                 { id: 'clear', label: 'Clear', value: String(clearCount), helper: 'No finance badge' },

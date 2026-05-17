@@ -6,7 +6,7 @@ import { BookingPaymentStatusBadge } from './BookingPaymentStatusBadge';
 
 export type BookingPaymentType = 'CLIENT' | 'SUPPLIER';
 export type BookingPaymentStatus = 'PENDING' | 'PAID';
-export type BookingPaymentMethod = 'bank' | 'cash' | 'card';
+export type BookingPaymentMethod = 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual';
 
 export type BookingPaymentRecord = {
   id: string;
@@ -70,6 +70,11 @@ function formatDate(value: string | null) {
 }
 
 function formatMethod(value: BookingPaymentMethod) {
+  if (value === 'bank_transfer') return 'Bank transfer';
+  if (value === 'credit_card' || value === 'card') return 'Credit card';
+  if (value === 'cliq') return 'CliQ';
+  if (value === 'mb_way') return 'MB WAY';
+  if (value === 'custom_manual') return 'Custom/manual';
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
@@ -186,8 +191,13 @@ export function BookingPaymentsSection({
               disabled={isSubmitting}
             >
               <option value="bank">Bank</option>
+              <option value="bank_transfer">Bank transfer</option>
               <option value="cash">Cash</option>
+              <option value="cliq">CliQ</option>
+              <option value="mb_way">MB WAY</option>
               <option value="card">Card</option>
+              <option value="credit_card">Credit card</option>
+              <option value="custom_manual">Custom/manual</option>
             </select>
           </label>
           <label>

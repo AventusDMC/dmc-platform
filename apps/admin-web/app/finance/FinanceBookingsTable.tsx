@@ -15,6 +15,10 @@ type FinanceBooking = {
     realizedTotalCost: number;
     realizedMargin: number;
     realizedMarginPercent: number;
+    depositsReceived?: number;
+    remainingBalance?: number;
+    clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid';
+    supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid';
     clientInvoiceStatus: 'unbilled' | 'invoiced' | 'paid';
     supplierPaymentStatus: 'unpaid' | 'scheduled' | 'paid';
     hasLowMargin: boolean;
@@ -77,6 +81,13 @@ function formatSupplierPaymentStatus(status: FinanceBooking['finance']['supplier
   return 'Paid';
 }
 
+function formatPaymentStatus(status?: FinanceBooking['finance']['clientPaymentStatus']) {
+  if (status === 'deposit_paid') return 'Deposit paid';
+  if (status === 'partially_paid') return 'Partially paid';
+  if (status === 'paid') return 'Paid';
+  return 'Unpaid';
+}
+
 export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
   return (
     <div className="entity-list allotment-table-stack">
@@ -115,6 +126,9 @@ export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
                 </td>
                 <td>
                   <strong>{formatClientInvoiceStatus(booking.finance.clientInvoiceStatus)}</strong>
+                  <div className="table-subcopy">Payment {formatPaymentStatus(booking.finance.clientPaymentStatus)}</div>
+                  <div className="table-subcopy">Deposits {formatMoney(booking.finance.depositsReceived)}</div>
+                  <div className="table-subcopy">Balance {formatMoney(booking.finance.remainingBalance)}</div>
                   <div className="table-subcopy">Supplier {formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}</div>
                 </td>
                 <td>
@@ -143,6 +157,9 @@ export function FinanceBookingsTable({ bookings }: FinanceBookingsTableProps) {
                     </p>
                     <p className="detail-copy">
                       {`Client invoice: ${formatClientInvoiceStatus(booking.finance.clientInvoiceStatus)} | Supplier payment: ${formatSupplierPaymentStatus(booking.finance.supplierPaymentStatus)}`}
+                    </p>
+                    <p className="detail-copy">
+                      {`Deposits received: ${formatMoney(booking.finance.depositsReceived)} | Remaining balance: ${formatMoney(booking.finance.remainingBalance)} | Client payment status: ${formatPaymentStatus(booking.finance.clientPaymentStatus)}`}
                     </p>
                     {booking.finance.hasLowMargin ? <p className="form-error">Margin is below the operational threshold.</p> : null}
                     {booking.finance.hasUnpaidClientBalance ? <p className="form-error">Client balance is not fully paid.</p> : null}

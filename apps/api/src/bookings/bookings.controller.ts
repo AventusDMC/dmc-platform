@@ -134,7 +134,7 @@ type UpdateBookingFinanceBody = {
 
 type BookingPaymentTypeBody = 'CLIENT' | 'SUPPLIER';
 type BookingPaymentStatusBody = 'PENDING' | 'PAID';
-type BookingPaymentMethodBody = 'bank' | 'cash' | 'card';
+type BookingPaymentMethodBody = 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual';
 
 type CreateBookingPaymentBody = {
   type: BookingPaymentTypeBody;

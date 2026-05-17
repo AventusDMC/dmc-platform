@@ -3784,3 +3784,44 @@ test('booking amendments operational sync phase one wires controlled service cha
     assert.match(bookingsSource, new RegExp(token));
   }
 });
+
+test('finance reconciliation phase one wires deposits partial payments supplier payables dashboard and methods', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+
+  for (const token of [
+    'supplierPayableAmount',
+    'supplierPayableStatus',
+    'supplierPaymentNotes',
+    'bank_transfer',
+    'cliq',
+    'mb_way',
+    'credit_card',
+    'custom_manual',
+  ]) {
+    assert.match(schemaSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'depositsReceived',
+    'remainingBalance',
+    'clientPaymentStatus',
+    'deposit_paid',
+    'partially_paid',
+    'supplierPayableStatus',
+    'supplierPayables',
+    'outstandingBalances',
+    'unpaidSuppliers',
+    'partiallyPaidBookings',
+    'overdueBalances',
+    'revenueSnapshots',
+    'listPaymentMethodOptions',
+  ]) {
+    assert.match(bookingsSource, new RegExp(token));
+  }
+
+  for (const token of ['BookingPaymentMethodBody', 'cliq', 'mb_way', 'custom_manual']) {
+    assert.match(controllerSource, new RegExp(token));
+  }
+});
