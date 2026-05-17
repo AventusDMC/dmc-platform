@@ -18,6 +18,7 @@
     "seed:touring-routes": "ts-node prisma/seeds/seed-touring-routes.ts",
     "seed:activities": "ts-node prisma/seeds/seed-activities.ts",
     "seed:excursion-templates": "ts-node prisma/seeds/seed-excursion-templates.ts",
+    "seed:program-templates": "ts-node prisma/seeds/seed-program-templates.ts",
     "reset:client-test-data": "ts-node ../../scripts/reset-client-test-data.ts",
     "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts",
     "start:prod": "npm run prisma:migrate:deploy && node dist/main"

@@ -1919,21 +1919,29 @@ model TransportServiceType {
 }
 
 model PackageTemplate {
-  id               String                     @id @default(uuid()) @db.Uuid
-  name             String
-  durationDays     Int
-  targetMarket     String?
-  season           String?
-  summary          String?
-  active           Boolean                    @default(true)
-  operationalNotes String?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  components       PackageTemplateComponent[]
-  days             PackageTemplateDay[]
-  series           Series[]
+  id                 String                     @id @default(uuid()) @db.Uuid
+  code               String?                    @unique
+  name               String
+  durationDays       Int
+  targetMarket       String?
+  season             String?
+  summary            String?
+  destination        String?
+  inclusions         String?
+  exclusions         String?
+  hotelCategoryNotes String?
+  guideRules         String?
+  categoryTags       Json?
+  active             Boolean                    @default(true)
+  operationalNotes   String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  components         PackageTemplateComponent[]
+  days               PackageTemplateDay[]
+  series             Series[]
 
   @@index([active, name])
+  @@index([code])
   @@index([targetMarket, season])
   @@map("package_templates")
 }
