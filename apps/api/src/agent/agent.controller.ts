@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Param, Post, Res, StreamableFile } from '@nestjs/common';
 import { Actor, Roles } from '../auth/auth.decorators';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { AgentService } from './agent.service';
@@ -45,9 +45,52 @@ export class AgentController {
     return booking;
   }
 
+  @Post('bookings/:id/amendment-requests')
+  requestBookingAmendment(
+    @Param('id') id: string,
+    @Body() body: { amendmentType?: string | null; notes?: string | null },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.agentService.requestBookingAmendment(id, actor, {
+      amendmentType: body.amendmentType,
+      notes: body.notes,
+    });
+  }
+
+  @Get('bookings/:id/voucher/pdf')
+  async downloadBookingVoucherPdf(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const pdfBuffer = await this.agentService.getBookingVoucherPdf(id, actor);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', 'attachment; filename="booking-voucher.pdf"');
+
+    return new StreamableFile(pdfBuffer);
+  }
+
   @Get('invoices')
   getInvoices(@Actor() actor: AuthenticatedActor) {
     return this.agentService.getInvoices(actor);
+  }
+
+  @Get('invoices/:id/pdf')
+  async downloadInvoicePdf(
+    @Param('id') id: string,
+    @Actor() actor: AuthenticatedActor,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const pdfBuffer = await this.agentService.getInvoicePdf(id, actor);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', 'attachment; filename="invoice.pdf"');
+
+    return new StreamableFile(pdfBuffer);
+  }
+
+  @Get('departures')
+  getDepartures(@Actor() actor: AuthenticatedActor) {
+    return this.agentService.getDepartures(actor);
   }
 
   @Get('proposals')

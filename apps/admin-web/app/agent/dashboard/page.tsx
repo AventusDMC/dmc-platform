@@ -27,6 +27,7 @@ type AgentBooking = {
   bookingRef: string;
   title: string;
   status: string;
+  travelStartDate?: string | null;
 };
 
 type AgentInvoice = {
@@ -41,6 +42,17 @@ type AgentProposal = {
   id: string;
   title: string;
   publicUrl: string;
+};
+
+type AgentDeparture = {
+  id: string;
+  seriesName: string;
+  departureCode: string | null;
+  departureDate: string | null;
+  availability: {
+    seatsRemaining: number | null;
+    stopSale: boolean;
+  };
 };
 
 function formatMoney(amount: number, currency = 'USD') {
@@ -71,11 +83,18 @@ async function getProposals() {
   return adminPageFetchJson<AgentProposal[]>('/api/agent/proposals', 'Agent proposals', { cache: 'no-store' });
 }
 
+async function getDepartures() {
+  return adminPageFetchJson<AgentDeparture[]>('/api/agent/departures', 'Agent departures', { cache: 'no-store' });
+}
+
 export default async function AgentDashboardPage() {
-  const [me, quotes, bookings, invoices, proposals] = await Promise.all([getMe(), getQuotes(), getBookings(), getInvoices(), getProposals()]);
+  const [me, quotes, bookings, invoices, proposals, departures] = await Promise.all([getMe(), getQuotes(), getBookings(), getInvoices(), getProposals(), getDepartures()]);
   const activeQuotes = quotes.filter((quote) => ['DRAFT', 'READY', 'SENT', 'REVISION_REQUESTED'].includes(quote.status)).length;
   const confirmedBookings = bookings.filter((booking) => ['confirmed', 'in_progress'].includes(booking.status)).length;
   const unpaidInvoices = invoices.filter((invoice) => invoice.status === 'ISSUED').length;
+  const pendingBalances = invoices.filter((invoice: any) => Number(invoice.balanceDue ?? invoice.totalAmount ?? 0) > 0).length;
+  const travelAlerts = departures.filter((departure) => departure.availability.stopSale || departure.availability.seatsRemaining === 0).length;
+  const voucherReadyBookings = bookings.filter((booking: any) => booking.voucherReadiness === 'ready' || booking.voucherReadiness === 'sent').length;
 
   return (
     <main className="page">
@@ -85,7 +104,7 @@ export default async function AgentDashboardPage() {
             <div>
               <p className="eyebrow">Agent Portal</p>
               <h1>{me.company?.name || me.name}</h1>
-              <p className="detail-copy">View assigned quotes, active bookings, open invoices, and public proposal links without the internal admin tooling.</p>
+              <p className="detail-copy">Read-only access for assigned quotes, bookings, invoices, vouchers, departures, payment status, and controlled amendment requests.</p>
             </div>
           </div>
 
@@ -103,8 +122,16 @@ export default async function AgentDashboardPage() {
               <strong>{unpaidInvoices}</strong>
             </article>
             <article className="quote-client-summary-card">
-              <span>Recent proposals</span>
-              <strong>{proposals.length}</strong>
+              <span>Pending balances</span>
+              <strong>{pendingBalances}</strong>
+            </article>
+            <article className="quote-client-summary-card">
+              <span>Travel alerts</span>
+              <strong>{travelAlerts}</strong>
+            </article>
+            <article className="quote-client-summary-card">
+              <span>Voucher readiness</span>
+              <strong>{voucherReadyBookings}</strong>
             </article>
           </section>
 
@@ -116,6 +143,7 @@ export default async function AgentDashboardPage() {
                 <Link href="/agent/quotes" className="secondary-button">Quotes</Link>
                 <Link href="/agent/bookings" className="secondary-button">Bookings</Link>
                 <Link href="/agent/invoices" className="secondary-button">Invoices</Link>
+                <Link href="/agent/departures" className="secondary-button">Departures</Link>
               </div>
             </article>
 
@@ -131,6 +159,33 @@ export default async function AgentDashboardPage() {
                 ))}
               </div>
             </article>
+          </section>
+
+          <section className="detail-card">
+            <p className="eyebrow">Regular Tours</p>
+            <h2>Upcoming departures</h2>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Departure</th>
+                    <th>Date</th>
+                    <th>Availability</th>
+                    <th>Stop sale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {departures.slice(0, 5).map((departure) => (
+                    <tr key={departure.id}>
+                      <td>{departure.departureCode || departure.seriesName}</td>
+                      <td>{departure.departureDate ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(departure.departureDate)) : 'Date pending'}</td>
+                      <td>{departure.availability.seatsRemaining === null ? 'On request' : `${departure.availability.seatsRemaining} seats remaining`}</td>
+                      <td><span className="status-badge">{departure.availability.stopSale ? 'Stop sale' : 'Open'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="detail-card">

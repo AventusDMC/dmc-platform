@@ -81,6 +81,18 @@ export class AuthController {
     return this.userInvitationsService.getByToken(String(body.token || ''));
   }
 
+  @Post('password-reset/request')
+  @Public()
+  requestPasswordReset(@Body() body: { email?: string }) {
+    return this.authService.requestPasswordReset(String(body.email || ''));
+  }
+
+  @Post('password-reset/confirm')
+  @Public()
+  resetPassword(@Body() body: { token?: string; password?: string }) {
+    return this.authService.resetPassword(String(body.token || ''), String(body.password || ''));
+  }
+
   @Get('me')
   me(@Actor() actor: AuthenticatedActor) {
     return actor;

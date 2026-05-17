@@ -2126,20 +2126,24 @@ model TouringRoutePricing {
 }
 
 model User {
-  id             String   @id @default(uuid()) @db.Uuid
-  email          String   @unique
-  firstName      String
-  lastName       String
-  password       String
-  roleId         String   @db.Uuid
-  companyId      String   @db.Uuid
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  leads          Lead[]
-  assignedQuotes Quote[]  @relation("AssignedAgentQuotes")
-  company        Company  @relation(fields: [companyId], references: [id])
-  role           Role     @relation(fields: [roleId], references: [id])
+  id                     String    @id @default(uuid()) @db.Uuid
+  email                  String    @unique
+  firstName              String
+  lastName               String
+  password               String
+  roleId                 String    @db.Uuid
+  companyId              String    @db.Uuid
+  active                 Boolean   @default(true)
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  leads                  Lead[]
+  assignedQuotes         Quote[]   @relation("AssignedAgentQuotes")
+  company                Company   @relation(fields: [companyId], references: [id])
+  role                   Role      @relation(fields: [roleId], references: [id])
 
+  @@index([active])
   @@map("users")
 }
 

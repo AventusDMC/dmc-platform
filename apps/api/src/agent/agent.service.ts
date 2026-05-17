@@ -1,13 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedActor } from '../auth/auth.types';
 import { QuotesService } from '../quotes/quotes.service';
+import { BookingsService } from '../bookings/bookings.service';
+import { InvoicesService } from '../invoices/invoices.service';
 
 @Injectable()
 export class AgentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotesService: QuotesService,
+    private readonly bookingsService?: BookingsService,
+    private readonly invoicesService?: InvoicesService,
   ) {}
 
   async getMe(actor: AuthenticatedActor) {
@@ -26,6 +30,12 @@ export class AgentService {
       lastName: actor.lastName,
       name: actor.name,
       company,
+      accountStatus: 'active',
+      portalPermissions: {
+        readOnly: true,
+        amendmentRequests: true,
+        destructiveEditing: false,
+      },
     };
   }
 
@@ -84,8 +94,28 @@ export class AgentService {
             clientCompany: true,
           },
         },
+        passengers: {
+          orderBy: [{ isLead: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
+        },
+        payments: {
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        },
+        vouchers: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            issuedAt: true,
+          },
+          orderBy: [{ createdAt: 'desc' }],
+        },
         services: {
           orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
+        },
+        seriesDeparture: {
+          include: {
+            series: true,
+          },
         },
       },
     });
@@ -102,9 +132,10 @@ export class AgentService {
           include: {
             clientCompany: true,
             booking: {
-              select: {
-                id: true,
-                status: true,
+              include: {
+                payments: {
+                  orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+                },
               },
             },
           },
@@ -113,6 +144,92 @@ export class AgentService {
       orderBy: [{ dueDate: 'asc' }, { id: 'desc' }],
     });
     return invoices.map((invoice: any) => this.mapAgentInvoiceSummary(invoice));
+  }
+
+  async getDepartures(actor: AuthenticatedActor) {
+    const departures = await (this.prisma as any).seriesDeparture.findMany({
+      where: {
+        series: {
+          active: true,
+        },
+        booking: {
+          quote: this.buildAssignedQuoteWhere(actor),
+        },
+      },
+      include: {
+        series: true,
+        booking: {
+          include: {
+            passengers: {
+              select: {
+                hotelCategoryVariant: true,
+                branchExtension: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ departureDate: 'asc' }, { id: 'asc' }],
+    });
+
+    return departures.map((departure: any) => this.mapAgentDepartureSummary(departure));
+  }
+
+  async getInvoicePdf(id: string, actor: AuthenticatedActor) {
+    if (!this.invoicesService) {
+      throw new NotFoundException('Invoice documents are not available');
+    }
+
+    const invoice = await (this.prisma as any).invoice.findFirst({
+      where: {
+        id,
+        quote: this.buildAssignedQuoteWhere(actor),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    return this.invoicesService.generatePdf(id, actor);
+  }
+
+  async getBookingVoucherPdf(id: string, actor: AuthenticatedActor) {
+    if (!this.bookingsService) {
+      throw new NotFoundException('Booking documents are not available');
+    }
+
+    const booking = await this.getBookingRaw(id, actor);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return this.bookingsService.generateVoucherPdf(id, actor, booking);
+  }
+
+  async requestBookingAmendment(id: string, actor: AuthenticatedActor, input: { amendmentType?: string | null; notes?: string | null }) {
+    const booking = await this.getBookingRaw(id, actor);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const notes = String(input.notes || '').trim();
+    if (!notes) {
+      throw new BadRequestException('Amendment request notes are required');
+    }
+
+    return {
+      ok: true,
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef || booking.id,
+      amendmentType: input.amendmentType || 'general_request',
+      status: 'requested',
+      destructiveEditing: false,
+      message: 'Amendment request received for operations review.',
+    };
   }
 
   async getProposals(actor: AuthenticatedActor) {
@@ -129,6 +246,7 @@ export class AgentService {
       },
     });
     return quotes
+      .filter((quote: any) => Boolean(quote.publicEnabled && quote.publicToken))
       .map((quote: any) => ({
         id: quote.id,
         title: quote.title,
@@ -221,9 +339,63 @@ export class AgentService {
 
   private mapAgentBookingDetail(booking: any) {
     const summary = this.mapAgentBookingSummary(booking);
+    const payments = Array.isArray(booking.payments) ? booking.payments : [];
+    const clientPayments = payments.filter((payment: any) => payment.type === 'CLIENT');
+    const paid = clientPayments
+      .filter((payment: any) => payment.status === 'PAID')
+      .reduce((total: number, payment: any) => total + Number(payment.amount || 0), 0);
+    const totalSell = Number(booking.finance?.totalSell || booking.pricingSnapshotJson?.totalSell || booking.snapshotJson?.totalSell || 0);
+    const balance = Math.max(totalSell - paid, 0);
 
     return {
       ...summary,
+      finance: {
+        totalSell,
+        depositsReceived: paid,
+        remainingBalance: balance,
+        paymentStatus: balance <= 0 ? 'paid' : paid > 0 ? 'partially_paid' : 'unpaid',
+        paymentMethods: this.listPaymentMethods(),
+        paymentReferences: clientPayments.map((payment: any) => ({
+          id: payment.id,
+          method: payment.method,
+          reference: payment.reference || null,
+          amount: Number(payment.amount || 0),
+          status: payment.status,
+        })),
+      },
+      passengers: Array.isArray(booking.passengers)
+        ? booking.passengers.map((passenger: any) => ({
+            id: passenger.id,
+            fullName: passenger.fullName || [passenger.firstName, passenger.lastName].filter(Boolean).join(' ').trim(),
+            firstName: passenger.firstName,
+            lastName: passenger.lastName,
+            isLead: Boolean(passenger.isLead),
+            nationality: passenger.nationality || null,
+            passportStatus: passenger.passportNumber ? 'on_file' : 'missing',
+            hotelCategoryVariant: passenger.hotelCategoryVariant || null,
+            branchExtension: passenger.branchExtension || null,
+          }))
+        : [],
+      departure: booking.seriesDeparture ? this.mapAgentDepartureSummary(booking.seriesDeparture) : null,
+      vouchers: Array.isArray(booking.vouchers)
+        ? booking.vouchers.map((voucher: any) => ({
+            id: voucher.id,
+            type: voucher.type,
+            status: voucher.status,
+            issuedAt: voucher.issuedAt || null,
+            pdfUrl: `/api/agent/bookings/${booking.id}/voucher/pdf`,
+          }))
+        : [],
+      documents: {
+        invoicePdfUrl: `/api/agent/invoices`,
+        voucherPdfUrl: `/api/agent/bookings/${booking.id}/voucher/pdf`,
+        itineraryPdfUrl: `/agent/bookings/${booking.id}`,
+        receiptPdfUrl: `/api/agent/invoices`,
+      },
+      amendmentRequests: {
+        enabled: true,
+        endpoint: `/api/agent/bookings/${booking.id}/amendment-requests`,
+      },
       services: Array.isArray(booking.services)
         ? booking.services.map((service: any) => ({
             id: service.id,
@@ -243,12 +415,33 @@ export class AgentService {
   }
 
   private mapAgentInvoiceSummary(invoice: any) {
+    const payments = invoice.quote?.booking?.payments || [];
+    const paidAmount = payments
+      .filter((payment: any) => payment.type === 'CLIENT' && payment.status === 'PAID')
+      .reduce((total: number, payment: any) => total + Number(payment.amount || 0), 0);
+    const totalAmount = Number(invoice.totalAmount || 0);
+    const balanceDue = Math.max(totalAmount - paidAmount, 0);
     return {
       id: invoice.id,
-      totalAmount: invoice.totalAmount,
+      invoiceNumber: `INV-${invoice.quote?.booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id}`,
+      totalAmount,
+      depositsReceived: paidAmount,
+      balanceDue,
       currency: invoice.currency,
       status: invoice.status,
+      paymentStatus: balanceDue <= 0 ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid',
+      paymentMethods: this.listPaymentMethods(),
+      paymentReferences: payments
+        .filter((payment: any) => payment.type === 'CLIENT')
+        .map((payment: any) => ({
+          id: payment.id,
+          method: payment.method,
+          reference: payment.reference || null,
+          amount: Number(payment.amount || 0),
+          status: payment.status,
+        })),
       dueDate: invoice.dueDate,
+      pdfUrl: `/api/agent/invoices/${invoice.id}/pdf`,
       quote: {
         id: invoice.quote?.id,
         quoteNumber: invoice.quote?.quoteNumber ?? null,
@@ -296,5 +489,68 @@ export class AgentService {
       clientCompanyId: actor.companyId ?? undefined,
       agentId: actor.id,
     };
+  }
+
+  private async getBookingRaw(id: string, actor: AuthenticatedActor) {
+    return (this.prisma.booking as any).findFirst({
+      where: {
+        id,
+        quote: this.buildAssignedQuoteWhere(actor),
+      },
+      include: {
+        quote: {
+          include: {
+            clientCompany: true,
+          },
+        },
+        passengers: true,
+        payments: true,
+        vouchers: true,
+        services: {
+          orderBy: [{ serviceOrder: 'asc' }, { id: 'asc' }],
+        },
+        seriesDeparture: {
+          include: {
+            series: true,
+          },
+        },
+      },
+    });
+  }
+
+  private mapAgentDepartureSummary(departure: any) {
+    const totalCapacity = Number(departure.totalCapacity || departure.sharedCoachCapacity || 0);
+    const paxCount = Number(departure.paxCount || departure.booking?.passengers?.length || 0);
+    const reservedSeats = Number(departure.reservedSeats || 0);
+    const seatsSold = Math.max(paxCount, reservedSeats);
+    const seatsRemaining = totalCapacity > 0 ? Math.max(totalCapacity - seatsSold, 0) : null;
+    const stopSale = Boolean(departure.status === 'STOP_SALE' || (totalCapacity > 0 && seatsRemaining === 0));
+    const passengers = departure.booking?.passengers || [];
+
+    return {
+      id: departure.id,
+      seriesId: departure.seriesId,
+      seriesCode: departure.series?.seriesCode || null,
+      seriesName: departure.series?.seriesName || 'Series departure',
+      departureCode: departure.departureCode || null,
+      departureDate: departure.departureDate || null,
+      status: departure.status,
+      availability: {
+        totalCapacity,
+        seatsSold,
+        seatsRemaining,
+        stopSale,
+      },
+      hotelCategories: this.uniqueValues(passengers.map((passenger: any) => passenger.hotelCategoryVariant)),
+      branchExtensions: this.uniqueValues(passengers.map((passenger: any) => passenger.branchExtension)),
+    };
+  }
+
+  private listPaymentMethods() {
+    return ['bank_transfer', 'cash', 'cliq', 'mb_way', 'credit_card', 'custom_manual'];
+  }
+
+  private uniqueValues(values: Array<string | null | undefined>) {
+    return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
   }
 }

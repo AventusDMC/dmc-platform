@@ -146,3 +146,168 @@ nodeTestAgent.test('agent proposals only include public-enabled quotes', async (
   agentAssert.equal(proposals[0].publicUrl, '/proposal/token-1');
   agentAssert.equal(proposals[0].pdfUrl, '/api/public/proposals/token-1/pdf');
 });
+
+nodeTestAgent.test('agent portal phase one isolates visibility and exposes finance passenger documents and departures', async () => {
+  const seenBookingWhere: any[] = [];
+  const seenDepartureWhere: any[] = [];
+  const service = createAgentService({
+    prisma: {
+      booking: {
+        findMany: async ({ where }: any) => {
+          seenBookingWhere.push(where);
+          return [];
+        },
+        findFirst: async ({ where }: any) => {
+          seenBookingWhere.push(where);
+          return {
+            id: 'booking-1',
+            bookingRef: 'BK-1',
+            status: 'confirmed',
+            adults: 2,
+            children: 0,
+            roomCount: 1,
+            nightCount: 2,
+            snapshotJson: { title: 'Jordan Highlights', totalSell: 2400, travelStartDate: '2026-05-29' },
+            pricingSnapshotJson: { totalSell: 2400 },
+            clientSnapshotJson: { name: 'Client Co' },
+            quote: { title: 'Jordan Highlights', clientCompany: { name: 'Client Co' } },
+            passengers: [
+              {
+                id: 'passenger-1',
+                fullName: 'Lina Haddad',
+                firstName: 'Lina',
+                lastName: 'Haddad',
+                isLead: true,
+                nationality: 'JO',
+                passportNumber: 'P123456',
+                hotelCategoryVariant: '4 star',
+                branchExtension: 'Dead Sea extension',
+              },
+            ],
+            payments: [
+              {
+                id: 'payment-1',
+                type: 'CLIENT',
+                amount: 600,
+                status: 'PAID',
+                method: 'cliq',
+                reference: 'CLIQ-001',
+              },
+            ],
+            vouchers: [{ id: 'voucher-1', type: 'HOTEL', status: 'READY' }],
+            services: [],
+            seriesDeparture: {
+              id: 'departure-1',
+              seriesId: 'series-1',
+              departureCode: 'JOR-001',
+              departureDate: '2026-05-29',
+              paxCount: 20,
+              totalCapacity: 30,
+              status: 'PLANNED',
+              series: { seriesCode: 'JOR', seriesName: 'Jordan Series' },
+              booking: {
+                passengers: [
+                  { hotelCategoryVariant: '4 star', branchExtension: 'Dead Sea extension' },
+                ],
+              },
+            },
+          };
+        },
+      },
+      seriesDeparture: {
+        findMany: async ({ where }: any) => {
+          seenDepartureWhere.push(where);
+          return [
+            {
+              id: 'departure-1',
+              seriesId: 'series-1',
+              departureCode: 'JOR-001',
+              departureDate: '2026-05-29',
+              paxCount: 20,
+              totalCapacity: 30,
+              status: 'PLANNED',
+              series: { seriesCode: 'JOR', seriesName: 'Jordan Series' },
+              booking: {
+                passengers: [
+                  { hotelCategoryVariant: '4 star', branchExtension: 'Dead Sea extension' },
+                ],
+              },
+            },
+          ];
+        },
+      },
+    },
+  });
+  const actor = {
+    id: 'agent-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  };
+
+  await service.getBookings(actor as any);
+  const booking = await service.getBooking('booking-1', actor as any);
+  const departures = await service.getDepartures(actor as any);
+
+  agentAssert.equal(seenBookingWhere[0].quote.agentId, 'agent-1');
+  agentAssert.equal(seenBookingWhere[0].quote.clientCompanyId, 'company-1');
+  agentAssert.equal(seenDepartureWhere[0].booking.quote.agentId, 'agent-1');
+  agentAssert.equal(booking.finance.remainingBalance, 1800);
+  agentAssert.equal(booking.passengers[0].passportStatus, 'on_file');
+  agentAssert.equal('passportNumber' in booking.passengers[0], false);
+  agentAssert.equal(booking.vouchers[0].pdfUrl, '/api/agent/bookings/booking-1/voucher/pdf');
+  agentAssert.equal(booking.amendmentRequests.enabled, true);
+  agentAssert.equal(departures[0].availability.seatsRemaining, 10);
+  agentAssert.deepEqual(departures[0].hotelCategories, ['4 star']);
+});
+
+nodeTestAgent.test('agent document access validates assigned invoice and booking before PDF generation', async () => {
+  const calls: string[] = [];
+  const service = createAgentService({
+    prisma: {
+      invoice: {
+        findFirst: async ({ where }: any) => {
+          agentAssert.equal(where.quote.agentId, 'agent-1');
+          return { id: where.id };
+        },
+      },
+      booking: {
+        findFirst: async ({ where }: any) => {
+          agentAssert.equal(where.quote.agentId, 'agent-1');
+          return { id: where.id, bookingRef: 'BK-1' };
+        },
+      },
+    },
+  });
+  (service as any).invoicesService = {
+    generatePdf: async () => {
+      calls.push('invoice');
+      return Buffer.from('%PDF invoice');
+    },
+  };
+  (service as any).bookingsService = {
+    generateVoucherPdf: async () => {
+      calls.push('voucher');
+      return Buffer.from('%PDF voucher');
+    },
+  };
+  const actor = {
+    id: 'agent-1',
+    email: 'agent@example.com',
+    role: 'agent',
+    firstName: 'Agent',
+    lastName: 'User',
+    name: 'Agent User',
+    auditLabel: 'Agent User',
+    companyId: 'company-1',
+  };
+
+  await service.getInvoicePdf('invoice-1', actor as any);
+  await service.getBookingVoucherPdf('booking-1', actor as any);
+
+  agentAssert.deepEqual(calls, ['invoice', 'voucher']);
+});

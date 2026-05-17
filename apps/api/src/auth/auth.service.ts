@@ -137,6 +137,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    if ((user as any).active === false) {
+      throw new UnauthorizedException('This account is inactive');
+    }
+
     const actor = this.toActor({
       id: user.id,
       email: user.email,
@@ -150,6 +154,99 @@ export class AuthService {
 
     return {
       token,
+      actor,
+    };
+  }
+
+  async requestPasswordReset(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw new UnauthorizedException('Email is required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
+      select: {
+        id: true,
+        active: true,
+      } as any,
+    });
+
+    const resetUser = user as any;
+    if (resetUser?.active !== false) {
+      const token = randomBytes(24).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      if (resetUser) {
+        await (this.prisma.user as any).update({
+          where: { id: resetUser.id },
+          data: {
+            passwordResetToken: token,
+            passwordResetExpiresAt: expiresAt,
+          },
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      message: 'If an active account exists, password reset instructions will be sent.',
+    };
+  }
+
+  async resetPassword(token: string, password: string) {
+    const resetToken = token.trim();
+    const nextPassword = password.trim();
+
+    if (!resetToken || !nextPassword) {
+      throw new UnauthorizedException('Reset token and password are required');
+    }
+
+    const user = await (this.prisma.user as any).findFirst({
+      where: {
+        passwordResetToken: resetToken,
+        passwordResetExpiresAt: {
+          gt: new Date(),
+        },
+        active: true,
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired password reset token');
+    }
+
+    const updated = await (this.prisma.user as any).update({
+      where: { id: user.id },
+      data: {
+        password: this.hashPassword(nextPassword),
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    const actor = this.toActor({
+      id: updated.id,
+      email: updated.email,
+      firstName: updated.firstName,
+      lastName: updated.lastName,
+      role: updated.role.name,
+      companyId: updated.companyId,
+    });
+
+    return {
+      token: this.createSessionToken(actor),
       actor,
     };
   }
