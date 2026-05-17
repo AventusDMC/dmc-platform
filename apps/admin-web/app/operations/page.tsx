@@ -248,6 +248,7 @@ type OperationsDashboard = {
     missingVouchers?: OperationsDashboardBucket;
     guideReadinessAlerts?: OperationsDashboardBucket;
     diningReadinessAlerts?: OperationsDashboardBucket;
+    operationalAmendments?: OperationsDashboardBucket;
     seriesOperations?: OperationsDashboardBucket;
   };
 };
@@ -1225,6 +1226,15 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
       actionHref: item.bookingId ? `/bookings/${item.bookingId}` : '/bookings',
       detail: item.reasons?.join(', ') || item.bookingRef || item.title || item.description || item.id,
     }));
+  const operationalAmendmentAlerts = (operationsDashboard.alerts.operationalAmendments?.items || [])
+    .slice(0, 5)
+    .map((item) => ({
+      id: `operational-amendment-${item.id}`,
+      label: 'Booking amendment sync required',
+      actionLabel: 'Open booking',
+      actionHref: item.bookingId ? `/bookings/${item.bookingId}` : '/bookings',
+      detail: item.reasons?.join(', ') || item.bookingRef || item.title || item.description || item.id,
+    }));
 
   return [
     ...hotelReleaseAlerts,
@@ -1235,6 +1245,7 @@ function buildOperationalAlerts(rows: OperationRow[], operationsDashboard: Opera
     ...transportTimingAlerts,
     ...guideReadinessAlerts,
     ...diningReadinessAlerts,
+    ...operationalAmendmentAlerts,
   ];
 }
 
@@ -1981,35 +1992,37 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
                 ))}
               </section>
               {department.key === 'series-operations' ? (
-                <div className="operations-state-strip" aria-label="Series capacity status">
-                  {[
-                    { label: 'Low occupancy departures', value: department.lowOccupancyDepartures ?? 0, tone: 'warning' },
-                    { label: 'Sold out departures', value: department.soldOutDepartures ?? 0, tone: 'blocker' },
-                    { label: 'Guaranteed departures', value: department.guaranteedDepartures ?? 0, tone: 'ready' },
-                    { label: 'Blocked rooms', value: department.blockedRooms ?? 0, tone: 'info' },
-                    { label: 'Release deadlines', value: department.releaseDeadlines ?? 0, tone: (department.releaseDeadlines ?? 0) > 0 ? 'warning' : 'ready' },
-                    { label: 'Low inventory', value: department.lowInventoryDepartures ?? 0, tone: 'warning' },
-                    { label: 'Stop sale departures', value: department.stopSaleDepartures ?? 0, tone: 'blocker' },
-                    { label: 'Shared services', value: department.sharedServices ?? 0, tone: 'info' },
-                    { label: 'Split services', value: department.splitServices ?? 0, tone: 'warning' },
-                  ].map((status) => (
-                    <span key={status.label} className={`dashboard-pill operations-status-pill operations-status-pill-${status.tone}`}>
-                      {status.label}: {status.value}
-                    </span>
-                  ))}
-                </div>
-                <div className="operations-state-strip" aria-label="Series passenger splits">
-                  {Object.entries(department.paxByCategory || {}).map(([category, pax]) => (
-                    <span key={`category-${category}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
-                      Pax by category {category}: {pax}
-                    </span>
-                  ))}
-                  {Object.entries(department.paxByBranch || {}).map(([branch, pax]) => (
-                    <span key={`branch-${branch}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
-                      Pax by branch {branch}: {pax}
-                    </span>
-                  ))}
-                </div>
+                <>
+                  <div className="operations-state-strip" aria-label="Series capacity status">
+                    {[
+                      { label: 'Low occupancy departures', value: department.lowOccupancyDepartures ?? 0, tone: 'warning' },
+                      { label: 'Sold out departures', value: department.soldOutDepartures ?? 0, tone: 'blocker' },
+                      { label: 'Guaranteed departures', value: department.guaranteedDepartures ?? 0, tone: 'ready' },
+                      { label: 'Blocked rooms', value: department.blockedRooms ?? 0, tone: 'info' },
+                      { label: 'Release deadlines', value: department.releaseDeadlines ?? 0, tone: (department.releaseDeadlines ?? 0) > 0 ? 'warning' : 'ready' },
+                      { label: 'Low inventory', value: department.lowInventoryDepartures ?? 0, tone: 'warning' },
+                      { label: 'Stop sale departures', value: department.stopSaleDepartures ?? 0, tone: 'blocker' },
+                      { label: 'Shared services', value: department.sharedServices ?? 0, tone: 'info' },
+                      { label: 'Split services', value: department.splitServices ?? 0, tone: 'warning' },
+                    ].map((status) => (
+                      <span key={status.label} className={`dashboard-pill operations-status-pill operations-status-pill-${status.tone}`}>
+                        {status.label}: {status.value}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="operations-state-strip" aria-label="Series passenger splits">
+                    {Object.entries(department.paxByCategory || {}).map(([category, pax]) => (
+                      <span key={`category-${category}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
+                        Pax by category {category}: {pax}
+                      </span>
+                    ))}
+                    {Object.entries(department.paxByBranch || {}).map(([branch, pax]) => (
+                      <span key={`branch-${branch}`} className="dashboard-pill operations-status-pill operations-status-pill-info">
+                        Pax by branch {branch}: {pax}
+                      </span>
+                    ))}
+                  </div>
+                </>
               ) : null}
               {department.key === 'hotel-reservations' ? (
                 <>

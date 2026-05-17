@@ -3739,3 +3739,46 @@ test('regular tour SIC structure phase one wires variants branches shared and sp
     assert.match(dashboardSource, new RegExp(token));
   }
 });
+
+test('booking amendments operational sync phase one wires controlled service changes audit and alerts', () => {
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+
+  for (const token of [
+    'operational-amendments',
+    'ApplyBookingOperationalAmendmentBody',
+    'applyOperationalAmendment',
+    'BookingOperationalAmendmentType',
+    'add_service',
+    'remove_service',
+    'change_hotel_category',
+    'add_extension',
+    'add_meal',
+    'add_transfer',
+    'add_excursion',
+    'upgrade_service',
+    'downgrade_service',
+  ]) {
+    assert.match(`${controllerSource}\n${bookingsSource}`, new RegExp(token));
+  }
+
+  for (const token of [
+    'operational_amendment_applied',
+    'operational_sync_required',
+    'confirmProtected',
+    'protectedOperations',
+    'confirmed supplier assignment requires reconfirmation',
+    'assigned guide will be impacted',
+    'assigned restaurant will be impacted',
+    'rooming impacted',
+    'voucher regeneration required',
+    'supplier reconfirmation required',
+    'amended booking needs reconfirmation',
+    'operationalAmendments',
+    'mapOperationalAmendmentDashboardAlerts',
+    'BookingServiceLifecycleStatus.cancelled',
+    'SupplierConfirmationStatus.NOT_SENT',
+  ]) {
+    assert.match(bookingsSource, new RegExp(token));
+  }
+});

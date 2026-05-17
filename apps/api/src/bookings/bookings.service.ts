@@ -159,6 +159,16 @@ type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATU
 const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
 type SupplierConfirmationStatusValue = (typeof SUPPLIER_CONFIRMATION_STATUSES)[number];
 type SupplierConfirmationWorkflowAction = 'prepare_email' | 'mark_requested' | 'mark_confirmed' | 'mark_rejected' | 'reconfirm';
+type BookingOperationalAmendmentType =
+  | 'add_service'
+  | 'remove_service'
+  | 'change_hotel_category'
+  | 'add_extension'
+  | 'add_meal'
+  | 'add_transfer'
+  | 'add_excursion'
+  | 'upgrade_service'
+  | 'downgrade_service';
 const VOUCHER_STATUSES = ['DRAFT', 'READY', 'SENT', 'ISSUED', 'CANCELLED'] as const;
 type VoucherLifecycleStatusValue = (typeof VOUCHER_STATUSES)[number];
 const VOUCHER_STATUS_READY: VoucherLifecycleStatusValue = 'READY';
@@ -1314,6 +1324,205 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return amendedBooking;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async applyOperationalAmendment(
+    bookingId: string,
+    data: {
+      amendmentType: BookingOperationalAmendmentType;
+      serviceId?: string | null;
+      bookingDayId?: string | null;
+      serviceType?: string | null;
+      operationType?: string | null;
+      description?: string | null;
+      serviceDate?: string | Date | null;
+      participantCount?: number | null;
+      notes?: string | null;
+      hotelCategory?: string | null;
+      extensionName?: string | null;
+      upgradeLabel?: string | null;
+      downgradeLabel?: string | null;
+      confirmProtected?: boolean | null;
+      roomingImpacted?: boolean | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    requireActorCompanyId(data.companyActor);
+    const amendmentType = this.normalizeOperationalAmendmentType(data.amendmentType);
+    const booking = await (this.prisma.booking as any).findFirst({
+      where: {
+        id: bookingId,
+        ...this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: {
+        days: { orderBy: [{ dayNumber: 'asc' }, { id: 'asc' }] },
+        roomingEntries: { select: { id: true } },
+        services: {
+          include: {
+            vouchers: { select: { id: true, status: true } },
+          },
+          orderBy: [{ serviceOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    await this.assertLatestBookingAmendment(bookingId);
+    const targetService = data.serviceId
+      ? (booking.services || []).find((service: any) => service.id === data.serviceId)
+      : null;
+    if (data.serviceId && !targetService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    const protectedWarnings = this.getOperationalAmendmentProtectedWarnings(booking, targetService, amendmentType, Boolean(data.roomingImpacted));
+    if (protectedWarnings.length > 0 && !data.confirmProtected) {
+      throw new BadRequestException({
+        message: 'Operational amendment touches protected operations. Confirm before applying.',
+        protectedOperations: protectedWarnings,
+      });
+    }
+
+    const serviceType = this.normalizeOperationalAmendmentServiceType(amendmentType, data.serviceType || data.operationType, targetService);
+    const participantCount = data.participantCount === undefined || data.participantCount === null
+      ? Number(booking.pax || booking.adults + booking.children || 0) || null
+      : this.normalizeOptionalInteger(data.participantCount, 'Participant count');
+    const serviceDate = this.normalizeDateTimeInput(data.serviceDate) || targetService?.serviceDate || booking.startDate || null;
+    const operationalImpact = this.buildOperationalAmendmentImpact(amendmentType, data);
+    const sync = this.buildOperationalAmendmentSyncSummary(amendmentType, Boolean(data.roomingImpacted), targetService);
+    const affectedServices: string[] = [];
+
+    return this.prisma.$transaction(async (tx) => {
+      let createdService: any = null;
+      let updatedService: any = null;
+
+      if (amendmentType === 'add_service' || amendmentType === 'add_meal' || amendmentType === 'add_transfer' || amendmentType === 'add_excursion' || amendmentType === 'add_extension') {
+        const bookingDayId = this.resolveOperationalAmendmentBookingDayId(booking, data.bookingDayId, serviceDate);
+        const description = this.normalizeOptionalText(data.description) || operationalImpact || this.buildOperationalAmendmentServiceDescription(amendmentType, serviceType);
+        const sourceMetadata = this.buildOperationalAmendmentSourceMetadata({
+          current: null,
+          amendmentType,
+          operationalImpact,
+          sync,
+          data,
+        });
+        const initializedMetadata = this.isHotelService(serviceType, serviceType)
+          ? this.initializeHotelReservationMetadata({ serviceType, operationType: serviceType, sourceMetadata })
+          : sourceMetadata;
+
+        createdService = await (tx.bookingService as any).create({
+          data: {
+            bookingId,
+            bookingDayId,
+            serviceOrder: (booking.services || []).length,
+            serviceType,
+            operationType: serviceType,
+            operationStatus: BookingOperationServiceStatus.PENDING,
+            sourceMetadata: initializedMetadata as Prisma.InputJsonValue,
+            serviceDate,
+            participantCount,
+            adultCount: booking.adults,
+            childCount: booking.children,
+            description,
+            notes: this.normalizeOptionalText(data.notes),
+            qty: 1,
+            unitCost: 0,
+            unitSell: 0,
+            totalCost: 0,
+            totalSell: 0,
+            status: BookingServiceLifecycleStatus.pending,
+            confirmationStatus: BookingServiceStatus.pending,
+            supplierConfirmationStatus: SupplierConfirmationStatus.NOT_SENT,
+            reconfirmationRequired: true,
+            statusNote: 'Operational amendment added after booking conversion',
+          },
+        });
+        affectedServices.push(createdService.id);
+      } else if (targetService) {
+        const sourceMetadata = this.buildOperationalAmendmentSourceMetadata({
+          current: targetService.sourceMetadata,
+          amendmentType,
+          operationalImpact,
+          sync,
+          data,
+        });
+        const serviceUpdates =
+          amendmentType === 'remove_service'
+            ? {
+                operationStatus: 'CANCELLED',
+                status: BookingServiceLifecycleStatus.cancelled,
+                confirmationStatus: BookingServiceStatus.pending,
+                supplierConfirmationStatus: SupplierConfirmationStatus.CANCELLED,
+                reconfirmationRequired: false,
+                statusNote: 'Operational amendment removed service from active operations',
+                sourceMetadata: sourceMetadata as Prisma.InputJsonValue,
+              }
+            : {
+                operationStatus: BookingOperationServiceStatus.PENDING,
+                status: BookingServiceLifecycleStatus.pending,
+                confirmationStatus: BookingServiceStatus.pending,
+                supplierConfirmationStatus: SupplierConfirmationStatus.NOT_SENT,
+                reconfirmationRequired: true,
+                sourceMetadata: sourceMetadata as Prisma.InputJsonValue,
+                statusNote: 'Operational amendment requires supplier reconfirmation',
+              };
+
+        updatedService = await (tx.bookingService as any).update({
+          where: { id: targetService.id },
+          data: serviceUpdates,
+        });
+        affectedServices.push(targetService.id);
+      }
+
+      const auditPayload = {
+        amendmentType,
+        operationalImpact,
+        affectedServices,
+        sync,
+        protectedConfirmed: protectedWarnings.length > 0 && Boolean(data.confirmProtected),
+        protectedOperations: protectedWarnings,
+      };
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        bookingServiceId: affectedServices[0] || null,
+        entityType: affectedServices[0] ? BookingAuditEntityType.booking_service : BookingAuditEntityType.booking,
+        entityId: affectedServices[0] || bookingId,
+        action: 'operational_amendment_applied',
+        newValue: JSON.stringify(auditPayload),
+        note: this.normalizeOptionalText(data.notes) || operationalImpact,
+        actor: data.actor,
+      });
+
+      for (const serviceId of affectedServices) {
+        await this.createAuditLog(tx, {
+          bookingId,
+          bookingServiceId: serviceId,
+          entityType: BookingAuditEntityType.booking_service,
+          entityId: serviceId,
+          action: 'operational_sync_required',
+          newValue: JSON.stringify(sync),
+          note: 'amended booking needs reconfirmation; voucher regeneration required; supplier reconfirmation required',
+          actor: data.actor,
+        });
+      }
+
+      this.invalidateAnalyticsCaches();
+      return {
+        bookingId,
+        amendmentType,
+        operationalImpact,
+        affectedServices,
+        createdService,
+        updatedService,
+        protectedOperations: protectedWarnings,
+        sync,
+      };
+    });
   }
 
   async updateBookingFinance(
@@ -7263,6 +7472,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildOperationsAlerts(input: {
+    bookings: any[];
     services: any[];
     missingRooming: any[];
     missingVoucherServices: any[];
@@ -7301,6 +7511,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           .filter((booking) => this.getMissingRoomingReasons(booking).includes('passengers not assigned to rooms'))
           .map((booking) => ({ ...this.mapDashboardBooking(booking), reasons: this.getMissingRoomingReasons(booking) })),
       ),
+      operationalAmendments: this.buildDashboardBucket(
+        input.bookings
+          .flatMap((booking) => this.mapOperationalAmendmentDashboardAlerts(booking))
+          .slice(0, 20),
+      ),
     };
   }
 
@@ -7322,6 +7537,35 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         };
       }),
     );
+  }
+
+  private mapOperationalAmendmentDashboardAlerts(booking: any) {
+    const auditLogs = Array.isArray(booking?.auditLogs) ? booking.auditLogs : [];
+    return auditLogs
+      .filter((log: any) => log.action === 'operational_amendment_applied')
+      .map((log: any) => {
+        let payload: any = {};
+        try {
+          payload = log.newValue ? JSON.parse(log.newValue) : {};
+        } catch {
+          payload = {};
+        }
+
+        const alerts = Array.isArray(payload?.sync?.dashboardAlerts)
+          ? payload.sync.dashboardAlerts
+          : ['amended booking needs reconfirmation', 'voucher regeneration required'];
+        return {
+          ...this.mapDashboardBooking(booking),
+          id: `operational-amendment-${log.id || booking.id}`,
+          bookingId: booking.id,
+          status: 'amended',
+          reasons: alerts,
+          amendmentType: payload.amendmentType || null,
+          operationalImpact: payload.operationalImpact || log.note || null,
+          affectedServices: Array.isArray(payload.affectedServices) ? payload.affectedServices : [],
+          createdAt: log.createdAt,
+        };
+      });
   }
 
   private isMissingServiceAssignment(service: any) {
@@ -7357,6 +7601,200 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`${fieldLabel} must be a non-negative integer`);
     }
     return parsed;
+  }
+
+  private normalizeOperationalAmendmentType(value: string | null | undefined): BookingOperationalAmendmentType {
+    const normalized = String(value || '').trim().toLowerCase();
+    const allowed: BookingOperationalAmendmentType[] = [
+      'add_service',
+      'remove_service',
+      'change_hotel_category',
+      'add_extension',
+      'add_meal',
+      'add_transfer',
+      'add_excursion',
+      'upgrade_service',
+      'downgrade_service',
+    ];
+
+    if (!allowed.includes(normalized as BookingOperationalAmendmentType)) {
+      throw new BadRequestException(`Unsupported operational amendment type: ${value || 'missing'}`);
+    }
+
+    return normalized as BookingOperationalAmendmentType;
+  }
+
+  private normalizeOperationalAmendmentServiceType(
+    amendmentType: BookingOperationalAmendmentType,
+    explicitType?: string | null,
+    targetService?: any,
+  ) {
+    const normalizedExplicit = this.normalizeOptionalText(explicitType)?.toUpperCase();
+    if (normalizedExplicit) {
+      return normalizedExplicit;
+    }
+
+    if (targetService?.operationType || targetService?.serviceType) {
+      return String(targetService.operationType || targetService.serviceType).trim().toUpperCase();
+    }
+
+    if (amendmentType === 'add_meal') return BookingOperationServiceType.DINING;
+    if (amendmentType === 'add_transfer') return BookingOperationServiceType.TRANSPORT;
+    if (amendmentType === 'add_excursion') return BookingOperationServiceType.ACTIVITY;
+    if (amendmentType === 'change_hotel_category') return BookingOperationServiceType.HOTEL;
+    return 'SERVICE';
+  }
+
+  private buildOperationalAmendmentServiceDescription(amendmentType: BookingOperationalAmendmentType, serviceType: string) {
+    if (amendmentType === 'add_meal') return 'Operational meal service';
+    if (amendmentType === 'add_transfer') return 'Operational transfer service';
+    if (amendmentType === 'add_excursion') return 'Operational excursion service';
+    if (amendmentType === 'add_extension') return 'Operational extension service';
+    return `${serviceType} operational service`;
+  }
+
+  private buildOperationalAmendmentImpact(
+    amendmentType: BookingOperationalAmendmentType,
+    data: {
+      hotelCategory?: string | null;
+      extensionName?: string | null;
+      upgradeLabel?: string | null;
+      downgradeLabel?: string | null;
+      description?: string | null;
+    },
+  ) {
+    const hotelCategory = this.normalizeOptionalText(data.hotelCategory);
+    const extensionName = this.normalizeOptionalText(data.extensionName);
+    const upgradeLabel = this.normalizeOptionalText(data.upgradeLabel);
+    const downgradeLabel = this.normalizeOptionalText(data.downgradeLabel);
+    const description = this.normalizeOptionalText(data.description);
+
+    if (amendmentType === 'change_hotel_category') return `hotel category changed${hotelCategory ? ` to ${hotelCategory}` : ''}`;
+    if (amendmentType === 'add_extension') return `extension added${extensionName ? `: ${extensionName}` : ''}`;
+    if (amendmentType === 'upgrade_service') return `service upgraded${upgradeLabel ? `: ${upgradeLabel}` : ''}`;
+    if (amendmentType === 'downgrade_service') return `service downgraded${downgradeLabel ? `: ${downgradeLabel}` : ''}`;
+    return description || amendmentType.replace(/_/g, ' ');
+  }
+
+  private buildOperationalAmendmentSyncSummary(
+    amendmentType: BookingOperationalAmendmentType,
+    roomingImpacted: boolean,
+    targetService?: any,
+  ) {
+    const supplierImpacted = Boolean(targetService) || amendmentType !== 'add_extension';
+    const roomingReviewRequired =
+      roomingImpacted ||
+      amendmentType === 'change_hotel_category' ||
+      (targetService ? this.isHotelService(targetService.serviceType, targetService.operationType) : false);
+
+    return {
+      vouchers: 'voucher regeneration required',
+      confirmations: supplierImpacted ? 'supplier reconfirmation required' : 'review required',
+      manifests: 'manifest update required',
+      rooming: roomingReviewRequired ? 'rooming impacted' : 'unchanged',
+      dashboardAlerts: [
+        'amended booking needs reconfirmation',
+        'voucher regeneration required',
+        ...(supplierImpacted ? ['supplier reconfirmation required'] : []),
+        ...(roomingReviewRequired ? ['rooming impacted'] : []),
+      ],
+    };
+  }
+
+  private getOperationalAmendmentProtectedWarnings(
+    booking: any,
+    targetService: any,
+    amendmentType: BookingOperationalAmendmentType,
+    roomingImpacted: boolean,
+  ) {
+    if (!targetService) {
+      return [];
+    }
+
+    const destructiveTypes: BookingOperationalAmendmentType[] = [
+      'remove_service',
+      'change_hotel_category',
+      'upgrade_service',
+      'downgrade_service',
+    ];
+    if (!destructiveTypes.includes(amendmentType) && !roomingImpacted) {
+      return [];
+    }
+
+    const warnings: string[] = [];
+    if (
+      targetService.supplierConfirmationStatus === SupplierConfirmationStatus.CONFIRMED ||
+      targetService.confirmationStatus === BookingServiceStatus.confirmed
+    ) {
+      warnings.push('confirmed supplier assignment requires reconfirmation');
+    }
+    if (targetService.guideId || (this.isOperationServiceType(targetService, BookingOperationServiceType.GUIDE) && targetService.assignedTo)) {
+      warnings.push('assigned guide will be impacted');
+    }
+    if (targetService.restaurantId) {
+      warnings.push('assigned restaurant will be impacted');
+    }
+    if (roomingImpacted || (this.isHotelService(targetService.serviceType, targetService.operationType) && (booking.roomingEntries || []).length > 0)) {
+      warnings.push('rooming will be impacted');
+    }
+    if ((targetService.vouchers || []).some((voucher: any) => ['READY', 'SENT', 'ISSUED'].includes(String(voucher.status)))) {
+      warnings.push('issued or prepared vouchers require regeneration');
+    }
+
+    return Array.from(new Set(warnings));
+  }
+
+  private resolveOperationalAmendmentBookingDayId(booking: any, requestedDayId?: string | null, serviceDate?: Date | string | null) {
+    const days = Array.isArray(booking.days) ? booking.days : [];
+    if (requestedDayId) {
+      const day = days.find((entry: any) => entry.id === requestedDayId);
+      if (!day) {
+        throw new NotFoundException('Booking day not found');
+      }
+      return day.id;
+    }
+
+    if (serviceDate) {
+      const dateKey = String(serviceDate instanceof Date ? serviceDate.toISOString() : serviceDate).slice(0, 10);
+      const matchingDay = days.find((entry: any) => entry.date && String(entry.date).slice(0, 10) === dateKey);
+      if (matchingDay) {
+        return matchingDay.id;
+      }
+    }
+
+    return days[0]?.id || null;
+  }
+
+  private buildOperationalAmendmentSourceMetadata(values: {
+    current: unknown;
+    amendmentType: BookingOperationalAmendmentType;
+    operationalImpact: string;
+    sync: Record<string, unknown>;
+    data: {
+      hotelCategory?: string | null;
+      extensionName?: string | null;
+      upgradeLabel?: string | null;
+      downgradeLabel?: string | null;
+    };
+  }) {
+    const metadata = this.getSourceMetadataObject(values.current);
+    const existingAmendments = Array.isArray(metadata.operationalAmendments) ? metadata.operationalAmendments : [];
+    return {
+      ...metadata,
+      operationalAmendments: [
+        ...existingAmendments,
+        {
+          amendmentType: values.amendmentType,
+          operationalImpact: values.operationalImpact,
+          hotelCategory: this.normalizeOptionalText(values.data.hotelCategory),
+          extensionName: this.normalizeOptionalText(values.data.extensionName),
+          upgradeLabel: this.normalizeOptionalText(values.data.upgradeLabel),
+          downgradeLabel: this.normalizeOptionalText(values.data.downgradeLabel),
+          sync: values.sync,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
   }
 
   private normalizeOptionalText(value: string | null | undefined) {
@@ -9446,6 +9884,20 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           operationStatus: true,
         },
       },
+      auditLogs: {
+        where: {
+          action: 'operational_amendment_applied',
+        },
+        select: {
+          id: true,
+          action: true,
+          newValue: true,
+          note: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      },
       seriesDeparture: {
         select: {
           id: true,
@@ -9667,6 +10119,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       missingVoucherServices,
     });
     const operationalAlerts = this.buildOperationsAlerts({
+      bookings: passengerCandidates,
       services: dashboardServices,
       missingRooming,
       missingVoucherServices,

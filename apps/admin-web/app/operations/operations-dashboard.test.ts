@@ -68,6 +68,8 @@ describe('operations dashboard department workspace', () => {
       'guideReadinessAlerts',
       'Dining readiness alert',
       'diningReadinessAlerts',
+      'Booking amendment sync required',
+      'operationalAmendments',
       'seriesOperations',
       'Seats remaining',
       'Low occupancy departures',

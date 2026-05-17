@@ -32,6 +32,33 @@ type SupplierConfirmationActionBody = {
   reconfirmationDueAt?: string | null;
 };
 
+type ApplyBookingOperationalAmendmentBody = {
+  amendmentType:
+    | 'add_service'
+    | 'remove_service'
+    | 'change_hotel_category'
+    | 'add_extension'
+    | 'add_meal'
+    | 'add_transfer'
+    | 'add_excursion'
+    | 'upgrade_service'
+    | 'downgrade_service';
+  serviceId?: string | null;
+  bookingDayId?: string | null;
+  serviceType?: string | null;
+  operationType?: string | null;
+  description?: string | null;
+  serviceDate?: string | null;
+  participantCount?: number | string | null;
+  notes?: string | null;
+  hotelCategory?: string | null;
+  extensionName?: string | null;
+  upgradeLabel?: string | null;
+  downgradeLabel?: string | null;
+  confirmProtected?: boolean | null;
+  roomingImpacted?: boolean | null;
+};
+
 type UpdateBookingServiceOperationalBody = {
   serviceDate?: string | null;
   startTime?: string | null;
@@ -591,6 +618,34 @@ export class BookingsController {
   @Roles('admin', 'operations')
   amendBooking(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
     return this.bookingsService.amendBooking(id, {
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Post(':id/operational-amendments')
+  @Roles('admin', 'operations')
+  applyOperationalAmendment(
+    @Param('id') id: string,
+    @Body() body: ApplyBookingOperationalAmendmentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.applyOperationalAmendment(id, {
+      amendmentType: body.amendmentType,
+      serviceId: body.serviceId === undefined ? undefined : body.serviceId || null,
+      bookingDayId: body.bookingDayId === undefined ? undefined : body.bookingDayId || null,
+      serviceType: body.serviceType === undefined ? undefined : body.serviceType || null,
+      operationType: body.operationType === undefined ? undefined : body.operationType || null,
+      description: body.description === undefined ? undefined : body.description || null,
+      serviceDate: body.serviceDate === undefined ? undefined : body.serviceDate || null,
+      participantCount: body.participantCount === undefined || body.participantCount === null ? undefined : Number(body.participantCount),
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      hotelCategory: body.hotelCategory === undefined ? undefined : body.hotelCategory || null,
+      extensionName: body.extensionName === undefined ? undefined : body.extensionName || null,
+      upgradeLabel: body.upgradeLabel === undefined ? undefined : body.upgradeLabel || null,
+      downgradeLabel: body.downgradeLabel === undefined ? undefined : body.downgradeLabel || null,
+      confirmProtected: Boolean(body.confirmProtected),
+      roomingImpacted: Boolean(body.roomingImpacted),
       actor: this.toAuditActor(actor),
       companyActor: actor,
     });
