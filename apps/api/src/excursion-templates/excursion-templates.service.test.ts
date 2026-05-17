@@ -1,10 +1,16 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 const { BadRequestException } = require('@nestjs/common');
 const { ROLES_KEY } = require('../auth/auth.decorators');
 const { ExcursionTemplatesController } = require('./excursion-templates.controller');
 const { ExcursionTemplatesService } = require('./excursion-templates.service');
 const XLSX = require('xlsx');
+
+const schemaSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+const packageSource = readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8');
+const excursionSeedSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'seeds', 'seed-excursion-templates.ts'), 'utf8');
 
 function buildOperationalBlueprintWorkbook(overrides = {}) {
   const sheets = {
@@ -779,6 +785,43 @@ test('Petra Full Day seed template is composite and links existing modules when 
   assert.equal(createdData.components.create[2].activityId, 'activity-petra-guided');
   assert.equal(createdData.components.create[3].supplierServiceId, 'service-lunch');
   assert.equal(createdData.components.create[3].isOptional, true);
+});
+
+test('golden Jordan excursion focused seed defines sellable templates with existing route and activity links only', () => {
+  assert.match(packageSource, /"seed:excursion-templates": "ts-node prisma\/seeds\/seed-excursion-templates\.ts"/);
+  assert.match(schemaSource, /model ExcursionTemplate\s+\{/);
+  assert.match(schemaSource, /region\s+String\?/);
+  assert.match(schemaSource, /categoryTags\s+Json\?/);
+  assert.match(schemaSource, /sicPossible\s+Boolean\s+@default\(false\)/);
+  assert.match(schemaSource, /familyFriendly\s+Boolean\s+@default\(false\)/);
+  assert.match(schemaSource, /recommendedPaxRange\s+String\?/);
+  assert.match(schemaSource, /inclusions\s+String\?/);
+  assert.match(schemaSource, /exclusions\s+String\?/);
+  assert.match(excursionSeedSource, /GOLDEN_JORDAN_EXCURSION_TEMPLATES/);
+  assert.match(excursionSeedSource, /Petra Full Day/);
+  assert.match(excursionSeedSource, /Jerash & Ajloun Full Day/);
+  assert.match(excursionSeedSource, /Madaba, Nebo & Dead Sea/);
+  assert.match(excursionSeedSource, /Wadi Rum Jeep Experience/);
+  assert.match(excursionSeedSource, /Blessed Tree Islamic Heritage Tour/);
+  assert.match(excursionSeedSource, /Jordan Valley Islamic Heritage Tour/);
+  assert.match(excursionSeedSource, /Amman City & Desert Castles/);
+  assert.match(excursionSeedSource, /Dead Sea Relaxation Day/);
+  assert.match(excursionSeedSource, /JOR-TR-SOUTH-AMMAN-PETRA-ON/);
+  assert.match(excursionSeedSource, /JOR-TR-NORTH-JERASH-AJLOUN-RT/);
+  assert.match(excursionSeedSource, /ACT-PETRA-GUIDED-EXPERIENCES/);
+  assert.match(excursionSeedSource, /ACT-WADI-RUM-JEEP-EXPERIENCES/);
+  assert.match(excursionSeedSource, /ACT-DEAD-SEA-RELAXATION-EXPERIENCES/);
+  assert.match(excursionSeedSource, /excursionTemplate\.upsert/);
+  assert.match(excursionSeedSource, /components:\s*\{\s*deleteMany:\s*\{\},\s*create: components/s);
+  assert.match(excursionSeedSource, /validatedTemplates/);
+  assert.match(excursionSeedSource, /validatedComponents/);
+  assert.match(excursionSeedSource, /unresolvedLinks/);
+  assert.match(excursionSeedSource, /Ticket component intentionally left unlinked/);
+  assert.doesNotMatch(excursionSeedSource, /activity\.upsert/);
+  assert.doesNotMatch(excursionSeedSource, /touringRoute\.upsert/);
+  assert.doesNotMatch(excursionSeedSource, /quote\./);
+  assert.doesNotMatch(excursionSeedSource, /invoice\./);
+  assert.doesNotMatch(excursionSeedSource, /hotelRate\.|hotelContract\.|hotel\./);
 });
 
 test('Jerash and Amman seed template preserves component order and placeholder notes', async () => {

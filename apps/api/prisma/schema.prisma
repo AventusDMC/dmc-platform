@@ -2005,6 +2005,14 @@ model ExcursionTemplate {
   code                     String?                      @unique
   description              String?
   defaultDepartureCity     String?
+  region                   String?
+  categoryTags             Json?
+  sicPossible              Boolean                      @default(false)
+  familyFriendly           Boolean                      @default(false)
+  fitnessLevel             String?
+  recommendedPaxRange      String?
+  inclusions               String?
+  exclusions               String?
   durationMinutes          Int?
   operationalNotes         String?
   operatingDays            String?
