@@ -3778,6 +3778,8 @@ test('booking amendments operational sync phase one wires controlled service cha
     'mapOperationalAmendmentDashboardAlerts',
     'BookingServiceLifecycleStatus.cancelled',
     'SupplierConfirmationStatus.NOT_SENT',
+    'toBookingAmendmentFailureException',
+    'Use operational amendments for post-conversion service changes',
   ]) {
     assert.match(bookingsSource, new RegExp(token));
   }

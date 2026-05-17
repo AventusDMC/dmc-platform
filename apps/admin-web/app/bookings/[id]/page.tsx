@@ -1483,7 +1483,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                   Add passengers
                 </Link>
               )}
-              <AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} />
+              <AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} services={booking.services} days={booking.days || []} />
               {!bookingReadOnly ? <CancelBookingButton bookingId={booking.id} /> : null}
             </AdminHeaderActions>
           </section>

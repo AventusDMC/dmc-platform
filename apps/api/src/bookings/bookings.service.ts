@@ -1323,7 +1323,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
 
       return amendedBooking;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((error) => {
+      throw this.toBookingAmendmentFailureException(error);
+    });
   }
 
   async applyOperationalAmendment(
@@ -7622,6 +7624,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return normalized as BookingOperationalAmendmentType;
+  }
+
+  private toBookingAmendmentFailureException(error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(', ') : String(error.meta?.target || '');
+      if (target.includes('quoteId')) {
+        return new BadRequestException(
+          'Booking amendment clone could not be created because the source quote is already linked to a booking. Use operational amendments for post-conversion service changes.',
+        );
+      }
+
+      return new BadRequestException(`Booking amendment clone could not be created because of a duplicate value${target ? ` on ${target}` : ''}.`);
+    }
+
+    return error instanceof Error ? error : new Error('Booking amendment could not be created.');
   }
 
   private normalizeOperationalAmendmentServiceType(

@@ -7,6 +7,7 @@ const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', i
 const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
 const bookingServicesListSource = readFileSync(new URL('./BookingServicesList.tsx', import.meta.url), 'utf8');
 const bookingServiceTimelineSource = readFileSync(new URL('./BookingServiceTimeline.tsx', import.meta.url), 'utf8');
+const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
@@ -69,7 +70,7 @@ describe('booking detail page regression', () => {
       'Assign operations',
       '<Link href={buildTabHref(\'passengers\')} className="secondary-button">',
       'Add passengers',
-      '<AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} />',
+      '<AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} services={booking.services} days={booking.days || []} />',
       '{!bookingReadOnly ? <CancelBookingButton bookingId={booking.id} /> : null}',
     ]);
   });
@@ -79,10 +80,26 @@ describe('booking detail page regression', () => {
       "const bookingCancelled = booking.status === 'cancelled';",
       'const bookingReadOnly = bookingCancelled || booking.isLatestAmendment === false;',
       'allowedTransitions.length > 0 && !bookingReadOnly',
-      '<AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} />',
+      '<AmendBookingButton bookingId={booking.id} disabled={bookingReadOnly} services={booking.services} days={booking.days || []} />',
       '{!bookingReadOnly ? <CancelBookingButton bookingId={booking.id} /> : null}',
       'const primaryAction = bookingReadOnly ? null : getBookingPrimaryAction(booking.status, allowedTransitions);',
     ]);
+  });
+
+  it('opens the amendment workflow before submitting operational amendment payloads', () => {
+    expectSourceContains(amendBookingButtonSource, [
+      'setIsOpen((value) => !value)',
+      'amendment-workflow-panel',
+      '`/api/bookings/${bookingId}/operational-amendments`',
+      'JSON.stringify(payload)',
+      'amendmentType',
+      'serviceId',
+      'confirmProtected',
+      'roomingImpacted',
+      'Submit amendment',
+    ]);
+    assert.equal(amendBookingButtonSource.includes('window.confirm'), false);
+    assert.equal(amendBookingButtonSource.includes('`/api/bookings/${bookingId}/amend`'), false);
   });
 
   it('keeps old amendment context visible while supporting read-only latest-amendment state', () => {

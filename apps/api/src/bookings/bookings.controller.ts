@@ -627,7 +627,7 @@ export class BookingsController {
   @Roles('admin', 'operations')
   applyOperationalAmendment(
     @Param('id') id: string,
-    @Body() body: ApplyBookingOperationalAmendmentBody,
+    @Body() body: ApplyBookingOperationalAmendmentBody = {} as ApplyBookingOperationalAmendmentBody,
     @Actor() actor: AuthenticatedActor,
   ) {
     return this.bookingsService.applyOperationalAmendment(id, {
