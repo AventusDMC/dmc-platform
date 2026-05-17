@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 const agentIndexSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const dashboardSource = readFileSync(new URL('./dashboard/page.tsx', import.meta.url), 'utf8');
+const invoicesSource = readFileSync(new URL('./invoices/page.tsx', import.meta.url), 'utf8');
 
 describe('agent portal routing', () => {
   it('exposes a default /agent route that lands on the dashboard', () => {
@@ -32,5 +33,21 @@ describe('agent portal routing', () => {
     assert.match(dashboardSource, /safeAgentFetch<AgentDeparture\[\]>\('departures', getDepartures, \[\]\)/);
     assert.match(dashboardSource, /departure\.availability\?\.stopSale/);
     assert.match(dashboardSource, /departure\.availability\?\.seatsRemaining/);
+  });
+
+  it('keeps /agent/invoices resilient without agent context or invoice data', () => {
+    assert.match(invoicesSource, /export const dynamic = 'force-dynamic'/);
+    assert.match(invoicesSource, /safeAgentFetch<AgentMe \| null>\('profile', getMe, null\)/);
+    assert.match(invoicesSource, /safeAgentFetch<AgentInvoice\[\]>\('invoices', getInvoices, \[\]\)/);
+    assert.match(invoicesSource, /Agent sign in required/);
+    assert.match(invoicesSource, /href="\/login\?next=\/agent\/invoices"/);
+    assert.match(invoicesSource, /No invoices are available for this agent account/);
+    assert.match(invoicesSource, /invoice\.invoiceNumber \|\| 'Invoice pending'/);
+    assert.match(invoicesSource, /invoice\.bookingRef \|\| invoice\.quote\?\.title \|\| 'Booking reference pending'/);
+    assert.match(invoicesSource, /invoice\.quote\?\.clientCompany\?\.name \|\| 'Client pending'/);
+    assert.match(invoicesSource, /formatDate\(invoice\.dueDate\)/);
+    assert.match(invoicesSource, /formatMoney\(invoice\.balanceDue, invoice\.currency \|\| 'USD'\)/);
+    assert.match(invoicesSource, /formatPaymentReferences\(invoice\)/);
+    assert.match(invoicesSource, /invoice\.pdfUrl \?/);
   });
 });
