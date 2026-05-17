@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { getMarginMetrics } from '../../lib/financials';
@@ -133,6 +134,20 @@ export function BookingFinancialsTab({
 
   const clientOutstanding = Math.max(totalSell - clientPaid, 0);
   const supplierOutstanding = Math.max(totalCost - supplierPaid, 0);
+  const clientPaymentStatus =
+    totalSell <= 0 || clientPaid <= 0
+      ? 'Unpaid'
+      : clientPaid >= totalSell
+        ? 'Paid'
+        : clientPayments.some((payment) => payment.status === 'PAID')
+          ? 'Partially paid'
+          : 'Deposit paid';
+  const supplierPayableStatus =
+    totalCost <= 0 || supplierPaid <= 0
+      ? 'Unpaid'
+      : supplierPaid >= totalCost
+        ? 'Paid'
+        : 'Partially paid';
   const margin = getMarginMetrics(totalSell, totalCost);
   const overdueClientPayments = clientPayments.filter((payment) => payment.overdue);
   const overdueSupplierPayments = supplierPayments.filter((payment) => payment.overdue);
@@ -319,6 +334,15 @@ export function BookingFinancialsTab({
             <p className="detail-copy">Use the client payment row below to confirm the payment once finance has reconciled it.</p>
           </div>
         ) : null}
+        <div className="booking-payment-proof-card">
+          <p className="eyebrow">Finance Dashboard</p>
+          <p className="detail-copy">Open operational finance queues for outstanding balances, unpaid suppliers, and reconciliation.</p>
+          <div className="quote-status-actions">
+            <Link href="/finance" className="secondary-button">Finance dashboard</Link>
+            <Link href="/finance/reconciliation" className="secondary-button">Reconciliation</Link>
+            <Link href="/finance/supplier-payables" className="secondary-button">Supplier payables</Link>
+          </div>
+        </div>
       </div>
 
       <section className="booking-financial-summary">
@@ -363,13 +387,25 @@ export function BookingFinancialsTab({
             className="booking-financial-card-secondary"
             label="Client Paid"
             value={formatMoney(clientPaid, currency)}
-            helper="Received and settled"
+            helper={`${clientPaymentStatus} | Deposits received`}
           />
           <BookingOperationsStatCard
             className="booking-financial-card-secondary"
             label="Supplier Paid"
             value={formatMoney(supplierPaid, currency)}
-            helper="Released and settled"
+            helper={`${supplierPayableStatus} | Supplier payable status`}
+          />
+          <BookingOperationsStatCard
+            className="booking-financial-card-secondary"
+            label="Payment Methods"
+            value="Bank / Cash / CliQ / MB WAY / Card"
+            helper="Custom/manual methods supported"
+          />
+          <BookingOperationsStatCard
+            className="booking-financial-card-secondary"
+            label="Payment References"
+            value={clientPayments.concat(supplierPayments).filter((payment) => payment.reference).length.toString()}
+            helper="Tracked reference rows"
           />
         </div>
       </section>

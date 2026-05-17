@@ -55,6 +55,9 @@ type BookingService = {
   qty: number;
   totalCost: number;
   totalSell: number;
+  supplierPayableAmount?: number | null;
+  supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid' | string | null;
+  supplierPaymentNotes?: string | null;
   supplierId: string | null;
   supplierName: string | null;
   supplierStatus?: 'unresolved' | null;
@@ -127,6 +130,12 @@ type BookingServiceTimelineProps = {
   guides: Guide[];
   restaurants: Restaurant[];
   highlightServiceId?: string;
+  finance?: {
+    totalSell?: number | null;
+    depositsReceived?: number | null;
+    remainingBalance?: number | null;
+    clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid' | string | null;
+  };
 };
 
 type ServiceGroup = {
@@ -259,6 +268,13 @@ function formatMoney(amount: number, currency = 'USD') {
   return `${currency} ${amount.toFixed(2)}`;
 }
 
+function formatFinancialStatus(value?: string | null) {
+  if (value === 'deposit_paid') return 'Deposit paid';
+  if (value === 'partially_paid') return 'Partially paid';
+  if (value === 'paid') return 'Paid';
+  return 'Unpaid';
+}
+
 function BookingServiceDetailSection({
   title,
   children,
@@ -287,6 +303,7 @@ export function BookingServiceTimeline({
   guides,
   restaurants,
   highlightServiceId,
+  finance,
 }: BookingServiceTimelineProps) {
   if (services.length === 0) {
     return (
@@ -329,6 +346,8 @@ export function BookingServiceTimeline({
               const selectedRestaurant = service.restaurant || restaurantOptions.find((restaurant) => restaurant.id === service.restaurantId) || null;
               const hotelService = isHotelService(service);
               const hotelReservation = getHotelReservationMetadata(service);
+              const supplierPayableAmount = Number(service.supplierPayableAmount ?? service.totalCost ?? 0);
+              const supplierPayableStatus = service.supplierPayableStatus || (supplierPayableAmount > 0 ? 'unpaid' : 'unpaid');
               const hasOpsIssue =
                 activityService &&
                 (!service.serviceDate || (!service.startTime && !service.pickupTime) || (!service.pickupLocation && !service.meetingPoint));
@@ -483,6 +502,48 @@ export function BookingServiceTimeline({
                               </div>
                             </form>
                           </InlineRowEditorShell>
+                        </BookingServiceDetailSection>
+
+                        <BookingServiceDetailSection title="Financials">
+                          <div className="booking-service-hotel-summary">
+                            <div>
+                              <span>Client Financials</span>
+                              <strong>{formatFinancialStatus(finance?.clientPaymentStatus)}</strong>
+                            </div>
+                            <div>
+                              <span>Total sell</span>
+                              <strong>{formatMoney(Number(finance?.totalSell ?? service.totalSell ?? 0))}</strong>
+                            </div>
+                            <div>
+                              <span>Deposits received</span>
+                              <strong>{formatMoney(Number(finance?.depositsReceived ?? 0))}</strong>
+                            </div>
+                            <div>
+                              <span>Remaining balance</span>
+                              <strong>{formatMoney(Number(finance?.remainingBalance ?? 0))}</strong>
+                            </div>
+                            <div>
+                              <span>Supplier Payables</span>
+                              <strong>{formatFinancialStatus(supplierPayableStatus)}</strong>
+                            </div>
+                            <div>
+                              <span>Supplier payable amount</span>
+                              <strong>{formatMoney(supplierPayableAmount)}</strong>
+                            </div>
+                            <div>
+                              <span>Supplier payment notes</span>
+                              <strong>{service.supplierPaymentNotes || 'No notes'}</strong>
+                            </div>
+                            <div>
+                              <span>Payment Methods</span>
+                              <strong>Bank transfer, cash, CliQ, MB WAY, credit card, custom/manual</strong>
+                            </div>
+                          </div>
+                          <div className="quote-status-actions">
+                            <a href="#client-payments" className="secondary-button">Client Financials</a>
+                            <a href="#supplier-payments" className="secondary-button">Supplier Payables</a>
+                            <a href="/finance" className="secondary-button">Finance dashboard</a>
+                          </div>
                         </BookingServiceDetailSection>
 
                         {guideService ? (

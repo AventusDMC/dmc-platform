@@ -425,6 +425,26 @@ describe('booking detail page regression', () => {
       'remainingBalance?: number;',
       "clientPaymentStatus?: 'unpaid' | 'deposit_paid' | 'partially_paid' | 'paid';",
       "supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid';",
+      'supplierPayableAmount?: number | null;',
+      'supplierPaymentNotes?: string | null;',
+      'finance={booking.finance}',
+    ]);
+    expectSourceContains(bookingServiceTimelineSource, [
+      '<BookingServiceDetailSection title="Financials">',
+      'Client Financials',
+      'Deposits received',
+      'Remaining balance',
+      'Supplier Payables',
+      'Supplier payable amount',
+      'Payment Methods',
+      'Finance dashboard',
+    ]);
+    expectSourceContains(financialsTabSource, [
+      'Finance Dashboard',
+      '/finance/reconciliation',
+      '/finance/supplier-payables',
+      'Payment Methods',
+      'Payment References',
     ]);
   });
 

@@ -427,6 +427,9 @@ type Booking = {
     qty: number;
     totalCost: number;
     totalSell: number;
+    supplierPayableAmount?: number | null;
+    supplierPayableStatus?: 'unpaid' | 'partially_paid' | 'paid' | string | null;
+    supplierPaymentNotes?: string | null;
     supplierId: string | null;
     supplierName: string | null;
     supplierStatus?: 'unresolved' | null;
@@ -2302,6 +2305,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                       guides={guides}
                       restaurants={restaurants}
                       highlightServiceId={highlightServiceId}
+                      finance={booking.finance}
                     />
                   </section>
                 </div>
