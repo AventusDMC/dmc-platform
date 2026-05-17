@@ -11,6 +11,7 @@ function createService(options: {
   invoice?: any;
   payments?: any[];
   invoiceCreateError?: Error;
+  invoiceFindFirstError?: Error;
 } = {}) {
   const calls: Record<string, any[]> = {
     bookingFindFirst: [],
@@ -58,6 +59,9 @@ function createService(options: {
       },
       findFirst: async (args: any) => {
         calls.invoiceFindFirst.push(args);
+        if (options.invoiceFindFirstError) {
+          throw options.invoiceFindFirstError;
+        }
         return invoiceRecord({ ...invoice, booking: { ...booking, payments } });
       },
       update: async (args: any) => {
@@ -151,6 +155,24 @@ test('generates invoice for large unpaid booking without recipient email', async
   assert.equal(calls.invoiceCreate[0].data.status, 'ISSUED');
 });
 
+test('generated booking invoice response uses Quote.bookings relation expected by production Prisma schema', async () => {
+  const { service, calls } = createService({
+    booking: bookingRecord({
+      id: '17cef561-1a32-41c6-9805-b26dc18dcf70',
+      pricingSnapshotJson: { totalSell: 102037.3, totalCost: 65000, currency: 'USD' },
+      snapshotJson: { totalSell: 102037.3, totalCost: 65000, currency: 'USD' },
+      services: [],
+      contactSnapshotJson: {},
+    }),
+  });
+
+  await service.generateForBooking('17cef561-1a32-41c6-9805-b26dc18dcf70', { companyActor: actor });
+
+  const responseLookup = calls.invoiceFindFirst.at(-1);
+  assert.equal(Boolean(responseLookup.include.quote.include.bookings), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(responseLookup.include.quote.include, 'booking'), false);
+});
+
 test('invoice generation returns exact transaction failure instead of generic server error', async () => {
   const { service } = createService({
     invoiceCreateError: new Error('Prisma create failed: duplicate invoice quoteId'),
@@ -159,6 +181,17 @@ test('invoice generation returns exact transaction failure instead of generic se
   await assert.rejects(
     () => service.generateForBooking('booking-1', { companyActor: actor }),
     /Invoice generation failed: Prisma create failed: duplicate invoice quoteId/,
+  );
+});
+
+test('invoice generation returns exact response lookup failure instead of generic server error', async () => {
+  const { service } = createService({
+    invoiceFindFirstError: new Error('Unknown field `booking` for include statement on model `Quote`'),
+  });
+
+  await assert.rejects(
+    () => service.generateForBooking('booking-1', { companyActor: actor }),
+    /Invoice generation failed: Unknown field `booking` for include statement on model `Quote`/,
   );
 });
 
@@ -528,10 +561,10 @@ function invoiceRecord(options: any = {}) {
     dueDate: options.dueDate || new Date('2026-06-08T12:00:00.000Z'),
     quote: {
       ...booking.quote,
-      booking: {
+      bookings: [{
         ...booking,
         payments,
-      },
+      }],
     },
     auditLogs: [],
   };

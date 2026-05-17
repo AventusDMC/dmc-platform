@@ -62,12 +62,14 @@ export class InvoicesService {
           include: {
             clientCompany: true,
             contact: true,
-            booking: {
+            bookings: {
               include: {
                 payments: {
                   orderBy: [{ createdAt: 'desc' }],
                 },
               },
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
             },
           },
         },
@@ -184,7 +186,13 @@ export class InvoicesService {
       this.rethrowInvoiceGenerationError(error);
     }
 
-    const invoice = await this.findOne(invoiceId, data.companyActor);
+    let invoice: any;
+
+    try {
+      invoice = await this.findOne(invoiceId, data.companyActor);
+    } catch (error) {
+      this.rethrowInvoiceGenerationError(error);
+    }
 
     if (!invoice) {
       throw new NotFoundException('Invoice not found');
@@ -226,7 +234,7 @@ export class InvoicesService {
       throw new NotFoundException('Invoice not found');
     }
 
-    const booking = invoice.quote.booking;
+    const booking = this.getInvoiceBooking(invoice);
 
     if (!booking) {
       throw new BadRequestException('Invoice is not linked to a booking');
@@ -594,7 +602,7 @@ export class InvoicesService {
               },
             },
             contact: true,
-            booking: {
+            bookings: {
               include: {
                 payments: {
                   orderBy: [{ createdAt: 'desc' }],
@@ -611,6 +619,8 @@ export class InvoicesService {
                   orderBy: [{ serviceOrder: 'asc' }, { createdAt: 'asc' }],
                 },
               },
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
             },
           },
         },
@@ -657,8 +667,12 @@ export class InvoicesService {
     return label || null;
   }
 
+  private getInvoiceBooking(invoice: any) {
+    return invoice.quote?.booking || invoice.quote?.bookings?.[0] || null;
+  }
+
   private enrichInvoice(invoice: any) {
-    const booking = invoice.quote?.booking || null;
+    const booking = this.getInvoiceBooking(invoice);
     const clientPayments = ((booking?.payments || []) as any[]).filter((payment) => payment.type === 'CLIENT');
     const paidAmount = this.roundMoney(
       clientPayments
@@ -697,7 +711,8 @@ export class InvoicesService {
   }
 
   private buildInvoiceNumber(invoice: any) {
-    const reference = invoice.quote?.booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id;
+    const booking = this.getInvoiceBooking(invoice);
+    const reference = booking?.bookingRef || invoice.quote?.quoteNumber || invoice.id;
     return `INV-${String(reference).replace(/^INV-/i, '')}`;
   }
 
@@ -895,7 +910,7 @@ export class InvoicesService {
           include: {
             clientCompany: true,
             contact: true,
-            booking: {
+            bookings: {
               include: {
                 payments: {
                   orderBy: [{ createdAt: 'desc' }],
@@ -912,6 +927,8 @@ export class InvoicesService {
                   orderBy: [{ serviceOrder: 'asc' }, { createdAt: 'asc' }],
                 },
               },
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
             },
           },
         },
