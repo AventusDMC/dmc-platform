@@ -2057,6 +2057,16 @@ model TouringRoute {
   mainDestinations    Json?
   includedKm          Float?
   includedHours       Float?
+  estimatedDistanceKm Float?
+  estimatedDriveHours Float?
+  region              String?
+  longDistance        Boolean                      @default(false)
+  desertRoad          Boolean                      @default(false)
+  mountainRoad        Boolean                      @default(false)
+  seasonalHeatRisk    Boolean                      @default(false)
+  sicPossible         Boolean                      @default(false)
+  overnightRisk       Boolean                      @default(false)
+  reviewNotes         String?
   active              Boolean                      @default(true)
   createdAt           DateTime                     @default(now())
   updatedAt           DateTime                     @updatedAt
@@ -2069,6 +2079,8 @@ model TouringRoute {
 
   @@index([active, name])
   @@index([startCity])
+  @@index([region])
+  @@index([sicPossible])
   @@map("touring_routes")
 }
 

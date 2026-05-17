@@ -41,6 +41,16 @@ type TouringRouteInput = {
   mainDestinations?: string[] | null;
   includedKm?: number | null;
   includedHours?: number | null;
+  estimatedDistanceKm?: number | null;
+  estimatedDriveHours?: number | null;
+  region?: string | null;
+  longDistance?: boolean | null;
+  desertRoad?: boolean | null;
+  mountainRoad?: boolean | null;
+  seasonalHeatRisk?: boolean | null;
+  sicPossible?: boolean | null;
+  overnightRisk?: boolean | null;
+  reviewNotes?: string | null;
   active?: boolean;
   stops?: TouringRouteStopInput[];
   pricings?: TouringRoutePricingInput[];
@@ -1509,6 +1519,18 @@ export class TouringRoutesService {
       includedKm: data.includedKm === undefined && partial ? undefined : normalizeOptionalNumber(data.includedKm, 'includedKm'),
       includedHours:
         data.includedHours === undefined && partial ? undefined : normalizeOptionalNumber(data.includedHours, 'includedHours'),
+      estimatedDistanceKm:
+        data.estimatedDistanceKm === undefined && partial ? undefined : normalizeOptionalNumber(data.estimatedDistanceKm, 'estimatedDistanceKm'),
+      estimatedDriveHours:
+        data.estimatedDriveHours === undefined && partial ? undefined : normalizeOptionalNumber(data.estimatedDriveHours, 'estimatedDriveHours'),
+      region: data.region === undefined && partial ? undefined : normalizeOptionalString(data.region),
+      longDistance: data.longDistance === undefined ? undefined : Boolean(data.longDistance),
+      desertRoad: data.desertRoad === undefined ? undefined : Boolean(data.desertRoad),
+      mountainRoad: data.mountainRoad === undefined ? undefined : Boolean(data.mountainRoad),
+      seasonalHeatRisk: data.seasonalHeatRisk === undefined ? undefined : Boolean(data.seasonalHeatRisk),
+      sicPossible: data.sicPossible === undefined ? undefined : Boolean(data.sicPossible),
+      overnightRisk: data.overnightRisk === undefined ? undefined : Boolean(data.overnightRisk),
+      reviewNotes: data.reviewNotes === undefined && partial ? undefined : normalizeOptionalString(data.reviewNotes),
       active: data.active === undefined ? undefined : Boolean(data.active),
       stops:
         data.stops === undefined

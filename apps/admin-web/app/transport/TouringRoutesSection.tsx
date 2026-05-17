@@ -12,6 +12,16 @@ type TouringRoute = {
   mainDestinations?: string[] | null;
   includedKm?: number | null;
   includedHours?: number | null;
+  estimatedDistanceKm?: number | null;
+  estimatedDriveHours?: number | null;
+  region?: string | null;
+  longDistance?: boolean | null;
+  desertRoad?: boolean | null;
+  mountainRoad?: boolean | null;
+  seasonalHeatRisk?: boolean | null;
+  sicPossible?: boolean | null;
+  overnightRisk?: boolean | null;
+  reviewNotes?: string | null;
   active?: boolean;
   stops?: Array<{ id: string; order: number; city: string; location?: string | null; notes?: string | null }>;
   pricings?: Array<{
@@ -46,6 +56,16 @@ function formatPricing(route: TouringRoute) {
   return `${first.currency} ${Number(first.baseCost || 0).toFixed(2)} ${first.pricingBasis === 'PER_DAY' ? 'per day' : 'per vehicle'}`;
 }
 
+function formatOperations(route: TouringRoute) {
+  return [
+    route.region || null,
+    route.estimatedDistanceKm ? `${route.estimatedDistanceKm} km` : null,
+    route.estimatedDriveHours ? `${route.estimatedDriveHours} drive hrs` : null,
+    route.sicPossible ? 'SIC possible' : null,
+    route.overnightRisk ? 'ON risk' : null,
+  ].filter(Boolean).join(' / ') || 'Metadata pending';
+}
+
 export async function TouringRoutesSection() {
   const touringRoutes = await adminPageFetchJson<TouringRoute[]>(`${API_BASE_URL}/touring-routes?limit=200`, 'Touring route catalog', {
     cache: 'no-store',
@@ -76,6 +96,7 @@ export async function TouringRoutesSection() {
                   <th>Duration</th>
                   <th>Main destinations</th>
                   <th>Included</th>
+                  <th>Operations</th>
                   <th>Pricing</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -97,7 +118,9 @@ export async function TouringRoutesSection() {
                         route.includedKm ? `${route.includedKm} km` : null,
                         route.includedHours ? `${route.includedHours} hours` : null,
                       ].filter(Boolean).join(' / ') || 'Not set'}
+                      {route.reviewNotes ? <div className="table-subcopy">{route.reviewNotes}</div> : null}
                     </td>
+                    <td>{formatOperations(route)}</td>
                     <td>{formatPricing(route)}</td>
                     <td>
                       <span className="status-badge">{route.active === false ? 'Inactive' : 'Active'}</span>

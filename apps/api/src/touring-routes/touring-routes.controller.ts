@@ -13,6 +13,16 @@ type TouringRouteBody = {
   mainDestinations?: string[] | null;
   includedKm?: number | null;
   includedHours?: number | null;
+  estimatedDistanceKm?: number | null;
+  estimatedDriveHours?: number | null;
+  region?: string | null;
+  longDistance?: boolean | null;
+  desertRoad?: boolean | null;
+  mountainRoad?: boolean | null;
+  seasonalHeatRisk?: boolean | null;
+  sicPossible?: boolean | null;
+  overnightRisk?: boolean | null;
+  reviewNotes?: string | null;
   active?: boolean;
   stops?: Array<{
     order?: number | null;

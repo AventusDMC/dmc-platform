@@ -9,6 +9,7 @@ import { TouringRoutesService } from './touring-routes.service';
 const schemaSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(__dirname, 'touring-routes.controller.ts'), 'utf8');
 const serviceSource = readFileSync(join(__dirname, 'touring-routes.service.ts'), 'utf8');
+const seedSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'seed.ts'), 'utf8');
 
 test('touring route foundation defines separate inventory, stops, pricing, and transport classification', () => {
   assert.match(schemaSource, /model TouringRoute\s+\{/);
@@ -17,6 +18,11 @@ test('touring route foundation defines separate inventory, stops, pricing, and t
   assert.match(schemaSource, /TOURING_ROUTE/);
   assert.match(schemaSource, /includedKm\s+Float\?/);
   assert.match(schemaSource, /includedHours\s+Float\?/);
+  assert.match(schemaSource, /estimatedDistanceKm\s+Float\?/);
+  assert.match(schemaSource, /estimatedDriveHours\s+Float\?/);
+  assert.match(schemaSource, /region\s+String\?/);
+  assert.match(schemaSource, /sicPossible\s+Boolean\s+@default\(false\)/);
+  assert.match(schemaSource, /overnightRisk\s+Boolean\s+@default\(false\)/);
   assert.match(schemaSource, /extraKmRate\s+Float\?/);
   assert.match(schemaSource, /extraHourRate\s+Float\?/);
 });
@@ -28,6 +34,31 @@ test('touring route API exposes reusable catalog without using transfer routes',
   assert.match(serviceSource, /touringRoute\.findMany/);
   assert.match(serviceSource, /touringRoute\.create/);
   assert.doesNotMatch(serviceSource, /prisma\.route\.create/);
+});
+
+test('golden Jordan touring route seed creates canonical operational infrastructure only', () => {
+  assert.match(seedSource, /GOLDEN_JORDAN_TOURING_ROUTES/);
+  assert.match(seedSource, /seedGoldenJordanTouringRoutes\(prisma\)/);
+  assert.match(seedSource, /Amman – Jerash – Amman RT/);
+  assert.match(seedSource, /Amman – Madaba – Nebo – Dead Sea – Amman RT/);
+  assert.match(seedSource, /Petra – Wadi Rum ON/);
+  assert.match(seedSource, /Amman – Blessed Tree – Amman RT/);
+  assert.match(seedSource, /estimatedDistanceKm/);
+  assert.match(seedSource, /estimatedDriveHours/);
+  assert.match(seedSource, /region: 'North'/);
+  assert.match(seedSource, /region: 'Central'/);
+  assert.match(seedSource, /region: 'South'/);
+  assert.match(seedSource, /region: 'Islamic'/);
+  assert.match(seedSource, /Golden Jordan canonical touring route\. Operational infrastructure only; not a sellable excursion template\./);
+  assert.doesNotMatch(seedSource, /excursionTemplate\.upsert[\s\S]*GOLDEN_JORDAN_TOURING_ROUTES/);
+});
+
+test('golden Jordan route naming uses touring stop separators and RT ON suffixes', () => {
+  const canonicalNames = Array.from(seedSource.matchAll(/name: '([^']+)'/g)).map((match) => match[1]).filter((name) => name.includes('–'));
+  assert.ok(canonicalNames.length >= 14);
+  assert.ok(canonicalNames.every((name) => name.includes('–')));
+  assert.ok(canonicalNames.some((name) => name.endsWith('RT')));
+  assert.ok(canonicalNames.some((name) => name.endsWith('ON')));
 });
 
 function buildTouringWorkbookBuffer(rows: {
@@ -120,7 +151,7 @@ function createTouringPrismaMock() {
       },
       update: async ({ where, data }: any) => {
         const route = stores.routes.find((entry) => entry.id === where.id);
-        Object.assign(route, data);
+        Object.assign(route, Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)));
         return route;
       },
     },
@@ -894,6 +925,15 @@ test('touring route update persists edits and archives without hard delete', asy
     startCity: 'Amman',
     durationDays: 1,
     mainDestinations: ['Petra'],
+    estimatedDistanceKm: 240,
+    estimatedDriveHours: 3.5,
+    region: 'South',
+    longDistance: true,
+    desertRoad: true,
+    mountainRoad: true,
+    seasonalHeatRisk: true,
+    sicPossible: true,
+    overnightRisk: false,
     stops: [{ order: 1, city: 'Petra', location: 'Petra Visitor Center' }],
     pricings: [{ supplierId: 'supplier-1', vehicleId: 'vehicle-1', minPax: 1, maxPax: 3, currency: 'USD', baseCost: 180 }],
   } as any);
@@ -902,6 +942,10 @@ test('touring route update persists edits and archives without hard delete', asy
     name: 'Petra Full Day Updated',
     durationDays: 2,
     mainDestinations: ['Petra', 'Wadi Rum'],
+    estimatedDistanceKm: 355,
+    estimatedDriveHours: 5.5,
+    region: 'South',
+    overnightRisk: true,
     active: false,
     stops: [{ order: 1, city: 'Petra', location: 'Petra Visitor Center', notes: 'Overnight stop' }],
     pricings: [{ supplierId: 'supplier-1', vehicleId: 'vehicle-1', minPax: 1, maxPax: 5, currency: 'USD', baseCost: 220 }],
@@ -912,4 +956,9 @@ test('touring route update persists edits and archives without hard delete', asy
   assert.equal(stores.routes[0].durationDays, 2);
   assert.equal(stores.routes[0].active, false);
   assert.deepEqual(stores.routes[0].mainDestinations, ['Petra', 'Wadi Rum']);
+  assert.equal(stores.routes[0].estimatedDistanceKm, 355);
+  assert.equal(stores.routes[0].estimatedDriveHours, 5.5);
+  assert.equal(stores.routes[0].region, 'South');
+  assert.equal(stores.routes[0].longDistance, true);
+  assert.equal(stores.routes[0].overnightRisk, true);
 });
