@@ -11,7 +11,7 @@ type User = {
   name: string;
   email: string;
   role: UserRole;
-  status: 'active';
+  status: 'active' | 'inactive';
 };
 
 type Invitation = {
@@ -286,7 +286,7 @@ export function UsersTable({ apiBaseUrl, users, invitations }: UsersTableProps) 
                   <td>{user.email}</td>
                   <td>{formatRole(user.role)}</td>
                   <td>
-                    <span className="status-badge">Active</span>
+                    <span className="status-badge">{user.status}</span>
                   </td>
                   <td>
                     <div className="table-action-row">

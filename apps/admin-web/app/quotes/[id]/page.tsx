@@ -71,7 +71,10 @@ type User = {
   name: string;
   email: string;
   role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
-  status: 'active';
+  companyId?: string | null;
+  companyName?: string | null;
+  active?: boolean;
+  status: 'active' | 'inactive';
 };
 
 type Itinerary = {
@@ -961,8 +964,8 @@ async function getContacts(): Promise<Contact[]> {
   });
 }
 
-async function getUsers(): Promise<User[]> {
-  return adminPageFetchJson<User[]>(`${DATA_API_BASE_URL}/users`, 'Quote detail users', {
+async function getAgents(): Promise<User[]> {
+  return adminPageFetchJson<User[]>(`${DATA_API_BASE_URL}/users/agents`, 'Quote detail agents', {
     cache: 'no-store',
   });
 }
@@ -1761,7 +1764,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     seasonsSettled,
     companiesSettled,
     contactsSettled,
-    usersSettled,
+    agentsSettled,
     versionsSettled,
     hotelCategoriesSettled,
     supportTextTemplatesSettled,
@@ -1789,7 +1792,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     safeQuoteDetailFetch('seasons', [] as Season[], getSeasons),
     safeQuoteDetailFetch('companies', [] as Company[], getCompanies),
     safeQuoteDetailFetch('contacts', [] as Contact[], getContacts),
-    safeQuoteDetailFetch('users', [] as User[], getUsers),
+    safeQuoteDetailFetch('agents', [] as User[], getAgents),
     getVersions(id),
     shouldLoadHotelCategories
       ? safeQuoteDetailFetch('hotel categories', [] as HotelCategoryOption[], getHotelCategories)
@@ -1813,7 +1816,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const seasonsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Season[]>>(seasonsSettled, { status: 'error', label: 'seasons', data: [], message: 'Seasons unavailable' }, 'seasons');
   const companiesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Company[]>>(companiesSettled, { status: 'error', label: 'companies', data: [], message: 'Companies unavailable' }, 'companies');
   const contactsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<Contact[]>>(contactsSettled, { status: 'error', label: 'contacts', data: [], message: 'Contacts unavailable' }, 'contacts');
-  const usersResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<User[]>>(usersSettled, { status: 'error', label: 'users', data: [], message: 'Users unavailable' }, 'users');
+  const agentsResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<User[]>>(agentsSettled, { status: 'error', label: 'agents', data: [], message: 'Agents unavailable' }, 'agents');
   const versionsResult = unwrapSettledQuoteDetail<QuoteVersionsFetchResult>(versionsSettled, { status: 'error', versions: [], message: 'Versions unavailable' }, 'versions');
   const hotelCategoriesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<HotelCategoryOption[]>>(hotelCategoriesSettled, { status: 'error', label: 'hotel categories', data: [], message: 'Hotel categories unavailable' }, 'hotel categories');
   const supportTextTemplatesResult = unwrapSettledQuoteDetail<OptionalQuoteDetailFetchResult<SupportTextTemplate[]>>(supportTextTemplatesSettled, { status: 'error', label: 'support text templates', data: [], message: 'Support text templates unavailable' }, 'support text templates');
@@ -1838,7 +1841,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const seasons = seasonsResult.data;
   const companies = companiesResult.data;
   const contacts = contactsResult.data;
-  const users = usersResult.data;
+  const agentUsers = agentsResult.data;
   const hotelCategories = hotelCategoriesResult.data;
   const supportTextTemplates = supportTextTemplatesResult.data;
   const quoteBlocks = quoteBlocksResult.data;
@@ -1897,11 +1900,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quote = normalizeQuoteDetail(rawQuote);
   const quoteCancelled = quote.status === 'CANCELLED';
   const quoteReadOnly = quoteCancelled || quote.isLatestRevision === false;
-  const agents = users
-    .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
+  const agents = agentUsers
+    .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
       id: user.id,
-      name: user.name,
+      name: user.companyName ? `${user.name} - ${user.companyName}` : user.name,
       email: user.email,
       role: user.role,
     }));
@@ -1975,8 +1978,8 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     hotelsResult.status === 'error' || hotelContractsResult.status === 'error' || hotelRatesResult.status === 'error' || hotelCategoriesResult.status === 'error'
       ? 'Hotel setup data could not be loaded. Hotel editing may be limited.'
       : null,
-    companiesResult.status === 'error' || contactsResult.status === 'error' || usersResult.status === 'error'
-      ? 'Some client, contact, or user lists could not be loaded. Quote editing may be limited.'
+    companiesResult.status === 'error' || contactsResult.status === 'error' || agentsResult.status === 'error'
+      ? 'Some client, contact, or agent lists could not be loaded. Quote editing may be limited.'
       : null,
     supportTextTemplatesResult.status === 'error' || quoteBlocksResult.status === 'error' ? 'Reusable content could not be loaded. Proposal editing may be limited.' : null,
     versionsResult.status === 'error' ? 'Saved quote versions could not be loaded.' : null,

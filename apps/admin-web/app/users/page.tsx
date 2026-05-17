@@ -11,7 +11,7 @@ type User = {
   name: string;
   email: string;
   role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
-  status: 'active';
+  status: 'active' | 'inactive';
 };
 
 type Invitation = {

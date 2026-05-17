@@ -126,6 +126,25 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
         },
       });
 
+  const demoAgentCompany = await prisma.company.upsert({
+    where: {
+      id: '00000000-0000-0000-0000-0000000000a1',
+    },
+    update: {
+      name: 'Demo Agent Company',
+      type: 'agent',
+      country: 'Jordan',
+      city: 'Amman',
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000a1',
+      name: 'Demo Agent Company',
+      type: 'agent',
+      country: 'Jordan',
+      city: 'Amman',
+    },
+  });
+
   const roles = await Promise.all(
     [
       { name: 'admin', description: 'Platform administrators with full access.' },
@@ -189,7 +208,8 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
         lastName: user.lastName,
         password: authService.hashPassword(user.password),
         roleId: roleMap.get(user.role)!,
-        companyId: defaultCompany.id,
+        companyId: user.role === 'agent' ? demoAgentCompany.id : defaultCompany.id,
+        active: true,
       },
       create: {
         email: user.email,
@@ -197,7 +217,8 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
         lastName: user.lastName,
         password: authService.hashPassword(user.password),
         roleId: roleMap.get(user.role)!,
-        companyId: defaultCompany.id,
+        companyId: user.role === 'agent' ? demoAgentCompany.id : defaultCompany.id,
+        active: true,
       },
     });
   }

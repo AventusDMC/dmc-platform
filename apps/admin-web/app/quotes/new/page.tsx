@@ -22,7 +22,10 @@ type User = {
   name: string;
   email: string;
   role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
-  status: 'active';
+  companyId?: string | null;
+  companyName?: string | null;
+  active?: boolean;
+  status: 'active' | 'inactive';
 };
 
 type Lead = {
@@ -49,8 +52,8 @@ async function getContacts(): Promise<Contact[]> {
   });
 }
 
-async function getUsers(): Promise<User[]> {
-  return adminPageFetchJson<User[]>('/api/users', 'New quote users', {
+async function getAgents(): Promise<User[]> {
+  return adminPageFetchJson<User[]>('/api/users/agents', 'New quote agents', {
     cache: 'no-store',
   });
 }
@@ -80,17 +83,17 @@ function buildLeadQuoteTitle(lead: Lead | null) {
 
 export default async function NewQuotePage({ searchParams }: NewQuotePageProps) {
   const resolvedSearchParams = await searchParams;
-  const [companies, contacts, users, leadPrefill] = await Promise.all([
+  const [companies, contacts, agents, leadPrefill] = await Promise.all([
     getCompanies(),
     getContacts(),
-    getUsers(),
+    getAgents(),
     getLeadForQuotePrefill(resolvedSearchParams?.leadId),
   ]);
-  const agents = users
-    .filter((user): user is User & { role: 'agent' } => user.role === 'agent')
+  const activeAgents = agents
+    .filter((user): user is User & { role: 'agent' } => user.role === 'agent' && user.status !== 'inactive')
     .map((user) => ({
       id: user.id,
-      name: user.name,
+      name: user.companyName ? `${user.name} - ${user.companyName}` : user.name,
       email: user.email,
       role: user.role,
     }));
@@ -141,7 +144,7 @@ export default async function NewQuotePage({ searchParams }: NewQuotePageProps) 
                 apiBaseUrl="/api"
                 companies={companies}
                 contacts={contacts}
-                agents={agents}
+                agents={activeAgents}
                 submitLabel="Create quote"
                 initialValues={
                   leadPrefill

@@ -274,7 +274,7 @@ test('AXIS branding renders on sidebar and login with powered footer', () => {
 test('root template classifies admin workspaces as protected shell routes', () => {
   assert.match(
     templateSource,
-    /const PROTECTED_ADMIN_ROUTE_PREFIXES = \['\/admin', '\/quotes', '\/quote-engine', '\/bookings', '\/finance', '\/catalog', '\/excursion-templates'\]/,
+    /const PROTECTED_ADMIN_ROUTE_PREFIXES = \['\/admin', '\/agents', '\/quotes', '\/quote-engine', '\/bookings', '\/finance', '\/catalog', '\/excursion-templates'\]/,
   );
   assert.match(templateSource, /pathname === '\/admin\/dashboard'/);
   assert.match(templateSource, /const isPublicRoute = !isProtectedAdminRoute && isPublicPath\(pathname\);/);

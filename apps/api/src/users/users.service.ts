@@ -9,12 +9,17 @@ type CreateUserInput = {
   name: string;
   email: string;
   role: DmcRole;
+  companyId?: string | null;
+  password?: string | null;
+  active?: boolean;
 };
 
 type UpdateUserInput = {
   name?: string;
   email?: string;
   role?: DmcRole;
+  companyId?: string | null;
+  active?: boolean;
 };
 
 @Injectable()
@@ -42,13 +47,43 @@ export class UsersService {
       name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email,
       email: user.email,
       role: this.normalizeRole(user.role.name),
-      status: 'active' as const,
+      companyId: user.companyId,
+      active: user.active,
+      status: user.active ? 'active' as const : 'inactive' as const,
+    }));
+  }
+
+  async findAgents(actor?: CompanyScopedActor) {
+    requireActorCompanyId(actor);
+    const agents = await this.prisma.user.findMany({
+      where: {
+        role: {
+          name: 'agent',
+        },
+      },
+      include: {
+        company: true,
+        role: true,
+      },
+      orderBy: [{ active: 'desc' }, { firstName: 'asc' }, { lastName: 'asc' }, { email: 'asc' }],
+    });
+
+    return agents.map((agent) => ({
+      id: agent.id,
+      name: [agent.firstName, agent.lastName].filter(Boolean).join(' ').trim() || agent.email,
+      email: agent.email,
+      role: 'agent' as const,
+      companyId: agent.companyId,
+      companyName: agent.company?.name || 'Unlinked company',
+      active: agent.active,
+      status: agent.active ? 'active' as const : 'inactive' as const,
     }));
   }
 
   async create(input: CreateUserInput, actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
+    const actorCompanyId = requireActorCompanyId(actor);
     const normalizedRole = this.normalizeRole(input.role);
+    const companyId = input.companyId?.trim() || actorCompanyId;
     const role = await this.prisma.role.findFirst({
       where: {
         name: normalizedRole,
@@ -61,7 +96,7 @@ export class UsersService {
 
     const { firstName, lastName } = this.splitName(input.name);
     const email = input.email.trim().toLowerCase();
-    const password = this.authService.hashPassword('changeme123');
+    const password = this.authService.hashPassword(input.password?.trim() || 'changeme123');
 
     return this.prisma.user.create({
       data: {
@@ -71,8 +106,10 @@ export class UsersService {
         password,
         roleId: role.id,
         companyId,
+        active: input.active ?? true,
       },
       include: {
+        company: true,
         role: true,
       },
     }).then((user) => ({
@@ -80,7 +117,10 @@ export class UsersService {
       name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email,
       email: user.email,
       role: this.normalizeRole(user.role.name),
-      status: 'active' as const,
+      companyId: user.companyId,
+      companyName: user.company?.name || 'Unlinked company',
+      active: user.active,
+      status: user.active ? 'active' as const : 'inactive' as const,
     }));
   }
 
@@ -133,8 +173,11 @@ export class UsersService {
         lastName: nameParts?.lastName,
         email: input.email ? input.email.trim().toLowerCase() : undefined,
         roleId: role?.id,
+        companyId: input.companyId?.trim() || undefined,
+        active: input.active,
       },
       include: {
+        company: true,
         role: true,
       },
     }).then(async (user) => {
@@ -159,7 +202,10 @@ export class UsersService {
         name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email,
         email: user.email,
         role: nextRole,
-        status: 'active' as const,
+        companyId: user.companyId,
+        companyName: user.company?.name || 'Unlinked company',
+        active: user.active,
+        status: user.active ? 'active' as const : 'inactive' as const,
       };
     });
   }

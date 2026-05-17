@@ -108,9 +108,10 @@ export const NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Administration',
     href: '/users',
-    match: ['/branding', '/users', '/login'],
-    helper: 'Users, branding, and platform settings',
+    match: ['/agents', '/branding', '/users', '/login'],
+    helper: 'Users, agents, branding, and platform settings',
     children: [
+      { label: 'Agents', href: '/agents' },
       { label: 'Users', href: '/users' },
       { label: 'Branding', href: '/branding' },
     ],

@@ -968,7 +968,10 @@ export class QuotesService {
         ? this.prisma.user.findFirst({
             where: {
               id: normalizedAgentId,
-              companyId,
+              companyId: {
+                in: Array.from(new Set([companyId, clientCompanyId].filter(Boolean))),
+              },
+              active: true,
               role: {
                 name: 'agent',
               },
@@ -997,7 +1000,7 @@ export class QuotesService {
     }
 
     if (normalizedAgentId && !agent) {
-      throw new BadRequestException('Assigned agent must be an agent user in the current company');
+      throw new BadRequestException('Assigned agent must be an active agent user linked to the operator or selected client company');
     }
 
     const pricingType = this.normalizeQuotePricingType(data.pricingType);
@@ -1422,7 +1425,10 @@ export class QuotesService {
         ? this.prisma.user.findFirst({
             where: {
               id: agentId,
-              companyId: actorCompanyId,
+              companyId: {
+                in: Array.from(new Set([actorCompanyId, clientCompanyId].filter(Boolean))),
+              },
+              active: true,
               role: {
                 name: 'agent',
               },
@@ -1451,7 +1457,7 @@ export class QuotesService {
     }
 
     if (agentId && !agent) {
-      throw new BadRequestException('Assigned agent must be an agent user in the current company');
+      throw new BadRequestException('Assigned agent must be an active agent user linked to the operator or selected client company');
     }
 
     if (data.pricingSlabs !== undefined && pricingMode === 'FIXED' && data.pricingSlabs.length > 0) {

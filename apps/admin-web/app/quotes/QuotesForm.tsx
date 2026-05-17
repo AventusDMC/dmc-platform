@@ -511,6 +511,11 @@ export function QuotesForm({ apiBaseUrl, companies, contacts, agents = [], quote
               ))}
             </select>
           </label>
+          {agents.length === 0 ? (
+            <p className="form-helper">
+              No active agent users are available. <Link href="/agents">Create an agent account</Link>.
+            </p>
+          ) : null}
 
           <label>
             Quote Type

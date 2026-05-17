@@ -584,7 +584,10 @@ quoteCreateTest('create quote with valid same-company agent succeeds', async () 
   quoteCreateAssert.equal(result.id, 'quote-1');
   quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'agent-1',
-    companyId: 'company-1',
+    companyId: {
+      in: ['company-1'],
+    },
+    active: true,
     role: {
       name: 'agent',
     },
@@ -599,37 +602,46 @@ quoteCreateTest('create quote with non-agent fails', async () => {
     () => service.create(createQuoteInput({ agentId: 'viewer-1' }), { companyId: 'company-1' } as any),
     (error: any) => {
       quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
-      quoteCreateAssert.equal(error.message, 'Assigned agent must be an agent user in the current company');
+      quoteCreateAssert.equal(error.message, 'Assigned agent must be an active agent user linked to the operator or selected client company');
       return true;
     },
   );
 
   quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'viewer-1',
-    companyId: 'company-1',
+    companyId: {
+      in: ['company-1'],
+    },
+    active: true,
     role: {
       name: 'agent',
     },
   });
 });
 
-quoteCreateTest('create quote with other-company agent fails', async () => {
-  const { service, calls } = createService({ agentLookupResult: null });
+quoteCreateTest('create quote with agent linked to selected client company succeeds', async () => {
+  const { service, calls } = createService({ agentLookupResult: { id: 'other-company-agent-1' } });
 
-  await quoteCreateAssert.rejects(
-    () => service.create(createQuoteInput({ agentId: 'other-company-agent-1' }), { companyId: 'company-1' } as any),
-    (error: any) => {
-      quoteCreateAssert.equal(error instanceof QuoteCreateBadRequestException, true);
-      quoteCreateAssert.equal(error.message, 'Assigned agent must be an agent user in the current company');
-      return true;
-    },
+  const result = await service.create(
+    createQuoteInput({
+      clientCompanyId: 'company-2',
+      brandCompanyId: 'company-2',
+      contactId: 'contact-2',
+      agentId: 'other-company-agent-1',
+    }),
+    { companyId: 'company-1' } as any,
   );
 
+  quoteCreateAssert.equal(result.id, 'quote-1');
   quoteCreateAssert.deepEqual(calls.userFindFirst[0].where, {
     id: 'other-company-agent-1',
-    companyId: 'company-1',
+    companyId: {
+      in: ['company-1', 'company-2'],
+    },
+    active: true,
     role: {
       name: 'agent',
     },
   });
+  quoteCreateAssert.equal(calls.quoteCreateData[0].agentId, 'other-company-agent-1');
 });
