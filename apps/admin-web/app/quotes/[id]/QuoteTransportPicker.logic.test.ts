@@ -24,6 +24,16 @@ const route = {
   fromPlace: { id: 'aqaba', name: 'Aqaba', city: 'Aqaba', country: 'Jordan' },
   toPlace: { id: 'petra', name: 'Petra', city: 'Petra', country: 'Jordan' },
 } as any;
+const qaiaAmmanRoute = {
+  id: 'route-qaia-amman',
+  name: 'QAIA -> Amman',
+  routeType: 'TRANSFER_ROUTE',
+  canonicalRouteType: 'TRANSFER_ROUTE',
+  fromPlaceId: 'qaia',
+  toPlaceId: 'amman',
+  fromPlace: { id: 'qaia', name: 'QAIA', city: 'Amman', country: 'Jordan' },
+  toPlace: { id: 'amman', name: 'Amman', city: 'Amman', country: 'Jordan' },
+} as any;
 const ammanRoute = {
   id: 'route-amman-amman',
   name: 'Amman -> Amman',
@@ -107,9 +117,60 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.deepEqual(modes, ['Point-to-Point', 'Full Day']);
+    assert.deepEqual(modes, ['Point-to-Point']);
     assert.equal(getCanonicalRateVehicleType(rate('Medium 30')), 'Coach');
     assert.equal(getCanonicalRateVehicleType(rate('Large 49')), 'Coach');
+  });
+
+  it('filters transfer route pricing modes to airport and point-to-point only', () => {
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates: [
+        rate('Medium 30', 'Airport Transfer', {
+          id: 'airport-transfer',
+          routeId: qaiaAmmanRoute.id,
+          routeName: qaiaAmmanRoute.name,
+          route: qaiaAmmanRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Point-to-Point', {
+          id: 'point-to-point',
+          routeId: qaiaAmmanRoute.id,
+          routeName: qaiaAmmanRoute.name,
+          route: qaiaAmmanRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Half Day', {
+          id: 'half-day-transfer-row',
+          routeId: qaiaAmmanRoute.id,
+          routeName: qaiaAmmanRoute.name,
+          route: qaiaAmmanRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Day Tour', {
+          id: 'day-tour-transfer-row',
+          routeId: qaiaAmmanRoute.id,
+          routeName: qaiaAmmanRoute.name,
+          route: qaiaAmmanRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Full Day', {
+          id: 'full-day-transfer-row',
+          routeId: qaiaAmmanRoute.id,
+          routeName: qaiaAmmanRoute.name,
+          route: qaiaAmmanRoute,
+          maxPax: 30,
+        }),
+      ],
+      route: qaiaAmmanRoute,
+      selectedCanonicalVehicleType: 'Coach',
+      requestedPax: 20,
+      now: activeDate,
+    });
+
+    assert.deepEqual(modes, ['Airport Transfer', 'Point-to-Point']);
+    assert.equal(modes.includes('Half Day'), false);
+    assert.equal(modes.includes('Day Tour'), false);
+    assert.equal(modes.includes('Full Day'), false);
   });
 
   it('formats picker vehicles with canonical type, pax, and supplier label', () => {
@@ -174,8 +235,8 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
 
   it('maps legacy Small 17 rows to Mini Bus pricing modes', () => {
     const modes = getAvailableTransportPricingModesForSelection({
-      rates: [rate('Small 17', 'Half Day')],
-      route,
+      rates: [rate('Small 17', 'Half Day', { routeId: ammanRoute.id, routeName: ammanRoute.name, route: ammanRoute })],
+      route: ammanRoute,
       selectedCanonicalVehicleType: 'Mini Bus',
       now: activeDate,
     });
@@ -183,10 +244,15 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.deepEqual(modes, ['Half Day']);
   });
 
-  it('keeps Day Tour as a disposal pricing mode for matching, not a point-to-point fallback', () => {
+  it('keeps Day Tour as a touring route pricing mode, not a point-to-point fallback', () => {
+    const touringRoute = {
+      ...route,
+      routeType: 'TOURING_ROUTE',
+      canonicalRouteType: 'TOURING_ROUTE',
+    };
     const modes = getAvailableTransportPricingModesForSelection({
       rates: [rate('Small 17', 'Day Tour', { serviceType: { name: 'Day Tour', code: 'DAY_TOUR', classification: 'FULL_DAY' } })],
-      route,
+      route: touringRoute,
       selectedCanonicalVehicleType: 'Mini Bus',
       now: activeDate,
     });
@@ -238,6 +304,47 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     });
 
     assert.deepEqual(modes, ['Full Day']);
+  });
+
+  it('filters city disposal service areas to disposal-compatible modes only', () => {
+    const modes = getAvailableTransportPricingModesForSelection({
+      rates: [
+        rate('Medium 30', 'Half Day', {
+          id: 'half-amman-disposal',
+          routeId: ammanDisposalRoute.id,
+          routeName: ammanDisposalRoute.name,
+          route: ammanDisposalRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Full Day', {
+          id: 'full-amman-disposal',
+          routeId: ammanDisposalRoute.id,
+          routeName: ammanDisposalRoute.name,
+          route: ammanDisposalRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Day Tour', {
+          id: 'day-tour-amman-disposal',
+          routeId: ammanDisposalRoute.id,
+          routeName: ammanDisposalRoute.name,
+          route: ammanDisposalRoute,
+          maxPax: 30,
+        }),
+        rate('Medium 30', 'Point-to-Point', {
+          id: 'transfer-amman-disposal',
+          routeId: ammanDisposalRoute.id,
+          routeName: ammanDisposalRoute.name,
+          route: ammanDisposalRoute,
+          maxPax: 30,
+        }),
+      ],
+      route: ammanDisposalRoute,
+      selectedCanonicalVehicleType: 'Coach',
+      requestedPax: 20,
+      now: activeDate,
+    });
+
+    assert.deepEqual(modes, ['Half Day', 'Full Day']);
   });
 
   it('normalizes daily package full-day disposal rows and labels the minimum rule', () => {

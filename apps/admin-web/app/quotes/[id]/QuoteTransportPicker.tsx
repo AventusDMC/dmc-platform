@@ -164,9 +164,12 @@ function getRouteAreaName(route: RouteOption) {
 }
 
 function isSameAreaRouteOption(route: RouteOption) {
+  const fromName = normalizeTransportRouteText(route.fromPlace.name);
+  const toName = normalizeTransportRouteText(route.toPlace.name);
   const from = normalizeTransportRouteText(route.fromPlace.city || route.fromPlace.name);
   const to = normalizeTransportRouteText(route.toPlace.city || route.toPlace.name);
-  return Boolean(from && to && from === to);
+  const routeText = normalizeTransportRouteText(`${route.name} ${route.notes || ''}`);
+  return Boolean((fromName && toName && fromName === toName) || (from && to && from === to && /city|disposal|day_services/.test(routeText)));
 }
 
 function isProgramOrDisposalRouteOption(route: RouteOption) {
@@ -527,6 +530,32 @@ function isDisposalPricingMode(mode: PricingMode | null) {
   return mode === 'Full Day' || mode === 'Half Day' || mode === 'Day Tour' || mode === 'Stationary / Waiting';
 }
 
+function getRoutePricingModeScope(route: RouteOption) {
+  if (isTouringRouteOption(route)) {
+    return 'touring';
+  }
+
+  if (isProgramOrDisposalRouteOption(route)) {
+    return 'disposal';
+  }
+
+  return 'transfer';
+}
+
+function pricingModeMatchesRouteScope(mode: PricingMode, route: RouteOption) {
+  const scope = getRoutePricingModeScope(route);
+
+  if (scope === 'transfer') {
+    return mode === 'Airport Transfer' || mode === 'Point-to-Point';
+  }
+
+  if (scope === 'disposal') {
+    return mode === 'Half Day' || mode === 'Full Day' || mode === 'Extra Hour' || mode === 'Stationary / Waiting';
+  }
+
+  return mode === 'Day Tour' || mode === 'Full Day' || mode === 'Half Day';
+}
+
 export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: RouteOption) {
   if (rate.routeId === route.id || rate.route?.id === route.id) {
     return true;
@@ -629,7 +658,7 @@ export function getAvailableTransportPricingModesForSelection({
         .map(getNormalizedPricingModeForRate)
         .filter((mode): mode is PricingMode => Boolean(mode)),
     ),
-  );
+  ).filter((mode) => pricingModeMatchesRouteScope(mode, route));
 }
 
 export function getTransportPricingModeOptionLabel({
