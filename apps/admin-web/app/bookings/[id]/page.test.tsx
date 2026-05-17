@@ -14,6 +14,7 @@ const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
 const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
+const invoiceGenerationRouteSource = readFileSync(new URL('../../api/bookings/[id]/invoice/route.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -396,9 +397,11 @@ describe('booking detail page regression', () => {
       'Invoice status',
       'Balance due',
       'Generate invoice',
+      'BOOKING_UUID_PATTERN',
+      'Invoice generation requires the booking UUID. The booking code is display-only.',
       'Financial documents: client invoice, deposit invoice, payment receipt, supplier payable summary, and credit note placeholder.',
       'Payment methods shown on PDFs: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.',
-      "fetch(`/api/bookings/${bookingId}/invoice`",
+      "fetch(`/api/bookings/${resolvedBookingId}/invoice`",
       "fetch(`/api/bookings/${bookingId}/payments`",
       "fetch(`/api/bookings/${bookingId}/payments/${paymentId}/mark-paid`",
       'Client Payments',
@@ -408,6 +411,12 @@ describe('booking detail page regression', () => {
     ]);
 
     assert.doesNotMatch(financialsTabSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
+
+    expectSourceContains(invoiceGenerationRouteSource, [
+      'BOOKING_UUID_PATTERN',
+      'Invoice generation requires a booking UUID. Booking references/codes are display-only.',
+      '/bookings/${id}/invoice',
+    ]);
 
     expectSourceContains(cssSource, [
       '.booking-payment-proof-card-grid',
@@ -448,6 +457,17 @@ describe('booking detail page regression', () => {
 
     assert.doesNotMatch(invoiceButtonSource, /bookingId=\{bookingRef\}|bookingId=\{booking\.bookingRef\}/);
     assert.match(invoiceButtonSource, /fetch\(`\/api\/bookings\/\$\{resolvedBookingId\}\/financial-documents\/\$\{documentType\}\/pdf\?mode=\$\{mode\}`\)/);
+  });
+
+  it('uses booking UUID rather than booking display code for persisted invoice generation', () => {
+    expectSourceContains(pageSource, [
+      '<BookingFinancialsTab',
+      'bookingId={booking.id}',
+      'bookingRef={bookingRef}',
+    ]);
+
+    assert.doesNotMatch(financialsTabSource, /fetch\(`\/api\/bookings\/\$\{bookingRef\}\/invoice`|bookingId=\{bookingRef\}|bookingId=\{booking\.bookingRef\}/);
+    assert.match(financialsTabSource, /fetch\(`\/api\/bookings\/\$\{resolvedBookingId\}\/invoice`/);
   });
 
   it('surfaces invoice counts and payment document KPIs on finance dashboard', () => {

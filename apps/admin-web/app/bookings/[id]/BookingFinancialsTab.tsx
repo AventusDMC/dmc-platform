@@ -36,6 +36,8 @@ type BookingFinancialsTabProps = {
   invoiceRecipientEmail: string | null;
 };
 
+const BOOKING_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type BookingInvoiceSummary = {
   id: string;
   invoiceNumber: string;
@@ -236,7 +238,12 @@ export function BookingFinancialsTab({
     setInvoiceError(null);
 
     try {
-      const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
+      const resolvedBookingId = String(bookingId || '').trim();
+      if (!BOOKING_UUID_PATTERN.test(resolvedBookingId)) {
+        throw new Error('Invoice generation requires the booking UUID. The booking code is display-only.');
+      }
+
+      const response = await fetch(`/api/bookings/${resolvedBookingId}/invoice`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

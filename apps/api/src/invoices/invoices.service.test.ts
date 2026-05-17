@@ -111,6 +111,28 @@ test('generates an invoice from a latest active booking using booking sell total
   assert.equal(calls.invoiceCreate[0].data.totalAmount, 500);
 });
 
+test('generates booking invoice by UUID without filtering by actor company as client company', async () => {
+  const { service, calls } = createService();
+
+  await service.generateForBooking('11111111-1111-4111-8111-111111111111', { companyActor: actor });
+
+  assert.deepEqual(calls.bookingFindFirst[0].where, {
+    id: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.equal(JSON.stringify(calls.bookingFindFirst[0].where).includes(actor.companyId), false);
+});
+
+test('persisted invoice lookup requires auth without actor company filtering', async () => {
+  const { service, calls } = createService();
+
+  await service.findOne('invoice-1', actor);
+
+  assert.deepEqual(calls.invoiceFindFirst.at(-1).where, {
+    id: 'invoice-1',
+  });
+  assert.equal(JSON.stringify(calls.invoiceFindFirst.at(-1).where).includes(actor.companyId), false);
+});
+
 test('generates supplier payable placeholders from active service cost without leaking cost on invoice response', async () => {
   const { service, calls } = createService();
 

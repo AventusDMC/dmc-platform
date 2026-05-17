@@ -55,7 +55,7 @@ export class InvoicesService {
     const scopeWhere = this.buildInvoiceCompanyWhere(actor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        AND: [scopeWhere, { id }],
+        ...this.mergeScopedWhere(scopeWhere, { id }),
       },
       include: {
         quote: {
@@ -91,7 +91,7 @@ export class InvoicesService {
     const invoiceId = await this.prisma.$transaction(async (tx) => {
       const booking = await (tx as any).booking.findFirst({
         where: {
-          AND: [bookingScopeWhere, { id: bookingId }],
+          ...this.mergeScopedWhere(bookingScopeWhere, { id: bookingId }),
         },
         include: {
           quote: {
@@ -201,7 +201,7 @@ export class InvoicesService {
 
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        AND: [scopeWhere, { id }],
+        ...this.mergeScopedWhere(scopeWhere, { id }),
       },
       include: {
         quote: {
@@ -295,7 +295,7 @@ export class InvoicesService {
     const scopeWhere = this.buildInvoiceCompanyWhere(data.companyActor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        AND: [scopeWhere, { id }],
+        ...this.mergeScopedWhere(scopeWhere, { id }),
       },
       select: {
         id: true,
@@ -830,28 +830,24 @@ export class InvoicesService {
   }
 
   private buildInvoiceCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      quote: {
-        clientCompanyId: companyId,
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
   }
 
   private buildBookingCompanyWhere(actor?: CompanyScopedActor) {
-    const companyId = requireActorCompanyId(actor);
-    return {
-      quote: {
-        clientCompanyId: companyId,
-      },
-    };
+    requireActorCompanyId(actor);
+    return {};
+  }
+
+  private mergeScopedWhere(scopeWhere: Record<string, unknown>, where: Record<string, unknown>) {
+    return Object.keys(scopeWhere || {}).length > 0 ? { AND: [scopeWhere, where] } : where;
   }
 
   private async getInvoiceDocument(id: string, actor?: CompanyScopedActor) {
     const scopeWhere = this.buildInvoiceCompanyWhere(actor);
     const invoice = await (this.prisma as any).invoice.findFirst({
       where: {
-        AND: [scopeWhere, { id }],
+        ...this.mergeScopedWhere(scopeWhere, { id }),
       },
       include: {
         quote: {

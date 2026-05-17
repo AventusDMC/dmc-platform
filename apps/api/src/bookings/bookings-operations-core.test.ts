@@ -170,6 +170,23 @@ test('financial document route rejects booking code before PDF generation', asyn
   );
 });
 
+test('invoice generation route rejects booking code before invoice creation', async () => {
+  const controller = new BookingsController(
+    {},
+    {},
+    {
+      generateForBooking: async () => {
+        throw new Error('generateForBooking should not be called for invalid booking ids');
+      },
+    },
+  );
+
+  assert.throws(
+    () => controller.generateInvoice('JOR-HL-2026-001', { id: 'user-1', companyId: 'company-1', auditLabel: 'Finance User' } as any),
+    /Invoice generation requires a booking UUID/,
+  );
+});
+
 test('financial document PDF renders totals deposits balance payment methods and supplier payables', async () => {
   const service = createService({});
   const lines = capturePdfText(service as any);

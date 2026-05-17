@@ -615,6 +615,10 @@ export class BookingsController {
     @Param('id') id: string,
     @Actor() actor: AuthenticatedActor,
   ) {
+    if (!id || !BOOKING_UUID_PATTERN.test(id)) {
+      throw new BadRequestException('Invoice generation requires a booking UUID. Booking references/codes are display-only.');
+    }
+
     return this.invoicesService.generateForBooking(id, {
       actor: this.toAuditActor(actor),
       companyActor: actor,
