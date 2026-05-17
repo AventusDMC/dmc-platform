@@ -39,16 +39,20 @@ type BookingPaymentsSectionProps = {
 
 type PaymentDraft = {
   amount: string;
+  status: BookingPaymentStatus;
   method: BookingPaymentMethod;
   reference: string;
-  dueDate: string;
+  paymentDate: string;
+  notes: string;
 };
 
 const DEFAULT_DRAFT: PaymentDraft = {
   amount: '',
+  status: 'PAID',
   method: 'bank',
   reference: '',
-  dueDate: '',
+  paymentDate: '',
+  notes: '',
 };
 
 function formatMoney(amount: number, currency: string) {
@@ -123,12 +127,12 @@ export function BookingPaymentsSection({
         type,
         amount: Number(nextAmount.toFixed(2)),
         currency,
-        status: 'PENDING',
+        status: draft.status,
         method: draft.method,
         reference: draft.reference.trim() || `${type === 'CLIENT' ? 'Client' : 'Supplier'} payment`,
-        dueDate: draft.dueDate || null,
-        paidAt: null,
-        notes: null,
+        dueDate: draft.status === 'PENDING' ? draft.paymentDate || null : null,
+        paidAt: draft.status === 'PAID' ? draft.paymentDate || null : null,
+        notes: draft.notes.trim() || null,
       });
       setDraft(DEFAULT_DRAFT);
       setShowForm(false);
@@ -175,11 +179,22 @@ export function BookingPaymentsSection({
             />
           </label>
           <label>
-            Due date
+            Status
+            <select
+              value={draft.status}
+              onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as BookingPaymentStatus }))}
+              disabled={isSubmitting}
+            >
+              <option value="PAID">Paid</option>
+              <option value="PENDING">Pending</option>
+            </select>
+          </label>
+          <label>
+            {draft.status === 'PAID' ? 'Payment date' : 'Due date'}
             <input
               type="date"
-              value={draft.dueDate}
-              onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))}
+              value={draft.paymentDate}
+              onChange={(event) => setDraft((current) => ({ ...current, paymentDate: event.target.value }))}
               disabled={isSubmitting}
             />
           </label>
@@ -207,6 +222,15 @@ export function BookingPaymentsSection({
               value={draft.reference}
               onChange={(event) => setDraft((current) => ({ ...current, reference: event.target.value }))}
               placeholder="Wire ref, receipt, invoice note"
+              disabled={isSubmitting}
+            />
+          </label>
+          <label>
+            Notes
+            <textarea
+              value={draft.notes}
+              onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+              placeholder="Payment notes, bank advice, reconciliation context"
               disabled={isSubmitting}
             />
           </label>

@@ -493,6 +493,11 @@ describe('booking detail page regression', () => {
       'credit_card',
       'custom_manual',
       'Custom/manual',
+      "status: 'PAID'",
+      'Payment date',
+      'paidAt: draft.status ===',
+      'notes: draft.notes.trim() || null',
+      'Payment notes, bank advice, reconciliation context',
     ]);
     expectSourceContains(pageSource, [
       'depositsReceived?: number;',
@@ -519,6 +524,19 @@ describe('booking detail page regression', () => {
       '/finance/supplier-payables',
       'Payment Methods',
       'Payment References',
+    ]);
+  });
+
+  it('surfaces phase two finance dashboard activity and supplier aging', () => {
+    expectSourceContains(financePageSource, [
+      'FinanceDashboardSection',
+      "adminPageFetchJson<FinanceDashboardSummary>('/api/bookings/dashboard/finance'",
+      'financeDashboard',
+      '<FinanceDashboardSection summary={financeDashboard} />',
+      'recentPayments',
+      'supplierPayable',
+      'totalCollected',
+      'overdueBreakdown',
     ]);
   });
 

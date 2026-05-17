@@ -9,6 +9,7 @@ import { SummaryStrip } from '../components/SummaryStrip';
 import { TableSectionShell } from '../components/TableSectionShell';
 import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
+import { FinanceDashboardSection } from '../components/FinanceDashboardSection';
 import { FinanceBookingsTable } from './FinanceBookingsTable';
 import { adminPageFetchJson, isAdminForbiddenError, isNextRedirectError } from '../lib/admin-server';
 import { canAccessFinance, readSessionActor } from '../lib/auth-session';
@@ -69,6 +70,35 @@ type Invoice = {
   dueDate: string | null;
 };
 
+type FinanceDashboardSummary = {
+  totalRevenue: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  totalOverdue: number;
+  supplierPayable: number;
+  profit: number;
+  margin: number;
+  overdueBreakdown: {
+    client: { count: number; amount: number };
+    supplier: { count: number; amount: number };
+  };
+  recentPayments: Array<{
+    id: string;
+    bookingId: string;
+    bookingRef: string;
+    bookingTitle: string;
+    clientName: string;
+    type: 'CLIENT' | 'SUPPLIER';
+    amount: number;
+    currency: string;
+    status: 'PENDING' | 'PAID';
+    dueDate: string | null;
+    paidAt: string | null;
+    overdue: boolean;
+    overdueDays: number | null;
+  }>;
+};
+
 type FinancePageProps = {
   searchParams?: Promise<{
     report?: string;
@@ -83,6 +113,12 @@ async function getBookings(): Promise<Booking[]> {
 
 async function getInvoices(): Promise<Invoice[]> {
   return adminPageFetchJson<Invoice[]>('/api/invoices', 'Finance invoices', {
+    cache: 'no-store',
+  });
+}
+
+async function getFinanceDashboard(): Promise<FinanceDashboardSummary | null> {
+  return adminPageFetchJson<FinanceDashboardSummary>('/api/bookings/dashboard/finance', 'Finance dashboard summary', {
     cache: 'no-store',
   });
 }
@@ -156,6 +192,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     const report = resolveReport(resolvedSearchParams?.report);
     let bookings: Booking[] = [];
     let invoices: Invoice[] = [];
+    let financeDashboard: FinanceDashboardSummary | null = null;
     let loadError = false;
 
     try {
@@ -185,6 +222,21 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       }
 
       console.error('[finance] invoices unavailable', error);
+      loadError = true;
+    }
+
+    try {
+      financeDashboard = await getFinanceDashboard();
+    } catch (error) {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      if (isAdminForbiddenError(error)) {
+        throw error;
+      }
+
+      console.error('[finance] dashboard summary unavailable', error);
       loadError = true;
     }
 
@@ -253,6 +305,8 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
           }
         >
           <section className="section-stack">
+            {financeDashboard ? <FinanceDashboardSection summary={financeDashboard} /> : null}
+
             <WorkspaceSubheader
               eyebrow="Finance"
               title={`${getFinanceTitle(report)} bookings`}

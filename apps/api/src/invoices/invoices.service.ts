@@ -37,9 +37,10 @@ export class InvoicesService {
             clientCompany: true,
             contact: true,
             bookings: {
-              select: {
-                id: true,
-                status: true,
+              include: {
+                payments: {
+                  orderBy: [{ createdAt: 'desc' }],
+                },
               },
               orderBy: [{ createdAt: 'desc' }],
               take: 1,
@@ -224,7 +225,10 @@ export class InvoicesService {
       include: {
         quote: {
           include: {
-            booking: true,
+            bookings: {
+              orderBy: [{ createdAt: 'desc' }],
+              take: 1,
+            },
           },
         },
       },
@@ -403,6 +407,7 @@ export class InvoicesService {
 
   async generatePdf(id: string, actor?: CompanyScopedActor) {
     const invoice = await this.getInvoiceDocument(id, actor);
+    const booking = this.getInvoiceBooking(invoice);
     const brand = this.getInvoiceBrand(invoice);
     const logoBuffer = await this.loadInvoiceLogoBuffer(brand.logoUrl);
 
@@ -411,12 +416,14 @@ export class InvoicesService {
       this.writePdfSectionTitle(doc, 'Client Info');
       this.writePdfKeyValue(doc, 'Client company', invoice.quote?.clientCompany?.name || 'Client unavailable');
       this.writePdfKeyValue(doc, 'Client contact', this.formatContact(invoice.quote?.contact));
-      this.writePdfKeyValue(doc, 'Booking reference', invoice.quote?.booking?.bookingRef || 'Booking unavailable');
-      this.writePdfKeyValue(doc, 'Trip dates', this.formatTripDates(invoice.quote?.booking));
+      this.writePdfKeyValue(doc, 'Booking reference', invoice.bookingRef || booking?.bookingRef || 'Booking unavailable');
+      this.writePdfKeyValue(doc, 'Trip dates', this.formatTripDates(booking));
       doc.moveDown(0.6);
 
       this.writePdfSectionTitle(doc, 'Invoice Details');
       this.writePdfKeyValue(doc, 'Invoice number', invoice.invoiceNumber);
+      this.writePdfKeyValue(doc, 'Invoice status', this.formatInvoiceStatus(invoice.effectiveStatus || invoice.status));
+      this.writePdfKeyValue(doc, 'Amendment/version', this.formatBookingVersionReference(booking));
       this.writePdfKeyValue(doc, 'Issue date', this.formatDate(invoice.issueDate));
       this.writePdfKeyValue(doc, 'Due date', this.formatDate(invoice.dueDate));
       this.writePdfKeyValue(doc, 'Currency', invoice.currency);
@@ -426,7 +433,7 @@ export class InvoicesService {
       const lineItems = this.getInvoiceLineItems(invoice);
       if (lineItems.length === 0) {
         this.writePdfBodyLine(doc, 'Travel package summary');
-        this.writePdfKeyValue(doc, 'Booking summary', invoice.quote?.title || invoice.quote?.booking?.bookingRef || 'Travel services');
+        this.writePdfKeyValue(doc, 'Booking summary', invoice.quote?.title || invoice.bookingRef || booking?.bookingRef || 'Travel services');
       } else {
         this.writePdfLineItemHeader(doc);
         for (const [index, item] of lineItems.entries()) {
@@ -1092,7 +1099,7 @@ export class InvoicesService {
   }
 
   private getInvoiceLineItems(invoice: any) {
-    const services = invoice.quote?.booking?.services || [];
+    const services = this.getInvoiceBooking(invoice)?.services || [];
     return services
       .filter((service: any) => service.status !== ACTIVE_SERVICE_STATUS)
       .map((service: any) => ({
@@ -1109,7 +1116,7 @@ export class InvoicesService {
       return override;
     }
 
-    return String(invoice.quote?.contact?.email || invoice.quote?.booking?.contactSnapshotJson?.email || '').trim() || null;
+    return String(invoice.quote?.contact?.email || this.getInvoiceBooking(invoice)?.contactSnapshotJson?.email || '').trim() || null;
   }
 
   private formatContact(contact: any) {
@@ -1127,6 +1134,27 @@ export class InvoicesService {
     }
 
     return this.formatDate(booking.startDate || booking.endDate);
+  }
+
+  private formatInvoiceStatus(value?: string | null) {
+    return String(value || 'draft')
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private formatBookingVersionReference(booking: any) {
+    if (!booking) {
+      return 'Original booking';
+    }
+
+    const parts = [
+      booking.amendmentNumber ? `Amendment ${booking.amendmentNumber}` : null,
+      booking.acceptedVersionId ? `Accepted version ${booking.acceptedVersionId}` : null,
+    ].filter(Boolean);
+
+    return parts.join(' | ') || 'Original booking';
   }
 
   private getInvoiceBrand(invoice: any) {

@@ -232,13 +232,15 @@ test('generates supplier payable placeholders from active service cost without l
 });
 
 test('recording invoice payment reduces balance and exposes partially paid status', async () => {
-  const { service } = createService();
+  const { service, calls } = createService();
 
   const invoice = await service.createPayment('invoice-1', {
     amount: 200,
     currency: 'USD',
     method: 'bank',
     paymentDate: '2026-06-02',
+    reference: 'WIRE-200',
+    notes: 'Deposit received',
     companyActor: actor,
   });
 
@@ -246,6 +248,10 @@ test('recording invoice payment reduces balance and exposes partially paid statu
   assert.equal(invoice.balanceDue, 300);
   assert.equal(invoice.effectiveStatus, 'partially_paid');
   assert.equal(invoice.status, 'ISSUED');
+  assert.equal(calls.paymentCreate.at(-1).data.reference, 'WIRE-200');
+  assert.equal(calls.paymentCreate.at(-1).data.notes, 'Deposit received');
+  assert.equal(Boolean(calls.invoiceFindFirst.at(-1).include.quote.include.bookings), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls.invoiceFindFirst.at(-1).include.quote.include, 'booking'), false);
 });
 
 test('recording full invoice payment marks invoice paid', async () => {
@@ -314,6 +320,10 @@ test('invoice PDF includes premium client-ready layout sections', async () => {
   assert.equal(pdfBuffer.subarray(0, 4).toString(), '%PDF');
   assert.match(serviceSource, /Client Info/);
   assert.match(serviceSource, /Invoice Details/);
+  assert.match(serviceSource, /Booking reference/);
+  assert.match(serviceSource, /Invoice status/);
+  assert.match(serviceSource, /Amendment\/version/);
+  assert.match(serviceSource, /formatBookingVersionReference/);
   assert.match(serviceSource, /Line Items/);
   assert.match(serviceSource, /Totals/);
   assert.match(serviceSource, /Payment Instructions/);
