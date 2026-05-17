@@ -14,6 +14,7 @@ type ActivityRateVariantBody = {
   name: string;
   supplierCompanyId?: string | null;
   durationMinutes?: number | null;
+  durationHours?: number | null;
   currency?: string | null;
   costPrice: number;
   sellPrice: number;
@@ -27,6 +28,12 @@ type ActivityRateVariantBody = {
   difficulty?: string | null;
   guideRequired?: boolean | null;
   guideRequirement?: ActivityGuideRequirement | null;
+  sicPossible?: boolean | null;
+  fitnessLevel?: string | null;
+  familyFriendly?: boolean | null;
+  seasonalRisk?: string | null;
+  terrainType?: string | null;
+  recommendedPaxRange?: string | null;
   meetingPoint?: string | null;
   startPoint?: string | null;
   endPoint?: string | null;
@@ -47,11 +54,27 @@ type CreateActivityBody = {
   costPrice: number;
   sellPrice: number;
   durationMinutes?: number | null;
+  durationHours?: number | null;
   active?: boolean;
   code?: string | null;
   category?: string | null;
   city?: string | null;
   region?: string | null;
+  difficulty?: string | null;
+  guideRequired?: boolean | null;
+  sicPossible?: boolean | null;
+  fitnessLevel?: string | null;
+  familyFriendly?: boolean | null;
+  seasonalRisk?: string | null;
+  terrainType?: string | null;
+  recommendedPaxRange?: string | null;
+  startPoint?: string | null;
+  endPoint?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  operationalNotes?: string | null;
+  categoryTags?: string[] | null;
+  reviewNotes?: string | null;
   rateVariants?: ActivityRateVariantBody[];
 };
 
@@ -70,6 +93,7 @@ export class ActivitiesController {
       sellPrice: Number(body.sellPrice),
       durationMinutes:
         body.durationMinutes === undefined || body.durationMinutes === null ? body.durationMinutes : Number(body.durationMinutes),
+      durationHours: body.durationHours === undefined || body.durationHours === null ? body.durationHours : Number(body.durationHours),
       rateVariants: this.normalizeRateVariants(body.rateVariants),
     });
   }
@@ -105,6 +129,7 @@ export class ActivitiesController {
       sellPrice: body.sellPrice === undefined ? undefined : Number(body.sellPrice),
       durationMinutes:
         body.durationMinutes === undefined || body.durationMinutes === null ? body.durationMinutes : Number(body.durationMinutes),
+      durationHours: body.durationHours === undefined || body.durationHours === null ? body.durationHours : Number(body.durationHours),
       rateVariants: body.rateVariants === undefined ? undefined : this.normalizeRateVariants(body.rateVariants),
     });
   }
@@ -120,6 +145,8 @@ export class ActivitiesController {
         variant.durationMinutes === undefined || variant.durationMinutes === null
           ? variant.durationMinutes
           : Number(variant.durationMinutes),
+      durationHours:
+        variant.durationHours === undefined || variant.durationHours === null ? variant.durationHours : Number(variant.durationHours),
       costPrice: Number(variant.costPrice),
       sellPrice: Number(variant.sellPrice),
       minPax: variant.minPax === undefined || variant.minPax === null ? variant.minPax : Number(variant.minPax),

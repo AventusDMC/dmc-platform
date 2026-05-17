@@ -20,6 +20,7 @@ type ActivityRateVariantInput = {
   name: string;
   supplierCompanyId?: string | null;
   durationMinutes?: number | null;
+  durationHours?: number | null;
   currency?: string | null;
   costPrice: number;
   sellPrice: number;
@@ -33,6 +34,12 @@ type ActivityRateVariantInput = {
   difficulty?: string | null;
   guideRequired?: boolean | null;
   guideRequirement?: ActivityGuideRequirement | null;
+  sicPossible?: boolean | null;
+  fitnessLevel?: string | null;
+  familyFriendly?: boolean | null;
+  seasonalRisk?: string | null;
+  terrainType?: string | null;
+  recommendedPaxRange?: string | null;
   meetingPoint?: string | null;
   startPoint?: string | null;
   endPoint?: string | null;
@@ -57,12 +64,28 @@ type CreateActivityInput = {
   costPrice: number;
   sellPrice: number;
   durationMinutes?: number | null;
+  durationHours?: number | null;
   active?: boolean;
   currency?: string | null;
   code?: string | null;
   category?: string | null;
   city?: string | null;
   region?: string | null;
+  difficulty?: string | null;
+  guideRequired?: boolean | null;
+  sicPossible?: boolean | null;
+  fitnessLevel?: string | null;
+  familyFriendly?: boolean | null;
+  seasonalRisk?: string | null;
+  terrainType?: string | null;
+  recommendedPaxRange?: string | null;
+  startPoint?: string | null;
+  endPoint?: string | null;
+  inclusions?: string | null;
+  exclusions?: string | null;
+  operationalNotes?: string | null;
+  categoryTags?: string[] | null;
+  reviewNotes?: string | null;
   rateVariants?: ActivityRateVariantInput[];
 };
 
@@ -117,6 +140,22 @@ export class ActivitiesService {
         costPrice: ensureValidNumber(data.costPrice, 'costPrice', { min: 0 }),
         sellPrice: ensureValidNumber(data.sellPrice, 'sellPrice', { min: 0 }),
         durationMinutes: this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
+        durationHours: this.normalizeOptionalPositiveNumber(data.durationHours, 'durationHours'),
+        difficulty: normalizeOptionalString(data.difficulty),
+        guideRequired: data.guideRequired === undefined || data.guideRequired === null ? null : Boolean(data.guideRequired),
+        sicPossible: data.sicPossible === undefined || data.sicPossible === null ? false : Boolean(data.sicPossible),
+        fitnessLevel: normalizeOptionalString(data.fitnessLevel),
+        familyFriendly: data.familyFriendly === undefined || data.familyFriendly === null ? false : Boolean(data.familyFriendly),
+        seasonalRisk: normalizeOptionalString(data.seasonalRisk),
+        terrainType: normalizeOptionalString(data.terrainType),
+        recommendedPaxRange: normalizeOptionalString(data.recommendedPaxRange),
+        startPoint: normalizeOptionalString(data.startPoint),
+        endPoint: normalizeOptionalString(data.endPoint),
+        inclusions: normalizeOptionalString(data.inclusions),
+        exclusions: normalizeOptionalString(data.exclusions),
+        operationalNotes: normalizeOptionalString(data.operationalNotes),
+        categoryTags: this.normalizeCategoryTags(data.categoryTags),
+        reviewNotes: normalizeOptionalString(data.reviewNotes),
         active: data.active === undefined ? true : Boolean(data.active),
         rateVariants: this.buildCreateRateVariants(data.rateVariants, defaultVariantCurrency),
       },
@@ -163,6 +202,23 @@ export class ActivitiesService {
           sellPrice: data.sellPrice === undefined ? undefined : ensureValidNumber(data.sellPrice, 'sellPrice', { min: 0 }),
           durationMinutes:
             data.durationMinutes === undefined ? undefined : this.normalizeOptionalPositiveInteger(data.durationMinutes, 'durationMinutes'),
+          durationHours: data.durationHours === undefined ? undefined : this.normalizeOptionalPositiveNumber(data.durationHours, 'durationHours'),
+          difficulty: data.difficulty === undefined ? undefined : normalizeOptionalString(data.difficulty),
+          guideRequired: data.guideRequired === undefined ? undefined : data.guideRequired === null ? null : Boolean(data.guideRequired),
+          sicPossible: data.sicPossible === undefined ? undefined : Boolean(data.sicPossible),
+          fitnessLevel: data.fitnessLevel === undefined ? undefined : normalizeOptionalString(data.fitnessLevel),
+          familyFriendly: data.familyFriendly === undefined ? undefined : Boolean(data.familyFriendly),
+          seasonalRisk: data.seasonalRisk === undefined ? undefined : normalizeOptionalString(data.seasonalRisk),
+          terrainType: data.terrainType === undefined ? undefined : normalizeOptionalString(data.terrainType),
+          recommendedPaxRange:
+            data.recommendedPaxRange === undefined ? undefined : normalizeOptionalString(data.recommendedPaxRange),
+          startPoint: data.startPoint === undefined ? undefined : normalizeOptionalString(data.startPoint),
+          endPoint: data.endPoint === undefined ? undefined : normalizeOptionalString(data.endPoint),
+          inclusions: data.inclusions === undefined ? undefined : normalizeOptionalString(data.inclusions),
+          exclusions: data.exclusions === undefined ? undefined : normalizeOptionalString(data.exclusions),
+          operationalNotes: data.operationalNotes === undefined ? undefined : normalizeOptionalString(data.operationalNotes),
+          categoryTags: data.categoryTags === undefined ? undefined : this.normalizeCategoryTags(data.categoryTags),
+          reviewNotes: data.reviewNotes === undefined ? undefined : normalizeOptionalString(data.reviewNotes),
           active: data.active === undefined ? undefined : Boolean(data.active),
         },
         include: {
@@ -191,6 +247,22 @@ export class ActivitiesService {
         costPrice: source.costPrice,
         sellPrice: source.sellPrice,
         durationMinutes: source.durationMinutes,
+        durationHours: source.durationHours,
+        difficulty: source.difficulty,
+        guideRequired: source.guideRequired,
+        sicPossible: source.sicPossible,
+        fitnessLevel: source.fitnessLevel,
+        familyFriendly: source.familyFriendly,
+        seasonalRisk: source.seasonalRisk,
+        terrainType: source.terrainType,
+        recommendedPaxRange: source.recommendedPaxRange,
+        startPoint: source.startPoint,
+        endPoint: source.endPoint,
+        inclusions: source.inclusions,
+        exclusions: source.exclusions,
+        operationalNotes: source.operationalNotes,
+        categoryTags: source.categoryTags,
+        reviewNotes: source.reviewNotes,
         active: false,
         rateVariants: this.buildCreateRateVariants(
           (source.rateVariants || []).map((variant: ActivityRateVariantRecord) => ({
@@ -210,6 +282,13 @@ export class ActivitiesService {
             difficulty: variant.difficulty,
             guideRequired: variant.guideRequired,
             guideRequirement: variant.guideRequirement,
+            durationHours: variant.durationHours,
+            sicPossible: variant.sicPossible,
+            fitnessLevel: variant.fitnessLevel,
+            familyFriendly: variant.familyFriendly,
+            seasonalRisk: variant.seasonalRisk,
+            terrainType: variant.terrainType,
+            recommendedPaxRange: variant.recommendedPaxRange,
             meetingPoint: variant.meetingPoint,
             startPoint: variant.startPoint,
             endPoint: variant.endPoint,
@@ -254,6 +333,22 @@ export class ActivitiesService {
       costPrice: 0,
       sellPrice: 0,
       durationMinutes: null,
+      durationHours: null,
+      difficulty: 'Varies by trail',
+      guideRequired: true,
+      sicPossible: false,
+      fitnessLevel: 'Moderate to strenuous',
+      familyFriendly: false,
+      seasonalRisk: 'Heat, daylight, weather, trail condition, and flash-flood risk must be checked before operation.',
+      terrainType: 'Petra mountain trails, steps, uneven paths, and exposed viewpoints',
+      recommendedPaxRange: '1-12',
+      startPoint: 'Petra visitor area or trailhead',
+      endPoint: 'Trail-specific endpoint',
+      inclusions: 'Guided hiking experience. Entrance tickets are excluded and remain ticketing records.',
+      exclusions: 'Petra entrance ticket, meals, water, transport, gratuities, and personal expenses unless separately included.',
+      operationalNotes: 'Operational Activity Master for Petra hiking trail experiences. Guides remain separate operational resources.',
+      categoryTags: ['Adventure', 'Historical', 'Cultural'],
+      reviewNotes: 'Canonical Petra Hiking Activity Master preserved from existing architecture.',
       active: true,
     };
 
@@ -313,6 +408,34 @@ export class ActivitiesService {
     return Math.floor(normalized);
   }
 
+  private normalizeOptionalPositiveNumber(value: number | null | undefined, fieldLabel: string) {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return null;
+    }
+
+    const normalized = Number(value);
+
+    if (!Number.isFinite(normalized) || normalized < 0) {
+      throw new BadRequestException(`${fieldLabel} must be zero or greater`);
+    }
+
+    return normalized;
+  }
+
+  private normalizeCategoryTags(value: string[] | null | undefined) {
+    if (value === undefined) {
+      return undefined;
+    }
+    if (value === null) {
+      return null;
+    }
+    if (!Array.isArray(value)) {
+      throw new BadRequestException('categoryTags must be an array');
+    }
+
+    return Array.from(new Set(value.map((tag) => normalizeOptionalString(tag)).filter((tag): tag is string => Boolean(tag))));
+  }
+
   private buildCreateRateVariants(variants: ActivityRateVariantInput[] | undefined, defaultCurrency: string) {
     if (variants === undefined) {
       return undefined;
@@ -346,6 +469,9 @@ export class ActivitiesService {
     if (variant.supplierCompanyId !== undefined) {
       data.supplierCompanyId = normalizeOptionalString(variant.supplierCompanyId);
     }
+    if (variant.durationHours !== undefined) {
+      data.durationHours = this.normalizeOptionalPositiveNumber(variant.durationHours, `rateVariants[${index}].durationHours`);
+    }
     if (variant.minPax !== undefined) {
       data.minPax = minPax;
     }
@@ -357,6 +483,10 @@ export class ActivitiesService {
     }
     const optionalTextFields = [
       'difficulty',
+      'fitnessLevel',
+      'seasonalRisk',
+      'terrainType',
+      'recommendedPaxRange',
       'meetingPoint',
       'startPoint',
       'endPoint',
@@ -375,6 +505,12 @@ export class ActivitiesService {
     }
     if (variant.guideRequired !== undefined && variant.guideRequired !== null) {
       data.guideRequired = Boolean(variant.guideRequired);
+    }
+    if (variant.sicPossible !== undefined && variant.sicPossible !== null) {
+      data.sicPossible = Boolean(variant.sicPossible);
+    }
+    if (variant.familyFriendly !== undefined && variant.familyFriendly !== null) {
+      data.familyFriendly = Boolean(variant.familyFriendly);
     }
     if (variant.guideRequirement !== undefined) {
       data.guideRequirement = this.normalizeGuideRequirement(variant.guideRequirement);

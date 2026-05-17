@@ -1,9 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { ROLES_KEY } from '../auth/auth.decorators';
 import { ActivitiesController } from './activities.controller';
 import { ActivitiesService } from './activities.service';
+
+const schemaSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+const packageSource = readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8');
+const activitySeedSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'seeds', 'seed-activities.ts'), 'utf8');
 
 function createActivitiesService(overrides: Partial<any> = {}) {
   const prisma = {
@@ -174,6 +180,70 @@ test('create activity persists multiple structured rate variants', async () => {
   assert.equal(createdData.rateVariants.create[1].name, 'Full Day');
   assert.equal(createdData.rateVariants.create[1].currency, 'USD');
   assert.equal(createdData.rateVariants.create[1].sortOrder, 1);
+});
+
+test('create activity persists operational master and variant metadata', async () => {
+  let createdData: any;
+  const { service } = createActivitiesService({
+    activity: {
+      create: async ({ data }: any) => {
+        createdData = data;
+        return { id: 'activity-1', ...data };
+      },
+    },
+  });
+
+  await service.create({
+    name: 'Bethany Spiritual Experiences',
+    supplierCompanyId: 'supplier-company-1',
+    pricingBasis: 'PER_GROUP',
+    costPrice: 0,
+    sellPrice: 0,
+    durationHours: 2,
+    category: 'Religious / Christian / Cultural',
+    categoryTags: ['Religious', 'Christian', 'Cultural'],
+    guideRequired: false,
+    sicPossible: true,
+    fitnessLevel: 'Low walking fitness',
+    familyFriendly: true,
+    seasonalRisk: 'Heat and shuttle timing risk.',
+    terrainType: 'Managed religious site paths',
+    recommendedPaxRange: '1-40',
+    startPoint: 'Bethany visitor reception',
+    endPoint: 'Bethany visitor reception',
+    inclusions: 'Spiritual site visit block.',
+    exclusions: 'Entrance ticket and specialist guide.',
+    operationalNotes: 'Ticketing and guides remain separate.',
+    rateVariants: [
+      {
+        name: 'Bethany Site Visit',
+        durationHours: 2,
+        currency: 'JOD',
+        pricingBasis: 'PER_GROUP',
+        costPrice: 0,
+        sellPrice: 0,
+        guideRequired: false,
+        sicPossible: true,
+        fitnessLevel: 'Low walking fitness',
+        familyFriendly: true,
+        seasonalRisk: 'Heat risk.',
+        terrainType: 'Managed site paths',
+        recommendedPaxRange: '1-40',
+        startPoint: 'Bethany visitor reception',
+        endPoint: 'Bethany visitor reception',
+        operationalNotes: 'Coordinate ticketing separately.',
+      },
+    ],
+  });
+
+  assert.equal(createdData.durationHours, 2);
+  assert.deepEqual(createdData.categoryTags, ['Religious', 'Christian', 'Cultural']);
+  assert.equal(createdData.sicPossible, true);
+  assert.equal(createdData.familyFriendly, true);
+  assert.equal(createdData.terrainType, 'Managed religious site paths');
+  assert.equal(createdData.rateVariants.create[0].durationHours, 2);
+  assert.equal(createdData.rateVariants.create[0].sicPossible, true);
+  assert.equal(createdData.rateVariants.create[0].recommendedPaxRange, '1-40');
 });
 
 test('update activity variants preserves existing variant ids and deactivates removed variants', async () => {
@@ -394,6 +464,38 @@ test('ensure Petra Hiking Experiences creates one Activity Master with trail var
   assert.equal(createdData.rateVariants.create[6].guideRequired, true);
   assert.equal(createdData.rateVariants.create[6].pricingBasis, 'PER_GROUP');
   assert.match(createdData.rateVariants.create[6].waterNotes, /drinking water/i);
+});
+
+test('golden Jordan activity seed creates masters variants metadata and category tags only', () => {
+  assert.match(packageSource, /"seed:activities": "ts-node prisma\/seeds\/seed-activities\.ts"/);
+  assert.match(schemaSource, /durationHours\s+Float\?/);
+  assert.match(schemaSource, /sicPossible\s+Boolean\s+@default\(false\)/);
+  assert.match(schemaSource, /familyFriendly\s+Boolean\s+@default\(false\)/);
+  assert.match(schemaSource, /categoryTags\s+Json\?/);
+  assert.match(activitySeedSource, /GOLDEN_JORDAN_ACTIVITY_MASTERS/);
+  assert.match(activitySeedSource, /Petra Guided Experiences/);
+  assert.match(activitySeedSource, /Petra Hiking Experiences/);
+  assert.match(activitySeedSource, /Wadi Rum Jeep Experiences/);
+  assert.match(activitySeedSource, /Blessed Tree Heritage Experiences/);
+  assert.match(activitySeedSource, /Bethany Spiritual Experiences/);
+  assert.match(activitySeedSource, /Dead Sea Relaxation Experiences/);
+  assert.match(activitySeedSource, /2h Jeep Tour/);
+  assert.match(activitySeedSource, /4h Jeep Tour/);
+  assert.match(activitySeedSource, /Sunset Jeep Tour/);
+  assert.match(activitySeedSource, /Stargazing Experience/);
+  assert.match(activitySeedSource, /categoryTags: \['Religious', 'Islamic', 'Cultural'\]/);
+  assert.match(activitySeedSource, /categoryTags: \['Religious', 'Christian', 'Cultural'\]/);
+  assert.match(activitySeedSource, /activity\.upsert/);
+  assert.match(activitySeedSource, /activityRateVariant\.create/);
+  assert.match(activitySeedSource, /duplicatesFlagged/);
+  assert.match(activitySeedSource, /validatedMasters/);
+  assert.match(activitySeedSource, /validatedVariants/);
+  assert.doesNotMatch(activitySeedSource, /excursionTemplate\./);
+  assert.doesNotMatch(activitySeedSource, /quote\./);
+  assert.doesNotMatch(activitySeedSource, /invoice\./);
+  assert.doesNotMatch(activitySeedSource, /booking\./);
+  assert.doesNotMatch(activitySeedSource, /hotelRate\./);
+  assert.doesNotMatch(activitySeedSource, /transportPricing/);
 });
 
 test('ensure Petra Hiking Experiences updates existing master and keeps variants linked without duplicates', async () => {
