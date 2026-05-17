@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { adminPageFetchJson } from '../../lib/admin-server';
+import { adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 
 type AgentMe = {
   id: string;
@@ -55,6 +55,8 @@ type AgentDeparture = {
   };
 };
 
+export const dynamic = 'force-dynamic';
+
 function formatMoney(amount: number, currency = 'USD') {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -87,13 +89,55 @@ async function getDepartures() {
   return adminPageFetchJson<AgentDeparture[]>('/api/agent/departures', 'Agent departures', { cache: 'no-store' });
 }
 
+async function safeAgentFetch<T>(label: string, load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error(`[agent/dashboard] ${label} unavailable`, error);
+    return fallback;
+  }
+}
+
 export default async function AgentDashboardPage() {
-  const [me, quotes, bookings, invoices, proposals, departures] = await Promise.all([getMe(), getQuotes(), getBookings(), getInvoices(), getProposals(), getDepartures()]);
+  const [me, quotes, bookings, invoices, proposals, departures] = await Promise.all([
+    safeAgentFetch<AgentMe | null>('profile', getMe, null),
+    safeAgentFetch<AgentQuote[]>('quotes', getQuotes, []),
+    safeAgentFetch<AgentBooking[]>('bookings', getBookings, []),
+    safeAgentFetch<AgentInvoice[]>('invoices', getInvoices, []),
+    safeAgentFetch<AgentProposal[]>('proposals', getProposals, []),
+    safeAgentFetch<AgentDeparture[]>('departures', getDepartures, []),
+  ]);
+
+  if (!me) {
+    return (
+      <main className="page">
+        <section className="panel workspace-panel">
+          <div className="section-stack">
+            <div className="workspace-section-head">
+              <div>
+                <p className="eyebrow">Agent Portal</p>
+                <h1>Agent sign in required</h1>
+                <p className="detail-copy">Sign in with an active agent account to view assigned quotes, bookings, invoices, vouchers, and departures.</p>
+              </div>
+            </div>
+            <div className="table-action-row">
+              <Link href="/login?next=/agent/dashboard" className="secondary-button">Sign in</Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const activeQuotes = quotes.filter((quote) => ['DRAFT', 'READY', 'SENT', 'REVISION_REQUESTED'].includes(quote.status)).length;
   const confirmedBookings = bookings.filter((booking) => ['confirmed', 'in_progress'].includes(booking.status)).length;
   const unpaidInvoices = invoices.filter((invoice) => invoice.status === 'ISSUED').length;
   const pendingBalances = invoices.filter((invoice: any) => Number(invoice.balanceDue ?? invoice.totalAmount ?? 0) > 0).length;
-  const travelAlerts = departures.filter((departure) => departure.availability.stopSale || departure.availability.seatsRemaining === 0).length;
+  const travelAlerts = departures.filter((departure) => departure.availability?.stopSale || departure.availability?.seatsRemaining === 0).length;
   const voucherReadyBookings = bookings.filter((booking: any) => booking.voucherReadiness === 'ready' || booking.voucherReadiness === 'sent').length;
 
   return (
@@ -179,8 +223,8 @@ export default async function AgentDashboardPage() {
                     <tr key={departure.id}>
                       <td>{departure.departureCode || departure.seriesName}</td>
                       <td>{departure.departureDate ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(departure.departureDate)) : 'Date pending'}</td>
-                      <td>{departure.availability.seatsRemaining === null ? 'On request' : `${departure.availability.seatsRemaining} seats remaining`}</td>
-                      <td><span className="status-badge">{departure.availability.stopSale ? 'Stop sale' : 'Open'}</span></td>
+                      <td>{departure.availability?.seatsRemaining === null || departure.availability?.seatsRemaining === undefined ? 'On request' : `${departure.availability.seatsRemaining} seats remaining`}</td>
+                      <td><span className="status-badge">{departure.availability?.stopSale ? 'Stop sale' : 'Open'}</span></td>
                     </tr>
                   ))}
                 </tbody>
