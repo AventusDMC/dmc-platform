@@ -2,6 +2,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 export const ADMIN_API_BASE_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+const DEFAULT_PRODUCTION_APP_URL = 'https://dmc-platform-admin-web.vercel.app';
 
 type AdminPageFetchInit = RequestInit & {
   allowAnonymous?: boolean;
@@ -45,6 +46,24 @@ export function getRequestOrigin(requestHeaders: Headers) {
   const protocol = requestHeaders.get('x-forwarded-proto') || 'http';
   const host = requestHeaders.get('x-forwarded-host') || requestHeaders.get('host') || 'localhost:3000';
   return `${protocol}://${host}`;
+}
+
+export function getPublicAppBaseUrl() {
+  const configured = (process.env.APP_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || '').trim();
+
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/+$/, '')}`;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return DEFAULT_PRODUCTION_APP_URL;
+  }
+
+  return 'http://localhost:3000';
 }
 
 function normalizeAdminApiInput(input: string | URL, requestHeaders: Headers) {

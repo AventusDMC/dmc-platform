@@ -511,7 +511,7 @@ export class QuotesService {
   }
 
   private buildPublicProposalUrl(token: string) {
-    const appUrl = (process.env.ADMIN_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+    const appUrl = (process.env.APP_PUBLIC_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.ADMIN_WEB_URL || '').trim().replace(/\/+$/, '');
 
     if (!appUrl) {
       return `/proposal/${token}`;

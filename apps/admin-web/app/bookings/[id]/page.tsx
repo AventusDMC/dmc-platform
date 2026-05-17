@@ -25,11 +25,11 @@ import { type BookingPaymentRecord } from './BookingPaymentsSection';
 import { CancelBookingButton } from './CancelBookingButton';
 import { AmendBookingButton } from './AmendBookingButton';
 
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import { ADMIN_API_BASE_URL, adminPageFetchJson, getPublicAppBaseUrl } from '../../lib/admin-server';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
-const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_BASE_URL = getPublicAppBaseUrl();
 
 type BookingStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 type BookingType = 'FIT' | 'GROUP' | 'SERIES';

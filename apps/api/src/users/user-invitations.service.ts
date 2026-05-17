@@ -357,7 +357,12 @@ export class UserInvitationsService {
       name: string;
     };
   }) {
-    const appUrl = (process.env.ADMIN_WEB_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+    const appUrl = (
+      process.env.APP_PUBLIC_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.ADMIN_WEB_URL ||
+      (process.env.NODE_ENV === 'production' ? 'https://dmc-platform-admin-web.vercel.app' : 'http://127.0.0.1:3000')
+    ).replace(/\/+$/, '');
     const inviteUrl = `${appUrl}/accept-invite?token=${encodeURIComponent(invitation.token)}`;
     const transporter = this.createMailTransport();
     const fromAddress = process.env.BOOKING_DOCUMENTS_EMAIL_FROM || process.env.SMTP_FROM || 'noreply@localhost';

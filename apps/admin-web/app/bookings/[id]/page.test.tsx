@@ -458,6 +458,23 @@ describe('booking detail page regression', () => {
     ]);
   });
 
+  it('uses production-safe public app URL for invoice portal links', () => {
+    expectSourceContains(pageSource, [
+      'getPublicAppBaseUrl',
+      'const APP_BASE_URL = getPublicAppBaseUrl();',
+      'const portalUrl = `${APP_BASE_URL}/invoice/${encodeURIComponent(booking.accessToken)}`;',
+    ]);
+
+    expectSourceContains(readFileSync(new URL('../../lib/admin-server.ts', import.meta.url), 'utf8'), [
+      'APP_PUBLIC_URL',
+      'NEXT_PUBLIC_APP_URL',
+      'https://dmc-platform-admin-web.vercel.app',
+      "return 'http://localhost:3000';",
+    ]);
+
+    assert.doesNotMatch(pageSource, /NEXT_PUBLIC_APP_URL \|\| ['"]http:\/\/localhost:3000['"]/);
+  });
+
   it('uses booking UUID rather than booking display code for financial document PDF downloads', () => {
     expectSourceContains(pageSource, [
       '<BookingFinancialsTab',
