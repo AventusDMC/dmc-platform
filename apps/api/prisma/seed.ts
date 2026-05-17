@@ -54,7 +54,6 @@ async function main() {
     const transportServiceTypes = await seedTransportServiceTypes(prisma);
     const vehicles = await seedVehicles(prisma, suppliers);
     const routes = await seedRoutes(prisma, places);
-    await seedGoldenJordanTouringRoutes(prisma);
     await seedTransportPricingRules(prisma, routes, transportServiceTypes, vehicles);
     await seedVehicleRates(prisma, routes, transportServiceTypes, vehicles);
     const seasons = await seedSeasons(prisma);

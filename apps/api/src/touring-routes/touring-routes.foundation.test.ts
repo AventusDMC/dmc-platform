@@ -9,7 +9,8 @@ import { TouringRoutesService } from './touring-routes.service';
 const schemaSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(__dirname, 'touring-routes.controller.ts'), 'utf8');
 const serviceSource = readFileSync(join(__dirname, 'touring-routes.service.ts'), 'utf8');
-const seedSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'seed.ts'), 'utf8');
+const seedSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'seeds', 'seed-touring-routes.ts'), 'utf8');
+const packageSource = readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8');
 
 test('touring route foundation defines separate inventory, stops, pricing, and transport classification', () => {
   assert.match(schemaSource, /model TouringRoute\s+\{/);
@@ -37,8 +38,15 @@ test('touring route API exposes reusable catalog without using transfer routes',
 });
 
 test('golden Jordan touring route seed creates canonical operational infrastructure only', () => {
+  assert.match(packageSource, /"seed:touring-routes": "ts-node prisma\/seeds\/seed-touring-routes\.ts"/);
+  assert.match(seedSource, /new PrismaClient\(\)/);
   assert.match(seedSource, /GOLDEN_JORDAN_TOURING_ROUTES/);
   assert.match(seedSource, /seedGoldenJordanTouringRoutes\(prisma\)/);
+  assert.match(seedSource, /touringRoute\.upsert/);
+  assert.match(seedSource, /created/);
+  assert.match(seedSource, /updated/);
+  assert.match(seedSource, /duplicatesFlagged/);
+  assert.match(seedSource, /validatedRoutes/);
   assert.match(seedSource, /Amman – Jerash – Amman RT/);
   assert.match(seedSource, /Amman – Madaba – Nebo – Dead Sea – Amman RT/);
   assert.match(seedSource, /Petra – Wadi Rum ON/);
@@ -51,6 +59,10 @@ test('golden Jordan touring route seed creates canonical operational infrastruct
   assert.match(seedSource, /region: 'Islamic'/);
   assert.match(seedSource, /Golden Jordan canonical touring route\. Operational infrastructure only; not a sellable excursion template\./);
   assert.doesNotMatch(seedSource, /excursionTemplate\.upsert[\s\S]*GOLDEN_JORDAN_TOURING_ROUTES/);
+  assert.doesNotMatch(seedSource, /quote\./);
+  assert.doesNotMatch(seedSource, /invoice\./);
+  assert.doesNotMatch(seedSource, /hotel\./);
+  assert.doesNotMatch(seedSource, /booking\./);
 });
 
 test('golden Jordan route naming uses touring stop separators and RT ON suffixes', () => {
