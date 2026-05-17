@@ -1008,6 +1008,8 @@ describe('quote detail page regression', () => {
       'const [billableDaysInput, setBillableDaysInput] = useState(\'1\');',
       'const requestedBillableDays = Math.max(1, Math.floor(Number(billableDaysInput) || 1));',
       'const costPrice = selectedRate && selectedRateHasCost ? getQuoteTransportPersistedCostPreview(selectedRate, requestedPax, requestedBillableDays) : 0;',
+      'const pricingCurrency = getQuoteTransportRateCurrency(selectedRate, quoteCurrency);',
+      'currency: pricingCurrency,',
       'getQuoteTransportPersistedCostPreview(left.rate, requestedPax, requestedBillableDays)',
       'getQuoteTransportPersistedCostPreview(rate, pax, billableDays)',
       'dayCount: usesBillableDaysInput(selectedPricingMode) ? requestedBillableDays : 1,',

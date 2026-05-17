@@ -76,6 +76,7 @@ type VehicleRate = {
   maxPax?: number | null;
   price: number;
   currency: string;
+  costCurrency?: string | null;
   active: boolean;
   validFrom: string;
   validTo: string;
@@ -267,6 +268,10 @@ function formatMoney(value: number, currency: string) {
   return `${currency || 'USD'} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+export function getQuoteTransportRateCurrency(rate: Pick<VehicleRate, 'currency' | 'costCurrency'> | null | undefined, fallbackCurrency = 'USD') {
+  return String(rate?.costCurrency || rate?.currency || fallbackCurrency || 'USD').trim().toUpperCase();
+}
+
 function getMarginTone(marginPercent: number) {
   if (marginPercent >= 20) return 'quote-live-pricing-profit-good';
   if (marginPercent >= 10) return 'quote-live-pricing-profit-watch';
@@ -417,7 +422,7 @@ function getRateCapacity(rate: VehicleRate) {
 }
 
 function formatRateMoney(value: number, currency: string) {
-  return `${currency || 'USD'} ${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  return `${String(currency || 'USD').trim().toUpperCase()} ${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 }
 
 function getMatchBadge(priority: SupplierRateMatch['priority']): SupplierRateMatch['badge'] {
@@ -807,7 +812,7 @@ export function formatVehicleOptionLabel(entry: RankedVehicle, vehicleTypes: Veh
   return `${formatTransportVehicleDisplay(entry.vehicle, vehicleTypes)}${capacityGuidance}${recommendation}`;
 }
 
-function formatSupplierRateOptionLabel(
+export function formatSupplierRateOptionLabel(
   match: SupplierRateMatch,
   suppliers: Supplier[],
   vehicleTypes: VehicleTypeOption[],
@@ -825,6 +830,9 @@ function formatSupplierRateOptionLabel(
   const vehicleLabel = formatTransportVehicleDisplay(vehicle, vehicleTypes);
   const route = rate.routeName || rate.route?.name || (fallbackRoute ? formatRoute(fallbackRoute) : 'General / All Routes');
   const pricingMode = getPricingModeForRate(rate);
+  const currency = getQuoteTransportRateCurrency(rate);
+  const previewCost = getQuoteTransportPersistedCostPreview(rate, pax, billableDays);
+  return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(previewCost, currency)}`;
   return `${supplier} — ${vehicleLabel} — ${route} — ${pricingMode}: ${formatRateMoney(getQuoteTransportPersistedCostPreview(rate, pax, billableDays), rate.currency)}`;
 }
 
@@ -1105,7 +1113,7 @@ export function QuoteTransportPicker({
   const sellingPrice = costPrice + costPrice * (markup / 100);
   const profit = calculateProfit(sellingPrice, costPrice);
   const marginPercent = calculateMarginPercent(sellingPrice, costPrice);
-  const pricingCurrency = selectedRate?.currency || quoteCurrency;
+  const pricingCurrency = getQuoteTransportRateCurrency(selectedRate, quoteCurrency);
   const pricingReady = Boolean(selectedRoute && selectedVehicle && selectedPricingMode && selectedRate && selectedRateHasCost);
   const drawerTitle = dayNumber ? `Add Transport - Day ${dayNumber}` : 'Add Transport';
   const debugRate = selectedRate || supplierRateMatches[0]?.rate || null;
@@ -1193,6 +1201,7 @@ export function QuoteTransportPicker({
           routeId: selectedRoute.id,
           routeName: formatRoute(selectedRoute),
           transportAddOns: [],
+          currency: pricingCurrency,
         }),
       });
 

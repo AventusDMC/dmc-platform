@@ -6,9 +6,11 @@ import {
   getCanonicalRateVehicleType,
   getQuoteTransportPersistedCostPreview,
   getQuoteTransportRateBillableDays,
+  getQuoteTransportRateCurrency,
   getTransportPricingModeOptionLabel,
   formatVehicleOptionLabel,
   formatRouteSelectionLabel,
+  formatSupplierRateOptionLabel,
   getQuoteTransportRouteSelectorGroups,
   getRankedVehicles,
   transportRateMatchesSelectedRoute,
@@ -171,6 +173,38 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.equal(modes.includes('Half Day'), false);
     assert.equal(modes.includes('Day Tour'), false);
     assert.equal(modes.includes('Full Day'), false);
+  });
+
+  it('displays supplier rate-card currency without falling back to quote currency', () => {
+    const jodRate = rate('Medium 30', 'Airport Transfer', {
+      id: 'qaia-amman-jod',
+      routeId: qaiaAmmanRoute.id,
+      routeName: qaiaAmmanRoute.name,
+      route: qaiaAmmanRoute,
+      price: 95,
+      currency: 'JOD',
+      maxPax: 30,
+    });
+    const label = formatSupplierRateOptionLabel({ rate: jodRate, priority: 1, badge: 'Exact match' } as any, [], [], qaiaAmmanRoute, 20);
+
+    assert.equal(getQuoteTransportRateCurrency(jodRate, 'USD'), 'JOD');
+    assert.match(label, /JOD 95/);
+    assert.equal(label.includes('USD 95'), false);
+  });
+
+  it('prefers supplier cost currency over quote currency for transport preview', () => {
+    const jodRate = rate('Medium 30', 'Airport Transfer', {
+      id: 'qaia-amman-cost-jod',
+      routeId: qaiaAmmanRoute.id,
+      routeName: qaiaAmmanRoute.name,
+      route: qaiaAmmanRoute,
+      price: 95,
+      currency: 'USD',
+      costCurrency: 'JOD',
+      maxPax: 30,
+    });
+
+    assert.equal(getQuoteTransportRateCurrency(jodRate, 'USD'), 'JOD');
   });
 
   it('formats picker vehicles with canonical type, pax, and supplier label', () => {
