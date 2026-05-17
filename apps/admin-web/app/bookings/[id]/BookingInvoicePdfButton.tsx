@@ -24,6 +24,8 @@ type BookingInvoicePdfButtonProps = {
   overdueClientAmount: number;
 };
 
+const BOOKING_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
@@ -102,7 +104,11 @@ export function BookingInvoicePdfButton({
     try {
       setIsDownloading(true);
       setError('');
-      const response = await fetch(`/api/bookings/${bookingId}/financial-documents/${documentType}/pdf?mode=${mode}`);
+      const resolvedBookingId = String(bookingId || '').trim();
+      if (!BOOKING_UUID_PATTERN.test(resolvedBookingId)) {
+        throw new Error('Financial document download requires the booking UUID. The booking code is display-only.');
+      }
+      const response = await fetch(`/api/bookings/${resolvedBookingId}/financial-documents/${documentType}/pdf?mode=${mode}`);
       const contentType = response.headers.get('content-type') || '';
 
       if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {

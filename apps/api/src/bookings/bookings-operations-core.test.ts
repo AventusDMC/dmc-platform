@@ -141,12 +141,33 @@ test('financial document route exposes booking PDF document types', async () => 
     },
   };
 
-  const stream = await controller.downloadFinancialDocumentPdf('booking-1', 'supplier-payable-summary', 'PACKAGE', response);
+  const stream = await controller.downloadFinancialDocumentPdf('11111111-1111-4111-8111-111111111111', 'supplier-payable-summary', 'PACKAGE', response);
 
   assert.equal(headers['Content-Type'], 'application/pdf');
   assert.equal(headers['Content-Disposition'], 'attachment; filename="bk-1-supplier-payable-summary.pdf"');
-  assert.deepEqual(calls[0], { id: 'booking-1', documentType: 'supplier-payable-summary', mode: 'PACKAGE' });
+  assert.deepEqual(calls[0], { id: '11111111-1111-4111-8111-111111111111', documentType: 'supplier-payable-summary', mode: 'PACKAGE' });
   assert.ok(stream);
+});
+
+test('financial document route rejects booking code before PDF generation', async () => {
+  const controller = new BookingsController(
+    {
+      findOne: async () => {
+        throw new Error('findOne should not be called for invalid booking ids');
+      },
+      generateFinancialDocumentPdf: async () => Buffer.from('%PDF financial-document'),
+    },
+    {},
+    {},
+  );
+  const response = {
+    setHeader: () => null,
+  };
+
+  await assert.rejects(
+    () => controller.downloadFinancialDocumentPdf('JOR-HL-2026-001', 'client-invoice', 'PACKAGE', response),
+    /Financial document download requires a booking UUID/,
+  );
 });
 
 test('financial document PDF renders totals deposits balance payment methods and supplier payables', async () => {

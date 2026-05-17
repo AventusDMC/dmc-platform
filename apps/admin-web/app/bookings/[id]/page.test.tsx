@@ -425,14 +425,29 @@ describe('booking detail page regression', () => {
       '<option value="supplier-payable-summary">Supplier payable summary</option>',
       '<option value="credit-note">Credit note placeholder</option>',
       'Download Financial Document PDF',
-      "fetch(`/api/bookings/${bookingId}/financial-documents/${documentType}/pdf?mode=${mode}`",
+      'BOOKING_UUID_PATTERN',
+      'Financial document download requires the booking UUID. The booking code is display-only.',
+      "fetch(`/api/bookings/${resolvedBookingId}/financial-documents/${documentType}/pdf?mode=${mode}`",
     ]);
 
     expectSourceContains(financialDocumentPdfRouteSource, [
       '/bookings/${id}/financial-documents/${documentType}/pdf',
+      'BOOKING_UUID_PATTERN',
+      'Financial document download requires a booking UUID. Booking references/codes are display-only.',
       'forwardProxyContentResponse',
       'buildActorHeaders(request)',
     ]);
+  });
+
+  it('uses booking UUID rather than booking display code for financial document PDF downloads', () => {
+    expectSourceContains(pageSource, [
+      '<BookingFinancialsTab',
+      'bookingId={booking.id}',
+      'bookingRef={bookingRef}',
+    ]);
+
+    assert.doesNotMatch(invoiceButtonSource, /bookingId=\{bookingRef\}|bookingId=\{booking\.bookingRef\}/);
+    assert.match(invoiceButtonSource, /fetch\(`\/api\/bookings\/\$\{resolvedBookingId\}\/financial-documents\/\$\{documentType\}\/pdf\?mode=\$\{mode\}`\)/);
   });
 
   it('surfaces invoice counts and payment document KPIs on finance dashboard', () => {

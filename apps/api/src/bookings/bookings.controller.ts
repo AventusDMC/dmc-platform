@@ -119,6 +119,7 @@ type SendBookingInvoiceBody = {
 };
 
 type BookingFinancialDocumentType = 'client-invoice' | 'deposit-invoice' | 'payment-receipt' | 'supplier-payable-summary' | 'credit-note';
+const BOOKING_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type SendBookingPaymentReminderBody = {
   email?: string | null;
@@ -529,6 +530,10 @@ export class BookingsController {
     @Query('mode') mode: string | undefined,
     @Res({ passthrough: true }) response: any,
   ) {
+    if (!id || !BOOKING_UUID_PATTERN.test(id)) {
+      throw new BadRequestException('Financial document download requires a booking UUID. Booking references/codes are display-only.');
+    }
+
     const booking = await this.bookingsService.findOne(id);
 
     if (!booking) {
