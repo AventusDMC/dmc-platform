@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import PDFDocument = require('pdfkit');
 import nodemailer = require('nodemailer');
 import { readFile } from 'node:fs/promises';
@@ -88,91 +88,101 @@ export class InvoicesService {
     },
   ) {
     const bookingScopeWhere = this.buildBookingCompanyWhere(data.companyActor);
-    const invoiceId = await this.prisma.$transaction(async (tx) => {
-      const booking = await (tx as any).booking.findFirst({
-        where: {
-          ...this.mergeScopedWhere(bookingScopeWhere, { id: bookingId }),
-        },
-        include: {
-          quote: {
-            include: {
-              invoice: true,
-            },
+    let invoiceId: string;
+
+    try {
+      invoiceId = await this.prisma.$transaction(async (tx) => {
+        const booking = await (tx as any).booking.findFirst({
+          where: {
+            ...this.mergeScopedWhere(bookingScopeWhere, { id: bookingId }),
           },
-          amendments: {
-            select: {
-              id: true,
+          include: {
+            quote: {
+              include: {
+                invoice: true,
+              },
             },
-          },
-          services: {
-            select: {
-              id: true,
-              serviceType: true,
-              description: true,
-              supplierId: true,
-              supplierName: true,
-              totalCost: true,
-              totalSell: true,
-              status: true,
+            amendments: {
+              select: {
+                id: true,
+              },
             },
+            services: {
+              select: {
+                id: true,
+                serviceType: true,
+                description: true,
+                supplierId: true,
+                supplierName: true,
+                totalCost: true,
+                totalSell: true,
+                status: true,
+              },
+            },
+            payments: true,
           },
-          payments: true,
-        },
-      });
+        });
 
-      if (!booking) {
-        throw new NotFoundException('Booking not found');
-      }
+        if (!booking) {
+          throw new NotFoundException('Booking not found');
+        }
 
-      if (booking.status === 'cancelled') {
-        throw new BadRequestException('Cancelled bookings cannot generate new invoices');
-      }
+        if (booking.status === 'cancelled') {
+          throw new BadRequestException('Cancelled bookings cannot generate new invoices');
+        }
 
-      if ((booking.amendments || []).length > 0) {
-        throw new BadRequestException('Only the latest booking amendment can generate invoices');
-      }
+        if (!booking.quoteId || !booking.quote?.id) {
+          throw new BadRequestException('Booking cannot generate an invoice because it is not linked to a source quote.');
+        }
 
-      const activeServices = (booking.services || []).filter((service: any) => service.status !== ACTIVE_SERVICE_STATUS);
-      const totals = this.calculateBookingTotals(booking, activeServices);
-      const dueDate = this.addDays(new Date(), 7);
-      const invoice =
-        booking.quote.invoice ||
-        (await (tx as any).invoice.create({
+        if ((booking.amendments || []).length > 0) {
+          throw new BadRequestException('Only the latest booking amendment can generate invoices');
+        }
+
+        const activeServices = (booking.services || []).filter((service: any) => service.status !== ACTIVE_SERVICE_STATUS);
+        const totals = this.calculateBookingTotals(booking, activeServices);
+        const dueDate = this.addDays(new Date(), 7);
+        const invoice =
+          booking.quote.invoice ||
+          (await (tx as any).invoice.create({
+            data: {
+              quoteId: booking.quoteId,
+              totalAmount: totals.totalSell,
+              currency: totals.currency,
+              status: 'ISSUED',
+              dueDate,
+            },
+          }));
+
+        await this.ensureSupplierPayables(tx, booking.id, activeServices, totals.currency, dueDate, booking.payments || []);
+
+        await (tx as any).booking.update({
+          where: { id: booking.id },
           data: {
-            quoteId: booking.quoteId,
-            totalAmount: totals.totalSell,
-            currency: totals.currency,
-            status: 'ISSUED',
-            dueDate,
+            clientInvoiceStatus: 'invoiced',
+            supplierPaymentStatus:
+              activeServices.some((service: any) => this.normalizeMoney(service.totalCost, 'Service cost amount') > 0) ? 'scheduled' : booking.supplierPaymentStatus,
           },
-        }));
+        });
 
-      await this.ensureSupplierPayables(tx, booking.id, activeServices, totals.currency, dueDate, booking.payments || []);
+        await (tx as any).invoiceAuditLog.create({
+          data: {
+            invoiceId: invoice.id,
+            quoteId: booking.quoteId,
+            action: booking.quote.invoice ? 'booking_invoice_reused' : 'booking_invoice_generated',
+            oldValue: null,
+            newValue: invoice.status,
+            note: `Generated from booking ${booking.bookingRef || booking.id}`,
+            actorUserId: this.normalizeActorUserId(data.actor),
+            actor: this.normalizeActorLabel(data.actor),
+          },
+        });
 
-      await (tx as any).booking.update({
-        where: { id: booking.id },
-        data: {
-          clientInvoiceStatus: 'invoiced',
-          supplierPaymentStatus:
-            activeServices.some((service: any) => Number(service.totalCost || 0) > 0) ? 'scheduled' : booking.supplierPaymentStatus,
-        },
+        return invoice.id;
       });
-
-      await (tx as any).invoiceAuditLog.create({
-        data: {
-          invoiceId: invoice.id,
-          quoteId: booking.quoteId,
-          action: booking.quote.invoice ? 'booking_invoice_reused' : 'booking_invoice_generated',
-          oldValue: null,
-          newValue: invoice.status,
-          note: `Generated from booking ${booking.bookingRef || booking.id}`,
-          actorUserId: this.normalizeActorUserId(data.actor),
-          actor: this.normalizeActorLabel(data.actor),
-        },
-      });
-
-      return invoice.id;
-    });
+    } catch (error) {
+      this.rethrowInvoiceGenerationError(error);
+    }
 
     const invoice = await this.findOne(invoiceId, data.companyActor);
 
@@ -694,12 +704,14 @@ export class InvoicesService {
   private calculateBookingTotals(booking: any, activeServices: any[]) {
     const pricingSnapshot = (booking.pricingSnapshotJson || {}) as { totalSell?: number | null; totalCost?: number | null; currency?: string | null };
     const snapshot = (booking.snapshotJson || {}) as { totalSell?: number | null; totalCost?: number | null; quoteCurrency?: string | null; currency?: string | null };
-    const totalSellFromServices = activeServices.reduce((total, service) => total + Number(service.totalSell || 0), 0);
-    const totalCostFromServices = activeServices.reduce((total, service) => total + Number(service.totalCost || 0), 0);
+    const totalSellFromServices = activeServices.reduce((total, service) => total + this.normalizeMoney(service.totalSell, 'Service sell amount'), 0);
+    const totalCostFromServices = activeServices.reduce((total, service) => total + this.normalizeMoney(service.totalCost, 'Service cost amount'), 0);
+    const snapshotTotalSell = this.normalizeMoney(pricingSnapshot.totalSell ?? snapshot.totalSell ?? 0, 'Booking total sell');
+    const snapshotTotalCost = this.normalizeMoney(pricingSnapshot.totalCost ?? snapshot.totalCost ?? 0, 'Booking total cost');
 
     return {
-      totalSell: this.roundMoney(totalSellFromServices || Number(pricingSnapshot.totalSell ?? snapshot.totalSell ?? 0)),
-      totalCost: this.roundMoney(totalCostFromServices || Number(pricingSnapshot.totalCost ?? snapshot.totalCost ?? 0)),
+      totalSell: this.roundMoney(totalSellFromServices || snapshotTotalSell),
+      totalCost: this.roundMoney(totalCostFromServices || snapshotTotalCost),
       currency: this.normalizeCurrency(pricingSnapshot.currency || snapshot.quoteCurrency || snapshot.currency || 'USD'),
     };
   }
@@ -780,6 +792,20 @@ export class InvoicesService {
     return this.roundMoney(amount);
   }
 
+  private normalizeMoney(value: unknown, label: string) {
+    const amount = Number(value ?? 0);
+
+    if (!Number.isFinite(amount)) {
+      throw new BadRequestException(`${label} must be a valid number`);
+    }
+
+    if (amount < 0) {
+      throw new BadRequestException(`${label} cannot be negative`);
+    }
+
+    return this.roundMoney(amount);
+  }
+
   private normalizeCurrency(value?: string | null) {
     const currency = String(value || 'USD').trim().toUpperCase();
 
@@ -826,7 +852,22 @@ export class InvoicesService {
   }
 
   private roundMoney(value: number) {
-    return Number((Number(value || 0)).toFixed(2));
+    const amount = Number(value || 0);
+
+    if (!Number.isFinite(amount)) {
+      throw new BadRequestException('Amount must be a valid number');
+    }
+
+    return Number(amount.toFixed(2));
+  }
+
+  private rethrowInvoiceGenerationError(error: unknown): never {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+
+    const message = error instanceof Error && error.message ? error.message : 'Unknown invoice generation error';
+    throw new BadRequestException(`Invoice generation failed: ${message}`);
   }
 
   private buildInvoiceCompanyWhere(actor?: CompanyScopedActor) {

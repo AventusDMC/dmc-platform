@@ -10,6 +10,7 @@ function createService(options: {
   booking?: any;
   invoice?: any;
   payments?: any[];
+  invoiceCreateError?: Error;
 } = {}) {
   const calls: Record<string, any[]> = {
     bookingFindFirst: [],
@@ -43,6 +44,9 @@ function createService(options: {
       },
       create: async (args: any) => {
         calls.invoiceCreate.push(args);
+        if (options.invoiceCreateError) {
+          throw options.invoiceCreateError;
+        }
         invoice = invoiceRecord({
           booking: { ...booking, payments },
           status: args.data.status,
@@ -120,6 +124,53 @@ test('generates booking invoice by UUID without filtering by actor company as cl
     id: '11111111-1111-4111-8111-111111111111',
   });
   assert.equal(JSON.stringify(calls.bookingFindFirst[0].where).includes(actor.companyId), false);
+});
+
+test('generates invoice for large unpaid booking without recipient email', async () => {
+  const booking = bookingRecord({
+    pricingSnapshotJson: { totalSell: 102037.3, totalCost: 65000, currency: 'USD' },
+    snapshotJson: { totalSell: 102037.3, totalCost: 65000, currency: 'USD' },
+    services: [],
+    payments: [],
+    contactSnapshotJson: {},
+    quote: {
+      ...bookingRecord().quote,
+      clientCompany: { name: 'Client Co', email: null },
+      contact: { firstName: 'Ala', lastName: 'Saleh', email: null },
+      invoice: null,
+    },
+  });
+  const { service, calls } = createService({ booking });
+
+  const invoice = await service.generateForBooking('booking-1', { companyActor: actor });
+
+  assert.equal(invoice.totalAmount, 102037.3);
+  assert.equal(invoice.balanceDue, 102037.3);
+  assert.equal(invoice.effectiveStatus, 'issued');
+  assert.equal(calls.invoiceCreate[0].data.totalAmount, 102037.3);
+  assert.equal(calls.invoiceCreate[0].data.status, 'ISSUED');
+});
+
+test('invoice generation returns exact transaction failure instead of generic server error', async () => {
+  const { service } = createService({
+    invoiceCreateError: new Error('Prisma create failed: duplicate invoice quoteId'),
+  });
+
+  await assert.rejects(
+    () => service.generateForBooking('booking-1', { companyActor: actor }),
+    /Invoice generation failed: Prisma create failed: duplicate invoice quoteId/,
+  );
+});
+
+test('invoice generation fails cleanly when booking source quote relation is missing', async () => {
+  const { service } = createService({
+    booking: bookingRecord({ quote: null }),
+  });
+
+  await assert.rejects(
+    () => service.generateForBooking('booking-1', { companyActor: actor }),
+    /Booking cannot generate an invoice because it is not linked to a source quote/,
+  );
 });
 
 test('persisted invoice lookup requires auth without actor company filtering', async () => {
