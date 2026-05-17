@@ -118,6 +118,8 @@ type SendBookingInvoiceBody = {
   mode?: 'PACKAGE' | 'ITEMIZED';
 };
 
+type BookingFinancialDocumentType = 'client-invoice' | 'deposit-invoice' | 'payment-receipt' | 'supplier-payable-summary' | 'credit-note';
+
 type SendBookingPaymentReminderBody = {
   email?: string | null;
 };
@@ -517,6 +519,50 @@ export class BookingsController {
     response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
 
     return new StreamableFile(pdfBuffer);
+  }
+
+  @Get(':id/financial-documents/:documentType/pdf')
+  @Roles('admin', 'finance', 'operations')
+  async downloadFinancialDocumentPdf(
+    @Param('id') id: string,
+    @Param('documentType') documentType: string,
+    @Query('mode') mode: string | undefined,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const booking = await this.bookingsService.findOne(id);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const normalizedDocumentType = this.normalizeFinancialDocumentType(documentType);
+    const normalizedMode = mode === 'PACKAGE' ? 'PACKAGE' : 'ITEMIZED';
+    const pdfBuffer = await this.bookingsService.generateFinancialDocumentPdf(id, normalizedDocumentType, normalizedMode);
+    const fileName =
+      `${booking.bookingRef || 'booking'}-${normalizedDocumentType}`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'booking-financial-document';
+
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+
+    return new StreamableFile(pdfBuffer);
+  }
+
+  private normalizeFinancialDocumentType(value: string): BookingFinancialDocumentType {
+    if (
+      value === 'client-invoice' ||
+      value === 'deposit-invoice' ||
+      value === 'payment-receipt' ||
+      value === 'supplier-payable-summary' ||
+      value === 'credit-note'
+    ) {
+      return value;
+    }
+
+    throw new BadRequestException('Unsupported financial document type');
   }
 
   @Get(':id/passengers/export')

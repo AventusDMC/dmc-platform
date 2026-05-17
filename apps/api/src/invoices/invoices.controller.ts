@@ -16,7 +16,7 @@ type CreateInvoicePaymentBody = {
   paymentDate?: string | null;
   amount: number;
   currency?: string | null;
-  method?: 'bank' | 'cash' | 'card' | null;
+  method?: 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual' | null;
   reference?: string | null;
   notes?: string | null;
 };

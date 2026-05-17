@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const financialsTabSource = readFileSync(new URL('./BookingFinancialsTab.tsx', import.meta.url), 'utf8');
+const invoiceButtonSource = readFileSync(new URL('./BookingInvoicePdfButton.tsx', import.meta.url), 'utf8');
 const documentActionsSource = readFileSync(new URL('./BookingDocumentActions.tsx', import.meta.url), 'utf8');
 const bookingServicesListSource = readFileSync(new URL('./BookingServicesList.tsx', import.meta.url), 'utf8');
 const bookingServiceTimelineSource = readFileSync(new URL('./BookingServiceTimeline.tsx', import.meta.url), 'utf8');
@@ -11,6 +12,8 @@ const bookingPaymentsSectionSource = readFileSync(new URL('./BookingPaymentsSect
 const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
+const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
+const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../../globals.css', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
@@ -393,6 +396,8 @@ describe('booking detail page regression', () => {
       'Invoice status',
       'Balance due',
       'Generate invoice',
+      'Financial documents: client invoice, deposit invoice, payment receipt, supplier payable summary, and credit note placeholder.',
+      'Payment methods shown on PDFs: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.',
       "fetch(`/api/bookings/${bookingId}/invoice`",
       "fetch(`/api/bookings/${bookingId}/payments`",
       "fetch(`/api/bookings/${bookingId}/payments/${paymentId}/mark-paid`",
@@ -407,6 +412,40 @@ describe('booking detail page regression', () => {
     expectSourceContains(cssSource, [
       '.booking-payment-proof-card-grid',
       'grid-template-columns: repeat(2, minmax(0, 1fr));',
+    ]);
+  });
+
+  it('exposes invoice and financial document generation actions', () => {
+    expectSourceContains(invoiceButtonSource, [
+      "type BookingFinancialDocumentType = 'client-invoice' | 'deposit-invoice' | 'payment-receipt' | 'supplier-payable-summary' | 'credit-note';",
+      'Financial document',
+      '<option value="client-invoice">Client invoice</option>',
+      '<option value="deposit-invoice">Deposit invoice</option>',
+      '<option value="payment-receipt">Payment receipt</option>',
+      '<option value="supplier-payable-summary">Supplier payable summary</option>',
+      '<option value="credit-note">Credit note placeholder</option>',
+      'Download Financial Document PDF',
+      "fetch(`/api/bookings/${bookingId}/financial-documents/${documentType}/pdf?mode=${mode}`",
+    ]);
+
+    expectSourceContains(financialDocumentPdfRouteSource, [
+      '/bookings/${id}/financial-documents/${documentType}/pdf',
+      'forwardProxyContentResponse',
+      'buildActorHeaders(request)',
+    ]);
+  });
+
+  it('surfaces invoice counts and payment document KPIs on finance dashboard', () => {
+    expectSourceContains(financePageSource, [
+      "adminPageFetchJson<Invoice[]>('/api/invoices'",
+      'invoiceCount',
+      'unpaidInvoiceCount',
+      'partiallyPaidInvoiceCount',
+      'overdueInvoiceCount',
+      "label: 'Invoices'",
+      "label: 'Unpaid invoices'",
+      "label: 'Partially paid invoices'",
+      "label: 'Overdue invoices'",
     ]);
   });
 

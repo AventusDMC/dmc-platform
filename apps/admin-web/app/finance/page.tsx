@@ -59,6 +59,16 @@ type Booking = {
   };
 };
 
+type Invoice = {
+  id: string;
+  status: 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED';
+  effectiveStatus?: string | null;
+  totalAmount: number;
+  paidAmount?: number | null;
+  balanceDue?: number | null;
+  dueDate: string | null;
+};
+
 type FinancePageProps = {
   searchParams?: Promise<{
     report?: string;
@@ -67,6 +77,12 @@ type FinancePageProps = {
 
 async function getBookings(): Promise<Booking[]> {
   return adminPageFetchJson<Booking[]>('/api/bookings', 'Finance bookings', {
+    cache: 'no-store',
+  });
+}
+
+async function getInvoices(): Promise<Invoice[]> {
+  return adminPageFetchJson<Invoice[]>('/api/invoices', 'Finance invoices', {
     cache: 'no-store',
   });
 }
@@ -139,6 +155,7 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
     const resolvedSearchParams = searchParams ? await searchParams : undefined;
     const report = resolveReport(resolvedSearchParams?.report);
     let bookings: Booking[] = [];
+    let invoices: Invoice[] = [];
     let loadError = false;
 
     try {
@@ -156,8 +173,32 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
       loadError = true;
     }
 
+    try {
+      invoices = await getInvoices();
+    } catch (error) {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      if (isAdminForbiddenError(error)) {
+        throw error;
+      }
+
+      console.error('[finance] invoices unavailable', error);
+      loadError = true;
+    }
+
     const filteredBookings = filterBookings(bookings, report);
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const invoiceCount = invoices.length;
+    const unpaidInvoiceCount = invoices.filter((invoice) => invoice.status !== 'CANCELLED' && invoice.status !== 'PAID' && Number(invoice.balanceDue ?? invoice.totalAmount ?? 0) > 0 && Number(invoice.paidAmount || 0) <= 0).length;
+    const partiallyPaidInvoiceCount = invoices.filter((invoice) => invoice.effectiveStatus === 'partially_paid' || (Number(invoice.paidAmount || 0) > 0 && Number(invoice.balanceDue || 0) > 0)).length;
+    const overdueInvoiceCount = invoices.filter((invoice) => {
+      const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+      return invoice.status !== 'CANCELLED' && invoice.status !== 'PAID' && Number(invoice.balanceDue ?? invoice.totalAmount ?? 0) > 0 && dueDate !== null && !Number.isNaN(dueDate.getTime()) && dueDate < today;
+    }).length;
     const lowMarginCount = bookings.filter((booking) => booking.finance.hasLowMargin || booking.finance.badge.breakdown.negativeMargin > 0).length;
     const unpaidClientCount = bookings.filter((booking) => booking.finance.hasUnpaidClientBalance).length;
     const unpaidSupplierCount = bookings.filter((booking) => booking.finance.hasUnpaidSupplierObligation).length;
@@ -195,6 +236,10 @@ export default async function FinancePage({ searchParams }: FinancePageProps) {
             <SummaryStrip
               items={[
                 { id: 'bookings', label: 'Bookings', value: String(bookings.length), helper: `${filteredBookings.length} in current slice` },
+                { id: 'invoice-count', label: 'Invoices', value: String(invoiceCount), helper: 'Generated financial docs' },
+                { id: 'unpaid-invoices', label: 'Unpaid invoices', value: String(unpaidInvoiceCount), helper: 'Open client invoices' },
+                { id: 'partial-invoices', label: 'Partially paid invoices', value: String(partiallyPaidInvoiceCount), helper: 'Deposits or partials' },
+                { id: 'overdue-invoices', label: 'Overdue invoices', value: String(overdueInvoiceCount), helper: 'Past due invoice docs' },
                 { id: 'low-margin', label: 'Low margin', value: String(lowMarginCount), helper: 'Margin pressure' },
                 { id: 'unpaid-clients', label: 'Unpaid clients', value: String(unpaidClientCount), helper: 'Open receivables' },
                 { id: 'unpaid-suppliers', label: 'Unpaid suppliers', value: String(unpaidSupplierCount), helper: 'Open payables' },

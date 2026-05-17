@@ -135,6 +135,7 @@ type DerivedPaymentRecord = {
   updatedAt?: string | Date;
 };
 type BookingInvoiceMode = 'PACKAGE' | 'ITEMIZED';
+type BookingFinancialDocumentType = 'client-invoice' | 'deposit-invoice' | 'payment-receipt' | 'supplier-payable-summary' | 'credit-note';
 type AuditActor =
   | {
       userId?: string | null;
@@ -10723,6 +10724,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         invoiceDate,
         bookingRef: booking.bookingRef || booking.id,
         mode,
+        documentTitle: 'BOOKING INVOICE',
       });
 
       this.writeSectionTitle(doc, 'Bill To');
@@ -10759,9 +10761,169 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
 
       this.writeInvoiceFooterBox(doc, [
-        `Please remit payment by bank transfer or approved settlement method using invoice reference ${invoiceNumber}.`,
+        `Please remit payment by bank transfer, CliQ, MB WAY, cash, credit card, or custom/manual settlement using invoice reference ${invoiceNumber}.`,
+        'Payment methods: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.',
         `Reference booking ${booking.bookingRef || booking.id} on all payment correspondence.`,
         `Current outstanding balance: ${this.formatMoney(outstanding)}.`,
+      ]);
+    });
+  }
+
+  async generateFinancialDocumentPdf(id: string, documentType: BookingFinancialDocumentType, mode: BookingInvoiceMode = 'ITEMIZED') {
+    const booking = await this.findOne(id);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const snapshot = (booking.snapshotJson || {}) as BookingPdfSnapshot;
+    const clientSnapshot = (booking.clientSnapshotJson || {}) as BookingPdfCompany;
+    const brandSnapshot = (booking.brandSnapshotJson || {}) as BookingPdfCompany;
+    const contactSnapshot = (booking.contactSnapshotJson || {}) as BookingPdfContact;
+    const companyName = brandSnapshot.name || clientSnapshot.name || booking.quote?.company?.name || 'Company';
+    const invoiceNumber = this.buildBookingFinancialDocumentNumber(booking.bookingRef || booking.id, documentType);
+    const issueDate = new Date();
+    const dueDate = new Date(issueDate);
+    dueDate.setDate(dueDate.getDate() + 7);
+    const payments = this.listPersistedBookingPayments(booking);
+    const clientPayments = payments.filter((payment) => payment.type === 'CLIENT');
+    const supplierPayments = payments.filter((payment) => payment.type === 'SUPPLIER');
+    const clientPaid = this.roundMoney(clientPayments.filter((payment) => payment.status === 'PAID').reduce((sum, payment) => sum + payment.amount, 0));
+    const supplierPaid = this.roundMoney(supplierPayments.filter((payment) => payment.status === 'PAID').reduce((sum, payment) => sum + payment.amount, 0));
+    const totalSell = this.roundMoney(booking.finance.realizedTotalSell || booking.finance.quotedTotalSell || 0);
+    const totalCost = this.roundMoney(booking.finance.realizedTotalCost || booking.finance.quotedTotalCost || 0);
+    const remainingBalance = this.roundMoney(Math.max(totalSell - clientPaid, 0));
+    const supplierOutstanding = this.roundMoney(Math.max(totalCost - supplierPaid, 0));
+    const packageName = this.formatClientFacingPackageTitle(snapshot.title || booking.quote?.title || booking.bookingRef || 'Travel package');
+    const packageDuration = this.formatPackageDuration(snapshot.nightCount || booking.nightCount || 0);
+    const lineItems = (booking.services || [])
+      .filter((service: any) => service.status !== BookingServiceLifecycleStatus.cancelled)
+      .map((service: any) => ({
+        name: service.description || service.serviceType || 'Service',
+        date: service.serviceDate ? this.formatDate(service.serviceDate) : 'Date pending',
+        price: this.roundMoney(Number(documentType === 'supplier-payable-summary' ? service.totalCost || 0 : service.totalSell || 0)),
+        description: documentType === 'supplier-payable-summary'
+          ? [service.supplierName || 'Supplier pending', service.supplierReference || service.confirmationNumber || null].filter(Boolean).join(' | ')
+          : null,
+      }))
+      .filter((item: any) => item.price > 0);
+    const latestReceiptPayment = [...clientPayments]
+      .filter((payment) => payment.status === 'PAID')
+      .sort((left, right) => new Date(right.paidAt || right.createdAt || 0).getTime() - new Date(left.paidAt || left.createdAt || 0).getTime())[0] || null;
+    const logoBuffer = await this.fetchImageBuffer(brandSnapshot.logoUrl || booking.quote?.brandCompany?.logoUrl || null);
+    const documentTitle = this.getFinancialDocumentTitle(documentType);
+
+    return this.createPdf((doc) => {
+      this.writeInvoiceHeader(doc, {
+        companyName,
+        logoBuffer,
+        invoiceNumber,
+        invoiceDate: issueDate,
+        bookingRef: booking.bookingRef || booking.id,
+        mode,
+        documentTitle: documentTitle.toUpperCase(),
+      });
+
+      this.writeSectionTitle(doc, documentType === 'supplier-payable-summary' ? 'Supplier Payable Summary' : 'Client Financial Document');
+      this.writeKeyValue(doc, 'Document type', documentTitle);
+      this.writeKeyValue(doc, 'Document number', invoiceNumber);
+      this.writeKeyValue(doc, 'Booking reference', booking.bookingRef || booking.id);
+      this.writeKeyValue(doc, 'Issue date', this.formatDate(issueDate));
+      this.writeKeyValue(doc, 'Due date', this.formatDate(dueDate));
+      this.writeKeyValue(doc, 'Client / company', clientSnapshot.name || booking.quote?.company?.name || 'Client');
+      this.writeKeyValue(doc, 'Contact', this.formatFullName(contactSnapshot));
+      this.writeKeyValue(doc, 'Booking summary', `${packageName}${packageDuration ? ` | ${packageDuration}` : ''}`);
+      doc.moveDown(0.6);
+
+      if (documentType === 'payment-receipt') {
+        this.writeSectionTitle(doc, 'Payment Receipt');
+        this.writeKeyValue(doc, 'Payment status', latestReceiptPayment ? 'Paid' : 'No paid client payment recorded');
+        this.writeKeyValue(doc, 'Payment method', this.formatPaymentMethod(latestReceiptPayment?.method || 'custom_manual'));
+        this.writeKeyValue(doc, 'Payment reference', latestReceiptPayment?.reference || 'Reference pending');
+        this.writeKeyValue(doc, 'Payment date', this.formatDate(latestReceiptPayment?.paidAt || latestReceiptPayment?.createdAt || issueDate));
+        this.writeInvoiceSummaryBlock(doc, {
+          total: totalSell,
+          paid: clientPaid,
+          outstanding: remainingBalance,
+          payments: clientPayments.map((payment) => ({
+            amount: payment.amount,
+            status: payment.status,
+            date: this.formatDate(payment.status === 'PAID' ? payment.paidAt : payment.dueDate),
+          })),
+        });
+      } else if (documentType === 'supplier-payable-summary') {
+        this.writeSectionTitle(doc, 'Supplier Payables');
+        if (lineItems.length > 0) {
+          this.writeInvoiceTable(doc, lineItems);
+        } else {
+          this.writeBodyLine(doc, 'No supplier payable service rows are currently available.');
+        }
+        this.writeInvoiceSummaryBlock(doc, {
+          total: totalCost,
+          paid: supplierPaid,
+          outstanding: supplierOutstanding,
+          payments: supplierPayments.map((payment) => ({
+            amount: payment.amount,
+            status: payment.status,
+            date: this.formatDate(payment.status === 'PAID' ? payment.paidAt : payment.dueDate),
+          })),
+        });
+        this.writeSectionTitle(doc, 'Payment Notes');
+        supplierPayments.forEach((payment) => {
+          this.writeListItem(doc, payment.reference || 'Supplier payable', [
+            `Status: ${payment.status === 'PAID' ? 'Paid' : 'Unpaid'}`,
+            `Method: ${this.formatPaymentMethod(payment.method)}`,
+            payment.notes || 'No supplier payment notes recorded.',
+          ]);
+        });
+      } else {
+        if (documentType === 'credit-note') {
+          this.writeSectionTitle(doc, 'Credit Note Placeholder');
+          this.writeBodyLine(doc, 'Credit note structure reserved for future approved finance adjustments. No credit has been posted by this placeholder document.');
+        }
+        if (documentType === 'deposit-invoice') {
+          this.writeSectionTitle(doc, 'Deposit Invoice');
+          this.writeKeyValue(doc, 'Deposits received', this.formatMoney(clientPaid));
+          this.writeKeyValue(doc, 'Remaining balance', this.formatMoney(remainingBalance));
+        } else if (documentType === 'client-invoice') {
+          this.writeSectionTitle(doc, mode === 'PACKAGE' ? 'Package' : 'Services');
+        }
+
+        if (mode === 'PACKAGE') {
+          this.writePackageInvoiceBlock(doc, {
+            name: packageName,
+            duration: packageDuration,
+            description: this.buildPackageInvoiceDescription({
+              title: packageName,
+              bookingType: booking.bookingType,
+              nightCount: snapshot.nightCount || booking.nightCount,
+              travelStartDate: (snapshot as { travelStartDate?: string | null }).travelStartDate || null,
+            }),
+            total: documentType === 'credit-note' ? 0 : totalSell,
+          });
+        } else if (lineItems.length > 0 && documentType !== 'credit-note') {
+          this.writeInvoiceTable(doc, lineItems);
+        }
+        this.writeSectionTitle(doc, 'Totals');
+        this.writeInvoiceSummaryBlock(doc, {
+          total: documentType === 'credit-note' ? 0 : totalSell,
+          paid: clientPaid,
+          outstanding: documentType === 'credit-note' ? 0 : remainingBalance,
+          payments: clientPayments.map((payment) => ({
+            amount: payment.amount,
+            status: payment.status,
+            date: this.formatDate(payment.status === 'PAID' ? payment.paidAt : payment.dueDate),
+          })),
+        });
+      }
+
+      this.writeInvoiceFooterBox(doc, [
+        `Payment methods: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.`,
+        `Use booking reference ${booking.bookingRef || booking.id} and document reference ${invoiceNumber} on all financial correspondence.`,
+        documentType === 'supplier-payable-summary'
+          ? `Supplier payable status: ${supplierOutstanding <= 0 ? 'paid' : supplierPaid > 0 ? 'partially paid' : 'unpaid'}.`
+          : `Payment status: ${remainingBalance <= 0 ? 'paid' : clientPaid > 0 ? 'partially paid' : 'unpaid'}.`,
+        `Footer: generated from the current booking finance layer for operational reconciliation.`,
       ]);
     });
   }
@@ -11436,6 +11598,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       invoiceDate: Date;
       bookingRef: string;
       mode: BookingInvoiceMode;
+      documentTitle?: string;
     },
   ) {
     const topY = doc.y;
@@ -11462,7 +11625,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
     doc.moveDown(0.5);
     const invoiceTitleY = doc.y;
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f766e').text('BOOKING INVOICE', leftColumnX, doc.y, {
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f766e').text(values.documentTitle || 'BOOKING INVOICE', leftColumnX, doc.y, {
       width: leftColumnWidth,
       align: 'left',
       lineBreak: false,
@@ -11768,6 +11931,45 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .replace(/^-+|-+$/g, '');
 
     return `INV-${clean || 'BOOKING'}`;
+  }
+
+  private buildBookingFinancialDocumentNumber(bookingRef: string, documentType: BookingFinancialDocumentType) {
+    const prefixByType: Record<BookingFinancialDocumentType, string> = {
+      'client-invoice': 'INV',
+      'deposit-invoice': 'DEP',
+      'payment-receipt': 'RCT',
+      'supplier-payable-summary': 'SUP',
+      'credit-note': 'CRN',
+    };
+    const clean = String(bookingRef || 'booking')
+      .replace(/[\u2010-\u2015]/g, '-')
+      .replace(/[\u0000-\u001F\u007F-\u009F\u00A0\uFEFF\uFFFE\uFFFF\uFFFD]/g, '-')
+      .replace(/[^\x20-\x7E]/g, '-')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return `${prefixByType[documentType]}-${clean || 'BOOKING'}`;
+  }
+
+  private getFinancialDocumentTitle(documentType: BookingFinancialDocumentType) {
+    if (documentType === 'deposit-invoice') return 'Deposit Invoice';
+    if (documentType === 'payment-receipt') return 'Payment Receipt';
+    if (documentType === 'supplier-payable-summary') return 'Supplier Payable Summary';
+    if (documentType === 'credit-note') return 'Credit Note Placeholder';
+    return 'Client Invoice';
+  }
+
+  private formatPaymentMethod(method?: string | null) {
+    if (method === 'bank_transfer' || method === 'bank') return 'Bank transfer';
+    if (method === 'cliq') return 'CliQ';
+    if (method === 'mb_way') return 'MB WAY';
+    if (method === 'credit_card' || method === 'card') return 'Credit card';
+    if (method === 'cash') return 'Cash';
+    if (method === 'custom_manual') return 'Custom/manual';
+    return 'Custom/manual';
   }
 
   private buildPackageInvoiceDescription(values: {

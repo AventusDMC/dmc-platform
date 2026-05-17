@@ -298,6 +298,12 @@ export function BookingFinancialsTab({
               <strong>{formatMoney(invoice?.balanceDue ?? clientOutstanding, invoice?.currency ?? currency)}</strong>
             </div>
           </div>
+          <p className="detail-copy">
+            Financial documents: client invoice, deposit invoice, payment receipt, supplier payable summary, and credit note placeholder.
+          </p>
+          <p className="detail-copy">
+            Payment methods shown on PDFs: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.
+          </p>
           {invoice ? (
             <p className="detail-copy">
               Invoice <a href={`/invoices/${invoice.id}`}>{invoice.invoiceNumber}</a> is due {formatDateTime(invoice.dueDate)}.

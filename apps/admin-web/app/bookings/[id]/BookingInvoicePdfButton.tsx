@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { getErrorMessage } from '../../lib/api';
 
 type BookingInvoiceMode = 'PACKAGE' | 'ITEMIZED';
+type BookingFinancialDocumentType = 'client-invoice' | 'deposit-invoice' | 'payment-receipt' | 'supplier-payable-summary' | 'credit-note';
 
 type BookingInvoicePdfButtonProps = {
   bookingId: string;
@@ -60,6 +61,7 @@ export function BookingInvoicePdfButton({
   overdueClientAmount,
 }: BookingInvoicePdfButtonProps) {
   const [mode, setMode] = useState<BookingInvoiceMode>('PACKAGE');
+  const [documentType, setDocumentType] = useState<BookingFinancialDocumentType>('client-invoice');
   const [isDownloading, setIsDownloading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sentAt, setSentAt] = useState(initialSentAt);
@@ -100,7 +102,7 @@ export function BookingInvoicePdfButton({
     try {
       setIsDownloading(true);
       setError('');
-      const response = await fetch(`/api/invoice/${bookingId}/pdf?mode=${mode}`);
+      const response = await fetch(`/api/bookings/${bookingId}/financial-documents/${documentType}/pdf?mode=${mode}`);
       const contentType = response.headers.get('content-type') || '';
 
       if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
@@ -110,10 +112,10 @@ export function BookingInvoicePdfButton({
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      const safeFileName = `${bookingRef || 'booking'}-invoice`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const safeFileName = `${bookingRef || 'booking'}-${documentType}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
       link.href = url;
-      link.download = `${safeFileName.replace(/^-+|-+$/g, '') || 'booking-invoice'}.pdf`;
+      link.download = `${safeFileName.replace(/^-+|-+$/g, '') || 'booking-financial-document'}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -203,6 +205,20 @@ export function BookingInvoicePdfButton({
   return (
     <div className="booking-invoice-pdf-actions">
       <label className="booking-invoice-mode-field">
+        <span>Financial document</span>
+        <select
+          value={documentType}
+          onChange={(event) => setDocumentType(event.target.value as BookingFinancialDocumentType)}
+          disabled={isDownloading || isSending || isSendingReminder || isCopyingPortal}
+        >
+          <option value="client-invoice">Client invoice</option>
+          <option value="deposit-invoice">Deposit invoice</option>
+          <option value="payment-receipt">Payment receipt</option>
+          <option value="supplier-payable-summary">Supplier payable summary</option>
+          <option value="credit-note">Credit note placeholder</option>
+        </select>
+      </label>
+      <label className="booking-invoice-mode-field">
         <span>Invoice mode</span>
         <select
           value={mode}
@@ -214,7 +230,7 @@ export function BookingInvoicePdfButton({
         </select>
       </label>
       <button type="button" className="secondary-button" onClick={handleDownload} disabled={isDownloading || isSending || isSendingReminder || isCopyingPortal}>
-        {isDownloading ? 'Preparing invoice...' : 'Download Invoice PDF'}
+        {isDownloading ? 'Preparing financial document...' : 'Download Financial Document PDF'}
       </button>
       <button
         type="button"

@@ -189,7 +189,7 @@ export class InvoicesService {
       paymentDate?: string | Date | null;
       amount: number;
       currency?: string | null;
-      method?: 'bank' | 'cash' | 'card' | null;
+      method?: 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual' | null;
       reference?: string | null;
       notes?: string | null;
       actor?: AuditActor;
@@ -426,7 +426,7 @@ export class InvoicesService {
 
       this.writePdfFooterBox(doc, [
         `Please include invoice reference ${invoice.invoiceNumber} with your payment.`,
-        `Payment instructions: bank transfer or approved settlement method unless otherwise agreed.`,
+        `Payment methods: bank transfer, CliQ, MB WAY, cash, credit card, custom/manual.`,
         `Current balance due: ${this.formatMoney(invoice.balanceDue, invoice.currency)}.`,
         `Thank you for choosing ${brand.name}. For questions, contact ${brand.email || brand.phone || brand.name}.`,
         'Terms: amounts are payable by the due date shown unless separate written terms apply.',
@@ -790,10 +790,10 @@ export class InvoicesService {
     return currency;
   }
 
-  private normalizeMethod(value?: 'bank' | 'cash' | 'card' | null) {
+  private normalizeMethod(value?: 'bank' | 'cash' | 'card' | 'bank_transfer' | 'cliq' | 'mb_way' | 'credit_card' | 'custom_manual' | null) {
     const method = String(value || 'bank').trim().toLowerCase();
 
-    if (!['bank', 'cash', 'card'].includes(method)) {
+    if (!['bank', 'cash', 'card', 'bank_transfer', 'cliq', 'mb_way', 'credit_card', 'custom_manual'].includes(method)) {
       throw new BadRequestException('Unsupported payment method');
     }
 

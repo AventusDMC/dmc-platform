@@ -30,6 +30,10 @@ function capturePdfText(service: any) {
     moveTo: () => doc,
     lineTo: () => doc,
     stroke: () => doc,
+    rect: () => doc,
+    roundedRect: () => doc,
+    fill: () => doc,
+    fillAndStroke: () => doc,
     addPage: () => {
       doc.y = 50;
       return doc;
@@ -64,6 +68,7 @@ test('passenger manifest export route uses extensionless URL and Excel response 
         buffer: Buffer.from('excel'),
       }),
     },
+    {},
     {},
   );
   const headers: Record<string, string> = {};
@@ -112,6 +117,121 @@ test('admin booking voucher PDF route returns attachment PDF without false permi
   assert.equal(calls[1].method, 'generateVoucherPdf');
   assert.equal(calls[1].actor, actor);
   assert.ok(stream);
+});
+
+test('financial document route exposes booking PDF document types', async () => {
+  const routePath = (Reflect as any).getMetadata(PATH_METADATA, BookingsController.prototype.downloadFinancialDocumentPdf);
+  assert.equal(routePath, ':id/financial-documents/:documentType/pdf');
+
+  const calls: any[] = [];
+  const controller = new BookingsController(
+    {
+      findOne: async (id: string) => ({ id, bookingRef: 'BK-1' }),
+      generateFinancialDocumentPdf: async (id: string, documentType: string, mode: string) => {
+        calls.push({ id, documentType, mode });
+        return Buffer.from('%PDF financial-document');
+      },
+    },
+    {},
+  );
+  const headers: Record<string, string> = {};
+  const response = {
+    setHeader: (name: string, value: string) => {
+      headers[name] = value;
+    },
+  };
+
+  const stream = await controller.downloadFinancialDocumentPdf('booking-1', 'supplier-payable-summary', 'PACKAGE', response);
+
+  assert.equal(headers['Content-Type'], 'application/pdf');
+  assert.equal(headers['Content-Disposition'], 'attachment; filename="bk-1-supplier-payable-summary.pdf"');
+  assert.deepEqual(calls[0], { id: 'booking-1', documentType: 'supplier-payable-summary', mode: 'PACKAGE' });
+  assert.ok(stream);
+});
+
+test('financial document PDF renders totals deposits balance payment methods and supplier payables', async () => {
+  const service = createService({});
+  const lines = capturePdfText(service as any);
+  (service as any).fetchImageBuffer = async () => null;
+  (service as any).findOne = async () => ({
+    id: 'booking-1',
+    bookingRef: 'JOR-HL-2026-001',
+    bookingType: 'GROUP',
+    nightCount: 3,
+    snapshotJson: { title: 'Jordan Highlights', nightCount: 3 },
+    clientSnapshotJson: { name: 'Client Co' },
+    brandSnapshotJson: { name: 'DMC Brand' },
+    contactSnapshotJson: { firstName: 'Lina', lastName: 'Haddad' },
+    quote: { title: 'Jordan Highlights', company: { name: 'Client Co' }, brandCompany: null },
+    finance: {
+      realizedTotalSell: 2400,
+      quotedTotalSell: 2400,
+      realizedTotalCost: 1400,
+      quotedTotalCost: 1400,
+    },
+    payments: [
+      {
+        id: 'payment-1',
+        bookingId: 'booking-1',
+        type: 'CLIENT',
+        amount: 600,
+        currency: 'USD',
+        status: 'PAID',
+        method: 'cliq',
+        reference: 'CLIQ-001',
+        dueDate: null,
+        paidAt: new Date('2026-05-17T09:00:00.000Z'),
+        notes: null,
+        createdAt: new Date('2026-05-17T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-17T09:00:00.000Z'),
+      },
+      {
+        id: 'payment-2',
+        bookingId: 'booking-1',
+        type: 'SUPPLIER',
+        amount: 300,
+        currency: 'USD',
+        status: 'PENDING',
+        method: 'bank_transfer',
+        reference: 'service:hotel-1',
+        dueDate: new Date('2026-05-24T09:00:00.000Z'),
+        paidAt: null,
+        notes: 'Supplier payment notes',
+        createdAt: new Date('2026-05-17T09:00:00.000Z'),
+        updatedAt: new Date('2026-05-17T09:00:00.000Z'),
+      },
+    ],
+    services: [
+      {
+        id: 'hotel-1',
+        description: 'Hotel block',
+        serviceType: 'HOTEL',
+        supplierName: 'Hotel Supplier',
+        supplierReference: 'SUP-001',
+        serviceDate: new Date('2026-05-29T09:00:00.000Z'),
+        totalSell: 1200,
+        totalCost: 700,
+        status: 'confirmed',
+      },
+    ],
+  });
+
+  await service.generateFinancialDocumentPdf('booking-1', 'supplier-payable-summary', 'ITEMIZED');
+  const text = lines.join('\n');
+
+  assert.match(text, /Supplier Payable Summary/);
+  assert.match(text, /Document number/);
+  assert.match(text, /Booking reference/);
+  assert.match(text, /Supplier Payables/);
+  assert.match(text, /Supplier payment notes/);
+  assert.match(text, /Payment methods: bank transfer, CliQ, MB WAY, cash, credit card, custom\/manual/);
+
+  lines.length = 0;
+  await service.generateFinancialDocumentPdf('booking-1', 'deposit-invoice', 'PACKAGE');
+  const depositText = lines.join('\n');
+  assert.match(depositText, /Deposit Invoice/);
+  assert.match(depositText, /Deposits received/);
+  assert.match(depositText, /Remaining balance/);
 });
 
 test('booking voucher PDF uses professional placeholders and no internal pricing leakage', async () => {
