@@ -84,14 +84,10 @@ export class UsersService {
     const actorCompanyId = requireActorCompanyId(actor);
     const normalizedRole = this.normalizeRole(input.role);
     const companyId = input.companyId?.trim() || actorCompanyId;
-    const role = await this.prisma.role.findFirst({
-      where: {
-        name: normalizedRole,
-      },
-    });
+    const role = await this.findOrCreateRole(normalizedRole);
 
     if (!role) {
-      throw new NotFoundException('Role not found');
+      throw new BadRequestException('Unsupported user role');
     }
 
     const { firstName, lastName } = this.splitName(input.name);
@@ -140,15 +136,11 @@ export class UsersService {
 
     const nameParts = input.name ? this.splitName(input.name) : null;
     const role = input.role
-      ? await this.prisma.role.findFirst({
-          where: {
-            name: this.normalizeRole(input.role),
-          },
-        })
+      ? await this.findOrCreateRole(this.normalizeRole(input.role))
       : null;
 
     if (input.role && !role) {
-      throw new NotFoundException('Role not found');
+      throw new BadRequestException('Unsupported user role');
     }
 
     if (input.role && this.normalizeRole(existing.role.name) === 'admin' && this.normalizeRole(input.role) !== 'admin') {
@@ -256,12 +248,55 @@ export class UsersService {
   }
 
   private normalizeRole(role: string) {
-    const normalized = (role.trim().toLowerCase() === 'sales' ? 'viewer' : role.trim().toLowerCase()) as DmcRole;
+    const normalizedInput = role.trim().toLowerCase().replace(/[-\s]+/g, '_');
+    const normalized = (normalizedInput === 'sales' ? 'viewer' : normalizedInput) as DmcRole;
 
     if (!ROLE_NAMES.includes(normalized)) {
-      throw new NotFoundException('Role not found');
+      throw new BadRequestException('Unsupported user role');
     }
 
     return normalized;
+  }
+
+  private async findOrCreateRole(role: DmcRole) {
+    const existing = await this.prisma.role.findFirst({
+      where: {
+        name: {
+          equals: role,
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    if (!['admin', 'super_admin', 'agent_admin', 'agent'].includes(role)) {
+      return null;
+    }
+
+    return this.prisma.role.create({
+      data: {
+        name: role,
+        description: this.getRoleDescription(role),
+      },
+    });
+  }
+
+  private getRoleDescription(role: DmcRole) {
+    if (role === 'super_admin') {
+      return 'System administrators with unrestricted platform access.';
+    }
+
+    if (role === 'agent_admin') {
+      return 'Administrators managing external agent companies and portal users.';
+    }
+
+    if (role === 'agent') {
+      return 'Agent portal users viewing only their assigned commercial records.';
+    }
+
+    return 'Platform administrators with full access.';
   }
 }

@@ -70,7 +70,7 @@ type User = {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
+  role: 'admin' | 'super_admin' | 'agent_admin' | 'viewer' | 'operations' | 'finance' | 'agent';
   companyId?: string | null;
   companyName?: string | null;
   active?: boolean;

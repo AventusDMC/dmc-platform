@@ -10,6 +10,7 @@ const quotesFormSource = readFileSync(new URL('../quotes/QuotesForm.tsx', import
 const proxyRouteSource = readFileSync(new URL('../api/users/agents/route.ts', import.meta.url), 'utf8');
 const navSource = readFileSync(new URL('../admin-nav.ts', import.meta.url), 'utf8');
 const templateSource = readFileSync(new URL('../template.tsx', import.meta.url), 'utf8');
+const authSessionSource = readFileSync(new URL('../lib/auth-session.ts', import.meta.url), 'utf8');
 
 describe('agent management admin surface', () => {
   it('exposes an Agent Management page with company and portal user creation', () => {
@@ -38,5 +39,14 @@ describe('agent management admin surface', () => {
     assert.match(navSource, /label: 'Agents', href: '\/agents'/);
     assert.match(navSource, /match: \['\/agents'/);
     assert.match(templateSource, /'\/agents'/);
+  });
+
+  it('allows legacy admin roles to reach Agent Management', () => {
+    assert.match(authSessionSource, /'ADMIN'/);
+    assert.match(authSessionSource, /'SUPER_ADMIN'/);
+    assert.match(authSessionSource, /'AGENT_ADMIN'/);
+    assert.match(authSessionSource, /replace\(\/\[-\\s\]\+\/g, '_'\)/);
+    assert.match(navSource, /role === 'super_admin'/);
+    assert.match(navSource, /role === 'agent_admin'/);
   });
 });

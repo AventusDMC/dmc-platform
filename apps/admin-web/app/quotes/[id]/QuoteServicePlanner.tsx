@@ -423,7 +423,7 @@ type QuoteServicePlannerProps = {
   preferredCatalogRateCurrency?: string;
   preferredCatalogRateNote?: string;
   preferredCatalogRouteId?: string;
-  sessionRole?: 'admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
+  sessionRole?: 'admin' | 'super_admin' | 'agent_admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
 };
 
 type TransportDataStatus = {

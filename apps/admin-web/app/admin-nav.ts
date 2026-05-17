@@ -119,7 +119,17 @@ export const NAV_GROUPS: AdminNavGroup[] = [
 ];
 
 export function getVisibleNavGroups(role?: SessionRole | null) {
-  return NAV_GROUPS.filter((group) => !group.roles?.length || (role ? group.roles.includes(role) : false));
+  return NAV_GROUPS.filter((group) => {
+    if (!group.roles?.length) {
+      return true;
+    }
+
+    if (!role) {
+      return false;
+    }
+
+    return group.roles.includes(role) || role === 'super_admin' || (role === 'agent_admin' && group.roles.includes('admin'));
+  });
 }
 
 export function isPathMatch(pathname: string, match: string) {

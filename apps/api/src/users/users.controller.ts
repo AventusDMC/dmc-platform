@@ -21,7 +21,7 @@ type UpdateUserBody = {
 };
 
 @Controller('users')
-@Roles('admin')
+@Roles('admin', 'super_admin', 'agent_admin')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 

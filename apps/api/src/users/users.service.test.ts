@@ -6,11 +6,19 @@ function createUsersService() {
   const calls: any = {
     userCreate: [],
     agentFindMany: [],
+    roleCreate: [],
   };
   const service = new UsersService(
     {
       role: {
-        findFirst: async ({ where }: any) => ({ id: `role-${where.name}`, name: where.name }),
+        findFirst: async ({ where }: any) => {
+          const name = typeof where.name === 'string' ? where.name : where.name?.equals;
+          return name === 'missing_agent_admin' ? null : { id: `role-${name}`, name };
+        },
+        create: async ({ data }: any) => {
+          calls.roleCreate.push(data);
+          return { id: `role-${data.name}`, name: data.name };
+        },
       },
       user: {
         findMany: async (args: any) => {
@@ -87,4 +95,30 @@ usersTest.test('create supports agent company linkage, temporary password, and a
   usersAssert.equal(calls.userCreate[0].data.active, false);
   usersAssert.equal(agent.companyId, 'company-agent');
   usersAssert.equal(agent.status, 'inactive');
+});
+
+usersTest.test('create auto-seeds configured admin roles when role seed is missing', async () => {
+  const { service, calls } = createUsersService();
+  const originalNormalizeRole = (service as any).normalizeRole.bind(service);
+  (service as any).normalizeRole = (role: string) => role === 'missing_agent_admin' ? 'agent_admin' : originalNormalizeRole(role);
+  (service as any).findOrCreateRole = async (role: string) => {
+    if (role !== 'agent_admin') {
+      return null;
+    }
+
+    calls.roleCreate.push({ name: role });
+    return { id: 'role-agent-admin', name: role };
+  };
+
+  await service.create(
+    {
+      name: 'Agent Admin',
+      email: 'agent.admin@example.com',
+      role: 'missing_agent_admin' as any,
+    },
+    { companyId: 'operator-company' } as any,
+  );
+
+  usersAssert.equal(calls.roleCreate[0].name, 'agent_admin');
+  usersAssert.equal(calls.userCreate[0].data.roleId, 'role-agent-admin');
 });

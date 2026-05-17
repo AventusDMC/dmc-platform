@@ -410,7 +410,7 @@ export class AuthService {
   }
 
   private normalizeRoleName(role: string) {
-    const normalized = role.trim().toLowerCase();
+    const normalized = role.trim().toLowerCase().replace(/[-\s]+/g, '_');
 
     if (normalized === 'sales') {
       return 'viewer';

@@ -1,4 +1,4 @@
-export type SessionRole = 'admin' | 'viewer' | 'operations' | 'finance' | 'agent';
+export type SessionRole = 'admin' | 'super_admin' | 'agent_admin' | 'viewer' | 'operations' | 'finance' | 'agent';
 
 export type SessionActor = {
   id: string;
@@ -13,7 +13,7 @@ export type SessionActor = {
 type SessionPayload = {
   sub: string;
   email: string;
-  role: SessionRole | 'sales';
+  role: SessionRole | 'sales' | 'ADMIN' | 'SUPER_ADMIN' | 'AGENT_ADMIN' | 'super-admin' | 'agent-admin';
   firstName: string;
   lastName: string;
   exp: number;
@@ -22,7 +22,9 @@ type SessionPayload = {
 const TOKEN_VERSION = 'v1';
 
 function normalizeSessionRole(role: SessionPayload['role']) {
-  return role === 'sales' ? 'viewer' : role;
+  const normalized = String(role).trim().toLowerCase().replace(/[-\s]+/g, '_');
+
+  return normalized === 'sales' ? 'viewer' : normalized as SessionRole;
 }
 
 export function readSessionActor(token: string) {
@@ -61,13 +63,17 @@ export function readSessionActor(token: string) {
 }
 
 export function canAccessFinance(role?: SessionRole | null) {
-  return role === 'admin' || role === 'finance';
+  return role === 'admin' || role === 'super_admin' || role === 'finance';
 }
 
 export function canAccessOperations(role?: SessionRole | null) {
-  return role === 'admin' || role === 'operations';
+  return role === 'admin' || role === 'super_admin' || role === 'operations';
 }
 
 export function hasRequiredRole(role: SessionRole | null | undefined, allowedRoles: SessionRole[]) {
-  return role ? allowedRoles.includes(role) : false;
+  if (!role) {
+    return false;
+  }
+
+  return allowedRoles.includes(role) || role === 'super_admin' || (role === 'agent_admin' && allowedRoles.includes('admin'));
 }

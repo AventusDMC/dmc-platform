@@ -148,6 +148,8 @@ async function seedRolesAndUsers(prisma: PrismaService, authService: AuthService
   const roles = await Promise.all(
     [
       { name: 'admin', description: 'Platform administrators with full access.' },
+      { name: 'super_admin', description: 'System administrators with unrestricted platform access.' },
+      { name: 'agent_admin', description: 'Administrators managing external agent companies and portal users.' },
       { name: 'viewer', description: 'Read-only commercial users reviewing dashboards, quotes, and invoices.' },
       { name: 'operations', description: 'Operations users managing bookings and workflow actions.' },
       { name: 'finance', description: 'Finance users managing rates and transport pricing.' },

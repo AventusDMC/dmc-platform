@@ -308,10 +308,11 @@ export class UserInvitationsService {
   }
 
   private normalizeRole(role: string) {
-    const normalized = (role.trim().toLowerCase() === 'sales' ? 'viewer' : role.trim().toLowerCase()) as DmcRole;
+    const normalizedInput = role.trim().toLowerCase().replace(/[-\s]+/g, '_');
+    const normalized = (normalizedInput === 'sales' ? 'viewer' : normalizedInput) as DmcRole;
 
     if (!ROLE_NAMES.includes(normalized)) {
-      throw new BadRequestException('Role not found');
+      throw new BadRequestException('Unsupported user role');
     }
 
     return normalized;

@@ -7,6 +7,26 @@ type RequestWithActor = {
   authenticatedActor?: AuthenticatedActor;
 };
 
+function roleAllows(requiredRoles: DmcRole[], actorRole?: DmcRole) {
+  if (!actorRole) {
+    return false;
+  }
+
+  if (requiredRoles.includes(actorRole)) {
+    return true;
+  }
+
+  if (actorRole === 'super_admin') {
+    return true;
+  }
+
+  if (actorRole === 'agent_admin' && requiredRoles.includes('admin')) {
+    return true;
+  }
+
+  return false;
+}
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -33,8 +53,8 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithActor>();
     const actor = request.authenticatedActor;
 
-    if (!actor || !roles.includes(actor.role)) {
-      throw new ForbiddenException('You do not have permission to perform this action');
+    if (!actor || !roleAllows(roles, actor.role)) {
+      throw new ForbiddenException('You do not have permission to access this admin area');
     }
 
     return true;
