@@ -103,6 +103,11 @@ export class TouringRoutesController {
     return this.touringRoutesService.importTransportPricingRuleNormalization();
   }
 
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string) {
+    return this.touringRoutesService.duplicate(id);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: Partial<TouringRouteBody>) {
     return this.touringRoutesService.update(id, body);

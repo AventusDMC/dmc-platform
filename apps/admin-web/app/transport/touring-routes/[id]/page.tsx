@@ -4,6 +4,7 @@ import { ModuleSwitcher } from '../../../components/ModuleSwitcher';
 import { SummaryStrip } from '../../../components/SummaryStrip';
 import { WorkspaceShell } from '../../../components/WorkspaceShell';
 import { adminPageFetchJson } from '../../../lib/admin-server';
+import { TouringRouteDuplicateButton } from '../TouringRouteDuplicateButton';
 import { TouringRouteEditor } from './TouringRouteEditor';
 import type { TouringRouteCatalogs, TouringRouteDetail } from '../types';
 
@@ -101,6 +102,7 @@ export default async function TouringRouteDetailPage({ params, searchParams }: T
               <Link className="button" href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit#edit`}>
                 Edit
               </Link>
+              <TouringRouteDuplicateButton routeId={route.id} routeName={route.name} navigateToCopy />
             </div>
 
             <section className="workspace-section">

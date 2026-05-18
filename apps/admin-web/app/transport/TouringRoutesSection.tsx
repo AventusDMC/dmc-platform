@@ -1,4 +1,5 @@
 import { adminPageFetchJson } from '../lib/admin-server';
+import { TouringRouteDuplicateButton } from './touring-routes/TouringRouteDuplicateButton';
 import { TouringRouteArchiveButton } from './TouringRouteArchiveButton';
 import { TouringRouteWorkbookImportPanel } from './TouringRouteWorkbookImportPanel';
 
@@ -133,6 +134,7 @@ export async function TouringRoutesSection() {
                         <a className="secondary-button" href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit`}>
                           Edit
                         </a>
+                        <TouringRouteDuplicateButton routeId={route.id} routeName={route.name} />
                         <TouringRouteArchiveButton routeId={route.id} disabled={route.active === false} />
                       </div>
                     </td>

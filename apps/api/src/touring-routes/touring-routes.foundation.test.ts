@@ -157,9 +157,16 @@ function createTouringPrismaMock() {
       },
       findUnique: async ({ where }: any) => stores.routes.find((route) => route.id === where.id) || null,
       create: async ({ data }: any) => {
-        const route = { id: `tour-${stores.routes.length + 1}`, ...data };
+        const { stops, pricings, ...routeData } = data;
+        const route = { id: `tour-${stores.routes.length + 1}`, ...routeData };
         stores.routes.push(route);
-        return route;
+        const createdStops = (stops?.create || []).map((entry: any, index: number) => ({
+          id: `stop-${stores.stops.length + index + 1}`,
+          touringRouteId: route.id,
+          ...entry,
+        }));
+        stores.stops.push(...createdStops);
+        return { ...route, stops: createdStops, pricings: [] };
       },
       update: async ({ where, data }: any) => {
         const route = stores.routes.find((entry) => entry.id === where.id);
@@ -973,4 +980,79 @@ test('touring route update persists edits and archives without hard delete', asy
   assert.equal(stores.routes[0].region, 'South');
   assert.equal(stores.routes[0].longDistance, true);
   assert.equal(stores.routes[0].overnightRisk, true);
+});
+
+test('touring route duplicate preserves operational metadata and leaves source unchanged', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+  const sourceRoute = {
+    id: 'tour-source',
+    code: 'AMMAN_JERASH_AJLOUN_AMMAN_RT',
+    name: 'Amman - Jerash - Ajloun - Amman RT',
+    startCity: 'Amman',
+    durationDays: 1,
+    routeDescription: 'Classic north circuit',
+    mainDestinations: ['Jerash', 'Ajloun'],
+    includedKm: 185,
+    includedHours: 8,
+    estimatedDistanceKm: 172,
+    estimatedDriveHours: 3.75,
+    region: 'North',
+    longDistance: true,
+    desertRoad: false,
+    mountainRoad: true,
+    seasonalHeatRisk: true,
+    sicPossible: true,
+    overnightRisk: false,
+    reviewNotes: 'Use Ajloun road notes for winter operations.',
+    active: true,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    stops: [
+      { id: 'stop-source-1', order: 1, city: 'Amman', location: 'Hotel pickup', notes: 'Start' },
+      { id: 'stop-source-2', order: 2, city: 'Jerash', location: 'Jerash Archaeological Site', notes: 'Visit' },
+      { id: 'stop-source-3', order: 3, city: 'Ajloun', location: 'Ajloun Castle', notes: 'Visit' },
+    ],
+    pricings: [{ id: 'pricing-source-1', baseCost: 100 }],
+  };
+  stores.routes.push(sourceRoute, {
+    id: 'tour-existing-copy',
+    code: 'COPY_OF_AMMAN_JERASH_AJLOUN_AMMAN_RT',
+    name: 'Existing copy',
+    startCity: 'Amman',
+    durationDays: 1,
+  });
+  const originalSnapshot = JSON.parse(JSON.stringify(sourceRoute));
+
+  const copy = (await service.duplicate(sourceRoute.id)) as any;
+
+  assert.notEqual(copy.id, sourceRoute.id);
+  assert.equal(copy.name, 'Copy of Amman - Jerash - Ajloun - Amman RT');
+  assert.equal(copy.code, 'COPY_OF_AMMAN_JERASH_AJLOUN_AMMAN_RT_2');
+  assert.notEqual(copy.code, sourceRoute.code);
+  assert.equal(copy.active, false);
+  assert.equal(copy.startCity, sourceRoute.startCity);
+  assert.equal(copy.durationDays, sourceRoute.durationDays);
+  assert.equal(copy.routeDescription, sourceRoute.routeDescription);
+  assert.deepEqual(copy.mainDestinations, sourceRoute.mainDestinations);
+  assert.equal(copy.includedKm, sourceRoute.includedKm);
+  assert.equal(copy.includedHours, sourceRoute.includedHours);
+  assert.equal(copy.estimatedDistanceKm, sourceRoute.estimatedDistanceKm);
+  assert.equal(copy.estimatedDriveHours, sourceRoute.estimatedDriveHours);
+  assert.equal(copy.region, sourceRoute.region);
+  assert.equal(copy.longDistance, true);
+  assert.equal(copy.mountainRoad, true);
+  assert.equal(copy.seasonalHeatRisk, true);
+  assert.equal(copy.sicPossible, true);
+  assert.equal(copy.reviewNotes, sourceRoute.reviewNotes);
+  assert.equal(copy.createdAt, undefined);
+  assert.equal(copy.updatedAt, undefined);
+  assert.equal(copy.pricings.length, 0);
+  assert.equal(copy.stops.length, sourceRoute.stops.length);
+  assert.deepEqual(
+    copy.stops.map((stop: any) => ({ order: stop.order, city: stop.city, location: stop.location, notes: stop.notes })),
+    sourceRoute.stops.map((stop) => ({ order: stop.order, city: stop.city, location: stop.location, notes: stop.notes })),
+  );
+  assert.ok(copy.stops.every((stop: any) => !sourceRoute.stops.some((sourceStop) => sourceStop.id === stop.id)));
+  assert.deepEqual(JSON.parse(JSON.stringify(sourceRoute)), originalSnapshot);
 });

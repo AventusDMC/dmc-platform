@@ -10,6 +10,8 @@ const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkb
 const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
 const touringRouteArchiveButtonSource = readFileSync(new URL('./TouringRouteArchiveButton.tsx', import.meta.url), 'utf8');
+const touringRouteDuplicateButtonSource = readFileSync(new URL('./touring-routes/TouringRouteDuplicateButton.tsx', import.meta.url), 'utf8');
+const touringRouteDuplicateProxySource = readFileSync(new URL('../api/touring-routes/[id]/duplicate/route.ts', import.meta.url), 'utf8');
 const touringRouteDetailPageSource = readFileSync(new URL('./touring-routes/[id]/page.tsx', import.meta.url), 'utf8');
 const touringRouteEditorSource = readFileSync(new URL('./touring-routes/[id]/TouringRouteEditor.tsx', import.meta.url), 'utf8');
 const touringRouteWorkbookImportPanelSource = readFileSync(new URL('./TouringRouteWorkbookImportPanel.tsx', import.meta.url), 'utf8');
@@ -625,15 +627,33 @@ describe('transport catalog supplier rate-card UX', () => {
       '<th>Actions</th>',
       'Open',
       'Edit',
+      '<TouringRouteDuplicateButton',
       '<TouringRouteArchiveButton',
     ]);
   });
 
-  it('lets operators open edit and archive imported touring routes', () => {
+  it('lets operators open edit duplicate and archive imported touring routes', () => {
     expectSourceContains(touringRoutesSectionSource, [
       'href={`/transport/touring-routes/${encodeURIComponent(route.id)}`}',
       'href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit`}',
+      '<TouringRouteDuplicateButton routeId={route.id} routeName={route.name} />',
       '<TouringRouteArchiveButton routeId={route.id}',
+    ]);
+
+    expectSourceContains(touringRouteDuplicateButtonSource, [
+      "'use client';",
+      'Duplicate "${routeName}" as an inactive draft route?',
+      "`/api/touring-routes/${encodeURIComponent(routeId)}/duplicate`",
+      "method: 'POST'",
+      'router.push(`/transport/touring-routes/${encodeURIComponent(copy.id)}?mode=edit#edit`)',
+      'router.refresh()',
+      'Duplicate',
+    ]);
+
+    expectSourceContains(touringRouteDuplicateProxySource, [
+      "params: Promise<{ id: string }>",
+      "`${API_BASE_URL}/touring-routes/${encodeURIComponent(id)}/duplicate`",
+      "'POST'",
     ]);
 
     expectSourceContains(touringRouteArchiveButtonSource, [
@@ -655,6 +675,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'Supplier mapping pending',
       'Operational warnings',
       '?mode=edit#edit',
+      '<TouringRouteDuplicateButton routeId={route.id} routeName={route.name} navigateToCopy />',
       '<TouringRouteEditor route={route} catalogs={catalogs} />',
     ]);
 

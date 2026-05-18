@@ -332,6 +332,45 @@ export class TouringRoutesService {
     });
   }
 
+  async duplicate(id: string) {
+    const source = await this.findOne(id);
+    const copyName = `Copy of ${source.name}`;
+    const copyCode = await this.buildUniqueDuplicateCode(source.code || source.name);
+
+    return (this.prisma as any).touringRoute.create({
+      data: {
+        code: copyCode,
+        name: copyName,
+        startCity: source.startCity,
+        durationDays: source.durationDays,
+        routeDescription: source.routeDescription || null,
+        mainDestinations: Array.isArray(source.mainDestinations) ? source.mainDestinations : [],
+        includedKm: source.includedKm ?? null,
+        includedHours: source.includedHours ?? null,
+        estimatedDistanceKm: source.estimatedDistanceKm ?? null,
+        estimatedDriveHours: source.estimatedDriveHours ?? null,
+        region: source.region || null,
+        longDistance: Boolean(source.longDistance),
+        desertRoad: Boolean(source.desertRoad),
+        mountainRoad: Boolean(source.mountainRoad),
+        seasonalHeatRisk: Boolean(source.seasonalHeatRisk),
+        sicPossible: Boolean(source.sicPossible),
+        overnightRisk: Boolean(source.overnightRisk),
+        reviewNotes: source.reviewNotes || null,
+        active: false,
+        stops: {
+          create: (source.stops || []).map((stop: any, index: number) => ({
+            order: stop.order ?? index + 1,
+            city: stop.city,
+            location: stop.location || null,
+            notes: stop.notes || null,
+          })),
+        },
+      },
+      include: this.include(),
+    });
+  }
+
   async previewWorkbookImport(file: { buffer?: Buffer; path?: string; originalname?: string }) {
     try {
       return await this.processWorkbookImport(file, 'preview');
@@ -834,6 +873,23 @@ export class TouringRoutesService {
         orderBy: [{ active: 'desc' }, { minPax: 'asc' }, { createdAt: 'asc' }],
       },
     };
+  }
+
+  private async buildUniqueDuplicateCode(sourceCode: string) {
+    const baseCode = normalizeCode(`COPY_OF_${sourceCode}`);
+    const candidates = Array.from({ length: 20 }, (_, index) => {
+      if (index === 0) return baseCode;
+      const suffix = `_${index + 1}`;
+      return `${baseCode.slice(0, 40 - suffix.length)}${suffix}`;
+    });
+    const existing = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: candidates } },
+      select: { code: true },
+    });
+    const existingCodes = new Set((existing || []).map((route: { code?: string | null }) => route.code).filter(Boolean));
+
+    const fallbackSuffix = `_${Date.now().toString(36).toUpperCase()}`;
+    return candidates.find((candidate) => !existingCodes.has(candidate)) || `${baseCode.slice(0, 40 - fallbackSuffix.length)}${fallbackSuffix}`;
   }
 
   private async processTransportPricingRuleNormalization(mode: TouringWorkbookMode) {
