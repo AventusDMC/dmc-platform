@@ -30,9 +30,16 @@ export function formatPlaceLabel(place: Pick<PlaceOption, 'name' | 'type' | 'cit
 }
 
 const NON_GEOGRAPHIC_PLACE_PATTERNS = [
+  /\bextra\s*km\b/i,
+  /\bextra\s*(hour|hr|hrs|h)\b/i,
+  /\bovernight\b/i,
+  /\btransfer\s*deduction\b/i,
   /\bfull\s*day\b/i,
+  /\bhalf\s*day\b/i,
   /\bstationary\b/i,
   /\bwaiting\b/i,
+  /\bdisposal\b/i,
+  /\bdriver\b/i,
   /\bpricing\b/i,
   /\brate\b/i,
   /\bprice\b/i,
@@ -42,13 +49,23 @@ const NON_GEOGRAPHIC_PLACE_PATTERNS = [
   /\b\d+\s*(km|h|hr|hrs)\b/i,
 ];
 
+const CANONICAL_GEOGRAPHIC_PLACE_TYPE_PATTERNS = [
+  /\bcity\b/i,
+  /\bairport\b/i,
+  /\bborder\b/i,
+  /\bport\b/i,
+  /\bsite\b/i,
+  /\blocation\b/i,
+];
+
 export function isCanonicalGeographicPlace(place: Pick<PlaceOption, 'name' | 'type' | 'isActive'>) {
   if (place.isActive === false) {
     return false;
   }
 
   const label = `${place.name || ''} ${place.type || ''}`.trim();
-  return !NON_GEOGRAPHIC_PLACE_PATTERNS.some((pattern) => pattern.test(label));
+  const placeType = String(place.type || '').trim();
+  return CANONICAL_GEOGRAPHIC_PLACE_TYPE_PATTERNS.some((pattern) => pattern.test(placeType)) && !NON_GEOGRAPHIC_PLACE_PATTERNS.some((pattern) => pattern.test(label));
 }
 
 export function filterCanonicalGeographicPlaces<T extends Pick<PlaceOption, 'id' | 'name' | 'type' | 'isActive'>>(places: T[], selectedIds: Array<string | null | undefined> = []) {

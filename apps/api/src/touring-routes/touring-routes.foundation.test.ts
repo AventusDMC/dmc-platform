@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
 import { TouringRoutesService } from './touring-routes.service';
+import { seedGoldenJordanTouringRoutes } from '../../prisma/seeds/seed-touring-routes';
 
 const schemaSource = readFileSync(join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(__dirname, 'touring-routes.controller.ts'), 'utf8');
@@ -41,10 +42,12 @@ test('golden Jordan touring route seed creates canonical operational infrastruct
   assert.match(packageSource, /"seed:touring-routes": "ts-node prisma\/seeds\/seed-touring-routes\.ts"/);
   assert.match(seedSource, /new PrismaClient\(\)/);
   assert.match(seedSource, /GOLDEN_JORDAN_TOURING_ROUTES/);
-  assert.match(seedSource, /seedGoldenJordanTouringRoutes\(prisma\)/);
+  assert.match(seedSource, /dryRun = !process\.argv\.includes\('--apply'\)/);
+  assert.match(seedSource, /seedGoldenJordanTouringRoutes\(prisma, \{ dryRun \}\)/);
   assert.match(seedSource, /touringRoute\.upsert/);
   assert.match(seedSource, /created/);
   assert.match(seedSource, /updated/);
+  assert.match(seedSource, /skippedExisting/);
   assert.match(seedSource, /duplicatesFlagged/);
   assert.match(seedSource, /validatedRoutes/);
   assert.match(seedSource, /Amman – Jerash – Amman RT/);
@@ -71,6 +74,68 @@ test('golden Jordan route naming uses touring stop separators and RT ON suffixes
   assert.ok(canonicalNames.every((name) => name.includes('–')));
   assert.ok(canonicalNames.some((name) => name.endsWith('RT')));
   assert.ok(canonicalNames.some((name) => name.endsWith('ON')));
+});
+
+test('golden Jordan touring route expansion is dry-run first and idempotent', async () => {
+  const calls: string[] = [];
+  const store = {
+    touringRoutes: [
+      {
+        id: 'existing-jerash',
+        code: 'JOR-TR-NORTH-JERASH-RT',
+        name: 'Amman -> Jerash -> Amman RT',
+        routeDescription: 'Amman -> Jerash -> Amman',
+        reviewNotes: '',
+      },
+    ] as any[],
+  };
+  const prisma = {
+    touringRoute: {
+      findMany: async ({ where }: any = {}) => {
+        if (where?.code?.in) return store.touringRoutes.filter((route) => where.code.in.includes(route.code));
+        if (where?.code?.notIn) return store.touringRoutes.filter((route) => !where.code.notIn.includes(route.code));
+        return store.touringRoutes;
+      },
+      upsert: async ({ where, create, update }: any) => {
+        calls.push(`upsert:${where.code}`);
+        const existing = store.touringRoutes.find((route) => route.code === where.code);
+        if (existing) {
+          Object.assign(existing, update);
+          return existing;
+        }
+        const created = { id: `route-${store.touringRoutes.length + 1}`, ...create };
+        store.touringRoutes.push(created);
+        return created;
+      },
+      update: async ({ where, data }: any) => {
+        calls.push(`update:${where.id}`);
+        Object.assign(store.touringRoutes.find((route) => route.id === where.id), data);
+      },
+      count: async ({ where }: any = {}) => store.touringRoutes.filter((route) => where?.code?.in.includes(route.code)).length,
+    },
+  };
+  const logger = { log: () => undefined, warn: () => undefined };
+
+  const dryRunSummary = await seedGoldenJordanTouringRoutes(prisma as any, { logger });
+  assert.equal(dryRunSummary.dryRun, true);
+  assert.equal(dryRunSummary.skippedExisting, 1);
+  assert.ok(dryRunSummary.created >= 30);
+  assert.deepEqual(calls, []);
+  assert.equal(store.touringRoutes.length, 1);
+
+  const applySummary = await seedGoldenJordanTouringRoutes(prisma as any, { dryRun: false, logger });
+  assert.equal(applySummary.dryRun, false);
+  assert.equal(applySummary.updated, 1);
+  assert.ok(applySummary.created >= 30);
+  assert.equal(applySummary.validatedRoutes, applySummary.totalCanonicalRoutes);
+  assert.ok(calls.some((call) => call === 'upsert:JOR-TR-NORTH-JERASH-RT'));
+  assert.ok(store.touringRoutes.some((route) => route.code === 'JOR-TR-AQABA-DIVING-RT'));
+  assert.ok(store.touringRoutes.some((route) => route.code === 'JOR-TR-LAYOVER-QAIA-JERASH-RT'));
+  const petraOn = store.touringRoutes.find((route) => route.code === 'JOR-TR-SOUTH-AMMAN-PETRA-ON');
+  assert.match(petraOn.reviewNotes, /Pickup recommendation:/);
+  assert.match(petraOn.reviewNotes, /Stationary \/ Waiting guidance:/);
+  assert.match(petraOn.reviewNotes, /Overnight marker:/);
+  assert.ok(petraOn.stops.create.some((stop: any) => /Overnight stop/.test(stop.notes || '')));
 });
 
 function buildTouringWorkbookBuffer(rows: {

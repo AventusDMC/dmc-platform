@@ -497,13 +497,32 @@ describe('transport catalog supplier rate-card UX', () => {
     const places = [
       { id: 'amman', name: 'Amman', type: 'City', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
       { id: 'petra', name: 'Petra Visitor Center', type: 'Site', placeTypeId: null, cityId: null, city: 'Petra', country: 'Jordan', isActive: true },
+      { id: 'qaia', name: 'Queen Alia International Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'border', name: 'Allenby Bridge', type: 'Border', placeTypeId: null, cityId: null, city: null, country: 'Jordan', isActive: true },
+      { id: 'port', name: 'Aqaba Port', type: 'Port', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+      { id: 'wadi-rum', name: 'Wadi Rum Camp Area', type: 'Location', placeTypeId: null, cityId: null, city: 'Wadi Rum', country: 'Jordan', isActive: true },
       { id: 'full-day', name: 'Alpha Bus Full Day 200km', type: 'Supplier Rate', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'extra-km', name: 'Alpha Bus Extra KM', type: 'Site', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'driver-overnight', name: 'Alpha Driver Overnight', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'extra-hour', name: 'Alpha Limo Extra Hour', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'half-day', name: 'Alpha Limo Half Day', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'transfer-deduction', name: 'Alpha Transfer Deduction', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'disposal', name: 'Dead Sea Disposal', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
       { id: 'stationary', name: 'Alpha Bus Stationary', type: 'Pricing Mode', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
       { id: 'limo-full-day', name: 'Alpha Limo Full Day 8H', type: 'Service', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'supplier-service', name: 'Airport Assistance', type: 'Supplier Service', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
     ];
 
-    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), ['amman', 'petra']);
-    assert.deepEqual(filterCanonicalGeographicPlaces(places, ['stationary']).map((place) => place.id), ['amman', 'petra', 'stationary']);
+    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), ['amman', 'petra', 'qaia', 'border', 'port', 'wadi-rum']);
+    assert.deepEqual(filterCanonicalGeographicPlaces(places, ['stationary']).map((place) => place.id), [
+      'amman',
+      'petra',
+      'qaia',
+      'border',
+      'port',
+      'wadi-rum',
+      'stationary',
+    ]);
 
     expectSourceContains(placeComboboxSource, ['filterCanonicalGeographicPlaces(places, [value])']);
     expectSourceContains(routesFormSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
