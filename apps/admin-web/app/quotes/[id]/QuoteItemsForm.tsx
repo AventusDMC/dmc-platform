@@ -478,7 +478,9 @@ function inferSupplierServiceTransportPricingMode(service: SupplierService): Tra
   }
 
   if (/\bdriver\s*overnight|overnight\s*driver\b/.test(text)) {
-    return 'Driver Overnight';
+    if (/\bwadi\s*rum\b/i.test(text)) return 'Wadi Rum Overnight';
+    if (/\baqaba\b/i.test(text)) return 'Aqaba Overnight';
+    return 'Petra Overnight';
   }
 
   if (/\bstationary|waiting\b/.test(text)) {
@@ -486,7 +488,7 @@ function inferSupplierServiceTransportPricingMode(service: SupplierService): Tra
   }
 
   if (/\bday\s*tour|sightseeing\s*day|fit\s*touring\b/.test(text)) {
-    return 'Day Tour';
+    return 'Daily Full Day';
   }
 
   if (/\bhalf\s*day\b/.test(text)) {
@@ -494,7 +496,7 @@ function inferSupplierServiceTransportPricingMode(service: SupplierService): Tra
   }
 
   if (/\bfull\s*day|daily\s*fd|daily\s*package|minimum\s*3\b/.test(text)) {
-    return 'Full Day';
+    return 'Daily Full Day';
   }
 
   return null;

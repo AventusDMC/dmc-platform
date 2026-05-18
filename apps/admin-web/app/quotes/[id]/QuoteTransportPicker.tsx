@@ -340,11 +340,13 @@ function inferSupplierServicePricingMode(service: SupplierService): PricingMode 
 
   const text = service.name.toLowerCase();
   if (/\bextra\s*(km|kilometer|kilometre)|per\s*km\b/.test(text)) return 'Extra KM';
-  if (/\bdriver\s*overnight|overnight\s*driver\b/.test(text)) return 'Driver Overnight';
+  if (/\bwadi\s*rum\b.*\bovernight\b|\bovernight\b.*\bwadi\s*rum\b/.test(text)) return 'Wadi Rum Overnight';
+  if (/\baqaba\b.*\bovernight\b|\bovernight\b.*\baqaba\b/.test(text)) return 'Aqaba Overnight';
+  if (/\bdriver\s*overnight|overnight\s*driver|petra\b.*\bovernight\b|\bovernight\b.*\bpetra\b/.test(text)) return 'Petra Overnight';
   if (/\bstationary|waiting\b/.test(text)) return 'Stationary / Waiting';
-  if (/\bday\s*tour|sightseeing\s*day|fit\s*touring\b/.test(text)) return 'Day Tour';
+  if (/\bday\s*tour|sightseeing\s*day|fit\s*touring\b/.test(text)) return 'Daily Full Day';
   if (/\bhalf\s*day\b/.test(text)) return 'Half Day';
-  if (/\bfull\s*day|daily\s*fd|daily\s*package|minimum\s*3\b/.test(text)) return 'Full Day';
+  if (/\bfull\s*day|daily\s*fd|daily\s*package|minimum\s*3\b/.test(text)) return 'Daily Full Day';
 
   return null;
 }
@@ -414,7 +416,7 @@ function hasNumericRate(rate: VehicleRate) {
 }
 
 function usesBillableDaysInput(pricingMode: PricingMode | '') {
-  return pricingMode === 'Full Day' || pricingMode === 'Day Tour' || pricingMode === 'Driver Overnight';
+  return pricingMode === 'Daily Full Day' || pricingMode === 'Petra Overnight' || pricingMode === 'Wadi Rum Overnight' || pricingMode === 'Aqaba Overnight';
 }
 
 function getRateCapacity(rate: VehicleRate) {
@@ -532,7 +534,7 @@ function getRoutePlaceTokens(route: RouteOption) {
 }
 
 function isDisposalPricingMode(mode: PricingMode | null) {
-  return mode === 'Full Day' || mode === 'Half Day' || mode === 'Day Tour' || mode === 'Stationary / Waiting';
+  return mode === 'Daily Full Day' || mode === 'Half Day' || mode === 'Stationary / Waiting';
 }
 
 function getRoutePricingModeScope(route: RouteOption) {
@@ -555,10 +557,10 @@ function pricingModeMatchesRouteScope(mode: PricingMode, route: RouteOption) {
   }
 
   if (scope === 'disposal') {
-    return mode === 'Half Day' || mode === 'Full Day' || mode === 'Extra Hour' || mode === 'Stationary / Waiting';
+    return mode === 'Half Day' || mode === 'Daily Full Day' || mode === 'Extra Hour' || mode === 'Stationary / Waiting';
   }
 
-  return mode === 'Day Tour' || mode === 'Full Day' || mode === 'Half Day';
+  return mode === 'Daily Full Day' || mode === 'Half Day';
 }
 
 export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: RouteOption) {
@@ -683,18 +685,18 @@ export function getTransportPricingModeOptionLabel({
   vehicleTypes?: VehicleTypeOption[];
   now?: Date;
 }) {
-  if (mode !== 'Full Day' || !route || !selectedCanonicalVehicleType) {
+  if (mode !== 'Daily Full Day' || !route || !selectedCanonicalVehicleType) {
     return mode;
   }
 
   const hasMinimumFullDayRate = getRouteCandidateRates(rates, route, now).some(
     (rate) =>
-      getNormalizedPricingModeForRate(rate) === 'Full Day' &&
+      getNormalizedPricingModeForRate(rate) === 'Daily Full Day' &&
       rateMatchesSelectedVehicleFallback(rate, selectedCanonicalVehicleType, vehicleTypes, requestedPax) &&
       isMinimumFullDayRate(rate),
   );
 
-  return hasMinimumFullDayRate ? 'Full Day - minimum 3 days' : mode;
+  return hasMinimumFullDayRate ? 'Daily Full Day - minimum 3 days' : mode;
 }
 
 function getTransportPricingModeDiagnostics({
@@ -729,8 +731,8 @@ function getTransportPricingModeDiagnostics({
 
   function rejectForMode(mode: PricingMode | null, reason: string) {
     reject(reason);
-    if (mode === 'Full Day') {
-      reject(`Full Day ${reason}`);
+    if (mode === 'Daily Full Day') {
+      reject(`Daily Full Day ${reason}`);
     }
   }
 
@@ -1337,7 +1339,7 @@ export function QuoteTransportPicker({
                 <div>
                   <p className="eyebrow">Route / Service Area</p>
                   <h3>Choose movement or service area</h3>
-                  <p className="detail-copy">Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Full Day, Half Day, and Day Tour modes.</p>
+                  <p className="detail-copy">Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Daily Full Day, Half Day, and Stationary / Waiting modes.</p>
                 </div>
               </div>
               <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routes.length === 0}>

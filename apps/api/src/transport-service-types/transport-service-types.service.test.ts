@@ -32,7 +32,7 @@ function createService(initialRows: any[] = []) {
 }
 
 describe('TransportServiceTypesService pricing mode catalog', () => {
-  it('ensures Day Tour exists and does not create duplicate Full Day service types', async () => {
+  it('ensures canonical transport pricing modes without mutating legacy aliases', async () => {
     const { service, rows } = createService([
       { id: 'existing-full', name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY', createdAt: new Date(1) },
     ]);
@@ -41,7 +41,10 @@ describe('TransportServiceTypesService pricing mode catalog', () => {
     await service.findAll();
 
     assert.equal(rows.filter((row) => row.name === 'Full Day').length, 1);
-    assert.equal(rows.filter((row) => row.name === 'Day Tour').length, 1);
-    assert.equal(rows.find((row) => row.name === 'Day Tour')?.classification, 'FULL_DAY');
+    assert.equal(rows.filter((row) => row.name === 'Daily Full Day').length, 1);
+    assert.equal(rows.find((row) => row.name === 'Daily Full Day')?.classification, 'FULL_DAY');
+    assert.equal(rows.find((row) => row.name === 'Petra Overnight')?.classification, 'ADD_ON');
+    assert.equal(rows.find((row) => row.name === 'Wadi Rum Overnight')?.classification, 'ADD_ON');
+    assert.equal(rows.find((row) => row.name === 'Aqaba Overnight')?.classification, 'ADD_ON');
   });
 });

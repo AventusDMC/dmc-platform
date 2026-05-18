@@ -82,11 +82,13 @@ export class TransportServiceTypesService {
       { name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
       { name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
       { name: 'Half Day', code: 'HALF_DAY', classification: 'HALF_DAY' },
-      { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
-      { name: 'Day Tour', code: 'DAY_TOUR', classification: 'FULL_DAY' },
+      { name: 'Daily Full Day', code: 'DAILY_FULL_DAY', classification: 'FULL_DAY' },
       { name: 'Stationary / Waiting', code: 'STATIONARY_WAITING', classification: 'ADD_ON' },
       { name: 'Extra Hour', code: 'EXTRA_HOUR', classification: 'ADD_ON' },
       { name: 'Extra KM', code: 'EXTRA_KM', classification: 'ADD_ON' },
+      { name: 'Petra Overnight', code: 'PETRA_OVERNIGHT', classification: 'ADD_ON' },
+      { name: 'Wadi Rum Overnight', code: 'WADI_RUM_OVERNIGHT', classification: 'ADD_ON' },
+      { name: 'Aqaba Overnight', code: 'AQABA_OVERNIGHT', classification: 'ADD_ON' },
     ];
 
     for (const entry of entries) {

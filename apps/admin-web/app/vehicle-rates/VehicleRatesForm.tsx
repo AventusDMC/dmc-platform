@@ -15,7 +15,9 @@ import { RouteOption } from '../lib/routes';
 import { formatServiceTypeLabel } from '../lib/transport-formatters';
 import {
   buildTransportPricingModeServiceTypeOptions,
+  getOriginalTransportPricingModeAlias,
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
+  TRANSPORT_PRICING_MODE_GROUPS,
 } from '../lib/transport-pricing-modes';
 
 type VehicleOption = {
@@ -258,11 +260,21 @@ export function VehicleRatesForm({
             {pricingModeOptions.length === 0 ? (
               <option value="">Create a pricing mode first</option>
             ) : (
-              pricingModeOptions.map(({ mode, serviceType }) => (
-                <option key={mode} value={serviceType.id}>
-                  {formatServiceTypeLabel(mode)}
-                </option>
-              ))
+              TRANSPORT_PRICING_MODE_GROUPS.map((group) => {
+                const groupOptions = pricingModeOptions.filter((option) => group.modes.includes(option.mode));
+                return groupOptions.length > 0 ? (
+                  <optgroup key={group.label} label={group.label}>
+                    {groupOptions.map(({ mode, serviceType }) => {
+                      const originalAlias = getOriginalTransportPricingModeAlias(serviceType.name) || getOriginalTransportPricingModeAlias(serviceType.code);
+                      return (
+                        <option key={mode} value={serviceType.id}>
+                          {formatServiceTypeLabel(mode)}{originalAlias ? ` (legacy: ${originalAlias})` : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                ) : null;
+              })
             )}
           </select>
           <p className="form-helper">{TRANSPORT_PRICING_MODE_HELPER_TEXT}</p>

@@ -10,13 +10,16 @@ import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehi
 import { VehicleRatesTable, type Supplier, type TransportServiceType, type Vehicle } from './VehicleRatesTable';
 
 const PRICING_MODE_FILTER_OPTIONS = [
+  'Airport Transfer',
   'Point-to-Point',
-  'Full Day',
+  'Daily Full Day',
   'Half Day',
-  'Day Tour',
-  'Extra KM',
-  'Driver Overnight',
   'Stationary / Waiting',
+  'Extra Hour',
+  'Extra KM',
+  'Petra Overnight',
+  'Wadi Rum Overnight',
+  'Aqaba Overnight',
 ];
 const SERVICE_CATEGORY_FILTER_OPTIONS = ['Transfers', 'Disposal', 'Add-ons'];
 

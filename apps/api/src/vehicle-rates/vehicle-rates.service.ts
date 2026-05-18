@@ -336,8 +336,12 @@ function getServiceCategoryClassification(serviceCategory: string, pricingMode: 
 
   if (normalized.includes('add')) return 'ADD_ON';
   if (canonicalPricingMode === 'Half Day' || normalized.includes('half')) return 'HALF_DAY';
-  if (canonicalPricingMode === 'Driver Overnight') return 'ADD_ON';
-  if (canonicalPricingMode === 'Full Day' || canonicalPricingMode === 'Day Tour' || normalized.includes('full') || normalized.includes('disposal')) return 'FULL_DAY';
+  if (
+    canonicalPricingMode === 'Petra Overnight' ||
+    canonicalPricingMode === 'Wadi Rum Overnight' ||
+    canonicalPricingMode === 'Aqaba Overnight'
+  ) return 'ADD_ON';
+  if (canonicalPricingMode === 'Daily Full Day' || normalized.includes('full') || normalized.includes('disposal')) return 'FULL_DAY';
   if (normalized.includes('daily')) return 'DAILY_PACKAGE';
 
   return classifyTransportServiceName(canonicalPricingMode || pricingMode);
@@ -374,9 +378,8 @@ function isServiceBasedTransportImportRow(row: NormalizedTransportContractImport
   const pricingMode = normalizeTransportPricingMode(row.serviceName);
   const serviceCategory = normalizeImportName(row.serviceCategory).toLowerCase();
   const serviceBasedMode =
-    pricingMode === 'Full Day' ||
+    pricingMode === 'Daily Full Day' ||
     pricingMode === 'Half Day' ||
-    pricingMode === 'Day Tour' ||
     classification === 'FULL_DAY' ||
     classification === 'HALF_DAY' ||
     classification === 'DAILY_PACKAGE';
@@ -893,7 +896,7 @@ export class VehicleRatesService {
           airportTransfer: cardRates.find((rate) => getRatePricingMode(rate) === 'Airport Transfer')?.price ?? null,
           pointToPoint: cardRates.find((rate) => getRatePricingMode(rate) === 'Point-to-Point')?.price ?? cardRates[0]?.price ?? null,
           halfDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Half Day')?.price ?? null,
-          fullDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Full Day')?.price ?? null,
+          fullDay: cardRates.find((rate) => getRatePricingMode(rate) === 'Daily Full Day')?.price ?? null,
           stationaryWaitingHourly: cardRates.find((rate) => getRatePricingMode(rate) === 'Stationary / Waiting')?.price ?? null,
         },
         includedLimits: {
@@ -1790,8 +1793,6 @@ export class VehicleRatesService {
         summary.serviceBasedTransport.push(previewRow);
         if (baseClassification === 'HALF_DAY') {
           summary.halfDay.push(previewRow);
-        } else if (pricingMode === 'Day Tour') {
-          summary.dayTour.push(previewRow);
         } else {
           summary.fullDay.push(previewRow);
         }
@@ -1799,8 +1800,6 @@ export class VehicleRatesService {
         summary.addOns.push(previewRow);
       } else if (classification === 'HALF_DAY') {
         summary.halfDay.push(previewRow);
-      } else if (pricingMode === 'Day Tour') {
-        summary.dayTour.push(previewRow);
       } else if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {
         summary.fullDay.push(previewRow);
       } else {

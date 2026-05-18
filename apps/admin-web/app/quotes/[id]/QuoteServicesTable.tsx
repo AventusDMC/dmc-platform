@@ -461,11 +461,13 @@ function cleanTransportSupplierBase(value: string | null | undefined) {
 
 function normalizeTransportPricingModeLabel(value: string | null | undefined) {
   const text = (value || '').trim();
-  if (/\b(daily\s*full\s*day|daily\s*fd|daily_package|daily\s*package|minimum\s*3|full\s*day)\b/i.test(text)) return 'Full Day';
+  if (/\b(daily\s*full\s*day|daily\s*fd|daily_package|daily\s*package|minimum\s*3|full\s*day)\b/i.test(text)) return 'Daily Full Day';
   if (/\bhalf\s*day\b/i.test(text)) return 'Half Day';
-  if (/\bday\s*tour\b/i.test(text)) return 'Day Tour';
+  if (/\bday\s*tour\b/i.test(text)) return 'Daily Full Day';
   if (/\bextra\s*(km|kilometer|kilometre)\b/i.test(text)) return 'Extra KM';
-  if (/\bdriver\s*overnight\b/i.test(text)) return 'Driver Overnight';
+  if (/\bwadi\s*rum.*overnight|overnight.*wadi\s*rum\b/i.test(text)) return 'Wadi Rum Overnight';
+  if (/\baqaba.*overnight|overnight.*aqaba\b/i.test(text)) return 'Aqaba Overnight';
+  if (/\bdriver\s*overnight\b|petra.*overnight|overnight.*petra\b/i.test(text)) return 'Petra Overnight';
   if (/\bstationary|waiting\b/i.test(text)) return 'Stationary / Waiting';
   return text;
 }

@@ -26,6 +26,7 @@ import {
 } from '../lib/manual-supplier-rate-cards';
 import {
   deriveTransportPricingMode,
+  getOriginalTransportPricingModeAlias,
   getTransportPricingModeClassification,
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
   TRANSPORT_RATE_CARD_PRICING_MODES,
@@ -631,6 +632,14 @@ function getPricingModeForRate(rate: VehicleRate): PricingMode {
   return deriveTransportPricingMode(rate) || 'Point-to-Point';
 }
 
+function getPricingModeAliasForRate(rate: VehicleRate) {
+  return (
+    getOriginalTransportPricingModeAlias(rate.serviceType?.name) ||
+    getOriginalTransportPricingModeAlias(rate.serviceType?.code) ||
+    getOriginalTransportPricingModeAlias(rate.routeName)
+  );
+}
+
 function groupRateLinesByVehicleType(rates: VehicleRate[]) {
   const groups = new Map<string, VehicleRate[]>();
 
@@ -660,8 +669,7 @@ function getRateCardPricing(rateCard: SupplierRateCard) {
       airportTransfer: findPricingModeValue(rates, 'Airport Transfer'),
       pointToPoint: getPointToPointRate(rates),
       halfDay: findPricingModeValue(rates, 'Half Day'),
-      fullDay: findPricingModeValue(rates, 'Full Day'),
-      dayTour: findPricingModeValue(rates, 'Day Tour'),
+      fullDay: findPricingModeValue(rates, 'Daily Full Day'),
       stationaryWaitingHourly: findPricingModeValue(rates, 'Stationary / Waiting'),
     },
     includedLimits: {
@@ -2148,8 +2156,7 @@ export function VehicleRatesTable({
                                 <div><span>Airport Transfer</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.airportTransfer)}</strong></div>
                                 <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.pointToPoint)}</strong></div>
                                 <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.halfDay)}</strong></div>
-                                <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.fullDay)}</strong></div>
-                                <div><span>Day Tour</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.dayTour)}</strong></div>
+                                <div><span>Daily Full Day</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.fullDay)}</strong></div>
                                 <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, sectionPricing.baseRates.stationaryWaitingHourly)}</strong></div>
                                 <div><span>Extra Hour</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraHourRate)}</strong></div>
                                 <div><span>Extra KM</span><strong>{formatMoney(rateCard.currency, sectionPricing.extraCharges.extraKmRate)}</strong></div>
@@ -2170,7 +2177,10 @@ export function VehicleRatesTable({
                                   <tbody>
                                     {section.rates.map((rate) => (
                                       <tr key={rate.id}>
-                                        <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
+                                        <td>
+                                          <span className="status-badge">{getPricingModeForRate(rate)}</span>
+                                          {getPricingModeAliasForRate(rate) ? <div className="table-subcopy">Legacy alias: {getPricingModeAliasForRate(rate)}</div> : null}
+                                        </td>
                                         <td>
                                           <strong>{getRateRouteOrServiceAreaDisplay(rate, rateCard.category)}</strong>
                                           <div className="table-subcopy">{formatDash(rate.route?.name)}</div>
@@ -2243,8 +2253,7 @@ export function VehicleRatesTable({
                           <div><span>Airport Transfer</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.airportTransfer)}</strong></div>
                           <div><span>Point-to-Point</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.pointToPoint)}</strong></div>
                           <div><span>Half Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.halfDay)}</strong></div>
-                          <div><span>Full Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</strong></div>
-                          <div><span>Day Tour</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.dayTour)}</strong></div>
+                          <div><span>Daily Full Day</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.fullDay)}</strong></div>
                           <div><span>Stationary / Waiting</span><strong>{formatMoney(rateCard.currency, pricing.baseRates.stationaryWaitingHourly)}</strong></div>
                         </div>
                         <div className="quote-preview-total-list">
@@ -2298,7 +2307,10 @@ export function VehicleRatesTable({
                                   <td>{rate.price.toFixed(2)}</td>
                                   <td>{rate.currency}</td>
                                   <td>{formatDash(rate.notes || rate.discountNotes || rate.guideSeatPolicy)}</td>
-                                  <td><span className="status-badge">{getPricingModeForRate(rate)}</span></td>
+                                  <td>
+                                    <span className="status-badge">{getPricingModeForRate(rate)}</span>
+                                    {getPricingModeAliasForRate(rate) ? <div className="table-subcopy">Legacy alias: {getPricingModeAliasForRate(rate)}</div> : null}
+                                  </td>
                                   <td>
                                     {formatDate(rate.validFrom)} - {formatDate(rate.validTo)}
                                   </td>
@@ -2515,9 +2527,9 @@ export function VehicleRatesTable({
                       <input name="halfDayRate" type="number" min="0" step="0.01" value={manualRateCardForm.rateAmount} onChange={(event) => updateManualRateCardForm('rateAmount', event.target.value)} />
                     </label>
                   ) : null}
-                  {manualPricingMode === 'Full Day' ? (
+                  {manualPricingMode === 'Daily Full Day' ? (
                     <label>
-                      Full-Day Rate
+                      Daily Full Day Rate
                       <input name="fullDayRate" type="number" min="0" step="0.01" value={manualRateCardForm.rateAmount} onChange={(event) => updateManualRateCardForm('rateAmount', event.target.value)} />
                     </label>
                   ) : null}
@@ -2539,33 +2551,15 @@ export function VehicleRatesTable({
                       <input name="extraKmRate" type="number" min="0" step="0.01" value={manualRateCardForm.rateAmount} onChange={(event) => updateManualRateCardForm('rateAmount', event.target.value)} />
                     </label>
                   ) : null}
-                  {manualPricingMode === 'Add-on / Supplement' ? (
-                    <div className="form-field-stack">
-                      <label>
-                        Supplement Type
-                        <select name="supplementType" defaultValue="nightSupplement">
-                          <option value="nightSupplement">Night supplement</option>
-                          <option value="weekendHolidaySupplement">Weekend / holiday supplement</option>
-                          <option value="driverAccommodation">Driver accommodation</option>
-                          <option value="driverMealAllowance">Driver meal allowance</option>
-                          <option value="parkingFee">Parking fee</option>
-                          <option value="borderPermitFee">Border permit fee</option>
-                          <option value="minimumCharge">Minimum charge</option>
-                        </select>
-                      </label>
-                      <label>
-                        Supplement Amount
-                        <input name="supplementAmount" type="number" min="0" step="0.01" value={manualRateCardForm.rateAmount} onChange={(event) => updateManualRateCardForm('rateAmount', event.target.value)} />
-                      </label>
-                      <label>
-                        Guide Seat / Free Seat Policy
-                        <input name="guideSeatPolicy" placeholder="1 guide seat free with 20 paying pax" />
-                      </label>
-                    </div>
+                  {manualPricingMode === 'Petra Overnight' || manualPricingMode === 'Wadi Rum Overnight' || manualPricingMode === 'Aqaba Overnight' ? (
+                    <label>
+                      Overnight Supplement
+                      <input name="overnightSupplement" type="number" min="0" step="0.01" value={manualRateCardForm.rateAmount} onChange={(event) => updateManualRateCardForm('rateAmount', event.target.value)} />
+                    </label>
                   ) : null}
                 </section>
 
-                {manualPricingMode === 'Half Day' || manualPricingMode === 'Full Day' ? (
+                {manualPricingMode === 'Half Day' || manualPricingMode === 'Daily Full Day' ? (
                   <section className="transport-rate-card-metadata-section">
                     <h4>Included Limits</h4>
                     {manualPricingMode === 'Half Day' ? (
@@ -2580,7 +2574,7 @@ export function VehicleRatesTable({
                         </label>
                       </>
                     ) : null}
-                    {manualPricingMode === 'Full Day' ? (
+                    {manualPricingMode === 'Daily Full Day' ? (
                       <>
                         <label>
                           Full-Day Included Hours

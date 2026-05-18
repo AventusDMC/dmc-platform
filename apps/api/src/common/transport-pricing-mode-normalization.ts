@@ -2,25 +2,26 @@ export type CanonicalTransportPricingMode =
   | 'Point-to-Point'
   | 'Airport Transfer'
   | 'Half Day'
-  | 'Full Day'
-  | 'Day Tour'
+  | 'Daily Full Day'
   | 'Extra Hour'
   | 'Extra KM'
-  | 'Driver Overnight'
+  | 'Petra Overnight'
+  | 'Wadi Rum Overnight'
+  | 'Aqaba Overnight'
   | 'Stationary / Waiting'
   | 'Add-on / Supplement';
 
 export const CANONICAL_TRANSPORT_PRICING_MODES: CanonicalTransportPricingMode[] = [
-  'Point-to-Point',
   'Airport Transfer',
+  'Point-to-Point',
+  'Daily Full Day',
   'Half Day',
-  'Full Day',
-  'Day Tour',
+  'Stationary / Waiting',
   'Extra Hour',
   'Extra KM',
-  'Driver Overnight',
-  'Stationary / Waiting',
-  'Add-on / Supplement',
+  'Petra Overnight',
+  'Wadi Rum Overnight',
+  'Aqaba Overnight',
 ];
 
 const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMode> = {
@@ -28,26 +29,36 @@ const TRANSPORT_PRICING_MODE_ALIASES: Record<string, CanonicalTransportPricingMo
   airporttransfer: 'Airport Transfer',
   halfday: 'Half Day',
   halfday100km: 'Half Day',
-  fullday: 'Full Day',
-  fullday200km: 'Full Day',
-  dailyfd: 'Full Day',
-  dailyfullday: 'Full Day',
-  dailypackage: 'Full Day',
-  minimum3fulldays: 'Full Day',
-  daytour: 'Day Tour',
-  daytours: 'Day Tour',
-  daytouring: 'Day Tour',
-  sightseeingday: 'Day Tour',
-  sightseeingtour: 'Day Tour',
-  fittouring: 'Day Tour',
+  fullday: 'Daily Full Day',
+  fullday200km: 'Daily Full Day',
+  fulldaytour: 'Daily Full Day',
+  dailyfd: 'Daily Full Day',
+  dailyfullday: 'Daily Full Day',
+  dailypackage: 'Daily Full Day',
+  minimum3fulldays: 'Daily Full Day',
+  daytour: 'Daily Full Day',
+  daytours: 'Daily Full Day',
+  daytouring: 'Daily Full Day',
+  sightseeingday: 'Daily Full Day',
+  sightseeingtour: 'Daily Full Day',
+  fittouring: 'Daily Full Day',
   extrahour: 'Extra Hour',
   extrakm: 'Extra KM',
   extrakilometer: 'Extra KM',
   extrakilometre: 'Extra KM',
-  driverovernight: 'Driver Overnight',
-  overnightdriver: 'Driver Overnight',
+  driverovernight: 'Petra Overnight',
+  overnight: 'Petra Overnight',
+  overnightdriver: 'Petra Overnight',
+  petraovernight: 'Petra Overnight',
+  petraovernightdriver: 'Petra Overnight',
+  wadirumovernight: 'Wadi Rum Overnight',
+  rumovernight: 'Wadi Rum Overnight',
+  wadirumovernightdriver: 'Wadi Rum Overnight',
+  aqabaovernight: 'Aqaba Overnight',
+  aqabaovernightdriver: 'Aqaba Overnight',
   stationary: 'Stationary / Waiting',
   stationarywaiting: 'Stationary / Waiting',
+  waiting: 'Stationary / Waiting',
   addonsupplement: 'Add-on / Supplement',
   addon: 'Add-on / Supplement',
   supplement: 'Add-on / Supplement',
@@ -69,6 +80,12 @@ export function normalizeTransportPricingModeKey(value: string) {
 export function normalizeTransportPricingMode(value?: string | null): CanonicalTransportPricingMode | null {
   const normalized = normalizeTransportPricingModeKey(value || '');
   return normalized ? TRANSPORT_PRICING_MODE_ALIASES[normalized] || null : null;
+}
+
+export function getOriginalTransportPricingModeAlias(value?: string | null) {
+  const raw = String(value || '').trim();
+  const canonical = normalizeTransportPricingMode(raw);
+  return raw && canonical && raw.toLowerCase() !== canonical.toLowerCase() ? raw : null;
 }
 
 type TransportPricingModeSource = {
@@ -102,8 +119,24 @@ export function deriveTransportPricingMode(source: TransportPricingModeSource): 
     source.route?.name,
   ].join(' ').toLowerCase();
 
-  if (/\b(full_day|daily_package|daily\s*fd|daily\s+full\s+day|full\s+day|minimum\s+3)\b/.test(text)) {
-    return 'Full Day';
+  if (/\b(petra\s+overnight|petra.*driver\s+overnight)\b/.test(text)) {
+    return 'Petra Overnight';
+  }
+
+  if (/\b(wadi\s*rum\s+overnight|rum\s+overnight|wadi\s*rum.*driver\s+overnight)\b/.test(text)) {
+    return 'Wadi Rum Overnight';
+  }
+
+  if (/\b(aqaba\s+overnight|aqaba.*driver\s+overnight)\b/.test(text)) {
+    return 'Aqaba Overnight';
+  }
+
+  if (/\b(full_day|daily_package|daily\s*fd|daily\s+full\s+day|full\s+day|day\s*tour|minimum\s+3)\b/.test(text)) {
+    return 'Daily Full Day';
+  }
+
+  if (/\b(jerash|petra)\b/.test(text) && /\b(touring|tour|day)\b/.test(text)) {
+    return 'Daily Full Day';
   }
 
   if (/\b(half_day|half\s+day)\b/.test(text)) {
@@ -112,6 +145,10 @@ export function deriveTransportPricingMode(source: TransportPricingModeSource): 
 
   if (/\b(stationary|waiting)\b/.test(text)) {
     return 'Stationary / Waiting';
+  }
+
+  if (/\b(qaia|airport)\b/.test(text) && /\b(amman|city)\b/.test(text)) {
+    return 'Airport Transfer';
   }
 
   if (/\b(route_transfer|route transfer|transfer|transfers|private transfer)\b/.test(text)) {
