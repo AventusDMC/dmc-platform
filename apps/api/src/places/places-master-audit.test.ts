@@ -201,18 +201,20 @@ test('place master selector canonicalization hides polluted rows and preserves r
     { id: 'stationary', name: 'Stationary', type: 'Destination', city: 'Amman', country: 'Jordan', isActive: true },
     { id: 'disposal', name: 'Dead Sea Disposal', type: 'Destination', city: 'Dead Sea', country: 'Jordan', isActive: true },
     { id: 'transfer-deduction', name: 'Alpha Bus Transfer Deduction', type: 'Destination', city: 'Amman', country: 'Jordan', isActive: true },
+    { id: 'route-label', name: 'Amman - madaba', type: 'Destination', city: 'Amman', country: 'Jordan', isActive: true },
   ];
 
   const selectorResult = applyPlaceMasterSelectorCanonicalization(places);
   assert.deepEqual(selectorResult.places.map((place) => place.id), ['petra', 'qaia', 'aqj', 'aqaba-city']);
   assert.equal(selectorResult.summary.canonicalMappingsApplied, 5);
-  assert.equal(selectorResult.summary.selectorHiddenRows, 12);
+  assert.equal(selectorResult.summary.selectorHiddenRows, 13);
   assert.equal(selectorResult.summary.preservedHistoricalRows, 0);
 
-  const historicalResult = applyPlaceMasterSelectorCanonicalization(places, { includeIds: ['petra-1d', 'queen-alia'] });
-  assert.deepEqual(historicalResult.places.map((place) => place.id), ['petra', 'petra-1d', 'qaia', 'queen-alia', 'aqj', 'aqaba-city']);
+  const historicalResult = applyPlaceMasterSelectorCanonicalization(places, { includeIds: ['petra-1d', 'queen-alia', 'route-label'] });
+  assert.deepEqual(historicalResult.places.map((place) => place.id), ['petra', 'petra-1d', 'qaia', 'queen-alia', 'aqj', 'aqaba-city', 'route-label']);
   assert.equal((historicalResult.places.find((place: any) => place.id === 'petra-1d') as any).canonicalPlaceId, 'petra');
   assert.equal((historicalResult.places.find((place: any) => place.id === 'petra-1d') as any).selectorHidden, true);
   assert.equal((historicalResult.places.find((place: any) => place.id === 'queen-alia') as any).canonicalPlaceId, 'qaia');
-  assert.equal(historicalResult.summary.preservedHistoricalRows, 2);
+  assert.equal((historicalResult.places.find((place: any) => place.id === 'route-label') as any).selectorHidden, true);
+  assert.equal(historicalResult.summary.preservedHistoricalRows, 3);
 });

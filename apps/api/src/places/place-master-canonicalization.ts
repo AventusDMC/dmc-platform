@@ -21,6 +21,7 @@ const CANONICAL_ALIAS_LABELS: Record<string, string> = {
 };
 
 const POLLUTED_SELECTOR_PATTERNS = [
+  /\s(?:-|->|→)\s/,
   /\bfull\s*day\b/i,
   /\bhalf\s*day\b/i,
   /\bextra\s*km\b/i,

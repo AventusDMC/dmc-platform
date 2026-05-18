@@ -624,6 +624,26 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
   });
 
+  it('hides route-pattern place rows while keeping canonical destinations visible', () => {
+    const places = [
+      { id: 'amman-madaba-dash', name: 'Amman - madaba', type: 'Destination', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'amman-madaba-arrow', name: 'Amman -> Madaba', type: 'Destination', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'petra', name: 'Petra', type: 'Site', placeTypeId: null, cityId: null, city: 'Petra', country: 'Jordan', isActive: true },
+      { id: 'madaba', name: 'Madaba', type: 'City', placeTypeId: null, cityId: null, city: 'Madaba', country: 'Jordan', isActive: true },
+      { id: 'dead-sea', name: 'Dead Sea', type: 'Destination', placeTypeId: null, cityId: null, city: 'Dead Sea', country: 'Jordan', isActive: true },
+      { id: 'wadi-rum', name: 'Wadi Rum', type: 'Region', placeTypeId: null, cityId: null, city: 'Wadi Rum', country: 'Jordan', isActive: true },
+    ];
+
+    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), ['petra', 'madaba', 'dead-sea', 'wadi-rum']);
+    assert.deepEqual(filterCanonicalGeographicPlaces(places, ['amman-madaba-dash']).map((place) => place.id), [
+      'petra',
+      'madaba',
+      'dead-sea',
+      'wadi-rum',
+      'amman-madaba-dash',
+    ]);
+  });
+
   it('filters operator-facing vehicle selectors to canonical fleet rows', () => {
     const vehicles = [
       { id: 'sedan', name: 'Sedan 2', maxPax: 2 },

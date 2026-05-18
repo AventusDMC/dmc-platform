@@ -111,6 +111,7 @@ export function getCanonicalPlaceSelectorKey(place: Pick<PlaceOption, 'name' | '
 }
 
 const NON_GEOGRAPHIC_PLACE_PATTERNS = [
+  /\s(?:-|->|→)\s/,
   /\bextra\s*km\b/i,
   /\bextra\s*(hour|hr|hrs|h)\b/i,
   /\bovernight\b/i,
