@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencyOptions';
+import { filterCanonicalFleetVehicles } from '../../../lib/transport-vehicles';
 import type { TouringRouteCatalogs, TouringRouteDetail, TouringRoutePricingDetail } from '../types';
 
 type StopDraft = { id?: string; order: number; city: string; location: string; overnight: boolean; notes: string };
@@ -120,7 +121,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
     [route.mainDestinations, route.stops],
   );
   const vehicleTypeOptions = useMemo(
-    () => uniqueTextOptions(catalogs.vehicles.map((vehicle) => vehicle.vehicleType || vehicle.name)),
+    () => uniqueTextOptions(filterCanonicalFleetVehicles(catalogs.vehicles).map((vehicle) => vehicle.vehicleType || vehicle.name)),
     [catalogs.vehicles],
   );
   const validityYearOptions = useMemo(() => {
@@ -339,7 +340,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                     <select
                       value={catalogs.vehicles.find((vehicle) => vehicle.id === pricing.vehicleId)?.vehicleType || ''}
                       onChange={(event) => {
-                        const vehicle = catalogs.vehicles.find((entry) => (entry.vehicleType || entry.name) === event.target.value);
+                        const vehicle = filterCanonicalFleetVehicles(catalogs.vehicles).find((entry) => (entry.vehicleType || entry.name) === event.target.value);
                         updatePricing(index, { vehicleId: vehicle?.id || '' });
                       }}
                     >
@@ -352,7 +353,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                     </select>
                     <select value={pricing.vehicleId} onChange={(event) => updatePricing(index, { vehicleId: event.target.value })}>
                       <option value="">Vehicle pending</option>
-                      {catalogs.vehicles.map((vehicle) => (
+                      {filterCanonicalFleetVehicles(catalogs.vehicles, [pricing.vehicleId]).map((vehicle) => (
                         <option key={vehicle.id} value={vehicle.id}>
                           {vehicle.name}
                           {vehicle.vehicleType ? ` (${vehicle.vehicleType})` : ''}

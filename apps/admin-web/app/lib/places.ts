@@ -29,6 +29,33 @@ export function formatPlaceLabel(place: Pick<PlaceOption, 'name' | 'type' | 'cit
   return `${base} (${place.type})`;
 }
 
+const NON_GEOGRAPHIC_PLACE_PATTERNS = [
+  /\bfull\s*day\b/i,
+  /\bstationary\b/i,
+  /\bwaiting\b/i,
+  /\bpricing\b/i,
+  /\brate\b/i,
+  /\bprice\b/i,
+  /\bservice\b/i,
+  /\badd[-\s]?on\b/i,
+  /\bper\s*(vehicle|day|hour|km)\b/i,
+  /\b\d+\s*(km|h|hr|hrs)\b/i,
+];
+
+export function isCanonicalGeographicPlace(place: Pick<PlaceOption, 'name' | 'type' | 'isActive'>) {
+  if (place.isActive === false) {
+    return false;
+  }
+
+  const label = `${place.name || ''} ${place.type || ''}`.trim();
+  return !NON_GEOGRAPHIC_PLACE_PATTERNS.some((pattern) => pattern.test(label));
+}
+
+export function filterCanonicalGeographicPlaces<T extends Pick<PlaceOption, 'id' | 'name' | 'type' | 'isActive'>>(places: T[], selectedIds: Array<string | null | undefined> = []) {
+  const selectedIdSet = new Set(selectedIds.filter(Boolean));
+  return places.filter((place) => selectedIdSet.has(place.id) || isCanonicalGeographicPlace(place));
+}
+
 export function buildRouteName(
   fromPlace: Pick<PlaceOption, 'name'> | null | undefined,
   toPlace: Pick<PlaceOption, 'name'> | null | undefined,

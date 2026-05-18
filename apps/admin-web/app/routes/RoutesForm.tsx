@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PlaceComboboxWithCreate } from '../components/PlaceComboboxWithCreate';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
-import { fetchPlaces, PlaceOption } from '../lib/places';
+import { fetchPlaces, filterCanonicalGeographicPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import {
   buildMovementRouteName,
@@ -137,6 +137,9 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
     }
   }
 
+  const fromPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId]);
+  const toPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId]);
+
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
       <p className="form-helper">
@@ -159,7 +162,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
             cities={cities}
             placeTypes={placeTypes}
             label="From place"
-            places={availablePlaces.filter((place) => place.isActive || place.id === fromPlaceId)}
+            places={fromPlaceOptions}
             value={fromPlaceId}
             onChange={setFromPlaceId}
             onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
@@ -170,7 +173,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
             cities={cities}
             placeTypes={placeTypes}
             label="To place"
-            places={availablePlaces.filter((place) => place.isActive || place.id === toPlaceId)}
+            places={toPlaceOptions}
             value={toPlaceId}
             onChange={setToPlaceId}
             onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}

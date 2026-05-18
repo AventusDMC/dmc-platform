@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { filterCanonicalGeographicPlaces } from '../lib/places';
+import { filterCanonicalFleetVehicles, isCanonicalFleetVehicle } from '../lib/transport-vehicles';
 import { filterTransportTariffRates } from './TransportTariffWorkbookSection';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
@@ -19,9 +21,14 @@ const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
 const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.tsx', import.meta.url), 'utf8');
+const placeComboboxSource = readFileSync(new URL('../components/PlaceCombobox.tsx', import.meta.url), 'utf8');
 const pricingRuleFormSource = readFileSync(new URL('../transport-pricing/TransportPricingRuleForm.tsx', import.meta.url), 'utf8');
 const routesFormSource = readFileSync(new URL('../routes/RoutesForm.tsx', import.meta.url), 'utf8');
 const transportRoutesSource = readFileSync(new URL('../lib/transport-routes.ts', import.meta.url), 'utf8');
+const quotePageSource = readFileSync(new URL('../quotes/[id]/page.tsx', import.meta.url), 'utf8');
+const quoteTransportPickerSource = readFileSync(new URL('../quotes/[id]/QuoteTransportPicker.tsx', import.meta.url), 'utf8');
+const transportPricingCalculatorSource = readFileSync(new URL('../transport-pricing/TransportPricingCalculator.tsx', import.meta.url), 'utf8');
+const touringRouteEditorSourceForSelectors = readFileSync(new URL('./touring-routes/[id]/TouringRouteEditor.tsx', import.meta.url), 'utf8');
 
 function expectSourceContains(source: string, fragments: string[]) {
   for (const fragment of fragments) {
@@ -349,7 +356,7 @@ describe('transport catalog supplier rate-card UX', () => {
       "const [supplierId] = useState(initialValues?.supplierId || '');",
       'supplierId: supplierId || null,',
       'notes: notes.trim() || null,',
-      'disabled={vehicles.length === 0 || lockRateCardContext}',
+      'disabled={selectableVehicles.length === 0 || lockRateCardContext}',
       'disabled={lockRateCardContext}',
     ]);
   });
@@ -438,6 +445,101 @@ describe('transport catalog supplier rate-card UX', () => {
       'placeholder={routes.length === 0 ? \'Create a route first\' : \'Search saved routes\'}',
       'maxResults={50}',
     ]);
+  });
+
+  it('keeps place combobox selections committed while operators search', () => {
+    expectSourceContains(placeComboboxSource, [
+      'const [committedSelectedPlace, setCommittedSelectedPlace] = useState<PlaceOption | null>(null);',
+      'const selectedPlace = selectedPlaceFromOptions || committedSelectedPlace;',
+      'if (selectedPlaceFromOptions) {',
+      'setCommittedSelectedPlace(selectedPlaceFromOptions);',
+      'if (isOpen) {',
+      'setCommittedSelectedPlace(place);',
+      'Selected <strong>{formatPlaceLabel(selectedPlace)}</strong>',
+      'aria-label={`Clear ${label}`}',
+    ]);
+
+    assert.equal(placeComboboxSource.includes("onChange('');\r\n            setIsOpen(true);"), false);
+    assert.equal(placeComboboxSource.includes("onChange('');\n            setIsOpen(true);"), false);
+  });
+
+  it('keeps transport selector data boundaries separated by catalog area', () => {
+    expectSourceContains(sectionSource, [
+      '`${API_BASE_URL}/routes?type=transfer&limit=200`',
+    ]);
+
+    expectSourceContains(routesFormSource, [
+      'places={fromPlaceOptions}',
+      'places={toPlaceOptions}',
+      '<PlaceComboboxWithCreate',
+    ]);
+
+    expectSourceContains(quotePageSource, [
+      '`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`',
+      '`${API_BASE_URL}/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500`',
+      "canonicalRouteType: 'TOURING_ROUTE'",
+      "transportPickerMode: 'TOURING_ROUTE'",
+    ]);
+
+    expectSourceContains(quoteTransportPickerSource, [
+      'const routeTransferOptions = routeSelectorGroups.transferRoutes;',
+      'const touringRouteOptions = routeSelectorGroups.touringRoutes;',
+      'const serviceAreaOptions = routeSelectorGroups.serviceAreas;',
+      "if (mode === 'TOURING_ROUTE') return groups.touringRoutes;",
+      "if (mode === 'DISPOSAL') return groups.serviceAreas;",
+      'return groups.transferRoutes;',
+      "if (isTouringRouteOption(route) || isProgramOrDisposalRouteOption(route)) {",
+      "if (isTouringRouteOption(route) || !isProgramOrDisposalRouteOption(route)) {",
+    ]);
+  });
+
+  it('filters operator-facing place selectors to canonical geographic places', () => {
+    const places = [
+      { id: 'amman', name: 'Amman', type: 'City', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'petra', name: 'Petra Visitor Center', type: 'Site', placeTypeId: null, cityId: null, city: 'Petra', country: 'Jordan', isActive: true },
+      { id: 'full-day', name: 'Alpha Bus Full Day 200km', type: 'Supplier Rate', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'stationary', name: 'Alpha Bus Stationary', type: 'Pricing Mode', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'limo-full-day', name: 'Alpha Limo Full Day 8H', type: 'Service', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+    ];
+
+    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), ['amman', 'petra']);
+    assert.deepEqual(filterCanonicalGeographicPlaces(places, ['stationary']).map((place) => place.id), ['amman', 'petra', 'stationary']);
+
+    expectSourceContains(placeComboboxSource, ['filterCanonicalGeographicPlaces(places, [value])']);
+    expectSourceContains(routesFormSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
+    expectSourceContains(vehicleRatesFormSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
+    expectSourceContains(transportPricingCalculatorSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
+  });
+
+  it('filters operator-facing vehicle selectors to canonical fleet rows', () => {
+    const vehicles = [
+      { id: 'sedan', name: 'Sedan 2', maxPax: 2 },
+      { id: 'mini-van', name: 'Mini Van 6', maxPax: 6 },
+      { id: 'van', name: 'Van 9', maxPax: 9 },
+      { id: 'coaster', name: 'Toyota Coaster / Mini Bus 17', maxPax: 17 },
+      { id: 'medium-bus', name: 'Medium Bus 30', maxPax: 30 },
+      { id: 'large-coach', name: 'Large Coach 49', maxPax: 49 },
+      { id: 'legacy-mini-van', name: 'Mini Van 6', maxPax: 9 },
+      { id: 'alpha-bus', name: 'Alpha Bus 49', maxPax: 49 },
+    ];
+
+    assert.equal(isCanonicalFleetVehicle(vehicles[0]), true);
+    assert.equal(isCanonicalFleetVehicle(vehicles[6]), false);
+    assert.deepEqual(filterCanonicalFleetVehicles(vehicles).map((vehicle) => vehicle.id), ['sedan', 'mini-van', 'van', 'coaster', 'medium-bus', 'large-coach']);
+    assert.deepEqual(filterCanonicalFleetVehicles(vehicles, ['legacy-mini-van']).map((vehicle) => vehicle.id), [
+      'sedan',
+      'mini-van',
+      'van',
+      'coaster',
+      'medium-bus',
+      'large-coach',
+      'legacy-mini-van',
+    ]);
+
+    expectSourceContains(vehicleRatesFormSource, ['filterCanonicalFleetVehicles(vehicles, [vehicleId])']);
+    expectSourceContains(pricingRuleFormSource, ['filterCanonicalFleetVehicles(vehicles, [vehicleId])']);
+    expectSourceContains(quoteTransportPickerSource, ['filterCanonicalFleetVehicles(propVehicles.filter(isActiveVehicle), [selectedVehicleId])']);
+    expectSourceContains(touringRouteEditorSourceForSelectors, ['filterCanonicalFleetVehicles(catalogs.vehicles, [pricing.vehicleId])']);
   });
 
   it('renders a phase-one Create Rate Card metadata form', () => {

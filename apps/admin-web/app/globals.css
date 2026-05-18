@@ -972,6 +972,10 @@ h1 {
 }
 
 .search-combobox-selected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
   margin: 0.35rem 0 0;
   color: var(--muted-text);
   font-size: 0.82rem;
@@ -979,7 +983,9 @@ h1 {
 }
 
 .search-combobox-selected strong {
+  min-width: 0;
   color: var(--saas-text);
+  overflow-wrap: anywhere;
 }
 
 select {

@@ -9,7 +9,7 @@ import { RouteCombobox } from '../components/RouteCombobox';
 import { getErrorMessage } from '../lib/api';
 import { CityOption } from '../lib/cities';
 import { type SupportedCurrency } from '../lib/currencyOptions';
-import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
+import { buildRouteName, fetchPlaces, filterCanonicalGeographicPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
 import { formatServiceTypeLabel } from '../lib/transport-formatters';
@@ -19,10 +19,12 @@ import {
   TRANSPORT_PRICING_MODE_HELPER_TEXT,
   TRANSPORT_PRICING_MODE_GROUPS,
 } from '../lib/transport-pricing-modes';
+import { filterCanonicalFleetVehicles } from '../lib/transport-vehicles';
 
 type VehicleOption = {
   id: string;
   name: string;
+  maxPax?: number | null;
 };
 
 type ServiceTypeOption = {
@@ -93,8 +95,9 @@ export function VehicleRatesForm({
   const pricingModeOptions = buildTransportPricingModeServiceTypeOptions(serviceTypes);
   const pricingModeServiceTypeIds = new Set(pricingModeOptions.map((option) => option.serviceType.id));
   const selectedServiceTypeStillAvailable = initialValues?.serviceTypeId && pricingModeServiceTypeIds.has(initialValues.serviceTypeId);
+  const initialVehicleOptions = filterCanonicalFleetVehicles(vehicles, [initialValues?.vehicleId]);
   const [availablePlaces, setAvailablePlaces] = useState(places);
-  const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || vehicles[0]?.id || '');
+  const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || initialVehicleOptions[0]?.id || '');
   const [serviceTypeId, setServiceTypeId] = useState(selectedServiceTypeStillAvailable ? initialValues.serviceTypeId : pricingModeOptions[0]?.serviceType.id || '');
   const [supplierId] = useState(initialValues?.supplierId || '');
   const [routeId, setRouteId] = useState(initialValues?.routeId || '');
@@ -229,18 +232,21 @@ export function VehicleRatesForm({
     }
   }
 
-  const canSubmit = vehicles.length > 0 && pricingModeOptions.length > 0;
+  const selectableVehicles = filterCanonicalFleetVehicles(vehicles, [vehicleId]);
+  const canSubmit = selectableVehicles.length > 0 && pricingModeOptions.length > 0;
+  const fromPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId]);
+  const toPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId]);
 
   return (
     <form className="entity-form" onSubmit={handleSubmit}>
       <div className="form-row">
         <label>
           Vehicle
-          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={vehicles.length === 0 || lockRateCardContext} required>
-            {vehicles.length === 0 ? (
-              <option value="">Create a vehicle first</option>
+          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={selectableVehicles.length === 0 || lockRateCardContext} required>
+            {selectableVehicles.length === 0 ? (
+              <option value="">Create a canonical vehicle first</option>
             ) : (
-              vehicles.map((vehicle) => (
+              selectableVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.name}
                 </option>
@@ -303,7 +309,7 @@ export function VehicleRatesForm({
           cities={cities}
           placeTypes={placeTypes}
           label="From place"
-          places={availablePlaces.filter((place) => place.isActive || place.id === fromPlaceId)}
+          places={fromPlaceOptions}
           value={fromPlaceId}
           onChange={setFromPlaceId}
           onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
@@ -315,7 +321,7 @@ export function VehicleRatesForm({
           cities={cities}
           placeTypes={placeTypes}
           label="To place"
-          places={availablePlaces.filter((place) => place.isActive || place.id === toPlaceId)}
+          places={toPlaceOptions}
           value={toPlaceId}
           onChange={setToPlaceId}
           onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}

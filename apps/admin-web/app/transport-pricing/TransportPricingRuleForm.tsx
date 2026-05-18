@@ -8,10 +8,12 @@ import { CurrencySelect } from '../components/CurrencySelect';
 import { RouteCombobox } from '../components/RouteCombobox';
 import { type SupportedCurrency } from '../lib/currencyOptions';
 import { RouteOption } from '../lib/routes';
+import { filterCanonicalFleetVehicles } from '../lib/transport-vehicles';
 
 type VehicleOption = {
   id: string;
   name: string;
+  maxPax?: number | null;
 };
 
 type ServiceTypeOption = {
@@ -52,9 +54,10 @@ export function TransportPricingRuleForm({
   initialValues,
 }: TransportPricingRuleFormProps) {
   const router = useRouter();
+  const initialVehicleOptions = filterCanonicalFleetVehicles(vehicles, [initialValues?.vehicleId]);
   const [routeId, setRouteId] = useState(initialValues?.routeId || routes[0]?.id || '');
   const [transportServiceTypeId, setTransportServiceTypeId] = useState(initialValues?.transportServiceTypeId || serviceTypes[0]?.id || '');
-  const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || vehicles[0]?.id || '');
+  const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || initialVehicleOptions[0]?.id || '');
   const [pricingMode, setPricingMode] = useState<'per_vehicle' | 'capacity_unit'>(initialValues?.pricingMode || 'per_vehicle');
   const [minPax, setMinPax] = useState(initialValues?.minPax || '1');
   const [maxPax, setMaxPax] = useState(initialValues?.maxPax || '1');
@@ -66,6 +69,7 @@ export function TransportPricingRuleForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const isEditing = Boolean(ruleId);
+  const selectableVehicles = filterCanonicalFleetVehicles(vehicles, [vehicleId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,7 +106,7 @@ export function TransportPricingRuleForm({
       }
 
       if (!isEditing) {
-        setVehicleId(vehicles[0]?.id || '');
+        setVehicleId(selectableVehicles[0]?.id || '');
         setPricingMode('per_vehicle');
         setMinPax('1');
         setMaxPax('1');
@@ -155,11 +159,11 @@ export function TransportPricingRuleForm({
 
         <label>
           Vehicle
-          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={vehicles.length === 0} required>
-            {vehicles.length === 0 ? (
-              <option value="">Create a vehicle first</option>
+          <select value={vehicleId} onChange={(event) => setVehicleId(event.target.value)} disabled={selectableVehicles.length === 0} required>
+            {selectableVehicles.length === 0 ? (
+              <option value="">Create a canonical vehicle first</option>
             ) : (
-              vehicles.map((vehicle) => (
+              selectableVehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.name}
                 </option>
@@ -233,7 +237,7 @@ export function TransportPricingRuleForm({
         </label>
       </div>
 
-      <button type="submit" disabled={isSubmitting || routes.length === 0 || vehicles.length === 0 || serviceTypes.length === 0}>
+      <button type="submit" disabled={isSubmitting || routes.length === 0 || selectableVehicles.length === 0 || serviceTypes.length === 0}>
         {isSubmitting ? 'Saving...' : submitLabel || (isEditing ? 'Save pricing rule' : 'Add pricing rule')}
       </button>
 

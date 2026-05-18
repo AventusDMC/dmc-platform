@@ -21,6 +21,7 @@
     "seed:program-templates": "ts-node prisma/seeds/seed-program-templates.ts",
     "seed:golden-touring-pricing": "ts-node prisma/seeds/seed-golden-touring-route-pricing-phase1.ts",
     "audit:fleet-taxonomy": "ts-node prisma/seeds/audit-fleet-taxonomy-phase1.ts",
+    "audit:erp-product-catalog": "ts-node prisma/seeds/audit-erp-product-catalog-integrity.ts",
     "canonicalize:fleet-taxonomy": "ts-node prisma/seeds/canonicalize-fleet-taxonomy-phase2.ts",
     "cleanup:golden-test-data": "ts-node prisma/seeds/cleanup-golden-test-data.ts",
     "canonicalize:transport-catalog": "ts-node prisma/seeds/canonicalize-transport-catalog-phase1.ts",

@@ -4,6 +4,31 @@ export const VEHICLE_TYPES = [...DEFAULT_VEHICLE_TYPE_LABELS, 'Other'] as const;
 
 export type VehicleType = (typeof VEHICLE_TYPES)[number];
 
+export const CANONICAL_FLEET_ROWS = [
+  { name: 'Sedan 2', maxPax: 2 },
+  { name: 'Mini Van 6', maxPax: 6 },
+  { name: 'Van 9', maxPax: 9 },
+  { name: 'Toyota Coaster / Mini Bus 17', maxPax: 17 },
+  { name: 'Medium Bus 30', maxPax: 30 },
+  { name: 'Large Coach 49', maxPax: 49 },
+] as const;
+
+function normalizeFleetLabel(value: unknown) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+export function isCanonicalFleetVehicle(vehicle: { name?: string | null; maxPax?: number | null }) {
+  return CANONICAL_FLEET_ROWS.some((canonical) => normalizeFleetLabel(vehicle.name) === normalizeFleetLabel(canonical.name) && Number(vehicle.maxPax || 0) === canonical.maxPax);
+}
+
+export function filterCanonicalFleetVehicles<T extends { id?: string | null; name?: string | null; maxPax?: number | null }>(
+  vehicles: T[],
+  selectedIds: Array<string | null | undefined> = [],
+) {
+  const selectedIdSet = new Set(selectedIds.filter(Boolean));
+  return vehicles.filter((vehicle) => (vehicle.id && selectedIdSet.has(vehicle.id)) || isCanonicalFleetVehicle(vehicle));
+}
+
 export function inferVehicleType(vehicle: { name?: string | null; maxPax?: number | null; vehicleType?: string | null }): VehicleType {
   const explicitType = normalizeVehicleTypeLabel(vehicle.vehicleType);
 

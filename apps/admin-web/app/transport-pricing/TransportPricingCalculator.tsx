@@ -5,7 +5,7 @@ import { PlaceComboboxWithCreate } from '../components/PlaceComboboxWithCreate';
 import { RouteCombobox } from '../components/RouteCombobox';
 import { getErrorMessage, readJsonResponse } from '../lib/api';
 import { CityOption } from '../lib/cities';
-import { buildRouteName, fetchPlaces, PlaceOption } from '../lib/places';
+import { buildRouteName, fetchPlaces, filterCanonicalGeographicPlaces, PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
 
@@ -165,6 +165,9 @@ export function TransportPricingCalculator({
     }
   }
 
+  const fromPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId]);
+  const toPlaceOptions = filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId]);
+
   return (
     <div className="detail-card">
       <h2>Calculator</h2>
@@ -204,7 +207,7 @@ export function TransportPricingCalculator({
             cities={cities}
             placeTypes={placeTypes}
             label="From place"
-            places={availablePlaces.filter((place) => place.isActive || place.id === fromPlaceId)}
+            places={fromPlaceOptions}
             value={fromPlaceId}
             onChange={setFromPlaceId}
             onPlaceCreated={(place) => handlePlaceCreated(place, 'from')}
@@ -215,7 +218,7 @@ export function TransportPricingCalculator({
             cities={cities}
             placeTypes={placeTypes}
             label="To place"
-            places={availablePlaces.filter((place) => place.isActive || place.id === toPlaceId)}
+            places={toPlaceOptions}
             value={toPlaceId}
             onChange={setToPlaceId}
             onPlaceCreated={(place) => handlePlaceCreated(place, 'to')}

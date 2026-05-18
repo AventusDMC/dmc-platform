@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { PlaceOption, formatPlaceLabel } from '../lib/places';
+import { filterCanonicalGeographicPlaces, PlaceOption, formatPlaceLabel } from '../lib/places';
 
 type PlaceComboboxProps = {
   label: string;
@@ -15,17 +15,35 @@ type PlaceComboboxProps = {
 export function PlaceCombobox({ label, places, value, onChange, placeholder, disabled = false }: PlaceComboboxProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
+  const [committedSelectedPlace, setCommittedSelectedPlace] = useState<PlaceOption | null>(null);
 
-  const selectedPlace = useMemo(() => places.find((place) => place.id === value) || null, [places, value]);
+  const visiblePlaces = useMemo(() => filterCanonicalGeographicPlaces(places, [value]), [places, value]);
+  const selectedPlaceFromOptions = useMemo(() => places.find((place) => place.id === value) || null, [places, value]);
+  const selectedPlace = selectedPlaceFromOptions || committedSelectedPlace;
 
   useEffect(() => {
-    setQuery(selectedPlace ? formatPlaceLabel(selectedPlace) : '');
-  }, [selectedPlace]);
+    if (!value) {
+      setCommittedSelectedPlace(null);
+      return;
+    }
+
+    if (selectedPlaceFromOptions) {
+      setCommittedSelectedPlace(selectedPlaceFromOptions);
+    }
+  }, [selectedPlaceFromOptions, value]);
+
+  useEffect(() => {
+    if (isOpen) {
+      return;
+    }
+
+    setQuery(selectedPlace && value ? formatPlaceLabel(selectedPlace) : '');
+  }, [isOpen, selectedPlace, value]);
 
   const filteredPlaces = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return places
+    return visiblePlaces
       .filter((place) => {
         if (!normalizedQuery) {
           return true;
@@ -36,7 +54,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
       .slice(0, 50);
-  }, [places, query]);
+  }, [visiblePlaces, query]);
 
   return (
     <label className="search-combobox">
@@ -46,14 +64,12 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            onChange('');
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(!disabled)}
           onBlur={() => {
             window.setTimeout(() => {
               setIsOpen(false);
-              setQuery(selectedPlace ? formatPlaceLabel(selectedPlace) : '');
             }, 150);
           }}
           placeholder={placeholder}
@@ -64,7 +80,9 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
           <button
             type="button"
             className="secondary-button search-combobox-clear"
+            aria-label={`Clear ${label}`}
             onClick={() => {
+              setCommittedSelectedPlace(null);
               onChange('');
               setQuery('');
               setIsOpen(false);
@@ -74,6 +92,11 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
           </button>
         ) : null}
       </div>
+      {value && selectedPlace ? (
+        <span className="search-combobox-selected" aria-live="polite">
+          Selected <strong>{formatPlaceLabel(selectedPlace)}</strong>
+        </span>
+      ) : null}
       {isOpen ? (
         <div className="search-combobox-menu">
           {filteredPlaces.length === 0 ? (
@@ -85,6 +108,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
                 type="button"
                 className={`search-combobox-option${value === place.id ? ' search-combobox-option-active' : ''}`}
                 onClick={() => {
+                  setCommittedSelectedPlace(place);
                   onChange(place.id);
                   setQuery(formatPlaceLabel(place));
                   setIsOpen(false);

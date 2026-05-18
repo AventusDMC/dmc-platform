@@ -6,7 +6,7 @@ import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent } from '../../lib/financials';
 import { RouteOption } from '../../lib/routes';
-import { formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
+import { filterCanonicalFleetVehicles, formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
 import { formatSupplierName } from '../../lib/transport-formatters';
 import { normalizeTransportRouteText, transportRoutePairsMatch } from '../../lib/transport-routes';
 import {
@@ -1086,7 +1086,7 @@ export function QuoteTransportPicker({
   const touringRouteOptions = routeSelectorGroups.touringRoutes;
   const serviceAreaOptions = routeSelectorGroups.serviceAreas;
   const routeOptionsForMode = getRouteOptionsForTransportMode(routeSelectorGroups, transportMode);
-  const allVehicles = useMemo(() => propVehicles.filter(isActiveVehicle), [propVehicles]);
+  const allVehicles = useMemo(() => filterCanonicalFleetVehicles(propVehicles.filter(isActiveVehicle), [selectedVehicleId]), [propVehicles, selectedVehicleId]);
   const loadedSupplierRates = useMemo(
     () => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards), ...getTouringRouteSupplierRateRows(routes)],
     [manualSupplierRateCards, routes, supplierRateCards],
