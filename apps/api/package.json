@@ -23,7 +23,7 @@
     "reset:client-test-data": "ts-node ../../scripts/reset-client-test-data.ts",
     "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts",
     "verify:build-output": "node ../../scripts/verify-api-build-output.mjs",
-    "start:prod": "npm run prisma:migrate:deploy && node ./apps/api/dist/main.js"
+    "start:prod": "npm run prisma:migrate:deploy && node ./dist/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.8",
