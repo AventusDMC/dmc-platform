@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { blockDelete, normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { applyPlaceMasterSelectorCanonicalization } from './place-master-canonicalization';
 
 type FindPlacesInput = {
   search?: string;
   active?: boolean;
+  selector?: boolean;
+  includeIds?: string[];
 };
 
 type CreatePlaceInput = {
@@ -50,7 +53,12 @@ export class PlacesService {
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }, { city: 'asc' }],
     });
 
-    return places.map((place) => this.serializePlace(place));
+    const serializedPlaces = places.map((place) => this.serializePlace(place));
+    if (!filters.selector) {
+      return serializedPlaces;
+    }
+
+    return applyPlaceMasterSelectorCanonicalization(serializedPlaces, { includeIds: filters.includeIds }).places;
   }
 
   async findOne(id: string) {

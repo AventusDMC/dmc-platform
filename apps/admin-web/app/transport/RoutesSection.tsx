@@ -11,8 +11,10 @@ import { RoutesTable } from './RoutesTable';
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
 
-async function getPlaces(): Promise<PlaceOption[]> {
-  return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places`, 'Transport places', {
+async function getPlaces(includeIds: string[] = []): Promise<PlaceOption[]> {
+  const uniqueIncludeIds = Array.from(new Set(includeIds.filter(Boolean)));
+  const includeQuery = uniqueIncludeIds.length > 0 ? `&includeIds=${encodeURIComponent(uniqueIncludeIds.join(','))}` : '';
+  return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places?selector=true${includeQuery}`, 'Transport places', {
     cache: 'no-store',
   });
 }
@@ -36,7 +38,9 @@ async function getPlaceTypes(): Promise<PlaceTypeOption[]> {
 }
 
 export async function RoutesSection() {
-  const [places, routes, cities, placeTypes] = await Promise.all([getPlaces(), getRoutes(), getCities(), getPlaceTypes()]);
+  const [routes, cities, placeTypes] = await Promise.all([getRoutes(), getCities(), getPlaceTypes()]);
+  const routePlaceIds = routes.flatMap((route) => [route.fromPlaceId, route.toPlaceId]).filter(Boolean);
+  const places = await getPlaces(routePlaceIds);
 
   return (
     <TableSectionShell

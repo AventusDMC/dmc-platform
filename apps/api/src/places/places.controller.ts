@@ -18,10 +18,12 @@ export class PlacesController {
   constructor(private readonly placesService: PlacesService) {}
 
   @Get()
-  findAll(@Query('search') search?: string, @Query('active') active?: string) {
+  findAll(@Query('search') search?: string, @Query('active') active?: string, @Query('selector') selector?: string, @Query('includeIds') includeIds?: string | string[]) {
     return this.placesService.findAll({
       search,
       active: active === undefined ? undefined : active !== 'false',
+      selector: selector === 'true',
+      includeIds: Array.isArray(includeIds) ? includeIds : includeIds ? includeIds.split(',').map((id) => id.trim()).filter(Boolean) : [],
     });
   }
 

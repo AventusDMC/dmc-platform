@@ -43,7 +43,7 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 }
 
 async function getPlaces(): Promise<PlaceOption[]> {
-  return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places`, 'Vehicle rates places', {
+  return adminPageFetchJson<PlaceOption[]>(`${API_BASE_URL}/places?selector=true`, 'Vehicle rates places', {
     cache: 'no-store',
   });
 }

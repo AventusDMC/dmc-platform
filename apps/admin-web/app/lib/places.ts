@@ -200,7 +200,7 @@ export function buildRouteName(
 }
 
 export async function fetchPlaces(apiBaseUrl: string) {
-  const response = await fetch(`${apiBaseUrl}/places`, {
+  const response = await fetch(`${apiBaseUrl}/places?selector=true`, {
     cache: 'no-store',
   });
 
