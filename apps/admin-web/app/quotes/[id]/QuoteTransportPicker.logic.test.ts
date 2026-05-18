@@ -171,8 +171,8 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
 
     assert.deepEqual(modes, ['Airport Transfer', 'Point-to-Point']);
     assert.equal(modes.includes('Half Day'), false);
-    assert.equal(modes.includes('Day Tour'), false);
-    assert.equal(modes.includes('Full Day'), false);
+    assert.equal((modes as string[]).includes('Day Tour'), false);
+    assert.equal((modes as string[]).includes('Full Day'), false);
   });
 
   it('displays supplier rate-card currency without falling back to quote currency', () => {
@@ -242,12 +242,12 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.match(formatVehicleOptionLabel(ranked.find((entry) => entry.vehicle.id === 'sedan') as any, []), /Manual override/);
   });
 
-  it('previews Full Day costs as a daily rate with editable billable days', () => {
-    const fullDayRate = rate('Medium 30', 'Full Day', {
+  it('previews Daily Full Day costs as a daily rate with editable billable days', () => {
+    const fullDayRate = rate('Medium 30', 'Daily Full Day', {
       price: 509,
       maxPax: 30,
       vehicle: { name: 'Medium 30', vehicleType: null, maxPax: 30 },
-      serviceType: { name: 'Full Day', code: 'FULL_DAY', classification: 'FULL_DAY' },
+      serviceType: { name: 'Daily Full Day', code: 'DAILY_FULL_DAY', classification: 'FULL_DAY' },
     });
 
     assert.equal(getQuoteTransportRateBillableDays(fullDayRate, 1), 1);
@@ -278,7 +278,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.deepEqual(modes, ['Half Day']);
   });
 
-  it('keeps Day Tour as a touring route pricing mode, not a point-to-point fallback', () => {
+  it('keeps legacy Day Tour rows as Daily Full Day touring route pricing, not a point-to-point fallback', () => {
     const touringRoute = {
       ...route,
       routeType: 'TOURING_ROUTE',
@@ -291,7 +291,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.deepEqual(modes, ['Day Tour']);
+    assert.deepEqual(modes, ['Daily Full Day']);
   });
 
   it('shows Full Day disposal modes for Amman service-area rows when Half Day and Stationary are exact route rows', () => {
@@ -314,7 +314,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.ok(modes.includes('Full Day'));
+    assert.ok(modes.includes('Daily Full Day'));
     assert.ok(modes.includes('Half Day'));
     assert.ok(modes.includes('Stationary / Waiting'));
   });
@@ -337,7 +337,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.deepEqual(modes, ['Full Day']);
+    assert.deepEqual(modes, ['Daily Full Day']);
   });
 
   it('filters city disposal service areas to disposal-compatible modes only', () => {
@@ -378,7 +378,7 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.deepEqual(modes, ['Half Day', 'Full Day']);
+    assert.deepEqual(modes, ['Half Day', 'Daily Full Day']);
   });
 
   it('normalizes daily package full-day disposal rows and labels the minimum rule', () => {
@@ -404,19 +404,19 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
       now: activeDate,
     });
 
-    assert.ok(modes.includes('Full Day'));
+    assert.ok(modes.includes('Daily Full Day'));
     assert.ok(modes.includes('Half Day'));
     assert.ok(modes.includes('Stationary / Waiting'));
     assert.equal(
       getTransportPricingModeOptionLabel({
-        mode: 'Full Day',
+        mode: 'Daily Full Day',
         rates,
         route: ammanRoute,
         selectedCanonicalVehicleType: 'Coach',
         requestedPax: 30,
         now: activeDate,
       }),
-      'Full Day - minimum 3 days',
+      'Daily Full Day - minimum 3 days',
     );
   });
 

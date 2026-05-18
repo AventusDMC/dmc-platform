@@ -823,8 +823,10 @@ test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicl
   assert.equal(stores.vehicles.find((vehicle) => vehicle.name === 'Van VIP 9')?.vehicleType, 'Van');
   assert.equal(stores.vehicleRates.find((rate) => rate.maxPax === 30)?.minPax, 1);
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Point-to-Point')?.classification, 'ROUTE_TRANSFER');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Full Day')?.classification, 'FULL_DAY');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Day Tour')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Daily Full Day')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Petra Overnight')?.classification, 'ADD_ON');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Wadi Rum Overnight')?.classification, 'ADD_ON');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Aqaba Overnight')?.classification, 'ADD_ON');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 });
 
@@ -1162,7 +1164,7 @@ test('Almushtari-style transport rows classify services and expose smart picker 
   const imported = await importService.importTransportContract({ buffer: buildWorkbookBuffer(rows), originalname: 'almushtari.xlsx' }, { allowCreateSuppliers: true });
   assert.equal(imported.createdRates, 4);
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Airport Transfer')?.classification, 'ROUTE_TRANSFER');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Full Day')?.classification, 'FULL_DAY');
+  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Daily Full Day')?.classification, 'FULL_DAY');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Add-on / Supplement')?.classification, 'ADD_ON');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 
