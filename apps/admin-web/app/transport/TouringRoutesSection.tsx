@@ -90,6 +90,9 @@ export async function TouringRoutesSection({ view = 'golden' }: { view?: Touring
             <p className="detail-copy">Multi-stop and multi-day transport programs that are not stored as fake transfer routes.</p>
           </div>
           <div className="button-row">
+            <a className="button" href="/transport/touring-routes/new">
+              Create Touring Route
+            </a>
             <a className={view === 'golden' ? 'button' : 'secondary-button'} href="/transport?tab=touring-routes">
               Golden only
             </a>

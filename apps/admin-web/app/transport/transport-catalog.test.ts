@@ -13,6 +13,8 @@ const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbook
 const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
 const touringRouteArchiveButtonSource = readFileSync(new URL('./TouringRouteArchiveButton.tsx', import.meta.url), 'utf8');
 const touringRouteDuplicateButtonSource = readFileSync(new URL('./touring-routes/TouringRouteDuplicateButton.tsx', import.meta.url), 'utf8');
+const touringRouteCreateFormSource = readFileSync(new URL('./touring-routes/TouringRouteCreateForm.tsx', import.meta.url), 'utf8');
+const touringRouteCreatePageSource = readFileSync(new URL('./touring-routes/new/page.tsx', import.meta.url), 'utf8');
 const touringRouteDuplicateProxySource = readFileSync(new URL('../api/touring-routes/[id]/duplicate/route.ts', import.meta.url), 'utf8');
 const touringRouteDetailPageSource = readFileSync(new URL('./touring-routes/[id]/page.tsx', import.meta.url), 'utf8');
 const touringRouteEditorSource = readFileSync(new URL('./touring-routes/[id]/TouringRouteEditor.tsx', import.meta.url), 'utf8');
@@ -60,8 +62,9 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
   });
 
-  it('keeps route type options limited to transfer and touring routes', () => {
-    expectSourceContains(transportRoutesSource, ["'TRANSFER_ROUTE'", "'TOURING_ROUTE'", 'MOVEMENT_ROUTE_TYPE_LABELS']);
+  it('keeps Transfer Routes form limited to transfer routes only', () => {
+    expectSourceContains(transportRoutesSource, ["'TRANSFER_ROUTE'", 'MOVEMENT_ROUTE_TYPE_LABELS']);
+    assert.equal(transportRoutesSource.includes("'TOURING_ROUTE'"), false);
     expectSourceContains(routesFormSource, [
       'MOVEMENT_ROUTE_TYPES.map((option)',
       'getMovementRouteTypeLabel(option)',
@@ -851,6 +854,8 @@ describe('transport catalog supplier rate-card UX', () => {
       '/touring-routes?limit=200',
       'Reusable touring routes',
       'not stored as fake transfer routes',
+      'Create Touring Route',
+      'href="/transport/touring-routes/new"',
       "view === 'all' ? touringRoutes : touringRoutes.filter(isGoldenTouringRoute)",
       "route.code?.startsWith('JOR-TR-')",
       'Golden only',
@@ -870,6 +875,37 @@ describe('transport catalog supplier rate-card UX', () => {
       'Edit',
       '<TouringRouteDuplicateButton',
       '<TouringRouteArchiveButton',
+    ]);
+  });
+
+  it('adds a dedicated touring route create workspace with operational fields and stop editor', () => {
+    expectSourceContains(touringRouteCreatePageSource, [
+      'Create Touring Route',
+      'Transfer Routes remain point-to-point movement only.',
+      '<TouringRouteCreateForm />',
+      'Back to Touring Routes',
+    ]);
+
+    expectSourceContains(touringRouteCreateFormSource, [
+      "'use client';",
+      'Route code',
+      'Route name',
+      'Origin / start place',
+      'Main destination',
+      'Duration hours',
+      'Duration minutes',
+      'Distance km',
+      'Pickup recommendation',
+      'Operational notes',
+      'Status',
+      'Ordered stops',
+      'Stop order',
+      'Overnight',
+      'Pricing matrix',
+      'Pricing matrix setup will be added in the next workflow step.',
+      "fetch('/api/touring-routes'",
+      "method: 'POST'",
+      'router.push(`/transport/touring-routes/${encodeURIComponent(created.id)}?mode=edit#edit`)',
     ]);
   });
 
@@ -922,7 +958,14 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(touringRouteEditorSource, [
       "'use client';",
+      'Route code',
+      'setCode',
       'Save changes',
+      'Pickup recommendation',
+      'Operational notes',
+      'Duration hours',
+      'Duration minutes',
+      'Distance km',
       'Add stop',
       'Overnight',
       'Add pricing row',

@@ -73,6 +73,21 @@ function optionalNumber(value: string) {
   return value.trim() ? Number(value) : null;
 }
 
+function splitHours(value?: number | null) {
+  const totalMinutes = Math.round(Number(value || 0) * 60);
+  return {
+    hours: totalMinutes ? String(Math.floor(totalMinutes / 60)) : '',
+    minutes: totalMinutes ? String(totalMinutes % 60) : '',
+  };
+}
+
+function combineHours(hours: string, minutes: string) {
+  const hourValue = Number(hours || 0);
+  const minuteValue = Number(minutes || 0);
+  if (!hourValue && !minuteValue) return null;
+  return Number((hourValue + minuteValue / 60).toFixed(2));
+}
+
 function uniqueTextOptions(values: string[]) {
   const seen = new Set<string>();
   return values
@@ -93,13 +108,19 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [code, setCode] = useState(route.code || '');
   const [name, setName] = useState(route.name);
   const [startCity, setStartCity] = useState(route.startCity);
+  const initialDuration = splitHours(route.includedHours ?? route.estimatedDriveHours);
+  const [durationHours, setDurationHours] = useState(initialDuration.hours);
+  const [durationMinutes, setDurationMinutes] = useState(initialDuration.minutes);
   const [durationDays, setDurationDays] = useState(String(route.durationDays || 1));
   const [destinations, setDestinations] = useState((route.mainDestinations || []).join(', '));
   const [routeDescription, setRouteDescription] = useState(route.routeDescription || '');
   const [includedKm, setIncludedKm] = useState(route.includedKm == null ? '' : String(route.includedKm));
-  const [includedHours, setIncludedHours] = useState(route.includedHours == null ? '' : String(route.includedHours));
+  const [estimatedDistanceKm, setEstimatedDistanceKm] = useState(route.estimatedDistanceKm == null ? '' : String(route.estimatedDistanceKm));
+  const [pickupRecommendation, setPickupRecommendation] = useState('');
+  const [operationalNotes, setOperationalNotes] = useState(route.reviewNotes || '');
   const [active, setActive] = useState(route.active !== false);
   const [stops, setStops] = useState<StopDraft[]>(
     (route.stops || []).map((stop, index) => ({
@@ -152,13 +173,17 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
     setStatus('');
     try {
       const payload = {
+        code,
         name,
         startCity,
         durationDays: Number(durationDays || 1),
         routeDescription,
         mainDestinations: destinations.split(',').map((entry) => entry.trim()).filter(Boolean),
-        includedKm: optionalNumber(includedKm),
-        includedHours: optionalNumber(includedHours),
+        includedKm: optionalNumber(includedKm || estimatedDistanceKm),
+        includedHours: combineHours(durationHours, durationMinutes),
+        estimatedDistanceKm: optionalNumber(estimatedDistanceKm || includedKm),
+        estimatedDriveHours: combineHours(durationHours, durationMinutes),
+        reviewNotes: [pickupRecommendation ? `Pickup recommendation: ${pickupRecommendation}` : '', operationalNotes].filter(Boolean).join('\n') || null,
         active: activeOverride,
         stops: stops.map((stop, index) => ({
           order: Number(stop.order || index + 1),
@@ -240,18 +265,21 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
           </div>
         </div>
         <div className="form-grid">
+          <label>Route code<input value={code} onChange={(event) => setCode(event.target.value)} placeholder="JOR-TR-..." /></label>
           <label>Name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
           <label>
-            Origin / start city
+            Origin / start place
             <input value={startCity} list="touring-route-city-options" onChange={(event) => setStartCity(event.target.value)} required />
           </label>
           <label>Duration days<input type="number" min="1" value={durationDays} onChange={(event) => setDurationDays(event.target.value)} /></label>
+          <label>Duration hours<input type="number" min="0" value={durationHours} onChange={(event) => setDurationHours(event.target.value)} /></label>
+          <label>Duration minutes<input type="number" min="0" max="59" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} /></label>
           <label>
             Main destination
             <input value={destinations.split(',')[0]?.trim() || ''} list="touring-route-destination-options" onChange={(event) => setDestinations(event.target.value)} />
           </label>
+          <label>Distance km<input type="number" min="0" value={estimatedDistanceKm} onChange={(event) => setEstimatedDistanceKm(event.target.value)} /></label>
           <label>Included KM<input type="number" min="0" value={includedKm} onChange={(event) => setIncludedKm(event.target.value)} /></label>
-          <label>Included hours<input type="number" min="0" value={includedHours} onChange={(event) => setIncludedHours(event.target.value)} /></label>
           <label>
             Status
             <select value={active ? 'active' : 'archived'} onChange={(event) => setActive(event.target.value === 'active')}>
@@ -261,7 +289,15 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
           </label>
         </div>
         <label>
-          Notes / route description
+          Pickup recommendation
+          <input value={pickupRecommendation} onChange={(event) => setPickupRecommendation(event.target.value)} placeholder="08:00 from Amman hotels" />
+        </label>
+        <label>
+          Operational notes
+          <textarea rows={3} value={operationalNotes} onChange={(event) => setOperationalNotes(event.target.value)} />
+        </label>
+        <label>
+          Route description
           <textarea rows={3} value={routeDescription} onChange={(event) => setRouteDescription(event.target.value)} />
         </label>
       </section>
@@ -278,7 +314,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
         </div>
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Order</th><th>City</th><th>Stop</th><th>Overnight</th><th>Notes</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Stop order</th><th>Region</th><th>Place</th><th>Overnight</th><th>Notes</th><th>Actions</th></tr></thead>
             <tbody>
               {stops.map((stop, index) => (
                 <tr key={stop.id || `new-stop-${index}`}>

@@ -2,12 +2,10 @@ import type { RouteOption } from './routes';
 
 export const MOVEMENT_ROUTE_TYPES = [
   'TRANSFER_ROUTE',
-  'TOURING_ROUTE',
 ];
 
 export const MOVEMENT_ROUTE_TYPE_LABELS: Record<(typeof MOVEMENT_ROUTE_TYPES)[number], string> = {
   TRANSFER_ROUTE: 'Transfer route',
-  TOURING_ROUTE: 'Touring route',
 };
 
 export function getMovementRouteTypeLabel(value?: string | null) {
