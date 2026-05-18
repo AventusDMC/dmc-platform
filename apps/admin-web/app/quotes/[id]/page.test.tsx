@@ -1058,11 +1058,40 @@ describe('quote detail page regression', () => {
       'function isTouringRouteOption(route: RouteOption)',
       'const routeSelectorGroups = useMemo(() => getQuoteTransportRouteSelectorGroups(routes), [routes]);',
       'const routeTransferOptions = routeSelectorGroups.transferRoutes;',
+      'const touringRouteOptions = routeSelectorGroups.touringRoutes;',
       'const serviceAreaOptions = routeSelectorGroups.serviceAreas;',
+      'const [transportMode, setTransportMode] = useState<TransportSelectionMode>(\'TRANSFER_ROUTE\');',
+      '<option value="TRANSFER_ROUTE">Transfer Route</option>',
+      '<option value="TOURING_ROUTE">Touring Route</option>',
+      '<option value="DISPOSAL">Disposal / Stationary</option>',
       '<optgroup label="Transfer Routes">',
+      '<optgroup label="Touring Routes">',
       '<optgroup label="Disposal / Service Areas">',
-      'Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Full Day, Half Day, and Day Tour modes.',
+      'Use Transfer Route for airport/city movement, Touring Route for JOR-TR operational tours, and Disposal / Stationary for service-area operations.',
       'duplicate transfer route or disposal area entries hidden',
+    ]);
+  });
+
+  it('loads JOR-TR touring routes into QuoteTransportPicker with active pricing rows', () => {
+    expectSourceContains(pageSource, [
+      "`${API_BASE_URL}/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500`",
+      'Quote detail touring routes',
+      "String(route.code || '').startsWith('JOR-TR-')",
+      'mapTouringRouteToQuoteTransportRouteOption',
+      "canonicalRouteType: 'TOURING_ROUTE'",
+      "transportPickerMode: 'TOURING_ROUTE'",
+      'touringRoutePricings: route.pricings || []',
+    ]);
+
+    expectSourceContains(quoteTransportPickerSource, [
+      'function getTouringRouteSupplierRateRows(routes: RouteOption[]): VehicleRate[]',
+      'touringRouteId: route.id',
+      'touringRoutePricingId: pricing.id',
+      'price: Number(pricing.baseCost || 0)',
+      '...getTouringRouteSupplierRateRows(routes)',
+      'getRouteCandidateRates(rates, route, now)',
+      'if (isTouringRouteOption(route))',
+      'rate.touringRouteId === route.id || rate.routeId === route.id',
     ]);
   });
 
@@ -1230,6 +1259,8 @@ describe('quote detail page regression', () => {
       'itineraryId,',
       'transportServiceTypeId,',
       'transportVehicleId: selectedVehicle.id',
+      'touringRouteId: isTouringSelection ? selectedRoute.id : undefined',
+      'touringRoutePricingId: isTouringSelection ? selectedRate.touringRoutePricingId || selectedRate.id : undefined',
       "setSelectedRouteId('');",
       "{isSavingTransport ? 'Saving Transport...' : 'Add Transport'}",
     ]);

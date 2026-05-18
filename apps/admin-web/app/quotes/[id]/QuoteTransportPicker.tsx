@@ -68,6 +68,8 @@ type VehicleRate = {
   id: string;
   vehicleId?: string | null;
   routeId: string | null;
+  touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
   fromPlaceId?: string | null;
   toPlaceId?: string | null;
   routeName: string;
@@ -109,6 +111,8 @@ type SupplierRateMatch = {
   priority: 1 | 2 | 3 | 4 | 5;
   badge: 'Exact match' | 'Route match' | 'Vehicle type match' | 'Pricing mode match' | 'Fallback';
 };
+
+type TransportSelectionMode = 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | 'DISPOSAL';
 
 type VehicleRecommendationGroup = 'Recommended' | 'Available' | 'Too small';
 
@@ -179,7 +183,7 @@ function isProgramOrDisposalRouteOption(route: RouteOption) {
 }
 
 function isTouringRouteOption(route: RouteOption) {
-  return normalizeType(route.canonicalRouteType || route.routeType) === normalizeType('TOURING_ROUTE');
+  return route.transportPickerMode === 'TOURING_ROUTE' || normalizeType(route.canonicalRouteType || route.routeType) === normalizeType('TOURING_ROUTE');
 }
 
 function formatDisposalAreaName(value: string) {
@@ -225,6 +229,7 @@ export function formatRouteSelectionLabel(route: RouteOption) {
 export function getQuoteTransportRouteSelectorGroups(routes: RouteOption[]) {
   const transferReviewIds: string[] = [];
   const seenTransferRoutes = new Set<string>();
+  const seenTouringRoutes = new Set<string>();
   const transferRoutes = routes.filter((route) => {
     if (isTouringRouteOption(route) || isProgramOrDisposalRouteOption(route)) {
       return false;
@@ -237,6 +242,20 @@ export function getQuoteTransportRouteSelectorGroups(routes: RouteOption[]) {
     }
 
     seenTransferRoutes.add(key);
+    return true;
+  });
+  const touringRoutes = routes.filter((route) => {
+    if (!isTouringRouteOption(route)) {
+      return false;
+    }
+
+    const key = normalizeTransportRouteText(route.code || route.normalizedKey || route.name || route.id);
+    if (seenTouringRoutes.has(key)) {
+      transferReviewIds.push(route.id);
+      return false;
+    }
+
+    seenTouringRoutes.add(key);
     return true;
   });
   const disposalReviewIds: string[] = [];
@@ -258,10 +277,23 @@ export function getQuoteTransportRouteSelectorGroups(routes: RouteOption[]) {
 
   return {
     transferRoutes,
+    touringRoutes,
     serviceAreas,
     transferReviewIds,
     disposalReviewIds,
   };
+}
+
+function getRouteOptionsForTransportMode(groups: ReturnType<typeof getQuoteTransportRouteSelectorGroups>, mode: TransportSelectionMode) {
+  if (mode === 'TOURING_ROUTE') return groups.touringRoutes;
+  if (mode === 'DISPOSAL') return groups.serviceAreas;
+  return groups.transferRoutes;
+}
+
+function getTransportModeLabel(mode: TransportSelectionMode) {
+  if (mode === 'TOURING_ROUTE') return 'Touring Route';
+  if (mode === 'DISPOSAL') return 'Disposal / Stationary';
+  return 'Transfer Route';
 }
 
 function formatMoney(value: number, currency: string) {
@@ -620,6 +652,10 @@ export function isGeneralTransportRouteRate(rate: VehicleRate) {
 
 function getRouteCandidateRates(rates: VehicleRate[], route: RouteOption, now = new Date()) {
   const activeValidRates = rates.filter((rate) => isActiveValidTransportRate(rate, now));
+  if (isTouringRouteOption(route)) {
+    return activeValidRates.filter((rate) => rate.touringRouteId === route.id || rate.routeId === route.id);
+  }
+
   const exactRouteRates = activeValidRates.filter((rate) => transportRateMatchesSelectedRoute(rate, route));
   const disposalServiceAreaRates = activeValidRates.filter((rate) => disposalRateMatchesSelectedServiceArea(rate, route));
   const candidates = [...exactRouteRates, ...disposalServiceAreaRates];
@@ -906,6 +942,48 @@ function normalizeSupplierRateRows(payload: unknown): VehicleRate[] {
   return [];
 }
 
+function getTouringRouteSupplierRateRows(routes: RouteOption[]): VehicleRate[] {
+  return routes.flatMap((route) =>
+    (route.touringRoutePricings || [])
+      .filter((pricing) => pricing.active !== false)
+      .map((pricing) => ({
+        id: pricing.id,
+        vehicleId: pricing.vehicleId || null,
+        routeId: route.id,
+        touringRouteId: route.id,
+        touringRoutePricingId: pricing.id,
+        routeName: formatRoute(route),
+        minPax: pricing.minPax ?? null,
+        maxPax: pricing.maxPax ?? null,
+        price: Number(pricing.baseCost || 0),
+        currency: pricing.currency || 'USD',
+        costCurrency: pricing.currency || 'USD',
+        active: pricing.active !== false,
+        validFrom: '',
+        validTo: '',
+        supplierId: pricing.supplierId || pricing.supplier?.id || null,
+        supplierName: pricing.supplier?.name || null,
+        supplier: pricing.supplier ? { id: pricing.supplier.id || undefined, name: pricing.supplier.name || null } : null,
+        vehicle: pricing.vehicle
+          ? {
+              name: pricing.vehicle.name || null,
+              vehicleType: pricing.vehicle.vehicleType || null,
+              maxPax: pricing.vehicle.maxPax ?? null,
+            }
+          : null,
+        serviceType: pricing.transportServiceType
+          ? {
+              id: pricing.transportServiceType.id || null,
+              name: pricing.transportServiceType.name || 'Daily Full Day',
+              code: pricing.transportServiceType.code || 'DAILY_FULL_DAY',
+              classification: pricing.transportServiceType.classification || 'FULL_DAY',
+            }
+          : { id: pricing.transportServiceTypeId || null, name: 'Daily Full Day', code: 'DAILY_FULL_DAY', classification: 'FULL_DAY' },
+        pricingMode: pricing.transportServiceType?.name || 'Daily Full Day',
+      })),
+  );
+}
+
 export function QuoteTransportPicker({
   apiBaseUrl,
   quoteId,
@@ -925,6 +1003,7 @@ export function QuoteTransportPicker({
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [transportMode, setTransportMode] = useState<TransportSelectionMode>('TRANSFER_ROUTE');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedPricingMode, setSelectedPricingMode] = useState<PricingMode | ''>('');
@@ -1004,11 +1083,13 @@ export function QuoteTransportPicker({
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) || null;
   const routeSelectorGroups = useMemo(() => getQuoteTransportRouteSelectorGroups(routes), [routes]);
   const routeTransferOptions = routeSelectorGroups.transferRoutes;
+  const touringRouteOptions = routeSelectorGroups.touringRoutes;
   const serviceAreaOptions = routeSelectorGroups.serviceAreas;
+  const routeOptionsForMode = getRouteOptionsForTransportMode(routeSelectorGroups, transportMode);
   const allVehicles = useMemo(() => propVehicles.filter(isActiveVehicle), [propVehicles]);
   const loadedSupplierRates = useMemo(
-    () => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards)],
-    [manualSupplierRateCards, supplierRateCards],
+    () => [...manualSupplierRateCards, ...normalizeSupplierRateRows(supplierRateCards), ...getTouringRouteSupplierRateRows(routes)],
+    [manualSupplierRateCards, routes, supplierRateCards],
   );
   const requestedPax = Math.max(1, Math.floor(Number(paxInput) || totalPax || 1));
   const requestedBillableDays = Math.max(1, Math.floor(Number(billableDaysInput) || 1));
@@ -1052,6 +1133,14 @@ export function QuoteTransportPicker({
     setSelectedPricingMode(pricingMode);
     setSelectedRateId('');
     setBillableDaysInput('1');
+  }
+
+  function handleTransportModeChange(mode: TransportSelectionMode) {
+    setTransportMode(mode);
+    setSelectedRouteId('');
+    setSelectedVehicleId('');
+    setSelectedPricingMode('');
+    setSelectedRateId('');
   }
 
   const supplierRateMatches = useMemo(() => {
@@ -1170,6 +1259,7 @@ export function QuoteTransportPicker({
 
     const service = findSupplierServiceForRate(services, selectedRate, selectedPricingMode);
     const transportServiceTypeId = findTransportServiceTypeIdForRate(selectedRate, transportServiceTypes, selectedPricingMode);
+    const isTouringSelection = transportMode === 'TOURING_ROUTE' || isTouringRouteOption(selectedRoute);
 
     if (!service || !transportServiceTypeId) {
       setError('Could not resolve the selected supplier service and pricing mode for this transport rate.');
@@ -1198,10 +1288,12 @@ export function QuoteTransportPicker({
           overrideReason: null,
           useOverride: false,
           transportServiceTypeId,
-          vehicleRateId: selectedRate.id,
+          vehicleRateId: isTouringSelection ? undefined : selectedRate.id,
           transportVehicleId: selectedVehicle.id,
-          routeId: selectedRoute.id,
+          routeId: isTouringSelection ? undefined : selectedRoute.id,
           routeName: formatRoute(selectedRoute),
+          touringRouteId: isTouringSelection ? selectedRoute.id : undefined,
+          touringRoutePricingId: isTouringSelection ? selectedRate.touringRoutePricingId || selectedRate.id : undefined,
           transportAddOns: [],
           currency: pricingCurrency,
         }),
@@ -1218,6 +1310,7 @@ export function QuoteTransportPicker({
       setSelectedPricingMode('');
       setSelectedVehicleId('');
       setSelectedRouteId('');
+      setTransportMode('TRANSFER_ROUTE');
       setBillableDaysInput('1');
       setOpen(false);
     } catch (caughtError) {
@@ -1337,16 +1430,26 @@ export function QuoteTransportPicker({
             <section className="quote-hotel-step-panel quote-transport-step-panel">
               <div className="quote-hotel-step-head">
                 <div>
-                  <p className="eyebrow">Route / Service Area</p>
-                  <h3>Choose movement or service area</h3>
-                  <p className="detail-copy">Use Transfer Routes for point-to-point movement. Use Disposal / Service Areas for Daily Full Day, Half Day, and Stationary / Waiting modes.</p>
+                  <p className="eyebrow">Transport Mode</p>
+                  <h3>Choose operational transport mode</h3>
+                  <p className="detail-copy">Use Transfer Route for airport/city movement, Touring Route for JOR-TR operational tours, and Disposal / Stationary for service-area operations.</p>
                 </div>
               </div>
-              <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routes.length === 0}>
-                {routes.length > 0 ? <option value="">Select Transfer Route or Disposal / Service Area</option> : null}
+              <label>
+                Transport mode
+                <select value={transportMode} onChange={(event) => handleTransportModeChange(event.target.value as TransportSelectionMode)}>
+                  <option value="TRANSFER_ROUTE">Transfer Route</option>
+                  <option value="TOURING_ROUTE">Touring Route</option>
+                  <option value="DISPOSAL">Disposal / Stationary</option>
+                </select>
+              </label>
+              <label>
+                {getTransportModeLabel(transportMode)}
+                <select value={selectedRouteId} onChange={(event) => handleRouteChange(event.target.value)} disabled={routeOptionsForMode.length === 0}>
+                {routeOptionsForMode.length > 0 ? <option value="">Select {getTransportModeLabel(transportMode)}</option> : null}
                 {routesLoadFailed ? <option value="">Routes failed to load</option> : null}
                 {routeListIsConfirmedEmpty ? <option value="">No routes available</option> : null}
-                {routeTransferOptions.length > 0 ? (
+                {transportMode === 'TRANSFER_ROUTE' && routeTransferOptions.length > 0 ? (
                   <optgroup label="Transfer Routes">
                     {routeTransferOptions.map((route) => (
                       <option key={route.id} value={route.id}>
@@ -1355,7 +1458,16 @@ export function QuoteTransportPicker({
                     ))}
                   </optgroup>
                 ) : null}
-                {serviceAreaOptions.length > 0 ? (
+                {transportMode === 'TOURING_ROUTE' && touringRouteOptions.length > 0 ? (
+                  <optgroup label="Touring Routes">
+                    {touringRouteOptions.map((route) => (
+                      <option key={route.id} value={route.id}>
+                        {route.code ? `${route.code} | ${formatRoute(route)}` : formatRoute(route)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+                {transportMode === 'DISPOSAL' && serviceAreaOptions.length > 0 ? (
                   <optgroup label="Disposal / Service Areas">
                     {serviceAreaOptions.map((route) => (
                       <option key={route.id} value={route.id}>
@@ -1364,7 +1476,8 @@ export function QuoteTransportPicker({
                     ))}
                   </optgroup>
                 ) : null}
-              </select>
+                </select>
+              </label>
               {routeSelectorGroups.transferReviewIds.length + routeSelectorGroups.disposalReviewIds.length > 0 ? (
                 <p className="form-helper">
                   {routeSelectorGroups.transferReviewIds.length + routeSelectorGroups.disposalReviewIds.length} duplicate transfer route or disposal area entries hidden for
@@ -1376,7 +1489,7 @@ export function QuoteTransportPicker({
               ) : null}
             </section>
 
-            {!selectedRoute ? <p className="empty-state">Select a route or service area to continue</p> : null}
+            {!selectedRoute ? <p className="empty-state">Select a {getTransportModeLabel(transportMode).toLowerCase()} to continue</p> : null}
 
             {selectedRoute ? (
               <section className="quote-hotel-step-panel quote-transport-step-panel">

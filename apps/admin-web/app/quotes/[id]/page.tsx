@@ -246,6 +246,22 @@ type TransportSupplierRateCard = {
   pricingMode?: string | null;
   contractDiscountPercent?: number | null;
   grossRate?: number | null;
+  touringRouteId?: string | null;
+  touringRoutePricingId?: string | null;
+};
+
+type TouringRouteForQuoteTransport = {
+  id: string;
+  code?: string | null;
+  name: string;
+  startCity: string;
+  durationDays?: number | null;
+  routeDescription?: string | null;
+  mainDestinations?: string[] | null;
+  includedKm?: number | null;
+  includedHours?: number | null;
+  active?: boolean | null;
+  pricings?: NonNullable<RouteOption['touringRoutePricings']>;
 };
 
 function normalizeTransportSupplierRateRows(payload: unknown): TransportSupplierRateCard[] {
@@ -884,9 +900,60 @@ async function getTransportServiceTypes(): Promise<TransportServiceType[]> {
 }
 
 async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`, 'Quote detail transfer routes', {
-    cache: 'no-store',
-  });
+  const [transferRoutes, touringRoutes] = await Promise.all([
+    adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE&limit=200`, 'Quote detail transfer routes', {
+      cache: 'no-store',
+    }),
+    adminPageFetchJson<TouringRouteForQuoteTransport[]>(`${API_BASE_URL}/touring-routes?active=true&transportType=TOURING_ROUTE&limit=500`, 'Quote detail touring routes', {
+      cache: 'no-store',
+    }),
+  ]);
+
+  return [
+    ...transferRoutes,
+    ...touringRoutes
+      .filter((route) => route.active !== false && String(route.code || '').startsWith('JOR-TR-'))
+      .map(mapTouringRouteToQuoteTransportRouteOption),
+  ];
+}
+
+function buildTouringRoutePickerPlace(route: TouringRouteForQuoteTransport, suffix: string) {
+  return {
+    id: `${route.id}-${suffix}`,
+    name: route.startCity || route.name,
+    type: 'Touring Route',
+    placeTypeId: null,
+    cityId: null,
+    city: route.startCity || null,
+    country: 'Jordan',
+    isActive: true,
+  };
+}
+
+function mapTouringRouteToQuoteTransportRouteOption(route: TouringRouteForQuoteTransport): RouteOption {
+  const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
+  const routeName = destinations.length > 0 ? `${route.startCity} - ${destinations.join(' - ')} - ${route.startCity}` : route.name;
+  return {
+    id: route.id,
+    fromPlaceId: `${route.id}-start`,
+    toPlaceId: `${route.id}-return`,
+    name: routeName,
+    normalizedKey: route.code || route.id,
+    routeType: 'TOURING_ROUTE',
+    durationMinutes: route.durationDays ? route.durationDays * 24 * 60 : null,
+    distanceKm: route.includedKm ?? null,
+    notes: route.routeDescription || null,
+    isActive: route.active !== false,
+    fromPlace: buildTouringRoutePickerPlace(route, 'start'),
+    toPlace: buildTouringRoutePickerPlace(route, 'return'),
+    canonicalRouteType: 'TOURING_ROUTE',
+    transportPickerMode: 'TOURING_ROUTE',
+    code: route.code || null,
+    startCity: route.startCity || null,
+    durationDays: route.durationDays ?? null,
+    mainDestinations: destinations,
+    touringRoutePricings: route.pricings || [],
+  };
 }
 
 async function getVehicles(): Promise<TransportVehicle[]> {

@@ -15,6 +15,39 @@ export type RouteOption = {
   fromPlace: PlaceOption;
   toPlace: PlaceOption;
   canonicalRouteType?: 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | null;
+  transportPickerMode?: 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | 'DISPOSAL';
+  code?: string | null;
+  startCity?: string | null;
+  durationDays?: number | null;
+  mainDestinations?: string[] | null;
+  touringRoutePricings?: Array<{
+    id: string;
+    touringRouteId: string;
+    supplierId?: string | null;
+    supplier?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
+    vehicleId?: string | null;
+    vehicle?: {
+      name?: string | null;
+      vehicleType?: string | null;
+      maxPax?: number | null;
+    } | null;
+    transportServiceTypeId?: string | null;
+    transportServiceType?: {
+      id?: string | null;
+      name?: string | null;
+      code?: string | null;
+      classification?: string | null;
+    } | null;
+    pricingBasis?: string | null;
+    minPax?: number | null;
+    maxPax?: number | null;
+    currency?: string | null;
+    baseCost?: number | null;
+    active?: boolean | null;
+  }>;
   routeOperations?: {
     region: string | null;
     overnight: boolean;
