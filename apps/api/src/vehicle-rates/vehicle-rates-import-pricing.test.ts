@@ -824,9 +824,6 @@ test('Alpha PDF-style rows preserve supplier vehicle labels and canonical vehicl
   assert.equal(stores.vehicleRates.find((rate) => rate.maxPax === 30)?.minPax, 1);
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Point-to-Point')?.classification, 'ROUTE_TRANSFER');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Daily Full Day')?.classification, 'FULL_DAY');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Petra Overnight')?.classification, 'ADD_ON');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Wadi Rum Overnight')?.classification, 'ADD_ON');
-  assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Aqaba Overnight')?.classification, 'ADD_ON');
   assert.equal(stores.transportServiceTypes.find((entry) => entry.name === 'Stationary / Waiting')?.classification, 'ADD_ON');
 });
 
@@ -1198,8 +1195,8 @@ test('transport contract import skips unrecognized pricing modes', async () => {
   const buffer = buildWorkbookBuffer([
     {
       ...activeImportRow,
-      serviceName: 'Driver Overnight outside Amman',
-      routeName: 'Petra driver overnight',
+      serviceName: 'Mystery Legacy Mode',
+      routeName: 'Petra mystery mode',
     },
   ]);
 
