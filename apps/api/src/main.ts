@@ -1,5 +1,13 @@
 import { createNestApp } from './nest-app';
 
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection', reason);
+});
+
 async function bootstrap() {
   const app = await createNestApp();
   const port = Number(process.env.PORT) || 8080;
