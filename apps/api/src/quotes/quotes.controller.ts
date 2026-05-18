@@ -196,6 +196,14 @@ type ApplyPackageTemplateBody = {
   selectedOptionalComponentIds?: string[];
 };
 
+type ImportProgramTemplateBody = {
+  packageTemplateId?: string | null;
+  startDate?: string | null;
+  hotelCategory?: string | null;
+  pax?: number | string | null;
+  guideLanguage?: string | null;
+};
+
 type AssignQuoteItemServiceBody = {
   serviceId: string;
 };
@@ -1107,6 +1115,32 @@ export class QuotesController {
       {
         packageTemplateId: templateId,
         selectedOptionalComponentIds: Array.isArray(body.selectedOptionalComponentIds) ? body.selectedOptionalComponentIds : [],
+      },
+      actor,
+    );
+  }
+
+  @Post(':id/import-program-template')
+  @Roles('admin', 'viewer', 'finance')
+  async importProgramTemplate(
+    @Param('id') id: string,
+    @Body() body: ImportProgramTemplateBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const quote = await this.quotesService.findOne(id, actor);
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    return this.quotesService.importProgramTemplateToQuote(
+      id,
+      {
+        packageTemplateId: String(body.packageTemplateId || '').trim(),
+        startDate: body.startDate || null,
+        hotelCategory: body.hotelCategory || null,
+        pax: body.pax === undefined || body.pax === null || body.pax === '' ? null : Number(body.pax),
+        guideLanguage: body.guideLanguage || null,
       },
       actor,
     );

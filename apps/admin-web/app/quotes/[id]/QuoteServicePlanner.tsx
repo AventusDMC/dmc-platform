@@ -18,6 +18,7 @@ import { formatOriginAwareExcursionName, getQuoteItemOriginAwareExcursionName } 
 import { QuoteItemsForm } from './QuoteItemsForm';
 import { QuoteTransportPicker } from './QuoteTransportPicker';
 import { QuoteUnresolvedBatchActions } from './QuoteUnresolvedBatchActions';
+import { ProgramTemplateImportPanel } from './ProgramTemplateImportPanel';
 import { QuoteDayPlannerDayLayout, QuoteDayPlannerLayout, getQuoteDayNavigationClassName } from './QuoteDayPlannerLayout';
 import laneStyles from './QuoteServiceLaneBoard.module.css';
 import { getExternalPackagePricingBasisForService, normalizeExternalPackagePricingMatrixRows, type ExternalPackageFormState } from './external-package-ui';
@@ -4568,6 +4569,12 @@ export function QuoteServicePlanner(props: QuoteServicePlannerProps) {
           hotelContracts={props.hotelContracts}
           hotelRates={props.hotelRates}
           totalPax={props.totalPax}
+        />
+        <ProgramTemplateImportPanel
+          apiBaseUrl={props.apiBaseUrl}
+          quoteId={props.quote.id}
+          defaultPax={props.totalPax}
+          defaultStartDate={props.quote.travelStartDate}
         />
         <div className="workspace-tab-list" role="tablist" aria-label="Quote service planner scopes">
           <button

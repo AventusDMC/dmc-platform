@@ -231,6 +231,14 @@ type ApplyPackageTemplateToQuoteInput = {
   selectedOptionalComponentIds?: string[];
 };
 
+type ImportProgramTemplateToQuoteInput = {
+  packageTemplateId: string;
+  startDate?: Date | string | null;
+  hotelCategory?: string | null;
+  pax?: number | null;
+  guideLanguage?: string | null;
+};
+
 type PackageComponentMappingStatus = {
   insertable: boolean;
   reason: string | null;
@@ -3443,6 +3451,65 @@ export class QuotesService {
     };
   }
 
+  async importProgramTemplateToQuote(quoteId: string, data: ImportProgramTemplateToQuoteInput, actor?: CompanyScopedActor) {
+    if (!String(data.packageTemplateId || '').trim()) {
+      throw new BadRequestException('packageTemplateId is required');
+    }
+
+    const quote = await this.assertQuoteMutationAccess(quoteId, actor);
+    const template = await this.getPackageTemplateForAssembly(data.packageTemplateId);
+    const days = this.getPackageAssemblyDays(template);
+    const quoteCurrency = quote.quoteCurrency || 'USD';
+    const paxCount = this.normalizeOptionalImportPax(data.pax) ?? this.getQuotePaxCount(quote);
+    const startDate = this.parseDateLike(data.startDate ?? null);
+    const createdDays = [];
+    const createdItems = [];
+
+    for (const day of days) {
+      const legacyDay = await this.upsertProgramTemplateLegacyItineraryDay(quote.id, day);
+      const quoteDay = await this.upsertPackageQuoteItineraryDay(quote.id, template.id, day);
+      createdDays.push({
+        itineraryId: legacyDay.id,
+        quoteItineraryDayId: quoteDay.id,
+        dayNumber: day.dayNumber,
+        title: day.title || `Day ${day.dayNumber}`,
+      });
+
+      const components = this.getPackageAssemblyComponents(day);
+      for (const component of components) {
+        const serviceDate = startDate ? this.addDays(startDate, Number(day.dayNumber || 1) - 1) : null;
+        const item = await (this.prisma as any).quoteItem.create({
+          data: this.buildProgramTemplateDraftQuoteItemData({
+            quoteId: quote.id,
+            quoteCurrency,
+            paxCount,
+            template,
+            day,
+            component,
+            itineraryId: legacyDay.id,
+            serviceDate,
+            hotelCategory: data.hotelCategory,
+            guideLanguage: data.guideLanguage,
+          }),
+        });
+
+        createdItems.push(item);
+        await this.linkProgramTemplateDraftItemToQuoteDay(quoteDay.id, item.id);
+      }
+    }
+
+    await this.recalculateQuoteTotals(quote.id);
+
+    return {
+      quoteId: quote.id,
+      packageTemplateId: template.id,
+      packageName: template.name,
+      importedDays: createdDays.length,
+      createdItems,
+      autoPriced: false,
+    };
+  }
+
   async expandExcursionTemplateIntoQuote(data: ExpandExcursionTemplateInput, actor?: CompanyScopedActor) {
     const quote = await this.assertQuoteMutationAccess(data.quoteId, actor, {
       select: {
@@ -3954,6 +4021,149 @@ export class QuotesService {
         isActive: true,
       },
     });
+  }
+
+  private async upsertProgramTemplateLegacyItineraryDay(quoteId: string, packageDay: any) {
+    const existingDay = await this.prisma.itinerary.findFirst({
+      where: {
+        quoteId,
+        dayNumber: packageDay.dayNumber,
+      },
+    });
+
+    if (existingDay) {
+      return this.prisma.itinerary.update({
+        where: { id: existingDay.id },
+        data: {
+          title: existingDay.title || packageDay.title || `Day ${packageDay.dayNumber}`,
+          description: existingDay.description || packageDay.description || null,
+        },
+      });
+    }
+
+    return this.prisma.itinerary.create({
+      data: {
+        quoteId,
+        dayNumber: packageDay.dayNumber,
+        title: packageDay.title || `Day ${packageDay.dayNumber}`,
+        description: packageDay.description || null,
+      },
+    });
+  }
+
+  private buildProgramTemplateDraftQuoteItemData(values: {
+    quoteId: string;
+    quoteCurrency: string;
+    paxCount: number;
+    template: any;
+    day: any;
+    component: any;
+    itineraryId: string;
+    serviceDate: Date | null;
+    hotelCategory?: string | null;
+    guideLanguage?: string | null;
+  }) {
+    const notes = [
+      `Imported draft from Program Template: ${values.template.name}`,
+      `Template day ${values.day.dayNumber}: ${values.day.title || `Day ${values.day.dayNumber}`}`,
+      `Component: ${values.component.label}`,
+      values.component.componentType ? `Component type: ${values.component.componentType}` : null,
+      values.component.operationalNotes ? `Operational notes: ${values.component.operationalNotes}` : null,
+      values.component.route?.name ? `Transfer route: ${values.component.route.name}` : null,
+      values.component.touringRoute?.name ? `Touring route: ${values.component.touringRoute.name}` : null,
+      values.component.excursionTemplate?.name ? `Excursion template: ${values.component.excursionTemplate.name}` : null,
+      values.component.activity?.name ? `Activity: ${values.component.activity.name}` : null,
+      values.component.hotelContract?.hotel?.name ? `Hotel: ${values.component.hotelContract.hotel.name}` : null,
+      values.hotelCategory ? `Requested hotel category: ${values.hotelCategory}` : null,
+      values.guideLanguage ? `Requested guide language: ${values.guideLanguage}` : null,
+      'Pricing status: draft placeholder, not auto-priced.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return {
+      quoteId: values.quoteId,
+      packageTemplateId: values.template.id,
+      packageTemplateDayId: values.day.id || null,
+      packageTemplateComponentId: values.component.id,
+      serviceId: values.component.supplierServiceId || null,
+      activityId: values.component.activityId || null,
+      excursionTemplateId: values.component.excursionTemplateId || null,
+      contractId: values.component.hotelContractId || null,
+      touringRouteId: values.component.touringRouteId || null,
+      itineraryId: values.itineraryId,
+      serviceDate: values.serviceDate,
+      quantity: 1,
+      paxCount: values.paxCount,
+      participantCount: values.component.componentType === 'ACTIVITY' ? values.paxCount : null,
+      roomCount: values.component.componentType === 'HOTEL' ? 1 : null,
+      nightCount: values.component.componentType === 'HOTEL' ? 1 : null,
+      dayCount: 1,
+      markupPercent: 0,
+      totalCost: 0,
+      totalSell: 0,
+      baseCost: 0,
+      costBaseAmount: 0,
+      costCurrency: values.quoteCurrency,
+      currency: values.quoteCurrency,
+      quoteCurrency: values.quoteCurrency,
+      pricingDescription: 'Imported Program Template draft. Pricing was not auto-calculated.',
+      externalPackageName: values.component.label,
+      externalClientDescription: values.component.label,
+      externalInternalNotes: notes,
+      externalStartDay: values.day.dayNumber,
+      externalEndDay: values.day.dayNumber,
+      externalStartDate: values.serviceDate,
+      externalEndDate: values.serviceDate,
+    };
+  }
+
+  private async linkProgramTemplateDraftItemToQuoteDay(quoteItineraryDayId: string, quoteItemId: string) {
+    const existingDayItem = await (this.prisma as any).quoteItineraryDayItem.findFirst({
+      where: {
+        dayId: quoteItineraryDayId,
+        quoteServiceId: quoteItemId,
+      },
+      select: { id: true },
+    });
+
+    if (existingDayItem) {
+      return existingDayItem;
+    }
+
+    const lastDayItem = await (this.prisma as any).quoteItineraryDayItem.findFirst({
+      where: { dayId: quoteItineraryDayId, isActive: true },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+
+    return (this.prisma as any).quoteItineraryDayItem.create({
+      data: {
+        dayId: quoteItineraryDayId,
+        quoteServiceId: quoteItemId,
+        sortOrder: (lastDayItem?.sortOrder ?? -1) + 1,
+        isActive: true,
+      },
+    });
+  }
+
+  private normalizeOptionalImportPax(value: number | string | null | undefined) {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric) || numeric < 1) {
+      throw new BadRequestException('pax must be a positive integer when provided');
+    }
+
+    return numeric;
+  }
+
+  private addDays(date: Date, days: number) {
+    const next = new Date(date);
+    next.setUTCDate(next.getUTCDate() + days);
+    return next;
   }
 
   private async resolvePackageHotelMapping(component: any) {
