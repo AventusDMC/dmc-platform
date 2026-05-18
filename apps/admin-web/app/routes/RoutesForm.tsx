@@ -15,6 +15,8 @@ import {
   MOVEMENT_ROUTE_TYPES,
 } from '../lib/transport-routes';
 
+const TRANSFER_ROUTE_TYPE = 'TRANSFER_ROUTE';
+
 type RoutesFormProps = {
   apiBaseUrl: string;
   places: PlaceOption[];
@@ -41,7 +43,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
   const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
   const [name, setName] = useState(initialValues?.name || '');
   const initialRouteType = initialValues?.routeType || '';
-  const [routeType, setRouteType] = useState(initialRouteType && isFixedMovementRouteType(initialRouteType) ? initialRouteType : '');
+  const [routeType, setRouteType] = useState(initialRouteType && isFixedMovementRouteType(initialRouteType) ? initialRouteType : TRANSFER_ROUTE_TYPE);
   const [durationMinutes, setDurationMinutes] = useState(initialValues?.durationMinutes || '');
   const [distanceKm, setDistanceKm] = useState(initialValues?.distanceKm || '');
   const [notes, setNotes] = useState(initialValues?.notes || '');
@@ -97,6 +99,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
         throw new Error('Select both from and to places.');
       }
 
+      const nextRouteType = isFixedMovementRouteType(routeType) ? routeType : TRANSFER_ROUTE_TYPE;
       const response = await fetch(`${apiBaseUrl}/routes${routeId ? `/${routeId}` : ''}`, {
         method: routeId ? 'PATCH' : 'POST',
         headers: {
@@ -106,7 +109,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
           fromPlaceId,
           toPlaceId,
           name: name.trim() || null,
-          routeType: routeType.trim() || null,
+          routeType: nextRouteType,
           durationMinutes: durationMinutes.trim() ? Number(durationMinutes) : null,
           distanceKm: distanceKm.trim() ? Number(distanceKm) : null,
           notes: notes.trim() || null,
@@ -122,7 +125,7 @@ export function RoutesForm({ apiBaseUrl, places, cities, placeTypes, routeId, su
         setFromPlaceId('');
         setToPlaceId('');
         setName('');
-        setRouteType('');
+        setRouteType(TRANSFER_ROUTE_TYPE);
         setDurationMinutes('');
         setDistanceKm('');
         setNotes('');

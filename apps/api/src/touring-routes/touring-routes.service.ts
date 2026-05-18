@@ -175,6 +175,16 @@ const TOURING_WORKBOOK_SHEETS = ['TOURING_ROUTES', 'TOURING_ROUTE_STOPS', 'TOURI
 const LEGACY_MATRIX_SHEETS = ['TOURING_ROUTE_MATRIX', 'TOURING_ROUTE_RATES', 'LEGACY_TOURING_ROUTE_MATRIX', 'TRANSPORT_MATRIX'] as const;
 
 function normalizeCode(value: string) {
+  const raw = value.trim().toUpperCase();
+  if (/^JOR[\s_-]+TR(?:[\s_-]|$)/.test(raw)) {
+    return (
+      raw
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'TOURING-ROUTE'
+    );
+  }
+
   return (
     value
       .trim()
@@ -315,6 +325,15 @@ export class TouringRoutesService {
 
   async create(data: TouringRouteInput) {
     const normalized = this.normalizeRouteData(data);
+    const existing = await (this.prisma as any).touringRoute.findUnique({
+      where: { code: normalized.code },
+      select: { id: true, code: true, name: true },
+    });
+
+    if (existing) {
+      throw new BadRequestException(`Touring route code ${normalized.code} already exists.`);
+    }
+
     return (this.prisma as any).touringRoute.create({
       data: normalized,
       include: this.include(),
@@ -324,6 +343,16 @@ export class TouringRoutesService {
   async update(id: string, data: Partial<TouringRouteInput>) {
     await this.findOne(id);
     const normalized = this.normalizeRouteData(data, true);
+    if (normalized.code) {
+      const duplicate = await (this.prisma as any).touringRoute.findUnique({
+        where: { code: normalized.code },
+        select: { id: true, code: true, name: true },
+      });
+
+      if (duplicate && duplicate.id !== id) {
+        throw new BadRequestException(`Touring route code ${normalized.code} already exists.`);
+      }
+    }
 
     return (this.prisma as any).touringRoute.update({
       where: { id },
@@ -1556,6 +1585,12 @@ export class TouringRoutesService {
     } as unknown as T;
   }
 
+  private buildNestedReplace<T>(items: T[] | undefined, create: (item: T, index: number) => Record<string, unknown>, partial: boolean) {
+    if (items === undefined) return undefined;
+    const createItems = items.map(create);
+    return partial ? { deleteMany: {}, create: createItems } : { create: createItems };
+  }
+
   private normalizeRouteData(data: Partial<TouringRouteInput>, partial = false) {
     const name = data.name === undefined && partial ? undefined : requireTrimmedString(String(data.name || ''), 'name');
     const codeSource = data.code || name || '';
@@ -1588,43 +1623,39 @@ export class TouringRoutesService {
       overnightRisk: data.overnightRisk === undefined ? undefined : Boolean(data.overnightRisk),
       reviewNotes: data.reviewNotes === undefined && partial ? undefined : normalizeOptionalString(data.reviewNotes),
       active: data.active === undefined ? undefined : Boolean(data.active),
-      stops:
-        data.stops === undefined
-          ? undefined
-          : {
-              deleteMany: {},
-              create: data.stops.map((stop, index) => ({
-                order: stop.order === undefined || stop.order === null ? index + 1 : Math.floor(Number(stop.order)),
-                city: requireTrimmedString(stop.city, `stops[${index}].city`),
-                location: normalizeOptionalString(stop.location),
-                notes: normalizeOptionalString(stop.notes),
-              })),
-            },
-      pricings:
-        data.pricings === undefined
-          ? undefined
-          : {
-              deleteMany: {},
-              create: data.pricings.map((pricing, index) => ({
-                supplierId: normalizeOptionalString(pricing.supplierId),
-                vehicleId: normalizeOptionalString(pricing.vehicleId),
-                transportServiceTypeId: normalizeOptionalString(pricing.transportServiceTypeId),
-                pricingBasis: pricing.pricingBasis || 'PER_VEHICLE',
-                minPax: normalizeOptionalPositiveInteger(pricing.minPax, `pricings[${index}].minPax`, 1),
-                maxPax: normalizeOptionalPositiveInteger(pricing.maxPax, `pricings[${index}].maxPax`, 99),
-                currency: normalizeOptionalString(pricing.currency) || 'USD',
-                baseCost: normalizeOptionalNumber(pricing.baseCost, `pricings[${index}].baseCost`) ?? 0,
-                costPerDay: normalizeOptionalNumber(pricing.costPerDay, `pricings[${index}].costPerDay`),
-                includedKm: normalizeOptionalNumber(pricing.includedKm, `pricings[${index}].includedKm`),
-                includedHours: normalizeOptionalNumber(pricing.includedHours, `pricings[${index}].includedHours`),
-                extraKmRate: normalizeOptionalNumber(pricing.extraKmRate, `pricings[${index}].extraKmRate`),
-                extraHourRate: normalizeOptionalNumber(pricing.extraHourRate, `pricings[${index}].extraHourRate`),
-                validFrom: pricing.validFrom ? new Date(pricing.validFrom) : null,
-                validTo: pricing.validTo ? new Date(pricing.validTo) : null,
-                active: pricing.active === undefined ? true : Boolean(pricing.active),
-                notes: normalizeOptionalString(pricing.notes),
-              })),
-            },
+      stops: this.buildNestedReplace(
+        data.stops,
+        (stop, index) => ({
+          order: stop.order === undefined || stop.order === null ? index + 1 : Math.floor(Number(stop.order)),
+          city: requireTrimmedString(stop.city, `stops[${index}].city`),
+          location: normalizeOptionalString(stop.location),
+          notes: normalizeOptionalString(stop.notes),
+        }),
+        partial,
+      ),
+      pricings: this.buildNestedReplace(
+        data.pricings,
+        (pricing, index) => ({
+          supplierId: normalizeOptionalString(pricing.supplierId),
+          vehicleId: normalizeOptionalString(pricing.vehicleId),
+          transportServiceTypeId: normalizeOptionalString(pricing.transportServiceTypeId),
+          pricingBasis: pricing.pricingBasis || 'PER_VEHICLE',
+          minPax: normalizeOptionalPositiveInteger(pricing.minPax, `pricings[${index}].minPax`, 1),
+          maxPax: normalizeOptionalPositiveInteger(pricing.maxPax, `pricings[${index}].maxPax`, 99),
+          currency: normalizeOptionalString(pricing.currency) || 'USD',
+          baseCost: normalizeOptionalNumber(pricing.baseCost, `pricings[${index}].baseCost`) ?? 0,
+          costPerDay: normalizeOptionalNumber(pricing.costPerDay, `pricings[${index}].costPerDay`),
+          includedKm: normalizeOptionalNumber(pricing.includedKm, `pricings[${index}].includedKm`),
+          includedHours: normalizeOptionalNumber(pricing.includedHours, `pricings[${index}].includedHours`),
+          extraKmRate: normalizeOptionalNumber(pricing.extraKmRate, `pricings[${index}].extraKmRate`),
+          extraHourRate: normalizeOptionalNumber(pricing.extraHourRate, `pricings[${index}].extraHourRate`),
+          validFrom: pricing.validFrom ? new Date(pricing.validFrom) : null,
+          validTo: pricing.validTo ? new Date(pricing.validTo) : null,
+          active: pricing.active === undefined ? true : Boolean(pricing.active),
+          notes: normalizeOptionalString(pricing.notes),
+        }),
+        partial,
+      ),
     };
   }
 }

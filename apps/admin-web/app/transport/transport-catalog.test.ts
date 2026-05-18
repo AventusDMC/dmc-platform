@@ -26,6 +26,9 @@ const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.ts
 const placeComboboxSource = readFileSync(new URL('../components/PlaceCombobox.tsx', import.meta.url), 'utf8');
 const pricingRuleFormSource = readFileSync(new URL('../transport-pricing/TransportPricingRuleForm.tsx', import.meta.url), 'utf8');
 const routesFormSource = readFileSync(new URL('../routes/RoutesForm.tsx', import.meta.url), 'utf8');
+const routesProxySource = readFileSync(new URL('../api/routes/route.ts', import.meta.url), 'utf8');
+const routeDetailProxySource = readFileSync(new URL('../api/routes/[id]/route.ts', import.meta.url), 'utf8');
+const routeDuplicateProxySource = readFileSync(new URL('../api/routes/[id]/duplicate/route.ts', import.meta.url), 'utf8');
 const transportRoutesSource = readFileSync(new URL('../lib/transport-routes.ts', import.meta.url), 'utf8');
 const quotePageSource = readFileSync(new URL('../quotes/[id]/page.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('../quotes/[id]/QuoteTransportPicker.tsx', import.meta.url), 'utf8');
@@ -66,8 +69,11 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(transportRoutesSource, ["'TRANSFER_ROUTE'", 'MOVEMENT_ROUTE_TYPE_LABELS']);
     assert.equal(transportRoutesSource.includes("'TOURING_ROUTE'"), false);
     expectSourceContains(routesFormSource, [
+      "const TRANSFER_ROUTE_TYPE = 'TRANSFER_ROUTE';",
       'MOVEMENT_ROUTE_TYPES.map((option)',
       'getMovementRouteTypeLabel(option)',
+      'const nextRouteType = isFixedMovementRouteType(routeType) ? routeType : TRANSFER_ROUTE_TYPE;',
+      'routeType: nextRouteType,',
       'Legacy route type',
       'needs taxonomy review before it can be saved.',
     ]);
@@ -82,6 +88,29 @@ describe('transport catalog supplier rate-card UX', () => {
     assert.equal(transportRoutesSource.includes("'Excursion'"), false);
     assert.equal(transportRoutesSource.includes("'Other'"), false);
     assert.equal(routesFormSource.includes('otherRouteType'), false);
+  });
+
+  it('proxies transfer route create edit delete actions to the backend routes API', () => {
+    expectSourceContains(routesProxySource, [
+      "`${API_BASE_URL}/routes${request.nextUrl.search}`",
+      "'GET'",
+      "`${API_BASE_URL}/routes`",
+      "'POST'",
+    ]);
+
+    expectSourceContains(routeDetailProxySource, [
+      "params: Promise<{ id: string }>",
+      "`${API_BASE_URL}/routes/${encodeURIComponent(id)}${request.nextUrl.search}`",
+      "'GET'",
+      "`${API_BASE_URL}/routes/${encodeURIComponent(id)}`",
+      "'PATCH'",
+      "'DELETE'",
+    ]);
+
+    expectSourceContains(routeDuplicateProxySource, [
+      "`${API_BASE_URL}/routes/${encodeURIComponent(id)}/duplicate`",
+      "'POST'",
+    ]);
   });
 
   it('labels the rates tab as Supplier Rate Cards', () => {

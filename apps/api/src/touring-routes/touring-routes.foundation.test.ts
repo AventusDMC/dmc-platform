@@ -220,9 +220,12 @@ function createTouringPrismaMock() {
         const codes = where?.code?.in;
         return codes ? stores.routes.filter((route) => codes.includes(route.code)) : stores.routes;
       },
-      findUnique: async ({ where }: any) => stores.routes.find((route) => route.id === where.id) || null,
+      findUnique: async ({ where }: any) =>
+        stores.routes.find((route) => (where.id ? route.id === where.id : route.code === where.code)) || null,
       create: async ({ data }: any) => {
         const { stops, pricings, ...routeData } = data;
+        assert.equal(stops?.deleteMany, undefined);
+        assert.equal(pricings?.deleteMany, undefined);
         const route = { id: `tour-${stores.routes.length + 1}`, ...routeData };
         stores.routes.push(route);
         const createdStops = (stops?.create || []).map((entry: any, index: number) => ({
@@ -297,6 +300,73 @@ function createTouringPrismaMock() {
   };
   return { prisma, stores };
 }
+
+test('touring route create saves operational payload and ordered stops', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  const service = new TouringRoutesService(prisma as any);
+
+  const created = await service.create({
+    code: 'JOR-TR-SOUTH-MADABA-NEBO-PETRA-ON',
+    name: 'Amman -> Madaba -> Nebo -> Petra ON',
+    startCity: 'Amman',
+    durationDays: 1,
+    routeDescription: 'Southbound touring transfer via Madaba and Mount Nebo.',
+    mainDestinations: ['Petra'],
+    includedKm: 270,
+    includedHours: 4.5,
+    estimatedDistanceKm: 270,
+    estimatedDriveHours: 4.5,
+    reviewNotes: 'Pickup recommendation: 07:30 from Amman hotels',
+    active: true,
+    stops: [
+      { order: 1, city: 'Amman', location: 'Amman' },
+      { order: 2, city: 'Madaba', location: 'Madaba' },
+      { order: 3, city: 'Mount Nebo', location: 'Mount Nebo' },
+      { order: 4, city: 'Petra', location: 'Petra', notes: 'Overnight stop' },
+    ],
+  });
+
+  assert.equal(created.code, 'JOR-TR-SOUTH-MADABA-NEBO-PETRA-ON');
+  assert.equal(created.name, 'Amman -> Madaba -> Nebo -> Petra ON');
+  assert.equal(created.startCity, 'Amman');
+  assert.equal(created.includedKm, 270);
+  assert.equal(created.includedHours, 4.5);
+  assert.equal(stores.routes.length, 1);
+  assert.equal(stores.stops.length, 4);
+  assert.deepEqual(
+    stores.stops.map((stop) => ({ order: stop.order, city: stop.city, location: stop.location, notes: stop.notes || null })),
+    [
+      { order: 1, city: 'Amman', location: 'Amman', notes: null },
+      { order: 2, city: 'Madaba', location: 'Madaba', notes: null },
+      { order: 3, city: 'Mount Nebo', location: 'Mount Nebo', notes: null },
+      { order: 4, city: 'Petra', location: 'Petra', notes: 'Overnight stop' },
+    ],
+  );
+});
+
+test('touring route create returns clear duplicate code error', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({
+    id: 'tour-existing',
+    code: 'JOR-TR-SOUTH-MADABA-NEBO-PETRA-ON',
+    name: 'Existing Madaba Nebo Petra ON',
+    startCity: 'Amman',
+    durationDays: 1,
+  });
+  const service = new TouringRoutesService(prisma as any);
+
+  await assert.rejects(
+    () =>
+      service.create({
+        code: 'JOR-TR-SOUTH-MADABA-NEBO-PETRA-ON',
+        name: 'Amman -> Madaba -> Nebo -> Petra ON',
+        startCity: 'Amman',
+      }),
+    /Touring route code JOR-TR-SOUTH-MADABA-NEBO-PETRA-ON already exists/,
+  );
+
+  assert.equal(stores.routes.length, 1);
+});
 
 test('touring workbook preview validates tabs and classifies route and pricing rows', async () => {
   const { prisma } = createTouringPrismaMock();

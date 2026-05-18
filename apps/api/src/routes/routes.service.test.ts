@@ -93,6 +93,45 @@ test('route catalog normalizes legacy transfer labels to TRANSFER_ROUTE on write
   assert.equal(createdData.routeType, 'TRANSFER_ROUTE');
 });
 
+test('route catalog creates active point-to-point transfers from canonical selector place ids', async () => {
+  let createdData: any;
+  let existingLookupKey: string | undefined;
+  const places: Record<string, { id: string; name: string }> = {
+    'place-amman': { id: 'place-amman', name: 'Amman' },
+    'place-petra': { id: 'place-petra', name: 'Petra' },
+  };
+  const service = new RoutesService({
+    place: {
+      findUnique: async ({ where }: any) => places[where.id] || null,
+    },
+    route: {
+      findUnique: async ({ where }: any) => {
+        existingLookupKey = where.normalizedKey;
+        return null;
+      },
+      create: async (args: any) => {
+        createdData = args.data;
+        return { id: 'route-amman-petra', ...args.data };
+      },
+    },
+  } as any);
+
+  const created = await service.create({
+    fromPlaceId: 'place-amman',
+    toPlaceId: 'place-petra',
+    routeType: 'TRANSFER_ROUTE',
+    isActive: true,
+  });
+
+  assert.equal(created.id, 'route-amman-petra');
+  assert.equal(createdData.fromPlaceId, 'place-amman');
+  assert.equal(createdData.toPlaceId, 'place-petra');
+  assert.equal(createdData.name, 'Amman → Petra');
+  assert.equal(createdData.routeType, 'TRANSFER_ROUTE');
+  assert.equal(createdData.isActive, true);
+  assert.equal(existingLookupKey, createdData.normalizedKey);
+});
+
 test('route catalog rejects excursion as a transport route type', async () => {
   const service = new RoutesService({
     place: {

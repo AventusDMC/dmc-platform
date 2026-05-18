@@ -10,3 +10,7 @@ if (!API_BASE_URL) {
 export async function GET(request: NextRequest) {
   return proxyRequest(request, `${API_BASE_URL}/routes${request.nextUrl.search}`, 'GET');
 }
+
+export async function POST(request: NextRequest) {
+  return proxyRequest(request, `${API_BASE_URL}/routes`, 'POST');
+}
