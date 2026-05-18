@@ -4160,6 +4160,8 @@ export class QuotesService {
       activityId: values.component.activityId || null,
       excursionTemplateId: values.component.excursionTemplateId || null,
       contractId: values.component.hotelContractId || null,
+      routeId: values.component.routeId || null,
+      transportServiceTypeId: values.component.transportServiceTypeId || null,
       touringRouteId: values.component.touringRouteId || null,
       itineraryId: values.itineraryId,
       serviceDate: values.serviceDate,
@@ -4934,41 +4936,7 @@ export class QuotesService {
       throw new BadRequestException('Service not found');
     }
 
-    const updatedItem = await this.prisma.quoteItem.update({
-      where: { id: itemId },
-      data: {
-        serviceId: service.id,
-      },
-      include: {
-        service: {
-          include: {
-            serviceType: true,
-          },
-        },
-        activity: {
-          include: {
-            supplierCompany: true,
-          },
-        },
-        activityRateVariant: true,
-        ticketRateVariant: true,
-        itinerary: true,
-        hotel: true,
-        contract: true,
-        roomCategory: true,
-        appliedVehicleRate: {
-          include: {
-            vehicle: true,
-            serviceType: true,
-            supplier: true,
-          },
-        },
-      },
-    } as any);
-
-    await this.recalculateQuoteTotals(quote.id);
-
-    return updatedItem;
+    return this.updateItem(item.id, { quoteId: quote.id, serviceId: service.id }, actor);
   }
 
   async removeItem(itemId: string, actor?: CompanyScopedActor) {
@@ -6038,6 +6006,9 @@ export class QuotesService {
               } x ${nightCount} night${nightCount === 1 ? '' : 's'}${hotelSupplementTotal > 0 ? ` | Supplements ${currency} ${hotelSupplementTotal.toFixed(2)}` : ''}`
             : pricingDescription,
         appliedVehicleRateId,
+        routeId: data.routeId === undefined ? undefined : routeId,
+        transportServiceTypeId: data.transportServiceTypeId === undefined ? undefined : transportServiceTypeId,
+        vehicleId: data.transportVehicleId === undefined ? undefined : vehicleId,
         touringRouteId: data.touringRouteId === undefined ? undefined : data.touringRouteId || null,
         touringRoutePricingId: data.touringRoutePricingId === undefined ? undefined : data.touringRoutePricingId || null,
         entranceFeeId,

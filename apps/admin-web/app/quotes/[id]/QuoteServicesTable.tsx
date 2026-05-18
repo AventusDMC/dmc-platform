@@ -174,6 +174,9 @@ type QuoteItem = {
       name?: string | null;
     } | null;
   } | null;
+  routeId?: string | null;
+  transportServiceTypeId?: string | null;
+  vehicleId?: string | null;
   touringRoute?: {
     id: string;
     name: string;
@@ -383,8 +386,8 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     overrideCost: item.overrideCost === null ? '' : String(item.overrideCost),
     overrideReason: item.overrideReason || '',
     useOverride: item.useOverride,
-    transportServiceTypeId: item.appliedVehicleRate?.serviceType.id || '',
-    routeId: item.appliedVehicleRate?.routeId || '',
+    transportServiceTypeId: item.transportServiceTypeId || item.appliedVehicleRate?.serviceType.id || '',
+    routeId: item.routeId || item.appliedVehicleRate?.routeId || '',
     routeName: item.appliedVehicleRate?.routeName || '',
     hotelId: item.hotelId || '',
     contractId: item.contractId || '',

@@ -211,6 +211,7 @@ test('program template import maps component types to quote service lanes withou
   assert.equal(hotel.roomCount, 1);
   assert.equal(hotel.nightCount, 1);
   assert.equal(laneCodeForItem(transport), 'TRANSPORT');
+  assert.equal(transport.routeId, 'route-airport-amman');
   assert.equal(transport.touringRouteId, 'touring-route-1');
   assert.equal(laneCodeForItem(meal), 'MEAL');
   assert.equal(laneCodeForItem(ticket), 'ENTRANCE_TICKET');
@@ -224,6 +225,92 @@ test('program template import maps component types to quote service lanes withou
 
   assert.equal(externalPackage.serviceId, null);
   assert.equal(externalPackage.externalPackageName, 'Draft component 8');
+});
+
+test('imported draft rows resolve through quote item update without deleting other quote items', async () => {
+  const existingItems = [
+    {
+      id: 'imported-activity-item',
+      quoteId: 'quote-1',
+      optionId: null,
+      serviceId: 'supplier-service-imported-activity',
+      packageTemplateId: 'classic-jordan-template',
+      packageTemplateDayId: 'template-day-2',
+      packageTemplateComponentId: 'component-2',
+      excursionTemplateId: 'excursion-template-1',
+      service: {
+        supplierId: 'import-itinerary-system',
+        serviceType: { code: 'ACTIVITY', name: 'Activity' },
+      },
+    },
+    {
+      id: 'unrelated-item',
+      quoteId: 'quote-1',
+      optionId: null,
+      serviceId: 'real-hotel-service',
+    },
+  ];
+  const prisma = {
+    quoteItem: {
+      findFirst: async ({ where }: any) => existingItems.find((item) => item.id === where.id && item.quoteId === where.quoteId) || null,
+      update: async () => {
+        throw new Error('assign-service should resolve through updateItem pricing path');
+      },
+      delete: async () => {
+        throw new Error('resolve must not delete quote items');
+      },
+      deleteMany: async () => {
+        throw new Error('resolve must not delete quote items');
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'real-activity-service'
+          ? {
+              id: 'real-activity-service',
+              supplierId: 'real-supplier',
+              serviceType: { code: 'ACTIVITY', name: 'Activity' },
+            }
+          : null,
+    },
+  };
+  const service = new QuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    { evaluate: async () => null } as any,
+    new QuotePricingService(),
+  );
+  (service as any).assertQuoteMutationAccess = async () => ({ id: 'quote-1' });
+  (service as any).updateItem = async (itemId: string, data: any) => {
+    assert.equal(itemId, 'imported-activity-item');
+    assert.equal(data.serviceId, 'real-activity-service');
+    assert.equal(existingItems.length, 2);
+    return {
+      ...existingItems[0],
+      serviceId: data.serviceId,
+      packageTemplateId: existingItems[0].packageTemplateId,
+      packageTemplateDayId: existingItems[0].packageTemplateDayId,
+      packageTemplateComponentId: existingItems[0].packageTemplateComponentId,
+      excursionTemplateId: existingItems[0].excursionTemplateId,
+      totalCost: 120,
+      totalSell: 144,
+    };
+  };
+
+  const resolved = await service.assignServiceToItem(
+    'quote-1',
+    'imported-activity-item',
+    'real-activity-service',
+    { companyId: 'company-1' } as any,
+  );
+
+  assert.equal(resolved.serviceId, 'real-activity-service');
+  assert.equal(resolved.packageTemplateId, 'classic-jordan-template');
+  assert.equal(resolved.packageTemplateDayId, 'template-day-2');
+  assert.equal(resolved.packageTemplateComponentId, 'component-2');
+  assert.equal(resolved.excursionTemplateId, 'excursion-template-1');
+  assert.equal(existingItems.length, 2);
 });
 
 test('program template quote integration is exposed without replacing package assembly', () => {
@@ -241,4 +328,6 @@ test('program template quote integration is exposed without replacing package as
   assert.match(importPanelSource, /Confirm Import Program Template/);
   assert.match(importPanelSource, /packageTemplateId: selectedTemplate\.id/);
   assert.match(plannerSource, /<ProgramTemplateImportPanel/);
+  assert.match(plannerSource, /Resolve service/);
+  assert.match(plannerSource, /isImportedResolvableDraftItem/);
 });

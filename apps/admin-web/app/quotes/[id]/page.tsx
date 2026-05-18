@@ -396,6 +396,9 @@ type QuoteItem = {
   externalInternalNotes?: string | null;
   externalHotelsOrSimilar?: string | null;
   externalClientDescription?: string | null;
+  routeId?: string | null;
+  transportServiceTypeId?: string | null;
+  vehicleId?: string | null;
   touringRouteId?: string | null;
   touringRoutePricingId?: string | null;
   service: SupplierService;
@@ -404,6 +407,7 @@ type QuoteItem = {
     routeId: string | null;
     routeName: string;
     vehicle: {
+      id?: string | null;
       name: string;
       vehicleType?: string | null;
       maxPax?: number | null;
@@ -1015,6 +1019,9 @@ async function getQuoteItinerary(id: string): Promise<QuoteItineraryFetchResult>
 function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteItem {
   const rawItem = item as (Partial<QuoteItem> & Record<string, unknown>) | null | undefined;
   const sourceMetadata = (rawItem?.sourceMetadata && typeof rawItem.sourceMetadata === 'object' ? rawItem.sourceMetadata : {}) as {
+    routeId?: string | null;
+    transportServiceTypeId?: string | null;
+    vehicleId?: string | null;
     touringRouteId?: string | null;
     touringRoutePricingId?: string | null;
   };
@@ -1115,6 +1122,9 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
     externalInternalNotes: item?.externalInternalNotes ?? (typeof rawItem?.internalNotes === 'string' ? rawItem.internalNotes : null),
     externalHotelsOrSimilar: item?.externalHotelsOrSimilar ?? (typeof rawItem?.hotelsOrSimilar === 'string' ? rawItem.hotelsOrSimilar : null),
     externalClientDescription: item?.externalClientDescription ?? (typeof rawItem?.clientDescription === 'string' ? rawItem.clientDescription : null),
+    routeId: item?.routeId ?? item?.appliedVehicleRate?.routeId ?? sourceMetadata.routeId ?? null,
+    transportServiceTypeId: item?.transportServiceTypeId ?? item?.appliedVehicleRate?.serviceType?.id ?? sourceMetadata.transportServiceTypeId ?? null,
+    vehicleId: item?.vehicleId ?? item?.appliedVehicleRate?.vehicle?.id ?? sourceMetadata.vehicleId ?? null,
     touringRouteId: item?.touringRouteId ?? item?.touringRoute?.id ?? item?.touringRoutePricing?.touringRouteId ?? sourceMetadata.touringRouteId ?? null,
     touringRoutePricingId: item?.touringRoutePricingId ?? item?.touringRoutePricing?.id ?? sourceMetadata.touringRoutePricingId ?? null,
     service: {

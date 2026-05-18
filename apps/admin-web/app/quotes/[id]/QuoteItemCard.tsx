@@ -203,6 +203,9 @@ type QuoteItem = {
   totalCost: number;
   totalSell: number;
   service: SupplierService | null;
+  routeId?: string | null;
+  transportServiceTypeId?: string | null;
+  vehicleId?: string | null;
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
@@ -587,6 +590,8 @@ export function QuoteItemCard({
     () => ({
       ...initialValues,
       serviceId: currentItem.serviceId || '',
+      transportServiceTypeId: currentItem.transportServiceTypeId || currentItem.appliedVehicleRate?.serviceType.id || '',
+      routeId: currentItem.routeId || currentItem.appliedVehicleRate?.routeId || '',
       touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || '',
       touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',
       touringRoute: currentItem.touringRoute,

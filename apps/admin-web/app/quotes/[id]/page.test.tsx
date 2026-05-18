@@ -883,11 +883,16 @@ describe('quote detail page regression', () => {
 
     expectSourceContains(pageSource, [
       'const sourceMetadata = (rawItem?.sourceMetadata && typeof rawItem.sourceMetadata === \'object\' ? rawItem.sourceMetadata : {})',
+      'routeId: item?.routeId ?? item?.appliedVehicleRate?.routeId ?? sourceMetadata.routeId ?? null',
+      'transportServiceTypeId: item?.transportServiceTypeId ?? item?.appliedVehicleRate?.serviceType?.id ?? sourceMetadata.transportServiceTypeId ?? null',
       'touringRouteId: item?.touringRouteId ?? item?.touringRoute?.id ?? item?.touringRoutePricing?.touringRouteId ?? sourceMetadata.touringRouteId ?? null',
       'touringRoutePricingId: item?.touringRoutePricingId ?? item?.touringRoutePricing?.id ?? sourceMetadata.touringRoutePricingId ?? null',
       'touringRoutePricing: item?.touringRoutePricing',
     ]);
     expectSourceContains(quoteServicePlannerSource, [
+      'isImportedResolvableDraftItem',
+      "submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}",
+      "routeId: item.routeId || item.appliedVehicleRate?.routeId || ''",
       'touringRouteId: item.touringRouteId || item.touringRoute?.id || \'\'',
       'touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || \'\'',
     ]);

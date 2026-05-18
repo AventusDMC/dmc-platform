@@ -718,8 +718,8 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     overrideCost: item.overrideCost === null ? '' : String(item.overrideCost),
     overrideReason: item.overrideReason || '',
     useOverride: item.useOverride,
-    transportServiceTypeId: item.appliedVehicleRate?.serviceType.id || '',
-    routeId: item.appliedVehicleRate?.routeId || '',
+    transportServiceTypeId: item.transportServiceTypeId || item.appliedVehicleRate?.serviceType.id || '',
+    routeId: item.routeId || item.appliedVehicleRate?.routeId || '',
     routeName: item.appliedVehicleRate?.routeName || '',
     hotelId: item.hotelId || '',
     contractId: item.contractId || '',
@@ -1045,6 +1045,16 @@ function getServiceTypeLabel(service: SupplierService) {
 
 function isActivityMasterSourcedItem(item: Pick<QuoteItem, 'activityId' | 'activityRateVariantId' | 'activity'>) {
   return Boolean(item.activityId || item.activityRateVariantId || item.activity);
+}
+
+function isImportedResolvableDraftItem(item: QuoteItem) {
+  return Boolean(
+    item.packageTemplateComponentId &&
+      getItemSupplierId(item) === 'import-itinerary-system' &&
+      !item.externalPackageName &&
+      !item.externalPackageCountry &&
+      !item.externalSupplierName,
+  );
 }
 
 function getItemCategory(item: QuoteItem): ServicePlannerCategory {
@@ -1968,6 +1978,12 @@ function EditServiceEditorPanel({
   onCancel?: () => void;
 }) {
   const itineraryDay = item.itineraryId ? plannerProps.quote.itineraries.find((day) => day.id === item.itineraryId) ?? null : null;
+  const isResolvingImportedDraft = isImportedResolvableDraftItem(item);
+  const initialValues = buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount);
+
+  if (isResolvingImportedDraft) {
+    initialValues.serviceId = '';
+  }
 
   return (
     <QuoteItemsForm
@@ -1997,8 +2013,8 @@ function EditServiceEditorPanel({
       itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
       initialServiceTypeKey={getItemCategory(item)}
-      submitLabel="Save service"
-      initialValues={buildQuoteItemInitialValues(item, plannerProps.totalPax, plannerProps.quote.roomCount, plannerProps.quote.nightCount)}
+      submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}
+      initialValues={initialValues}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
       onCancel={onCancel}
     />
@@ -2318,7 +2334,7 @@ function QuoteServiceCard({
           </span>
         </button>
         {isExternalPackage && externalRange ? <span className="quote-service-day-range-badge">{externalRange.label}</span> : null}
-        {getItemSupplierId(item) === 'import-itinerary-system' && !isActivityMasterSourcedItem(item) ? <em>Unmatched</em> : null}
+        {isImportedResolvableDraftItem(item) ? <em>Unmatched</em> : null}
       </div>
       <div className={`${laneStyles.cardMain} quote-service-mini-card-main`}>
         <div className={`${laneStyles.titleRow} quote-service-mini-card-title-row`}>
@@ -2396,7 +2412,7 @@ function QuoteServiceCard({
           </Link>
         ) : null}
         <button type="button" className="secondary-button" onClick={() => onEdit(item)}>
-          Edit
+          {isImportedResolvableDraftItem(item) ? 'Resolve' : 'Edit'}
         </button>
         {canDetachContracts && item.contractId ? (
           <button
@@ -2439,6 +2455,10 @@ function getActiveServiceDrawerTitle(activeServicePanel: ActiveServicePanel | nu
     return `${activeServicePanel.label} - Day ${activeServicePanel.day.dayNumber}`;
   }
 
+  if (isImportedResolvableDraftItem(activeServicePanel.item)) {
+    return `Resolve ${SERVICE_PLANNER_TAB_LABELS[getItemCategory(activeServicePanel.item)]} - Day ${activeServicePanel.dayNumber || 'Unassigned'}`;
+  }
+
   return `${getItemServiceName(activeServicePanel.item)} - Day ${activeServicePanel.dayNumber || 'Unassigned'}`;
 }
 
@@ -2449,6 +2469,10 @@ function getActiveServiceDrawerDescription(activeServicePanel: ActiveServicePane
 
   if (activeServicePanel.kind === 'add') {
     return `${SERVICE_PLANNER_TAB_LABELS[activeServicePanel.category]} setup for ${activeServicePanel.day.title || `Day ${activeServicePanel.day.dayNumber}`}.`;
+  }
+
+  if (isImportedResolvableDraftItem(activeServicePanel.item)) {
+    return 'Choose the catalog record and save to calculate pricing while keeping the program template source links.';
   }
 
   return `${getItemServiceTypeLabel(activeServicePanel.item)} service details, supplier context, and pricing.`;

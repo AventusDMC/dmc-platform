@@ -1127,6 +1127,9 @@ model QuoteItem {
   externalInternalNotes              String?
   externalHotelsOrSimilar            String?
   externalClientDescription          String?
+  routeId                            String?                 @db.Uuid
+  transportServiceTypeId             String?                 @db.Uuid
+  vehicleId                          String?                 @db.Uuid
   touringRouteId                     String?                 @db.Uuid
   touringRoutePricingId              String?                 @db.Uuid
   appliedVehicleRate                 VehicleRate?            @relation(fields: [appliedVehicleRateId], references: [id])
@@ -1160,6 +1163,9 @@ model QuoteItem {
   @@index([quoteId, optionId])
   @@index([roomCategoryId])
   @@index([ticketRateVariantId])
+  @@index([routeId])
+  @@index([transportServiceTypeId])
+  @@index([vehicleId])
   @@index([touringRouteId])
   @@index([touringRoutePricingId])
   @@map("quote_items")
