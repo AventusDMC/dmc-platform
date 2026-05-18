@@ -42,6 +42,7 @@ type TouringRoute = {
 };
 
 const API_BASE_URL = '/api';
+type TouringRoutesView = 'golden' | 'all';
 
 function formatDestinations(route: TouringRoute) {
   const destinations = Array.isArray(route.mainDestinations) ? route.mainDestinations.filter(Boolean) : [];
@@ -67,10 +68,16 @@ function formatOperations(route: TouringRoute) {
   ].filter(Boolean).join(' / ') || 'Metadata pending';
 }
 
-export async function TouringRoutesSection() {
+function isGoldenTouringRoute(route: TouringRoute) {
+  return route.code?.startsWith('JOR-TR-');
+}
+
+export async function TouringRoutesSection({ view = 'golden' }: { view?: TouringRoutesView }) {
   const touringRoutes = await adminPageFetchJson<TouringRoute[]>(`${API_BASE_URL}/touring-routes?limit=200`, 'Touring route catalog', {
     cache: 'no-store',
   });
+  const visibleRoutes = view === 'all' ? touringRoutes : touringRoutes.filter(isGoldenTouringRoute);
+  const hiddenLegacyCount = touringRoutes.length - visibleRoutes.length;
 
   return (
     <div className="section-stack">
@@ -82,9 +89,20 @@ export async function TouringRoutesSection() {
             <h3>Reusable touring routes</h3>
             <p className="detail-copy">Multi-stop and multi-day transport programs that are not stored as fake transfer routes.</p>
           </div>
+          <div className="button-row">
+            <a className={view === 'golden' ? 'button' : 'secondary-button'} href="/transport?tab=touring-routes">
+              Golden only
+            </a>
+            <a className={view === 'all' ? 'button' : 'secondary-button'} href="/transport?tab=touring-routes&touringRoutesView=all">
+              Show all
+            </a>
+          </div>
         </div>
+        {view === 'golden' && hiddenLegacyCount > 0 ? (
+          <p className="form-helper">{hiddenLegacyCount} non-Golden touring route{hiddenLegacyCount === 1 ? '' : 's'} hidden. Use Show all to review legacy or test records.</p>
+        ) : null}
 
-        {touringRoutes.length === 0 ? (
+        {visibleRoutes.length === 0 ? (
           <p className="empty-state">No touring routes have been created yet. Import detection will classify tour/program rows separately from transfers.</p>
         ) : (
           <div className="table-wrap">
@@ -104,7 +122,7 @@ export async function TouringRoutesSection() {
                 </tr>
               </thead>
               <tbody>
-                {touringRoutes.map((route) => (
+                {visibleRoutes.map((route) => (
                   <tr key={route.id}>
                     <td>{route.code}</td>
                     <td>

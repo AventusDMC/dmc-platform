@@ -24,6 +24,7 @@ type TransportPageProps = {
     vehicleType?: string;
     validity?: string;
     activeState?: string;
+    touringRoutesView?: string;
   }>;
 };
 
@@ -150,7 +151,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}
             {activeTab === 'vehicle-types' ? <VehicleTypesSection /> : null}
             {activeTab === 'routes' ? <RoutesSection /> : null}
-            {activeTab === 'touring-routes' ? <TouringRoutesSection /> : null}
+            {activeTab === 'touring-routes' ? <TouringRoutesSection view={resolvedSearchParams?.touringRoutesView === 'all' ? 'all' : 'golden'} /> : null}
             {activeTab === 'pricing-rules' ? <TransportPricingRulesSection /> : null}
             {activeTab === 'rates' ? <VehicleRatesSection /> : null}
             {activeTab === 'tariff-workbook' ? (

@@ -605,7 +605,7 @@ describe('transport catalog supplier rate-card UX', () => {
   it('exposes touring routes as separate transport inventory', () => {
     expectSourceContains(pageSource, [
       "{ id: 'touring-routes', label: 'Touring Routes' }",
-      '<TouringRoutesSection />',
+      "<TouringRoutesSection view={resolvedSearchParams?.touringRoutesView === 'all' ? 'all' : 'golden'} />",
       'Touring Routes',
       'summary.touringRoutes',
     ]);
@@ -615,6 +615,11 @@ describe('transport catalog supplier rate-card UX', () => {
       '/touring-routes?limit=200',
       'Reusable touring routes',
       'not stored as fake transfer routes',
+      "view === 'all' ? touringRoutes : touringRoutes.filter(isGoldenTouringRoute)",
+      "route.code?.startsWith('JOR-TR-')",
+      'Golden only',
+      'Show all',
+      'touringRoutesView=all',
       'includedKm',
       'includedHours',
       'estimatedDistanceKm',
