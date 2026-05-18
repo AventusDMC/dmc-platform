@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { filterCanonicalGeographicPlaces, PlaceOption, formatPlaceLabel } from '../lib/places';
+import { filterCanonicalGeographicPlaces, formatPlaceSelectorLabel, getCanonicalPlaceDisplayName, getCanonicalPlaceSecondaryText, PlaceOption } from '../lib/places';
 
 type PlaceComboboxProps = {
   label: string;
@@ -37,7 +37,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
       return;
     }
 
-    setQuery(selectedPlace && value ? formatPlaceLabel(selectedPlace) : '');
+    setQuery(selectedPlace && value ? formatPlaceSelectorLabel(selectedPlace) : '');
   }, [isOpen, selectedPlace, value]);
 
   const filteredPlaces = useMemo(() => {
@@ -49,7 +49,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
           return true;
         }
 
-        return [place.name, place.type, place.city, place.country]
+        return [place.name, getCanonicalPlaceDisplayName(place), getCanonicalPlaceSecondaryText(place), place.type, place.city, place.country]
           .filter(Boolean)
           .some((part) => part!.toLowerCase().includes(normalizedQuery));
       })
@@ -94,7 +94,7 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
       </div>
       {value && selectedPlace ? (
         <span className="search-combobox-selected" aria-live="polite">
-          Selected <strong>{formatPlaceLabel(selectedPlace)}</strong>
+          Selected <strong>{formatPlaceSelectorLabel(selectedPlace)}</strong>
         </span>
       ) : null}
       {isOpen ? (
@@ -110,16 +110,12 @@ export function PlaceCombobox({ label, places, value, onChange, placeholder, dis
                 onClick={() => {
                   setCommittedSelectedPlace(place);
                   onChange(place.id);
-                  setQuery(formatPlaceLabel(place));
+                  setQuery(formatPlaceSelectorLabel(place));
                   setIsOpen(false);
                 }}
               >
-                <strong>{place.name}</strong>
-                <span>
-                  {place.type}
-                  {place.city ? ` - ${place.city}` : ''}
-                  {place.country ? `, ${place.country}` : ''}
-                </span>
+                <strong>{getCanonicalPlaceDisplayName(place)}</strong>
+                {getCanonicalPlaceSecondaryText(place) ? <span>{getCanonicalPlaceSecondaryText(place)}</span> : null}
               </button>
             ))
           )}

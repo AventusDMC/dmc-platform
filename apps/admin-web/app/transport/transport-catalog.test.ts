@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { filterCanonicalGeographicPlaces } from '../lib/places';
+import { filterCanonicalGeographicPlaces, formatPlaceSelectorLabel, getCanonicalPlaceDisplayName, getCanonicalPlaceSecondaryText } from '../lib/places';
 import { filterCanonicalFleetVehicles, isCanonicalFleetVehicle } from '../lib/transport-vehicles';
 import { filterTransportTariffRates } from './TransportTariffWorkbookSection';
 
@@ -455,7 +455,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'setCommittedSelectedPlace(selectedPlaceFromOptions);',
       'if (isOpen) {',
       'setCommittedSelectedPlace(place);',
-      'Selected <strong>{formatPlaceLabel(selectedPlace)}</strong>',
+      'Selected <strong>{formatPlaceSelectorLabel(selectedPlace)}</strong>',
       'aria-label={`Clear ${label}`}',
     ]);
 
@@ -528,6 +528,66 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(routesFormSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
     expectSourceContains(vehicleRatesFormSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
     expectSourceContains(transportPricingCalculatorSource, ['filterCanonicalGeographicPlaces(availablePlaces, [fromPlaceId])', 'filterCanonicalGeographicPlaces(availablePlaces, [toPlaceId])']);
+  });
+
+  it('shows clean canonical place selector labels and dedupes operational aliases', () => {
+    const places = [
+      { id: 'qaia-short', name: 'QAIA Airport Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'qaia-long', name: 'Queen Alia International Airport Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'marka', name: 'Marka Airport Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'aqj-long', name: 'King Hussein International Airport Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+      { id: 'aqj-short', name: 'AQJ Airport', type: 'Airport', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+      { id: 'aqaba-center', name: 'Aqaba City Center City Center', type: 'City Center', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+      { id: 'amman', name: 'Amman City', type: 'City', placeTypeId: null, cityId: null, city: 'Amman', country: 'Jordan', isActive: true },
+      { id: 'petra', name: 'Petra Visitor Center', type: 'Site', placeTypeId: null, cityId: null, city: 'Petra', country: 'Jordan', isActive: true },
+      { id: 'dead-sea', name: 'Dead Sea Location', type: 'Location', placeTypeId: null, cityId: null, city: 'Dead Sea', country: 'Jordan', isActive: true },
+      { id: 'wadi-rum', name: 'Wadi Rum Camp Area', type: 'Location', placeTypeId: null, cityId: null, city: 'Wadi Rum', country: 'Jordan', isActive: true },
+      { id: 'allenby-bridge', name: 'Allenby Bridge Border', type: 'Border', placeTypeId: null, cityId: null, city: 'Jordan Valley', country: 'Jordan', isActive: true },
+      { id: 'allenby-border', name: 'Allenby Border', type: 'Border', placeTypeId: null, cityId: null, city: 'Jordan Valley', country: 'Jordan', isActive: true },
+      { id: 'sheikh-hussein', name: 'Sheikh Hussein Bridge Border', type: 'Border', placeTypeId: null, cityId: null, city: 'Jordan Valley', country: 'Jordan', isActive: true },
+      { id: 'south-border', name: 'Aqaba South Border Border', type: 'Border', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+    ];
+
+    assert.equal(getCanonicalPlaceDisplayName(places[0]), 'QAIA Airport');
+    assert.equal(formatPlaceSelectorLabel(places[0]), 'QAIA Airport (Airport · Amman)');
+    assert.equal(getCanonicalPlaceDisplayName(places[3]), 'AQJ Airport');
+    assert.equal(getCanonicalPlaceDisplayName(places[5]), 'Aqaba City');
+    assert.equal(getCanonicalPlaceDisplayName(places[10]), 'Allenby Border');
+    assert.equal(getCanonicalPlaceSecondaryText(places[10]), 'Border · Jordan Valley');
+
+    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), [
+      'qaia-short',
+      'marka',
+      'aqj-short',
+      'aqaba-center',
+      'amman',
+      'petra',
+      'dead-sea',
+      'wadi-rum',
+      'allenby-border',
+      'sheikh-hussein',
+      'south-border',
+    ]);
+    assert.deepEqual(filterCanonicalGeographicPlaces(places, ['qaia-long']).map((place) => place.id), [
+      'qaia-short',
+      'marka',
+      'aqj-short',
+      'aqaba-center',
+      'amman',
+      'petra',
+      'dead-sea',
+      'wadi-rum',
+      'allenby-border',
+      'sheikh-hussein',
+      'south-border',
+      'qaia-long',
+    ]);
+
+    expectSourceContains(placeComboboxSource, [
+      'formatPlaceSelectorLabel(selectedPlace)',
+      'getCanonicalPlaceDisplayName(place)',
+      'getCanonicalPlaceSecondaryText(place)',
+    ]);
   });
 
   it('filters operator-facing vehicle selectors to canonical fleet rows', () => {
