@@ -56,6 +56,12 @@ function cleanPlaceType(type: string | null | undefined) {
   if (normalized.includes('port')) return 'Port';
   if (normalized.includes('city')) return 'City';
   if (normalized.includes('site')) return 'Site';
+  if (normalized.includes('destination')) return 'Destination';
+  if (normalized.includes('landmark')) return 'Landmark';
+  if (normalized.includes('heritage')) return 'Heritage Site';
+  if (normalized.includes('tourism')) return 'Tourism Site';
+  if (normalized.includes('archaeological')) return 'Archaeological Site';
+  if (normalized.includes('region')) return 'Region';
   if (normalized.includes('location')) return 'Location';
   return cleanRepeatedTypeWords(String(type || '').trim());
 }
@@ -131,6 +137,12 @@ const CANONICAL_GEOGRAPHIC_PLACE_TYPE_PATTERNS = [
   /\bport\b/i,
   /\bsite\b/i,
   /\blocation\b/i,
+  /\bdestination\b/i,
+  /\blandmark\b/i,
+  /\barchaeological[_\s-]?site\b/i,
+  /\btourism[_\s-]?site\b/i,
+  /\bheritage[_\s-]?site\b/i,
+  /\bregion\b/i,
 ];
 
 export function isCanonicalGeographicPlace(place: Pick<PlaceOption, 'name' | 'type' | 'isActive'>) {

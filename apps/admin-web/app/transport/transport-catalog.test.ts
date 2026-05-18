@@ -590,6 +590,40 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
   });
 
+  it('keeps major Jordan tourism destinations visible while hiding operational service labels', () => {
+    const places = [
+      { id: 'petra', name: 'Petra', type: 'Archaeological Site', placeTypeId: null, cityId: null, city: 'Petra', country: 'Jordan', isActive: true },
+      { id: 'wadi-rum', name: 'Wadi Rum', type: 'Region', placeTypeId: null, cityId: null, city: 'Wadi Rum', country: 'Jordan', isActive: true },
+      { id: 'dead-sea', name: 'Dead Sea', type: 'Destination', placeTypeId: null, cityId: null, city: 'Dead Sea', country: 'Jordan', isActive: true },
+      { id: 'jerash', name: 'Jerash', type: 'Heritage Site', placeTypeId: null, cityId: null, city: 'Jerash', country: 'Jordan', isActive: true },
+      { id: 'nebo', name: 'Mount Nebo', type: 'Landmark', placeTypeId: null, cityId: null, city: 'Madaba', country: 'Jordan', isActive: true },
+      { id: 'bethany', name: 'Bethany Beyond the Jordan', type: 'Tourism Site', placeTypeId: null, cityId: null, city: 'Jordan Valley', country: 'Jordan', isActive: true },
+      { id: 'dana', name: 'Dana', type: 'Region', placeTypeId: null, cityId: null, city: 'Dana', country: 'Jordan', isActive: true },
+      { id: 'aqaba', name: 'Aqaba', type: 'City', placeTypeId: null, cityId: null, city: 'Aqaba', country: 'Jordan', isActive: true },
+      { id: 'madaba', name: 'Madaba', type: 'City', placeTypeId: null, cityId: null, city: 'Madaba', country: 'Jordan', isActive: true },
+      { id: 'alpha-bus-full-day', name: 'Alpha Bus Full Day 200km', type: 'Destination', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-bus-extra-km', name: 'Alpha Bus Extra KM', type: 'Location', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-bus-stationary', name: 'Alpha Bus Stationary', type: 'Region', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-bus-waiting', name: 'Alpha Bus Waiting', type: 'Landmark', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-bus-disposal', name: 'Alpha Bus Disposal', type: 'Tourism Site', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-driver-overnight', name: 'Alpha Driver Overnight', type: 'Heritage Site', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-supplier-rate', name: 'Alpha Bus Supplier Rate', type: 'Supplier Rate', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+      { id: 'alpha-supplier-service', name: 'Alpha Bus Supplier Service', type: 'Supplier Service', placeTypeId: null, cityId: null, city: null, country: null, isActive: true },
+    ];
+
+    assert.deepEqual(filterCanonicalGeographicPlaces(places).map((place) => place.id), [
+      'petra',
+      'wadi-rum',
+      'dead-sea',
+      'jerash',
+      'nebo',
+      'bethany',
+      'dana',
+      'aqaba',
+      'madaba',
+    ]);
+  });
+
   it('filters operator-facing vehicle selectors to canonical fleet rows', () => {
     const vehicles = [
       { id: 'sedan', name: 'Sedan 2', maxPax: 2 },
