@@ -9,7 +9,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function bootstrap() {
-  const app = await createNestApp(process.env.NODE_ENV === 'production' ? { logger: ['error', 'warn'] } : undefined);
+  const app = await createNestApp(undefined, process.env.NODE_ENV === 'production' ? { logger: ['error', 'warn'] } : undefined);
   const port = Number(process.env.PORT) || 8080;
   await app.listen(port, '0.0.0.0');
   console.log(`API running on port ${port}`);

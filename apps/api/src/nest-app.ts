@@ -1,3 +1,4 @@
+import type { NestApplicationOptions } from '@nestjs/common';
 import * as dotenv from 'dotenv';
 dotenv.config();
 import { NestFactory } from '@nestjs/core';
@@ -31,13 +32,13 @@ export function getCorsOrigins() {
   return Array.from(new Set(['http://localhost:3000', 'https://dmc-platform-admin-web.vercel.app', ...configured]));
 }
 
-export async function createNestApp(expressServer?: ExpressServer) {
+export async function createNestApp(expressServer?: ExpressServer, options?: NestApplicationOptions) {
   let app: NestExpressApplication;
 
   try {
     app = expressServer
-      ? await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(expressServer))
-      : await NestFactory.create<NestExpressApplication>(AppModule);
+      ? await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(expressServer), options)
+      : await NestFactory.create<NestExpressApplication>(AppModule, options);
   } catch (error) {
     logBootstrapError('NestFactory.create', error);
     throw error;
