@@ -2015,6 +2015,7 @@ function EditServiceEditorPanel({
       initialServiceTypeKey={getItemCategory(item)}
       submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}
       initialValues={initialValues}
+      refreshOnSaved={!isResolvingImportedDraft}
       onSaved={(savedItem) => onSaved?.(savedItem as QuoteItem)}
       onCancel={onCancel}
     />

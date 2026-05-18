@@ -448,6 +448,7 @@ type QuoteItemsFormProps = {
   preferredRateCurrency?: string;
   preferredRateNote?: string;
   preferredRouteId?: string;
+  refreshOnSaved?: boolean;
   submitLabel?: string;
   initialValues?: QuoteItemInitialValues;
   onSaved?: (item: any) => void;
@@ -992,6 +993,7 @@ export function QuoteItemsForm({
   preferredRateCurrency,
   preferredRateNote,
   preferredRouteId,
+  refreshOnSaved = true,
   submitLabel = 'Add item',
   initialValues,
   onSaved,
@@ -2731,6 +2733,8 @@ export function QuoteItemsForm({
 
       const savedItem = await readJsonResponse<any>(response, `Could not read ${isEditing ? 'updated' : 'created'} quote item.`);
       notifyQuotePricingChanged(quoteId);
+      setShowHotelRateModal(false);
+      setPendingHotelRateSubmit(false);
       onSaved?.(savedItem);
 
       if (!isEditing) {
@@ -2776,7 +2780,9 @@ export function QuoteItemsForm({
         setHasAttemptedExternalPackageSubmit(false);
         setActiveServiceType(null);
       }
-      router.refresh();
+      if (refreshOnSaved) {
+        router.refresh();
+      }
     } catch (caughtError) {
       const fallbackMessage = `Could not ${isEditing ? 'update' : 'add'} quote item.`;
       const isAbortError = caughtError instanceof DOMException && caughtError.name === 'AbortError';

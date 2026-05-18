@@ -313,6 +313,109 @@ test('imported draft rows resolve through quote item update without deleting oth
   assert.equal(existingItems.length, 2);
 });
 
+test('imported hotel placeholder resolves to priced hotel item without losing template traceability', async () => {
+  const existingItems = [
+    {
+      id: 'imported-hotel-item',
+      quoteId: 'quote-1',
+      optionId: null,
+      serviceId: 'supplier-service-imported-hotel',
+      packageTemplateId: 'classic-jordan-template',
+      packageTemplateDayId: 'template-day-4',
+      packageTemplateComponentId: 'component-4',
+      contractId: 'hotel-contract-placeholder',
+      service: {
+        supplierId: 'import-itinerary-system',
+        serviceType: { code: 'HOTEL', name: 'Hotel' },
+      },
+    },
+    {
+      id: 'unrelated-transport-item',
+      quoteId: 'quote-1',
+      optionId: null,
+      serviceId: 'real-transport-service',
+    },
+  ];
+  let updateCallCount = 0;
+  let deleteCallCount = 0;
+  const prisma = {
+    quoteItem: {
+      findFirst: async ({ where }: any) => existingItems.find((item) => item.id === where.id && item.quoteId === where.quoteId) || null,
+      update: async () => {
+        throw new Error('hotel resolve should use updateItem pricing path');
+      },
+      delete: async () => {
+        deleteCallCount += 1;
+        throw new Error('hotel resolve must not delete quote items');
+      },
+      deleteMany: async () => {
+        deleteCallCount += 1;
+        throw new Error('hotel resolve must not delete quote items');
+      },
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'real-hotel-service'
+          ? {
+              id: 'real-hotel-service',
+              supplierId: 'real-hotel-supplier',
+              serviceType: { code: 'HOTEL', name: 'Hotel' },
+            }
+          : null,
+    },
+  };
+  const service = new QuotesService(
+    prisma as any,
+    {} as any,
+    {} as any,
+    { evaluate: async () => null } as any,
+    new QuotePricingService(),
+  );
+  (service as any).assertQuoteMutationAccess = async () => ({ id: 'quote-1' });
+  (service as any).updateItem = async (itemId: string, data: any) => {
+    updateCallCount += 1;
+    assert.equal(itemId, 'imported-hotel-item');
+    assert.equal(data.serviceId, 'real-hotel-service');
+    assert.equal(existingItems.length, 2);
+    return {
+      ...existingItems[0],
+      serviceId: data.serviceId,
+      service: {
+        id: 'real-hotel-service',
+        supplierId: 'real-hotel-supplier',
+        serviceType: { code: 'HOTEL', name: 'Hotel' },
+      },
+      hotelId: 'hotel-amman',
+      contractId: 'hotel-contract-real',
+      roomCategoryId: 'room-dbl',
+      occupancyType: 'DBL',
+      mealPlan: 'BB',
+      totalCost: 500,
+      totalSell: 600,
+    };
+  };
+
+  const resolved = (await service.assignServiceToItem(
+    'quote-1',
+    'imported-hotel-item',
+    'real-hotel-service',
+    { companyId: 'company-1' } as any,
+  )) as any;
+
+  assert.equal(updateCallCount, 1);
+  assert.equal(deleteCallCount, 0);
+  assert.equal(resolved.serviceId, 'real-hotel-service');
+  assert.equal(resolved.service.supplierId, 'real-hotel-supplier');
+  assert.equal(resolved.packageTemplateId, 'classic-jordan-template');
+  assert.equal(resolved.packageTemplateDayId, 'template-day-4');
+  assert.equal(resolved.packageTemplateComponentId, 'component-4');
+  assert.equal(resolved.hotelId, 'hotel-amman');
+  assert.equal(resolved.contractId, 'hotel-contract-real');
+  assert.equal(resolved.totalCost, 500);
+  assert.equal(resolved.totalSell, 600);
+  assert.equal(existingItems.length, 2);
+});
+
 test('program template quote integration is exposed without replacing package assembly', () => {
   let repoRoot = process.cwd();
   while (!existsSync(join(repoRoot, 'apps/admin-web')) && dirname(repoRoot) !== repoRoot) {

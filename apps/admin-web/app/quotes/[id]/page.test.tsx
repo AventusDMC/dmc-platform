@@ -892,9 +892,17 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteServicePlannerSource, [
       'isImportedResolvableDraftItem',
       "submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}",
+      'refreshOnSaved={!isResolvingImportedDraft}',
       "routeId: item.routeId || item.appliedVehicleRate?.routeId || ''",
       'touringRouteId: item.touringRouteId || item.touringRoute?.id || \'\'',
       'touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || \'\'',
+    ]);
+    expectSourceContains(quoteItemsFormSource, [
+      'refreshOnSaved = true',
+      'setShowHotelRateModal(false);',
+      'setPendingHotelRateSubmit(false);',
+      'if (refreshOnSaved) {',
+      'router.refresh();',
     ]);
     expectSourceContains(quoteServicesTableSource, [
       'touringRouteId: item.touringRouteId || item.touringRoute?.id || \'\'',
@@ -913,6 +921,25 @@ describe('quote detail page regression', () => {
       'touringRouteId: isTouringTransportEdit ? touringRouteId || initialValues?.touringRoute?.id || undefined : undefined',
       'touringRoutePricingId: isTouringTransportEdit ? touringRoutePricingId || initialValues?.touringRoutePricing?.id || undefined : undefined',
       'isTransportService && !isTouringTransportEdit',
+    ]);
+  });
+
+  it('resolves imported hotel placeholders through a single planner-owned refresh', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteServicePlannerSource, [
+      'function isImportedResolvableDraftItem(item: QuoteItem)',
+      "submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}",
+      'refreshOnSaved={!isResolvingImportedDraft}',
+      'setActiveServicePanel(null);',
+      'void refreshScopeItemsFromQuote().catch',
+    ]);
+    expectSourceContains(quoteItemsFormSource, [
+      'refreshOnSaved = true',
+      'setShowHotelRateModal(false);',
+      'setPendingHotelRateSubmit(false);',
+      'if (refreshOnSaved) {',
+      'router.refresh();',
     ]);
   });
 
@@ -1185,7 +1212,7 @@ describe('quote detail page regression', () => {
     expectSourceContains(quoteServicePlannerSource, [
       "function isActivityMasterSourcedItem(item: Pick<QuoteItem, 'activityId' | 'activityRateVariantId' | 'activity'>)",
       "if (isActivityMasterSourcedItem(item)) {\n    return 'activity';\n  }",
-      "getItemSupplierId(item) === 'import-itinerary-system' && !isActivityMasterSourcedItem(item)",
+      'isImportedResolvableDraftItem(item)',
     ]);
   });
 
