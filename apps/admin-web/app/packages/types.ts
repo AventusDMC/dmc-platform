@@ -1,4 +1,16 @@
-export type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | 'HOTEL' | 'TRANSPORT' | 'TICKET' | 'SERVICE';
+export type PackageTemplateComponentType =
+  | 'EXCURSION_TEMPLATE'
+  | 'ACTIVITY'
+  | 'HOTEL'
+  | 'TRANSPORT'
+  | 'DINING'
+  | 'MEAL'
+  | 'TICKET'
+  | 'ENTRANCE'
+  | 'GUIDE'
+  | 'SERVICE'
+  | 'OTHER'
+  | 'EXTERNAL_PACKAGE';
 
 export type PackageTemplateComponent = {
   id: string;

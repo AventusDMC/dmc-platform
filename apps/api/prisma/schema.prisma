@@ -2670,8 +2670,14 @@ enum PackageTemplateComponentType {
   ACTIVITY
   HOTEL
   TRANSPORT
+  DINING
+  MEAL
   TICKET
+  ENTRANCE
+  GUIDE
   SERVICE
+  OTHER
+  EXTERNAL_PACKAGE
 }
 
 enum HotelCancellationPenaltyType {

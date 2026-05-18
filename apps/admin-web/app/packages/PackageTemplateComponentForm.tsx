@@ -32,8 +32,14 @@ const COMPONENT_TYPES: Array<{ value: PackageTemplateComponentType; label: strin
   { value: 'ACTIVITY', label: 'Activity Master' },
   { value: 'HOTEL', label: 'Hotel contract' },
   { value: 'TRANSPORT', label: 'Transport structure' },
+  { value: 'DINING', label: 'Dining' },
+  { value: 'MEAL', label: 'Meal' },
   { value: 'TICKET', label: 'Ticketing service' },
+  { value: 'ENTRANCE', label: 'Entrance' },
+  { value: 'GUIDE', label: 'Guide' },
   { value: 'SERVICE', label: 'Operational service' },
+  { value: 'OTHER', label: 'Other service' },
+  { value: 'EXTERNAL_PACKAGE', label: 'External country package' },
 ];
 
 const TRANSPORT_PRICING_MODES = [
@@ -137,7 +143,9 @@ export function PackageTemplateComponentForm({
       routeId: componentType === 'TRANSPORT' ? routeId : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? transportServiceTypeId || null : null,
       pricingMode: componentType === 'TRANSPORT' ? pricingMode : null,
-      supplierServiceId: componentType === 'TRANSPORT' || componentType === 'TICKET' || componentType === 'SERVICE' ? supplierServiceId || null : null,
+      supplierServiceId: ['TRANSPORT', 'DINING', 'MEAL', 'TICKET', 'ENTRANCE', 'GUIDE', 'SERVICE', 'OTHER'].includes(componentType)
+        ? supplierServiceId || null
+        : null,
     };
 
     if (!Number.isInteger(normalizedDay) || normalizedDay < 1 || normalizedDay > durationDays) {

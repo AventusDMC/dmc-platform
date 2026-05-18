@@ -2,7 +2,19 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
-type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | 'HOTEL' | 'TRANSPORT' | 'TICKET' | 'SERVICE';
+type PackageTemplateComponentType =
+  | 'EXCURSION_TEMPLATE'
+  | 'ACTIVITY'
+  | 'HOTEL'
+  | 'TRANSPORT'
+  | 'DINING'
+  | 'MEAL'
+  | 'TICKET'
+  | 'ENTRANCE'
+  | 'GUIDE'
+  | 'SERVICE'
+  | 'OTHER'
+  | 'EXTERNAL_PACKAGE';
 
 type CreatePackageTemplateInput = {
   name: string;
@@ -52,7 +64,20 @@ type ReorderComponentsInput = {
   orderedComponentIds: string[];
 };
 
-const COMPONENT_TYPES: PackageTemplateComponentType[] = ['EXCURSION_TEMPLATE', 'ACTIVITY', 'HOTEL', 'TRANSPORT', 'TICKET', 'SERVICE'];
+const COMPONENT_TYPES: PackageTemplateComponentType[] = [
+  'EXCURSION_TEMPLATE',
+  'ACTIVITY',
+  'HOTEL',
+  'TRANSPORT',
+  'DINING',
+  'MEAL',
+  'TICKET',
+  'ENTRANCE',
+  'GUIDE',
+  'SERVICE',
+  'OTHER',
+  'EXTERNAL_PACKAGE',
+];
 
 @Injectable()
 export class PackageTemplatesService {
@@ -461,7 +486,7 @@ export class PackageTemplatesService {
       touringRouteId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.touringRouteId) : null,
       transportServiceTypeId: componentType === 'TRANSPORT' ? normalizeOptionalString(data.transportServiceTypeId) : null,
       pricingMode: componentType === 'TRANSPORT' ? normalizeOptionalString(data.pricingMode) : null,
-      supplierServiceId: componentType === 'TRANSPORT' || componentType === 'TICKET' || componentType === 'SERVICE' ? normalizeOptionalString(data.supplierServiceId) : null,
+      supplierServiceId: this.componentTypeSupportsSupplierService(componentType) ? normalizeOptionalString(data.supplierServiceId) : null,
     };
   }
 
@@ -472,24 +497,13 @@ export class PackageTemplatesService {
     if (componentType === 'ACTIVITY' && !normalizeOptionalString(data.activityId)) {
       throw new BadRequestException('activityId is required for activity components');
     }
-    if (componentType === 'HOTEL' && !normalizeOptionalString(data.hotelContractId)) {
-      throw new BadRequestException('hotelContractId is required for hotel components');
-    }
-    if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.routeId) && !normalizeOptionalString(data.touringRouteId)) {
-      throw new BadRequestException('routeId or touringRouteId is required for transport components');
-    }
     if (componentType === 'TRANSPORT' && normalizeOptionalString(data.routeId) && normalizeOptionalString(data.touringRouteId)) {
       throw new BadRequestException('Transport components cannot link both routeId and touringRouteId');
     }
-    if (componentType === 'TRANSPORT' && !normalizeOptionalString(data.transportServiceTypeId) && !normalizeOptionalString(data.pricingMode)) {
-      throw new BadRequestException('pricingMode or transportServiceTypeId is required for transport components');
-    }
-    if (componentType === 'TICKET' && !normalizeOptionalString(data.supplierServiceId)) {
-      throw new BadRequestException('supplierServiceId is required for ticket components');
-    }
-    if (componentType === 'SERVICE' && !normalizeOptionalString(data.supplierServiceId)) {
-      throw new BadRequestException('supplierServiceId is required for service components');
-    }
+  }
+
+  private componentTypeSupportsSupplierService(componentType: PackageTemplateComponentType) {
+    return ['TRANSPORT', 'DINING', 'MEAL', 'TICKET', 'ENTRANCE', 'GUIDE', 'SERVICE', 'OTHER'].includes(componentType);
   }
 
   private normalizeComponentType(value: string) {

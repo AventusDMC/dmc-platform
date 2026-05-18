@@ -1,0 +1,6 @@
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'DINING';
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'MEAL';
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'ENTRANCE';
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'GUIDE';
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'OTHER';
+ALTER TYPE "PackageTemplateComponentType" ADD VALUE IF NOT EXISTS 'EXTERNAL_PACKAGE';

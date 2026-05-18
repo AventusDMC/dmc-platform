@@ -14,7 +14,13 @@ export function packageComponentTypeLabel(type: PackageTemplateComponentType) {
   if (type === 'ACTIVITY') return 'Activity Master';
   if (type === 'HOTEL') return 'Hotel contract';
   if (type === 'TRANSPORT') return 'Transport structure';
+  if (type === 'DINING') return 'Dining';
+  if (type === 'MEAL') return 'Meal';
+  if (type === 'ENTRANCE') return 'Entrance';
+  if (type === 'GUIDE') return 'Guide';
   if (type === 'SERVICE') return 'Operational service';
+  if (type === 'OTHER') return 'Other service';
+  if (type === 'EXTERNAL_PACKAGE') return 'External country package';
   return 'Ticketing';
 }
 

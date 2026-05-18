@@ -2,7 +2,19 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { Roles } from '../auth/auth.decorators';
 import { PackageTemplatesService } from './package-templates.service';
 
-type PackageTemplateComponentType = 'EXCURSION_TEMPLATE' | 'ACTIVITY' | 'HOTEL' | 'TRANSPORT' | 'TICKET' | 'SERVICE';
+type PackageTemplateComponentType =
+  | 'EXCURSION_TEMPLATE'
+  | 'ACTIVITY'
+  | 'HOTEL'
+  | 'TRANSPORT'
+  | 'DINING'
+  | 'MEAL'
+  | 'TICKET'
+  | 'ENTRANCE'
+  | 'GUIDE'
+  | 'SERVICE'
+  | 'OTHER'
+  | 'EXTERNAL_PACKAGE';
 
 type CreatePackageTemplateBody = {
   name: string;

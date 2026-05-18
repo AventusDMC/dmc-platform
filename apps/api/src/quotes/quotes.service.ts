@@ -54,6 +54,66 @@ const GUIDE_RATES = {
 
 const GUIDE_OVERNIGHT_SUPPLEMENT = 50;
 
+type ProgramTemplateDraftLane =
+  | 'activity'
+  | 'hotel'
+  | 'transport'
+  | 'meal'
+  | 'ticketing'
+  | 'guide'
+  | 'externalPackage'
+  | 'other';
+
+const PROGRAM_TEMPLATE_DRAFT_LANE_SERVICE: Record<Exclude<ProgramTemplateDraftLane, 'externalPackage'>, {
+  serviceName: string;
+  category: string;
+  serviceTypeName: string;
+  serviceTypeCode: string;
+}> = {
+  activity: {
+    serviceName: 'Imported Activity',
+    category: 'Activity',
+    serviceTypeName: 'Activity',
+    serviceTypeCode: 'ACTIVITY',
+  },
+  hotel: {
+    serviceName: 'Imported Hotel',
+    category: 'Hotel',
+    serviceTypeName: 'Hotel',
+    serviceTypeCode: 'HOTEL',
+  },
+  transport: {
+    serviceName: 'Imported Transport',
+    category: 'Transport',
+    serviceTypeName: 'Transport',
+    serviceTypeCode: 'TRANSPORT',
+  },
+  meal: {
+    serviceName: 'Imported Meal',
+    category: 'Meal',
+    serviceTypeName: 'Meal',
+    serviceTypeCode: 'MEAL',
+  },
+  ticketing: {
+    serviceName: 'Imported Entrance',
+    category: 'Ticketing',
+    serviceTypeName: 'Entrance Ticket',
+    serviceTypeCode: 'ENTRANCE_TICKET',
+  },
+  guide: {
+    serviceName: 'Imported Guide',
+    category: 'Guide',
+    serviceTypeName: 'Guide',
+    serviceTypeCode: 'GUIDE',
+  },
+  other: {
+    serviceName: 'Imported Service',
+    category: 'Service',
+    serviceTypeName: 'Other Support',
+    serviceTypeCode: 'OTHER',
+  },
+};
+
 type QuotePricingType = 'simple' | 'group';
 type QuotePricingMode = 'SLAB' | 'FIXED';
 type StructuredServiceRatePricingMode = 'PER_PERSON' | 'PER_GROUP' | 'PER_DAY';
@@ -3464,6 +3524,9 @@ export class QuotesService {
     const startDate = this.parseDateLike(data.startDate ?? null);
     const createdDays = [];
     const createdItems = [];
+    const draftServiceIdsByLane = await this.getOrCreateProgramTemplateDraftServices(
+      days.flatMap((day) => this.getPackageAssemblyComponents(day)),
+    );
 
     for (const day of days) {
       const legacyDay = await this.upsertProgramTemplateLegacyItineraryDay(quote.id, day);
@@ -3490,6 +3553,7 @@ export class QuotesService {
             serviceDate,
             hotelCategory: data.hotelCategory,
             guideLanguage: data.guideLanguage,
+            draftServiceIdsByLane,
           }),
         });
 
@@ -4062,7 +4126,10 @@ export class QuotesService {
     serviceDate: Date | null;
     hotelCategory?: string | null;
     guideLanguage?: string | null;
+    draftServiceIdsByLane: Map<ProgramTemplateDraftLane, string>;
   }) {
+    const lane = this.getProgramTemplateDraftLane(values.component);
+    const isExternalPackage = lane === 'externalPackage';
     const notes = [
       `Imported draft from Program Template: ${values.template.name}`,
       `Template day ${values.day.dayNumber}: ${values.day.title || `Day ${values.day.dayNumber}`}`,
@@ -4080,13 +4147,16 @@ export class QuotesService {
     ]
       .filter(Boolean)
       .join('\n');
+    const draftServiceId = isExternalPackage
+      ? null
+      : values.component.supplierServiceId || values.draftServiceIdsByLane.get(lane) || null;
 
-    return {
+    const data: any = {
       quoteId: values.quoteId,
       packageTemplateId: values.template.id,
       packageTemplateDayId: values.day.id || null,
       packageTemplateComponentId: values.component.id,
-      serviceId: values.component.supplierServiceId || null,
+      serviceId: draftServiceId,
       activityId: values.component.activityId || null,
       excursionTemplateId: values.component.excursionTemplateId || null,
       contractId: values.component.hotelContractId || null,
@@ -4095,9 +4165,9 @@ export class QuotesService {
       serviceDate: values.serviceDate,
       quantity: 1,
       paxCount: values.paxCount,
-      participantCount: values.component.componentType === 'ACTIVITY' ? values.paxCount : null,
-      roomCount: values.component.componentType === 'HOTEL' ? 1 : null,
-      nightCount: values.component.componentType === 'HOTEL' ? 1 : null,
+      participantCount: lane === 'activity' || lane === 'ticketing' || lane === 'meal' ? values.paxCount : null,
+      roomCount: lane === 'hotel' ? 1 : null,
+      nightCount: lane === 'hotel' ? 1 : null,
       dayCount: 1,
       markupPercent: 0,
       totalCost: 0,
@@ -4107,15 +4177,105 @@ export class QuotesService {
       costCurrency: values.quoteCurrency,
       currency: values.quoteCurrency,
       quoteCurrency: values.quoteCurrency,
-      pricingDescription: 'Imported Program Template draft. Pricing was not auto-calculated.',
-      externalPackageName: values.component.label,
-      externalClientDescription: values.component.label,
-      externalInternalNotes: notes,
-      externalStartDay: values.day.dayNumber,
-      externalEndDay: values.day.dayNumber,
-      externalStartDate: values.serviceDate,
-      externalEndDate: values.serviceDate,
+      pricingDescription: `Imported Program Template draft. Pricing was not auto-calculated.\n${notes}`,
     };
+
+    if (isExternalPackage) {
+      data.externalPackageName = values.component.label;
+      data.externalClientDescription = values.component.label;
+      data.externalInternalNotes = notes;
+      data.externalStartDay = values.day.dayNumber;
+      data.externalEndDay = values.day.dayNumber;
+      data.externalStartDate = values.serviceDate;
+      data.externalEndDate = values.serviceDate;
+    }
+
+    return data;
+  }
+
+  private getProgramTemplateDraftLane(component: { componentType?: string | null }) {
+    const componentType = String(component.componentType || '').trim().toUpperCase();
+
+    if (componentType === 'EXTERNAL_PACKAGE') return 'externalPackage';
+    if (componentType === 'EXCURSION_TEMPLATE' || componentType === 'ACTIVITY') return 'activity';
+    if (componentType === 'HOTEL') return 'hotel';
+    if (componentType === 'TRANSPORT') return 'transport';
+    if (componentType === 'DINING' || componentType === 'MEAL') return 'meal';
+    if (componentType === 'TICKET' || componentType === 'ENTRANCE') return 'ticketing';
+    if (componentType === 'GUIDE') return 'guide';
+    if (componentType === 'SERVICE' || componentType === 'OTHER') return 'other';
+
+    return 'other';
+  }
+
+  private async getOrCreateProgramTemplateDraftServices(components: Array<{ componentType?: string | null }>) {
+    const lanes = new Set<ProgramTemplateDraftLane>();
+
+    for (const component of components) {
+      const lane = this.getProgramTemplateDraftLane(component);
+      if (lane !== 'externalPackage') {
+        lanes.add(lane);
+      }
+    }
+
+    const serviceIdsByLane = new Map<ProgramTemplateDraftLane, string>();
+
+    for (const lane of lanes) {
+      const config = PROGRAM_TEMPLATE_DRAFT_LANE_SERVICE[lane as Exclude<ProgramTemplateDraftLane, 'externalPackage'>];
+      const serviceType = await this.getOrCreateProgramTemplateDraftServiceType(config);
+      let service = await (this.prisma as any).supplierService.findFirst({
+        where: {
+          supplierId: IMPORTED_SERVICE_SUPPLIER_ID,
+          name: config.serviceName,
+          category: config.category,
+        },
+        select: { id: true },
+      });
+
+      if (!service) {
+        service = await (this.prisma as any).supplierService.create({
+          data: {
+            supplierId: IMPORTED_SERVICE_SUPPLIER_ID,
+            name: config.serviceName,
+            category: config.category,
+            unitType: ServiceUnitType.per_group,
+            baseCost: 0,
+            currency: 'USD',
+            costBaseAmount: 0,
+            costCurrency: 'USD',
+            serviceTypeId: serviceType.id,
+          },
+          select: { id: true },
+        });
+      }
+
+      serviceIdsByLane.set(lane, service.id);
+    }
+
+    return serviceIdsByLane;
+  }
+
+  private async getOrCreateProgramTemplateDraftServiceType(config: {
+    serviceTypeName: string;
+    serviceTypeCode: string;
+  }) {
+    let serviceType = await (this.prisma as any).serviceType.findFirst({
+      where: { code: { equals: config.serviceTypeCode, mode: 'insensitive' } },
+      select: { id: true },
+    });
+
+    if (!serviceType) {
+      serviceType = await (this.prisma as any).serviceType.create({
+        data: {
+          name: config.serviceTypeName,
+          code: config.serviceTypeCode,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+    }
+
+    return serviceType;
   }
 
   private async linkProgramTemplateDraftItemToQuoteDay(quoteItineraryDayId: string, quoteItemId: string) {
