@@ -48,7 +48,7 @@ export type TouringRoutePricingDetail = {
 };
 
 export type TouringRouteCatalogs = {
-  suppliers: Array<{ id: string; name: string }>;
+  suppliers: Array<{ id: string; name: string; active?: boolean | null; type?: string | null }>;
   vehicles: Array<{ id: string; name: string; vehicleType?: string | null; maxPax?: number | null }>;
   transportServiceTypes: Array<{ id: string; name: string; code?: string | null; classification?: string | null }>;
 };

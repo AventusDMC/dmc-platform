@@ -13,6 +13,7 @@ type TouringRouteStopInput = {
 };
 
 type TouringRoutePricingInput = {
+  id?: string | null;
   supplierId?: string | null;
   vehicleId?: string | null;
   transportServiceTypeId?: string | null;
@@ -342,7 +343,7 @@ export class TouringRoutesService {
 
   async update(id: string, data: Partial<TouringRouteInput>) {
     await this.findOne(id);
-    const normalized = this.normalizeRouteData(data, true);
+    const normalized = this.normalizeRouteData({ ...data, pricings: undefined }, true);
     if (normalized.code) {
       const duplicate = await (this.prisma as any).touringRoute.findUnique({
         where: { code: normalized.code },
@@ -354,10 +355,20 @@ export class TouringRoutesService {
       }
     }
 
-    return (this.prisma as any).touringRoute.update({
-      where: { id },
-      data: normalized,
-      include: this.include(),
+    return this.prisma.$transaction(async (tx) => {
+      await (tx as any).touringRoute.update({
+        where: { id },
+        data: normalized,
+      });
+
+      if (data.pricings !== undefined) {
+        await this.syncTouringRoutePricings(tx, id, data.pricings);
+      }
+
+      return (tx as any).touringRoute.findUnique({
+        where: { id },
+        include: this.include(),
+      });
     });
   }
 
@@ -1591,6 +1602,70 @@ export class TouringRoutesService {
     return partial ? { deleteMany: {}, create: createItems } : { create: createItems };
   }
 
+  private normalizePricingForWrite(pricing: TouringRoutePricingInput, index: number) {
+    return {
+      supplierId: normalizeOptionalString(pricing.supplierId),
+      vehicleId: normalizeOptionalString(pricing.vehicleId),
+      transportServiceTypeId: normalizeOptionalString(pricing.transportServiceTypeId),
+      pricingBasis: pricing.pricingBasis || 'PER_VEHICLE',
+      minPax: normalizeOptionalPositiveInteger(pricing.minPax, `pricings[${index}].minPax`, 1),
+      maxPax: normalizeOptionalPositiveInteger(pricing.maxPax, `pricings[${index}].maxPax`, 99),
+      currency: normalizeOptionalString(pricing.currency) || 'USD',
+      baseCost: normalizeOptionalNumber(pricing.baseCost, `pricings[${index}].baseCost`) ?? 0,
+      costPerDay: normalizeOptionalNumber(pricing.costPerDay, `pricings[${index}].costPerDay`),
+      includedKm: normalizeOptionalNumber(pricing.includedKm, `pricings[${index}].includedKm`),
+      includedHours: normalizeOptionalNumber(pricing.includedHours, `pricings[${index}].includedHours`),
+      extraKmRate: normalizeOptionalNumber(pricing.extraKmRate, `pricings[${index}].extraKmRate`),
+      extraHourRate: normalizeOptionalNumber(pricing.extraHourRate, `pricings[${index}].extraHourRate`),
+      validFrom: pricing.validFrom ? new Date(pricing.validFrom) : null,
+      validTo: pricing.validTo ? new Date(pricing.validTo) : null,
+      active: pricing.active === undefined ? true : Boolean(pricing.active),
+      notes: normalizeOptionalString(pricing.notes),
+    };
+  }
+
+  private async syncTouringRoutePricings(tx: any, touringRouteId: string, pricings: TouringRoutePricingInput[]) {
+    const existingPricings = await tx.touringRoutePricing.findMany({
+      where: { touringRouteId },
+      select: { id: true },
+    });
+    const existingIds = new Set(existingPricings.map((pricing: { id: string }) => pricing.id));
+    const retainedIds: string[] = [];
+    const newPricings: Array<Record<string, unknown>> = [];
+
+    for (const [index, pricing] of pricings.entries()) {
+      const data = this.normalizePricingForWrite(pricing, index);
+      const pricingId = normalizeOptionalString(pricing.id);
+
+      if (pricingId && existingIds.has(pricingId)) {
+        retainedIds.push(pricingId);
+        await tx.touringRoutePricing.update({
+          where: { id: pricingId },
+          data,
+        });
+        continue;
+      }
+
+      newPricings.push(data);
+    }
+
+    await tx.touringRoutePricing.deleteMany({
+      where: {
+        touringRouteId,
+        ...(retainedIds.length > 0 ? { id: { notIn: retainedIds } } : {}),
+      },
+    });
+
+    for (const data of newPricings) {
+      await tx.touringRoutePricing.create({
+        data: {
+          touringRouteId,
+          ...data,
+        },
+      });
+    }
+  }
+
   private normalizeRouteData(data: Partial<TouringRouteInput>, partial = false) {
     const name = data.name === undefined && partial ? undefined : requireTrimmedString(String(data.name || ''), 'name');
     const codeSource = data.code || name || '';
@@ -1635,25 +1710,7 @@ export class TouringRoutesService {
       ),
       pricings: this.buildNestedReplace(
         data.pricings,
-        (pricing, index) => ({
-          supplierId: normalizeOptionalString(pricing.supplierId),
-          vehicleId: normalizeOptionalString(pricing.vehicleId),
-          transportServiceTypeId: normalizeOptionalString(pricing.transportServiceTypeId),
-          pricingBasis: pricing.pricingBasis || 'PER_VEHICLE',
-          minPax: normalizeOptionalPositiveInteger(pricing.minPax, `pricings[${index}].minPax`, 1),
-          maxPax: normalizeOptionalPositiveInteger(pricing.maxPax, `pricings[${index}].maxPax`, 99),
-          currency: normalizeOptionalString(pricing.currency) || 'USD',
-          baseCost: normalizeOptionalNumber(pricing.baseCost, `pricings[${index}].baseCost`) ?? 0,
-          costPerDay: normalizeOptionalNumber(pricing.costPerDay, `pricings[${index}].costPerDay`),
-          includedKm: normalizeOptionalNumber(pricing.includedKm, `pricings[${index}].includedKm`),
-          includedHours: normalizeOptionalNumber(pricing.includedHours, `pricings[${index}].includedHours`),
-          extraKmRate: normalizeOptionalNumber(pricing.extraKmRate, `pricings[${index}].extraKmRate`),
-          extraHourRate: normalizeOptionalNumber(pricing.extraHourRate, `pricings[${index}].extraHourRate`),
-          validFrom: pricing.validFrom ? new Date(pricing.validFrom) : null,
-          validTo: pricing.validTo ? new Date(pricing.validTo) : null,
-          active: pricing.active === undefined ? true : Boolean(pricing.active),
-          notes: normalizeOptionalString(pricing.notes),
-        }),
+        (pricing, index) => this.normalizePricingForWrite(pricing, index),
         partial,
       ),
     };

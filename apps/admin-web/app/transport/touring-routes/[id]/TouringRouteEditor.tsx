@@ -133,6 +133,14 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
     })),
   );
   const [pricings, setPricings] = useState<PricingDraft[]>((route.pricings || []).map(pricingToDraft));
+  const activeTransportSuppliers = useMemo(
+    () => catalogs.suppliers.filter((supplier) => supplier.active !== false && (!supplier.type || supplier.type.toLowerCase() === 'transport')),
+    [catalogs.suppliers],
+  );
+  const canonicalVehicles = useMemo(
+    () => filterCanonicalFleetVehicles(catalogs.vehicles),
+    [catalogs.vehicles],
+  );
   const cityOptions = useMemo(
     () => uniqueTextOptions([route.startCity, ...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.city, stop.location || ''])]),
     [route.mainDestinations, route.startCity, route.stops],
@@ -140,10 +148,6 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
   const destinationOptions = useMemo(
     () => uniqueTextOptions([...(route.mainDestinations || []), ...(route.stops || []).flatMap((stop) => [stop.location || '', stop.city])]),
     [route.mainDestinations, route.stops],
-  );
-  const vehicleTypeOptions = useMemo(
-    () => uniqueTextOptions(filterCanonicalFleetVehicles(catalogs.vehicles).map((vehicle) => vehicle.vehicleType || vehicle.name)),
-    [catalogs.vehicles],
   );
   const validityYearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -192,6 +196,7 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
           notes: cleanStopNotes(stop.notes, stop.overnight),
         })),
         pricings: pricings.map((pricing) => ({
+          id: pricing.id || null,
           supplierId: pricing.supplierId || null,
           vehicleId: pricing.vehicleId || null,
           transportServiceTypeId: pricing.transportServiceTypeId || null,
@@ -349,8 +354,8 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
       <section className="workspace-section">
         <div className="section-heading-row">
           <div>
-            <h3>Vehicle pricing</h3>
-            <p className="detail-copy">Supplier mappings, vehicles, validity ranges, and pricing basis for the route.</p>
+            <h3>Pricing matrix</h3>
+            <p className="detail-copy">Add supplier vehicle costs for this touring route only. Transfer route pricing and quote formulas are not changed here.</p>
           </div>
           <button type="button" className="secondary-button" onClick={() => setPricings((current) => [...current, pricingToDraft()])}>
             Add pricing row
@@ -358,14 +363,14 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
         </div>
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Supplier</th><th>Vehicle</th><th>Service type</th><th>Basis</th><th>Pax</th><th>Cost</th><th>Validity</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Supplier</th><th>Vehicle</th><th>Service type</th><th>Basis</th><th>Min pax</th><th>Max pax</th><th>Cost</th><th>Validity</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {pricings.map((pricing, index) => (
                 <tr key={pricing.id || `new-pricing-${index}`}>
                   <td>
                     <select value={pricing.supplierId} onChange={(event) => updatePricing(index, { supplierId: event.target.value })}>
                       <option value="">Manual review</option>
-                      {catalogs.suppliers.map((supplier) => (
+                      {activeTransportSuppliers.map((supplier) => (
                         <option key={supplier.id} value={supplier.id}>
                           {supplier.name}
                         </option>
@@ -373,26 +378,11 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                     </select>
                   </td>
                   <td>
-                    <select
-                      value={catalogs.vehicles.find((vehicle) => vehicle.id === pricing.vehicleId)?.vehicleType || ''}
-                      onChange={(event) => {
-                        const vehicle = filterCanonicalFleetVehicles(catalogs.vehicles).find((entry) => (entry.vehicleType || entry.name) === event.target.value);
-                        updatePricing(index, { vehicleId: vehicle?.id || '' });
-                      }}
-                    >
-                      <option value="">Vehicle type</option>
-                      {vehicleTypeOptions.map((vehicleType) => (
-                        <option key={vehicleType} value={vehicleType}>
-                          {vehicleType}
-                        </option>
-                      ))}
-                    </select>
                     <select value={pricing.vehicleId} onChange={(event) => updatePricing(index, { vehicleId: event.target.value })}>
                       <option value="">Vehicle pending</option>
-                      {filterCanonicalFleetVehicles(catalogs.vehicles, [pricing.vehicleId]).map((vehicle) => (
+                      {filterCanonicalFleetVehicles(canonicalVehicles, [pricing.vehicleId]).map((vehicle) => (
                         <option key={vehicle.id} value={vehicle.id}>
                           {vehicle.name}
-                          {vehicle.vehicleType ? ` (${vehicle.vehicleType})` : ''}
                         </option>
                       ))}
                     </select>
@@ -413,7 +403,8 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                       <option value="PER_DAY">Per day</option>
                     </select>
                   </td>
-                  <td><input value={pricing.minPax} onChange={(event) => updatePricing(index, { minPax: event.target.value })} />-<input value={pricing.maxPax} onChange={(event) => updatePricing(index, { maxPax: event.target.value })} /></td>
+                  <td><input type="number" min="1" value={pricing.minPax} onChange={(event) => updatePricing(index, { minPax: event.target.value })} /></td>
+                  <td><input type="number" min="1" value={pricing.maxPax} onChange={(event) => updatePricing(index, { maxPax: event.target.value })} /></td>
                   <td>
                     <select value={pricing.currency} onChange={(event) => updatePricing(index, { currency: event.target.value })}>
                       {SUPPORTED_CURRENCIES.map((currency) => (
@@ -471,7 +462,12 @@ export function TouringRouteEditor({ route, catalogs }: TouringRouteEditorProps)
                       <option value="inactive">Inactive</option>
                     </select>
                   </td>
-                  <td><button type="button" className="secondary-button" onClick={() => setPricings((current) => current.filter((_, pricingIndex) => pricingIndex !== index))}>Remove</button></td>
+                  <td>
+                    <div className="button-row">
+                      <button type="button" className="secondary-button" onClick={() => updatePricing(index, { active: false })}>Deactivate</button>
+                      <button type="button" className="secondary-button" onClick={() => setPricings((current) => current.filter((_, pricingIndex) => pricingIndex !== index))}>Delete row</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

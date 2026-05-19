@@ -254,6 +254,7 @@ function createTouringPrismaMock() {
       findMany: async ({ where }: any = {}) => {
         const codes = where?.touringRoute?.code?.in;
         return stores.pricings
+          .filter((pricing) => !where?.touringRouteId || pricing.touringRouteId === where.touringRouteId)
           .filter((pricing) => !codes || codes.includes(stores.routes.find((route) => route.id === pricing.touringRouteId)?.code))
           .map((pricing) => ({
             ...pricing,
@@ -284,6 +285,13 @@ function createTouringPrismaMock() {
         const pricing = stores.pricings.find((entry) => entry.id === where.id);
         Object.assign(pricing, data);
         return pricing;
+      },
+      deleteMany: async ({ where }: any) => {
+        stores.pricings = stores.pricings.filter((pricing) => {
+          if (where?.touringRouteId && pricing.touringRouteId !== where.touringRouteId) return true;
+          if (where?.id?.notIn) return where.id.notIn.includes(pricing.id);
+          return false;
+        });
       },
     },
     transportPricingRule: {
@@ -1115,6 +1123,85 @@ test('touring route update persists edits and archives without hard delete', asy
   assert.equal(stores.routes[0].region, 'South');
   assert.equal(stores.routes[0].longDistance, true);
   assert.equal(stores.routes[0].overnightRisk, true);
+});
+
+test('touring route update edits creates deactivates and deletes pricing rows without touching transfer pricing', async () => {
+  const { prisma, stores } = createTouringPrismaMock();
+  stores.routes.push({
+    id: 'tour-pricing',
+    code: 'JOR-TR-SOUTH-AMMAN-PETRA-ON',
+    name: 'Amman -> Petra ON',
+    startCity: 'Amman',
+    durationDays: 1,
+  });
+  stores.pricings.push(
+    {
+      id: 'pricing-edit',
+      touringRouteId: 'tour-pricing',
+      supplierId: 'supplier-1',
+      vehicleId: 'vehicle-1',
+      pricingBasis: 'PER_VEHICLE',
+      minPax: 1,
+      maxPax: 2,
+      currency: 'USD',
+      baseCost: 100,
+      active: true,
+    },
+    {
+      id: 'pricing-delete',
+      touringRouteId: 'tour-pricing',
+      supplierId: 'supplier-1',
+      vehicleId: 'vehicle-2',
+      pricingBasis: 'PER_VEHICLE',
+      minPax: 3,
+      maxPax: 6,
+      currency: 'USD',
+      baseCost: 150,
+      active: true,
+    },
+  );
+  const service = new TouringRoutesService(prisma as any);
+
+  await service.update('tour-pricing', {
+    pricings: [
+      {
+        id: 'pricing-edit',
+        supplierId: 'supplier-1',
+        vehicleId: 'vehicle-1',
+        pricingBasis: 'PER_VEHICLE',
+        minPax: 1,
+        maxPax: 2,
+        currency: 'JOD',
+        baseCost: 95,
+        validFrom: '2026-01-01',
+        validTo: '2026-12-31',
+        active: false,
+      },
+      {
+        supplierId: 'supplier-1',
+        vehicleId: 'vehicle-3',
+        pricingBasis: 'PER_VEHICLE',
+        minPax: 7,
+        maxPax: 17,
+        currency: 'USD',
+        baseCost: 220,
+        active: true,
+      },
+    ],
+  } as any);
+
+  assert.equal(stores.pricings.length, 2);
+  assert.equal(stores.pricings.some((pricing) => pricing.id === 'pricing-delete'), false);
+  const edited = stores.pricings.find((pricing) => pricing.id === 'pricing-edit');
+  assert.equal(edited.currency, 'JOD');
+  assert.equal(edited.baseCost, 95);
+  assert.equal(edited.active, false);
+  assert.ok(edited.validFrom instanceof Date);
+  const created = stores.pricings.find((pricing) => pricing.id !== 'pricing-edit');
+  assert.equal(created.touringRouteId, 'tour-pricing');
+  assert.equal(created.vehicleId, 'vehicle-3');
+  assert.equal(created.minPax, 7);
+  assert.equal(stores.transportRules.length, 0);
 });
 
 test('touring route duplicate preserves operational metadata and leaves source unchanged', async () => {

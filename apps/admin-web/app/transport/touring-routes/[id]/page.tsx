@@ -24,7 +24,7 @@ async function getRoute(id: string) {
 
 async function getCatalogs(): Promise<TouringRouteCatalogs> {
   const [suppliers, vehicles, transportServiceTypes] = await Promise.all([
-    adminPageFetchJson<TouringRouteCatalogs['suppliers']>('/api/suppliers?type=transport', 'Transport supplier catalog', { cache: 'no-store' }),
+    adminPageFetchJson<TouringRouteCatalogs['suppliers']>('/api/suppliers?type=transport&active=true', 'Transport supplier catalog', { cache: 'no-store' }),
     adminPageFetchJson<TouringRouteCatalogs['vehicles']>('/api/vehicles', 'Vehicle catalog', { cache: 'no-store' }),
     adminPageFetchJson<TouringRouteCatalogs['transportServiceTypes']>('/api/transport-service-types', 'Transport service type catalog', {
       cache: 'no-store',
@@ -137,7 +137,15 @@ export default async function TouringRouteDetailPage({ params, searchParams }: T
             </section>
 
             <section className="workspace-section">
-              <h3>Vehicle pricing</h3>
+              <div className="section-heading-row">
+                <div>
+                  <h3>Vehicle pricing</h3>
+                  <p className="detail-copy">Touring route pricing rows are stored separately from transfer route pricing.</p>
+                </div>
+                <Link className="secondary-button" href={`/transport/touring-routes/${encodeURIComponent(route.id)}?mode=edit#edit`}>
+                  Edit pricing matrix
+                </Link>
+              </div>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead><tr><th>Supplier</th><th>Vehicle</th><th>Basis</th><th>Pax</th><th>Cost</th><th>Validity</th><th>Status</th></tr></thead>

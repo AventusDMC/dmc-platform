@@ -704,7 +704,10 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(vehicleRatesFormSource, ['filterCanonicalFleetVehicles(vehicles, [vehicleId])']);
     expectSourceContains(pricingRuleFormSource, ['filterCanonicalFleetVehicles(vehicles, [vehicleId])']);
     expectSourceContains(quoteTransportPickerSource, ['filterCanonicalFleetVehicles(propVehicles.filter(isActiveVehicle), [selectedVehicleId])']);
-    expectSourceContains(touringRouteEditorSourceForSelectors, ['filterCanonicalFleetVehicles(catalogs.vehicles, [pricing.vehicleId])']);
+    expectSourceContains(touringRouteEditorSourceForSelectors, [
+      'filterCanonicalFleetVehicles(catalogs.vehicles)',
+      'filterCanonicalFleetVehicles(canonicalVehicles, [pricing.vehicleId])',
+    ]);
   });
 
   it('renders a phase-one Create Rate Card metadata form', () => {
@@ -978,6 +981,8 @@ describe('transport catalog supplier rate-card UX', () => {
       'origin',
       'Main destinations',
       'Vehicle pricing',
+      'Edit pricing matrix',
+      '/api/suppliers?type=transport&active=true',
       'Supplier mapping pending',
       'Operational warnings',
       '?mode=edit#edit',
@@ -997,12 +1002,20 @@ describe('transport catalog supplier rate-card UX', () => {
       'Distance km',
       'Add stop',
       'Overnight',
+      'Pricing matrix',
       'Add pricing row',
+      'activeTransportSuppliers',
+      'filterCanonicalFleetVehicles(catalogs.vehicles)',
+      'id: pricing.id || null',
+      'minPax: Number(pricing.minPax || 1)',
+      'maxPax: Number(pricing.maxPax || pricing.minPax || 1)',
       'supplierId',
       'vehicleId',
       'transportServiceTypeId',
       'validFrom',
       'validTo',
+      'Deactivate',
+      'Delete row',
       'await saveRoute(false)',
       "fetch(`/api/touring-routes/${encodeURIComponent(route.id)}`",
       "method: 'PATCH'",

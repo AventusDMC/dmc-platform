@@ -31,6 +31,7 @@ type TouringRouteBody = {
     notes?: string | null;
   }>;
   pricings?: Array<{
+    id?: string | null;
     supplierId?: string | null;
     vehicleId?: string | null;
     transportServiceTypeId?: string | null;
