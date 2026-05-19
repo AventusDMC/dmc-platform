@@ -392,11 +392,50 @@ describe('transport catalog supplier rate-card UX', () => {
       "method: backendRateId ? 'PATCH' : 'POST',",
       'const saveTarget = getVehicleRateSaveTarget(apiBaseUrl, rateId);',
       'method: saveTarget.method,',
-      "const [supplierId] = useState(initialValues?.supplierId || '');",
+      'const [supplierId] = useState(initialFormState.supplierId);',
       'supplierId: supplierId || null,',
       'notes: notes.trim() || null,',
       'disabled={selectableVehicles.length === 0 || lockRateCardContext}',
       'disabled={lockRateCardContext}',
+    ]);
+  });
+
+  it('opens manual edit drawer from the clicked persisted row without add-mode defaults', () => {
+    expectSourceContains(tableSource, [
+      "key={`${activeForm.mode}-${activeForm.rate.id}`}",
+      "mode={activeForm.mode === 'edit-line' ? 'edit' : 'duplicate'}",
+      "rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}",
+      "vehicleId: activeForm.rate.vehicleId",
+      "serviceTypeId: activeForm.rate.serviceTypeId",
+      "minPax: String(activeForm.rate.minPax)",
+      "maxPax: String(activeForm.rate.maxPax)",
+      "price: String(activeForm.rate.price)",
+    ]);
+
+    expectSourceContains(vehicleRatesFormSource, [
+      "type VehicleRateFormMode = 'add' | 'edit' | 'duplicate';",
+      'function getVehicleRateFormMode(mode: VehicleRateFormMode | undefined, rateId?: string): VehicleRateFormMode',
+      'function buildInitialVehicleRateFormState(',
+      "if (mode === 'edit' || mode === 'duplicate')",
+      "vehicleId: initialValues?.vehicleId || '',",
+      "serviceTypeId: initialValues?.serviceTypeId || '',",
+      "price: initialValues?.price || '',",
+      "const isEditing = formMode === 'edit';",
+    ]);
+  });
+
+  it('keeps add mode defaults isolated from edit and duplicate row state', () => {
+    expectSourceContains(vehicleRatesFormSource, [
+      "return isBackendUuid(rateId) ? 'edit' : 'add';",
+      "vehicleId: initialValues?.vehicleId || initialVehicleOptions[0]?.id || '',",
+      "serviceTypeId: initialServiceTypeIsAvailable ? initialValues?.serviceTypeId || '' : pricingModeOptions[0]?.serviceType.id || '',",
+      "method: backendRateId ? 'PATCH' : 'POST',",
+    ]);
+
+    expectSourceContains(tableSource, [
+      "submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}",
+      "mode={activeForm.mode === 'edit-line' ? 'edit' : 'duplicate'}",
+      "rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}",
     ]);
   });
 

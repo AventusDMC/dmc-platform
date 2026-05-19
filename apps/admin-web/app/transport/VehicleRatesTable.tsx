@@ -2745,6 +2745,7 @@ export function VehicleRatesTable({
               </form>
             ) : (
               <VehicleRatesForm
+                key={`${activeForm.mode}-${activeForm.rate.id}`}
                 apiBaseUrl={apiBaseUrl}
                 vehicles={vehicles}
                 serviceTypes={serviceTypes}
@@ -2752,6 +2753,7 @@ export function VehicleRatesTable({
                 cities={cities}
                 placeTypes={placeTypes}
                 routes={routes}
+                mode={activeForm.mode === 'edit-line' ? 'edit' : 'duplicate'}
                 rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}
                 submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}
                 lockRateCardContext={activeForm.mode === 'duplicate-line'}

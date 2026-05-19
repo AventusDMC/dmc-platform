@@ -22,6 +22,8 @@ import {
 } from '../lib/transport-pricing-modes';
 import { filterCanonicalFleetVehicles } from '../lib/transport-vehicles';
 
+type VehicleRateFormMode = 'add' | 'edit' | 'duplicate';
+
 type VehicleOption = {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ type VehicleRatesFormProps = {
   cities: CityOption[];
   placeTypes: PlaceTypeOption[];
   routes: RouteOption[];
+  mode?: VehicleRateFormMode;
   rateId?: string;
   submitLabel?: string;
   lockRateCardContext?: boolean;
@@ -63,6 +66,24 @@ type VehicleRatesFormProps = {
     validFrom: string;
     validTo: string;
   };
+};
+
+type VehicleRateFormState = {
+  vehicleId: string;
+  serviceTypeId: string;
+  supplierId: string;
+  routeId: string;
+  fromPlaceId: string;
+  toPlaceId: string;
+  routeName: string;
+  minPax: string;
+  maxPax: string;
+  price: string;
+  currency: SupportedCurrency;
+  notes: string;
+  active: boolean;
+  validFrom: string;
+  validTo: string;
 };
 
 function getVehicleRateSaveErrorMessage(message: string) {
@@ -89,6 +110,64 @@ export function getVehicleRateSaveTarget(apiBaseUrl: string, rateId?: string) {
   };
 }
 
+function getVehicleRateFormMode(mode: VehicleRateFormMode | undefined, rateId?: string): VehicleRateFormMode {
+  if (mode) {
+    return mode;
+  }
+
+  return isBackendUuid(rateId) ? 'edit' : 'add';
+}
+
+function buildInitialVehicleRateFormState(
+  mode: VehicleRateFormMode,
+  initialValues: VehicleRatesFormProps['initialValues'],
+  vehicles: VehicleOption[],
+  serviceTypes: ServiceTypeOption[],
+  pricingModeOptions: ReturnType<typeof buildTransportPricingModeServiceTypeOptions>,
+): VehicleRateFormState {
+  const initialVehicleOptions = filterCanonicalFleetVehicles(vehicles, [initialValues?.vehicleId]);
+  const pricingModeServiceTypeIds = new Set(pricingModeOptions.map((option) => option.serviceType.id));
+  const initialServiceTypeIsAvailable = Boolean(initialValues?.serviceTypeId && pricingModeServiceTypeIds.has(initialValues.serviceTypeId));
+
+  if (mode === 'edit' || mode === 'duplicate') {
+    return {
+      vehicleId: initialValues?.vehicleId || '',
+      serviceTypeId: initialValues?.serviceTypeId || '',
+      supplierId: initialValues?.supplierId || '',
+      routeId: initialValues?.routeId || '',
+      fromPlaceId: initialValues?.fromPlaceId || '',
+      toPlaceId: initialValues?.toPlaceId || '',
+      routeName: initialValues?.routeName || '',
+      minPax: initialValues?.minPax || '1',
+      maxPax: initialValues?.maxPax || '1',
+      price: initialValues?.price || '',
+      currency: initialValues?.currency || 'USD',
+      notes: initialValues?.notes || '',
+      active: initialValues?.active ?? true,
+      validFrom: initialValues?.validFrom || '',
+      validTo: initialValues?.validTo || '',
+    };
+  }
+
+  return {
+    vehicleId: initialValues?.vehicleId || initialVehicleOptions[0]?.id || '',
+    serviceTypeId: initialServiceTypeIsAvailable ? initialValues?.serviceTypeId || '' : pricingModeOptions[0]?.serviceType.id || '',
+    supplierId: initialValues?.supplierId || '',
+    routeId: initialValues?.routeId || '',
+    fromPlaceId: initialValues?.fromPlaceId || '',
+    toPlaceId: initialValues?.toPlaceId || '',
+    routeName: initialValues?.routeName || '',
+    minPax: initialValues?.minPax || '1',
+    maxPax: initialValues?.maxPax || '1',
+    price: initialValues?.price || '',
+    currency: initialValues?.currency || 'USD',
+    notes: initialValues?.notes || '',
+    active: initialValues?.active ?? true,
+    validFrom: initialValues?.validFrom || '',
+    validTo: initialValues?.validTo || '',
+  };
+}
+
 export function VehicleRatesForm({
   apiBaseUrl,
   vehicles,
@@ -97,6 +176,7 @@ export function VehicleRatesForm({
   cities,
   placeTypes,
   routes,
+  mode,
   rateId,
   submitLabel,
   lockRateCardContext = false,
@@ -104,29 +184,28 @@ export function VehicleRatesForm({
   initialValues,
 }: VehicleRatesFormProps) {
   const router = useRouter();
+  const formMode = getVehicleRateFormMode(mode, rateId);
   const pricingModeOptions = buildTransportPricingModeServiceTypeOptions(serviceTypes);
-  const pricingModeServiceTypeIds = new Set(pricingModeOptions.map((option) => option.serviceType.id));
-  const selectedServiceTypeStillAvailable = initialValues?.serviceTypeId && pricingModeServiceTypeIds.has(initialValues.serviceTypeId);
-  const initialVehicleOptions = filterCanonicalFleetVehicles(vehicles, [initialValues?.vehicleId]);
+  const initialFormState = buildInitialVehicleRateFormState(formMode, initialValues, vehicles, serviceTypes, pricingModeOptions);
   const [availablePlaces, setAvailablePlaces] = useState(places);
-  const [vehicleId, setVehicleId] = useState(initialValues?.vehicleId || initialVehicleOptions[0]?.id || '');
-  const [serviceTypeId, setServiceTypeId] = useState(selectedServiceTypeStillAvailable ? initialValues.serviceTypeId : pricingModeOptions[0]?.serviceType.id || '');
-  const [supplierId] = useState(initialValues?.supplierId || '');
-  const [routeId, setRouteId] = useState(initialValues?.routeId || '');
-  const [fromPlaceId, setFromPlaceId] = useState(initialValues?.fromPlaceId || '');
-  const [toPlaceId, setToPlaceId] = useState(initialValues?.toPlaceId || '');
-  const [routeName, setRouteName] = useState(initialValues?.routeName || '');
-  const [minPax, setMinPax] = useState(initialValues?.minPax || '1');
-  const [maxPax, setMaxPax] = useState(initialValues?.maxPax || '1');
-  const [price, setPrice] = useState(initialValues?.price || '');
-  const [currency, setCurrency] = useState<SupportedCurrency>(initialValues?.currency || 'USD');
-  const [notes, setNotes] = useState(initialValues?.notes || '');
-  const [active, setActive] = useState(initialValues?.active ?? true);
-  const [validFrom, setValidFrom] = useState(initialValues?.validFrom || '');
-  const [validTo, setValidTo] = useState(initialValues?.validTo || '');
+  const [vehicleId, setVehicleId] = useState(initialFormState.vehicleId);
+  const [serviceTypeId, setServiceTypeId] = useState(initialFormState.serviceTypeId);
+  const [supplierId] = useState(initialFormState.supplierId);
+  const [routeId, setRouteId] = useState(initialFormState.routeId);
+  const [fromPlaceId, setFromPlaceId] = useState(initialFormState.fromPlaceId);
+  const [toPlaceId, setToPlaceId] = useState(initialFormState.toPlaceId);
+  const [routeName, setRouteName] = useState(initialFormState.routeName);
+  const [minPax, setMinPax] = useState(initialFormState.minPax);
+  const [maxPax, setMaxPax] = useState(initialFormState.maxPax);
+  const [price, setPrice] = useState(initialFormState.price);
+  const [currency, setCurrency] = useState<SupportedCurrency>(initialFormState.currency);
+  const [notes, setNotes] = useState(initialFormState.notes);
+  const [active, setActive] = useState(initialFormState.active);
+  const [validFrom, setValidFrom] = useState(initialFormState.validFrom);
+  const [validTo, setValidTo] = useState(initialFormState.validTo);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const isEditing = Boolean(rateId);
+  const isEditing = formMode === 'edit';
 
   useEffect(() => {
     setAvailablePlaces(places);
