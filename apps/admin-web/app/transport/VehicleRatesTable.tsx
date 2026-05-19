@@ -740,6 +740,10 @@ function isLocalSupplierRateLine(rate: VehicleRate) {
   return rate.id.startsWith(LOCAL_VEHICLE_SECTION_RATE_PREFIX) || rate.id.startsWith(LOCAL_DUPLICATED_RATE_CARD_PREFIX);
 }
 
+function getPersistedVehicleRateId(rate: VehicleRate) {
+  return isBackendUuid(rate.id) ? rate.id : undefined;
+}
+
 function isLocalVehicleSectionExtension(card: ManualSupplierRateCard, rateCardId: string) {
   return Boolean(card.isVehicleSectionExtension && card.sourceRateCardId === rateCardId);
 }
@@ -2660,7 +2664,7 @@ export function VehicleRatesTable({
                 cities={cities}
                 placeTypes={placeTypes}
                 routes={routes}
-                rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}
+                rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}
                 submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}
                 lockRateCardContext={activeForm.mode === 'duplicate-line'}
                 initialValues={{

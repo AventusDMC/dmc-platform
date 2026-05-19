@@ -13,6 +13,7 @@ import { buildRouteName, fetchPlaces, filterCanonicalGeographicPlaces, PlaceOpti
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { RouteOption } from '../lib/routes';
 import { formatServiceTypeLabel } from '../lib/transport-formatters';
+import { isBackendUuid } from '../lib/backend-uuid';
 import {
   buildTransportPricingModeServiceTypeOptions,
   getOriginalTransportPricingModeAlias,
@@ -76,6 +77,15 @@ function getVehicleRateSaveErrorMessage(message: string) {
   }
 
   return message;
+}
+
+export function getVehicleRateSaveTarget(apiBaseUrl: string, rateId?: string) {
+  const backendRateId = isBackendUuid(rateId) ? rateId : '';
+
+  return {
+    url: `${apiBaseUrl}/vehicle-rates${backendRateId ? `/${backendRateId}` : ''}`,
+    method: backendRateId ? 'PATCH' : 'POST',
+  };
 }
 
 export function VehicleRatesForm({
@@ -182,8 +192,9 @@ export function VehicleRatesForm({
         throw new Error('Select places or enter a legacy route.');
       }
 
-      const response = await fetch(`${apiBaseUrl}/vehicle-rates${rateId ? `/${rateId}` : ''}`, {
-        method: rateId ? 'PATCH' : 'POST',
+      const saveTarget = getVehicleRateSaveTarget(apiBaseUrl, rateId);
+      const response = await fetch(saveTarget.url, {
+        method: saveTarget.method,
         headers: buildAuthHeaders({
           'Content-Type': 'application/json',
         }),

@@ -361,7 +361,7 @@ describe('transport catalog supplier rate-card UX', () => {
       "<DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate: withRateCardSupplier(rate, rateCard) })} />",
       'onClick={() => handleDelete(rate)}',
       '<VehicleRatesForm',
-      "rateId={activeForm.mode === 'edit-line' ? activeForm.rate.id : undefined}",
+      "rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}",
       "submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}",
     ]);
   });
@@ -385,12 +385,35 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(vehicleRatesFormSource, [
       'lockRateCardContext?: boolean;',
       'supplierId?: string | null;',
+      'export function getVehicleRateSaveTarget(apiBaseUrl: string, rateId?: string)',
+      'const backendRateId = isBackendUuid(rateId) ? rateId : \'\';',
+      "url: `${apiBaseUrl}/vehicle-rates${backendRateId ? `/${backendRateId}` : ''}`,",
+      "method: backendRateId ? 'PATCH' : 'POST',",
+      'const saveTarget = getVehicleRateSaveTarget(apiBaseUrl, rateId);',
+      'method: saveTarget.method,',
       "const [supplierId] = useState(initialValues?.supplierId || '');",
       'supplierId: supplierId || null,',
       'notes: notes.trim() || null,',
       'disabled={selectableVehicles.length === 0 || lockRateCardContext}',
       'disabled={lockRateCardContext}',
     ]);
+  });
+
+  it('saves new pricing rows without treating local row keys as backend vehicle rate ids', () => {
+    expectSourceContains(tableSource, [
+      'function getPersistedVehicleRateId(rate: VehicleRate)',
+      'return isBackendUuid(rate.id) ? rate.id : undefined;',
+      "rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}",
+    ]);
+
+    expectSourceContains(vehicleRatesFormSource, [
+      'export function getVehicleRateSaveTarget(apiBaseUrl: string, rateId?: string)',
+      "method: backendRateId ? 'PATCH' : 'POST',",
+      'const saveTarget = getVehicleRateSaveTarget(apiBaseUrl, rateId);',
+      'fetch(saveTarget.url, {',
+    ]);
+
+    assert.equal(vehicleRatesFormSource.includes('vehicleRateId:'), false);
   });
 
   it('adds safe supplier rate-card deletion from the grouped card', () => {
