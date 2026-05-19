@@ -22,6 +22,7 @@ const touringRouteWorkbookImportPanelSource = readFileSync(new URL('./TouringRou
 const safeLoaderSource = readFileSync(new URL('./SupplierRateCardsSafeLoader.tsx', import.meta.url), 'utf8');
 const importPanelSource = readFileSync(new URL('./TransportContractImportPanel.tsx', import.meta.url), 'utf8');
 const vehicleRatesFormSource = readFileSync(new URL('../vehicle-rates/VehicleRatesForm.tsx', import.meta.url), 'utf8');
+const manualSupplierRateCardsSource = readFileSync(new URL('../lib/manual-supplier-rate-cards.ts', import.meta.url), 'utf8');
 const routeComboboxSource = readFileSync(new URL('../components/RouteCombobox.tsx', import.meta.url), 'utf8');
 const placeComboboxSource = readFileSync(new URL('../components/PlaceCombobox.tsx', import.meta.url), 'utf8');
 const pricingRuleFormSource = readFileSync(new URL('../transport-pricing/TransportPricingRuleForm.tsx', import.meta.url), 'utf8');
@@ -770,7 +771,7 @@ describe('transport catalog supplier rate-card UX', () => {
       'Save Rate Card',
     ]);
 
-    assert.equal(tableSource.includes("fetch(`${apiBaseUrl}/vehicle-rates`, {"), false);
+    assert.equal(tableSource.includes("function handleSaveManualRateCard() {\n    setError('');\n    setSuccessMessage('');\n\n    if (!manualRateCardCanSave"), true);
   });
 
   it('uses catalog dropdowns for supplier rate-card vehicle type and route fields', () => {
@@ -799,15 +800,81 @@ describe('transport catalog supplier rate-card UX', () => {
       'type VehicleSectionDraft =',
       'const [activeVehicleSectionCardId, setActiveVehicleSectionCardId] = useState<string | null>(null);',
       'function handleStartAddVehicleSection(rateCard: SupplierRateCard)',
-      'function handleSaveVehicleSection(rateCard: SupplierRateCard)',
+      'async function handleSaveVehicleSection(rateCard: SupplierRateCard)',
       '+ Add Vehicle Type',
       'name="vehicleSectionVehicleType"',
       'This vehicle type already exists inside this supplier rate card.',
       'Enter at least one pricing mode rate for this vehicle type.',
+      'const selectedVehicle = findBackendVehicleForSection(selectedVehicleType);',
+      'canonicalTypeMatches.reduce<Vehicle | null>(preferLargestCapacityVehicle, null)',
+      "fetch(`${apiBaseUrl}/vehicle-rates`, {",
+      'vehicleId: selectedVehicle.id,',
+      'newRates.push(await response.json() as VehicleRate);',
       'setPreparedRateCards((currentCards) =>',
-      'const rates = [...card.rates, ...newRates];',
+      'refreshPreparedRateCardFromRates(card, [...card.rates, ...newRates])',
       'Save Vehicle Type',
       'function isLocalVehicleSectionRate(rate: VehicleRate)',
+    ]);
+  });
+
+  it('persists edited rate lines under the selected vehicle instead of the stale card vehicle', () => {
+    expectSourceContains(vehicleRatesFormSource, [
+      'onSaved?: (rate: unknown) => void | Promise<void>;',
+      'vehicleId,',
+      'minPax: Number(minPax),',
+      'maxPax: Number(maxPax),',
+      'const savedRate = await response.json();',
+      'await onSaved?.(savedRate);',
+    ]);
+
+    expectSourceContains(tableSource, [
+      'function handleVehicleRateSaved(savedRate: unknown)',
+      'const savedVehicleRate = savedRate as VehicleRate;',
+      'rate.id === savedVehicleRate.id || (sourceRate && rate.id === sourceRate.id)',
+      '...savedVehicleRate,',
+      'minPax: Number(savedVehicleRate.minPax),',
+      'maxPax: Number(savedVehicleRate.maxPax),',
+      'await loadRateCardDetail(touchedRateCardId);',
+      'onSaved={handleVehicleRateSaved}',
+    ]);
+  });
+
+  it('groups added Mini Van and Large Coach rate rows by persisted vehicleId', () => {
+    expectSourceContains(tableSource, [
+      'function groupRateLinesByVehicleType(rates: VehicleRate[])',
+      'const groups = new Map<string, { label: string; rates: VehicleRate[] }>();',
+      'const vehicleId = rate.vehicleId || getRateVehicleDisplayLabel(rate);',
+      'label: existingGroup?.label || getRateVehicleDisplayLabel(rate),',
+      'function getVehicleTypesForRates(rates: VehicleRate[])',
+      'return Array.from(new Set(groupRateLinesByVehicleType(rates).map((section) => section.vehicleType)));',
+      'return refreshPreparedRateCardFromRates(card, rates);',
+    ]);
+  });
+
+  it('renders Edit Duplicate and Delete for every persisted rate row', () => {
+    expectSourceContains(tableSource, [
+      '{isLocalVehicleSectionRate(rate) ? null : (',
+      "onClick={() => setActiveForm({ mode: 'edit-line', rate: withRateCardSupplier(rate, rateCard) })}",
+      "<DuplicateVehicleRateButton onDuplicate={() => setActiveForm({ mode: 'duplicate-line', rate: withRateCardSupplier(rate, rateCard) })} />",
+      'onClick={() => handleDelete(rate)}',
+      'disabled={deletingId === rate.id}',
+    ]);
+  });
+
+  it('keeps manual min and max pax ranges in saved and rendered rate rows', () => {
+    expectSourceContains(manualSupplierRateCardsSource, [
+      'minPax?: number | null;',
+      'maxPax?: number | null;',
+    ]);
+
+    expectSourceContains(tableSource, [
+      'minPax: Number.isFinite(Number(rate.minPax)) ? Number(rate.minPax) : 1,',
+      'maxPax: Number.isFinite(Number(rate.maxPax)) ? Number(rate.maxPax) : 999,',
+      'minPax: rate.minPax,',
+      'maxPax: rate.maxPax,',
+      'minPax: 1,',
+      'maxPax: 999,',
+      '<td>{rate.minPax} - {rate.maxPax}</td>',
     ]);
   });
 

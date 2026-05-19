@@ -7,6 +7,8 @@ export type ManualSupplierRateLine = {
   routeId: string | null;
   routeName: string;
   vehicleType: string;
+  minPax?: number | null;
+  maxPax?: number | null;
   price: number;
   currency: string;
   active: boolean;

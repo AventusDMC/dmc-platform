@@ -45,6 +45,7 @@ type VehicleRatesFormProps = {
   rateId?: string;
   submitLabel?: string;
   lockRateCardContext?: boolean;
+  onSaved?: (rate: unknown) => void | Promise<void>;
   initialValues?: {
     vehicleId: string;
     serviceTypeId: string;
@@ -99,6 +100,7 @@ export function VehicleRatesForm({
   rateId,
   submitLabel,
   lockRateCardContext = false,
+  onSaved,
   initialValues,
 }: VehicleRatesFormProps) {
   const router = useRouter();
@@ -220,6 +222,9 @@ export function VehicleRatesForm({
       if (!response.ok) {
         throw new Error(getVehicleRateSaveErrorMessage(await getErrorMessage(response, 'Could not save vehicle rate.')));
       }
+
+      const savedRate = await response.json();
+      await onSaved?.(savedRate);
 
       if (!isEditing) {
         setRouteId('');

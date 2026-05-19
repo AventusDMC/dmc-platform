@@ -13,7 +13,7 @@ import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
 import { isBackendUuid } from '../lib/backend-uuid';
 import { formatRouteLabel, formatServiceTypeLabel, formatSupplierName } from '../lib/transport-formatters';
-import { formatTransportVehicleDisplay } from '../lib/transport-vehicles';
+import { filterCanonicalFleetVehicles, formatTransportVehicleDisplay } from '../lib/transport-vehicles';
 import { getCanonicalRouteLabel, normalizeTransportRouteText } from '../lib/transport-routes';
 import { getDefaultVehicleTypeOptions, normalizeVehicleTypeLabel, readStoredVehicleTypeOptions, type VehicleTypeOption } from '../lib/vehicle-types';
 import {
@@ -25,6 +25,7 @@ import {
   type ManualSupplierRateCard,
 } from '../lib/manual-supplier-rate-cards';
 import {
+  buildTransportPricingModeServiceTypeOptions,
   deriveTransportPricingMode,
   getOriginalTransportPricingModeAlias,
   getTransportPricingModeClassification,
@@ -40,6 +41,7 @@ import {
 export type Vehicle = {
   id: string;
   name: string;
+  maxPax?: number | null;
   vehicleType?: string | null;
 };
 
@@ -346,6 +348,14 @@ function getRateVehicleDisplayLabel(rate: VehicleRate) {
   return formatTransportVehicleDisplay(rate.vehicle, [], { order: 'supplier-first', includePax: false, fallback: 'Unassigned vehicle' });
 }
 
+function getVehicleTypeMatchLabel(vehicle: Vehicle, vehicleTypeOptions: VehicleTypeOption[] = []) {
+  return normalizeVehicleTypeLabel(vehicle.vehicleType, vehicleTypeOptions) || normalizeVehicleTypeLabel(vehicle.name, vehicleTypeOptions);
+}
+
+function preferLargestCapacityVehicle(left: Vehicle | null, right: Vehicle) {
+  return !left || Number(right.maxPax || 0) > Number(left.maxPax || 0) ? right : left;
+}
+
 function getRouteOrServiceArea(rates: VehicleRate[]) {
   const category = getRateCardServiceCategory(rates);
   const labels = rates.map((rate) => getRateRouteOrServiceAreaDisplay(rate, category));
@@ -516,6 +526,25 @@ function refreshRateCardGroupSummary(group: SupplierRateCard) {
   group.status = getCardStatus(group.rates);
 }
 
+function getVehicleTypesForRates(rates: VehicleRate[]) {
+  return Array.from(new Set(groupRateLinesByVehicleType(rates).map((section) => section.vehicleType)));
+}
+
+function refreshPreparedRateCardFromRates(rateCard: SupplierRateCard, rates: VehicleRate[]) {
+  const vehicleTypes = getVehicleTypesForRates(rates);
+
+  return {
+    ...rateCard,
+    rates,
+    vehicleTypes,
+    vehicleType: vehicleTypes.length === 1 ? vehicleTypes[0] : vehicleTypes.length > 1 ? 'Multiple vehicle types' : '-',
+    rateLineCount: rates.length,
+    status: rates.length > 0 ? getCardStatus(rates) : rateCard.status,
+    category: rates.length > 0 ? getRateCardServiceCategory(rates) : rateCard.category,
+    routeOrServiceArea: rates.length > 0 ? getRouteOrServiceArea(rates) : rateCard.routeOrServiceArea,
+  };
+}
+
 function waitForRateCardPrepYield() {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, 0);
@@ -584,8 +613,8 @@ function mapManualCardToSupplierRateCard(card: ManualSupplierRateCard): Supplier
       fromPlaceId: null,
       toPlaceId: null,
       routeName: rate.routeName || card.routeOrServiceArea,
-      minPax: 1,
-      maxPax: 999,
+      minPax: Number.isFinite(Number(rate.minPax)) ? Number(rate.minPax) : 1,
+      maxPax: Number.isFinite(Number(rate.maxPax)) ? Number(rate.maxPax) : 999,
       price: Number(rate.price) || 0,
       currency: rate.currency || card.currency,
       active: rate.active !== false && card.status !== 'Inactive',
@@ -641,15 +670,19 @@ function getPricingModeAliasForRate(rate: VehicleRate) {
 }
 
 function groupRateLinesByVehicleType(rates: VehicleRate[]) {
-  const groups = new Map<string, VehicleRate[]>();
+  const groups = new Map<string, { label: string; rates: VehicleRate[] }>();
 
   for (const rate of rates) {
-    const vehicleType = getRateVehicleDisplayLabel(rate);
-    groups.set(vehicleType, [...(groups.get(vehicleType) || []), rate]);
+    const vehicleId = rate.vehicleId || getRateVehicleDisplayLabel(rate);
+    const existingGroup = groups.get(vehicleId);
+    groups.set(vehicleId, {
+      label: existingGroup?.label || getRateVehicleDisplayLabel(rate),
+      rates: [...(existingGroup?.rates || []), rate],
+    });
   }
 
-  return Array.from(groups.entries())
-    .map(([vehicleType, vehicleRates]) => ({ vehicleType, rates: vehicleRates }))
+  return Array.from(groups.values())
+    .map((group) => ({ vehicleType: group.label, rates: group.rates }))
     .sort((left, right) => left.vehicleType.localeCompare(right.vehicleType));
 }
 
@@ -883,6 +916,10 @@ export function VehicleRatesTable({
   const suppliersById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const routesById = useMemo(() => new Map(routes.map((route) => [route.id, route])), [routes]);
   const vehiclesById = useMemo(() => new Map(vehicles.map((vehicle) => [vehicle.id, vehicle])), [vehicles]);
+  const pricingModeServiceTypesByMode = useMemo(
+    () => new Map(buildTransportPricingModeServiceTypeOptions(serviceTypes).map((option) => [option.mode, option.serviceType])),
+    [serviceTypes],
+  );
   const vehicleTypesByLabel = useMemo(
     () => new Map(vehicleTypeOptions.map((vehicleType) => [vehicleType.label.toLowerCase(), vehicleType])),
     [vehicleTypeOptions],
@@ -1166,18 +1203,7 @@ export function VehicleRatesTable({
           return card;
         }
 
-        const rates = card.rates.filter((cardRate) => cardRate.id !== rateId);
-        const vehicleTypes = Array.from(new Set(groupRateLinesByVehicleType(rates).map((section) => section.vehicleType)));
-
-        return {
-          ...card,
-          rates,
-          vehicleTypes,
-          vehicleType: vehicleTypes.length === 1 ? vehicleTypes[0] : vehicleTypes.length > 1 ? 'Multiple vehicle types' : '-',
-          rateLineCount: rates.length,
-          status: rates.length > 0 ? getCardStatus(rates) : card.status,
-          category: rates.length > 0 ? getRateCardServiceCategory(rates) : card.category,
-        };
+        return refreshPreparedRateCardFromRates(card, card.rates.filter((cardRate) => cardRate.id !== rateId));
       }),
     );
   }
@@ -1207,6 +1233,8 @@ export function VehicleRatesTable({
         code: pricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
         classification: getTransportPricingModeClassification(pricingMode),
       },
+      minPax: rate.minPax,
+      maxPax: rate.maxPax,
       contractDiscountPercent: rate.contractDiscountPercent,
       grossRate: rate.grossRate,
       discountAppliesTo: rate.discountAppliesTo,
@@ -1263,6 +1291,22 @@ export function VehicleRatesTable({
       notes: rateCard.notes || '',
       rates: [...(existingExtensionCard?.rates || []).filter((rate) => !newManualRates.some((newRate) => newRate.id === rate.id)), ...newManualRates],
     });
+  }
+
+  function findBackendVehicleForSection(selectedVehicleType: string) {
+    const canonicalVehicles = filterCanonicalFleetVehicles(vehicles);
+    const normalizedSelectedType = normalizeVehicleTypeLabel(selectedVehicleType, vehicleTypeOptions) || selectedVehicleType;
+    const normalizedSelectedKey = normalizedSelectedType.toLowerCase();
+    const canonicalTypeMatches = canonicalVehicles.filter((vehicle) => getVehicleTypeMatchLabel(vehicle, vehicleTypeOptions).toLowerCase() === normalizedSelectedKey);
+    const anyTypeMatches = vehicles.filter((vehicle) => getVehicleTypeMatchLabel(vehicle, vehicleTypeOptions).toLowerCase() === normalizedSelectedKey);
+
+    return (
+      canonicalVehicles.find((vehicle) => vehicle.name === selectedVehicleType || vehicle.id === selectedVehicleType) ||
+      canonicalTypeMatches.reduce<Vehicle | null>(preferLargestCapacityVehicle, null) ||
+      vehicles.find((vehicle) => vehicle.name === selectedVehicleType || vehicle.id === selectedVehicleType) ||
+      anyTypeMatches.reduce<Vehicle | null>(preferLargestCapacityVehicle, null) ||
+      null
+    );
   }
 
   async function handleStartAddVehicleSection(rateCard: SupplierRateCard) {
@@ -1443,7 +1487,7 @@ export function VehicleRatesTable({
     setSuccessMessage('Rate card duplicated');
   }
 
-  function handleSaveVehicleSection(rateCard: SupplierRateCard) {
+  async function handleSaveVehicleSection(rateCard: SupplierRateCard) {
     setError('');
     setSuccessMessage('');
 
@@ -1476,69 +1520,71 @@ export function VehicleRatesTable({
       return;
     }
 
+    const selectedVehicle = findBackendVehicleForSection(selectedVehicleType);
+    if (!selectedVehicle) {
+      setError('Create a canonical backend vehicle for this vehicle type before saving rates.');
+      return;
+    }
+
     const sourceRate = rateCard.rates[0];
     const selectedRoute =
       sourceRate?.route ||
       routes.find((route) => normalizeTransportRouteText(formatRouteLabel(route.name)) === normalizeTransportRouteText(rateCard.routeOrServiceArea)) ||
       null;
-    const now = Date.now();
-    const newRates: VehicleRate[] = enteredRates.map((entry, index) => ({
-      id: `${LOCAL_VEHICLE_SECTION_RATE_PREFIX}-${rateCard.id}-${selectedVehicleType}-${entry.pricingMode}-${now}-${index}`,
-      vehicleId: selectedVehicleType,
-      serviceTypeId: entry.pricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-      routeId: sourceRate?.routeId || selectedRoute?.id || null,
-      fromPlaceId: sourceRate?.fromPlaceId || selectedRoute?.fromPlaceId || null,
-      toPlaceId: sourceRate?.toPlaceId || selectedRoute?.toPlaceId || null,
-      routeName: sourceRate?.routeName || rateCard.routeOrServiceArea,
-      minPax: 1,
-      maxPax: 999,
-      price: entry.amount,
-      currency: rateCard.currency,
-      active: rateCard.status !== 'Inactive',
-      validFrom: rateCard.validFrom,
-      validTo: rateCard.validTo,
-      supplierId: sourceRate?.supplierId || sourceRate?.supplier?.id || null,
-      supplierName: rateCard.supplierName,
-      supplier: sourceRate?.supplier || { id: sourceRate?.supplierId || '', name: rateCard.supplierName },
-      vehicle: {
-        name: selectedVehicleType,
-        vehicleType: selectedVehicleType,
-      },
-      serviceType: {
-        name: entry.pricingMode,
-        code: entry.pricingMode.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-        classification: getTransportPricingModeClassification(entry.pricingMode),
-      },
-      route: selectedRoute,
-    }));
+    const supplierId = rateCard.supplierId || sourceRate?.supplierId || sourceRate?.supplier?.id || null;
+    const routeId = sourceRate?.routeId || selectedRoute?.id || null;
+    const fromPlaceId = routeId ? null : sourceRate?.fromPlaceId || selectedRoute?.fromPlaceId || null;
+    const toPlaceId = routeId ? null : sourceRate?.toPlaceId || selectedRoute?.toPlaceId || null;
+    const routeName = sourceRate?.routeName || selectedRoute?.name || rateCard.routeOrServiceArea;
+    const newRates: VehicleRate[] = [];
 
-    upsertLocalVehicleSectionRates(rateCard, newRates, selectedVehicleType);
-    refreshManualRateCardState();
-
-    setPreparedRateCards((currentCards) =>
-      currentCards.map((card) => {
-        if (card.id !== rateCard.id) {
-          return card;
+    try {
+      for (const entry of enteredRates) {
+        const serviceType = pricingModeServiceTypesByMode.get(entry.pricingMode);
+        if (!serviceType) {
+          throw new Error(`Create a backend pricing mode for ${entry.pricingMode} before saving rates.`);
         }
 
-        const rates = [...card.rates, ...newRates];
-        const vehicleTypes = Array.from(new Set([...groupRateLinesByVehicleType(rates).map((section) => section.vehicleType)]));
+        const response = await fetch(`${apiBaseUrl}/vehicle-rates`, {
+          method: 'POST',
+          headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            vehicleId: selectedVehicle.id,
+            serviceTypeId: serviceType.id,
+            supplierId,
+            routeId,
+            fromPlaceId,
+            toPlaceId,
+            routeName,
+            minPax: 1,
+            maxPax: selectedVehicle.maxPax || sourceRate?.maxPax || 999,
+            price: entry.amount,
+            currency: rateCard.currency,
+            notes: rateCard.notes || null,
+            active: rateCard.status !== 'Inactive',
+            validFrom: rateCard.validFrom,
+            validTo: rateCard.validTo,
+          }),
+        });
 
-        return {
-          ...card,
-          rates,
-          vehicleTypes,
-          vehicleType: vehicleTypes.length === 1 ? vehicleTypes[0] : 'Multiple vehicle types',
-          rateLineCount: rates.length,
-          status: getCardStatus(rates),
-          category: getRateCardServiceCategory(rates),
-        };
-      }),
-    );
-    setExpandedRateLineCounts((currentCounts) => ({ ...currentCounts, [rateCard.id]: (currentCounts[rateCard.id] || RATE_LINE_PAGE_SIZE) + newRates.length }));
-    setActiveVehicleSectionCardId(null);
-    resetVehicleSectionDraft();
-    setSuccessMessage('Vehicle type section added');
+        if (!response.ok) {
+          throw new Error(await getErrorMessage(response, 'Could not save vehicle type rate row.'));
+        }
+
+        newRates.push(await response.json() as VehicleRate);
+      }
+
+      setPreparedRateCards((currentCards) =>
+        currentCards.map((card) => (card.id === rateCard.id ? refreshPreparedRateCardFromRates(card, [...card.rates, ...newRates]) : card)),
+      );
+      setExpandedRateLineCounts((currentCounts) => ({ ...currentCounts, [rateCard.id]: (currentCounts[rateCard.id] || RATE_LINE_PAGE_SIZE) + newRates.length }));
+      setActiveVehicleSectionCardId(null);
+      resetVehicleSectionDraft();
+      setSuccessMessage('Vehicle type section added');
+      router.refresh();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Could not save vehicle type rate row.');
+    }
   }
 
   function handleSaveManualRateCard() {
@@ -1567,6 +1613,8 @@ export function VehicleRatesTable({
             routeId: selectedManualRoute?.id || null,
             routeName: manualRouteLabel,
             vehicleType: manualVehicleType,
+            minPax: 1,
+            maxPax: 999,
             price: manualRateAmountNumber,
             currency: normalizedCurrency,
             active: manualRateCardForm.status !== 'Inactive',
@@ -1652,6 +1700,46 @@ export function VehicleRatesTable({
     } finally {
       setSavingSupplierCardId(null);
     }
+  }
+
+  async function handleVehicleRateSaved(savedRate: unknown) {
+    const savedVehicleRate = savedRate as VehicleRate;
+    const sourceRate = activeForm?.mode === 'edit-line' || activeForm?.mode === 'duplicate-line' ? activeForm.rate : null;
+
+    if (!savedVehicleRate?.id) {
+      router.refresh();
+      return;
+    }
+
+    const touchedRateCardId =
+      preparedRateCards.find((card) => card.rates.some((rate) => rate.id === savedVehicleRate.id || (sourceRate && rate.id === sourceRate.id)))?.id || null;
+    setPreparedRateCards((currentCards) =>
+      currentCards.map((card) => {
+        const matchedIndex = card.rates.findIndex((rate) => rate.id === savedVehicleRate.id || (sourceRate && rate.id === sourceRate.id));
+        if (matchedIndex === -1) {
+          return card;
+        }
+
+        const rates = [...card.rates];
+        rates[matchedIndex] = {
+          ...rates[matchedIndex],
+          ...savedVehicleRate,
+          minPax: Number(savedVehicleRate.minPax),
+          maxPax: Number(savedVehicleRate.maxPax),
+        };
+        return refreshPreparedRateCardFromRates(card, rates);
+      }),
+    );
+
+    if (touchedRateCardId) {
+      try {
+        await loadRateCardDetail(touchedRateCardId);
+      } catch {
+        // The optimistic row update above keeps the drawer result visible even if detail reload fails.
+      }
+    }
+
+    router.refresh();
   }
 
   async function handleExportRateCard(rateCard: SupplierRateCard) {
@@ -2124,7 +2212,7 @@ export function VehicleRatesTable({
                       </div>
                       <p className="form-helper">{TRANSPORT_PRICING_MODE_HELPER_TEXT}</p>
                       <div className="table-action-row">
-                        <button type="button" className="primary-button" onClick={() => handleSaveVehicleSection(rateCard)} disabled={vehicleSectionAlreadyExists}>
+                        <button type="button" className="primary-button" onClick={() => void handleSaveVehicleSection(rateCard)} disabled={vehicleSectionAlreadyExists}>
                           Save Vehicle Type
                         </button>
                         <button type="button" className="compact-button" onClick={handleCancelVehicleSectionForm}>
@@ -2667,6 +2755,7 @@ export function VehicleRatesTable({
                 rateId={activeForm.mode === 'edit-line' ? getPersistedVehicleRateId(activeForm.rate) : undefined}
                 submitLabel={activeForm.mode === 'duplicate-line' ? 'Save duplicate rate line' : 'Save rate line'}
                 lockRateCardContext={activeForm.mode === 'duplicate-line'}
+                onSaved={handleVehicleRateSaved}
                 initialValues={{
                   vehicleId: activeForm.rate.vehicleId,
                   serviceTypeId: activeForm.rate.serviceTypeId,
