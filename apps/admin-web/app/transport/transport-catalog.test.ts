@@ -30,6 +30,8 @@ const routesFormSource = readFileSync(new URL('../routes/RoutesForm.tsx', import
 const routesProxySource = readFileSync(new URL('../api/routes/route.ts', import.meta.url), 'utf8');
 const routeDetailProxySource = readFileSync(new URL('../api/routes/[id]/route.ts', import.meta.url), 'utf8');
 const routeDuplicateProxySource = readFileSync(new URL('../api/routes/[id]/duplicate/route.ts', import.meta.url), 'utf8');
+const transferTariffExportProxySource = readFileSync(new URL('../api/vehicle-rates/tariff-matrix/transfer/export/route.ts', import.meta.url), 'utf8');
+const touringTariffExportProxySource = readFileSync(new URL('../api/vehicle-rates/tariff-matrix/touring/export/route.ts', import.meta.url), 'utf8');
 const transportRoutesSource = readFileSync(new URL('../lib/transport-routes.ts', import.meta.url), 'utf8');
 const quotePageSource = readFileSync(new URL('../quotes/[id]/page.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('../quotes/[id]/QuoteTransportPicker.tsx', import.meta.url), 'utf8');
@@ -220,6 +222,27 @@ describe('transport catalog supplier rate-card UX', () => {
     assert.match(cssSource, /\.transport-tariff-workbook-table\s*{[\s\S]*?min-width:\s*1320px/);
     assert.match(cssSource, /\.transport-tariff-workbook-table th\s*{[\s\S]*?position:\s*sticky/);
     assert.match(cssSource, /\.transport-tariff-workbook-table input\s*{[\s\S]*?white-space:\s*nowrap/);
+  });
+
+  it('adds supplier tariff matrix export buttons for transfer and touring route Excel workbooks', () => {
+    expectSourceContains(tariffWorkbookSectionSource, [
+      'Export Transfer Tariffs',
+      'href="/api/vehicle-rates/tariff-matrix/transfer/export"',
+      'Export Touring Tariffs',
+      'href="/api/vehicle-rates/tariff-matrix/touring/export"',
+    ]);
+
+    expectSourceContains(transferTariffExportProxySource, [
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export`",
+      'transfer-route-tariff-matrix.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]);
+
+    expectSourceContains(touringTariffExportProxySource, [
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export`",
+      'touring-route-tariff-matrix.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]);
   });
 
   it('applies transportation tariff workbook supplier route mode vehicle validity and active filters by ids', () => {

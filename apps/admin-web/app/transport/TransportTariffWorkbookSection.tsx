@@ -308,6 +308,15 @@ export async function TransportTariffWorkbookSection({ filters }: TransportTarif
         advancedDescription="Use advanced filters for vehicle type, validity, and active status without changing saved rate lines."
       />
 
+      <div className="transport-rate-card-toolbar">
+        <a className="primary-button" href="/api/vehicle-rates/tariff-matrix/transfer/export" download>
+          Export Transfer Tariffs
+        </a>
+        <a className="secondary-button" href="/api/vehicle-rates/tariff-matrix/touring/export" download>
+          Export Touring Tariffs
+        </a>
+      </div>
+
       <SummaryStrip
         items={[
           { id: 'rate-lines', label: 'Rate lines', value: String(workbookRows.length), helper: 'Workbook rows' },

@@ -97,6 +97,30 @@ export class VehicleRatesController {
     return new StreamableFile(exported.buffer);
   }
 
+  @Get('tariff-matrix/transfer/export')
+  @Roles('admin', 'finance')
+  async exportTransferRouteTariffMatrix(@Res({ passthrough: true }) response: any) {
+    const exported = await this.vehicleRatesService.exportTransferRouteTariffMatrix();
+    response.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${exported.fileName}"`,
+    });
+
+    return new StreamableFile(exported.buffer);
+  }
+
+  @Get('tariff-matrix/touring/export')
+  @Roles('admin', 'finance')
+  async exportTouringRouteTariffMatrix(@Res({ passthrough: true }) response: any) {
+    const exported = await this.vehicleRatesService.exportTouringRouteTariffMatrix();
+    response.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${exported.fileName}"`,
+    });
+
+    return new StreamableFile(exported.buffer);
+  }
+
   @Post('import-preview')
   @Roles('admin', 'finance')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }))
