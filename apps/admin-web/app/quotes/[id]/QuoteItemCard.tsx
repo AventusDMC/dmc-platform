@@ -209,17 +209,25 @@ type QuoteItem = {
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
-    routeName: string;
+    routeName?: string | null;
+    route?: {
+      id?: string | null;
+      name?: string | null;
+      fromPlace?: { name?: string | null; city?: string | null } | null;
+      toPlace?: { name?: string | null; city?: string | null } | null;
+    } | null;
+    fromPlace?: { name?: string | null; city?: string | null } | null;
+    toPlace?: { name?: string | null; city?: string | null } | null;
     vehicle: {
-      name: string;
+      name?: string | null;
       vehicleType?: string | null;
       maxPax?: number | null;
-    };
+    } | null;
     serviceType: {
-      id: string;
-      name: string;
-      code: string;
-    };
+      id?: string | null;
+      name?: string | null;
+      code?: string | null;
+    } | null;
     supplier?: {
       id?: string | null;
       name?: string | null;
@@ -393,8 +401,8 @@ function getQuoteItemServiceName(item: QuoteItem) {
     });
   }
 
-  if (item.appliedVehicleRate?.serviceType?.name) {
-    return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);
+  if (item.appliedVehicleRate) {
+    return buildTransportServiceDisplayName(item.service?.name || null, getTransportPricingModeDisplayName(item), item.appliedVehicleRate.supplier?.name || null);
   }
 
   return item.service?.name || item.externalPackageName || 'External Country Package';
@@ -454,6 +462,33 @@ function formatTransportSupplierBaseName(value: string) {
   return /^[A-Z0-9\s&.'-]+$/.test(value)
     ? value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
     : value;
+}
+
+function getTransportRouteDisplayName(item: QuoteItem) {
+  const rate = item.appliedVehicleRate;
+  const fromName = rate?.route?.fromPlace?.name || rate?.fromPlace?.name || null;
+  const toName = rate?.route?.toPlace?.name || rate?.toPlace?.name || null;
+
+  if (rate?.routeName?.trim()) return rate.routeName;
+  if (rate?.route?.name?.trim()) return rate.route.name;
+  if (fromName && toName) return `${fromName} -> ${toName}`;
+
+  if (item.pricingDescription?.trim()) {
+    const routePart = item.pricingDescription.split('|').map((part) => part.trim()).find((part) => /qaia|queen alia|airport|->|to/i.test(part));
+    if (routePart) return routePart;
+  }
+
+  return item.routeId || 'Route to be confirmed';
+}
+
+function getTransportPricingModeDisplayName(item: QuoteItem) {
+  return (
+    item.appliedVehicleRate?.serviceType?.name ||
+    item.service?.serviceType?.name ||
+    item.service?.category ||
+    item.transportServiceTypeId ||
+    'Transport'
+  );
 }
 
 function toDateInputValue(value: string | null | undefined) {
@@ -592,7 +627,7 @@ export function QuoteItemCard({
     () => ({
       ...initialValues,
       serviceId: currentItem.serviceId || '',
-      transportServiceTypeId: currentItem.transportServiceTypeId || currentItem.appliedVehicleRate?.serviceType.id || '',
+      transportServiceTypeId: currentItem.transportServiceTypeId || currentItem.appliedVehicleRate?.serviceType?.id || '',
       routeId: currentItem.routeId || currentItem.appliedVehicleRate?.routeId || '',
       touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || '',
       touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',
@@ -809,8 +844,13 @@ export function QuoteItemCard({
           ) : null}
           {currentItem.appliedVehicleRate ? (
             <p>
-              {currentItem.appliedVehicleRate.routeName} | {formatTransportVehicleDisplay(currentItem.appliedVehicleRate.vehicle)} |{' '}
-              {currentItem.appliedVehicleRate.serviceType.name}
+              {getTransportRouteDisplayName(currentItem)} |{' '}
+              {formatTransportVehicleDisplay({
+                name: currentItem.appliedVehicleRate.vehicle?.name || 'Vehicle to be confirmed',
+                vehicleType: currentItem.appliedVehicleRate.vehicle?.vehicleType || null,
+                maxPax: currentItem.appliedVehicleRate.vehicle?.maxPax ?? currentItem.paxCount ?? null,
+              })}{' '}
+              | {getTransportPricingModeDisplayName(currentItem)}
             </p>
           ) : null}
           {currentItem.touringRoute ? (

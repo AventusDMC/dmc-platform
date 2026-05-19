@@ -161,18 +161,20 @@ function formatRoute(route: RouteOption | null) {
     return 'Select route';
   }
 
-  return route.name || `${route.fromPlace.name} -> ${route.toPlace.name}`;
+  const fromName = route.fromPlace?.name || route.fromPlaceId || '';
+  const toName = route.toPlace?.name || route.toPlaceId || '';
+  return route.name || [fromName, toName].filter(Boolean).join(' -> ') || 'Route to be confirmed';
 }
 
 function getRouteAreaName(route: RouteOption) {
-  return route.fromPlace.city || route.toPlace.city || route.fromPlace.name || route.toPlace.name || route.name;
+  return route.fromPlace?.city || route.toPlace?.city || route.fromPlace?.name || route.toPlace?.name || route.name || 'Route area pending';
 }
 
 function isSameAreaRouteOption(route: RouteOption) {
-  const fromName = normalizeTransportRouteText(route.fromPlace.name);
-  const toName = normalizeTransportRouteText(route.toPlace.name);
-  const from = normalizeTransportRouteText(route.fromPlace.city || route.fromPlace.name);
-  const to = normalizeTransportRouteText(route.toPlace.city || route.toPlace.name);
+  const fromName = normalizeTransportRouteText(route.fromPlace?.name);
+  const toName = normalizeTransportRouteText(route.toPlace?.name);
+  const from = normalizeTransportRouteText(route.fromPlace?.city || route.fromPlace?.name);
+  const to = normalizeTransportRouteText(route.toPlace?.city || route.toPlace?.name);
   const routeText = normalizeTransportRouteText(`${route.name} ${route.notes || ''}`);
   return Boolean((fromName && toName && fromName === toName) || (from && to && from === to && /city|disposal|day_services/.test(routeText)));
 }
@@ -207,12 +209,12 @@ function getDisposalRouteBaseName(route: RouteOption) {
 
 function getDisposalAreaKey(route: RouteOption) {
   const area = getDisposalRouteBaseName(route);
-  const region = route.routeOperations?.region || route.fromPlace.city || route.toPlace.city || area;
+  const region = route.routeOperations?.region || route.fromPlace?.city || route.toPlace?.city || area;
   return normalizeTransportRouteText(`${formatDisposalAreaName(area)} ${region}`);
 }
 
 function getTransferRouteKey(route: RouteOption) {
-  return normalizeTransportRouteText(`${route.fromPlace.name} ${route.fromPlace.city || ''} ${route.toPlace.name} ${route.toPlace.city || ''}`);
+  return normalizeTransportRouteText(`${route.fromPlace?.name || ''} ${route.fromPlace?.city || ''} ${route.toPlace?.name || ''} ${route.toPlace?.city || ''}`);
 }
 
 export function formatRouteSelectionLabel(route: RouteOption) {
@@ -319,20 +321,24 @@ function normalizeRouteText(value: string | null | undefined) {
 }
 
 function getRouteRawLabels(route: RouteOption) {
+  const fromName = route.fromPlace?.name || '';
+  const toName = route.toPlace?.name || '';
   return [
     route.name,
     formatRoute(route),
-    `${route.fromPlace.name} -> ${route.toPlace.name}`,
-    `${route.fromPlace.name} \u2192 ${route.toPlace.name}`,
+    fromName && toName ? `${fromName} -> ${toName}` : '',
+    fromName && toName ? `${fromName} \u2192 ${toName}` : '',
   ].filter((label): label is string => Boolean(label));
 }
 
 function getRateRawRouteLabels(rate: VehicleRate) {
+  const fromName = rate.route?.fromPlace?.name || '';
+  const toName = rate.route?.toPlace?.name || '';
   return [
     rate.routeName,
     rate.route?.name,
-    rate.route ? `${rate.route.fromPlace.name} -> ${rate.route.toPlace.name}` : '',
-    rate.route ? `${rate.route.fromPlace.name} \u2192 ${rate.route.toPlace.name}` : '',
+    fromName && toName ? `${fromName} -> ${toName}` : '',
+    fromName && toName ? `${fromName} \u2192 ${toName}` : '',
   ].filter((label): label is string => Boolean(label));
 }
 
@@ -620,7 +626,7 @@ export function transportRateMatchesSelectedRoute(rate: VehicleRate, route: Rout
   if (rate.route?.fromPlace && rate.route?.toPlace) {
     return transportRoutePairsMatch(
       { fromPlaceName: rate.route.fromPlace.name, toPlaceName: rate.route.toPlace.name },
-      { fromPlaceName: route.fromPlace.name, toPlaceName: route.toPlace.name },
+      { fromPlaceName: route.fromPlace?.name || '', toPlaceName: route.toPlace?.name || '' },
     );
   }
 

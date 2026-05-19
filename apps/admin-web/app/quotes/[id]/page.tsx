@@ -421,18 +421,26 @@ type QuoteItem = {
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
-    routeName: string;
+    routeName?: string | null;
+    route?: {
+      id?: string | null;
+      name?: string | null;
+      fromPlace?: { name?: string | null; city?: string | null } | null;
+      toPlace?: { name?: string | null; city?: string | null } | null;
+    } | null;
+    fromPlace?: { name?: string | null; city?: string | null } | null;
+    toPlace?: { name?: string | null; city?: string | null } | null;
     vehicle: {
       id?: string | null;
-      name: string;
+      name?: string | null;
       vehicleType?: string | null;
       maxPax?: number | null;
-    };
+    } | null;
     serviceType: {
-      id: string;
-      name: string;
-      code: string;
-    };
+      id?: string | null;
+      name?: string | null;
+      code?: string | null;
+    } | null;
     supplier?: {
       id?: string | null;
       name?: string | null;
@@ -1209,17 +1217,59 @@ function normalizeQuoteItem(item: Partial<QuoteItem> | null | undefined): QuoteI
       ? {
           id: item.appliedVehicleRate.id,
           routeId: item.appliedVehicleRate.routeId ?? null,
-          routeName: item.appliedVehicleRate.routeName,
-          vehicle: {
-            name: item.appliedVehicleRate.vehicle?.name || 'Vehicle to be confirmed',
-            vehicleType: item.appliedVehicleRate.vehicle?.vehicleType || null,
-            maxPax: item.appliedVehicleRate.vehicle?.maxPax ?? null,
-          },
-          serviceType: {
-            id: item.appliedVehicleRate.serviceType?.id || 'missing-service-type',
-            name: item.appliedVehicleRate.serviceType?.name || 'Transport',
-            code: item.appliedVehicleRate.serviceType?.code || 'TRANSPORT',
-          },
+          routeName:
+            item.appliedVehicleRate.routeName ||
+            item.appliedVehicleRate.route?.name ||
+            [
+              item.appliedVehicleRate.route?.fromPlace?.name || item.appliedVehicleRate.fromPlace?.name,
+              item.appliedVehicleRate.route?.toPlace?.name || item.appliedVehicleRate.toPlace?.name,
+            ].filter(Boolean).join(' -> ') ||
+            'Route to be confirmed',
+          route: item.appliedVehicleRate.route
+            ? {
+                id: item.appliedVehicleRate.route.id || null,
+                name: item.appliedVehicleRate.route.name || null,
+                fromPlace: item.appliedVehicleRate.route.fromPlace
+                  ? {
+                      name: item.appliedVehicleRate.route.fromPlace.name || null,
+                      city: item.appliedVehicleRate.route.fromPlace.city || null,
+                    }
+                  : null,
+                toPlace: item.appliedVehicleRate.route.toPlace
+                  ? {
+                      name: item.appliedVehicleRate.route.toPlace.name || null,
+                      city: item.appliedVehicleRate.route.toPlace.city || null,
+                    }
+                  : null,
+              }
+            : null,
+          fromPlace: item.appliedVehicleRate.fromPlace
+            ? {
+                name: item.appliedVehicleRate.fromPlace.name || null,
+                city: item.appliedVehicleRate.fromPlace.city || null,
+              }
+            : null,
+          toPlace: item.appliedVehicleRate.toPlace
+            ? {
+                name: item.appliedVehicleRate.toPlace.name || null,
+                city: item.appliedVehicleRate.toPlace.city || null,
+              }
+            : null,
+          vehicle: item.appliedVehicleRate.vehicle
+            ? {
+                id: item.appliedVehicleRate.vehicle.id || null,
+                name: item.appliedVehicleRate.vehicle.name || 'Vehicle to be confirmed',
+                vehicleType: item.appliedVehicleRate.vehicle.vehicleType || null,
+                maxPax: item.appliedVehicleRate.vehicle.maxPax ?? null,
+              }
+            : null,
+          serviceType: item.appliedVehicleRate.serviceType
+            ? {
+                id: item.appliedVehicleRate.serviceType.id || 'missing-service-type',
+                name: item.appliedVehicleRate.serviceType.name || 'Transport',
+                code: item.appliedVehicleRate.serviceType.code || 'TRANSPORT',
+              }
+            : null,
           supplier: item.appliedVehicleRate.supplier
             ? {
                 id: item.appliedVehicleRate.supplier.id || null,
@@ -1462,8 +1512,12 @@ function getQuoteItemDisplayName(item: QuoteItem) {
     return item.hotel.name;
   }
 
-  if (item.appliedVehicleRate?.serviceType?.name) {
-    return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);
+  if (item.appliedVehicleRate) {
+    return buildTransportServiceDisplayName(
+      item.service?.name,
+      item.appliedVehicleRate.serviceType?.name || item.service?.serviceType?.name || item.service?.category || 'Transport',
+      item.appliedVehicleRate.supplier?.name || null,
+    );
   }
 
   return item.activity?.name || item.service.name;

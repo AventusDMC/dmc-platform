@@ -1179,12 +1179,12 @@ describe('quote detail page regression', () => {
     ]);
 
     expectSourceContains(pageSource, [
-      'return buildTransportServiceDisplayName(item.service.name, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);',
+      'item.appliedVehicleRate.serviceType?.name || item.service?.serviceType?.name || item.service?.category || \'Transport\'',
       'return item.appliedVehicleRate?.serviceType?.name || item.service.serviceType?.name || item.service.category || \'Service\';',
     ]);
 
     expectSourceContains(readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8'), [
-      'return buildTransportServiceDisplayName(item.service?.name || null, item.appliedVehicleRate.serviceType.name, item.appliedVehicleRate.supplier?.name || null);',
+      'return buildTransportServiceDisplayName(item.service?.name || null, getTransportPricingModeDisplayName(item), item.appliedVehicleRate.supplier?.name || null);',
       'const itemDisplayName = hotelItemSummary || activityCatalogName || getQuoteItemServiceName(currentItem);',
     ]);
 
@@ -1192,6 +1192,31 @@ describe('quote detail page regression', () => {
       'function getQuoteItemServiceDisplayName(item: QuoteItem)',
       '<h3>{hotelItemSummary || getQuoteItemServiceDisplayName(currentItem)}</h3>',
       '{getQuoteItemServiceTypeDisplayName(currentItem)}',
+    ]);
+  });
+
+  it('renders QAIA transport quote items defensively after save when transport snapshots are sparse', () => {
+    expectSourceContains(quoteServicePlannerSource, [
+      'function getTransportRouteDisplayName(item: QuoteItem)',
+      'item.appliedVehicleRate?.serviceType?.name ||',
+      "item.service?.category ||",
+      "'Route to be confirmed'",
+      "item.appliedVehicleRate?.vehicle?.name || 'Vehicle to be confirmed'",
+      'routeName: getTransportRouteDisplayName(item)',
+    ]);
+
+    expectSourceContains(quoteItemCardSource, [
+      'function getTransportRouteDisplayName(item: QuoteItem)',
+      'function getTransportPricingModeDisplayName(item: QuoteItem)',
+      'currentItem.appliedVehicleRate.vehicle?.name || \'Vehicle to be confirmed\'',
+      '{getTransportRouteDisplayName(currentItem)}',
+      '| {getTransportPricingModeDisplayName(currentItem)}',
+    ]);
+
+    expectSourceContains(quoteTransportPickerSource, [
+      "route.fromPlace?.name || route.fromPlaceId || ''",
+      "route.toPlace?.name || route.toPlaceId || ''",
+      "route.fromPlace?.city || route.toPlace?.city || route.fromPlace?.name || route.toPlace?.name || route.name || 'Route area pending'",
     ]);
   });
 

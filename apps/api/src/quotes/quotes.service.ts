@@ -2404,6 +2404,14 @@ export class QuotesService {
             vehicle: true,
             serviceType: true,
             supplier: true,
+            route: {
+              include: {
+                fromPlace: true,
+                toPlace: true,
+              },
+            },
+            fromPlace: true,
+            toPlace: true,
           },
         },
       },

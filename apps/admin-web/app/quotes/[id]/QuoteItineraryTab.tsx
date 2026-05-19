@@ -60,14 +60,14 @@ type QuoteItineraryLinkedServiceSummary = {
   } | null;
   appliedVehicleRate: {
     id: string;
-    routeName: string;
+    routeName: string | null;
     vehicle: {
       id: string;
-      name: string;
+      name: string | null;
     } | null;
     serviceType: {
       id: string;
-      name: string;
+      name: string | null;
       code: string | null;
     } | null;
   } | null;
@@ -154,7 +154,7 @@ function buildServiceSummary(service: QuoteItineraryLinkedServiceSummary | null)
   }
 
   if (service.appliedVehicleRate) {
-    return `${service.appliedVehicleRate.routeName} | ${service.appliedVehicleRate.vehicle?.name || 'Vehicle'} | ${service.appliedVehicleRate.serviceType?.name || 'Transport'}`;
+    return `${service.appliedVehicleRate.routeName || 'Route to be confirmed'} | ${service.appliedVehicleRate.vehicle?.name || 'Vehicle'} | ${service.appliedVehicleRate.serviceType?.name || 'Transport'}`;
   }
 
   return service.service?.name || 'Quote service';

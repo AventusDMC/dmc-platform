@@ -299,17 +299,25 @@ type QuoteItem = Omit<QuoteReadinessItem, 'service' | 'hotel'> & {
   appliedVehicleRate: {
     id: string;
     routeId: string | null;
-    routeName: string;
+    routeName?: string | null;
+    route?: {
+      id?: string | null;
+      name?: string | null;
+      fromPlace?: { name?: string | null; city?: string | null } | null;
+      toPlace?: { name?: string | null; city?: string | null } | null;
+    } | null;
+    fromPlace?: { name?: string | null; city?: string | null } | null;
+    toPlace?: { name?: string | null; city?: string | null } | null;
     vehicle: {
-      name: string;
+      name?: string | null;
       vehicleType?: string | null;
       maxPax?: number | null;
-    };
+    } | null;
     serviceType: {
-      id: string;
-      name: string;
-      code: string;
-    };
+      id?: string | null;
+      name?: string | null;
+      code?: string | null;
+    } | null;
     supplier?: {
       id?: string | null;
       name?: string | null;
@@ -718,9 +726,9 @@ function buildQuoteItemInitialValues(item: QuoteItem, totalPax: number, roomCoun
     overrideCost: item.overrideCost === null ? '' : String(item.overrideCost),
     overrideReason: item.overrideReason || '',
     useOverride: item.useOverride,
-    transportServiceTypeId: item.transportServiceTypeId || item.appliedVehicleRate?.serviceType.id || '',
+    transportServiceTypeId: item.transportServiceTypeId || item.appliedVehicleRate?.serviceType?.id || '',
     routeId: item.routeId || item.appliedVehicleRate?.routeId || '',
-    routeName: item.appliedVehicleRate?.routeName || '',
+    routeName: getTransportRouteDisplayName(item) === 'Route to be confirmed' ? '' : getTransportRouteDisplayName(item),
     hotelId: item.hotelId || '',
     contractId: item.contractId || '',
     seasonId: item.seasonId || '',
@@ -1085,6 +1093,10 @@ function getItemCategory(item: QuoteItem): ServicePlannerCategory {
     return 'activity';
   }
 
+  if (item.appliedVehicleRate || item.routeId || item.transportServiceTypeId || item.vehicleId) {
+    return 'transport';
+  }
+
   return item.service ? getQuoteServiceCategoryKey(item.service, item) : 'other';
 }
 
@@ -1097,10 +1109,10 @@ function getItemServiceName(item: QuoteItem) {
     });
   }
 
-  if (item.appliedVehicleRate?.serviceType?.name) {
+  if (item.appliedVehicleRate) {
     return buildTransportServiceDisplayName(
       item.service?.name || null,
-      item.appliedVehicleRate.serviceType.name,
+      getTransportPricingModeDisplayName(item),
       getTransportSupplierDisplayName(item),
     );
   }
@@ -1392,19 +1404,58 @@ function getTransportSupplierDisplayName(item: QuoteItem) {
   return item.appliedVehicleRate?.supplier?.name || cleanTransportSupplierBase(item.service?.name || null) || null;
 }
 
+function getTransportRouteDisplayName(item: QuoteItem) {
+  const rate = item.appliedVehicleRate;
+  const fromName = rate?.route?.fromPlace?.name || rate?.fromPlace?.name || null;
+  const toName = rate?.route?.toPlace?.name || rate?.toPlace?.name || null;
+
+  if (rate?.routeName?.trim()) {
+    return rate.routeName;
+  }
+
+  if (rate?.route?.name?.trim()) {
+    return rate.route.name;
+  }
+
+  if (fromName && toName) {
+    return `${fromName} -> ${toName}`;
+  }
+
+  if (item.pricingDescription?.trim()) {
+    const routePart = item.pricingDescription.split('|').map((part) => part.trim()).find((part) => /qaia|queen alia|airport|->|to/i.test(part));
+    if (routePart) {
+      return routePart;
+    }
+  }
+
+  return item.routeId || 'Route to be confirmed';
+}
+
+function getTransportPricingModeDisplayName(item: QuoteItem) {
+  return (
+    item.appliedVehicleRate?.serviceType?.name ||
+    item.service?.serviceType?.name ||
+    item.service?.category ||
+    item.transportServiceTypeId ||
+    'Transport'
+  );
+}
+
 function getTransportItemDetailLabel(item: QuoteItem) {
   if (!item.appliedVehicleRate) {
     return null;
   }
 
+  const vehicle = item.appliedVehicleRate.vehicle || {};
+
   return [
     formatTransportVehicleDisplay({
-      name: item.appliedVehicleRate.vehicle?.name || 'Vehicle',
-      vehicleType: item.appliedVehicleRate.vehicle?.vehicleType || null,
-      maxPax: item.appliedVehicleRate.vehicle?.maxPax ?? item.paxCount ?? null,
+      name: vehicle.name || 'Vehicle to be confirmed',
+      vehicleType: vehicle.vehicleType || null,
+      maxPax: vehicle.maxPax ?? item.paxCount ?? null,
     }),
     item.paxCount ? `${item.paxCount} pax` : null,
-    normalizeTransportPricingModeLabel(item.appliedVehicleRate.serviceType?.name),
+    normalizeTransportPricingModeLabel(getTransportPricingModeDisplayName(item)),
   ].filter(Boolean).join(' | ');
 }
 
@@ -1609,14 +1660,15 @@ function getUsedInQuoteSuggestions(category: ServicePlannerCategory, plannerProp
         hotelId: item.hotelId,
         catalogRank: 0,
       });
-    } else if (category === 'transport' && item.appliedVehicleRate?.routeId) {
-      used.set(`route:${item.appliedVehicleRate.routeId}`, {
-        id: `route:${item.appliedVehicleRate.routeId}`,
-        label: item.appliedVehicleRate.routeName || getItemServiceName(item),
-        detail: item.appliedVehicleRate.serviceType.name || 'Used in this quote',
+    } else if (category === 'transport' && (item.appliedVehicleRate?.routeId || item.routeId)) {
+      const routeId = item.appliedVehicleRate?.routeId || item.routeId || '';
+      used.set(`route:${routeId}`, {
+        id: `route:${routeId}`,
+        label: getTransportRouteDisplayName(item) || getItemServiceName(item),
+        detail: getTransportPricingModeDisplayName(item) || 'Used in this quote',
         category,
         source: 'route',
-        routeId: item.appliedVehicleRate.routeId,
+        routeId,
         catalogRank: 0,
       });
     } else if (item.service) {
@@ -2355,7 +2407,7 @@ function QuoteServiceCard({
         {item.appliedVehicleRate ? (
           <p className={`${laneStyles.supplier} quote-service-card-supplier`}>
             {getTransportItemDetailLabel(item)}
-            {item.appliedVehicleRate.routeName ? ` | Service Area: ${item.appliedVehicleRate.routeName}` : ''}
+            {` | Service Area: ${getTransportRouteDisplayName(item)}`}
           </p>
         ) : null}
         {item.touringRoute ? (
