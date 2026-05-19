@@ -106,6 +106,7 @@ function createPrismaMock() {
       findMany: async ({ where }: any = {}) =>
         stores.suppliers.filter((supplier) => !where?.type?.equals || equalsCI(supplier.type, where.type.equals)),
       findFirst: async ({ where }: any) => stores.suppliers.find((supplier) => equalsCI(supplier.name, where.name.equals)) || null,
+      findUnique: async ({ where }: any) => stores.suppliers.find((supplier) => supplier.id === where.id) || null,
       create: async ({ data }: any) => {
         const supplier = { id: nextId('supplier'), ...data };
         stores.suppliers.push(supplier);
@@ -1054,6 +1055,7 @@ test('vehicle rate CRUD keeps matching capacity pricing rule in sync', async () 
   const { prisma, stores } = createPrismaMock();
   const service = new VehicleRatesService(prisma as any);
 
+  stores.suppliers.push({ id: 'supplier-1', name: 'Alpha Transport', type: 'transport' });
   stores.transportServiceTypes.push({ id: 'service-type-1', name: 'Airport Transfer', code: 'AIRPORT' });
   stores.vehicles.push({ id: 'vehicle-1', name: 'Sedan', maxPax: 3, luggageCapacity: 2 });
   stores.places.push({ id: 'place-1', name: 'Airport', country: 'Jordan' });
@@ -1069,6 +1071,7 @@ test('vehicle rate CRUD keeps matching capacity pricing rule in sync', async () 
   const rate = await service.create({
     vehicleId: 'vehicle-1',
     serviceTypeId: 'service-type-1',
+    supplierId: 'supplier-1',
     routeId: 'route-1',
     minPax: 1,
     maxPax: 3,
@@ -1080,6 +1083,10 @@ test('vehicle rate CRUD keeps matching capacity pricing rule in sync', async () 
   });
 
   assert.equal(stores.pricingRules.length, 1);
+  assert.equal(stores.supplierServices.length, 1);
+  assert.equal(stores.supplierServices[0].supplierId, 'supplier-1');
+  assert.equal(stores.supplierServices[0].name, 'Airport Transfer');
+  assert.equal(stores.supplierServices[0].category, 'Transport');
   assert.equal(stores.pricingRules[0].unitCapacity, 3);
   assert.equal(stores.pricingRules[0].baseCost, 45);
   assert.equal(stores.pricingRules[0].pricingMode, 'capacity_unit');
@@ -1088,6 +1095,7 @@ test('vehicle rate CRUD keeps matching capacity pricing rule in sync', async () 
   await service.update(rate.id, { price: 50, active: false });
 
   assert.equal(stores.pricingRules.length, 1);
+  assert.equal(stores.supplierServices.length, 1);
   assert.equal(stores.pricingRules[0].baseCost, 50);
   assert.equal(stores.pricingRules[0].isActive, false);
 

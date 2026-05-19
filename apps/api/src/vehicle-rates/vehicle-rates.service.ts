@@ -1044,6 +1044,12 @@ export class VehicleRatesService {
       fromPlace,
       toPlace,
     );
+    await this.findOrCreateQuoteTransportSupplierService({
+      supplierId: data.supplierId ?? null,
+      serviceName: canonicalServiceType.name,
+      price: data.price,
+      currency: data.currency,
+    });
 
     const vehicleRate = await this.prisma.vehicleRate.create({
       data: {
@@ -1193,6 +1199,12 @@ export class VehicleRatesService {
       fromPlace,
       toPlace,
     );
+    await this.findOrCreateQuoteTransportSupplierService({
+      supplierId: supplierId ?? null,
+      serviceName: canonicalServiceType.name,
+      price: data.price ?? existing.price,
+      currency: data.currency ?? existing.currency,
+    });
 
     const vehicleRate = await this.prisma.vehicleRate.update({
       where: { id },
@@ -2199,6 +2211,52 @@ export class VehicleRatesService {
     });
 
     return existing || this.prisma.serviceType.create({ data: { name: 'Transport', code: 'TRANSPORT', isActive: true } });
+  }
+
+  private async findOrCreateQuoteTransportSupplierService(data: {
+    supplierId?: string | null;
+    serviceName: string;
+    price: number;
+    currency: string;
+  }) {
+    if (!data.supplierId) {
+      return null;
+    }
+
+    const serviceName = normalizeTransportPricingMode(data.serviceName) || data.serviceName.trim();
+    if (!serviceName) {
+      return null;
+    }
+
+    const existing = await this.prisma.supplierService.findFirst({
+      where: {
+        supplierId: data.supplierId,
+        name: { equals: serviceName, mode: 'insensitive' },
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    const serviceType = await this.findOrCreateCatalogTransportServiceType();
+    const currency = data.currency.trim().toUpperCase();
+    const cost = ensureValidNumber(data.price, 'price', { min: 0 });
+
+    return this.prisma.supplierService.create({
+      data: {
+        supplierId: data.supplierId,
+        resolvedSupplierId: data.supplierId,
+        name: serviceName,
+        category: 'Transport',
+        serviceTypeId: serviceType.id,
+        unitType: 'per_group',
+        baseCost: cost,
+        currency,
+        costBaseAmount: cost,
+        costCurrency: currency,
+      },
+    });
   }
 
   private async resolveCanonicalTransportPricingModeServiceType(serviceType: { id: string; name: string; code?: string | null }) {
