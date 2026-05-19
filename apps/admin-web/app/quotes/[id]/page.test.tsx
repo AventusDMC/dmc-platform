@@ -854,7 +854,7 @@ describe('quote detail page regression', () => {
       'selectedService?.id || filteredServices[0]?.id || serviceId',
       "throw new Error('Hotel catalog service not found for this stay.');",
       'serviceId: isTransportService ? resolvedTransportServiceId : resolvedHotelServiceId',
-      'roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount)',
+      'roomCount: usesRoomNightFields ? Number(roomCount) : undefined',
     ]);
   });
 
@@ -866,13 +866,41 @@ describe('quote detail page regression', () => {
       'Pax, unit, and markup',
       'Ticket items use ticket basis and pax. Room and night fields are not used.',
       'value={ticketPricingBasis.replace(/_/g, \' \')}',
-      'roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount)',
-      'nightCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(nightCount)',
+      'const usesRoomNightFields = isHotelService;',
+      'roomCount: usesRoomNightFields ? Number(roomCount) : undefined',
+      'nightCount: usesRoomNightFields ? Number(nightCount) : undefined',
+      '{usesRoomNightFields ? (',
       'value={activityPricingBasis.replace(/_/g, \' \')}',
       "resolvedTransportPricing.pricingMode === 'capacity_unit'",
     ]);
 
     assert.equal(quoteItemsFormSource.includes('{hasPrimarySelection && !isTransportService && !isHotelService && !isActivityService ? ('), false);
+    assert.equal(quoteItemsFormSource.includes('<input value={dayCount} onChange={(event) => setDayCount(event.target.value)} type="number" min="1" required />'), false);
+  });
+
+  it('keeps Other service selection scoped to active non-ticket service catalog rows', () => {
+    const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
+
+    expectSourceContains(quoteItemsFormSource, [
+      'active?: boolean | null;',
+      'isActive?: boolean | null;',
+      "function isActiveSupplierService(service: Pick<SupplierService, 'active' | 'isActive'>)",
+      'function isTicketingOrEntranceCatalogService(service: SupplierService)',
+      'Boolean(service.ticketRateVariants?.length)',
+      "taxonomyText.includes('ticket')",
+      "taxonomyText.includes('entrance')",
+      'function isOtherSupplierService(service: SupplierService)',
+      "if (getServiceTypeKey(service) !== 'other')",
+      'return !isTicketingOrEntranceCatalogService(service);',
+      'function matchesPlannerServiceType(service: SupplierService, serviceType: ServiceTypeKey)',
+      "if (serviceType === 'other')",
+      'return isOtherSupplierService(service);',
+      'services.filter((service) => matchesPlannerServiceType(service, activeServiceType))',
+      'filteredServices.find((service) => service.id === serviceId)',
+      'services.filter((service) => matchesPlannerServiceType(service, button.key)).length',
+    ]);
+
+    assert.equal(quoteItemsFormSource.includes('services.find((service) => service.id === serviceId)'), false);
   });
 
   it('reopens touring transport quote items in touring-aware edit mode', () => {

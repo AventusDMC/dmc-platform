@@ -30,6 +30,8 @@ type SupplierService = {
   supplierId: string;
   name: string;
   category: string;
+  active?: boolean | null;
+  isActive?: boolean | null;
   serviceTypeId?: string | null;
   serviceType?: {
     id: string;
@@ -706,6 +708,68 @@ function isImportedPlaceholderService(service: Pick<SupplierService, 'supplierId
   return service.supplierId === IMPORTED_SERVICE_SUPPLIER_ID;
 }
 
+function isActiveSupplierService(service: Pick<SupplierService, 'active' | 'isActive'>) {
+  return service.active !== false && service.isActive !== false;
+}
+
+function getServiceTaxonomySearchText(service: Pick<SupplierService, 'name' | 'category' | 'unitType' | 'serviceType' | 'ticketRateVariants'>) {
+  return normalizeServiceTaxonomyText(
+    [
+      service.name,
+      service.category,
+      service.unitType,
+      service.serviceType?.name,
+      service.serviceType?.code,
+      ...(service.ticketRateVariants || []).map((variant) => variant.label),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function isTicketingOrEntranceCatalogService(service: SupplierService) {
+  const taxonomyText = getServiceTaxonomySearchText(service);
+
+  return (
+    getServiceTypeKey(service) === 'ticketing' ||
+    Boolean(service.ticketRateVariants?.length) ||
+    taxonomyText.includes('ticket') ||
+    taxonomyText.includes('entrance') ||
+    taxonomyText.includes('entry') ||
+    taxonomyText.includes('museum') ||
+    taxonomyText.includes('site access') ||
+    taxonomyText.includes('resort access')
+  );
+}
+
+function isOtherSupplierService(service: SupplierService) {
+  if (!isActiveSupplierService(service) || isImportedPlaceholderService(service)) {
+    return false;
+  }
+
+  if (getServiceTypeKey(service) !== 'other') {
+    return false;
+  }
+
+  return !isTicketingOrEntranceCatalogService(service);
+}
+
+function matchesPlannerServiceType(service: SupplierService, serviceType: ServiceTypeKey) {
+  if (serviceType === 'other') {
+    return isOtherSupplierService(service);
+  }
+
+  if (!isActiveSupplierService(service)) {
+    return false;
+  }
+
+  if (serviceType === 'hotel' && isImportedPlaceholderService(service)) {
+    return false;
+  }
+
+  return getServiceTypeKey(service) === serviceType;
+}
+
 function normalizeActivityMatchText(value: string | null | undefined) {
   return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -1255,23 +1319,13 @@ export function QuoteItemsForm({
   );
 
   const filteredServices = activeServiceType
-    ? services.filter((service) => {
-        if (getServiceTypeKey(service) !== activeServiceType) {
-          return false;
-        }
-
-        if (activeServiceType === 'hotel') {
-          return !isImportedPlaceholderService(service);
-        }
-
-        return true;
-      })
+    ? services.filter((service) => matchesPlannerServiceType(service, activeServiceType))
     : [];
 
   const activeActivities = useMemo(() => getActivityMasterOptions(activities), [activities]);
   const selectedActivity = activeActivities.find((activity) => activity.id === activityId) || null;
   const selectedService =
-    services.find((service) => service.id === serviceId) ||
+    filteredServices.find((service) => service.id === serviceId) ||
     (activeServiceType === 'activity' ? getActivityServiceBridge(selectedActivity || activeActivities[0] || null, services) || undefined : activeServiceType === 'externalPackage' ? undefined : filteredServices[0]);
   const activeActivityRateVariants = useMemo(
     () => (selectedActivity?.rateVariants || []).filter((variant) => variant.active !== false),
@@ -1287,6 +1341,7 @@ export function QuoteItemsForm({
   const isTicketingService = selectedService ? getServiceTypeKey(selectedService) === 'ticketing' : false;
   const isMealService = selectedService ? getServiceTypeKey(selectedService) === 'meal' : false;
   const isExternalPackageService = activeServiceType === 'externalPackage' || (selectedService ? getServiceTypeKey(selectedService) === 'externalPackage' : false);
+  const usesRoomNightFields = isHotelService;
   const isTouringTransportEdit = Boolean(isTransportService && (touringRouteId || touringRoutePricingId || initialValues?.touringRoute));
   const externalPackageValidationErrors = useMemo(() => validateExternalPackageFormState(externalPackage), [externalPackage]);
   const externalPackageFooterErrors = isExternalPackageService
@@ -2680,8 +2735,8 @@ export function QuoteItemsForm({
         ...(isExternalPackageService ? buildExternalPackagePayload(externalPackage) : {}),
         quantity: Number(quantity),
         paxCount: isActivityService ? activityParticipantTotal : Number(paxCount),
-        roomCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(roomCount),
-        nightCount: isTransportService || isGuideService || isMealService || isTicketingService || isExternalPackageService ? undefined : Number(nightCount),
+        roomCount: usesRoomNightFields ? Number(roomCount) : undefined,
+        nightCount: usesRoomNightFields ? Number(nightCount) : undefined,
         dayCount: isGuideService || isMealService || isExternalPackageService ? undefined : Number(dayCount),
         overrideCost: overrideCost.trim() ? Number(overrideCost) : null,
         overrideReason: useOverride ? overrideReason.trim() || null : null,
@@ -2842,17 +2897,7 @@ export function QuoteItemsForm({
             const count =
               button.key === 'activity'
                 ? activeActivities.length
-                : services.filter((service) => {
-                    if (getServiceTypeKey(service) !== button.key) {
-                      return false;
-                    }
-
-                    if (button.key === 'hotel') {
-                      return !isImportedPlaceholderService(service);
-                    }
-
-                    return true;
-                  }).length;
+                : services.filter((service) => matchesPlannerServiceType(service, button.key)).length;
             const isActive = activeServiceType === button.key;
 
             return (
@@ -3295,12 +3340,6 @@ export function QuoteItemsForm({
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
-              <label>
-                Day count
-                <input value={dayCount} onChange={(event) => setDayCount(event.target.value)} type="number" min="1" required />
-              </label>
-            ) : null}
           </div>
           ) : null}
 
@@ -3405,14 +3444,14 @@ export function QuoteItemsForm({
               <input value={paxCount} onChange={(event) => setPaxCount(event.target.value)} type="number" min="1" required />
             </label>
 
-            {!isHotelService && !isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
+            {usesRoomNightFields ? (
               <label>
                 Room count
                 <input value={roomCount} onChange={(event) => setRoomCount(event.target.value)} type="number" min="1" required />
               </label>
             ) : null}
 
-            {!isTransportService && !isGuideService && !isMealService && !isExternalPackageService ? (
+            {usesRoomNightFields ? (
               <label>
                 Night count
                 <input value={nightCount} onChange={(event) => setNightCount(event.target.value)} type="number" min="1" required />
