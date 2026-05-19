@@ -2747,6 +2747,7 @@ export class VehicleRatesService {
     serviceTypeId: string;
     routeId: string | null;
     vehicleId: string;
+    minPax: number;
     maxPax: number;
     price: number;
     currency: string;
@@ -2757,6 +2758,7 @@ export class VehicleRatesService {
       serviceTypeId: rate.serviceTypeId,
       routeId: rate.routeId ?? null,
       vehicleId: rate.vehicleId,
+      minPax: rate.minPax,
       maxPax: rate.maxPax,
       price: rate.price,
       currency: rate.currency,
