@@ -383,7 +383,19 @@ function inferSupplierServicePricingMode(service: SupplierService): PricingMode 
   return null;
 }
 
-function findSupplierServiceForRate(services: SupplierService[], rate: VehicleRate, pricingMode: PricingMode | '') {
+function supplierServiceMatchesRateRoute(service: SupplierService, rate: VehicleRate) {
+  const serviceRoute = normalizeTransportRouteText(service.name);
+  if (!serviceRoute) {
+    return false;
+  }
+
+  return getRateRawRouteLabels(rate).some((label) => {
+    const rateRoute = normalizeTransportRouteText(label);
+    return Boolean(rateRoute && serviceRoute === rateRoute);
+  });
+}
+
+export function findSupplierServiceForRate(services: SupplierService[], rate: VehicleRate, pricingMode: PricingMode | '') {
   const transportServices = services.filter(isTransportSupplierService);
   const supplierId = rate.supplierId || rate.supplier?.id || null;
   const supplierScoped = supplierId ? transportServices.filter((service) => service.supplierId === supplierId) : transportServices;
@@ -391,11 +403,12 @@ function findSupplierServiceForRate(services: SupplierService[], rate: VehicleRa
   const targetMode = pricingMode || getNormalizedPricingModeForRate(rate);
   const modeMatch = targetMode ? searchPool.find((service) => inferSupplierServicePricingMode(service) === targetMode) : null;
   const serviceTypeMatch = searchPool.find((service) => service.serviceTypeId === rate.serviceType?.id);
+  const routeScopedMatch = searchPool.find((service) => supplierServiceMatchesRateRoute(service, rate));
 
-  return modeMatch || serviceTypeMatch || null;
+  return modeMatch || serviceTypeMatch || routeScopedMatch || null;
 }
 
-function findTransportServiceTypeIdForRate(rate: VehicleRate, transportServiceTypes: TransportServiceType[], pricingMode: PricingMode | '') {
+export function findTransportServiceTypeIdForRate(rate: VehicleRate, transportServiceTypes: TransportServiceType[], pricingMode: PricingMode | '') {
   if (rate.serviceType?.id) {
     return rate.serviceType.id;
   }
@@ -1262,7 +1275,11 @@ export function QuoteTransportPicker({
     const isTouringSelection = transportMode === 'TOURING_ROUTE' || isTouringRouteOption(selectedRoute);
 
     if (!service || !transportServiceTypeId) {
-      setError('Could not resolve the selected supplier service and pricing mode for this transport rate.');
+      const missingFields = [
+        !service ? 'supplier service' : null,
+        !transportServiceTypeId ? 'transport service type' : null,
+      ].filter(Boolean).join(' and ');
+      setError(`Could not resolve ${missingFields} for this transport rate. Selected route, supplier, pricing mode, vehicle, and currency are priced, but the save mapping is incomplete.`);
       return;
     }
 

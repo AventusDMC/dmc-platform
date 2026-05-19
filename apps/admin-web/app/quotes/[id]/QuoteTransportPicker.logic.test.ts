@@ -11,6 +11,8 @@ import {
   formatVehicleOptionLabel,
   formatRouteSelectionLabel,
   formatSupplierRateOptionLabel,
+  findSupplierServiceForRate,
+  findTransportServiceTypeIdForRate,
   getQuoteTransportRouteSelectorGroups,
   getRankedVehicles,
   transportRateMatchesSelectedRoute,
@@ -476,6 +478,61 @@ describe('QuoteTransportPicker transport pricing mode matching', () => {
     assert.equal(
       transportRateMatchesSelectedRoute(rate('Large 49', 'Point-to-Point', { routeId: route.id, routeName: 'Different route label', route: null }), route),
       true,
+    );
+  });
+
+  it('resolves route-scoped point-to-point services for newly-created transfer routes', () => {
+    const selectedRoute = {
+      ...route,
+      id: 'route-wadi-rum-dead-sea',
+      name: 'Wadi Rum -> Dead Sea',
+      fromPlaceId: 'wadi-rum',
+      toPlaceId: 'dead-sea',
+      fromPlace: { id: 'wadi-rum', name: 'Wadi Rum', city: 'Wadi Rum', country: 'Jordan' },
+      toPlace: { id: 'dead-sea', name: 'Dead Sea', city: 'Dead Sea', country: 'Jordan' },
+    } as any;
+    const selectedRate = rate('Sedan 2', 'Point-to-Point', {
+      id: 'rate-wadi-rum-dead-sea-sedan',
+      supplierId: 'supplier-alpha',
+      routeId: selectedRoute.id,
+      routeName: selectedRoute.name,
+      route: selectedRoute,
+      maxPax: 2,
+      serviceType: { id: 'transport-type-point-to-point', name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
+    });
+    const service = findSupplierServiceForRate(
+      [
+        {
+          id: 'service-wadi-rum-dead-sea',
+          supplierId: 'supplier-alpha',
+          name: 'Wadi Rum - Dead Sea',
+          category: 'Transport',
+          serviceType: { id: 'catalog-transport', name: 'Transport', code: 'TRANSPORT' },
+        },
+      ] as any,
+      selectedRate,
+      'Point-to-Point',
+    );
+
+    assert.equal(service?.id, 'service-wadi-rum-dead-sea');
+    assert.equal(
+      findTransportServiceTypeIdForRate(selectedRate, [{ id: 'transport-type-point-to-point', name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' }], 'Point-to-Point'),
+      'transport-type-point-to-point',
+    );
+  });
+
+  it('does not fall back to a generic transport service without mode, route, or service-type match', () => {
+    const genericService = {
+      id: 'service-generic-transport',
+      supplierId: 'supplier-alpha',
+      name: 'Transport service',
+      category: 'Transport',
+      serviceType: { id: 'catalog-transport', name: 'Transport', code: 'TRANSPORT' },
+    };
+
+    assert.equal(
+      findSupplierServiceForRate([genericService] as any, rate('Sedan 2', 'Point-to-Point', { supplierId: 'supplier-alpha' }), 'Point-to-Point'),
+      null,
     );
   });
 

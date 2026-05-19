@@ -1053,6 +1053,107 @@ test('quote item update preserves touring route source metadata when omitted', a
   assert.match(updatedData.pricingDescription, /Excursion origin variant/);
 });
 
+test('new transfer route quote item saves from selected vehicle rate and route-scoped transport service', async () => {
+  const quote = {
+    id: 'quote-1',
+    quoteCurrency: 'USD',
+    adults: 2,
+    children: 0,
+    roomCount: 1,
+    nightCount: 1,
+    travelStartDate: null,
+    createdAt: new Date('2026-05-01T00:00:00.000Z'),
+    focType: 'NONE',
+    focRatio: null,
+    focCount: null,
+    focRoomType: null,
+    pricingType: 'simple',
+    pricingMode: 'SIMPLE',
+    jordanPassType: 'NONE',
+    pricingSlabs: [],
+  };
+  const service = createQuotesService({
+    quote: {
+      findUnique: async ({ where }: any) => (where.id === quote.id ? quote : null),
+    },
+    supplierService: {
+      findUnique: async ({ where }: any) =>
+        where.id === 'service-wadi-rum-dead-sea'
+          ? {
+              id: 'service-wadi-rum-dead-sea',
+              name: 'Wadi Rum -> Dead Sea',
+              category: 'Transport',
+              unitType: 'per_group',
+              baseCost: 0,
+              currency: 'USD',
+              costBaseAmount: 0,
+              costCurrency: 'USD',
+              salesTaxPercent: 0,
+              salesTaxIncluded: false,
+              serviceChargePercent: 0,
+              serviceChargeIncluded: false,
+              serviceType: { name: 'Transport', code: 'TRANSPORT' },
+              serviceRates: [],
+              ticketRateVariants: [],
+            }
+          : null,
+    },
+    itinerary: { findUnique: async () => null },
+    quoteItineraryDay: { findUnique: async () => null },
+    quoteOption: { findUnique: async () => null },
+    activity: { findUnique: async () => null },
+    activityRateVariant: { findUnique: async () => null },
+    ticketRateVariant: { findUnique: async () => null },
+  });
+
+  (service as any).transportPricingService = {
+    resolvePricingRule: async () => {
+      throw new Error('Expected selected vehicle rate path');
+    },
+    findMatchingRate: async (input: any) => {
+      assert.equal(input.routeId, 'route-wadi-rum-dead-sea');
+      assert.equal(input.serviceTypeId, 'transport-type-point-to-point');
+      assert.equal(input.vehicleRateId, 'rate-wadi-rum-dead-sea-sedan');
+      assert.equal(input.vehicleId, 'vehicle-sedan-2');
+      assert.equal(input.paxCount, 2);
+
+      return {
+        id: 'rate-wadi-rum-dead-sea-sedan',
+        routeId: 'route-wadi-rum-dead-sea',
+        routeName: 'Wadi Rum -> Dead Sea',
+        price: 140,
+        currency: 'USD',
+        maxPax: 2,
+        serviceTypeId: 'transport-type-point-to-point',
+        serviceType: { id: 'transport-type-point-to-point', name: 'Point-to-Point', code: 'POINT_TO_POINT', classification: 'ROUTE_TRANSFER' },
+        vehicle: { id: 'vehicle-sedan-2', name: 'Sedan 2' },
+      };
+    },
+  };
+
+  const values = await (service as any).resolveQuoteItemValues({
+    quoteId: quote.id,
+    serviceId: 'service-wadi-rum-dead-sea',
+    quantity: 1,
+    paxCount: 2,
+    markupPercent: 30,
+    transportServiceTypeId: 'transport-type-point-to-point',
+    vehicleRateId: 'rate-wadi-rum-dead-sea-sedan',
+    transportVehicleId: 'vehicle-sedan-2',
+    routeId: 'route-wadi-rum-dead-sea',
+    routeName: 'Wadi Rum -> Dead Sea',
+    currency: 'USD',
+  });
+
+  assert.equal(values.data.serviceId, 'service-wadi-rum-dead-sea');
+  assert.equal(values.data.routeId, 'route-wadi-rum-dead-sea');
+  assert.equal(values.data.transportServiceTypeId, 'transport-type-point-to-point');
+  assert.equal(values.data.vehicleId, 'vehicle-sedan-2');
+  assert.equal(values.data.appliedVehicleRateId, 'rate-wadi-rum-dead-sea-sedan');
+  assert.equal(values.data.totalCost, 140);
+  assert.equal(values.data.totalSell, 182);
+});
+
 test('duplicate source warnings flag same quote date activity and entrance sources without blocking', async () => {
   const duplicateIds: string[] = [];
   const service = createQuotesService({

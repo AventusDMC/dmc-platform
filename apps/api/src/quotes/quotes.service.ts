@@ -5578,6 +5578,9 @@ export class QuotesService {
           throw new BadRequestException('Transport cost must be positive');
         }
         const classification = (vehicleRate.serviceType as any).classification || 'ROUTE_TRANSFER';
+        routeId = vehicleRate.routeId || data.routeId || null;
+        transportServiceTypeId = vehicleRate.serviceTypeId || regularTransportServiceTypeId;
+        vehicleId = vehicleRate.vehicle?.id || data.transportVehicleId || null;
         transportPricingMode = 'capacity_unit';
         unitCount = Math.ceil(paxCount / vehicleRate.maxPax);
         if (classification === 'FULL_DAY' || classification === 'DAILY_PACKAGE') {

@@ -1210,8 +1210,9 @@ describe('quote detail page regression', () => {
     assert.equal(quoteTransportPickerSource.includes('return modeMatch || searchPool[0] || null;'), false);
     expectSourceContains(quoteTransportPickerSource, [
       'const serviceTypeMatch = searchPool.find((service) => service.serviceTypeId === rate.serviceType?.id);',
-      'return modeMatch || serviceTypeMatch || null;',
-      'Could not resolve the selected supplier service and pricing mode for this transport rate.',
+      'const routeScopedMatch = searchPool.find((service) => supplierServiceMatchesRateRoute(service, rate));',
+      'return modeMatch || serviceTypeMatch || routeScopedMatch || null;',
+      'the save mapping is incomplete.',
     ]);
   });
 
