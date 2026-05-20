@@ -9,6 +9,7 @@ import {
 import { getVehicleTypeCatalogLabels, getVehicleTypeMatchLabels, normalizeVehicleTypeLabel } from '../common/vehicle-type-normalization';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName, normalizeRouteName, routePairsMatch } from '../routes/route-normalization';
+import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
 
 type CreateVehicleRateInput = {
@@ -676,6 +677,70 @@ function configureTariffMatrixWorksheet(worksheet: XLSX.WorkSheet, columns: read
     insertRows: false,
     deleteRows: false,
   };
+}
+
+function isSupplierTariffMatrixEditableColumn(column: string) {
+  return column === 'Notes' || SUPPLIER_TARIFF_MATRIX_FLEET_COLUMNS.some((vehicle) => vehicle.column === column);
+}
+
+async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, columns: readonly string[], rows: Array<Record<string, string | number>>) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(sheetName, {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
+  const editableFill: ExcelJS.Fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFF3F8E8' },
+  };
+
+  worksheet.columns = columns.map((column) => ({
+    header: column,
+    key: column,
+    width: Math.max(String(column).length + 2, isSupplierTariffMatrixEditableColumn(column) ? 16 : 18),
+  }));
+
+  worksheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true };
+    cell.protection = { locked: true };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE8EEF7' },
+    };
+  });
+
+  for (const row of rows) {
+    worksheet.addRow(row);
+  }
+
+  for (const columnName of columns) {
+    const column = worksheet.getColumn(columnName);
+    const editable = isSupplierTariffMatrixEditableColumn(columnName);
+    column.eachCell({ includeEmpty: true }, (cell, rowNumber) => {
+      if (rowNumber === 1) {
+        return;
+      }
+      cell.protection = { locked: !editable };
+      if (editable) {
+        cell.fill = editableFill;
+      }
+    });
+  }
+
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: columns.length },
+  };
+  await worksheet.protect('', {
+    selectLockedCells: true,
+    selectUnlockedCells: true,
+    formatCells: false,
+    insertRows: false,
+    deleteRows: false,
+  });
+
+  return Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
 }
 
 function groupRatesByVehicleType(rates: any[]) {
@@ -1681,13 +1746,8 @@ export class VehicleRatesService {
         return row;
       }),
     );
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...TRANSFER_TARIFF_MATRIX_COLUMNS] });
-    configureTariffMatrixWorksheet(worksheet, TRANSFER_TARIFF_MATRIX_COLUMNS, 7);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Transfer Tariffs');
-
     return {
-      buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
+      buffer: await buildProtectedTariffMatrixWorkbookBuffer('Transfer Tariffs', TRANSFER_TARIFF_MATRIX_COLUMNS, rows),
       fileName: 'transfer-route-tariff-matrix.xlsx',
     };
   }
@@ -1765,13 +1825,8 @@ export class VehicleRatesService {
         return row;
       }),
     );
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...TOURING_TARIFF_MATRIX_COLUMNS] });
-    configureTariffMatrixWorksheet(worksheet, TOURING_TARIFF_MATRIX_COLUMNS, 6);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Touring Tariffs');
-
     return {
-      buffer: XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' }) as Buffer,
+      buffer: await buildProtectedTariffMatrixWorkbookBuffer('Touring Tariffs', TOURING_TARIFF_MATRIX_COLUMNS, rows),
       fileName: 'touring-route-tariff-matrix.xlsx',
     };
   }
