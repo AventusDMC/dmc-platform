@@ -617,6 +617,26 @@ function normalizeSupplierTariffMatrixKey(value: string | null | undefined) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function normalizeSupplierScopeName(value: string | null | undefined) {
+  return normalizeSupplierTariffMatrixKey(value);
+}
+
+function supplierMatchesTariffScope(
+  supplier: { id?: string | null; name?: string | null },
+  selectedSupplierId: string,
+  selectedSupplierName: string,
+) {
+  if (selectedSupplierId) {
+    return supplier.id === selectedSupplierId;
+  }
+
+  if (selectedSupplierName) {
+    return normalizeSupplierScopeName(supplier.name) === selectedSupplierName;
+  }
+
+  return true;
+}
+
 function isCanonicalTariffMatrixVehicle(vehicle?: { name?: string | null; maxPax?: number | null } | null) {
   if (!vehicle) {
     return false;
@@ -1660,7 +1680,7 @@ export class VehicleRatesService {
     };
   }
 
-  async exportTransferRouteTariffMatrix() {
+  async exportTransferRouteTariffMatrix(filters: { supplierId?: string | null; supplierName?: string | null } = {}) {
     const [routes, suppliers, rates] = await Promise.all([
       this.prisma.route.findMany({
         where: {
@@ -1694,10 +1714,20 @@ export class VehicleRatesService {
       }),
     ]);
     const canonicalRoutes = routes.filter((route) => route.fromPlace?.name && route.toPlace?.name && !isSpecialTariffMatrixRouteText([route.name, route.notes].filter(Boolean).join(' ')));
-    const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+    const selectedSupplierId = String(filters.supplierId || '').trim();
+    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
+    const supplierById = new Map(
+      suppliers
+        .filter((supplier) => supplierMatchesTariffScope(supplier, selectedSupplierId, selectedSupplierName))
+        .map((supplier) => [supplier.id, supplier]),
+    );
 
     for (const rate of rates) {
-      if (rate.supplier && !supplierById.has(rate.supplier.id)) {
+      if (
+        rate.supplier &&
+        supplierMatchesTariffScope(rate.supplier, selectedSupplierId, selectedSupplierName) &&
+        !supplierById.has(rate.supplier.id)
+      ) {
         supplierById.set(rate.supplier.id, rate.supplier);
       }
     }
@@ -1706,7 +1736,12 @@ export class VehicleRatesService {
     const ratesByRouteSupplier = new Map<string, typeof rates>();
 
     for (const rate of rates) {
-      if (!rate.routeId || !rate.supplierId || !isCanonicalTariffMatrixVehicle(rate.vehicle)) {
+      if (
+        !rate.routeId ||
+        !rate.supplierId ||
+        !supplierById.has(rate.supplierId) ||
+        !isCanonicalTariffMatrixVehicle(rate.vehicle)
+      ) {
         continue;
       }
 
@@ -1747,7 +1782,7 @@ export class VehicleRatesService {
     };
   }
 
-  async exportTouringRouteTariffMatrix() {
+  async exportTouringRouteTariffMatrix(filters: { supplierId?: string | null; supplierName?: string | null } = {}) {
     const [routes, suppliers, pricings] = await Promise.all([
       this.prisma.touringRoute.findMany({
         where: { active: true },
@@ -1776,10 +1811,20 @@ export class VehicleRatesService {
         orderBy: [{ validFrom: 'desc' }, { updatedAt: 'desc' }],
       }),
     ]);
-    const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+    const selectedSupplierId = String(filters.supplierId || '').trim();
+    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
+    const supplierById = new Map(
+      suppliers
+        .filter((supplier) => supplierMatchesTariffScope(supplier, selectedSupplierId, selectedSupplierName))
+        .map((supplier) => [supplier.id, supplier]),
+    );
 
     for (const pricing of pricings) {
-      if (pricing.supplier && !supplierById.has(pricing.supplier.id)) {
+      if (
+        pricing.supplier &&
+        supplierMatchesTariffScope(pricing.supplier, selectedSupplierId, selectedSupplierName) &&
+        !supplierById.has(pricing.supplier.id)
+      ) {
         supplierById.set(pricing.supplier.id, pricing.supplier);
       }
     }
@@ -1788,7 +1833,7 @@ export class VehicleRatesService {
     const pricingsByRouteSupplier = new Map<string, typeof pricings>();
 
     for (const pricing of pricings) {
-      if (!pricing.supplierId || !isCanonicalTariffMatrixVehicle(pricing.vehicle)) {
+      if (!pricing.supplierId || !supplierById.has(pricing.supplierId) || !isCanonicalTariffMatrixVehicle(pricing.vehicle)) {
         continue;
       }
 

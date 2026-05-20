@@ -45,6 +45,13 @@ async function getVehiclesCount() {
   return vehicles.length;
 }
 
+async function getTransportSuppliers() {
+  const suppliers = await adminPageFetchJson<Array<{ id: string; name: string; type?: string | null }>>(`${API_BASE_URL}/suppliers`, 'Transport suppliers', {
+    cache: 'no-store',
+  });
+  return suppliers.filter((supplier) => !supplier.type || supplier.type.toLowerCase() === 'transport');
+}
+
 async function getRoutesCount() {
   const routes = await adminPageFetchJson<Array<{ id: string; isActive?: boolean }>>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`, 'Transfer routes', {
     cache: 'no-store',
@@ -84,22 +91,32 @@ function resolveActiveTab(tab?: string): TransportTab {
 export default async function TransportPage({ searchParams }: TransportPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const summary = await getTransportSummary().catch((error) => {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
+  const [summary, exportSuppliers] = await Promise.all([
+    getTransportSummary().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
 
-    console.error('[transport] summary unavailable', error);
-    return {
-      vehicles: 0,
-      routes: { total: 0, active: 0 },
-      serviceTypes: 0,
-      pricingRules: 0,
-      vehicleRates: 0,
-      touringRoutes: 0,
-      excursionTemplates: 0,
-    };
-  });
+      console.error('[transport] summary unavailable', error);
+      return {
+        vehicles: 0,
+        routes: { total: 0, active: 0 },
+        serviceTypes: 0,
+        pricingRules: 0,
+        vehicleRates: 0,
+        touringRoutes: 0,
+        excursionTemplates: 0,
+      };
+    }),
+    getTransportSuppliers().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[transport] suppliers unavailable', error);
+      return [];
+    }),
+  ]);
 
   return (
     <main className={`page ${activeTab === 'rates' || activeTab === 'tariff-workbook' ? 'transport-contracts-page' : ''}`}>
@@ -153,8 +170,8 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             <WorkspaceSubheader
               eyebrow="Supplier Tariff Exports"
               title="Transport tariff matrix"
-              description="Download the current supplier tariff Excel workbooks for transfer routes or touring routes."
-              actions={<TransportTariffExportActions className="workspace-subheader-actions" />}
+              description="Download current supplier tariff Excel workbooks for all suppliers or one selected transport supplier."
+              actions={<TransportTariffExportActions className="workspace-subheader-actions" suppliers={exportSuppliers} />}
             />
 
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}

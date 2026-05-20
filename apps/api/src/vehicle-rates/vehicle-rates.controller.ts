@@ -99,8 +99,12 @@ export class VehicleRatesController {
 
   @Get('tariff-matrix/transfer/export')
   @Roles('admin', 'finance')
-  async exportTransferRouteTariffMatrix(@Res({ passthrough: true }) response: any) {
-    const exported = await this.vehicleRatesService.exportTransferRouteTariffMatrix();
+  async exportTransferRouteTariffMatrix(
+    @Query('supplierId') supplierId: string | undefined,
+    @Query('supplierName') supplierName: string | undefined,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const exported = await this.vehicleRatesService.exportTransferRouteTariffMatrix({ supplierId, supplierName });
     response.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${exported.fileName}"`,
@@ -111,8 +115,12 @@ export class VehicleRatesController {
 
   @Get('tariff-matrix/touring/export')
   @Roles('admin', 'finance')
-  async exportTouringRouteTariffMatrix(@Res({ passthrough: true }) response: any) {
-    const exported = await this.vehicleRatesService.exportTouringRouteTariffMatrix();
+  async exportTouringRouteTariffMatrix(
+    @Query('supplierId') supplierId: string | undefined,
+    @Query('supplierName') supplierName: string | undefined,
+    @Res({ passthrough: true }) response: any,
+  ) {
+    const exported = await this.vehicleRatesService.exportTouringRouteTariffMatrix({ supplierId, supplierName });
     response.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${exported.fileName}"`,

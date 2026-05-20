@@ -233,27 +233,32 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(pageSource, [
       'Supplier Tariff Exports',
       'Transport tariff matrix',
-      '<TransportTariffExportActions className="workspace-subheader-actions" />',
+      "description=\"Download current supplier tariff Excel workbooks for all suppliers or one selected transport supplier.\"",
+      '<TransportTariffExportActions className="workspace-subheader-actions" suppliers={exportSuppliers} />',
     ]);
 
     expectSourceContains(tariffWorkbookSectionSource, [
       'export function TransportTariffExportActions',
+      'Almushtari Logistics Services',
+      'Alpha Transportation',
+      '<option value="">All suppliers</option>',
+      '<select name="supplierId" defaultValue="">',
       'Export Transfer Tariffs',
-      'href="/api/vehicle-rates/tariff-matrix/transfer/export"',
+      'formAction="/api/vehicle-rates/tariff-matrix/transfer/export"',
       'Export Touring Tariffs',
-      'href="/api/vehicle-rates/tariff-matrix/touring/export"',
-      'download',
+      'formAction="/api/vehicle-rates/tariff-matrix/touring/export"',
+      '<TransportTariffExportActions suppliers={suppliers} />',
     ]);
 
     expectSourceContains(transferTariffExportProxySource, [
-      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export`",
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export${request.nextUrl.search}`",
       'transfer-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'await response.arrayBuffer()',
     ]);
 
     expectSourceContains(touringTariffExportProxySource, [
-      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export`",
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export${request.nextUrl.search}`",
       'touring-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'await response.arrayBuffer()',

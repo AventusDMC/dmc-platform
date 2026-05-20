@@ -11,6 +11,7 @@ const API_BASE_URL = ADMIN_API_BASE_URL;
 type Supplier = {
   id: string;
   name: string;
+  type?: string | null;
 };
 
 type Route = {
@@ -221,18 +222,44 @@ type TransportTariffWorkbookSectionProps = {
 
 type TransportTariffExportActionsProps = {
   className?: string;
+  suppliers?: Supplier[];
 };
 
-export function TransportTariffExportActions({ className = 'transport-rate-card-toolbar' }: TransportTariffExportActionsProps) {
+function buildTariffExportSupplierOptions(suppliers: Supplier[]) {
+  const transportSuppliers = suppliers.filter((supplier) => !supplier.type || supplier.type.toLowerCase() === 'transport');
+  const preferredNames = ['Almushtari Logistics Services', 'Alpha Transportation'];
+  const preferred = preferredNames
+    .map((name) => transportSuppliers.find((supplier) => supplier.name.toLowerCase() === name.toLowerCase()))
+    .filter((supplier): supplier is Supplier => Boolean(supplier));
+  const preferredIds = new Set(preferred.map((supplier) => supplier.id));
+  const remaining = transportSuppliers.filter((supplier) => !preferredIds.has(supplier.id)).sort((left, right) => left.name.localeCompare(right.name));
+
+  return [...preferred, ...remaining];
+}
+
+export function TransportTariffExportActions({ className = 'transport-rate-card-toolbar', suppliers = [] }: TransportTariffExportActionsProps) {
+  const supplierOptions = buildTariffExportSupplierOptions(suppliers);
+
   return (
-    <div className={className}>
-      <a className="primary-button" href="/api/vehicle-rates/tariff-matrix/transfer/export" download>
+    <form className={className} method="get">
+      <label>
+        Supplier
+        <select name="supplierId" defaultValue="">
+          <option value="">All suppliers</option>
+          {supplierOptions.map((supplier) => (
+            <option key={supplier.id} value={supplier.id}>
+              {supplier.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="primary-button" type="submit" formAction="/api/vehicle-rates/tariff-matrix/transfer/export">
         Export Transfer Tariffs
-      </a>
-      <a className="secondary-button" href="/api/vehicle-rates/tariff-matrix/touring/export" download>
+      </button>
+      <button className="secondary-button" type="submit" formAction="/api/vehicle-rates/tariff-matrix/touring/export">
         Export Touring Tariffs
-      </a>
-    </div>
+      </button>
+    </form>
   );
 }
 
@@ -325,7 +352,7 @@ export async function TransportTariffWorkbookSection({ filters }: TransportTarif
         advancedDescription="Use advanced filters for vehicle type, validity, and active status without changing saved rate lines."
       />
 
-      <TransportTariffExportActions />
+      <TransportTariffExportActions suppliers={suppliers} />
 
       <SummaryStrip
         items={[
