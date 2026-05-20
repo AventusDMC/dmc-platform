@@ -361,6 +361,10 @@ test('transfer tariff matrix route codes include full endpoint place keys to avo
   assert.ok(routeCodes.includes('TRF-AMMAN__PETRA-ARCHAEOLOGICAL-AREA'));
   assert.ok(routeCodes.includes('TRF-PETRA__WADI-RUM'));
   assert.ok(routeCodes.includes('TRF-PETRA__WADI-RUM-VILLAGE'));
+  assert.ok(!routeCodes.includes('TRF-AQABAPETRA'));
+  assert.ok(!routeCodes.includes('TRF-DEADSEAPETRA'));
+  assert.ok(!routeCodes.includes('TRF-JORDANAMMANC'));
+  assert.ok(!routeCodes.some((code) => typeof code === 'string' && /^TRF-[A-Z0-9]{12}$/.test(code)));
 });
 
 test('touring tariff matrix supports supplier-name scoping for preferred transport suppliers', async () => {

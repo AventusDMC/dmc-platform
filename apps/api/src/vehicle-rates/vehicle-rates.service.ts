@@ -726,11 +726,6 @@ function getTariffMatrixVehicleColumn(vehicle?: { name?: string | null; maxPax?:
   );
 }
 
-function buildTariffMatrixRouteCode(prefix: string, value: string | null | undefined, fallbackId: string) {
-  const normalized = normalizeSupplierTariffMatrixKey(value);
-  return `${prefix}-${(normalized || fallbackId.replace(/-/g, '')).slice(0, 12).toUpperCase()}`;
-}
-
 function buildCanonicalTransferTariffRouteCode(route: {
   id: string;
   fromPlace?: { name?: string | null } | null;
