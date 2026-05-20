@@ -2127,8 +2127,18 @@ export class VehicleRatesService {
     const rows = canonicalRoutes.flatMap((route) =>
       orderedSuppliers.map((supplier) => {
         const routeSupplierRates = ratesByRouteSupplier.get(`${route.id}:${supplier.id}`) || [];
+        const routeCode = buildCanonicalTransferTariffRouteCode(route);
+        this.logger.warn(
+          JSON.stringify({
+            event: 'transferTariffMatrixRouteCodeDiagnostic',
+            routeId: route.id,
+            generatedRouteCode: routeCode,
+            generator: 'buildCanonicalTransferTariffRouteCode',
+            generatorPath: 'apps/api/src/vehicle-rates/vehicle-rates.service.ts#buildCanonicalTransferTariffRouteCode',
+          }),
+        );
         const row: Record<string, string | number> = {
-          'Route Code': buildCanonicalTransferTariffRouteCode(route),
+          'Route Code': routeCode,
           'Route Name': route.name,
           From: route.fromPlace.name,
           To: route.toPlace.name,
