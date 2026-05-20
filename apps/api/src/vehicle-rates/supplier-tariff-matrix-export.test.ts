@@ -189,7 +189,7 @@ test('touring tariff matrix exports route supplier rows with blank missing vehic
   assert.equal(rows[1]['Medium Bus 30'], 1200);
 });
 
-test('supplier tariff matrix export protects system columns and unlocks pricing entry columns', async () => {
+test('supplier tariff matrix export leaves workbook editable while visually distinguishing tariff entry columns', async () => {
   const suppliers = [{ id: 'supplier-a', name: 'Supplier A', type: 'transport' }];
   const prisma = {
     route: {
@@ -240,15 +240,21 @@ test('supplier tariff matrix export protects system columns and unlocks pricing 
     return index;
   };
 
+  assert.equal((worksheet as any).sheetProtection, undefined, 'worksheet should not be protected so Excel allows direct tariff entry');
+
   for (const header of ['Sedan 2', 'Mini Van 6', 'Van 9', 'Toyota Coaster / Mini Bus 17', 'Medium Bus 30', 'Large Coach 49', 'Notes']) {
-    assert.equal(worksheet.getRow(2).getCell(columnIndex(header)).protection?.locked, false, `${header} should be unlocked`);
+    const cell = worksheet.getRow(2).getCell(columnIndex(header));
+    assert.equal(cell.protection?.locked, false, `${header} should be explicitly unlocked`);
+    cell.value = 123;
+    assert.equal(cell.value, 123, `${header} should accept direct edits without unprotecting the sheet`);
   }
 
   for (const header of ['Route Code', 'Route Name', 'From', 'To', 'DistanceKm', 'DurationMinutes', 'Supplier', 'Currency', 'Pricing Mode']) {
-    assert.notEqual(worksheet.getRow(2).getCell(columnIndex(header)).protection?.locked, false, `${header} should remain protected`);
+    const cell = worksheet.getRow(2).getCell(columnIndex(header));
+    assert.equal(cell.protection?.locked, false, `${header} should not be protected in the supplier workbook`);
+    assert.equal((cell.fill as any)?.fgColor?.argb, 'FFF3F4F6', `${header} should be visually marked as system-managed`);
   }
 
-  assert.equal((worksheet as any).sheetProtection?.sheet, true);
   assert.equal(worksheet.views?.[0]?.state, 'frozen');
   assert.equal(worksheet.views?.[0]?.ySplit, 1);
 });

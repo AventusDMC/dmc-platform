@@ -19,8 +19,9 @@ async function getPlaces(includeIds: string[] = []): Promise<PlaceOption[]> {
   });
 }
 
-async function getRoutes(): Promise<RouteOption[]> {
-  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE`, 'Transfer routes', {
+async function getRoutes(showLegacyRoutes = false): Promise<RouteOption[]> {
+  const legacyQuery = showLegacyRoutes ? '&includeLegacy=true' : '';
+  return adminPageFetchJson<RouteOption[]>(`${API_BASE_URL}/routes?type=TRANSFER_ROUTE${legacyQuery}`, 'Transfer routes', {
     cache: 'no-store',
   });
 }
@@ -37,16 +38,30 @@ async function getPlaceTypes(): Promise<PlaceTypeOption[]> {
   });
 }
 
-export async function RoutesSection() {
-  const [routes, cities, placeTypes] = await Promise.all([getRoutes(), getCities(), getPlaceTypes()]);
+type RoutesSectionProps = {
+  showLegacyRoutes?: boolean;
+};
+
+export async function RoutesSection({ showLegacyRoutes = false }: RoutesSectionProps = {}) {
+  const [routes, cities, placeTypes] = await Promise.all([getRoutes(showLegacyRoutes), getCities(), getPlaceTypes()]);
   const routePlaceIds = routes.flatMap((route) => [route.fromPlaceId, route.toPlaceId]).filter(Boolean);
   const places = await getPlaces(routePlaceIds);
+  const canonicalCount = routes.filter((route) => route.isCanonicalTransferRoute).length;
 
   return (
     <TableSectionShell
       title="Transfer Routes"
       description="Transfer route records define pure movement from one place to another. Pricing modes such as full day, half day, extra km, waiting time, and supplements belong in supplier rate cards."
-      context={<p>{routes.length} transfer routes in scope - Standardized places keep transfer routes, supplier rates, and quotes aligned.</p>}
+      context={
+        <div className="table-section-context-stack">
+          <p>
+            {routes.length} transfer routes in scope - {canonicalCount} canonical. Standardized places keep transfer routes, supplier rates, and quotes aligned.
+          </p>
+          <a className="secondary-button" href={showLegacyRoutes ? '/transport?tab=routes' : '/transport?tab=routes&showLegacyRoutes=true'}>
+            {showLegacyRoutes ? 'Canonical only' : 'Show legacy routes'}
+          </a>
+        </div>
+      }
       createPanel={
         <CollapsibleCreatePanel title="Create transfer route" description="Add reusable transfer routes with saved place pairs." triggerLabelOpen="Add transfer route">
           <RoutesForm apiBaseUrl={ACTION_API_BASE_URL} places={places} cities={cities} placeTypes={placeTypes} />

@@ -683,7 +683,7 @@ function isSupplierTariffMatrixEditableColumn(column: string) {
   return column === 'Notes' || SUPPLIER_TARIFF_MATRIX_FLEET_COLUMNS.some((vehicle) => vehicle.column === column);
 }
 
-async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, columns: readonly string[], rows: Array<Record<string, string | number>>) {
+async function buildSupplierTariffMatrixWorkbookBuffer(sheetName: string, columns: readonly string[], rows: Array<Record<string, string | number>>) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(sheetName, {
     views: [{ state: 'frozen', ySplit: 1 }],
@@ -692,6 +692,11 @@ async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, colum
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FFF3F8E8' },
+  };
+  const systemFill: ExcelJS.Fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFF3F4F6' },
   };
 
   worksheet.columns = columns.map((column) => ({
@@ -702,7 +707,7 @@ async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, colum
 
   worksheet.getRow(1).eachCell((cell) => {
     cell.font = { bold: true };
-    cell.protection = { locked: true };
+    cell.protection = { locked: false };
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
@@ -721,10 +726,8 @@ async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, colum
       if (rowNumber === 1) {
         return;
       }
-      cell.protection = { locked: !editable };
-      if (editable) {
-        cell.fill = editableFill;
-      }
+      cell.protection = { locked: false };
+      cell.fill = editable ? editableFill : systemFill;
     });
   }
 
@@ -732,14 +735,6 @@ async function buildProtectedTariffMatrixWorkbookBuffer(sheetName: string, colum
     from: { row: 1, column: 1 },
     to: { row: 1, column: columns.length },
   };
-  await worksheet.protect('', {
-    selectLockedCells: true,
-    selectUnlockedCells: true,
-    formatCells: false,
-    insertRows: false,
-    deleteRows: false,
-  });
-
   return Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
 }
 
@@ -1747,7 +1742,7 @@ export class VehicleRatesService {
       }),
     );
     return {
-      buffer: await buildProtectedTariffMatrixWorkbookBuffer('Transfer Tariffs', TRANSFER_TARIFF_MATRIX_COLUMNS, rows),
+      buffer: await buildSupplierTariffMatrixWorkbookBuffer('Transfer Tariffs', TRANSFER_TARIFF_MATRIX_COLUMNS, rows),
       fileName: 'transfer-route-tariff-matrix.xlsx',
     };
   }
@@ -1826,7 +1821,7 @@ export class VehicleRatesService {
       }),
     );
     return {
-      buffer: await buildProtectedTariffMatrixWorkbookBuffer('Touring Tariffs', TOURING_TARIFF_MATRIX_COLUMNS, rows),
+      buffer: await buildSupplierTariffMatrixWorkbookBuffer('Touring Tariffs', TOURING_TARIFF_MATRIX_COLUMNS, rows),
       fileName: 'touring-route-tariff-matrix.xlsx',
     };
   }

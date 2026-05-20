@@ -5,7 +5,7 @@ import { DrawerPanel } from '../../components/ui';
 import { getErrorMessage, readJsonResponse } from '../../lib/api';
 import { buildAuthHeaders } from '../../lib/auth-client';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent } from '../../lib/financials';
-import { RouteOption } from '../../lib/routes';
+import { formatRouteSelectorLabel, RouteOption } from '../../lib/routes';
 import { filterCanonicalFleetVehicles, formatTransportVehicleDisplay, resolveVehicleTypeLabel } from '../../lib/transport-vehicles';
 import { formatSupplierName } from '../../lib/transport-formatters';
 import { normalizeTransportRouteText, transportRoutePairsMatch } from '../../lib/transport-routes';
@@ -161,9 +161,7 @@ function formatRoute(route: RouteOption | null) {
     return 'Select route';
   }
 
-  const fromName = route.fromPlace?.name || route.fromPlaceId || '';
-  const toName = route.toPlace?.name || route.toPlaceId || '';
-  return route.name || [fromName, toName].filter(Boolean).join(' -> ') || 'Route to be confirmed';
+  return formatRouteSelectorLabel(route) || 'Route to be confirmed';
 }
 
 function getRouteAreaName(route: RouteOption) {

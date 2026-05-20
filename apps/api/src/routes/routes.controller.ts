@@ -28,8 +28,12 @@ export class RoutesController {
     @Query('sicPossible') sicPossible?: string,
     @Query('longDistance') longDistance?: string,
     @Query('guideRecommended') guideRecommended?: string,
+    @Query('includeLegacy') includeLegacy?: string,
+    @Query('showLegacy') showLegacy?: string,
+    @Query('canonicalOnly') canonicalOnly?: string,
     @Query('limit') limit?: string,
   ) {
+    const legacyRequested = includeLegacy === 'true' || showLegacy === 'true';
     return this.routesService.findAll({
       search,
       active: active === undefined ? undefined : active !== 'false',
@@ -39,6 +43,8 @@ export class RoutesController {
       sicPossible: sicPossible === undefined ? undefined : sicPossible === 'true',
       longDistance: longDistance === undefined ? undefined : longDistance === 'true',
       guideRecommended: guideRecommended === undefined ? undefined : guideRecommended === 'true',
+      includeLegacy: legacyRequested || undefined,
+      canonicalOnly: canonicalOnly === undefined ? undefined : canonicalOnly !== 'false',
       limit: limit === undefined ? undefined : Number(limit),
     });
   }

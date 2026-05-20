@@ -22,6 +22,7 @@
     "seed:excursion-templates": "ts-node prisma/seeds/seed-excursion-templates.ts",
     "seed:program-templates": "ts-node prisma/seeds/seed-program-templates.ts",
     "seed:golden-touring-pricing": "ts-node prisma/seeds/seed-golden-touring-route-pricing-phase1.ts",
+    "migrate:almushtari-fit-pricing": "ts-node src/vehicle-rates/almushtari-fit-pricing-migration.ts",
     "audit:fleet-taxonomy": "ts-node prisma/seeds/audit-fleet-taxonomy-phase1.ts",
     "audit:erp-product-catalog": "ts-node prisma/seeds/audit-erp-product-catalog-integrity.ts",
     "audit:places-master": "ts-node prisma/seeds/audit-places-master.ts",
