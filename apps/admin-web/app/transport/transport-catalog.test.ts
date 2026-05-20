@@ -242,6 +242,8 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(tariffExportActionsSource, [
       "'use client';",
       'export function TransportTariffExportActions',
+      'const [currentSupplierId, setCurrentSupplierId] = useState(propSupplierId);',
+      'setCurrentSupplierId(nextSupplierId);',
       'Almushtari Logistics Services',
       'Alpha Transportation',
       '<option value="">All suppliers</option>',
