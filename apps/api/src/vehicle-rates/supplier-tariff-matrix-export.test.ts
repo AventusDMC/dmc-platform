@@ -193,6 +193,7 @@ test('transfer tariff matrix exports only the selected supplier while preserving
   const suppliers = [
     { id: 'supplier-almushtari', name: 'Almushtari Logistics Services', type: 'transport' },
     { id: 'supplier-alpha', name: 'Alpha Transportation', type: 'transport' },
+    { id: 'supplier-desert', name: 'Desert Compass Transport', type: 'transport' },
   ];
   const prisma = {
     route: {
@@ -237,7 +238,7 @@ test('transfer tariff matrix exports only the selected supplier while preserving
           routeName: 'Amman -> Petra',
           price: 440,
           currency: 'USD',
-          notes: 'should not export',
+          notes: 'selected alpha value',
           validFrom: new Date('2026-01-01'),
           updatedAt: new Date('2026-01-02'),
           createdAt: new Date('2026-01-01'),
@@ -250,15 +251,28 @@ test('transfer tariff matrix exports only the selected supplier while preserving
     },
   };
   const service = new VehicleRatesService(prisma as any);
-  const exported = await service.exportTransferRouteTariffMatrix({ supplierId: 'supplier-almushtari' });
-  const rows = readRows(exported.buffer, 'Transfer Tariffs');
+  const almushtariExport = await service.exportTransferRouteTariffMatrix({ supplierId: 'supplier-almushtari' });
+  const almushtariRows = readRows(almushtariExport.buffer, 'Transfer Tariffs');
+  const alphaExport = await service.exportTransferRouteTariffMatrix({ supplierId: 'supplier-alpha' });
+  const alphaRows = readRows(alphaExport.buffer, 'Transfer Tariffs');
+  const allExport = await service.exportTransferRouteTariffMatrix();
+  const allRows = readRows(allExport.buffer, 'Transfer Tariffs');
 
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].Supplier, 'Almushtari Logistics Services');
-  assert.equal(rows[0]['Route Code'], 'TRF-AMMANPETRA');
-  assert.equal(rows[0]['Sedan 2'], 88);
-  assert.equal(rows[0]['Large Coach 49'], '');
-  assert.equal(rows[0].Notes, 'selected supplier value');
+  assert.equal(almushtariRows.length, 1);
+  assert.deepEqual(almushtariRows.map((row) => row.Supplier), ['Almushtari Logistics Services']);
+  assert.equal(almushtariRows[0]['Route Code'], 'TRF-AMMANPETRA');
+  assert.equal(almushtariRows[0]['Sedan 2'], 88);
+  assert.equal(almushtariRows[0]['Large Coach 49'], '');
+  assert.equal(almushtariRows[0].Notes, 'selected supplier value');
+
+  assert.equal(alphaRows.length, 1);
+  assert.deepEqual(alphaRows.map((row) => row.Supplier), ['Alpha Transportation']);
+  assert.equal(alphaRows[0]['Sedan 2'], '');
+  assert.equal(alphaRows[0]['Large Coach 49'], 440);
+  assert.equal(alphaRows[0].Notes, 'selected alpha value');
+
+  assert.equal(allRows.length, 3);
+  assert.deepEqual(allRows.map((row) => row.Supplier), ['Almushtari Logistics Services', 'Alpha Transportation', 'Desert Compass Transport']);
 });
 
 test('touring tariff matrix supports supplier-name scoping for preferred transport suppliers', async () => {

@@ -637,6 +637,26 @@ function supplierMatchesTariffScope(
   return true;
 }
 
+function buildTariffMatrixSupplierWhere(selectedSupplierId: string, selectedSupplierName: string) {
+  return {
+    type: 'transport',
+    ...(selectedSupplierId ? { id: selectedSupplierId } : {}),
+    ...(selectedSupplierName ? { name: { equals: selectedSupplierName, mode: 'insensitive' as const } } : {}),
+  };
+}
+
+function buildTariffMatrixRateSupplierWhere(selectedSupplierId: string, selectedSupplierName: string) {
+  if (selectedSupplierId) {
+    return { supplierId: selectedSupplierId };
+  }
+
+  if (selectedSupplierName) {
+    return { supplier: { is: { name: { equals: selectedSupplierName, mode: 'insensitive' as const } } } };
+  }
+
+  return {};
+}
+
 function isCanonicalTariffMatrixVehicle(vehicle?: { name?: string | null; maxPax?: number | null } | null) {
   if (!vehicle) {
     return false;
@@ -1681,6 +1701,11 @@ export class VehicleRatesService {
   }
 
   async exportTransferRouteTariffMatrix(filters: { supplierId?: string | null; supplierName?: string | null } = {}) {
+    const selectedSupplierId = String(filters.supplierId || '').trim();
+    const selectedSupplierNameForQuery = String(filters.supplierName || '').trim();
+    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
+    const supplierWhere = buildTariffMatrixSupplierWhere(selectedSupplierId, selectedSupplierNameForQuery);
+    const rateSupplierWhere = buildTariffMatrixRateSupplierWhere(selectedSupplierId, selectedSupplierNameForQuery);
     const [routes, suppliers, rates] = await Promise.all([
       this.prisma.route.findMany({
         where: {
@@ -1694,7 +1719,7 @@ export class VehicleRatesService {
         orderBy: [{ normalizedKey: 'asc' }, { name: 'asc' }],
       }),
       this.prisma.supplier.findMany({
-        where: { type: 'transport' },
+        where: supplierWhere,
         orderBy: { name: 'asc' },
       }),
       this.prisma.vehicleRate.findMany({
@@ -1702,6 +1727,7 @@ export class VehicleRatesService {
           active: true,
           routeId: { not: null },
           supplierId: { not: null },
+          ...rateSupplierWhere,
           serviceType: { classification: 'ROUTE_TRANSFER' },
         },
         include: {
@@ -1714,8 +1740,6 @@ export class VehicleRatesService {
       }),
     ]);
     const canonicalRoutes = routes.filter((route) => route.fromPlace?.name && route.toPlace?.name && !isSpecialTariffMatrixRouteText([route.name, route.notes].filter(Boolean).join(' ')));
-    const selectedSupplierId = String(filters.supplierId || '').trim();
-    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
     const supplierById = new Map(
       suppliers
         .filter((supplier) => supplierMatchesTariffScope(supplier, selectedSupplierId, selectedSupplierName))
@@ -1783,6 +1807,11 @@ export class VehicleRatesService {
   }
 
   async exportTouringRouteTariffMatrix(filters: { supplierId?: string | null; supplierName?: string | null } = {}) {
+    const selectedSupplierId = String(filters.supplierId || '').trim();
+    const selectedSupplierNameForQuery = String(filters.supplierName || '').trim();
+    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
+    const supplierWhere = buildTariffMatrixSupplierWhere(selectedSupplierId, selectedSupplierNameForQuery);
+    const pricingSupplierWhere = buildTariffMatrixRateSupplierWhere(selectedSupplierId, selectedSupplierNameForQuery);
     const [routes, suppliers, pricings] = await Promise.all([
       this.prisma.touringRoute.findMany({
         where: { active: true },
@@ -1794,13 +1823,14 @@ export class VehicleRatesService {
         orderBy: [{ code: 'asc' }, { name: 'asc' }],
       }),
       this.prisma.supplier.findMany({
-        where: { type: 'transport' },
+        where: supplierWhere,
         orderBy: { name: 'asc' },
       }),
       this.prisma.touringRoutePricing.findMany({
         where: {
           active: true,
           supplierId: { not: null },
+          ...pricingSupplierWhere,
           vehicleId: { not: null },
         },
         include: {
@@ -1811,8 +1841,6 @@ export class VehicleRatesService {
         orderBy: [{ validFrom: 'desc' }, { updatedAt: 'desc' }],
       }),
     ]);
-    const selectedSupplierId = String(filters.supplierId || '').trim();
-    const selectedSupplierName = normalizeSupplierScopeName(filters.supplierName);
     const supplierById = new Map(
       suppliers
         .filter((supplier) => supplierMatchesTariffScope(supplier, selectedSupplierId, selectedSupplierName))
