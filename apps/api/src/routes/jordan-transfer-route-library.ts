@@ -152,6 +152,11 @@ const BASE_TRANSFER_PAIRS: PairDefinition[] = [
 ];
 
 export const JORDAN_TRANSFER_ROUTES = expandBidirectionalPairs(BASE_TRANSFER_PAIRS);
+export const JORDAN_TRANSFER_ROUTE_CODES = JORDAN_TRANSFER_ROUTES.map((route) => {
+  const from = requirePlaceDefinition(route.from);
+  const to = requirePlaceDefinition(route.to);
+  return routeCode(from, to);
+});
 
 function place(key: string, label: string, code: string, aliases: string[]): PlaceDefinition {
   return { key, label, code, aliases };

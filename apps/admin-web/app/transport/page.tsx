@@ -26,6 +26,7 @@ type TransportPageProps = {
     validity?: string;
     activeState?: string;
     touringRoutesView?: string;
+    showLegacyRoutes?: string;
   }>;
 };
 
@@ -158,7 +159,7 @@ export default async function TransportPage({ searchParams }: TransportPageProps
 
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}
             {activeTab === 'vehicle-types' ? <VehicleTypesSection /> : null}
-            {activeTab === 'routes' ? <RoutesSection /> : null}
+            {activeTab === 'routes' ? <RoutesSection showLegacyRoutes={resolvedSearchParams?.showLegacyRoutes === 'true'} /> : null}
             {activeTab === 'touring-routes' ? <TouringRoutesSection view={resolvedSearchParams?.touringRoutesView === 'all' ? 'all' : 'golden'} /> : null}
             {activeTab === 'pricing-rules' ? <TransportPricingRulesSection /> : null}
             {activeTab === 'rates' ? <VehicleRatesSection /> : null}

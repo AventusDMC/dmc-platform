@@ -15,6 +15,9 @@ export type RouteOption = {
   fromPlace: PlaceOption;
   toPlace: PlaceOption;
   canonicalRouteType?: 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | null;
+  isCanonicalTransferRoute?: boolean;
+  canonicalRouteCode?: string | null;
+  selectorLabel?: string | null;
   transportPickerMode?: 'TRANSFER_ROUTE' | 'TOURING_ROUTE' | 'DISPOSAL';
   code?: string | null;
   startCity?: string | null;
@@ -62,4 +65,16 @@ export function formatRouteLabel(route: Pick<RouteOption, 'name' | 'routeType' |
   const base = route.fromPlace && route.toPlace ? getCanonicalRouteLabel(route.fromPlace.name, route.toPlace.name) : route.name;
 
   return route.routeType ? `${base} (${route.routeType})` : base;
+}
+
+export function formatRouteSelectorLabel(route: Pick<RouteOption, 'selectorLabel' | 'canonicalRouteCode' | 'fromPlace' | 'toPlace' | 'name'>) {
+  if (route.selectorLabel) {
+    return route.selectorLabel;
+  }
+
+  if (route.canonicalRouteCode && route.fromPlace && route.toPlace) {
+    return `${route.canonicalRouteCode} \u00b7 ${route.fromPlace.name} \u2194 ${route.toPlace.name}`;
+  }
+
+  return route.fromPlace && route.toPlace ? `${route.fromPlace.name} \u2194 ${route.toPlace.name}` : route.name;
 }

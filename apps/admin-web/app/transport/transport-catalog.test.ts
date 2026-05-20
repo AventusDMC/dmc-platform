@@ -56,11 +56,16 @@ describe('transport catalog supplier rate-card UX', () => {
       "label: 'Touring Routes'",
       "label: 'Excursion Templates'",
       'summary.excursionTemplates',
+      "<RoutesSection showLegacyRoutes={resolvedSearchParams?.showLegacyRoutes === 'true'} />",
     ]);
 
     expectSourceContains(readFileSync(new URL('./RoutesSection.tsx', import.meta.url), 'utf8'), [
       'title="Transfer Routes"',
       'transfer routes in scope',
+      'showLegacyRoutes',
+      '&includeLegacy=true',
+      'Canonical only',
+      'Show legacy routes',
       'Create transfer route',
       'Add transfer route',
       'No transfer routes yet.',
@@ -555,6 +560,8 @@ describe('transport catalog supplier rate-card UX', () => {
 
     expectSourceContains(routeComboboxSource, [
       'maxResults = 50',
+      'formatRouteSelectorLabel(route)',
+      "route.isCanonicalTransferRoute ? 'Canonical' : 'Legacy / historical'",
       'route.fromPlace.name',
       'route.toPlace.name',
       'route.fromPlace.city',
@@ -610,6 +617,7 @@ describe('transport catalog supplier rate-card UX', () => {
     ]);
 
     expectSourceContains(quoteTransportPickerSource, [
+      'formatRouteSelectorLabel(route)',
       'const routeTransferOptions = routeSelectorGroups.transferRoutes;',
       'const touringRouteOptions = routeSelectorGroups.touringRoutes;',
       'const serviceAreaOptions = routeSelectorGroups.serviceAreas;',

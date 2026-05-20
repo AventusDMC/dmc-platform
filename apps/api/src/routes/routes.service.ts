@@ -6,6 +6,7 @@ import {
   throwIfNotFound,
 } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { JORDAN_TRANSFER_ROUTE_CODES } from './jordan-transfer-route-library';
 import { buildRouteNormalizedKey, formatRouteName, normalizeRouteDisplayName } from './route-normalization';
 
 type FindRoutesInput = {
@@ -17,6 +18,8 @@ type FindRoutesInput = {
   sicPossible?: boolean;
   longDistance?: boolean;
   guideRecommended?: boolean;
+  includeLegacy?: boolean;
+  canonicalOnly?: boolean;
   limit?: number;
 };
 
@@ -36,6 +39,7 @@ type UpdateRouteInput = Partial<CreateRouteInput>;
 const ROUTE_TYPE_TRANSFER = 'TRANSFER_ROUTE';
 const ROUTE_TYPE_TOURING = 'TOURING_ROUTE';
 const SUPPORTED_ROUTE_TYPES = [ROUTE_TYPE_TRANSFER, ROUTE_TYPE_TOURING] as const;
+const SEEDED_JORDAN_TRANSFER_ROUTE_CODES = new Set(JORDAN_TRANSFER_ROUTE_CODES);
 
 function buildRouteName(fromPlaceName: string, toPlaceName: string) {
   return formatRouteName(fromPlaceName, toPlaceName);
@@ -99,6 +103,7 @@ function hasSellableRouteSignal(value: string) {
 }
 
 function buildRouteOperationalFlags(route: {
+  normalizedKey?: string | null;
   name: string;
   routeType: string | null;
   notes: string | null;
@@ -114,6 +119,11 @@ function buildRouteOperationalFlags(route: {
   const sicPossible = /\bsic|seat in coach|shared coach|regular tour\b/i.test(text);
   const longDistance = Number(route.distanceKm || 0) >= 150 || Number(route.durationMinutes || 0) >= 180 || /\bborder|aqaba|petra|wadi rum\b/i.test(text);
   const guideRecommended = /\bguide|guided|sightseeing|touring|petra|jerash|wadi rum|dead sea\b/i.test(text);
+  const canonicalRouteCode = getSeededJordanTransferRouteCode(route);
+  const isCanonicalTransferRoute =
+    canonicalRouteType === ROUTE_TYPE_TRANSFER &&
+    Boolean(route.fromPlace?.name && route.toPlace?.name) &&
+    (Boolean(canonicalRouteCode) || Boolean(route.normalizedKey));
   const taxonomyReview =
     !canonicalRouteType || hasSellableRouteSignal(text) || isSpecialPricingRouteText(text)
       ? 'REVIEW_ROUTE_TAXONOMY'
@@ -121,6 +131,9 @@ function buildRouteOperationalFlags(route: {
 
   return {
     canonicalRouteType,
+    isCanonicalTransferRoute,
+    canonicalRouteCode,
+    selectorLabel: buildTransferRouteSelectorLabel(route, canonicalRouteCode),
     routeOperations: {
       region,
       overnight,
@@ -130,6 +143,24 @@ function buildRouteOperationalFlags(route: {
       taxonomyReview,
     },
   };
+}
+
+function getSeededJordanTransferRouteCode(route: { notes?: string | null; name?: string | null }) {
+  const text = [route.notes, route.name].filter(Boolean).join(' ');
+  const code = text.match(/\bJOR-TRF-[A-Z0-9]+-[A-Z0-9]+\b/)?.[0] || null;
+  return code && SEEDED_JORDAN_TRANSFER_ROUTE_CODES.has(code) ? code : null;
+}
+
+function buildTransferRouteSelectorLabel(
+  route: { fromPlace?: { name: string } | null; toPlace?: { name: string } | null; name: string },
+  canonicalRouteCode: string | null,
+) {
+  if (!route.fromPlace?.name || !route.toPlace?.name) {
+    return route.name;
+  }
+
+  const routeLabel = `${route.fromPlace.name} \u2194 ${route.toPlace.name}`;
+  return canonicalRouteCode ? `${canonicalRouteCode} \u00b7 ${routeLabel}` : routeLabel;
 }
 
 function isSpecialPricingRouteText(value: string) {
@@ -204,6 +235,7 @@ export class RoutesService {
       filters.limit === undefined
         ? undefined
         : Math.min(Math.max(Math.trunc(ensureValidNumber(filters.limit, 'limit', { min: 1 })), 1), 500);
+    const isTransferFilter = type === 'TRANSFER' || type === 'ROUTE_TRANSFER' || type === ROUTE_TYPE_TRANSFER;
 
     const routes = await this.prisma.route.findMany({
       where: {
@@ -227,7 +259,7 @@ export class RoutesService {
         toPlace: true,
       },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
-      ...(limit === undefined ? {} : { take: limit }),
+      ...(limit === undefined || isTransferFilter ? {} : { take: limit }),
     });
 
     const flaggedRoutes = routes.map((route) => ({
@@ -237,8 +269,12 @@ export class RoutesService {
 
     let filteredRoutes = flaggedRoutes;
 
-    if (type === 'TRANSFER' || type === 'ROUTE_TRANSFER' || type === ROUTE_TYPE_TRANSFER) {
+    if (isTransferFilter) {
       filteredRoutes = filteredRoutes.filter(isValidTransferRoute);
+      const canonicalOnly = filters.canonicalOnly ?? !filters.includeLegacy;
+      if (canonicalOnly) {
+        filteredRoutes = filteredRoutes.filter((route) => route.isCanonicalTransferRoute);
+      }
     } else if (type === ROUTE_TYPE_TOURING) {
       filteredRoutes = filteredRoutes.filter((route) => route.canonicalRouteType === ROUTE_TYPE_TOURING);
     }
@@ -259,7 +295,15 @@ export class RoutesService {
       }
     }
 
-    return filteredRoutes;
+    const sortedRoutes = filteredRoutes.sort((left, right) => {
+      if (left.isCanonicalTransferRoute !== right.isCanonicalTransferRoute) {
+        return left.isCanonicalTransferRoute ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+
+    return limit === undefined ? sortedRoutes : sortedRoutes.slice(0, limit);
   }
 
   async findOne(id: string) {

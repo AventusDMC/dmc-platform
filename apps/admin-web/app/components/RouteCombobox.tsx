@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RouteOption } from '../lib/routes';
+import { formatRouteSelectorLabel, RouteOption } from '../lib/routes';
 
 type RouteComboboxProps = {
   label: string;
@@ -15,11 +15,18 @@ type RouteComboboxProps = {
 };
 
 function formatRouteOptionTitle(route: RouteOption) {
-  return `${route.fromPlace.name} -> ${route.toPlace.name}`;
+  return formatRouteSelectorLabel(route);
 }
 
 function formatRouteOptionDetail(route: RouteOption) {
-  return [route.name && route.name !== formatRouteOptionTitle(route) ? route.name : null, route.routeType, route.notes].filter(Boolean).join(' | ');
+  return [
+    route.isCanonicalTransferRoute ? 'Canonical' : 'Legacy / historical',
+    route.name && route.name !== formatRouteOptionTitle(route) ? route.name : null,
+    route.routeType,
+    route.notes,
+  ]
+    .filter(Boolean)
+    .join(' | ');
 }
 
 export function RouteCombobox({ label, routes, value, onChange, placeholder, emptyText = 'No matching routes.', maxResults = 50, disabled = false }: RouteComboboxProps) {
@@ -96,8 +103,7 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
         <p className="search-combobox-selected">
           Selected:{' '}
           <strong className="search-combobox-route-title">
-            <span>{selectedRoute.fromPlace.name}</span>
-            <span>{selectedRoute.toPlace.name}</span>
+            <span>{formatRouteSelectorLabel(selectedRoute)}</span>
           </strong>
         </p>
       ) : null}
@@ -118,8 +124,7 @@ export function RouteCombobox({ label, routes, value, onChange, placeholder, emp
                 }}
               >
                 <strong className="search-combobox-route-title">
-                  <span>{route.fromPlace.name}</span>
-                  <span>{route.toPlace.name}</span>
+                  <span>{formatRouteSelectorLabel(route)}</span>
                 </strong>
                 <span>{formatRouteOptionDetail(route) || 'Route'}</span>
               </button>

@@ -13,6 +13,7 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
           {
             id: 'route-1',
             name: 'QAIA to Petra',
+            normalizedKey: 'qaia_petra',
             fromPlaceId: 'place-qaia',
             toPlaceId: 'place-petra',
             routeType: 'TRANSFER_ROUTE',
@@ -28,6 +29,7 @@ test('route catalog lookups are not filtered by actor company for DMC multi-comp
         return {
           id: 'route-1',
           name: 'QAIA to Petra',
+          normalizedKey: 'qaia_petra',
           fromPlaceId: 'place-qaia',
           toPlaceId: 'place-petra',
           routeType: 'TRANSFER_ROUTE',
@@ -177,4 +179,51 @@ test('route catalog returns derived operational review flags without deleting le
   assert.equal(routes[0].routeOperations.taxonomyReview, 'REVIEW_ROUTE_TAXONOMY');
   assert.equal(routes[0].routeOperations.longDistance, true);
   assert.equal(routes[0].routeOperations.guideRecommended, true);
+});
+
+test('transfer route selectors default to canonical routes and preserve legacy rows when requested', async () => {
+  const service = new RoutesService({
+    route: {
+      findMany: async () => [
+        {
+          id: 'route-canonical',
+          name: 'Amman -> Petra',
+          normalizedKey: 'amman_petra',
+          fromPlaceId: 'place-amman',
+          toPlaceId: 'place-petra',
+          routeType: 'TRANSFER_ROUTE',
+          notes: 'Jordan operational transfer route library. Route code: JOR-TRF-AMM-PET.',
+          durationMinutes: 210,
+          distanceKm: 235,
+          isActive: true,
+          fromPlace: { name: 'Amman', city: 'Amman' },
+          toPlace: { name: 'Petra', city: 'Petra' },
+        },
+        {
+          id: 'route-legacy',
+          name: 'Imported Petra transfer',
+          normalizedKey: null,
+          fromPlaceId: 'place-amman-legacy',
+          toPlaceId: 'place-petra-legacy',
+          routeType: 'TRANSFER_ROUTE',
+          notes: 'Imported historical route',
+          durationMinutes: 210,
+          distanceKm: 235,
+          isActive: true,
+          fromPlace: { name: 'Amman old', city: 'Amman' },
+          toPlace: { name: 'Petra old', city: 'Petra' },
+        },
+      ],
+    },
+  } as any);
+
+  const defaultRoutes = (await service.findAll({ type: 'TRANSFER_ROUTE' })) as any[];
+  const legacyRoutes = (await service.findAll({ type: 'TRANSFER_ROUTE', includeLegacy: true })) as any[];
+
+  assert.deepEqual(defaultRoutes.map((route) => route.id), ['route-canonical']);
+  assert.deepEqual(legacyRoutes.map((route) => route.id), ['route-canonical', 'route-legacy']);
+  assert.equal(legacyRoutes[0].isCanonicalTransferRoute, true);
+  assert.equal(legacyRoutes[0].canonicalRouteCode, 'JOR-TRF-AMM-PET');
+  assert.equal(legacyRoutes[0].selectorLabel, 'JOR-TRF-AMM-PET · Amman ↔ Petra');
+  assert.equal(legacyRoutes[1].isCanonicalTransferRoute, false);
 });

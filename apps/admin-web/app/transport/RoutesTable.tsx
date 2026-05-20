@@ -11,7 +11,7 @@ import { getErrorMessage } from '../lib/api';
 import { buildAuthHeaders } from '../lib/auth-client';
 import { PlaceOption } from '../lib/places';
 import { PlaceTypeOption } from '../lib/placeTypes';
-import { RouteOption } from '../lib/routes';
+import { formatRouteSelectorLabel, RouteOption } from '../lib/routes';
 import { getCanonicalRouteLabel, isSuspiciousPricingRoute } from '../lib/transport-routes';
 
 type RoutesTableProps = {
@@ -112,13 +112,16 @@ export function RoutesTable({ apiBaseUrl, routes, places, cities, placeTypes }: 
               const isEditing = editingId === route.id;
               const suspiciousPricingRoute = isSuspiciousPricingRoute(route);
               const canonicalRouteLabel = getCanonicalRouteLabel(route.fromPlace.name, route.toPlace.name);
+              const selectorLabel = formatRouteSelectorLabel(route);
               const operationFlags = formatRouteOperations(route);
 
               return (
                 <Fragment key={route.id}>
                   <tr>
                     <td>
-                      <strong>{canonicalRouteLabel}</strong>
+                      <strong>{selectorLabel}</strong>
+                      {route.isCanonicalTransferRoute ? <span className="page-tab-badge">Canonical</span> : <span className="page-tab-badge page-tab-badge-warning">Legacy</span>}
+                      {selectorLabel !== canonicalRouteLabel ? <div className="table-subcopy">{canonicalRouteLabel}</div> : null}
                       {route.name && route.name !== canonicalRouteLabel ? <div className="table-subcopy">{route.name}</div> : null}
                       {suspiciousPricingRoute ? <span className="page-tab-badge page-tab-badge-warning">Pricing item?</span> : null}
                       {route.routeOperations?.taxonomyReview ? <span className="page-tab-badge page-tab-badge-warning">Review taxonomy</span> : null}
