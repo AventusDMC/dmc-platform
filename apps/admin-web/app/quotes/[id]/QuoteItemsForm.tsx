@@ -171,6 +171,8 @@ type HotelRate = {
   id: string;
   contractId: string;
   seasonName: string;
+  seasonFrom?: string | null;
+  seasonTo?: string | null;
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';
@@ -438,6 +440,7 @@ type QuoteItemsFormProps = {
   itineraryDayTitle?: string | null;
   itineraryDayDescription?: string | null;
   itineraryId?: string;
+  sessionRole?: 'admin' | 'super_admin' | 'agent_admin' | 'viewer' | 'operations' | 'finance' | 'agent' | null;
   initialServiceTypeKey?: ServiceTypeKey | null;
   preferredServiceId?: string;
   preferredActivityId?: string;
@@ -926,6 +929,22 @@ function formatHotelRatePricingBasis(value: HotelRate['pricingBasis']) {
   return value === 'PER_PERSON' ? 'per person/night' : 'per room/night';
 }
 
+function isDateWithinWindow(date: string, validFrom?: string | null, validTo?: string | null) {
+  if (!date) {
+    return true;
+  }
+
+  const value = date.slice(0, 10);
+  const from = validFrom ? validFrom.slice(0, 10) : '';
+  const to = validTo ? validTo.slice(0, 10) : '';
+
+  return (!from || from <= value) && (!to || value <= to);
+}
+
+function getOperationalNightDate(travelStartDate: string | null | undefined, itineraryDayNumber: number | null | undefined) {
+  return resolveDerivedServiceDate(travelStartDate, itineraryDayNumber);
+}
+
 function supplementMealPlan(supplement: NonNullable<HotelContract['supplements']>[number]) {
   const directMealPlan = String(supplement.mealPlan || '').trim().toUpperCase();
   if (directMealPlan) {
@@ -1047,6 +1066,7 @@ export function QuoteItemsForm({
   itineraryDayTitle,
   itineraryDayDescription,
   itineraryId,
+  sessionRole,
   initialServiceTypeKey,
   preferredServiceId,
   preferredActivityId,
@@ -1116,7 +1136,11 @@ export function QuoteItemsForm({
   const [adultCount, setAdultCount] = useState(initialValues?.adultCount || String(defaultAdultCount || 0));
   const [childCount, setChildCount] = useState(initialValues?.childCount || String(defaultChildCount || 0));
   const [roomCount, setRoomCount] = useState(initialValues?.roomCount || String(defaultRoomCount || 1));
-  const [nightCount, setNightCount] = useState(initialValues?.nightCount || String(defaultNightCount || 1));
+  const initialDayBoundHotelNights =
+    !initialValues?.nightCount && initialActiveServiceType === 'hotel' && itineraryId
+      ? '1'
+      : String(defaultNightCount || 1);
+  const [nightCount, setNightCount] = useState(initialValues?.nightCount || initialDayBoundHotelNights);
   const [dayCount, setDayCount] = useState(initialValues?.dayCount || '1');
   const [serviceDate, setServiceDate] = useState(initialValues?.serviceDate || initialServiceDate);
   const [startTime, setStartTime] = useState(initialValues?.startTime || '');
@@ -1142,6 +1166,7 @@ export function QuoteItemsForm({
   const [contractId, setContractId] = useState(initialValues?.contractId || preferredContractId || '');
   const [seasonId, setSeasonId] = useState(initialValues?.seasonId || '');
   const [seasonName, setSeasonName] = useState(initialValues?.seasonName || '');
+  const [seasonOverrideEnabled, setSeasonOverrideEnabled] = useState(Boolean(initialValues?.seasonId || initialValues?.seasonName));
   const [roomCategoryId, setRoomCategoryId] = useState(initialValues?.roomCategoryId || preferredRoomCategoryId || '');
   const [occupancyType, setOccupancyType] = useState<'SGL' | 'DBL' | 'TPL'>(initialValues?.occupancyType || preferredOccupancyType || 'DBL');
   const [mealPlan, setMealPlan] = useState<'BB' | 'HB' | 'FB'>(initialValues?.mealPlan || (preferredMealPlan === 'AI' || preferredMealPlan === 'RO' ? 'BB' : preferredMealPlan) || 'BB');
@@ -1180,6 +1205,10 @@ export function QuoteItemsForm({
   const hotelCostAbortRef = useRef<AbortController | null>(null);
   const externalPackageDefaultsServiceIdRef = useRef<string | null>(isEditing ? initialService?.id || null : null);
   const serviceBlocks = blocks.filter((block) => block.type === 'SERVICE_BLOCK');
+  const itineraryActualDate = resolveDerivedServiceDate(travelStartDate, itineraryDayNumber);
+  const operationalNightDate = getOperationalNightDate(travelStartDate, itineraryDayNumber);
+  const resolvedOperationalDate = serviceDate || itineraryActualDate || '';
+  const canOverrideDateContext = sessionRole === 'admin' || sessionRole === 'super_admin';
 
   function updateExternalPackageMatrixRow(rowId: string, patch: Partial<ExternalPackagePricingMatrixRow>) {
     setExternalPackage((current) => ({
@@ -1447,9 +1476,14 @@ export function QuoteItemsForm({
 
     return previewByHotel;
   }, [hotelContracts, hotelRates]);
-  const filteredHotelContracts = hotelContracts.filter((contract) => contract.hotelId === hotelId);
+  const hotelCheckInDate = isHotelService ? resolvedOperationalDate || travelStartDate?.slice(0, 10) || '' : '';
+  const filteredHotelContracts = hotelContracts.filter(
+    (contract) => contract.hotelId === hotelId && isDateWithinWindow(hotelCheckInDate, contract.validFrom, contract.validTo),
+  );
   const selectedHotelContract = filteredHotelContracts.find((contract) => contract.id === contractId) || null;
-  const filteredSeasonRates = hotelRates.filter((rate) => rate.contractId === contractId);
+  const filteredSeasonRates = hotelRates.filter(
+    (rate) => rate.contractId === contractId && isDateWithinWindow(hotelCheckInDate, rate.seasonFrom, rate.seasonTo),
+  );
   const seasonOptions = Array.from(new Set(filteredSeasonRates.map((rate) => rate.seasonName))).sort((left, right) =>
     left.localeCompare(right),
   );
@@ -1457,10 +1491,11 @@ export function QuoteItemsForm({
   const availableSeasons = seasonOptions
     .map((name) => seasonByName.get(name.trim().toLowerCase()) || null)
     .filter((season): season is Season => Boolean(season));
+  const autoSelectedSeasonName = filteredSeasonRates[0]?.seasonName || '';
   const selectedSeason =
     seasons.find((season) => season.id === seasonId) ||
     (seasonName ? seasonByName.get(seasonName.trim().toLowerCase()) || null : null);
-  const effectiveSeasonName = selectedSeason?.name || seasonName;
+  const effectiveSeasonName = seasonOverrideEnabled && canOverrideDateContext ? selectedSeason?.name || seasonName : autoSelectedSeasonName || selectedSeason?.name || seasonName;
   const selectedSeasonValue = selectedSeason ? selectedSeason.id : seasonName ? `legacy:${seasonName}` : '';
   const seasonFilteredRates = filteredSeasonRates.filter((rate) => rate.seasonName === effectiveSeasonName);
   const selectedHotelRoomCategories = hotels.find((hotel) => hotel.id === hotelId)?.roomCategories || [];
@@ -1507,7 +1542,6 @@ export function QuoteItemsForm({
             rate.mealPlan === 'BB',
         ) || null
       : null);
-  const hotelCheckInDate = isHotelService ? serviceDate || travelStartDate?.slice(0, 10) || '' : '';
   const hotelCheckOutDate = hotelCheckInDate ? addDaysToDateString(hotelCheckInDate, Math.max(1, Number(nightCount || 1))) : '';
   const hotelPreviewNights = Math.max(1, Number(nightCount || 1));
   const hotelPreviewRooms = Math.max(1, Number(roomCount || 1));
@@ -2175,6 +2209,21 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (!seasonOverrideEnabled || !canOverrideDateContext) {
+      const nextSeasonName = autoSelectedSeasonName || seasonOptions[0] || '';
+      const nextSeason = nextSeasonName ? seasonByName.get(nextSeasonName.trim().toLowerCase()) || null : null;
+
+      if ((nextSeason?.id || '') !== seasonId) {
+        setSeasonId(nextSeason?.id || '');
+      }
+
+      if (nextSeasonName !== seasonName) {
+        setSeasonName(nextSeasonName);
+      }
+
+      return;
+    }
+
     const nextSeason =
       availableSeasons.find((season) => season.id === seasonId) ||
       (seasonName ? seasonByName.get(seasonName.trim().toLowerCase()) || null : null) ||
@@ -2189,7 +2238,7 @@ export function QuoteItemsForm({
     if (nextSeasonName !== seasonName) {
       setSeasonName(nextSeasonName);
     }
-  }, [availableSeasons, isHotelService, seasonByName, seasonId, seasonName, seasonOptions]);
+  }, [autoSelectedSeasonName, availableSeasons, canOverrideDateContext, isHotelService, seasonByName, seasonId, seasonName, seasonOptions, seasonOverrideEnabled]);
 
   useEffect(() => {
     if (!isHotelService) {
@@ -2371,6 +2420,7 @@ export function QuoteItemsForm({
             routeId: routeId || null,
             routeName: routeName.trim(),
             paxCount: Number(paxCount),
+            travelDate: resolvedOperationalDate || undefined,
           }),
           signal: abortController.signal,
         });
@@ -2413,6 +2463,7 @@ export function QuoteItemsForm({
     hasTransportRouteSelection,
     routeId,
     routeName,
+    resolvedOperationalDate,
     selectedTransportVehicleId,
     transportServiceTypeId,
     transportServiceTypes,
@@ -2705,8 +2756,9 @@ export function QuoteItemsForm({
         ticketRateVariantId: isTicketingService && ticketRateVariantId ? ticketRateVariantId : undefined,
         itineraryId,
         serviceDate:
-          (isActivityService || isHotelService || isMealService) && (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate)
-            ? new Date(`${serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate}T09:00:00`).toISOString()
+          (isActivityService || isHotelService || isMealService || isTransportService || isTicketingService) &&
+          (serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate || resolvedOperationalDate)
+            ? new Date(`${serviceDate || resolvedActivityServiceDate || resolvedMealServiceDate || resolvedOperationalDate}T09:00:00`).toISOString()
             : undefined,
         startTime: isActivityService ? startTime || null : undefined,
         pickupTime: isActivityService ? pickupTime || null : undefined,
@@ -3270,7 +3322,13 @@ export function QuoteItemsForm({
 
                   <label>
                     Check-in date
-                    <input value={hotelCheckInDate} onChange={(event) => setServiceDate(event.target.value)} type="date" required />
+                    <input
+                      value={hotelCheckInDate}
+                      onChange={(event) => setServiceDate(event.target.value)}
+                      type="date"
+                      required
+                      readOnly={Boolean(itineraryId) && !canOverrideDateContext}
+                    />
                   </label>
 
                   <label>
@@ -3290,6 +3348,24 @@ export function QuoteItemsForm({
 
                 </div>
               )}
+              {itineraryId ? (
+                <div className="quote-selected-transport-card">
+                  <div className="quote-selected-transport-summary">
+                    <div>
+                      <span>Quote day</span>
+                      <strong>Day {itineraryDayNumber || '-'}</strong>
+                    </div>
+                    <div>
+                      <span>Calendar date</span>
+                      <strong>{itineraryActualDate || 'Quote start date missing'}</strong>
+                    </div>
+                    <div>
+                      <span>Operational night</span>
+                      <strong>{operationalNightDate || 'Quote start date missing'}</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </section>
           ) : null}
 
@@ -4023,36 +4099,50 @@ export function QuoteItemsForm({
                 </label>
 
                 <label>
-                  Season
-                  <select
-                    value={selectedSeasonValue}
-                    onChange={(event) => {
-                      if (event.target.value.startsWith('legacy:')) {
-                        setSeasonId('');
-                        setSeasonName(event.target.value.slice('legacy:'.length));
-                        return;
-                      }
-
-                      const nextSeason = seasons.find((season) => season.id === event.target.value) || null;
-                      setSeasonId(nextSeason?.id || '');
-                      setSeasonName(nextSeason?.name || '');
-                    }}
-                    required
-                    disabled={availableSeasons.length === 0}
-                  >
-                    {availableSeasons.length === 0 ? <option value="">No seasons in hotel rates</option> : null}
-                    {availableSeasons.map((season) => (
-                      <option key={season.id} value={season.id}>
-                        {formatDisplayLabel(season.name)}
-                      </option>
-                    ))}
-                    {!selectedSeason && seasonName ? (
-                      <option value={`legacy:${seasonName}`} hidden>
-                        {formatDisplayLabel(seasonName)}
-                      </option>
-                    ) : null}
-                  </select>
+                  Auto season
+                  <input value={effectiveSeasonName ? formatDisplayLabel(effectiveSeasonName) : 'No valid season for stay date'} readOnly />
                 </label>
+
+                {canOverrideDateContext ? (
+                  <label className="quote-item-override-toggle">
+                    <span>Override season</span>
+                    <input checked={seasonOverrideEnabled} onChange={(event) => setSeasonOverrideEnabled(event.target.checked)} type="checkbox" />
+                  </label>
+                ) : null}
+
+                {canOverrideDateContext && seasonOverrideEnabled ? (
+                  <label>
+                    Season override
+                    <select
+                      value={selectedSeasonValue}
+                      onChange={(event) => {
+                        if (event.target.value.startsWith('legacy:')) {
+                          setSeasonId('');
+                          setSeasonName(event.target.value.slice('legacy:'.length));
+                          return;
+                        }
+
+                        const nextSeason = seasons.find((season) => season.id === event.target.value) || null;
+                        setSeasonId(nextSeason?.id || '');
+                        setSeasonName(nextSeason?.name || '');
+                      }}
+                      required
+                      disabled={availableSeasons.length === 0}
+                    >
+                      {availableSeasons.length === 0 ? <option value="">No seasons in hotel rates</option> : null}
+                      {availableSeasons.map((season) => (
+                        <option key={season.id} value={season.id}>
+                          {formatDisplayLabel(season.name)}
+                        </option>
+                      ))}
+                      {!selectedSeason && seasonName ? (
+                        <option value={`legacy:${seasonName}`} hidden>
+                          {formatDisplayLabel(seasonName)}
+                        </option>
+                      ) : null}
+                    </select>
+                  </label>
+                ) : null}
 
                 <label>
                   Room category

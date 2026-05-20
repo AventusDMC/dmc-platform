@@ -225,23 +225,33 @@ describe('transport catalog supplier rate-card UX', () => {
   });
 
   it('adds supplier tariff matrix export buttons for transfer and touring route Excel workbooks', () => {
+    expectSourceContains(pageSource, [
+      'Supplier Tariff Exports',
+      'Transport tariff matrix',
+      '<TransportTariffExportActions className="workspace-subheader-actions" />',
+    ]);
+
     expectSourceContains(tariffWorkbookSectionSource, [
+      'export function TransportTariffExportActions',
       'Export Transfer Tariffs',
       'href="/api/vehicle-rates/tariff-matrix/transfer/export"',
       'Export Touring Tariffs',
       'href="/api/vehicle-rates/tariff-matrix/touring/export"',
+      'download',
     ]);
 
     expectSourceContains(transferTariffExportProxySource, [
       "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export`",
       'transfer-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'await response.arrayBuffer()',
     ]);
 
     expectSourceContains(touringTariffExportProxySource, [
       "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export`",
       'touring-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'await response.arrayBuffer()',
     ]);
   });
 

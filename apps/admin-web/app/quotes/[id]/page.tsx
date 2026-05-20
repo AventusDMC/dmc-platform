@@ -297,6 +297,8 @@ type HotelRate = {
   id: string;
   contractId: string;
   seasonName: string;
+  seasonFrom?: string | null;
+  seasonTo?: string | null;
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';

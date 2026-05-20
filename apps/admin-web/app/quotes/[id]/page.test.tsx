@@ -18,6 +18,7 @@ const quoteItineraryWorkspaceCssSource = readFileSync(new URL('./QuoteItineraryW
 const quoteHotelOptionSetsSource = readFileSync(new URL('./QuoteHotelOptionSets.tsx', import.meta.url), 'utf8');
 const quoteHotelOptionSummarySource = readFileSync(new URL('./QuoteHotelOptionSummary.tsx', import.meta.url), 'utf8');
 const quoteTransportPickerSource = readFileSync(new URL('./QuoteTransportPicker.tsx', import.meta.url), 'utf8');
+const quoteItemsFormSource = readFileSync(new URL('./QuoteItemsForm.tsx', import.meta.url), 'utf8');
 const quoteItemCardSource = readFileSync(new URL('./QuoteItemCard.tsx', import.meta.url), 'utf8');
 const quoteSummaryPanelSource = readFileSync(new URL('./QuoteSummaryPanel.tsx', import.meta.url), 'utf8');
 const quotePreviewPageSource = readFileSync(new URL('./preview/page.tsx', import.meta.url), 'utf8');
@@ -45,6 +46,46 @@ function expectSourceContains(source: string, fragments: string[]) {
 }
 
 describe('quote detail page regression', () => {
+  it('propagates quote start date into day-bound operational service context', () => {
+    expectSourceContains(quoteItemsFormSource, [
+      'const itineraryActualDate = resolveDerivedServiceDate(travelStartDate, itineraryDayNumber);',
+      'const operationalNightDate = getOperationalNightDate(travelStartDate, itineraryDayNumber);',
+      'const resolvedOperationalDate = serviceDate || itineraryActualDate || \'\';',
+      'Day {itineraryDayNumber || \'-\'}',
+      'Calendar date',
+      'Operational night',
+      'Quote day {summary.day.dayNumber}',
+      'Date {dayActualDate}',
+      'Night {dayOperationalNightDate}',
+    ]);
+  });
+
+  it('auto-selects hotel season from stay date and keeps season override admin-only', () => {
+    expectSourceContains(quoteItemsFormSource, [
+      'const autoSelectedSeasonName = filteredSeasonRates[0]?.seasonName || \'\';',
+      'seasonOverrideEnabled && canOverrideDateContext',
+      'Auto season',
+      'Override season',
+      'sessionRole === \'admin\' || sessionRole === \'super_admin\'',
+    ]);
+  });
+
+  it('filters hotel rates by date windows while keeping split-season cost calculation', () => {
+    expectSourceContains(quoteItemsFormSource, [
+      'isDateWithinWindow(hotelCheckInDate, rate.seasonFrom, rate.seasonTo)',
+      'checkInDate: hotelCheckInDate',
+      'checkOutDate: hotelCheckOutDate',
+      'calculate-hotel-cost',
+    ]);
+  });
+
+  it('passes itinerary operational date into transport validity lookup', () => {
+    expectSourceContains(quoteItemsFormSource, [
+      'travelDate: resolvedOperationalDate || undefined',
+      'isTransportService || isTicketingService',
+    ]);
+  });
+
   it('renders the redesigned quote header with key quote metadata', () => {
     expectSourceContains(pageSource, [
       '<p className="eyebrow">Quote {quoteNumberLabel}</p>',

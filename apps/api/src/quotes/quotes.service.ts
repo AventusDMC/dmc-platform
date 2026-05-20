@@ -4336,6 +4336,17 @@ export class QuotesService {
     return next;
   }
 
+  private resolveQuoteDayOperationalDate(
+    quote: { travelStartDate?: Date | null },
+    itineraryDay: { dayNumber?: number | null } | null | undefined,
+  ) {
+    if (!quote.travelStartDate || !itineraryDay?.dayNumber || itineraryDay.dayNumber < 1) {
+      return null;
+    }
+
+    return this.addDays(quote.travelStartDate, itineraryDay.dayNumber - 1);
+  }
+
   private async resolvePackageHotelMapping(component: any) {
     if (!component.hotelContractId) {
       return null;
@@ -5214,7 +5225,9 @@ export class QuotesService {
     const roomCount = Math.max(1, data.roomCount ?? quote.roomCount);
     const nightCount = Math.max(1, data.nightCount ?? quote.nightCount);
     const dayCount = Math.max(1, data.dayCount ?? 1);
-    const serviceDate = this.normalizeQuoteItemOperationalDate(data.serviceDate);
+    const serviceDate =
+      this.normalizeQuoteItemOperationalDate(data.serviceDate) ||
+      this.resolveQuoteDayOperationalDate(quote, itemQuoteItineraryDay || itemLegacyItinerary);
     const startTime = this.normalizeQuoteItemOperationalText(data.startTime);
     const pickupTime = this.normalizeQuoteItemOperationalText(data.pickupTime);
     const pickupLocation = this.normalizeQuoteItemOperationalText(data.pickupLocation);
@@ -5558,6 +5571,7 @@ export class QuotesService {
             routeId: resolvedPricing.rule.routeId,
             normalizedKey: routeNormalizedKey,
             paxCount,
+            travelDate: serviceDate || undefined,
           });
           appliedVehicleRateId = displayVehicleRate.id;
         } catch {
@@ -5575,6 +5589,7 @@ export class QuotesService {
           routeId: data.routeId,
           normalizedKey: routeNormalizedKey,
           paxCount,
+          travelDate: serviceDate || undefined,
         });
 
         baseCost = vehicleRate.price;

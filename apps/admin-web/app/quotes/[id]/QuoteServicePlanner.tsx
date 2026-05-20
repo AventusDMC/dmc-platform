@@ -206,6 +206,8 @@ type HotelRate = {
   id: string;
   contractId: string;
   seasonName: string;
+  seasonFrom?: string | null;
+  seasonTo?: string | null;
   roomCategoryId: string;
   occupancyType: 'SGL' | 'DBL' | 'TPL';
   mealPlan: 'BB' | 'HB' | 'FB';
@@ -1845,6 +1847,7 @@ function AddServiceEditorPanel({
         itineraryDayTitle={day.title}
         itineraryDayDescription={day.description}
         itineraryId={day.id}
+        sessionRole={plannerProps.sessionRole}
         initialServiceTypeKey={category}
         preferredActivityId={category === 'activity' ? selectedActivityId : undefined}
         preferredServiceId={category !== 'hotel' && category !== 'transport' ? selectedPanelService?.id || preferredCatalogService?.id : undefined}
@@ -2066,6 +2069,7 @@ function EditServiceEditorPanel({
       itineraryDayTitle={itineraryDay?.title ?? null}
       itineraryDayDescription={itineraryDay?.description ?? null}
       itineraryId={item.itineraryId || undefined}
+      sessionRole={plannerProps.sessionRole}
       initialServiceTypeKey={getItemCategory(item)}
       submitLabel={isResolvingImportedDraft ? 'Resolve service' : 'Save service'}
       initialValues={initialValues}
@@ -3614,6 +3618,8 @@ function ScopePlanner({
         }));
         const currentServicesCount = summary.items.length;
         const dayHeading = formatDayHeading(summary.day, summary.inferredCity);
+        const dayActualDate = getItineraryDayServiceDate(plannerProps.quote, summary.day);
+        const dayOperationalNightDate = dayActualDate;
         const dayNarrative = parseDayContent(summary.day.description).description;
         const daySubtitle =
           dayNarrative ||
@@ -3639,6 +3645,9 @@ function ScopePlanner({
                 <p className="workspace-day-copy">{daySubtitle || 'Add the day notes and then attach the services needed for operations.'}</p>
               </div>
               <div className="quote-service-day-meta">
+                <span className="page-tab-badge">Quote day {summary.day.dayNumber}</span>
+                {dayActualDate ? <span className="page-tab-badge">Date {dayActualDate}</span> : null}
+                {dayOperationalNightDate ? <span className="page-tab-badge">Night {dayOperationalNightDate}</span> : null}
                 <span className="page-tab-badge">Services {currentServicesCount}</span>
                 <span className="page-tab-badge">Complete {summary.completionPercent}%</span>
                 {summary.unpricedCount > 0 ? <span className="page-tab-badge page-tab-badge-warning">Unpriced {summary.unpricedCount}</span> : null}
