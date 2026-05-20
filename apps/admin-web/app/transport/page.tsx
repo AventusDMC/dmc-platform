@@ -4,7 +4,8 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { RoutesSection } from './RoutesSection';
-import { TransportTariffExportActions, TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
+import { TransportTariffExportActions } from './TransportTariffExportActions';
+import { TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
 import { TouringRoutesSection } from './TouringRoutesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
@@ -171,7 +172,13 @@ export default async function TransportPage({ searchParams }: TransportPageProps
               eyebrow="Supplier Tariff Exports"
               title="Transport tariff matrix"
               description="Download current supplier tariff Excel workbooks for all suppliers or one selected transport supplier."
-              actions={<TransportTariffExportActions className="workspace-subheader-actions" suppliers={exportSuppliers} />}
+              actions={
+                <TransportTariffExportActions
+                  className="workspace-subheader-actions"
+                  suppliers={exportSuppliers}
+                  selectedSupplierId={resolvedSearchParams?.supplierId || ''}
+                />
+              }
             />
 
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}

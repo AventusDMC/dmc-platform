@@ -4,6 +4,7 @@ import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { formatRouteLabel, formatSupplierName } from '../lib/transport-formatters';
 import { deriveTransportPricingMode, TRANSPORT_RATE_CARD_PRICING_MODES } from '../lib/transport-pricing-modes';
 import { normalizeVehicleTypeLabel } from '../lib/vehicle-types';
+import { TransportTariffExportActions } from './TransportTariffExportActions';
 import { TransportTariffWorkbookGrid, type TransportTariffWorkbookRow } from './TransportTariffWorkbookGrid';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -220,49 +221,6 @@ type TransportTariffWorkbookSectionProps = {
   filters?: TransportTariffWorkbookFilters;
 };
 
-type TransportTariffExportActionsProps = {
-  className?: string;
-  suppliers?: Supplier[];
-};
-
-function buildTariffExportSupplierOptions(suppliers: Supplier[]) {
-  const transportSuppliers = suppliers.filter((supplier) => !supplier.type || supplier.type.toLowerCase() === 'transport');
-  const preferredNames = ['Almushtari Logistics Services', 'Alpha Transportation'];
-  const preferred = preferredNames
-    .map((name) => transportSuppliers.find((supplier) => supplier.name.toLowerCase() === name.toLowerCase()))
-    .filter((supplier): supplier is Supplier => Boolean(supplier));
-  const preferredIds = new Set(preferred.map((supplier) => supplier.id));
-  const remaining = transportSuppliers.filter((supplier) => !preferredIds.has(supplier.id)).sort((left, right) => left.name.localeCompare(right.name));
-
-  return [...preferred, ...remaining];
-}
-
-export function TransportTariffExportActions({ className = 'transport-rate-card-toolbar', suppliers = [] }: TransportTariffExportActionsProps) {
-  const supplierOptions = buildTariffExportSupplierOptions(suppliers);
-
-  return (
-    <form className={className} method="get">
-      <label>
-        Supplier
-        <select name="supplierId" defaultValue="">
-          <option value="">All suppliers</option>
-          {supplierOptions.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>
-              {supplier.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button className="primary-button" type="submit" formAction="/api/vehicle-rates/tariff-matrix/transfer/export">
-        Export Transfer Tariffs
-      </button>
-      <button className="secondary-button" type="submit" formAction="/api/vehicle-rates/tariff-matrix/touring/export">
-        Export Touring Tariffs
-      </button>
-    </form>
-  );
-}
-
 export async function TransportTariffWorkbookSection({ filters }: TransportTariffWorkbookSectionProps) {
   const [vehicleRates, suppliers, routes, vehicles] = await Promise.all([getVehicleRates(), getSuppliers(), getRoutes(), getVehicles()]);
   const supplierId = filters?.supplierId || '';
@@ -352,7 +310,7 @@ export async function TransportTariffWorkbookSection({ filters }: TransportTarif
         advancedDescription="Use advanced filters for vehicle type, validity, and active status without changing saved rate lines."
       />
 
-      <TransportTariffExportActions suppliers={suppliers} />
+      <TransportTariffExportActions suppliers={suppliers} selectedSupplierId={supplierId} />
 
       <SummaryStrip
         items={[
