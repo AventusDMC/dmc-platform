@@ -189,6 +189,161 @@ test('touring tariff matrix exports route supplier rows with blank missing vehic
   assert.equal(rows[1]['Medium Bus 30'], 1200);
 });
 
+test('transfer tariff matrix exports only the selected supplier while preserving canonical route and fleet columns', async () => {
+  const suppliers = [
+    { id: 'supplier-almushtari', name: 'Almushtari Logistics Services', type: 'transport' },
+    { id: 'supplier-alpha', name: 'Alpha Transportation', type: 'transport' },
+    { id: 'supplier-desert', name: 'Desert Compass Transport', type: 'transport' },
+  ];
+  const prisma = {
+    route: {
+      findMany: async () => [
+        {
+          id: 'route-amman-petra',
+          normalizedKey: 'amman_petra',
+          name: 'Amman -> Petra',
+          distanceKm: 235,
+          durationMinutes: 210,
+          notes: null,
+          fromPlace: { name: 'Amman' },
+          toPlace: { name: 'Petra' },
+        },
+      ],
+    },
+    supplier: {
+      findMany: async () => suppliers,
+    },
+    vehicleRate: {
+      findMany: async () => [
+        {
+          id: 'rate-almushtari-sedan',
+          routeId: 'route-amman-petra',
+          supplierId: 'supplier-almushtari',
+          routeName: 'Amman -> Petra',
+          price: 88,
+          currency: 'USD',
+          notes: 'selected supplier value',
+          validFrom: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          createdAt: new Date('2026-01-01'),
+          supplier: suppliers[0],
+          vehicle: { name: 'Sedan 2', maxPax: 2 },
+          serviceType: { name: 'Private Transfer', code: 'PRIVATE_TRANSFER', classification: 'ROUTE_TRANSFER' },
+          route: { id: 'route-amman-petra', name: 'Amman -> Petra' },
+        },
+        {
+          id: 'rate-alpha-coach',
+          routeId: 'route-amman-petra',
+          supplierId: 'supplier-alpha',
+          routeName: 'Amman -> Petra',
+          price: 440,
+          currency: 'USD',
+          notes: 'selected alpha value',
+          validFrom: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          createdAt: new Date('2026-01-01'),
+          supplier: suppliers[1],
+          vehicle: { name: 'Large Coach 49', maxPax: 49 },
+          serviceType: { name: 'Private Transfer', code: 'PRIVATE_TRANSFER', classification: 'ROUTE_TRANSFER' },
+          route: { id: 'route-amman-petra', name: 'Amman -> Petra' },
+        },
+      ],
+    },
+  };
+  const service = new VehicleRatesService(prisma as any);
+  const almushtariExport = await service.exportTransferRouteTariffMatrix({ supplierId: 'supplier-almushtari' });
+  const almushtariRows = readRows(almushtariExport.buffer, 'Transfer Tariffs');
+  const alphaExport = await service.exportTransferRouteTariffMatrix({ supplierId: 'supplier-alpha' });
+  const alphaRows = readRows(alphaExport.buffer, 'Transfer Tariffs');
+  const allExport = await service.exportTransferRouteTariffMatrix();
+  const allRows = readRows(allExport.buffer, 'Transfer Tariffs');
+
+  assert.equal(almushtariRows.length, 1);
+  assert.deepEqual(almushtariRows.map((row) => row.Supplier), ['Almushtari Logistics Services']);
+  assert.equal(almushtariRows[0]['Route Code'], 'TRF-AMMANPETRA');
+  assert.equal(almushtariRows[0]['Sedan 2'], 88);
+  assert.equal(almushtariRows[0]['Large Coach 49'], '');
+  assert.equal(almushtariRows[0].Notes, 'selected supplier value');
+
+  assert.equal(alphaRows.length, 1);
+  assert.deepEqual(alphaRows.map((row) => row.Supplier), ['Alpha Transportation']);
+  assert.equal(alphaRows[0]['Sedan 2'], '');
+  assert.equal(alphaRows[0]['Large Coach 49'], 440);
+  assert.equal(alphaRows[0].Notes, 'selected alpha value');
+
+  assert.equal(allRows.length, 3);
+  assert.deepEqual(allRows.map((row) => row.Supplier), ['Almushtari Logistics Services', 'Alpha Transportation', 'Desert Compass Transport']);
+});
+
+test('touring tariff matrix supports supplier-name scoping for preferred transport suppliers', async () => {
+  const suppliers = [
+    { id: 'supplier-almushtari', name: 'Almushtari Logistics Services', type: 'transport' },
+    { id: 'supplier-alpha', name: 'Alpha Transportation', type: 'transport' },
+  ];
+  const prisma = {
+    touringRoute: {
+      findMany: async () => [
+        {
+          id: 'touring-route-jordan',
+          code: 'JOR-TR-001',
+          name: 'Classic Jordan',
+          durationDays: 3,
+          overnightRisk: true,
+          includedKm: 480,
+          estimatedDistanceKm: 500,
+          includedHours: 18,
+          estimatedDriveHours: 20,
+          stops: [{ city: 'Amman', location: null, order: 1 }],
+        },
+      ],
+    },
+    supplier: {
+      findMany: async () => suppliers,
+    },
+    touringRoutePricing: {
+      findMany: async () => [
+        {
+          id: 'pricing-almushtari-van',
+          touringRouteId: 'touring-route-jordan',
+          supplierId: 'supplier-almushtari',
+          baseCost: 610,
+          currency: 'JOD',
+          notes: 'should not export',
+          validFrom: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          createdAt: new Date('2026-01-01'),
+          supplier: suppliers[0],
+          vehicle: { name: 'Van 9', maxPax: 9 },
+          touringRoute: { id: 'touring-route-jordan', code: 'JOR-TR-001', name: 'Classic Jordan' },
+        },
+        {
+          id: 'pricing-alpha-coach',
+          touringRouteId: 'touring-route-jordan',
+          supplierId: 'supplier-alpha',
+          baseCost: 1210,
+          currency: 'JOD',
+          notes: 'selected alpha value',
+          validFrom: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          createdAt: new Date('2026-01-01'),
+          supplier: suppliers[1],
+          vehicle: { name: 'Large Coach 49', maxPax: 49 },
+          touringRoute: { id: 'touring-route-jordan', code: 'JOR-TR-001', name: 'Classic Jordan' },
+        },
+      ],
+    },
+  };
+  const service = new VehicleRatesService(prisma as any);
+  const exported = await service.exportTouringRouteTariffMatrix({ supplierName: 'Alpha Transportation' });
+  const rows = readRows(exported.buffer, 'Touring Tariffs');
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].Supplier, 'Alpha Transportation');
+  assert.equal(rows[0]['Large Coach 49'], 1210);
+  assert.equal(rows[0]['Van 9'], '');
+  assert.equal(rows[0].Notes, 'selected alpha value');
+});
+
 test('supplier tariff matrix export leaves workbook editable while visually distinguishing tariff entry columns', async () => {
   const suppliers = [{ id: 'supplier-a', name: 'Supplier A', type: 'transport' }];
   const prisma = {

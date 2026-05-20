@@ -4,7 +4,8 @@ import { WorkspaceShell } from '../components/WorkspaceShell';
 import { WorkspaceSubheader } from '../components/WorkspaceSubheader';
 import { adminPageFetchJson, isNextRedirectError } from '../lib/admin-server';
 import { RoutesSection } from './RoutesSection';
-import { TransportTariffExportActions, TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
+import { TransportTariffExportActions } from './TransportTariffExportActions';
+import { TransportTariffWorkbookSection } from './TransportTariffWorkbookSection';
 import { TransportPricingRulesSection } from './TransportPricingRulesSection';
 import { TouringRoutesSection } from './TouringRoutesSection';
 import { VehicleRatesSection } from './VehicleRatesSection';
@@ -43,6 +44,13 @@ const TRANSPORT_TABS: Array<{ id: TransportTab; label: string }> = [
 async function getVehiclesCount() {
   const vehicles = await adminPageFetchJson<Array<{ id: string }>>(`${API_BASE_URL}/vehicles`, 'Transport vehicles', { cache: 'no-store' });
   return vehicles.length;
+}
+
+async function getTransportSuppliers() {
+  const suppliers = await adminPageFetchJson<Array<{ id: string; name: string; type?: string | null }>>(`${API_BASE_URL}/suppliers`, 'Transport suppliers', {
+    cache: 'no-store',
+  });
+  return suppliers.filter((supplier) => !supplier.type || supplier.type.toLowerCase() === 'transport');
 }
 
 async function getRoutesCount() {
@@ -84,22 +92,32 @@ function resolveActiveTab(tab?: string): TransportTab {
 export default async function TransportPage({ searchParams }: TransportPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const activeTab = resolveActiveTab(resolvedSearchParams?.tab);
-  const summary = await getTransportSummary().catch((error) => {
-    if (isNextRedirectError(error)) {
-      throw error;
-    }
+  const [summary, exportSuppliers] = await Promise.all([
+    getTransportSummary().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
 
-    console.error('[transport] summary unavailable', error);
-    return {
-      vehicles: 0,
-      routes: { total: 0, active: 0 },
-      serviceTypes: 0,
-      pricingRules: 0,
-      vehicleRates: 0,
-      touringRoutes: 0,
-      excursionTemplates: 0,
-    };
-  });
+      console.error('[transport] summary unavailable', error);
+      return {
+        vehicles: 0,
+        routes: { total: 0, active: 0 },
+        serviceTypes: 0,
+        pricingRules: 0,
+        vehicleRates: 0,
+        touringRoutes: 0,
+        excursionTemplates: 0,
+      };
+    }),
+    getTransportSuppliers().catch((error) => {
+      if (isNextRedirectError(error)) {
+        throw error;
+      }
+
+      console.error('[transport] suppliers unavailable', error);
+      return [];
+    }),
+  ]);
 
   return (
     <main className={`page ${activeTab === 'rates' || activeTab === 'tariff-workbook' ? 'transport-contracts-page' : ''}`}>
@@ -153,8 +171,14 @@ export default async function TransportPage({ searchParams }: TransportPageProps
             <WorkspaceSubheader
               eyebrow="Supplier Tariff Exports"
               title="Transport tariff matrix"
-              description="Download the current supplier tariff Excel workbooks for transfer routes or touring routes."
-              actions={<TransportTariffExportActions className="workspace-subheader-actions" />}
+              description="Download current supplier tariff Excel workbooks for all suppliers or one selected transport supplier."
+              actions={
+                <TransportTariffExportActions
+                  className="workspace-subheader-actions"
+                  suppliers={exportSuppliers}
+                  selectedSupplierId={resolvedSearchParams?.supplierId || ''}
+                />
+              }
             />
 
             {activeTab === 'vehicles' ? <VehiclesSection /> : null}

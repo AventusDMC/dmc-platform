@@ -8,7 +8,7 @@ if (!API_BASE_URL) {
 }
 
 export async function GET(request: NextRequest) {
-  const response = await fetch(`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export`, {
+  const response = await fetch(`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export${request.nextUrl.search}`, {
     method: 'GET',
     headers: buildActorHeaders(request),
     cache: 'no-store',

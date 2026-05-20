@@ -9,6 +9,7 @@ const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const sectionSource = readFileSync(new URL('./VehicleRatesSection.tsx', import.meta.url), 'utf8');
 const tableSource = readFileSync(new URL('./VehicleRatesTable.tsx', import.meta.url), 'utf8');
 const tariffWorkbookSectionSource = readFileSync(new URL('./TransportTariffWorkbookSection.tsx', import.meta.url), 'utf8');
+const tariffExportActionsSource = readFileSync(new URL('./TransportTariffExportActions.tsx', import.meta.url), 'utf8');
 const tariffWorkbookGridSource = readFileSync(new URL('./TransportTariffWorkbookGrid.tsx', import.meta.url), 'utf8');
 const touringRoutesSectionSource = readFileSync(new URL('./TouringRoutesSection.tsx', import.meta.url), 'utf8');
 const touringRouteArchiveButtonSource = readFileSync(new URL('./TouringRouteArchiveButton.tsx', import.meta.url), 'utf8');
@@ -233,27 +234,41 @@ describe('transport catalog supplier rate-card UX', () => {
     expectSourceContains(pageSource, [
       'Supplier Tariff Exports',
       'Transport tariff matrix',
-      '<TransportTariffExportActions className="workspace-subheader-actions" />',
+      "description=\"Download current supplier tariff Excel workbooks for all suppliers or one selected transport supplier.\"",
+      '<TransportTariffExportActions',
+      'selectedSupplierId={resolvedSearchParams?.supplierId || \'\'}',
+    ]);
+
+    expectSourceContains(tariffExportActionsSource, [
+      "'use client';",
+      'export function TransportTariffExportActions',
+      'Almushtari Logistics Services',
+      'Alpha Transportation',
+      '<option value="">All suppliers</option>',
+      '<select name="supplierId" value={resolvedSupplierId} onChange={(event) => handleSupplierChange(event.target.value)}>',
+      "params.set('supplierId', nextSupplierId);",
+      "params.delete('supplierId');",
+      "router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });",
+      'Export Transfer Tariffs',
+      "href={buildExportHref('transfer', resolvedSupplierId)}",
+      'Export Touring Tariffs',
+      "href={buildExportHref('touring', resolvedSupplierId)}",
+      "params.set('supplierId', supplierId);",
     ]);
 
     expectSourceContains(tariffWorkbookSectionSource, [
-      'export function TransportTariffExportActions',
-      'Export Transfer Tariffs',
-      'href="/api/vehicle-rates/tariff-matrix/transfer/export"',
-      'Export Touring Tariffs',
-      'href="/api/vehicle-rates/tariff-matrix/touring/export"',
-      'download',
+      '<TransportTariffExportActions suppliers={suppliers} selectedSupplierId={supplierId} />',
     ]);
 
     expectSourceContains(transferTariffExportProxySource, [
-      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export`",
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/transfer/export${request.nextUrl.search}`",
       'transfer-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'await response.arrayBuffer()',
     ]);
 
     expectSourceContains(touringTariffExportProxySource, [
-      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export`",
+      "`${API_BASE_URL}/vehicle-rates/tariff-matrix/touring/export${request.nextUrl.search}`",
       'touring-route-tariff-matrix.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'await response.arrayBuffer()',

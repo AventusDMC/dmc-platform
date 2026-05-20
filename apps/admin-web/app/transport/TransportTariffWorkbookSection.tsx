@@ -4,6 +4,7 @@ import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../lib/admin-server';
 import { formatRouteLabel, formatSupplierName } from '../lib/transport-formatters';
 import { deriveTransportPricingMode, TRANSPORT_RATE_CARD_PRICING_MODES } from '../lib/transport-pricing-modes';
 import { normalizeVehicleTypeLabel } from '../lib/vehicle-types';
+import { TransportTariffExportActions } from './TransportTariffExportActions';
 import { TransportTariffWorkbookGrid, type TransportTariffWorkbookRow } from './TransportTariffWorkbookGrid';
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
@@ -11,6 +12,7 @@ const API_BASE_URL = ADMIN_API_BASE_URL;
 type Supplier = {
   id: string;
   name: string;
+  type?: string | null;
 };
 
 type Route = {
@@ -219,23 +221,6 @@ type TransportTariffWorkbookSectionProps = {
   filters?: TransportTariffWorkbookFilters;
 };
 
-type TransportTariffExportActionsProps = {
-  className?: string;
-};
-
-export function TransportTariffExportActions({ className = 'transport-rate-card-toolbar' }: TransportTariffExportActionsProps) {
-  return (
-    <div className={className}>
-      <a className="primary-button" href="/api/vehicle-rates/tariff-matrix/transfer/export" download>
-        Export Transfer Tariffs
-      </a>
-      <a className="secondary-button" href="/api/vehicle-rates/tariff-matrix/touring/export" download>
-        Export Touring Tariffs
-      </a>
-    </div>
-  );
-}
-
 export async function TransportTariffWorkbookSection({ filters }: TransportTariffWorkbookSectionProps) {
   const [vehicleRates, suppliers, routes, vehicles] = await Promise.all([getVehicleRates(), getSuppliers(), getRoutes(), getVehicles()]);
   const supplierId = filters?.supplierId || '';
@@ -325,7 +310,7 @@ export async function TransportTariffWorkbookSection({ filters }: TransportTarif
         advancedDescription="Use advanced filters for vehicle type, validity, and active status without changing saved rate lines."
       />
 
-      <TransportTariffExportActions />
+      <TransportTariffExportActions suppliers={suppliers} selectedSupplierId={supplierId} />
 
       <SummaryStrip
         items={[
