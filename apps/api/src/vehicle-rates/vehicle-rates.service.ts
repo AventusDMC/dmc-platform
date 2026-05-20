@@ -128,6 +128,49 @@ const TOURING_TARIFF_MATRIX_COLUMNS = [
   'Notes',
 ] as const;
 
+type SupplierTariffMatrixImportIssueType =
+  | 'AMBIGUOUS_ROUTE_CODE'
+  | 'UNKNOWN_ROUTE'
+  | 'UNKNOWN_SUPPLIER'
+  | 'DUPLICATE_ROW'
+  | 'INVALID_PRICE'
+  | 'EMPTY_VALUE'
+  | 'UNKNOWN_VEHICLE'
+  | 'MISSING_RATE';
+
+type SupplierTariffMatrixImportIssue = {
+  type: SupplierTariffMatrixImportIssueType;
+  rowNumber: number;
+  routeCode?: string;
+  supplier?: string;
+  vehicleColumn?: string;
+  message: string;
+};
+
+type SupplierTariffMatrixImportChange = {
+  rowNumber: number;
+  routeCode: string;
+  routeId: string;
+  supplierId: string;
+  supplierName: string;
+  vehicleId: string;
+  vehicleColumn: string;
+  vehicleRateId: string;
+  previousPrice: number;
+  nextPrice: number;
+  action: 'UPDATE' | 'UNCHANGED';
+};
+
+type SupplierTariffMatrixImportResult = {
+  apply: boolean;
+  sheetName: string;
+  rowsRead: number;
+  changes: SupplierTariffMatrixImportChange[];
+  issues: SupplierTariffMatrixImportIssue[];
+  updated: number;
+  skipped: number;
+};
+
 type TransportContractImportRow = {
   supplierName: string;
   supplierContactName: string;
@@ -683,9 +726,50 @@ function getTariffMatrixVehicleColumn(vehicle?: { name?: string | null; maxPax?:
   );
 }
 
-function buildTariffMatrixRouteCode(prefix: string, value: string | null | undefined, fallbackId: string) {
-  const normalized = normalizeSupplierTariffMatrixKey(value);
-  return `${prefix}-${(normalized || fallbackId.replace(/-/g, '')).slice(0, 12).toUpperCase()}`;
+function buildCanonicalTransferTariffRouteCode(route: {
+  id: string;
+  fromPlace?: { name?: string | null } | null;
+  toPlace?: { name?: string | null } | null;
+}) {
+  const fromKey = normalizeRouteName(route.fromPlace?.name || '');
+  const toKey = normalizeRouteName(route.toPlace?.name || '');
+
+  if (!fromKey || !toKey) {
+    return `TRF-ROUTE-${route.id.replace(/-/g, '').toUpperCase()}`;
+  }
+
+  return `TRF-${fromKey.replace(/_/g, '-').toUpperCase()}__${toKey.replace(/_/g, '-').toUpperCase()}`;
+}
+
+function getSupplierTariffMatrixCellText(value: unknown) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return String(value).trim();
+}
+
+function parseSupplierTariffMatrixPrice(value: unknown) {
+  if (value === null || value === undefined) {
+    return { empty: true, valid: false, price: null as number | null };
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return { empty: true, valid: false, price: null as number | null };
+  }
+
+  const normalized = text.replace(/,/g, '');
+  const price = Number(normalized);
+  if (!Number.isFinite(price) || price <= 0) {
+    return { empty: false, valid: false, price: null as number | null };
+  }
+
+  return { empty: false, valid: true, price };
 }
 
 function getMostRecentTariffRate<T extends { validFrom?: Date | null; updatedAt?: Date | null; createdAt?: Date | null }>(rates: T[]) {
@@ -1700,6 +1784,273 @@ export class VehicleRatesService {
     };
   }
 
+  async importTransferRouteTariffMatrixWorkbook(
+    buffer: Buffer,
+    options: { apply?: boolean } = {},
+  ): Promise<SupplierTariffMatrixImportResult> {
+    const apply = options.apply === true;
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = workbook.SheetNames.includes('Transfer Tariffs') ? 'Transfer Tariffs' : workbook.SheetNames[0];
+    if (!sheetName || !workbook.Sheets[sheetName]) {
+      throw new BadRequestException('Transfer tariff workbook does not contain any worksheets');
+    }
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' });
+    const [routes, suppliers, vehicles, rates] = await Promise.all([
+      this.prisma.route.findMany({
+        where: {
+          isActive: true,
+          routeType: 'TRANSFER_ROUTE',
+        },
+        include: {
+          fromPlace: true,
+          toPlace: true,
+        },
+        orderBy: [{ normalizedKey: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.supplier.findMany({
+        where: { type: 'transport' },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.vehicle.findMany({
+        orderBy: [{ maxPax: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.vehicleRate.findMany({
+        where: {
+          active: true,
+          routeId: { not: null },
+          supplierId: { not: null },
+          serviceType: { classification: 'ROUTE_TRANSFER' },
+        },
+        include: {
+          supplier: true,
+          vehicle: true,
+          serviceType: true,
+          route: true,
+        },
+        orderBy: [{ validFrom: 'desc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    const canonicalRoutes = routes.filter(
+      (route) =>
+        route.fromPlace?.name &&
+        route.toPlace?.name &&
+        !isSpecialTariffMatrixRouteText([route.name, route.notes].filter(Boolean).join(' ')),
+    );
+    const routeByCode = new Map<string, (typeof canonicalRoutes)[number]>();
+    const routeCodeCollisions = new Map<string, Array<(typeof canonicalRoutes)[number]>>();
+    for (const route of canonicalRoutes) {
+      const routeCode = buildCanonicalTransferTariffRouteCode(route);
+      routeCodeCollisions.set(routeCode, [...(routeCodeCollisions.get(routeCode) || []), route]);
+    }
+
+    for (const [routeCode, matches] of routeCodeCollisions.entries()) {
+      if (matches.length === 1) {
+        routeByCode.set(routeCode, matches[0]);
+      }
+    }
+
+    const supplierByName = new Map<string, (typeof suppliers)[number]>();
+    for (const supplier of suppliers) {
+      supplierByName.set(normalizeSupplierTariffMatrixKey(supplier.name), supplier);
+    }
+
+    const vehicleByColumn = new Map<string, (typeof vehicles)[number]>();
+    for (const canonicalVehicle of SUPPLIER_TARIFF_MATRIX_FLEET_COLUMNS) {
+      const vehicle = vehicles.find(
+        (candidate) =>
+          normalizeSupplierTariffMatrixKey(candidate.name) === normalizeSupplierTariffMatrixKey(canonicalVehicle.name) &&
+          Number(candidate.maxPax || 0) === canonicalVehicle.maxPax,
+      );
+      if (vehicle) {
+        vehicleByColumn.set(canonicalVehicle.column, vehicle);
+      }
+    }
+
+    const ratesByRouteSupplierVehicle = new Map<string, typeof rates>();
+    for (const rate of rates) {
+      if (!rate.routeId || !rate.supplierId || !isCanonicalTariffMatrixVehicle(rate.vehicle)) {
+        continue;
+      }
+
+      const vehicleColumn = getTariffMatrixVehicleColumn(rate.vehicle);
+      const key = `${rate.routeId}:${rate.supplierId}:${vehicleColumn}`;
+      ratesByRouteSupplierVehicle.set(key, [...(ratesByRouteSupplierVehicle.get(key) || []), rate]);
+    }
+
+    const issues: SupplierTariffMatrixImportIssue[] = [];
+    const changes: SupplierTariffMatrixImportChange[] = [];
+    const seenRouteSupplierRows = new Map<string, number>();
+    let updated = 0;
+
+    for (const [routeCode, matches] of routeCodeCollisions.entries()) {
+      if (matches.length <= 1) {
+        continue;
+      }
+
+      issues.push({
+        type: 'AMBIGUOUS_ROUTE_CODE',
+        rowNumber: 1,
+        routeCode,
+        message: `Ambiguous canonical transfer route code ${routeCode} matched ${matches.length} routes: ${matches
+          .map((route) => `${route.fromPlace?.name || '?'} -> ${route.toPlace?.name || '?'} (${route.id})`)
+          .join(', ')}`,
+      });
+    }
+
+    if (issues.some((issue) => issue.type === 'AMBIGUOUS_ROUTE_CODE')) {
+      return {
+        apply,
+        sheetName,
+        rowsRead: rows.length,
+        changes,
+        issues,
+        updated,
+        skipped: issues.length,
+      };
+    }
+
+    for (const [index, row] of rows.entries()) {
+      const rowNumber = index + 2;
+      const routeCode = getSupplierTariffMatrixCellText(row['Route Code']);
+      const supplierName = getSupplierTariffMatrixCellText(row.Supplier);
+      const route = routeByCode.get(routeCode);
+      const supplier = supplierByName.get(normalizeSupplierTariffMatrixKey(supplierName));
+      let rowBlocked = false;
+
+      if (!route) {
+        issues.push({
+          type: 'UNKNOWN_ROUTE',
+          rowNumber,
+          routeCode,
+          supplier: supplierName,
+          message: routeCode ? `Unknown or non-canonical transfer route code: ${routeCode}` : 'Missing Route Code',
+        });
+        rowBlocked = true;
+      }
+
+      if (!supplier) {
+        issues.push({
+          type: 'UNKNOWN_SUPPLIER',
+          rowNumber,
+          routeCode,
+          supplier: supplierName,
+          message: supplierName ? `Unknown transport supplier: ${supplierName}` : 'Missing Supplier',
+        });
+        rowBlocked = true;
+      }
+
+      const rowKey = `${routeCode}:${normalizeSupplierTariffMatrixKey(supplierName)}`;
+      const firstSeenRow = seenRouteSupplierRows.get(rowKey);
+      if (routeCode && supplierName && firstSeenRow) {
+        issues.push({
+          type: 'DUPLICATE_ROW',
+          rowNumber,
+          routeCode,
+          supplier: supplierName,
+          message: `Duplicate tariff row for ${routeCode} / ${supplierName}; first seen on row ${firstSeenRow}`,
+        });
+        rowBlocked = true;
+      } else if (routeCode && supplierName) {
+        seenRouteSupplierRows.set(rowKey, rowNumber);
+      }
+
+      for (const vehicleColumn of SUPPLIER_TARIFF_MATRIX_FLEET_COLUMNS) {
+        const rawPrice = row[vehicleColumn.column];
+        const parsedPrice = parseSupplierTariffMatrixPrice(rawPrice);
+        if (parsedPrice.empty) {
+          issues.push({
+            type: 'EMPTY_VALUE',
+            rowNumber,
+            routeCode,
+            supplier: supplierName,
+            vehicleColumn: vehicleColumn.column,
+            message: `Empty price for ${vehicleColumn.column}`,
+          });
+          continue;
+        }
+
+        if (!parsedPrice.valid || parsedPrice.price === null) {
+          issues.push({
+            type: 'INVALID_PRICE',
+            rowNumber,
+            routeCode,
+            supplier: supplierName,
+            vehicleColumn: vehicleColumn.column,
+            message: `Invalid price for ${vehicleColumn.column}: ${getSupplierTariffMatrixCellText(rawPrice)}`,
+          });
+          continue;
+        }
+
+        if (rowBlocked || !route || !supplier) {
+          continue;
+        }
+
+        const vehicle = vehicleByColumn.get(vehicleColumn.column);
+        if (!vehicle) {
+          issues.push({
+            type: 'UNKNOWN_VEHICLE',
+            rowNumber,
+            routeCode,
+            supplier: supplierName,
+            vehicleColumn: vehicleColumn.column,
+            message: `Canonical vehicle not found for ${vehicleColumn.column}`,
+          });
+          continue;
+        }
+
+        const rateKey = `${route.id}:${supplier.id}:${vehicleColumn.column}`;
+        const selectedRate = getMostRecentTariffRate(ratesByRouteSupplierVehicle.get(rateKey) || []);
+        if (!selectedRate) {
+          issues.push({
+            type: 'MISSING_RATE',
+            rowNumber,
+            routeCode,
+            supplier: supplierName,
+            vehicleColumn: vehicleColumn.column,
+            message: `No existing active canonical VehicleRate for ${routeCode} / ${supplierName} / ${vehicleColumn.column}`,
+          });
+          continue;
+        }
+
+        const previousPrice = Number(selectedRate.price);
+        const change: SupplierTariffMatrixImportChange = {
+          rowNumber,
+          routeCode,
+          routeId: route.id,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          vehicleId: vehicle.id,
+          vehicleColumn: vehicleColumn.column,
+          vehicleRateId: selectedRate.id,
+          previousPrice,
+          nextPrice: parsedPrice.price,
+          action: previousPrice === parsedPrice.price ? 'UNCHANGED' : 'UPDATE',
+        };
+        changes.push(change);
+
+        if (apply && change.action === 'UPDATE') {
+          await this.prisma.vehicleRate.update({
+            where: { id: selectedRate.id },
+            data: { price: parsedPrice.price },
+          });
+          updated += 1;
+        }
+      }
+    }
+
+    return {
+      apply,
+      sheetName,
+      rowsRead: rows.length,
+      changes,
+      issues,
+      updated,
+      skipped: issues.length,
+    };
+  }
+
   async exportTransferRouteTariffMatrix(filters: { supplierId?: string | null; supplierName?: string | null } = {}) {
     const selectedSupplierId = String(filters.supplierId || '').trim();
     const selectedSupplierNameForQuery = String(filters.supplierName || '').trim();
@@ -1777,7 +2128,7 @@ export class VehicleRatesService {
       orderedSuppliers.map((supplier) => {
         const routeSupplierRates = ratesByRouteSupplier.get(`${route.id}:${supplier.id}`) || [];
         const row: Record<string, string | number> = {
-          'Route Code': buildTariffMatrixRouteCode('TRF', route.normalizedKey, route.id),
+          'Route Code': buildCanonicalTransferTariffRouteCode(route),
           'Route Name': route.name,
           From: route.fromPlace.name,
           To: route.toPlace.name,

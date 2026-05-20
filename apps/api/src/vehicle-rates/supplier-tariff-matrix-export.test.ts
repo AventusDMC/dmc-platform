@@ -107,7 +107,7 @@ test('transfer tariff matrix exports one row per route supplier with canonical f
   assert.equal(rows[0]['Large Coach 49'], '');
   assert.equal(rows[1]['Sedan 2'], '');
   assert.equal(rows[1]['Large Coach 49'], 420);
-  assert.equal(rows[0]['Route Code'], 'TRF-QUEENALIAAIR');
+  assert.equal(rows[0]['Route Code'], 'TRF-QUEEN-ALIA-AIRPORT__PETRA');
   assert.equal(rows[0]['Pricing Mode'], 'Airport Transfer');
   assert.equal(rows[0]['Notes'], 'small vehicles only');
   assert.equal(rows[1]['Notes'], 'buses only');
@@ -260,7 +260,7 @@ test('transfer tariff matrix exports only the selected supplier while preserving
 
   assert.equal(almushtariRows.length, 1);
   assert.deepEqual(almushtariRows.map((row) => row.Supplier), ['Almushtari Logistics Services']);
-  assert.equal(almushtariRows[0]['Route Code'], 'TRF-AMMANPETRA');
+  assert.equal(almushtariRows[0]['Route Code'], 'TRF-AMMAN__PETRA');
   assert.equal(almushtariRows[0]['Sedan 2'], 88);
   assert.equal(almushtariRows[0]['Large Coach 49'], '');
   assert.equal(almushtariRows[0].Notes, 'selected supplier value');
@@ -273,6 +273,98 @@ test('transfer tariff matrix exports only the selected supplier while preserving
 
   assert.equal(allRows.length, 3);
   assert.deepEqual(allRows.map((row) => row.Supplier), ['Almushtari Logistics Services', 'Alpha Transportation', 'Desert Compass Transport']);
+});
+
+test('transfer tariff matrix route codes include full endpoint place keys to avoid canonical place collisions', async () => {
+  const suppliers = [{ id: 'supplier-a', name: 'Supplier A', type: 'transport' }];
+  const prisma = {
+    route: {
+      findMany: async () => [
+        {
+          id: 'route-aqaba-city',
+          normalizedKey: 'jordan_aqaba_city_petra',
+          name: 'Aqaba City -> Petra',
+          distanceKm: 125,
+          durationMinutes: 120,
+          notes: null,
+          fromPlace: { name: 'Aqaba City' },
+          toPlace: { name: 'Petra' },
+        },
+        {
+          id: 'route-aqj-airport',
+          normalizedKey: 'jordan_aqaba_airport_petra',
+          name: 'AQJ Airport -> Petra',
+          distanceKm: 130,
+          durationMinutes: 125,
+          notes: null,
+          fromPlace: { name: 'AQJ Airport' },
+          toPlace: { name: 'Petra' },
+        },
+        {
+          id: 'route-petra',
+          normalizedKey: 'amman_petra',
+          name: 'Amman -> Petra',
+          distanceKm: 235,
+          durationMinutes: 210,
+          notes: null,
+          fromPlace: { name: 'Amman' },
+          toPlace: { name: 'Petra' },
+        },
+        {
+          id: 'route-petra-archaeological-area',
+          normalizedKey: 'amman_petra_archaeological_area',
+          name: 'Amman -> Petra Archaeological Area',
+          distanceKm: 238,
+          durationMinutes: 215,
+          notes: null,
+          fromPlace: { name: 'Amman' },
+          toPlace: { name: 'Petra Archaeological Area' },
+        },
+        {
+          id: 'route-wadi-rum',
+          normalizedKey: 'petra_wadi_rum',
+          name: 'Petra -> Wadi Rum',
+          distanceKm: 110,
+          durationMinutes: 105,
+          notes: null,
+          fromPlace: { name: 'Petra' },
+          toPlace: { name: 'Wadi Rum' },
+        },
+        {
+          id: 'route-wadi-rum-village',
+          normalizedKey: 'petra_wadi_rum_village',
+          name: 'Petra -> Wadi Rum Village',
+          distanceKm: 115,
+          durationMinutes: 110,
+          notes: null,
+          fromPlace: { name: 'Petra' },
+          toPlace: { name: 'Wadi Rum Village' },
+        },
+      ],
+    },
+    supplier: {
+      findMany: async () => suppliers,
+    },
+    vehicleRate: {
+      findMany: async () => [],
+    },
+  };
+  const service = new VehicleRatesService(prisma as any);
+  const exported = await service.exportTransferRouteTariffMatrix();
+  const rows = readRows(exported.buffer, 'Transfer Tariffs');
+  const routeCodes = rows.map((row) => row['Route Code']);
+
+  assert.equal(new Set(routeCodes).size, routeCodes.length);
+  assert.ok(routeCodes.includes('TRF-AQABA-CITY__PETRA'));
+  assert.ok(routeCodes.includes('TRF-AQJ-AIRPORT__PETRA'));
+  assert.ok(routeCodes.includes('TRF-AMMAN__PETRA'));
+  assert.ok(routeCodes.includes('TRF-AMMAN__PETRA-ARCHAEOLOGICAL-AREA'));
+  assert.ok(routeCodes.includes('TRF-PETRA__WADI-RUM'));
+  assert.ok(routeCodes.includes('TRF-PETRA__WADI-RUM-VILLAGE'));
+  assert.ok(!routeCodes.includes('TRF-AQABAPETRA'));
+  assert.ok(!routeCodes.includes('TRF-DEADSEAPETRA'));
+  assert.ok(!routeCodes.includes('TRF-JORDANAMMANC'));
+  assert.ok(!routeCodes.some((code) => typeof code === 'string' && /^TRF-[A-Z0-9]{12}$/.test(code)));
 });
 
 test('touring tariff matrix supports supplier-name scoping for preferred transport suppliers', async () => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 export type TariffExportSupplier = {
@@ -36,6 +37,10 @@ function buildExportHref(kind: 'transfer' | 'touring', supplierId: string) {
   return `/api/vehicle-rates/tariff-matrix/${kind}/export${query ? `?${query}` : ''}`;
 }
 
+export function getTariffExportHref(kind: 'transfer' | 'touring', supplierId: string) {
+  return buildExportHref(kind, supplierId);
+}
+
 export function TransportTariffExportActions({
   className = 'transport-rate-card-toolbar',
   suppliers = [],
@@ -45,9 +50,16 @@ export function TransportTariffExportActions({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const supplierOptions = buildTariffExportSupplierOptions(suppliers);
-  const resolvedSupplierId = supplierOptions.some((supplier) => supplier.id === selectedSupplierId) ? selectedSupplierId : '';
+  const propSupplierId = supplierOptions.some((supplier) => supplier.id === selectedSupplierId) ? selectedSupplierId : '';
+  const [currentSupplierId, setCurrentSupplierId] = useState(propSupplierId);
+  const resolvedSupplierId = supplierOptions.some((supplier) => supplier.id === currentSupplierId) ? currentSupplierId : '';
+
+  useEffect(() => {
+    setCurrentSupplierId(propSupplierId);
+  }, [propSupplierId]);
 
   function handleSupplierChange(nextSupplierId: string) {
+    setCurrentSupplierId(nextSupplierId);
     const params = new URLSearchParams(searchParams.toString());
 
     if (nextSupplierId) {
