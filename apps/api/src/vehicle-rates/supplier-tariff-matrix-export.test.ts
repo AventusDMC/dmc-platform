@@ -1,11 +1,20 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
+import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
 import { VehicleRatesService } from './vehicle-rates.service';
 
 function readRows(buffer: Buffer, sheetName: string) {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' });
+}
+
+async function readWorksheet(buffer: Buffer, sheetName: string) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+  const worksheet = workbook.getWorksheet(sheetName);
+  assert.ok(worksheet, `${sheetName} worksheet should exist`);
+  return worksheet;
 }
 
 test('transfer tariff matrix exports one row per route supplier with canonical fleet price columns', async () => {
@@ -178,4 +187,68 @@ test('touring tariff matrix exports route supplier rows with blank missing vehic
   assert.equal(rows[0]['Medium Bus 30'], '');
   assert.equal(rows[1]['Van 9'], '');
   assert.equal(rows[1]['Medium Bus 30'], 1200);
+});
+
+test('supplier tariff matrix export protects system columns and unlocks pricing entry columns', async () => {
+  const suppliers = [{ id: 'supplier-a', name: 'Supplier A', type: 'transport' }];
+  const prisma = {
+    route: {
+      findMany: async () => [
+        {
+          id: 'route-qaia-petra',
+          normalizedKey: 'queen alia airport|petra',
+          name: 'Queen Alia Airport -> Petra',
+          distanceKm: 230,
+          durationMinutes: 180,
+          notes: null,
+          fromPlace: { name: 'Queen Alia Airport' },
+          toPlace: { name: 'Petra' },
+        },
+      ],
+    },
+    supplier: {
+      findMany: async () => suppliers,
+    },
+    vehicleRate: {
+      findMany: async () => [
+        {
+          id: 'rate-supplier-a-sedan',
+          routeId: 'route-qaia-petra',
+          supplierId: 'supplier-a',
+          routeName: 'Queen Alia Airport -> Petra',
+          price: 95,
+          currency: 'USD',
+          notes: 'editable note',
+          validFrom: new Date('2026-01-01'),
+          updatedAt: new Date('2026-01-02'),
+          createdAt: new Date('2026-01-01'),
+          supplier: suppliers[0],
+          vehicle: { name: 'Sedan 2', maxPax: 2 },
+          serviceType: { name: 'Airport Transfer', code: 'AIRPORT_TRANSFER', classification: 'ROUTE_TRANSFER' },
+          route: { id: 'route-qaia-petra', name: 'Queen Alia Airport -> Petra' },
+        },
+      ],
+    },
+  };
+  const service = new VehicleRatesService(prisma as any);
+  const exported = await service.exportTransferRouteTariffMatrix();
+  const worksheet = await readWorksheet(exported.buffer, 'Transfer Tariffs');
+  const headers = worksheet.getRow(1).values as unknown[];
+  const columnIndex = (header: string) => {
+    const index = headers.indexOf(header);
+    assert.notEqual(index, -1, `${header} header should exist`);
+    return index;
+  };
+
+  for (const header of ['Sedan 2', 'Mini Van 6', 'Van 9', 'Toyota Coaster / Mini Bus 17', 'Medium Bus 30', 'Large Coach 49', 'Notes']) {
+    assert.equal(worksheet.getRow(2).getCell(columnIndex(header)).protection?.locked, false, `${header} should be unlocked`);
+  }
+
+  for (const header of ['Route Code', 'Route Name', 'From', 'To', 'DistanceKm', 'DurationMinutes', 'Supplier', 'Currency', 'Pricing Mode']) {
+    assert.notEqual(worksheet.getRow(2).getCell(columnIndex(header)).protection?.locked, false, `${header} should remain protected`);
+  }
+
+  assert.equal((worksheet as any).sheetProtection?.sheet, true);
+  assert.equal(worksheet.views?.[0]?.state, 'frozen');
+  assert.equal(worksheet.views?.[0]?.ySplit, 1);
 });
