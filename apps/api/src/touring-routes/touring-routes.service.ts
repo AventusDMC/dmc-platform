@@ -98,6 +98,15 @@ type ExecuteConvertToActivityMasterInput = {
   confirmationText?: string | null;
 };
 
+type AqabaActivityCleanupApplyInput = {
+  companyId: string;
+  userId?: string | null;
+};
+
+type AqabaActivityCleanupBatchApplyInput = AqabaActivityCleanupApplyInput & {
+  confirm?: string | null;
+};
+
 type RollbackConvertToActivityMasterInput = {
   activityId?: string | null;
   confirmationText?: string | null;
@@ -126,6 +135,10 @@ type TouringWorkbookRouteRow = {
   includedHours: string;
   active: string;
 };
+
+const AQABA_ACTIVITY_BATCH_ALLOWED_CODES = ['AQ_BOAT', 'AQ_YACHT', 'AQ_DIVE', 'AQ_SNORK', 'AQ_BEACH', 'AQ_SUB'] as const;
+const AQABA_ACTIVITY_BATCH_CONFIRMATION = 'AQABA_ACTIVITY_BATCH_CLEANUP';
+const AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET = new Set<string>(AQABA_ACTIVITY_BATCH_ALLOWED_CODES);
 
 type TouringWorkbookStopRow = {
   tourCode: string;
@@ -321,7 +334,10 @@ function classifyTouringRouteAudit(route: {
   const stopCount = route.stops?.length || 0;
   const overnight = Boolean(route.overnight || route.overnightRisk || /\bon\b|overnight/.test(text));
   const oneWay = /\bow\b|one way|one-way/.test(text);
-  const aqabaExperience = /aqaba/.test(text) && /glass boat|snorkel|diving|dive|yacht|berenice|south beach|marina|beach club/.test(text);
+  const legacyAqabaActivityCode = AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET.has(normalizeWorkbookText(route.code));
+  const aqabaExperience =
+    (/aqaba/.test(text) || legacyAqabaActivityCode) &&
+    /boat|glass boat|snorkel|snorkeling|diving|dive|yacht|submarine|\bsub\b|berenice|south beach|marina|beach club|beach/.test(text);
   const simpleExcursion =
     !overnight &&
     Number(route.durationDays || 1) <= 1 &&
@@ -360,6 +376,19 @@ function recommendTouringRouteCleanup(
   }
 
   return 'KEEP_AS_TOURING_ROUTE';
+}
+
+function hasRoundTripOrMovementStyleName(route: { name?: string | null; code?: string | null; routeDescription?: string | null }) {
+  const name = normalizeWorkbookText(route.name).toUpperCase();
+  const code = normalizeWorkbookText(route.code).toUpperCase();
+  const description = normalizeWorkbookText(route.routeDescription).toUpperCase();
+  const text = [name, code, description].filter(Boolean).join(' ');
+
+  return (
+    /\bRT\b|ROUND[\s-]?TRIP|RETURN TRANSFER|ONE[\s-]?WAY|\bOW\b|TRANSFER/.test(text) ||
+    /->|↔|→| TO /.test(name) ||
+    /^JOR-TR-/.test(code)
+  );
 }
 
 function deriveOperationalComplexity(route: { durationDays?: number | null; overnightRisk?: boolean | null; overnight?: boolean | null; stops?: unknown[] | null; estimatedDriveHours?: number | null; estimatedDistanceKm?: number | null }) {
@@ -643,6 +672,251 @@ export class TouringRoutesService {
       counts,
       recommendationCounts,
       rows,
+    };
+  }
+
+  async dryRunAqabaActivityCleanup(input: { id?: string | null } = {}) {
+    const id = normalizeWorkbookText(input.id);
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: id ? { id } : undefined,
+      include: this.include(),
+      orderBy: [{ active: 'desc' }, { region: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const auditRow = await this.buildOperationalAuditRow(route);
+      if (auditRow.classification !== 'ACTIVITY_CANDIDATE' || auditRow.cleanupRecommendation !== 'MOVE_TO_ACTIVITY_MASTER') {
+        continue;
+      }
+
+      const proposedActivityCode = buildActivityMasterCodeFromTouringRoute(route);
+      const duplicateActivities = await this.findDuplicateActivitiesForTouringRoute(route, proposedActivityCode);
+      const impact = auditRow.cleanupPreview.impact;
+      const dryRun = (auditRow.cleanupPreview.executionDryRuns || []).find(
+        (entry: any) => entry.action === 'executeConvertToActivityMasterDryRun',
+      );
+      const blockingReasons = [
+        route.active === false ? 'Touring route is already inactive/archived' : '',
+        hasRoundTripOrMovementStyleName(route) ? 'Round-trip or movement-style route names are excluded from Activity Master cleanup' : '',
+        duplicateActivities.length > 0 ? 'Duplicate Activity Master record already exists' : '',
+        impact.affectedQuotes.total > 0 ? 'Quote references exist' : '',
+        impact.affectedBookings.total > 0 ? 'Booking references exist' : '',
+        impact.affectedTemplates.active > 0 ? 'Active excursion/template references exist' : '',
+        impact.affectedDepartures.total > 0 ? 'Departure references exist' : '',
+        dryRun && Number(dryRun.safeExecutionScore || 0) < 80 ? 'Safe execution score is below 80' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        code: normalizeWorkbookText(route.code),
+        touringRouteId: route.id,
+        name: route.name,
+        currentCode: normalizeWorkbookText(route.code),
+        proposedActivity: {
+          name: route.name,
+          code: proposedActivityCode,
+        },
+        existingDuplicateActivityCheck: {
+          duplicateCount: duplicateActivities.length,
+          duplicates: duplicateActivities,
+        },
+        quoteReferences: impact.affectedQuotes,
+        bookingReferences: impact.affectedBookings,
+        excursionTemplateReferences: impact.affectedTemplates,
+        safeExecutionScore: dryRun?.safeExecutionScore ?? null,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      category: 'Aqaba activity-like Touring Routes',
+      supportedApplyAction: 'MOVE_TO_ACTIVITY_MASTER',
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async dryRunAqabaActivityCleanupBatch() {
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: AQABA_ACTIVITY_BATCH_ALLOWED_CODES as unknown as string[] } },
+      include: this.include(),
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const code = normalizeWorkbookText(route.code);
+      if (!AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET.has(code)) continue;
+
+      const dryRun = await this.dryRunAqabaActivityCleanup({ id: route.id });
+      const candidate = dryRun.candidates.find((entry: any) => entry.touringRouteId === route.id);
+
+      if (candidate) {
+        candidates.push(candidate);
+        continue;
+      }
+
+      const duplicateActivities = await this.findDuplicateActivitiesForTouringRoute(route, buildActivityMasterCodeFromTouringRoute(route));
+      candidates.push({
+        code,
+        touringRouteId: route.id,
+        name: route.name,
+        currentCode: code,
+        proposedActivity: {
+          name: route.name,
+          code: buildActivityMasterCodeFromTouringRoute(route),
+        },
+        existingDuplicateActivityCheck: {
+          duplicateCount: duplicateActivities.length,
+          duplicates: duplicateActivities,
+        },
+        quoteReferences: { total: 0, active: 0 },
+        bookingReferences: { total: 0, active: 0 },
+        excursionTemplateReferences: { total: 0, active: 0, excursionTemplateComponents: 0, packageTemplateComponents: 0 },
+        safeExecutionScore: null,
+        safeToConvert: false,
+        blockingReasons: ['Allowed legacy code did not classify as an Aqaba activity cleanup candidate'],
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'BATCH_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      allowedCodes: AQABA_ACTIVITY_BATCH_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_GLASS', 'AQ_BER'],
+      excludedRoutePatterns: ['JOR-TR-AQABA-*-RT', 'JOR-TR-SOUTH-PETRA-AQABA-RT', 'round-trip or movement-style names'],
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async applyAqabaActivityCleanup(id: string, input: AqabaActivityCleanupApplyInput) {
+    const routeId = normalizeWorkbookText(id);
+    const companyId = normalizeWorkbookText(input.companyId);
+
+    if (!routeId) {
+      throw new BadRequestException('Aqaba activity cleanup apply requires --id=<touringRouteId>.');
+    }
+    if (!companyId) {
+      throw new BadRequestException('Aqaba activity cleanup apply requires DMC_CLEANUP_COMPANY_ID for the Activity Master owner and audit log.');
+    }
+
+    const dryRun = await this.dryRunAqabaActivityCleanup({ id: routeId });
+    const candidate = dryRun.candidates.find((entry: any) => entry.touringRouteId === routeId);
+    if (!candidate) {
+      throw new BadRequestException('Only Aqaba activity-like Touring Routes can be converted by this cleanup command.');
+    }
+    if (!candidate.safeToConvert) {
+      throw new BadRequestException(`Aqaba activity cleanup is blocked: ${candidate.blockingReasons.join('; ')}`);
+    }
+
+    return this.executeConvertToActivityMaster(
+      routeId,
+      {
+        dryRunAction: 'executeConvertToActivityMasterDryRun',
+        dryRunConfirmed: true,
+        confirmationText: 'I understand this affects operational taxonomy',
+      },
+      {
+        id: normalizeWorkbookText(input.userId) || '00000000-0000-0000-0000-000000000000',
+        email: 'system@dmc.local',
+        role: 'admin',
+        firstName: 'System',
+        lastName: 'Cleanup',
+        name: 'System Cleanup',
+        auditLabel: 'System Cleanup CLI',
+        companyId,
+      },
+    );
+  }
+
+  async applyAqabaActivityCleanupBatch(input: AqabaActivityCleanupBatchApplyInput) {
+    const companyId = normalizeWorkbookText(input.companyId);
+    const confirm = normalizeWorkbookText(input.confirm);
+
+    if (!companyId) {
+      throw new BadRequestException('Aqaba activity batch cleanup requires DMC_CLEANUP_COMPANY_ID.');
+    }
+    if (confirm !== AQABA_ACTIVITY_BATCH_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba activity batch cleanup requires --confirm=${AQABA_ACTIVITY_BATCH_CONFIRMATION}.`);
+    }
+
+    const dryRun = await this.dryRunAqabaActivityCleanupBatch();
+    const summary: {
+      converted: any[];
+      skipped: any[];
+      blocked: any[];
+      errors: any[];
+    } = {
+      converted: [],
+      skipped: [],
+      blocked: [],
+      errors: [],
+    };
+
+    for (const candidate of dryRun.candidates as any[]) {
+      if (candidate.blockingReasons.includes('Touring route is already inactive/archived')) {
+        summary.skipped.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          reason: 'already archived',
+        });
+        continue;
+      }
+      if (!candidate.safeToConvert) {
+        summary.blocked.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          blockingReasons: candidate.blockingReasons,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.applyAqabaActivityCleanup(candidate.touringRouteId, {
+          companyId,
+          userId: input.userId,
+        });
+        summary.converted.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          activity: result.activity,
+          touringRoute: result.touringRoute,
+        });
+      } catch (error) {
+        summary.errors.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'BATCH_APPLY' as const,
+      supportedApplyAction: 'MOVE_TO_ACTIVITY_MASTER',
+      allowedCodes: AQABA_ACTIVITY_BATCH_ALLOWED_CODES,
+      converted: summary.converted,
+      skipped: summary.skipped,
+      blocked: summary.blocked,
+      errors: summary.errors,
+      counts: {
+        converted: summary.converted.length,
+        skipped: summary.skipped.length,
+        blocked: summary.blocked.length,
+        errors: summary.errors.length,
+      },
     };
   }
 
@@ -1657,6 +1931,26 @@ export class TouringRoutesService {
         canonicalCodeConflicts > 0 ||
         impact.affectedDepartures.total > 0,
     };
+  }
+
+  private async findDuplicateActivitiesForTouringRoute(route: any, proposedActivityCode: string) {
+    const normalizedName = normalizeWorkbookText(route.name);
+    const currentCode = normalizeWorkbookText(route.code);
+    const filters = [
+      proposedActivityCode ? { code: { equals: proposedActivityCode, mode: 'insensitive' } } : null,
+      currentCode ? { code: { equals: currentCode, mode: 'insensitive' } } : null,
+      normalizedName ? { name: { equals: normalizedName, mode: 'insensitive' } } : null,
+    ].filter(Boolean);
+    const model = (this.prisma as any)?.activity;
+
+    if (!model?.findMany || filters.length === 0) return [];
+
+    return model.findMany({
+      where: { OR: filters },
+      select: { id: true, code: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      take: 20,
+    });
   }
 
   private calculateSafeExecutionScore(
