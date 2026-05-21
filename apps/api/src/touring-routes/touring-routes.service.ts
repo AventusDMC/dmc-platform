@@ -6,6 +6,7 @@ import { AuthenticatedActor } from '../auth/auth.types';
 import { requireActorCompanyId } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildRouteNormalizedKey, formatRouteName } from '../routes/route-normalization';
 
 type TouringRouteStopInput = {
   order?: number | null;
@@ -107,6 +108,16 @@ type AqabaActivityCleanupBatchApplyInput = AqabaActivityCleanupApplyInput & {
   confirm?: string | null;
 };
 
+type AqabaRtDependenciesApplyInput = {
+  confirm?: string | null;
+};
+
+type AqabaRtExcursionConversionApplyInput = {
+  companyId: string;
+  userId?: string | null;
+  confirm?: string | null;
+};
+
 type RollbackConvertToActivityMasterInput = {
   activityId?: string | null;
   confirmationText?: string | null;
@@ -139,6 +150,65 @@ type TouringWorkbookRouteRow = {
 const AQABA_ACTIVITY_BATCH_ALLOWED_CODES = ['AQ_BOAT', 'AQ_YACHT', 'AQ_DIVE', 'AQ_SNORK', 'AQ_BEACH', 'AQ_SUB'] as const;
 const AQABA_ACTIVITY_BATCH_CONFIRMATION = 'AQABA_ACTIVITY_BATCH_CLEANUP';
 const AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET = new Set<string>(AQABA_ACTIVITY_BATCH_ALLOWED_CODES);
+const AQABA_RT_CLEANUP_ALLOWED_CODES = [
+  'JOR-TR-AQABA-BERENICE-RT',
+  'JOR-TR-AQABA-DIVING-RT',
+  'JOR-TR-AQABA-GLASS-BOAT-RT',
+  'JOR-TR-AQABA-YACHT-RT',
+  'JOR-TR-AQABA-SNORKELING-RT',
+  'JOR-TR-AQABA-SOUTH-BEACH-RT',
+] as const;
+const AQABA_RT_CLEANUP_ALLOWED_CODE_SET = new Set<string>(AQABA_RT_CLEANUP_ALLOWED_CODES);
+const AQABA_RT_ACTIVITY_SITES: Record<string, { expectedActivityCode?: string; expectedActivityName: string; siteName: string; siteTerms: string[] }> = {
+  'JOR-TR-AQABA-BERENICE-RT': {
+    expectedActivityName: 'Berenice Beach Club',
+    siteName: 'Berenice Beach Club',
+    siteTerms: ['berenice', 'beach club'],
+  },
+  'JOR-TR-AQABA-DIVING-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE',
+    expectedActivityName: 'Scuba Diving Experience',
+    siteName: 'Aqaba Diving Site',
+    siteTerms: ['diving', 'dive', 'south beach'],
+  },
+  'JOR-TR-AQABA-GLASS-BOAT-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-GLASS-BOAT-TOUR',
+    expectedActivityName: 'Glass Boat Tour',
+    siteName: 'Aqaba Glass Boat Pier',
+    siteTerms: ['glass boat', 'marina', 'pier'],
+  },
+  'JOR-TR-AQABA-YACHT-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-PRIVATE-YACHT-CHARTER',
+    expectedActivityName: 'Private Yacht Charter',
+    siteName: 'Aqaba Marina',
+    siteTerms: ['yacht', 'marina'],
+  },
+  'JOR-TR-AQABA-SNORKELING-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SNORKELING-EXPERIENCE',
+    expectedActivityName: 'Snorkeling Experience',
+    siteName: 'Aqaba Snorkeling Site',
+    siteTerms: ['snorkeling', 'snorkel', 'south beach'],
+  },
+  'JOR-TR-AQABA-SOUTH-BEACH-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SOUTH-BEACH-DAY',
+    expectedActivityName: 'South Beach Day',
+    siteName: 'South Beach Aqaba',
+    siteTerms: ['south beach', 'beach'],
+  },
+};
+const AQABA_RT_DEPENDENCIES_CONFIRMATION = 'AQABA_RT_DEPENDENCIES';
+const AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION = 'AQABA_RT_EXCURSION_CONVERSION';
+const AQABA_RT_DEPENDENCY_PLACE_NAMES = ['Berenice Beach Club', 'Aqaba Glass Boat Pier', 'Aqaba Marina'] as const;
+const AQABA_RT_DEPENDENCY_ROUTE_PAIRS = [
+  ['Aqaba', 'Berenice Beach Club'],
+  ['Berenice Beach Club', 'Aqaba'],
+  ['Aqaba', 'Aqaba South Beach'],
+  ['Aqaba South Beach', 'Aqaba'],
+  ['Aqaba', 'Aqaba Glass Boat Pier'],
+  ['Aqaba Glass Boat Pier', 'Aqaba'],
+  ['Aqaba', 'Aqaba Marina'],
+  ['Aqaba Marina', 'Aqaba'],
+] as const;
 
 type TouringWorkbookStopRow = {
   tourCode: string;
@@ -794,6 +864,407 @@ export class TouringRoutesService {
       excludedRoutePatterns: ['JOR-TR-AQABA-*-RT', 'JOR-TR-SOUTH-PETRA-AQABA-RT', 'round-trip or movement-style names'],
       totalCandidates: candidates.length,
       candidates,
+    };
+  }
+
+  async dryRunAqabaRoundTripCleanup() {
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: AQABA_RT_CLEANUP_ALLOWED_CODES as unknown as string[] } },
+      include: this.include(),
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const code = normalizeWorkbookText(route.code);
+      if (!AQABA_RT_CLEANUP_ALLOWED_CODE_SET.has(code)) continue;
+
+      const siteConfig = AQABA_RT_ACTIVITY_SITES[code];
+      const auditRow = await this.buildOperationalAuditRow(route);
+      const impact = auditRow.cleanupPreview.impact;
+      const activity = await this.findExpectedAqabaRtActivityMaster(siteConfig);
+      const basePlace = await this.findCanonicalPlaceByTerms(['aqaba hotel', 'aqaba base', 'aqaba city', 'aqaba']);
+      const sitePlace = await this.findCanonicalPlaceByTerms(siteConfig.siteTerms);
+      const outboundRoute = await this.findExistingTransferRoute(basePlace, sitePlace);
+      const returnRoute = await this.findExistingTransferRoute(sitePlace, basePlace);
+      const excursionCode = code.replace(/^JOR-TR-/, 'JOR-EXC-').replace(/-RT$/, '');
+      const blockingReasons = [
+        !activity ? 'Matching Activity Master record is missing' : '',
+        !basePlace ? 'Canonical Aqaba base/hotel/city place is missing' : '',
+        !sitePlace ? `Canonical activity site place is missing for ${siteConfig.siteName}` : '',
+        basePlace && sitePlace && !outboundRoute ? 'Outbound local transfer route is missing' : '',
+        basePlace && sitePlace && !returnRoute ? 'Return local transfer route is missing' : '',
+        impact.affectedQuotes.total > 0 ? 'Quote references exist' : '',
+        impact.affectedBookings.total > 0 ? 'Booking references exist' : '',
+        impact.affectedTemplates.total > 0 ? 'Package/excursion template references exist' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        touringRouteId: route.id,
+        currentCode: code,
+        name: route.name,
+        proposedExcursionTemplate: {
+          name: `${route.name.replace(/\s+RT\b/i, '').trim()} Excursion`,
+          code: excursionCode,
+          components: ['OUTBOUND_LOCAL_TRANSFER', 'ACTIVITY_MASTER', 'RETURN_LOCAL_TRANSFER'],
+        },
+        matchedActivityMaster: activity
+          ? {
+              id: activity.id,
+              code: activity.code || null,
+              name: activity.name,
+              active: activity.active !== false,
+            }
+          : null,
+        expectedActivityMaster: {
+          code: siteConfig.expectedActivityCode || null,
+          name: siteConfig.expectedActivityName,
+        },
+        missingActivityMasterWarning: activity
+          ? null
+          : `Expected Activity Master missing: ${siteConfig.expectedActivityCode || siteConfig.expectedActivityName}`,
+        proposedOutboundTransferRoute: {
+          from: basePlace?.name || 'Aqaba base/hotel/city',
+          to: sitePlace?.name || siteConfig.siteName,
+          existingRoute: outboundRoute
+            ? {
+                id: outboundRoute.id,
+                name: outboundRoute.name,
+                normalizedKey: outboundRoute.normalizedKey || null,
+                isActive: outboundRoute.isActive !== false,
+              }
+            : null,
+        },
+        proposedReturnTransferRoute: {
+          from: sitePlace?.name || siteConfig.siteName,
+          to: basePlace?.name || 'Aqaba base/hotel/city',
+          existingRoute: returnRoute
+            ? {
+                id: returnRoute.id,
+                name: returnRoute.name,
+                normalizedKey: returnRoute.normalizedKey || null,
+                isActive: returnRoute.isActive !== false,
+              }
+            : null,
+        },
+        requiredCanonicalPlaces: {
+          aqabaBaseExists: Boolean(basePlace),
+          activitySiteExists: Boolean(sitePlace),
+          aqabaBase: basePlace ? { id: basePlace.id, name: basePlace.name, active: basePlace.isActive !== false } : null,
+          activitySite: sitePlace ? { id: sitePlace.id, name: sitePlace.name, active: sitePlace.isActive !== false } : null,
+        },
+        requiredTransferRoutes: {
+          outboundExists: Boolean(outboundRoute),
+          returnExists: Boolean(returnRoute),
+        },
+        quoteReferences: impact.affectedQuotes,
+        bookingReferences: impact.affectedBookings,
+        packageExcursionTemplateReferences: impact.affectedTemplates,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+        recommendedAction: blockingReasons.length === 0 ? 'CONVERT_TO_EXCURSION_TEMPLATE_WITH_TRANSFERS' : 'MANUAL_REVIEW',
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_* legacy activity rows', 'JOR-TR-SOUTH-PETRA-AQABA-RT'],
+      transportPricingLogicChanged: false,
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async dryRunAqabaRoundTripDependencies() {
+    const existingPlaces = await this.resolveAqabaRtDependencyPlaces();
+    const placePlans = AQABA_RT_DEPENDENCY_PLACE_NAMES.map((name) => {
+      const matches = existingPlaces.byName.get(normalizeWorkbookText(name).toLowerCase()) || [];
+      return {
+        name,
+        exists: matches.length > 0,
+        existing: matches,
+        willCreate: matches.length === 0,
+        duplicateCollisionCount: Math.max(0, matches.length - 1),
+        safe: matches.length <= 1,
+      };
+    });
+
+    const routePlans = [];
+    for (const [fromName, toName] of AQABA_RT_DEPENDENCY_ROUTE_PAIRS) {
+      const fromPlace = existingPlaces.primaryByName.get(normalizeWorkbookText(fromName).toLowerCase()) || null;
+      const toPlace = existingPlaces.primaryByName.get(normalizeWorkbookText(toName).toLowerCase()) || null;
+      const normalizedKey = buildRouteNormalizedKey(fromName, toName);
+      const matches = await this.findRoutesByNormalizedKey(normalizedKey);
+      const fromWillExist = Boolean(fromPlace || AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(fromName as any));
+      const toWillExist = Boolean(toPlace || AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(toName as any));
+      routePlans.push({
+        from: fromName,
+        to: toName,
+        proposedRouteCode: this.buildAqabaRtDependencyRouteCode(fromName, toName),
+        proposedRouteName: formatRouteName(fromName, toName),
+        normalizedKey,
+        fromPlaceExists: Boolean(fromPlace),
+        toPlaceExists: Boolean(toPlace),
+        fromPlaceWillExistAfterApply: fromWillExist,
+        toPlaceWillExistAfterApply: toWillExist,
+        exists: matches.length > 0,
+        existing: matches,
+        willCreate: Boolean(fromWillExist && toWillExist && matches.length === 0),
+        duplicateCollisionCount: Math.max(0, matches.length - 1),
+        safe: Boolean(fromWillExist && toWillExist && matches.length <= 1),
+        blockingReasons: [
+          !fromWillExist ? `Missing from place: ${fromName}` : '',
+          !toWillExist ? `Missing to place: ${toName}` : '',
+          matches.length > 1 ? `Route normalizedKey collision: ${normalizedKey}` : '',
+        ].filter(Boolean),
+      });
+    }
+
+    const missingPlaces = placePlans.filter((entry) => !entry.exists);
+    const existingPlaceRows = placePlans.filter((entry) => entry.exists);
+    const missingTransferRoutes = routePlans.filter((entry) => !entry.exists);
+    const existingTransferRoutes = routePlans.filter((entry) => entry.exists);
+    const safeToApply =
+      placePlans.every((entry) => entry.safe) &&
+      routePlans.every((entry) => entry.safe);
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DEPENDENCIES_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      affectsQuotesOrBookings: false,
+      allowedPlacesToCreate: AQABA_RT_DEPENDENCY_PLACE_NAMES,
+      allowedTransferRoutePairs: AQABA_RT_DEPENDENCY_ROUTE_PAIRS.map(([from, to]) => ({ from, to })),
+      missingPlaces,
+      existingPlaces: existingPlaceRows,
+      missingTransferRoutes,
+      existingTransferRoutes,
+      duplicateCollisionChecks: {
+        placeCollisions: placePlans.filter((entry) => entry.duplicateCollisionCount > 0),
+        routeCollisions: routePlans.filter((entry) => entry.duplicateCollisionCount > 0),
+      },
+      safeToApply,
+      blockingReasons: [
+        ...placePlans.flatMap((entry) => (entry.duplicateCollisionCount > 0 ? [`Place duplicate collision: ${entry.name}`] : [])),
+        ...routePlans.flatMap((entry) => entry.blockingReasons),
+      ],
+    };
+  }
+
+  async applyAqabaRoundTripDependencies(input: AqabaRtDependenciesApplyInput) {
+    const confirm = normalizeWorkbookText(input.confirm);
+    if (confirm !== AQABA_RT_DEPENDENCIES_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba RT dependency setup requires --confirm=${AQABA_RT_DEPENDENCIES_CONFIRMATION}.`);
+    }
+
+    const before = await this.dryRunAqabaRoundTripDependencies();
+    if (before.duplicateCollisionChecks.placeCollisions.length > 0 || before.duplicateCollisionChecks.routeCollisions.length > 0) {
+      throw new BadRequestException('Aqaba RT dependency setup is blocked by duplicate/collision checks.');
+    }
+
+    const createdPlaces = [];
+    for (const place of before.missingPlaces) {
+      if (!AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(place.name as any)) continue;
+      const created = await (this.prisma as any).place.create({
+        data: {
+          name: place.name,
+          type: 'ATTRACTION',
+          city: 'Aqaba',
+          country: 'Jordan',
+          isActive: true,
+        },
+        select: { id: true, name: true, city: true, type: true, isActive: true },
+      });
+      createdPlaces.push(created);
+    }
+
+    const afterPlaces = await this.resolveAqabaRtDependencyPlaces();
+    const createdTransferRoutes = [];
+    const skippedTransferRoutes = [];
+    for (const [fromName, toName] of AQABA_RT_DEPENDENCY_ROUTE_PAIRS) {
+      const normalizedKey = buildRouteNormalizedKey(fromName, toName);
+      const existingRoutes = await this.findRoutesByNormalizedKey(normalizedKey);
+      if (existingRoutes.length > 0) {
+        skippedTransferRoutes.push({ from: fromName, to: toName, normalizedKey, reason: 'already exists' });
+        continue;
+      }
+
+      const fromPlace = afterPlaces.primaryByName.get(normalizeWorkbookText(fromName).toLowerCase()) || null;
+      const toPlace = afterPlaces.primaryByName.get(normalizeWorkbookText(toName).toLowerCase()) || null;
+      if (!fromPlace || !toPlace) {
+        skippedTransferRoutes.push({ from: fromName, to: toName, normalizedKey, reason: 'endpoint place missing' });
+        continue;
+      }
+
+      const created = await (this.prisma as any).route.create({
+        data: {
+          fromPlaceId: fromPlace.id,
+          toPlaceId: toPlace.id,
+          name: formatRouteName(fromName, toName),
+          normalizedKey,
+          routeType: 'TRANSFER_ROUTE',
+          notes: `Aqaba RT dependency setup route code: ${this.buildAqabaRtDependencyRouteCode(fromName, toName)}. No pricing/rates created.`,
+          isActive: true,
+        },
+        select: { id: true, name: true, normalizedKey: true, routeType: true, isActive: true },
+      });
+      createdTransferRoutes.push(created);
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DEPENDENCIES_APPLY' as const,
+      mutatesData: true,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      affectsQuotesOrBookings: false,
+      createdPlaces,
+      createdTransferRoutes,
+      skippedTransferRoutes,
+      counts: {
+        createdPlaces: createdPlaces.length,
+        createdTransferRoutes: createdTransferRoutes.length,
+        skippedTransferRoutes: skippedTransferRoutes.length,
+      },
+    };
+  }
+
+  async dryRunAqabaRoundTripExcursionConversion() {
+    const baseDryRun = await this.dryRunAqabaRoundTripCleanup();
+    const candidates = [];
+
+    for (const candidate of baseDryRun.candidates as any[]) {
+      const duplicateTemplate = await this.findDuplicateExcursionTemplateForAqabaRt(candidate.proposedExcursionTemplate);
+      const outboundRouteId = candidate.proposedOutboundTransferRoute?.existingRoute?.id || null;
+      const activityMasterId = candidate.matchedActivityMaster?.id || null;
+      const returnRouteId = candidate.proposedReturnTransferRoute?.existingRoute?.id || null;
+      const blockingReasons = [
+        ...(candidate.blockingReasons || []),
+        duplicateTemplate ? 'Duplicate Excursion Template already exists' : '',
+        !outboundRouteId ? 'Outbound transfer route id is missing' : '',
+        !activityMasterId ? 'Activity Master id is missing' : '',
+        !returnRouteId ? 'Return transfer route id is missing' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        touringRouteId: candidate.touringRouteId,
+        currentCode: candidate.currentCode,
+        name: candidate.name,
+        proposedExcursionTemplate: candidate.proposedExcursionTemplate,
+        outboundTransferRouteId: outboundRouteId,
+        activityMasterId,
+        returnTransferRouteId: returnRouteId,
+        matchedActivityMaster: candidate.matchedActivityMaster,
+        duplicateExcursionTemplateCheck: {
+          duplicateFound: Boolean(duplicateTemplate),
+          duplicate: duplicateTemplate,
+        },
+        quoteReferences: candidate.quoteReferences,
+        bookingReferences: candidate.bookingReferences,
+        packageExcursionTemplateReferences: candidate.packageExcursionTemplateReferences,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_EXCURSION_CONVERSION_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_* legacy activity rows', 'JOR-TR-SOUTH-PETRA-AQABA-RT'],
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async applyAqabaRoundTripExcursionConversion(input: AqabaRtExcursionConversionApplyInput) {
+    const companyId = normalizeWorkbookText(input.companyId);
+    const confirm = normalizeWorkbookText(input.confirm);
+
+    if (!companyId) {
+      throw new BadRequestException('Aqaba RT excursion conversion requires DMC_CLEANUP_COMPANY_ID.');
+    }
+    if (confirm !== AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba RT excursion conversion requires --confirm=${AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION}.`);
+    }
+
+    const dryRun = await this.dryRunAqabaRoundTripExcursionConversion();
+    const summary: {
+      converted: any[];
+      skipped: any[];
+      blocked: any[];
+      errors: any[];
+    } = {
+      converted: [],
+      skipped: [],
+      blocked: [],
+      errors: [],
+    };
+
+    for (const candidate of dryRun.candidates as any[]) {
+      if (candidate.duplicateExcursionTemplateCheck?.duplicateFound) {
+        summary.skipped.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          reason: 'duplicate excursion template exists',
+          duplicate: candidate.duplicateExcursionTemplateCheck.duplicate,
+        });
+        continue;
+      }
+      if (!candidate.safeToConvert) {
+        summary.blocked.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          blockingReasons: candidate.blockingReasons,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.convertOneAqabaRtToExcursionTemplate(candidate, {
+          companyId,
+          userId: normalizeWorkbookText(input.userId) || '00000000-0000-0000-0000-000000000000',
+        });
+        summary.converted.push(result);
+      } catch (error) {
+        summary.errors.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_EXCURSION_CONVERSION_APPLY' as const,
+      mutatesData: true,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      converted: summary.converted,
+      skipped: summary.skipped,
+      blocked: summary.blocked,
+      errors: summary.errors,
+      counts: {
+        converted: summary.converted.length,
+        skipped: summary.skipped.length,
+        blocked: summary.blocked.length,
+        errors: summary.errors.length,
+      },
     };
   }
 
@@ -1951,6 +2422,286 @@ export class TouringRoutesService {
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
       take: 20,
     });
+  }
+
+  private async findExpectedAqabaRtActivityMaster(siteConfig: { expectedActivityCode?: string; expectedActivityName: string }) {
+    const model = (this.prisma as any)?.activity;
+    if (!model?.findFirst) return null;
+
+    const expectedCode = normalizeWorkbookText(siteConfig.expectedActivityCode);
+    const expectedName = normalizeWorkbookText(siteConfig.expectedActivityName);
+
+    if (expectedCode) {
+      const codeMatch = await model.findFirst({
+        where: { active: true, code: { equals: expectedCode, mode: 'insensitive' } },
+        select: { id: true, code: true, name: true, active: true },
+      });
+      if (codeMatch) return codeMatch;
+    }
+
+    if (!expectedName) return null;
+
+    return model.findFirst({
+      where: {
+        active: true,
+        name: { equals: expectedName, mode: 'insensitive' },
+        OR: [{ code: null }, { code: '' }],
+      },
+      select: { id: true, code: true, name: true, active: true },
+    });
+  }
+
+  private async findCanonicalPlaceByTerms(terms: string[]) {
+    const model = (this.prisma as any)?.place;
+    if (!model?.findMany) return null;
+
+    const filters = terms
+      .map((term) => normalizeWorkbookText(term))
+      .filter(Boolean)
+      .map((term) => ({ name: { contains: term, mode: 'insensitive' } }));
+    if (filters.length === 0) return null;
+
+    const places = await model.findMany({
+      where: { isActive: true, OR: filters },
+      select: { id: true, name: true, city: true, type: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      take: 5,
+    });
+
+    return places?.[0] || null;
+  }
+
+  private async findExistingTransferRoute(fromPlace: any, toPlace: any) {
+    const model = (this.prisma as any)?.route;
+    if (!model?.findMany || !fromPlace?.id || !toPlace?.id) return null;
+
+    const routes = await model.findMany({
+      where: {
+        fromPlaceId: fromPlace.id,
+        toPlaceId: toPlace.id,
+        isActive: true,
+      },
+      select: { id: true, name: true, normalizedKey: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      take: 5,
+    });
+
+    return routes?.[0] || null;
+  }
+
+  private async resolveAqabaRtDependencyPlaces() {
+    const names = Array.from(
+      new Set([
+        ...AQABA_RT_DEPENDENCY_PLACE_NAMES,
+        ...AQABA_RT_DEPENDENCY_ROUTE_PAIRS.flatMap(([from, to]) => [from, to]),
+      ]),
+    );
+    const byName = new Map<string, any[]>();
+    const primaryByName = new Map<string, any>();
+
+    for (const name of names) {
+      const matches = await this.findPlacesByExactName(name);
+      const key = normalizeWorkbookText(name).toLowerCase();
+      byName.set(key, matches);
+      if (matches[0]) primaryByName.set(key, matches[0]);
+    }
+
+    return { byName, primaryByName };
+  }
+
+  private async findPlacesByExactName(name: string) {
+    const model = (this.prisma as any)?.place;
+    if (!model?.findMany) return [];
+
+    return model.findMany({
+      where: { name: { equals: name, mode: 'insensitive' }, isActive: true },
+      select: { id: true, name: true, city: true, type: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  private async findRoutesByNormalizedKey(normalizedKey: string) {
+    const model = (this.prisma as any)?.route;
+    if (!model?.findMany) return [];
+
+    return model.findMany({
+      where: { normalizedKey },
+      select: { id: true, name: true, normalizedKey: true, routeType: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  private async findDuplicateExcursionTemplateForAqabaRt(template: { code?: string | null; name?: string | null }) {
+    const model = (this.prisma as any)?.excursionTemplate;
+    if (!model?.findFirst) return null;
+    const code = normalizeWorkbookText(template.code);
+    const name = normalizeWorkbookText(template.name);
+
+    return model.findFirst({
+      where: {
+        OR: [
+          code ? { code: { equals: code, mode: 'insensitive' } } : null,
+          name ? { name: { equals: name, mode: 'insensitive' } } : null,
+        ].filter(Boolean),
+      },
+      select: { id: true, code: true, name: true, active: true },
+    });
+  }
+
+  private async convertOneAqabaRtToExcursionTemplate(
+    candidate: {
+      touringRouteId: string;
+      currentCode: string;
+      name: string;
+      proposedExcursionTemplate: { name: string; code: string };
+      outboundTransferRouteId: string;
+      activityMasterId: string;
+      returnTransferRouteId: string;
+    },
+    actor: { companyId: string; userId: string },
+  ) {
+    const route = await this.findOne(candidate.touringRouteId);
+    if (!AQABA_RT_CLEANUP_ALLOWED_CODE_SET.has(normalizeWorkbookText(route.code))) {
+      throw new BadRequestException('Only allowlisted Aqaba RT Touring Routes can be converted.');
+    }
+    if (route.active === false) {
+      throw new BadRequestException('Archived touring routes cannot be converted.');
+    }
+
+    const duplicateTemplate = await this.findDuplicateExcursionTemplateForAqabaRt(candidate.proposedExcursionTemplate);
+    if (duplicateTemplate) {
+      throw new BadRequestException(`Duplicate Excursion Template already exists: ${duplicateTemplate.code || duplicateTemplate.name}.`);
+    }
+
+    const executedAt = new Date();
+    const legacyAliases = [normalizeWorkbookText(route.code)].filter(Boolean);
+    const reviewNotes = [
+      normalizeWorkbookText(route.reviewNotes),
+      `[${executedAt.toISOString()}] Converted to Excursion Template ${candidate.proposedExcursionTemplate.code}.`,
+      `Original Aqaba RT Touring Route archived and hidden from selectors via active=false.`,
+      `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const template = await (tx as any).excursionTemplate.create({
+        data: {
+          code: candidate.proposedExcursionTemplate.code,
+          name: candidate.proposedExcursionTemplate.name,
+          description: route.routeDescription || `Converted from Aqaba RT touring route ${route.code}.`,
+          defaultDepartureCity: 'Aqaba',
+          region: 'Aqaba',
+          categoryTags: ['Touring Route Cleanup', 'Aqaba RT', 'Excursion Template'],
+          sicPossible: Boolean(route.sicPossible),
+          familyFriendly: false,
+          durationMinutes: route.includedHours ? Math.round(Number(route.includedHours) * 60) : null,
+          operationalNotes: [
+            `Created by Aqaba RT cleanup executor from touring route ${route.code} (${route.id}).`,
+            'Components are operational skeleton only: outbound local transfer, Activity Master, return local transfer.',
+            'Pricing/rates/tariffs intentionally not created or imported.',
+            `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+          ].join(' '),
+          active: true,
+          components: {
+            create: [
+              {
+                componentType: 'TRANSPORT',
+                label: 'Outbound local transfer',
+                sortOrder: 1,
+                routeId: candidate.outboundTransferRouteId,
+                suggestedDepartureCity: 'Aqaba',
+                suggestedArrivalCity: 'Activity site',
+                operationalDependency: 'OUTBOUND_LOCAL_TRANSFER',
+                operationalNotes: `Created from touring route ${route.code}; no pricing created.`,
+              },
+              {
+                componentType: 'ACTIVITY',
+                label: 'Activity Master',
+                sortOrder: 2,
+                activityId: candidate.activityMasterId,
+                operationalDependency: 'ACTIVITY_MASTER',
+                operationalNotes: `Linked existing Activity Master during touring route cleanup for ${route.code}.`,
+              },
+              {
+                componentType: 'TRANSPORT',
+                label: 'Return local transfer',
+                sortOrder: 3,
+                routeId: candidate.returnTransferRouteId,
+                suggestedDepartureCity: 'Activity site',
+                suggestedArrivalCity: 'Aqaba',
+                operationalDependency: 'RETURN_LOCAL_TRANSFER',
+                operationalNotes: `Created from touring route ${route.code}; no pricing created.`,
+              },
+            ],
+          },
+        },
+        include: { components: true },
+      });
+
+      const archivedRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: { active: false, reviewNotes },
+        include: this.include(),
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: 'touring_route.aqaba_rt.convert_to_excursion_template',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'AQABA_RT_EXCURSION_CONVERSION',
+            templateId: template.id,
+            templateCode: template.code,
+            sourceTouringRouteCode: route.code,
+            legacyAliases,
+            outboundTransferRouteId: candidate.outboundTransferRouteId,
+            activityMasterId: candidate.activityMasterId,
+            returnTransferRouteId: candidate.returnTransferRouteId,
+            deletesOriginalTouringRoute: false,
+            archivedOriginalTouringRoute: true,
+            hiddenFromSelectors: true,
+            createsPricing: false,
+            importsTariffs: false,
+          },
+        },
+      });
+
+      return { template, archivedRoute };
+    });
+
+    return {
+      currentCode: candidate.currentCode,
+      touringRouteId: result.archivedRoute.id,
+      excursionTemplate: {
+        id: result.template.id,
+        code: result.template.code,
+        name: result.template.name,
+        active: result.template.active,
+        componentCount: result.template.components?.length || 0,
+      },
+      touringRoute: {
+        id: result.archivedRoute.id,
+        code: result.archivedRoute.code,
+        active: result.archivedRoute.active,
+        hiddenFromSelectors: result.archivedRoute.active === false,
+        preservedHistorically: true,
+      },
+    };
+  }
+
+  private buildAqabaRtDependencyRouteCode(fromName: string, toName: string) {
+    const codePart = (value: string) =>
+      normalizeWorkbookText(value)
+        .toUpperCase()
+        .replace(/&/g, ' AND ')
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
+    return `JOR-TRF-${codePart(fromName)}-${codePart(toName)}`.slice(0, 120);
   }
 
   private calculateSafeExecutionScore(

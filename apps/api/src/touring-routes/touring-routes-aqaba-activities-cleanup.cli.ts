@@ -36,6 +36,21 @@ async function main() {
       return;
     }
 
+    if (mode === 'aqaba-rt-dry-run') {
+      printJson(await service.dryRunAqabaRoundTripCleanup());
+      return;
+    }
+
+    if (mode === 'aqaba-rt-dependencies-dry-run') {
+      printJson(await service.dryRunAqabaRoundTripDependencies());
+      return;
+    }
+
+    if (mode === 'aqaba-rt-convert-dry-run') {
+      printJson(await service.dryRunAqabaRoundTripExcursionConversion());
+      return;
+    }
+
     if (mode === 'apply') {
       const id = args.get('id') || '';
       const companyId = process.env.DMC_CLEANUP_COMPANY_ID || process.env.DMC_ACTIVITY_MASTER_COMPANY_ID || '';
@@ -52,7 +67,21 @@ async function main() {
       return;
     }
 
-    throw new Error('Usage: ts-node src/touring-routes/touring-routes-aqaba-activities-cleanup.cli.ts <dry-run|apply|batch-dry-run|batch-apply> [--id=<touringRouteId>] [--confirm=AQABA_ACTIVITY_BATCH_CLEANUP]');
+    if (mode === 'aqaba-rt-dependencies-apply') {
+      const confirm = args.get('confirm') || '';
+      printJson(await service.applyAqabaRoundTripDependencies({ confirm }));
+      return;
+    }
+
+    if (mode === 'aqaba-rt-convert-apply') {
+      const companyId = process.env.DMC_CLEANUP_COMPANY_ID || process.env.DMC_ACTIVITY_MASTER_COMPANY_ID || '';
+      const userId = process.env.DMC_CLEANUP_USER_ID || null;
+      const confirm = args.get('confirm') || '';
+      printJson(await service.applyAqabaRoundTripExcursionConversion({ companyId, userId, confirm }));
+      return;
+    }
+
+    throw new Error('Usage: ts-node src/touring-routes/touring-routes-aqaba-activities-cleanup.cli.ts <dry-run|apply|batch-dry-run|batch-apply|aqaba-rt-dry-run|aqaba-rt-dependencies-dry-run|aqaba-rt-dependencies-apply|aqaba-rt-convert-dry-run|aqaba-rt-convert-apply> [--id=<touringRouteId>] [--confirm=AQABA_ACTIVITY_BATCH_CLEANUP|AQABA_RT_DEPENDENCIES|AQABA_RT_EXCURSION_CONVERSION]');
   } finally {
     await prisma.$disconnect();
   }
