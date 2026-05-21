@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TouringRoutesService } from './touring-routes.service';
 
@@ -64,6 +64,22 @@ export class TouringRoutesController {
       transportType,
       limit: limit === undefined ? undefined : Number(limit),
     });
+  }
+
+  @Get('operational-audit/preview')
+  previewOperationalAudit() {
+    return this.touringRoutesService.previewOperationalAudit();
+  }
+
+  @Get('operational-audit/export')
+  async exportOperationalAudit(@Res({ passthrough: true }) response: any) {
+    const exported = await this.touringRoutesService.exportOperationalAuditWorkbook();
+    response.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${exported.fileName}"`,
+    });
+
+    return new StreamableFile(exported.buffer);
   }
 
   @Get(':id')

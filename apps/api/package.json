@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "nest build",
-    "start": "npm run build && node dist/main",
+    "build": "node scripts/clean-build-output.mjs && nest build && node scripts/verify-build-output.mjs",
+    "start": "npm run build && node dist/src/main",
     "postinstall": "prisma generate",
     "start:dev": "nest start --watch",
     "test": "node --test --require ts-node/register src/quotes/quote-pricing.test.ts src/quotes/quote-pricing-validation.test.ts src/quotes/quote-pricing.service.test.ts src/quotes/multi-currency-pricing.test.ts src/quotes/quote-pricing-scenarios.test.ts src/quotes/proposal-v3-pdf-export.test.ts src/quotes/contract-to-quote-pricing-flow.test.ts src/quotes/quote-create-agent-assignment.test.ts src/quotes/quotes-booking-conversion.test.ts src/quotes/quotes-hotel-options-normalization.test.ts src/quotes/quote-hotel-contract-detach.test.ts src/quotes/quote-rooming.test.ts src/common/currency-validation.test.ts src/common/transport-pricing-mode-normalization.test.ts src/auth/authorization-isolation.test.ts src/activities/activities.service.test.ts src/services/services.service.test.ts src/routes/routes.service.test.ts src/routes/jordan-transfer-route-library.test.ts src/places/jordan-canonical-places.test.ts src/companies/companies.service.test.ts src/contacts/contacts.service.test.ts src/contract-imports/contract-imports.service.test.ts src/import-itinerary/import-itinerary.service.test.ts src/bookings/bookings-operations-core.test.ts src/hotels/hotels.service.test.ts src/hotel-rates/hotel-rates.service.test.ts src/quote-itinerary/quote-itinerary.service.test.ts src/vehicle-rates/transfer-route-stabilization.test.ts src/transport-pricing/transport-supplier-id-compatibility.test.ts src/e2e/dmc-full-flow.test.ts src/finance/quote-booking-pricing-integrity.test.ts src/reports/reports.service.test.ts src/invoices/invoices.service.test.ts src/exports/exports.service.test.ts src/security/multi-company-isolation.test.ts src/audit/audit-trail-integrity.test.ts src/performance/concurrency-integrity.test.ts",
@@ -22,6 +22,7 @@
     "seed:excursion-templates": "ts-node prisma/seeds/seed-excursion-templates.ts",
     "seed:program-templates": "ts-node prisma/seeds/seed-program-templates.ts",
     "seed:golden-touring-pricing": "ts-node prisma/seeds/seed-golden-touring-route-pricing-phase1.ts",
+    "audit:touring-routes": "ts-node src/touring-routes/touring-routes-operational-audit.cli.ts",
     "migrate:almushtari-fit-pricing": "ts-node src/vehicle-rates/almushtari-fit-pricing-migration.ts",
     "import:supplier-tariff-matrix": "ts-node src/vehicle-rates/supplier-tariff-matrix-import.ts",
     "audit:fleet-taxonomy": "ts-node prisma/seeds/audit-fleet-taxonomy-phase1.ts",
@@ -32,8 +33,8 @@
     "canonicalize:transport-catalog": "ts-node prisma/seeds/canonicalize-transport-catalog-phase1.ts",
     "reset:client-test-data": "ts-node ../../scripts/reset-client-test-data.ts",
     "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts",
-    "verify:build-output": "node ../../scripts/verify-api-build-output.mjs",
-    "start:prod": "npm run prisma:migrate:deploy && node ./dist/main.js"
+    "verify:build-output": "node scripts/verify-build-output.mjs",
+    "start:prod": "npm run prisma:migrate:deploy && node ./dist/src/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.8",
