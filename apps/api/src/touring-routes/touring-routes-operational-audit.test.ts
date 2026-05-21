@@ -139,6 +139,7 @@ test('touring route audit preserves old codes as aliases and separates non-touri
 
   assert.equal(audit.mutatesData, false);
   assert.equal(byId.get('tour-true').classification, 'TOURING_ROUTE');
+  assert.equal(byId.get('tour-true').cleanupRecommendation, 'KEEP_AS_TOURING_ROUTE');
   assert.equal(byId.get('tour-true').selectorEligible, true);
   assert.deepEqual(byId.get('tour-true').legacyAliases, ['JOR-TR-001']);
   assert.equal(byId.get('tour-true').suggestedCanonicalCode, 'JOR-TR-SOUTH-AMMAN-MADABA-NEBO-PETRA-OVERNIGHT');
@@ -147,17 +148,182 @@ test('touring route audit preserves old codes as aliases and separates non-touri
   assert.equal(byId.get('tour-true').safeFields.guideRequired, true);
 
   assert.equal(byId.get('aqaba-activity').classification, 'ACTIVITY_CANDIDATE');
+  assert.equal(byId.get('aqaba-activity').cleanupRecommendation, 'MOVE_TO_ACTIVITY_MASTER');
   assert.equal(byId.get('aqaba-activity').candidateTarget, 'ACTIVITY');
   assert.equal(byId.get('aqaba-activity').selectorEligible, false);
 
   assert.equal(byId.get('simple-day-tour').classification, 'EXCURSION_TEMPLATE_CANDIDATE');
+  assert.equal(byId.get('simple-day-tour').cleanupRecommendation, 'CONVERT_TO_EXCURSION_TEMPLATE');
   assert.equal(byId.get('simple-day-tour').candidateTarget, 'EXCURSION_TEMPLATE');
   assert.equal(byId.get('simple-day-tour').selectorEligible, false);
 
   assert.equal(byId.get('one-way-transfer').classification, 'TRANSFER_ROUTE_CANDIDATE');
+  assert.equal(byId.get('one-way-transfer').cleanupRecommendation, 'MOVE_TO_TRANSFER_ROUTE');
   assert.equal(byId.get('one-way-transfer').candidateTarget, 'OPERATIONAL_TRANSFER');
   assert.equal(byId.get('one-way-transfer').selectorEligible, false);
   assert.equal(audit.counts.selectorEligible, 1);
+  assert.equal(audit.recommendationCounts.KEEP_AS_TOURING_ROUTE, 1);
+  assert.equal(audit.recommendationCounts.MOVE_TO_ACTIVITY_MASTER, 1);
+  assert.equal(audit.recommendationCounts.CONVERT_TO_EXCURSION_TEMPLATE, 1);
+  assert.equal(audit.recommendationCounts.MOVE_TO_TRANSFER_ROUTE, 1);
+});
+
+test('touring route cleanup recommendations are planning-only by operational route family', async () => {
+  const routes = [
+    {
+      id: 'aqaba-water',
+      code: 'AQABA-WATER',
+      name: 'Aqaba South Beach Snorkel Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['South Beach'],
+      stops: [{ order: 1, city: 'Aqaba', location: 'South Beach' }],
+      pricings: [],
+    },
+    {
+      id: 'aqaba-boat',
+      code: 'AQABA-BOAT',
+      name: 'Aqaba Glass Boat and Marina Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Marina'],
+      stops: [{ order: 1, city: 'Aqaba', location: 'Glass Boat Pier' }],
+      pricings: [],
+    },
+    {
+      id: 'petra-day',
+      code: 'PETRA-FD',
+      name: 'Petra Full Day Tour',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'South',
+      active: true,
+      mainDestinations: ['Petra'],
+      stops: [{ order: 1, city: 'Petra' }],
+      pricings: [],
+    },
+    {
+      id: 'jerash-day',
+      code: 'JERASH-FD',
+      name: 'Jerash Full Day Tour',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'North',
+      active: true,
+      mainDestinations: ['Jerash'],
+      stops: [{ order: 1, city: 'Jerash' }],
+      pricings: [],
+    },
+    {
+      id: 'madaba-day',
+      code: 'MADABA-FD',
+      name: 'Madaba and Mount Nebo Full Day Tour',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'Central',
+      active: true,
+      mainDestinations: ['Madaba', 'Mount Nebo'],
+      stops: [{ order: 1, city: 'Madaba' }, { order: 2, city: 'Mount Nebo' }],
+      pricings: [],
+    },
+    {
+      id: 'north-circuit',
+      code: 'NORTH-CIRCUIT',
+      name: 'North Jordan Circuit',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'North',
+      active: true,
+      mainDestinations: ['Jerash', 'Ajloun', 'Umm Qais'],
+      stops: [{ order: 1, city: 'Jerash' }, { order: 2, city: 'Ajloun' }, { order: 3, city: 'Umm Qais' }],
+      pricings: [],
+    },
+    {
+      id: 'south-circuit',
+      code: 'SOUTH-CIRCUIT',
+      name: 'South Jordan Overnight Circuit',
+      startCity: 'Amman',
+      durationDays: 2,
+      region: 'South',
+      overnightRisk: true,
+      active: true,
+      mainDestinations: ['Petra', 'Wadi Rum', 'Aqaba'],
+      stops: [{ order: 1, city: 'Petra' }, { order: 2, city: 'Wadi Rum' }, { order: 3, city: 'Aqaba' }],
+      pricings: [],
+    },
+    {
+      id: 'layover-circuit',
+      code: 'LAYOVER-CIRCUIT',
+      name: 'Amman Layover Circuit',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'Central',
+      active: true,
+      mainDestinations: ['Amman Citadel', 'Roman Theater', 'Downtown Amman'],
+      stops: [{ order: 1, city: 'Amman', location: 'Citadel' }, { order: 2, city: 'Amman', location: 'Roman Theater' }],
+      pricings: [],
+    },
+    {
+      id: 'religious-circuit',
+      code: 'RELIGIOUS-CIRCUIT',
+      name: 'Biblical Jordan Religious Circuit',
+      startCity: 'Amman',
+      durationDays: 2,
+      region: 'Central',
+      active: true,
+      mainDestinations: ['Madaba', 'Mount Nebo', 'Bethany'],
+      stops: [{ order: 1, city: 'Madaba' }, { order: 2, city: 'Mount Nebo' }, { order: 3, city: 'Bethany' }],
+      pricings: [],
+    },
+    {
+      id: 'one-way',
+      code: 'AMM-PET-OW',
+      name: 'Amman to Petra One Way',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'South',
+      active: true,
+      mainDestinations: ['Petra'],
+      stops: [{ order: 1, city: 'Petra' }],
+      pricings: [],
+    },
+    {
+      id: 'camp-transfer',
+      code: 'WR-CAMP-OW',
+      name: 'Wadi Rum Village to Camp Area OW',
+      startCity: 'Wadi Rum Village',
+      durationDays: 1,
+      region: 'South',
+      active: true,
+      mainDestinations: ['Wadi Rum Camp Area'],
+      stops: [{ order: 1, city: 'Wadi Rum Village' }, { order: 2, city: 'Wadi Rum Camp Area' }],
+      pricings: [],
+    },
+  ];
+  const service = new TouringRoutesService(createAuditPrismaMock(routes) as any);
+
+  const audit = (await service.previewOperationalAudit()) as any;
+  const byId = new Map<string, any>(audit.rows.map((row: any) => [row.id, row]));
+
+  assert.equal(audit.mutatesData, false);
+  for (const id of ['aqaba-water', 'aqaba-boat']) {
+    assert.equal(byId.get(id).cleanupRecommendation, 'MOVE_TO_ACTIVITY_MASTER');
+  }
+  for (const id of ['petra-day', 'jerash-day', 'madaba-day']) {
+    assert.equal(byId.get(id).cleanupRecommendation, 'CONVERT_TO_EXCURSION_TEMPLATE');
+  }
+  for (const id of ['north-circuit', 'south-circuit', 'layover-circuit', 'religious-circuit']) {
+    assert.equal(byId.get(id).cleanupRecommendation, 'KEEP_AS_TOURING_ROUTE');
+  }
+  assert.equal(byId.get('one-way').cleanupRecommendation, 'MOVE_TO_TRANSFER_ROUTE');
+  assert.ok(['MOVE_TO_TRANSFER_ROUTE', 'MANUAL_REVIEW'].includes(byId.get('camp-transfer').cleanupRecommendation));
+  assert.equal(audit.recommendationCounts.MOVE_TO_ACTIVITY_MASTER, 2);
+  assert.equal(audit.recommendationCounts.CONVERT_TO_EXCURSION_TEMPLATE, 3);
+  assert.equal(audit.recommendationCounts.KEEP_AS_TOURING_ROUTE, 4);
 });
 
 test('touring route audit export writes preview rows without mutating data', async () => {
@@ -185,6 +351,7 @@ test('touring route audit export writes preview rows without mutating data', asy
   assert.equal(exported.fileName, 'touring-route-operational-audit.xlsx');
   assert.equal(rows.length, 1);
   assert.equal(rows[0]['Suggested Canonical Code'], 'JOR-TR-SOUTH-AMMAN-MADABA-NEBO-PETRA-OVERNIGHT');
+  assert.equal(rows[0]['Cleanup Recommendation'], 'KEEP_AS_TOURING_ROUTE');
   assert.equal(rows[0]['Legacy Aliases'], 'JOR-TR-001');
 });
 }

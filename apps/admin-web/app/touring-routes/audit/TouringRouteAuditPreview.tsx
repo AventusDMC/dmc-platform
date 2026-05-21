@@ -18,6 +18,7 @@ type AuditRow = {
   name: string;
   region: string;
   classification: AuditClassification;
+  cleanupRecommendation: string;
   selectorEligible: boolean;
   candidateTarget: string;
   safeFields?: {
@@ -35,6 +36,7 @@ type AuditPreview = {
   mutatesData: boolean;
   canonicalCodeFormat: string;
   counts: Record<string, number>;
+  recommendationCounts?: Record<string, number>;
   rows: AuditRow[];
 };
 
@@ -46,10 +48,19 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
   REVIEW: 'Review',
 };
 
+const RECOMMENDATION_LABELS: Record<string, string> = {
+  KEEP_AS_TOURING_ROUTE: 'Keep Touring',
+  MOVE_TO_ACTIVITY_MASTER: 'Move to Activity',
+  CONVERT_TO_EXCURSION_TEMPLATE: 'Convert to Excursion',
+  MOVE_TO_TRANSFER_ROUTE: 'Move to Transfer',
+  MANUAL_REVIEW: 'Manual Review',
+};
+
 export function TouringRouteAuditPreview() {
   const [audit, setAudit] = useState<AuditPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recommendationFilter, setRecommendationFilter] = useState('ALL');
 
   useEffect(() => {
     let cancelled = false;
@@ -111,8 +122,12 @@ export function TouringRouteAuditPreview() {
   const totalAudited = audit.counts.total || audit.rows.length;
   const selectorEligible = audit.counts.selectorEligible || audit.rows.filter((row) => row.selectorEligible).length;
   const classifications = Object.entries(audit.counts)
-    .filter(([key]) => key !== 'total' && key !== 'selectorEligible')
+    .filter(([key]) => key !== 'total' && key !== 'selectorEligible' && !key.startsWith('recommendation:'))
     .sort(([left], [right]) => left.localeCompare(right));
+  const recommendationCounts = Object.entries(audit.recommendationCounts || {})
+    .sort(([left], [right]) => left.localeCompare(right));
+  const filteredRows =
+    recommendationFilter === 'ALL' ? audit.rows : audit.rows.filter((row) => row.cleanupRecommendation === recommendationFilter);
 
   return (
     <>
@@ -146,8 +161,41 @@ export function TouringRouteAuditPreview() {
       <section className="workspace-section">
         <div className="workspace-section-head">
           <div>
+            <p className="eyebrow">Cleanup Recommendations</p>
+            <h2>Planning summary</h2>
+          </div>
+          <label className="field-label">
+            Recommendation
+            <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value)}>
+              <option value="ALL">All recommendations</option>
+              {recommendationCounts.map(([recommendation]) => (
+                <option key={recommendation} value={recommendation}>
+                  {RECOMMENDATION_LABELS[recommendation] || recommendation}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="touring-audit-counts">
+          {recommendationCounts.length > 0 ? (
+            recommendationCounts.map(([recommendation, count]) => (
+              <div key={recommendation} className="touring-audit-count">
+                <RecommendationBadge recommendation={recommendation} />
+                <strong>{formatNumber(count)}</strong>
+              </div>
+            ))
+          ) : (
+            <p className="detail-copy">No cleanup recommendations returned.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="workspace-section">
+        <div className="workspace-section-head">
+          <div>
             <p className="eyebrow">Rows</p>
             <h2>Touring route audit rows</h2>
+            <p className="detail-copy">{formatNumber(filteredRows.length)} rows shown</p>
           </div>
         </div>
         <div className="table-wrap touring-audit-table-wrap">
@@ -156,6 +204,7 @@ export function TouringRouteAuditPreview() {
               <tr>
                 <th>Route</th>
                 <th>Classification</th>
+                <th>Recommendation</th>
                 <th>Canonical Code</th>
                 <th>Legacy Aliases</th>
                 <th>Selector</th>
@@ -164,7 +213,7 @@ export function TouringRouteAuditPreview() {
               </tr>
             </thead>
             <tbody>
-              {audit.rows.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <strong>{row.name || 'Unnamed touring route'}</strong>
@@ -173,6 +222,9 @@ export function TouringRouteAuditPreview() {
                   <td>
                     <ClassificationBadge classification={row.classification} />
                     <div className="table-subcopy">{row.candidateTarget || 'TOURING_ROUTE'}</div>
+                  </td>
+                  <td>
+                    <RecommendationBadge recommendation={row.cleanupRecommendation} />
                   </td>
                   <td>
                     <code>{row.suggestedCanonicalCode}</code>
@@ -237,6 +289,11 @@ function AuditMetric({ label, value, helper }: { label: string; value: string; h
 function ClassificationBadge({ classification }: { classification: string }) {
   const label = CLASSIFICATION_LABELS[classification] || classification;
   return <span className={`status-badge touring-audit-badge touring-audit-badge-${classification.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
+}
+
+function RecommendationBadge({ recommendation }: { recommendation: string }) {
+  const label = RECOMMENDATION_LABELS[recommendation] || recommendation;
+  return <span className={`status-badge touring-audit-badge touring-audit-badge-${recommendation.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
 }
 
 function formatNumber(value: number) {

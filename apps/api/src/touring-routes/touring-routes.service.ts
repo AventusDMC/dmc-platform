@@ -71,6 +71,13 @@ type TouringRouteAuditClassification =
   | 'TRANSFER_ROUTE_CANDIDATE'
   | 'REVIEW';
 
+type TouringRouteCleanupRecommendation =
+  | 'KEEP_AS_TOURING_ROUTE'
+  | 'MOVE_TO_ACTIVITY_MASTER'
+  | 'CONVERT_TO_EXCURSION_TEMPLATE'
+  | 'MOVE_TO_TRANSFER_ROUTE'
+  | 'MANUAL_REVIEW';
+
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
 type TouringWorkbookDecompressionError = {
@@ -292,6 +299,32 @@ function classifyTouringRouteAudit(route: {
   if (transferLike) return 'TRANSFER_ROUTE_CANDIDATE' as const;
   if (!normalizeWorkbookText(route.name)) return 'REVIEW' as const;
   return 'TOURING_ROUTE' as const;
+}
+
+function recommendTouringRouteCleanup(
+  route: {
+    code?: string | null;
+    name?: string | null;
+    durationDays?: number | null;
+    routeDescription?: string | null;
+    mainDestinations?: unknown;
+    overnightRisk?: boolean | null;
+    overnight?: boolean | null;
+    stops?: Array<{ city?: string | null; location?: string | null; notes?: string | null }> | null;
+  },
+  classification: TouringRouteAuditClassification,
+): TouringRouteCleanupRecommendation {
+  const text = getTouringRouteText(route).toLowerCase();
+  const stopCount = route.stops?.length || 0;
+
+  if (classification === 'ACTIVITY_CANDIDATE') return 'MOVE_TO_ACTIVITY_MASTER';
+  if (classification === 'EXCURSION_TEMPLATE_CANDIDATE') return 'CONVERT_TO_EXCURSION_TEMPLATE';
+  if (classification === 'REVIEW') return 'MANUAL_REVIEW';
+  if (classification === 'TRANSFER_ROUTE_CANDIDATE') {
+    return /camp|campsite|camp area|disi/.test(text) && stopCount > 1 ? 'MANUAL_REVIEW' : 'MOVE_TO_TRANSFER_ROUTE';
+  }
+
+  return 'KEEP_AS_TOURING_ROUTE';
 }
 
 function deriveOperationalComplexity(route: { durationDays?: number | null; overnightRisk?: boolean | null; overnight?: boolean | null; stops?: unknown[] | null; estimatedDriveHours?: number | null; estimatedDistanceKm?: number | null }) {
@@ -547,6 +580,7 @@ export class TouringRoutesService {
       (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
         summary.total += 1;
         summary[row.classification] = (summary[row.classification] || 0) + 1;
+        summary[`recommendation:${row.cleanupRecommendation}`] = (summary[`recommendation:${row.cleanupRecommendation}`] || 0) + 1;
         if (row.selectorEligible) summary.selectorEligible += 1;
         return summary;
       },
@@ -554,6 +588,13 @@ export class TouringRoutesService {
         total: 0,
         selectorEligible: 0,
       } as Record<string, number>,
+    );
+    const recommendationCounts = rows.reduce(
+      (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
+        summary[row.cleanupRecommendation] = (summary[row.cleanupRecommendation] || 0) + 1;
+        return summary;
+      },
+      {} as Record<string, number>,
     );
 
     return {
@@ -567,6 +608,7 @@ export class TouringRoutesService {
         tariffMatrixExport: 'VehicleRatesService.exportTouringRouteTariffMatrix uses Touring Route Code from touring_routes.code',
       },
       counts,
+      recommendationCounts,
       rows,
     };
   }
@@ -585,6 +627,7 @@ export class TouringRoutesService {
       Name: row.name,
       Region: row.region,
       Classification: row.classification,
+      'Cleanup Recommendation': row.cleanupRecommendation,
       'Selector Eligible': row.selectorEligible ? 'Yes' : 'No',
       'Candidate Target': row.candidateTarget,
       'Operational Type': row.safeFields.operationalType,
@@ -1080,6 +1123,7 @@ export class TouringRoutesService {
 
   private buildOperationalAuditRow(route: any) {
     const classification = classifyTouringRouteAudit(route);
+    const cleanupRecommendation = recommendTouringRouteCleanup(route, classification);
     const suggestedCanonicalCode = buildCanonicalTouringRouteCode(route);
     const currentCode = normalizeWorkbookText(route.code);
     const region = deriveTouringRouteRegion(route);
@@ -1103,6 +1147,7 @@ export class TouringRoutesService {
       active: route.active !== false,
       region,
       classification: classification as TouringRouteAuditClassification,
+      cleanupRecommendation: cleanupRecommendation as TouringRouteCleanupRecommendation,
       selectorEligible,
       candidateTarget:
         classification === 'ACTIVITY_CANDIDATE'
