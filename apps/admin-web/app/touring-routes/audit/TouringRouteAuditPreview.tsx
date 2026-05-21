@@ -1,108 +1,49 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-type AuditClassification =
-  | 'TOURING_ROUTE'
-  | 'ACTIVITY_CANDIDATE'
-  | 'EXCURSION_TEMPLATE_CANDIDATE'
-  | 'TRANSFER_ROUTE_CANDIDATE'
-  | 'REVIEW'
-  | string;
-
-export type AuditRow = {
+type AuditRow = {
   id: string;
-  currentCode: string;
-  suggestedCanonicalCode: string;
-  legacyAliases: string[];
-  name: string;
-  region: string;
-  classification: AuditClassification;
+  currentCode?: string;
+  suggestedCanonicalCode?: string;
+  legacyAliases?: string[];
+  name?: string;
+  region?: string;
+  classification: string;
   cleanupRecommendation: string;
+  selectorEligible?: boolean;
+  warnings?: string[];
   cleanupPreview?: {
-    mutatesData: boolean;
     safeToConvert: boolean;
     impact: {
       affectedQuotes: { total: number; active: number };
-      affectedTemplates: { total: number; active: number; excursionTemplateComponents?: number; packageTemplateComponents?: number };
+      affectedTemplates: { total: number; active: number };
       affectedBookings: { total: number; active: number };
       affectedSelectorReferences: { total: number };
       affectedRouteAliases: { total: number; aliases: string[]; preserved: boolean };
       affectedDepartures: { total: number };
     };
-    actions: Array<{
-      action: string;
-      available: boolean;
-      safeToConvert: boolean;
-      mutatesData: boolean;
-      preservesHistoricalAliases: boolean;
-      warnings: string[];
-    }>;
     executionDryRuns?: Array<{
-      action: string;
-      mode: 'DRY_RUN_ONLY';
-      mutatesData: boolean;
-      deletesData: boolean;
       safeExecutionScore: number;
       safeToExecute: boolean;
-      preservesHistoricalAliases: boolean;
-      rollbackSnapshotPreview: {
-        touringRoute: {
-          id: string;
-          code: string;
-          name: string;
-          active: boolean;
-          suggestedCanonicalCode: string;
-          legacyAliases: string[];
-        };
-        stops: Array<Record<string, unknown>>;
-        pricings: Array<Record<string, unknown>>;
-      };
-      referenceMigrationPreview: {
-        quotes: { total: number; active: number };
-        bookings: { total: number; active: number };
-        templates: { total: number; active: number };
-        selectorReferences: { total: number };
-        aliases: { total: number; aliases: string[]; preserved: boolean };
-      };
       conflicts: {
         existingActivityDuplicates: number;
         existingExcursionTemplateDuplicates: number;
         canonicalCodeConflicts: number;
         activeDepartureConflicts: number;
-        hasConflicts: boolean;
       };
-      warnings: string[];
+      warnings?: string[];
     }>;
   };
-  selectorEligible: boolean;
-  candidateTarget: string;
-  safeFields?: {
-    operationalType?: string;
-    routeCategory?: string;
-    primaryOperatingCity?: string;
-    operationalComplexity?: string;
-  };
-  warnings?: string[];
 };
 
 type AuditPreview = {
-  success: boolean;
   mode: 'preview';
   mutatesData: boolean;
   canonicalCodeFormat: string;
   counts: Record<string, number>;
   recommendationCounts?: Record<string, number>;
   rows: AuditRow[];
-};
-
-const CLASSIFICATION_LABELS: Record<string, string> = {
-  TOURING_ROUTE: 'Touring Route',
-  ACTIVITY_CANDIDATE: 'Activity Candidate',
-  EXCURSION_TEMPLATE_CANDIDATE: 'Excursion Candidate',
-  TRANSFER_ROUTE_CANDIDATE: 'Transfer Candidate',
-  REVIEW: 'Review',
 };
 
 const RECOMMENDATION_LABELS: Record<string, string> = {
@@ -113,7 +54,13 @@ const RECOMMENDATION_LABELS: Record<string, string> = {
   MANUAL_REVIEW: 'Manual Review',
 };
 
-const ACTIVITY_MASTER_CONFIRMATION = 'I understand this affects operational taxonomy';
+const CLASSIFICATION_LABELS: Record<string, string> = {
+  TOURING_ROUTE: 'Touring Route',
+  ACTIVITY_CANDIDATE: 'Activity Candidate',
+  EXCURSION_TEMPLATE_CANDIDATE: 'Excursion Candidate',
+  TRANSFER_ROUTE_CANDIDATE: 'Transfer Candidate',
+  REVIEW: 'Review',
+};
 
 export function TouringRouteAuditPreview() {
   const [audit, setAudit] = useState<AuditPreview | null>(null);
@@ -159,6 +106,11 @@ export function TouringRouteAuditPreview() {
     };
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const rows = audit?.rows || [];
+    return recommendationFilter === 'ALL' ? rows : rows.filter((row) => row.cleanupRecommendation === recommendationFilter);
+  }, [audit?.rows, recommendationFilter]);
+
   if (loading) {
     return (
       <section className="workspace-section">
@@ -180,158 +132,116 @@ export function TouringRouteAuditPreview() {
 
   const totalAudited = audit.counts.total || audit.rows.length;
   const selectorEligible = audit.counts.selectorEligible || audit.rows.filter((row) => row.selectorEligible).length;
-  const classifications = Object.entries(audit.counts)
-    .filter(([key]) => key !== 'total' && key !== 'selectorEligible' && !key.startsWith('recommendation:'))
-    .sort(([left], [right]) => left.localeCompare(right));
-  const recommendationCounts = Object.entries(audit.recommendationCounts || {})
-    .sort(([left], [right]) => left.localeCompare(right));
-  const filteredRows =
-    recommendationFilter === 'ALL' ? audit.rows : audit.rows.filter((row) => row.cleanupRecommendation === recommendationFilter);
+  const recommendationCounts = Object.entries(audit.recommendationCounts || {}).sort(([left], [right]) => left.localeCompare(right));
 
   return (
     <>
-      <section className="dashboard-grid">
+      <section className="dashboard-grid touring-audit-summary-grid">
         <AuditMetric label="Total audited" value={formatNumber(totalAudited)} helper={audit.canonicalCodeFormat} />
         <AuditMetric label="Selector eligible" value={formatNumber(selectorEligible)} helper="True operational touring routes" />
         <AuditMetric label="Mode" value={audit.mode} helper={audit.mutatesData ? 'Unexpected mutation risk' : 'Read-only'} />
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section touring-audit-filter-panel">
         <div className="workspace-section-head">
           <div>
-            <p className="eyebrow">Classification Counts</p>
-            <h2>Audit summary</h2>
-          </div>
-        </div>
-        <div className="touring-audit-counts">
-          {classifications.length > 0 ? (
-            classifications.map(([classification, count]) => (
-              <div key={classification} className="touring-audit-count">
-                <ClassificationBadge classification={classification} />
-                <strong>{formatNumber(count)}</strong>
-              </div>
-            ))
-          ) : (
-            <p className="detail-copy">No classification counts returned.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="workspace-section">
-        <div className="workspace-section-head">
-          <div>
-            <p className="eyebrow">Cleanup Recommendations</p>
-            <h2>Planning summary</h2>
+            <p className="eyebrow">Filter</p>
+            <h2>Cleanup recommendations</h2>
           </div>
           <label className="field-label">
             Recommendation
             <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value)}>
               <option value="ALL">All recommendations</option>
-              {recommendationCounts.map(([recommendation]) => (
+              {recommendationCounts.map(([recommendation, count]) => (
                 <option key={recommendation} value={recommendation}>
-                  {RECOMMENDATION_LABELS[recommendation] || recommendation}
+                  {RECOMMENDATION_LABELS[recommendation] || recommendation} ({formatNumber(count)})
                 </option>
               ))}
             </select>
           </label>
         </div>
-        <div className="touring-audit-counts">
-          {recommendationCounts.length > 0 ? (
-            recommendationCounts.map(([recommendation, count]) => (
-              <div key={recommendation} className="touring-audit-count">
-                <RecommendationBadge recommendation={recommendation} />
-                <strong>{formatNumber(count)}</strong>
-              </div>
-            ))
-          ) : (
-            <p className="detail-copy">No cleanup recommendations returned.</p>
-          )}
-        </div>
       </section>
 
-      <section className="workspace-section">
+      <section className="touring-audit-card-list" aria-label="Touring route audit rows">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">Rows</p>
-            <h2>Touring route audit rows</h2>
-            <p className="detail-copy">{formatNumber(filteredRows.length)} rows shown</p>
+            <h2>{formatNumber(filteredRows.length)} audit rows</h2>
           </div>
         </div>
-        <div className="table-wrap touring-audit-table-wrap">
-          <table className="touring-audit-table">
-            <thead>
-              <tr>
-                <th>Review</th>
-                <th>Route</th>
-                <th>Classification</th>
-                <th>Recommendation</th>
-                <th>Score</th>
-                <th>Canonical Code</th>
-                <th>Legacy Aliases</th>
-                <th>Selector</th>
-                <th>Warnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <Link href={`/touring-routes/audit/${encodeURIComponent(row.id)}`} className="secondary-button touring-audit-review-link">
-                      Review
-                    </Link>
-                  </td>
-                  <td>
-                    <strong>{row.name || 'Unnamed touring route'}</strong>
-                    <div className="table-subcopy">{row.currentCode || row.id}</div>
-                  </td>
-                  <td>
-                    <ClassificationBadge classification={row.classification} />
-                    <div className="table-subcopy">{row.candidateTarget || 'TOURING_ROUTE'}</div>
-                  </td>
-                  <td>
-                    <RecommendationBadge recommendation={row.cleanupRecommendation} />
-                    <div className="table-subcopy">{row.cleanupPreview?.safeToConvert ? 'Safe to convert' : 'Review before converting'}</div>
-                  </td>
-                  <td>
-                    <SafeExecutionScore row={row} />
-                  </td>
-                  <td>
-                    <code>{row.suggestedCanonicalCode}</code>
-                  </td>
-                  <td>
-                    {(row.legacyAliases || []).length > 0 ? (
-                      <div className="touring-audit-aliases">
-                        {(row.legacyAliases || []).map((alias) => (
-                          <code key={alias}>{alias}</code>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="table-subcopy">None</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={row.selectorEligible ? 'status-badge' : 'status-badge status-badge-expired'}>
-                      {row.selectorEligible ? 'Eligible' : 'Hidden'}
-                    </span>
-                  </td>
-                  <td>
-                    {(row.warnings || []).length > 0 ? (
-                      <ul className="touring-audit-warning-list">
-                        {(row.warnings || []).map((warning) => (
-                          <li key={warning}>{warning}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="table-subcopy">No warnings</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+        {filteredRows.length > 0 ? (
+          filteredRows.map((row) => <AuditRouteCard key={row.id} row={row} />)
+        ) : (
+          <section className="workspace-section">
+            <p className="detail-copy">No rows match this filter.</p>
+          </section>
+        )}
       </section>
     </>
+  );
+}
+
+function AuditRouteCard({ row }: { row: AuditRow }) {
+  const dryRun = row.cleanupPreview?.executionDryRuns?.[0];
+  const impact = row.cleanupPreview?.impact;
+  const conflicts = dryRun?.conflicts;
+  const warnings = [...(row.warnings || []), ...(dryRun?.warnings || [])].filter(Boolean);
+
+  return (
+    <article className="workspace-section touring-audit-card">
+      <div className="touring-audit-card-head">
+        <div>
+          <p className="eyebrow">{row.currentCode || row.id}</p>
+          <h2>{row.name || 'Unnamed touring route'}</h2>
+          <p className="detail-copy">{row.suggestedCanonicalCode || 'Canonical code pending'}</p>
+        </div>
+        <div className="touring-audit-score-box">
+          <span>Safe score</span>
+          <strong>{dryRun?.safeExecutionScore ?? 'N/A'}</strong>
+          <small>{dryRun?.safeToExecute ? 'Safe by dry-run score' : 'Blocked or review required'}</small>
+        </div>
+      </div>
+
+      <div className="touring-audit-card-badges">
+        <Badge>{CLASSIFICATION_LABELS[row.classification] || row.classification}</Badge>
+        <Badge>{RECOMMENDATION_LABELS[row.cleanupRecommendation] || row.cleanupRecommendation}</Badge>
+        <Badge>{row.selectorEligible ? 'Selector eligible' : 'Hidden from selector'}</Badge>
+      </div>
+
+      <div className="touring-audit-card-grid">
+        <InfoBlock title="References">
+          {impact ? (
+            <>
+              <span>Quotes: {formatNumber(impact.affectedQuotes.total)} ({formatNumber(impact.affectedQuotes.active)} active)</span>
+              <span>Bookings: {formatNumber(impact.affectedBookings.total)} ({formatNumber(impact.affectedBookings.active)} active)</span>
+              <span>Templates: {formatNumber(impact.affectedTemplates.total)} ({formatNumber(impact.affectedTemplates.active)} active)</span>
+              <span>Selectors: {formatNumber(impact.affectedSelectorReferences.total)}</span>
+              <span>Departures: {formatNumber(impact.affectedDepartures.total)}</span>
+            </>
+          ) : (
+            <span>No reference preview returned.</span>
+          )}
+        </InfoBlock>
+
+        <InfoBlock title="Warnings">
+          {warnings.length > 0 ? warnings.map((warning) => <span key={warning}>{warning}</span>) : <span>No warnings.</span>}
+        </InfoBlock>
+
+        <InfoBlock title="Conflicts">
+          {conflicts ? (
+            <>
+              <span>Activity duplicates: {formatNumber(conflicts.existingActivityDuplicates)}</span>
+              <span>Excursion duplicates: {formatNumber(conflicts.existingExcursionTemplateDuplicates)}</span>
+              <span>Code conflicts: {formatNumber(conflicts.canonicalCodeConflicts)}</span>
+              <span>Departure conflicts: {formatNumber(conflicts.activeDepartureConflicts)}</span>
+            </>
+          ) : (
+            <span>No conflict preview returned.</span>
+          )}
+        </InfoBlock>
+      </div>
+    </article>
   );
 }
 
@@ -345,277 +255,19 @@ function AuditMetric({ label, value, helper }: { label: string; value: string; h
   );
 }
 
-export function ClassificationBadge({ classification }: { classification: string }) {
-  const label = CLASSIFICATION_LABELS[classification] || classification;
-  return <span className={`status-badge touring-audit-badge touring-audit-badge-${classification.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
-}
-
-export function RecommendationBadge({ recommendation }: { recommendation: string }) {
-  const label = RECOMMENDATION_LABELS[recommendation] || recommendation;
-  return <span className={`status-badge touring-audit-badge touring-audit-badge-${recommendation.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
-}
-
-export function SafeExecutionScore({ row }: { row: AuditRow }) {
-  const dryRuns = row.cleanupPreview?.executionDryRuns || [];
-  const score = dryRuns[0]?.safeExecutionScore;
-
-  if (score === undefined) return <span className="table-subcopy">No dry-run</span>;
-
+function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <span className={dryRuns[0]?.safeToExecute ? 'status-badge' : 'status-badge status-badge-expired'}>
-      {formatNumber(score)}
-    </span>
-  );
-}
-
-export function ImpactSummary({ row }: { row: AuditRow }) {
-  const impact = row.cleanupPreview?.impact;
-  if (!impact) return <span className="table-subcopy">No impact preview</span>;
-
-  return (
-    <div className="table-subcopy">
-      <div>Quotes: {formatNumber(impact.affectedQuotes.total)} ({formatNumber(impact.affectedQuotes.active)} active)</div>
-      <div>Templates: {formatNumber(impact.affectedTemplates.total)}</div>
-      <div>Bookings: {formatNumber(impact.affectedBookings.total)} ({formatNumber(impact.affectedBookings.active)} active)</div>
-      <div>Selectors: {formatNumber(impact.affectedSelectorReferences.total)}</div>
-      <div>Aliases: {formatNumber(impact.affectedRouteAliases.total)} preserved</div>
-      <div>Departures: {formatNumber(impact.affectedDepartures.total)}</div>
+    <div className="touring-audit-info-block">
+      <strong>{title}</strong>
+      <div>{children}</div>
     </div>
   );
 }
 
-export function ExecutionDryRunPanel({ row }: { row: AuditRow }) {
-  const dryRuns = row.cleanupPreview?.executionDryRuns || [];
-  const firstDryRun = dryRuns[0];
-  const activityMasterDryRun = dryRuns.find((dryRun) => dryRun.action === 'executeConvertToActivityMasterDryRun');
-  const [confirmationText, setConfirmationText] = useState('');
-  const [executing, setExecuting] = useState(false);
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [executionResult, setExecutionResult] = useState<any>(null);
-  const [rollbackExecuting, setRollbackExecuting] = useState(false);
-  const [rollbackError, setRollbackError] = useState<string | null>(null);
-  const [rollbackResult, setRollbackResult] = useState<any>(null);
-  const canExecuteActivityMaster =
-    row.cleanupRecommendation === 'MOVE_TO_ACTIVITY_MASTER' &&
-    row.classification === 'ACTIVITY_CANDIDATE' &&
-    Boolean(activityMasterDryRun?.safeToExecute) &&
-    confirmationText === ACTIVITY_MASTER_CONFIRMATION;
-
-  async function executeActivityMasterConversion() {
-    if (!activityMasterDryRun || !canExecuteActivityMaster) return;
-
-    try {
-      setExecuting(true);
-      setExecutionError(null);
-      const response = await fetch(`/api/touring-routes/${encodeURIComponent(row.id)}/cleanup/convert-to-activity-master`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dryRunAction: activityMasterDryRun.action,
-          dryRunConfirmed: true,
-          confirmationText,
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.message || `Activity Master conversion failed with ${response.status}`);
-      }
-
-      setExecutionResult(payload);
-    } catch (error) {
-      setExecutionError(error instanceof Error ? error.message : 'Activity Master conversion failed.');
-    } finally {
-      setExecuting(false);
-    }
-  }
-
-  async function rollbackActivityMasterConversion() {
-    const activityId = executionResult?.activity?.id;
-    if (!activityId || confirmationText !== ACTIVITY_MASTER_CONFIRMATION) return;
-
-    try {
-      setRollbackExecuting(true);
-      setRollbackError(null);
-      const response = await fetch(`/api/touring-routes/${encodeURIComponent(row.id)}/cleanup/convert-to-activity-master/rollback`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activityId,
-          confirmationText,
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(payload?.message || `Activity Master rollback failed with ${response.status}`);
-      }
-
-      setRollbackResult(payload);
-    } catch (error) {
-      setRollbackError(error instanceof Error ? error.message : 'Activity Master rollback failed.');
-    } finally {
-      setRollbackExecuting(false);
-    }
-  }
-
-  return (
-      <section className="workspace-section touring-audit-detail-panel" aria-labelledby="touring-cleanup-dry-run-title">
-        <div className="workspace-section-head">
-          <div>
-            <p className="eyebrow">{activityMasterDryRun ? 'Controlled Execution' : 'Dry-Run Only'}</p>
-            <h2 id="touring-cleanup-dry-run-title">{row.name || 'Touring route cleanup preview'}</h2>
-            <p className="detail-copy">One-row execution is available only for low-risk Activity Master candidates after this dry-run preview.</p>
-          </div>
-        </div>
-
-        {dryRuns.length > 0 ? (
-          <div className="workspace-section">
-            <div className="touring-audit-counts">
-              {dryRuns.map((dryRun) => (
-                <div key={dryRun.action} className="touring-audit-count">
-                  <code>{formatActionName(dryRun.action)}</code>
-                  <strong>{dryRun.safeExecutionScore}</strong>
-                  <span>{dryRun.safeToExecute ? 'Safe score' : 'Blocked/review'}</span>
-                </div>
-              ))}
-            </div>
-
-            {firstDryRun ? (
-              <div className="table-wrap">
-                <table className="touring-audit-table">
-                  <tbody>
-                    <tr>
-                      <th>Rollback snapshot</th>
-                      <td>
-                        <code>{firstDryRun.rollbackSnapshotPreview.touringRoute.code || row.id}</code>
-                        <div className="table-subcopy">
-                          {formatNumber(firstDryRun.rollbackSnapshotPreview.stops.length)} stops,{' '}
-                          {formatNumber(firstDryRun.rollbackSnapshotPreview.pricings.length)} pricing rows
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Reference migration preview</th>
-                      <td>
-                        <ImpactSummary row={row} />
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Aliases</th>
-                      <td>
-                        {(firstDryRun.referenceMigrationPreview.aliases.aliases || []).length > 0 ? (
-                          <div className="touring-audit-aliases">
-                            {firstDryRun.referenceMigrationPreview.aliases.aliases.map((alias) => (
-                              <code key={alias}>{alias}</code>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="table-subcopy">No aliases</span>
-                        )}
-                        <div className="table-subcopy">
-                          {firstDryRun.referenceMigrationPreview.aliases.preserved ? 'Historical aliases preserved' : 'Alias preservation missing'}
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Conflicts</th>
-                      <td>
-                        <div className="table-subcopy">Activity duplicates: {formatNumber(firstDryRun.conflicts.existingActivityDuplicates)}</div>
-                        <div className="table-subcopy">Excursion duplicates: {formatNumber(firstDryRun.conflicts.existingExcursionTemplateDuplicates)}</div>
-                        <div className="table-subcopy">Canonical code conflicts: {formatNumber(firstDryRun.conflicts.canonicalCodeConflicts)}</div>
-                        <div className="table-subcopy">Active departure conflicts: {formatNumber(firstDryRun.conflicts.activeDepartureConflicts)}</div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <th>Warnings</th>
-                      <td>
-                        {(firstDryRun.warnings || []).length > 0 ? (
-                          <ul className="touring-audit-warning-list">
-                            {firstDryRun.warnings.map((warning) => (
-                              <li key={warning}>{warning}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <span className="table-subcopy">No dry-run warnings</span>
-                        )}
-                      </td>
-                    </tr>
-                    {activityMasterDryRun ? (
-                      <tr>
-                        <th>Activity Master execution</th>
-                        <td>
-                          <div className="table-subcopy">
-                            Execute one row only. The original touring route is archived, hidden from selectors, and preserved historically.
-                          </div>
-                          <label className="field-label">
-                            Confirmation
-                            <input
-                              type="text"
-                              value={confirmationText}
-                              onChange={(event) => setConfirmationText(event.target.value)}
-                              placeholder={ACTIVITY_MASTER_CONFIRMATION}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="primary-button"
-                            disabled={!canExecuteActivityMaster || executing || Boolean(executionResult)}
-                            onClick={executeActivityMasterConversion}
-                          >
-                            {executing ? 'Executing...' : 'Execute Activity Master Conversion'}
-                          </button>
-                          {!activityMasterDryRun.safeToExecute ? (
-                            <div className="table-subcopy">Execution blocked by dry-run score or conflicts.</div>
-                          ) : null}
-                          {executionError ? <div className="form-error">{executionError}</div> : null}
-                          {executionResult ? (
-                            <div className="table-subcopy">
-                              Created Activity Master <code>{executionResult.activity?.code}</code>. Touring route is now{' '}
-                              {executionResult.touringRoute?.hiddenFromSelectors ? 'hidden from selectors' : 'still visible'}.
-                            </div>
-                          ) : null}
-                          {executionResult && !rollbackResult ? (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              disabled={rollbackExecuting || confirmationText !== ACTIVITY_MASTER_CONFIRMATION}
-                              onClick={rollbackActivityMasterConversion}
-                            >
-                              {rollbackExecuting ? 'Rolling back...' : 'Rollback Activity Master Conversion'}
-                            </button>
-                          ) : null}
-                          {rollbackError ? <div className="form-error">{rollbackError}</div> : null}
-                          {rollbackResult ? (
-                            <div className="table-subcopy">
-                              Rollback complete. Touring route selector visibility is{' '}
-                              {rollbackResult.touringRoute?.selectorVisible ? 'restored' : 'still hidden'}.
-                            </div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="detail-copy">No dry-run actions are available for this recommendation.</p>
-        )}
-      </section>
-  );
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="status-badge touring-audit-badge">{children}</span>;
 }
 
-export function formatActionName(action: string) {
-  return action
-    .replace(/Preview$/, '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/^./, (value) => value.toUpperCase());
-}
-
-export function formatNumber(value: number) {
+function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US').format(value || 0);
 }

@@ -5981,6 +5981,21 @@ select option:checked {
 .touring-audit-page {
   position: relative;
   z-index: 1;
+  width: 100%;
+  max-width: none;
+  transform: none !important;
+  scale: 1 !important;
+  zoom: 1;
+}
+
+.touring-audit-page .workspace-panel,
+.touring-audit-page .workspace-panel-wide,
+.touring-audit-page .panel {
+  width: 100%;
+  max-width: none;
+  transform: none !important;
+  scale: 1 !important;
+  zoom: 1;
 }
 
 .touring-audit-page :where(a, button, select, input, label) {
@@ -5989,63 +6004,103 @@ select option:checked {
   pointer-events: auto;
 }
 
-.touring-audit-counts {
+.touring-audit-summary-grid {
+  width: 100%;
+}
+
+.touring-audit-filter-panel .field-label {
+  min-width: min(100%, 22rem);
+}
+
+.touring-audit-card-list {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+.touring-audit-card {
+  display: grid;
+  gap: 1.2rem;
+  width: 100%;
+}
+
+.touring-audit-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.touring-audit-card-head h2 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.2;
+}
+
+.touring-audit-score-box {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 10rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.touring-audit-score-box span,
+.touring-audit-score-box small {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.touring-audit-score-box strong {
+  color: #0f172a;
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.touring-audit-card-badges,
+.touring-audit-card-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.touring-audit-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.75rem 0.85rem;
+.touring-audit-info-block {
+  display: grid;
+  gap: 0.45rem;
+  flex: 1 1 18rem;
+  min-width: min(100%, 18rem);
+  padding: 0.9rem;
   border: 1px solid #dfe5ee;
   border-radius: 8px;
   background: #ffffff;
 }
 
-.touring-audit-table-wrap {
-  position: relative;
-  z-index: 0;
-  overflow-x: auto;
-  overflow-y: visible;
+.touring-audit-info-block > strong {
+  color: #0f172a;
 }
 
-.touring-audit-table {
-  min-width: 960px;
-}
-
-.touring-audit-table td {
-  position: relative;
-}
-
-.touring-audit-table code,
-.touring-audit-aliases code {
-  display: inline-block;
-  padding: 0.18rem 0.35rem;
-  border-radius: 4px;
-  background: #f3f6fa;
-  color: #1f2a44;
-  font-size: 0.85rem;
-}
-
-.touring-audit-aliases {
-  display: flex;
-  flex-wrap: wrap;
+.touring-audit-info-block > div {
+  display: grid;
   gap: 0.35rem;
+  color: #475569;
 }
 
-.touring-audit-review-link {
-  position: relative;
-  z-index: 3;
-  pointer-events: auto;
+.touring-audit-badge {
+  width: fit-content;
 }
 
-.touring-audit-warning-list {
-  margin: 0;
-  padding-left: 1rem;
-  color: #7f1d1d;
+@media (max-width: 720px) {
+  .touring-audit-card-head {
+    display: grid;
+  }
+
+  .touring-audit-score-box {
+    width: 100%;
+    text-align: left;
+  }
 }
 
 /* Admin visual refresh: spacious ERP defaults without touching business logic */
