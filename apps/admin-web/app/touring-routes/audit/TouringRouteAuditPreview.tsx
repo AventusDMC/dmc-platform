@@ -290,11 +290,21 @@ export function TouringRouteAuditPreview() {
                   </td>
                   <td>
                     {(row.cleanupPreview?.actions || []).length > 0 ? (
-                      <div className="touring-audit-aliases">
-                        {(row.cleanupPreview?.actions || []).map((action) => (
-                          <code key={action.action}>{formatActionName(action.action)}</code>
-                        ))}
-                        <button type="button" className="secondary-button" onClick={() => setSelectedDryRun(row)}>
+                      <div className="touring-audit-actions">
+                        <div className="touring-audit-aliases">
+                          {(row.cleanupPreview?.actions || []).map((action) => (
+                            <code key={action.action}>{formatActionName(action.action)}</code>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-button touring-audit-dry-run-button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setSelectedDryRun(row);
+                          }}
+                        >
                           Dry-run
                         </button>
                       </div>
