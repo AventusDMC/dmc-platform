@@ -5973,6 +5973,52 @@ select option:checked {
   vertical-align: middle;
 }
 
+.touring-audit-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.touring-audit-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.touring-audit-table-wrap {
+  overflow-x: auto;
+}
+
+.touring-audit-table {
+  min-width: 1120px;
+}
+
+.touring-audit-table code,
+.touring-audit-aliases code {
+  display: inline-block;
+  padding: 0.18rem 0.35rem;
+  border-radius: 4px;
+  background: #f3f6fa;
+  color: #1f2a44;
+  font-size: 0.85rem;
+}
+
+.touring-audit-aliases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.touring-audit-warning-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: #7f1d1d;
+}
+
 /* Admin visual refresh: spacious ERP defaults without touching business logic */
 :root {
   --admin-page-max: 1600px;

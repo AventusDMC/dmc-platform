@@ -2105,11 +2105,19 @@ model TouringRoute {
   estimatedDistanceKm Float?
   estimatedDriveHours Float?
   region              String?
+  operationalType     String?
+  routeCategory       String?
   longDistance        Boolean                      @default(false)
   desertRoad          Boolean                      @default(false)
   mountainRoad        Boolean                      @default(false)
   seasonalHeatRisk    Boolean                      @default(false)
+  guideRequired       Boolean                      @default(false)
+  overnight           Boolean                      @default(false)
   sicPossible         Boolean                      @default(false)
+  departureCapable    Boolean                      @default(false)
+  capacityBased       Boolean                      @default(false)
+  primaryOperatingCity String?
+  operationalComplexity String?
   overnightRisk       Boolean                      @default(false)
   reviewNotes         String?
   active              Boolean                      @default(true)
@@ -2125,6 +2133,8 @@ model TouringRoute {
   @@index([active, name])
   @@index([startCity])
   @@index([region])
+  @@index([operationalType])
+  @@index([routeCategory])
   @@index([sicPossible])
   @@map("touring_routes")
 }

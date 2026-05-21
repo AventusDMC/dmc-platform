@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "node ../../scripts/clean-api-build-output.mjs && nest build && node ../../scripts/verify-api-build-output.mjs",
+    "build": "node scripts/clean-build-output.mjs && nest build && node scripts/verify-build-output.mjs",
     "start": "npm run build && node dist/src/main",
     "postinstall": "prisma generate",
     "start:dev": "nest start --watch",
@@ -22,6 +22,7 @@
     "seed:excursion-templates": "ts-node prisma/seeds/seed-excursion-templates.ts",
     "seed:program-templates": "ts-node prisma/seeds/seed-program-templates.ts",
     "seed:golden-touring-pricing": "ts-node prisma/seeds/seed-golden-touring-route-pricing-phase1.ts",
+    "audit:touring-routes": "ts-node src/touring-routes/touring-routes-operational-audit.cli.ts",
     "migrate:almushtari-fit-pricing": "ts-node src/vehicle-rates/almushtari-fit-pricing-migration.ts",
     "import:supplier-tariff-matrix": "ts-node src/vehicle-rates/supplier-tariff-matrix-import.ts",
     "audit:fleet-taxonomy": "ts-node prisma/seeds/audit-fleet-taxonomy-phase1.ts",
@@ -32,7 +33,7 @@
     "canonicalize:transport-catalog": "ts-node prisma/seeds/canonicalize-transport-catalog-phase1.ts",
     "reset:client-test-data": "ts-node ../../scripts/reset-client-test-data.ts",
     "repair:accepted-quote-versions": "ts-node prisma/repair-accepted-quote-versions.ts",
-    "verify:build-output": "node ../../scripts/verify-api-build-output.mjs",
+    "verify:build-output": "node scripts/verify-build-output.mjs",
     "start:prod": "npm run prisma:migrate:deploy && node ./dist/src/main.js"
   },
   "dependencies": {

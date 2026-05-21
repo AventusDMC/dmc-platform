@@ -64,6 +64,13 @@ type FindTouringRoutesInput = {
   limit?: number;
 };
 
+type TouringRouteAuditClassification =
+  | 'TOURING_ROUTE'
+  | 'ACTIVITY_CANDIDATE'
+  | 'EXCURSION_TEMPLATE_CANDIDATE'
+  | 'TRANSFER_ROUTE_CANDIDATE'
+  | 'REVIEW';
+
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
 type TouringWorkbookDecompressionError = {
@@ -194,6 +201,103 @@ function normalizeCode(value: string) {
       .replace(/^_+|_+$/g, '')
       .slice(0, 40) || 'TOURING_ROUTE'
   );
+}
+
+function normalizeCanonicalCodePart(value: string | null | undefined) {
+  return normalizeWorkbookText(value)
+    .toUpperCase()
+    .replace(/&/g, ' AND ')
+    .replace(/\bRT\b/g, 'ROUND TRIP')
+    .replace(/\bON\b/g, 'OVERNIGHT')
+    .replace(/\bOW\b/g, 'ONE WAY')
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+}
+
+export function buildCanonicalTouringRouteCode(route: {
+  name?: string | null;
+  region?: string | null;
+  startCity?: string | null;
+  mainDestinations?: unknown;
+}) {
+  const region = normalizeCanonicalCodePart(route.region || deriveTouringRouteRegion(route));
+  const routeName = normalizeCanonicalCodePart(route.name || [route.startCity, ...getTouringRouteDestinations(route)].filter(Boolean).join(' '));
+  return `JOR-TR-${region || 'GENERAL'}-${routeName || 'TOURING-ROUTE'}`.slice(0, 120);
+}
+
+function getTouringRouteDestinations(route: { mainDestinations?: unknown }) {
+  return Array.isArray(route.mainDestinations) ? route.mainDestinations.map((entry) => normalizeWorkbookText(entry)).filter(Boolean) : [];
+}
+
+function getTouringRouteText(route: {
+  code?: string | null;
+  name?: string | null;
+  startCity?: string | null;
+  routeDescription?: string | null;
+  region?: string | null;
+  reviewNotes?: string | null;
+  mainDestinations?: unknown;
+  stops?: Array<{ city?: string | null; location?: string | null; notes?: string | null }> | null;
+}) {
+  return [
+    route.code,
+    route.name,
+    route.startCity,
+    route.routeDescription,
+    route.region,
+    route.reviewNotes,
+    ...getTouringRouteDestinations(route),
+    ...(route.stops || []).flatMap((stop) => [stop.city, stop.location, stop.notes]),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function deriveTouringRouteRegion(route: { region?: string | null; startCity?: string | null; mainDestinations?: unknown; stops?: Array<{ city?: string | null; location?: string | null }> | null }) {
+  if (normalizeWorkbookText(route.region)) return normalizeWorkbookText(route.region);
+  const text = getTouringRouteText(route).toLowerCase();
+  if (/aqaba|wadi rum|petra|dana|kerak|karak|little petra/.test(text)) return 'South';
+  if (/jerash|ajloun|umm qais|pella|salt/.test(text)) return 'North';
+  if (/madaba|nebo|dead sea|bethany|desert castles|amman/.test(text)) return 'Central';
+  if (/muta|blessed tree|islamic/.test(text)) return 'Islamic';
+  return 'General';
+}
+
+function classifyTouringRouteAudit(route: {
+  code?: string | null;
+  name?: string | null;
+  durationDays?: number | null;
+  routeDescription?: string | null;
+  mainDestinations?: unknown;
+  overnightRisk?: boolean | null;
+  overnight?: boolean | null;
+  stops?: Array<{ city?: string | null; location?: string | null; notes?: string | null }> | null;
+}) {
+  const text = getTouringRouteText(route).toLowerCase();
+  const destinations = getTouringRouteDestinations(route);
+  const stopCount = route.stops?.length || 0;
+  const overnight = Boolean(route.overnight || route.overnightRisk || /\bon\b|overnight/.test(text));
+  const oneWay = /\bow\b|one way|one-way/.test(text);
+  const aqabaExperience = /aqaba/.test(text) && /glass boat|snorkel|diving|dive|yacht|berenice|south beach|marina|beach club/.test(text);
+  const simpleExcursion =
+    !overnight &&
+    Number(route.durationDays || 1) <= 1 &&
+    /day tour|full day|half day|city tour|visit|sightseeing/.test(text) &&
+    destinations.length <= 2;
+  const transferLike = oneWay && !/via|tour|visit|sightseeing|castle|nebo|madaba|jerash|ajloun|bethany|desert/.test(text) && stopCount <= 2;
+
+  if (aqabaExperience) return 'ACTIVITY_CANDIDATE' as const;
+  if (simpleExcursion) return 'EXCURSION_TEMPLATE_CANDIDATE' as const;
+  if (transferLike) return 'TRANSFER_ROUTE_CANDIDATE' as const;
+  if (!normalizeWorkbookText(route.name)) return 'REVIEW' as const;
+  return 'TOURING_ROUTE' as const;
+}
+
+function deriveOperationalComplexity(route: { durationDays?: number | null; overnightRisk?: boolean | null; overnight?: boolean | null; stops?: unknown[] | null; estimatedDriveHours?: number | null; estimatedDistanceKm?: number | null }) {
+  if (route.overnight || route.overnightRisk || Number(route.durationDays || 1) > 1) return 'HIGH';
+  if ((route.stops?.length || 0) >= 3 || Number(route.estimatedDriveHours || 0) >= 4 || Number(route.estimatedDistanceKm || 0) >= 180) return 'MEDIUM';
+  return 'LOW';
 }
 
 function normalizeOptionalNumber(value: number | null | undefined, fieldLabel: string) {
@@ -429,6 +533,79 @@ export class TouringRoutesService {
 
   async importTransportPricingRuleNormalization() {
     return this.processTransportPricingRuleNormalization('import');
+  }
+
+  async previewOperationalAudit() {
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      include: this.include(),
+      orderBy: [{ active: 'desc' }, { region: 'asc' }, { name: 'asc' }],
+    });
+    const rows: Array<ReturnType<TouringRoutesService['buildOperationalAuditRow']>> = (routes || []).map((route: any) =>
+      this.buildOperationalAuditRow(route),
+    );
+    const counts = rows.reduce(
+      (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
+        summary.total += 1;
+        summary[row.classification] = (summary[row.classification] || 0) + 1;
+        if (row.selectorEligible) summary.selectorEligible += 1;
+        return summary;
+      },
+      {
+        total: 0,
+        selectorEligible: 0,
+      } as Record<string, number>,
+    );
+
+    return {
+      success: true,
+      mode: 'preview' as const,
+      mutatesData: false,
+      canonicalCodeFormat: 'JOR-TR-{REGION}-{ROUTE-NAME}',
+      workbookLogic: {
+        normalizedWorkbookImport: 'TOURING_ROUTES / TOURING_ROUTE_STOPS / TOURING_ROUTE_RATES / VEHICLE_TYPES',
+        legacyMatrixPreview: LEGACY_MATRIX_SHEETS.join(', '),
+        tariffMatrixExport: 'VehicleRatesService.exportTouringRouteTariffMatrix uses Touring Route Code from touring_routes.code',
+      },
+      counts,
+      rows,
+    };
+  }
+
+  async exportOperationalAuditWorkbook() {
+    const audit = await this.previewOperationalAudit();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Touring Route Audit', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+    const rows = audit.rows.map((row: any) => ({
+      Id: row.id,
+      'Current Code': row.currentCode,
+      'Suggested Canonical Code': row.suggestedCanonicalCode,
+      'Legacy Aliases': row.legacyAliases.join(', '),
+      Name: row.name,
+      Region: row.region,
+      Classification: row.classification,
+      'Selector Eligible': row.selectorEligible ? 'Yes' : 'No',
+      'Candidate Target': row.candidateTarget,
+      'Operational Type': row.safeFields.operationalType,
+      'Route Category': row.safeFields.routeCategory,
+      'Guide Required': row.safeFields.guideRequired ? 'Yes' : 'No',
+      Overnight: row.safeFields.overnight ? 'Yes' : 'No',
+      'SIC Possible': row.safeFields.sicPossible ? 'Yes' : 'No',
+      'Departure Capable': row.safeFields.departureCapable ? 'Yes' : 'No',
+      'Capacity Based': row.safeFields.capacityBased ? 'Yes' : 'No',
+      'Primary Operating City': row.safeFields.primaryOperatingCity,
+      Complexity: row.safeFields.operationalComplexity,
+      Warnings: row.warnings.join(' | '),
+    }));
+    worksheet.columns = Object.keys(rows[0] || { Id: '' }).map((key) => ({ header: key, key, width: Math.max(16, key.length + 2) }));
+    worksheet.getRow(1).font = { bold: true };
+    rows.forEach((row: Record<string, unknown>) => worksheet.addRow(row));
+
+    return {
+      buffer: Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer),
+      fileName: 'touring-route-operational-audit.xlsx',
+    };
   }
 
   private async processWorkbookImport(file: { buffer?: Buffer; path?: string; originalname?: string }, mode: TouringWorkbookMode) {
@@ -899,6 +1076,66 @@ export class TouringRoutesService {
       chunks.push(items.slice(index, index + size));
     }
     return chunks;
+  }
+
+  private buildOperationalAuditRow(route: any) {
+    const classification = classifyTouringRouteAudit(route);
+    const suggestedCanonicalCode = buildCanonicalTouringRouteCode(route);
+    const currentCode = normalizeWorkbookText(route.code);
+    const region = deriveTouringRouteRegion(route);
+    const selectorEligible = classification === 'TOURING_ROUTE' && Boolean(route.active !== false);
+    const overnight = Boolean(route.overnight || route.overnightRisk || Number(route.durationDays || 1) > 1);
+    const stopCount = route.stops?.length || 0;
+    const legacyAliases = currentCode && currentCode !== suggestedCanonicalCode ? [currentCode] : [];
+    const warnings = [
+      currentCode && currentCode !== suggestedCanonicalCode ? 'Current code should be preserved as alias/history only' : '',
+      classification === 'ACTIVITY_CANDIDATE' ? 'Aqaba experience should be reviewed for Activity inventory' : '',
+      classification === 'EXCURSION_TEMPLATE_CANDIDATE' ? 'Simple day tour should be reviewed for Excursion Template inventory' : '',
+      classification === 'TRANSFER_ROUTE_CANDIDATE' ? 'One-way operational movement should be reviewed outside Touring Routes' : '',
+    ].filter(Boolean);
+
+    return {
+      id: route.id,
+      currentCode,
+      suggestedCanonicalCode,
+      legacyAliases,
+      name: route.name,
+      active: route.active !== false,
+      region,
+      classification: classification as TouringRouteAuditClassification,
+      selectorEligible,
+      candidateTarget:
+        classification === 'ACTIVITY_CANDIDATE'
+          ? 'ACTIVITY'
+          : classification === 'EXCURSION_TEMPLATE_CANDIDATE'
+            ? 'EXCURSION_TEMPLATE'
+            : classification === 'TRANSFER_ROUTE_CANDIDATE'
+              ? 'OPERATIONAL_TRANSFER'
+              : 'TOURING_ROUTE',
+      safeFields: {
+        region,
+        operationalType: 'ROUTING_SKELETON',
+        routeCategory:
+          classification === 'TOURING_ROUTE'
+            ? overnight
+              ? 'MULTI_DAY_OR_OVERNIGHT'
+              : 'TOURING_ROUTE'
+            : classification,
+        guideRequired: classification === 'TOURING_ROUTE',
+        overnight,
+        sicPossible: Boolean(route.sicPossible),
+        departureCapable: classification === 'TOURING_ROUTE' && Boolean(route.sicPossible),
+        capacityBased: Boolean((route.pricings || []).some((pricing: any) => pricing.pricingBasis === 'PER_VEHICLE' && Number(pricing.maxPax || 0) > 0)),
+        primaryOperatingCity: normalizeWorkbookText(route.primaryOperatingCity || route.startCity),
+        operationalComplexity: deriveOperationalComplexity(route),
+      },
+      metrics: {
+        durationDays: route.durationDays || 1,
+        stopCount,
+        pricingCount: route.pricings?.length || 0,
+      },
+      warnings,
+    };
   }
 
   private include() {
