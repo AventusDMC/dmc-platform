@@ -10,7 +10,14 @@ const apiRoot = process.cwd().endsWith(join('apps', 'api')) ? process.cwd() : jo
 const schemaSource = readFileSync(join(apiRoot, 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(apiRoot, 'src', 'touring-routes', 'touring-routes.controller.ts'), 'utf8');
 
-function createAuditPrismaMock(routes: any[]) {
+function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {}) {
+  const countFor = (modelName: string) => async ({ where }: any = {}) => {
+    const routeId = where?.touringRouteId || 'none';
+    const activeKey =
+      where?.quote?.status || where?.booking?.status || where?.active === true || where?.booking?.seriesDeparture ? ':active' : '';
+    return counts[`${modelName}:${routeId}${activeKey}`] ?? counts[`${modelName}:${routeId}`] ?? 0;
+  };
+
   return {
     touringRoute: {
       findMany: async () => routes,
@@ -29,6 +36,30 @@ function createAuditPrismaMock(routes: any[]) {
       },
       update: async () => {
         throw new Error('audit preview must not update pricing rows');
+      },
+    },
+    quoteItem: {
+      count: countFor('quoteItem'),
+      update: async () => {
+        throw new Error('audit preview must not update quote items');
+      },
+    },
+    excursionTemplateComponent: {
+      count: countFor('excursionTemplateComponent'),
+      update: async () => {
+        throw new Error('audit preview must not update excursion template components');
+      },
+    },
+    packageTemplateComponent: {
+      count: countFor('packageTemplateComponent'),
+      update: async () => {
+        throw new Error('audit preview must not update package template components');
+      },
+    },
+    bookingService: {
+      count: countFor('bookingService'),
+      update: async () => {
+        throw new Error('audit preview must not update booking services');
       },
     },
   };
@@ -353,5 +384,57 @@ test('touring route audit export writes preview rows without mutating data', asy
   assert.equal(rows[0]['Suggested Canonical Code'], 'JOR-TR-SOUTH-AMMAN-MADABA-NEBO-PETRA-OVERNIGHT');
   assert.equal(rows[0]['Cleanup Recommendation'], 'KEEP_AS_TOURING_ROUTE');
   assert.equal(rows[0]['Legacy Aliases'], 'JOR-TR-001');
+});
+
+test('touring route cleanup execution preview reports impact and actions without mutation', async () => {
+  const service = new TouringRoutesService(
+    createAuditPrismaMock(
+      [
+        {
+          id: 'petra-day',
+          code: 'PETRA-FD',
+          name: 'Petra Full Day Tour',
+          startCity: 'Amman',
+          durationDays: 1,
+          region: 'South',
+          active: true,
+          mainDestinations: ['Petra'],
+          stops: [{ order: 1, city: 'Petra' }],
+          pricings: [],
+        },
+      ],
+      {
+        'quoteItem:petra-day': 3,
+        'quoteItem:petra-day:active': 1,
+        'excursionTemplateComponent:petra-day': 2,
+        'excursionTemplateComponent:petra-day:active': 1,
+        'packageTemplateComponent:petra-day': 1,
+        'packageTemplateComponent:petra-day:active': 1,
+        'bookingService:petra-day': 2,
+        'bookingService:petra-day:active': 1,
+      },
+    ) as any,
+  );
+
+  const audit = (await service.previewOperationalAudit()) as any;
+  const row = audit.rows[0];
+
+  assert.equal(row.cleanupRecommendation, 'CONVERT_TO_EXCURSION_TEMPLATE');
+  assert.equal(row.cleanupPreview.mutatesData, false);
+  assert.equal(row.cleanupPreview.safeToConvert, false);
+  assert.deepEqual(
+    row.cleanupPreview.actions.map((action: any) => action.action),
+    ['convertToExcursionTemplatePreview', 'archiveTouringRoutePreview'],
+  );
+  assert.equal(row.cleanupPreview.impact.affectedQuotes.total, 3);
+  assert.equal(row.cleanupPreview.impact.affectedQuotes.active, 1);
+  assert.equal(row.cleanupPreview.impact.affectedTemplates.total, 3);
+  assert.equal(row.cleanupPreview.impact.affectedBookings.total, 2);
+  assert.equal(row.cleanupPreview.impact.affectedBookings.active, 1);
+  assert.equal(row.cleanupPreview.impact.affectedSelectorReferences.total, 4);
+  assert.equal(row.cleanupPreview.impact.affectedRouteAliases.preserved, true);
+  assert.match(row.warnings.join(' | '), /Production usage detected/);
+  assert.match(row.warnings.join(' | '), /Active quote references detected/);
+  assert.match(row.warnings.join(' | '), /Active booking references detected/);
 });
 }

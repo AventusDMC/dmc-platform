@@ -78,6 +78,12 @@ type TouringRouteCleanupRecommendation =
   | 'MOVE_TO_TRANSFER_ROUTE'
   | 'MANUAL_REVIEW';
 
+type TouringRouteCleanupPreviewActionName =
+  | 'convertToActivityMasterPreview'
+  | 'convertToExcursionTemplatePreview'
+  | 'convertToTransferRoutePreview'
+  | 'archiveTouringRoutePreview';
+
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
 type TouringWorkbookDecompressionError = {
@@ -573,11 +579,9 @@ export class TouringRoutesService {
       include: this.include(),
       orderBy: [{ active: 'desc' }, { region: 'asc' }, { name: 'asc' }],
     });
-    const rows: Array<ReturnType<TouringRoutesService['buildOperationalAuditRow']>> = (routes || []).map((route: any) =>
-      this.buildOperationalAuditRow(route),
-    );
+    const rows = await Promise.all((routes || []).map((route: any) => this.buildOperationalAuditRow(route)));
     const counts = rows.reduce(
-      (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
+      (summary: Record<string, number>, row) => {
         summary.total += 1;
         summary[row.classification] = (summary[row.classification] || 0) + 1;
         summary[`recommendation:${row.cleanupRecommendation}`] = (summary[`recommendation:${row.cleanupRecommendation}`] || 0) + 1;
@@ -590,7 +594,7 @@ export class TouringRoutesService {
       } as Record<string, number>,
     );
     const recommendationCounts = rows.reduce(
-      (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
+      (summary: Record<string, number>, row) => {
         summary[row.cleanupRecommendation] = (summary[row.cleanupRecommendation] || 0) + 1;
         return summary;
       },
@@ -1121,7 +1125,7 @@ export class TouringRoutesService {
     return chunks;
   }
 
-  private buildOperationalAuditRow(route: any) {
+  private async buildOperationalAuditRow(route: any) {
     const classification = classifyTouringRouteAudit(route);
     const cleanupRecommendation = recommendTouringRouteCleanup(route, classification);
     const suggestedCanonicalCode = buildCanonicalTouringRouteCode(route);
@@ -1131,12 +1135,20 @@ export class TouringRoutesService {
     const overnight = Boolean(route.overnight || route.overnightRisk || Number(route.durationDays || 1) > 1);
     const stopCount = route.stops?.length || 0;
     const legacyAliases = currentCode && currentCode !== suggestedCanonicalCode ? [currentCode] : [];
+    const cleanupImpact = await this.buildCleanupImpactPreview(route, legacyAliases);
+    const cleanupWarnings = this.buildCleanupPreviewWarnings(cleanupImpact);
     const warnings = [
       currentCode && currentCode !== suggestedCanonicalCode ? 'Current code should be preserved as alias/history only' : '',
       classification === 'ACTIVITY_CANDIDATE' ? 'Aqaba experience should be reviewed for Activity inventory' : '',
       classification === 'EXCURSION_TEMPLATE_CANDIDATE' ? 'Simple day tour should be reviewed for Excursion Template inventory' : '',
       classification === 'TRANSFER_ROUTE_CANDIDATE' ? 'One-way operational movement should be reviewed outside Touring Routes' : '',
+      ...cleanupWarnings,
     ].filter(Boolean);
+    const safeToConvert =
+      cleanupRecommendation !== 'MANUAL_REVIEW' &&
+      cleanupImpact.affectedQuotes.active === 0 &&
+      cleanupImpact.affectedBookings.active === 0 &&
+      cleanupImpact.affectedDepartures.total === 0;
 
     return {
       id: route.id,
@@ -1148,6 +1160,12 @@ export class TouringRoutesService {
       region,
       classification: classification as TouringRouteAuditClassification,
       cleanupRecommendation: cleanupRecommendation as TouringRouteCleanupRecommendation,
+      cleanupPreview: {
+        mutatesData: false,
+        safeToConvert,
+        impact: cleanupImpact,
+        actions: this.buildCleanupPreviewActions(cleanupRecommendation, cleanupImpact, safeToConvert),
+      },
       selectorEligible,
       candidateTarget:
         classification === 'ACTIVITY_CANDIDATE'
@@ -1181,6 +1199,130 @@ export class TouringRoutesService {
       },
       warnings,
     };
+  }
+
+  private async buildCleanupImpactPreview(route: any, legacyAliases: string[]) {
+    const id = route.id;
+    const quoteItems = await this.safeCount('quoteItem', { touringRouteId: id });
+    const activeQuoteItems = await this.safeCount('quoteItem', {
+      touringRouteId: id,
+      quote: { status: { in: ['DRAFT', 'READY', 'SENT', 'ACCEPTED', 'CONFIRMED', 'REVISION_REQUESTED'] } },
+    });
+    const excursionTemplateComponents = await this.safeCount('excursionTemplateComponent', { touringRouteId: id });
+    const activeExcursionTemplateComponents = await this.safeCount('excursionTemplateComponent', { touringRouteId: id, active: true });
+    const packageTemplateComponents = await this.safeCount('packageTemplateComponent', { touringRouteId: id });
+    const activePackageTemplateComponents = await this.safeCount('packageTemplateComponent', { touringRouteId: id, active: true });
+    const bookingServices = await this.safeCount('bookingService', { touringRouteId: id });
+    const activeBookingServices = await this.safeCount('bookingService', {
+      touringRouteId: id,
+      booking: { status: { in: ['draft', 'confirmed', 'in_progress'] } },
+    });
+    const departureServices = await this.safeCount('bookingService', {
+      touringRouteId: id,
+      booking: { seriesDeparture: { isNot: null } },
+    });
+
+    return {
+      affectedQuotes: {
+        total: quoteItems,
+        active: activeQuoteItems,
+      },
+      affectedTemplates: {
+        total: excursionTemplateComponents + packageTemplateComponents,
+        active: activeExcursionTemplateComponents + activePackageTemplateComponents,
+        excursionTemplateComponents,
+        packageTemplateComponents,
+      },
+      affectedBookings: {
+        total: bookingServices,
+        active: activeBookingServices,
+      },
+      affectedSelectorReferences: {
+        total: activeQuoteItems + activeExcursionTemplateComponents + activePackageTemplateComponents + activeBookingServices,
+        quoteItems: activeQuoteItems,
+        excursionTemplateComponents: activeExcursionTemplateComponents,
+        packageTemplateComponents: activePackageTemplateComponents,
+        bookingServices: activeBookingServices,
+      },
+      affectedRouteAliases: {
+        total: legacyAliases.length,
+        aliases: legacyAliases,
+        preserved: true,
+      },
+      affectedDepartures: {
+        total: departureServices,
+      },
+    };
+  }
+
+  private async safeCount(modelName: string, where: Record<string, unknown>) {
+    const model = (this.prisma as any)?.[modelName];
+    if (!model?.count) return 0;
+    try {
+      return await model.count({ where });
+    } catch {
+      return 0;
+    }
+  }
+
+  private buildCleanupPreviewWarnings(impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>) {
+    return [
+      impact.affectedQuotes.total > 0 || impact.affectedBookings.total > 0 || impact.affectedTemplates.total > 0
+        ? 'Production usage detected; cleanup must remain preview-only until explicitly approved'
+        : '',
+      impact.affectedQuotes.active > 0 ? 'Active quote references detected' : '',
+      impact.affectedBookings.active > 0 ? 'Active booking references detected' : '',
+      impact.affectedDepartures.total > 0 ? 'Departure references detected' : '',
+    ].filter(Boolean);
+  }
+
+  private buildCleanupPreviewActions(
+    recommendation: TouringRouteCleanupRecommendation,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    safeToConvert: boolean,
+  ) {
+    const actionForRecommendation: Partial<Record<TouringRouteCleanupRecommendation, TouringRouteCleanupPreviewActionName>> = {
+      MOVE_TO_ACTIVITY_MASTER: 'convertToActivityMasterPreview',
+      CONVERT_TO_EXCURSION_TEMPLATE: 'convertToExcursionTemplatePreview',
+      MOVE_TO_TRANSFER_ROUTE: 'convertToTransferRoutePreview',
+    };
+    const primaryAction = actionForRecommendation[recommendation];
+    const actions: Array<{
+      action: TouringRouteCleanupPreviewActionName;
+      available: boolean;
+      safeToConvert: boolean;
+      mutatesData: false;
+      preservesHistoricalAliases: true;
+      impact: typeof impact;
+      warnings: string[];
+    }> = [];
+    const warnings = this.buildCleanupPreviewWarnings(impact);
+
+    if (primaryAction) {
+      actions.push({
+        action: primaryAction,
+        available: true,
+        safeToConvert,
+        mutatesData: false,
+        preservesHistoricalAliases: true,
+        impact,
+        warnings,
+      });
+    }
+
+    if (recommendation !== 'KEEP_AS_TOURING_ROUTE') {
+      actions.push({
+        action: 'archiveTouringRoutePreview',
+        available: true,
+        safeToConvert,
+        mutatesData: false,
+        preservesHistoricalAliases: true,
+        impact,
+        warnings,
+      });
+    }
+
+    return actions;
   }
 
   private include() {

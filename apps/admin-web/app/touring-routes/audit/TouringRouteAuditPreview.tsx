@@ -19,6 +19,26 @@ type AuditRow = {
   region: string;
   classification: AuditClassification;
   cleanupRecommendation: string;
+  cleanupPreview?: {
+    mutatesData: boolean;
+    safeToConvert: boolean;
+    impact: {
+      affectedQuotes: { total: number; active: number };
+      affectedTemplates: { total: number; active: number; excursionTemplateComponents?: number; packageTemplateComponents?: number };
+      affectedBookings: { total: number; active: number };
+      affectedSelectorReferences: { total: number };
+      affectedRouteAliases: { total: number; aliases: string[]; preserved: boolean };
+      affectedDepartures: { total: number };
+    };
+    actions: Array<{
+      action: string;
+      available: boolean;
+      safeToConvert: boolean;
+      mutatesData: boolean;
+      preservesHistoricalAliases: boolean;
+      warnings: string[];
+    }>;
+  };
   selectorEligible: boolean;
   candidateTarget: string;
   safeFields?: {
@@ -205,6 +225,8 @@ export function TouringRouteAuditPreview() {
                 <th>Route</th>
                 <th>Classification</th>
                 <th>Recommendation</th>
+                <th>Preview Actions</th>
+                <th>Impact</th>
                 <th>Canonical Code</th>
                 <th>Legacy Aliases</th>
                 <th>Selector</th>
@@ -225,6 +247,21 @@ export function TouringRouteAuditPreview() {
                   </td>
                   <td>
                     <RecommendationBadge recommendation={row.cleanupRecommendation} />
+                    <div className="table-subcopy">{row.cleanupPreview?.safeToConvert ? 'Safe to convert' : 'Review before converting'}</div>
+                  </td>
+                  <td>
+                    {(row.cleanupPreview?.actions || []).length > 0 ? (
+                      <div className="touring-audit-aliases">
+                        {(row.cleanupPreview?.actions || []).map((action) => (
+                          <code key={action.action}>{formatActionName(action.action)}</code>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="table-subcopy">No cleanup action</span>
+                    )}
+                  </td>
+                  <td>
+                    <ImpactSummary row={row} />
                   </td>
                   <td>
                     <code>{row.suggestedCanonicalCode}</code>
@@ -294,6 +331,29 @@ function ClassificationBadge({ classification }: { classification: string }) {
 function RecommendationBadge({ recommendation }: { recommendation: string }) {
   const label = RECOMMENDATION_LABELS[recommendation] || recommendation;
   return <span className={`status-badge touring-audit-badge touring-audit-badge-${recommendation.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
+}
+
+function ImpactSummary({ row }: { row: AuditRow }) {
+  const impact = row.cleanupPreview?.impact;
+  if (!impact) return <span className="table-subcopy">No impact preview</span>;
+
+  return (
+    <div className="table-subcopy">
+      <div>Quotes: {formatNumber(impact.affectedQuotes.total)} ({formatNumber(impact.affectedQuotes.active)} active)</div>
+      <div>Templates: {formatNumber(impact.affectedTemplates.total)}</div>
+      <div>Bookings: {formatNumber(impact.affectedBookings.total)} ({formatNumber(impact.affectedBookings.active)} active)</div>
+      <div>Selectors: {formatNumber(impact.affectedSelectorReferences.total)}</div>
+      <div>Aliases: {formatNumber(impact.affectedRouteAliases.total)} preserved</div>
+      <div>Departures: {formatNumber(impact.affectedDepartures.total)}</div>
+    </div>
+  );
+}
+
+function formatActionName(action: string) {
+  return action
+    .replace(/Preview$/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/^./, (value) => value.toUpperCase());
 }
 
 function formatNumber(value: number) {
