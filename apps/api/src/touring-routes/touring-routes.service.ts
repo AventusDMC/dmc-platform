@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
+import { AuthenticatedActor } from '../auth/auth.types';
+import { requireActorCompanyId } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -70,6 +72,36 @@ type TouringRouteAuditClassification =
   | 'EXCURSION_TEMPLATE_CANDIDATE'
   | 'TRANSFER_ROUTE_CANDIDATE'
   | 'REVIEW';
+
+type TouringRouteCleanupRecommendation =
+  | 'KEEP_AS_TOURING_ROUTE'
+  | 'MOVE_TO_ACTIVITY_MASTER'
+  | 'CONVERT_TO_EXCURSION_TEMPLATE'
+  | 'MOVE_TO_TRANSFER_ROUTE'
+  | 'MANUAL_REVIEW';
+
+type TouringRouteCleanupPreviewActionName =
+  | 'convertToActivityMasterPreview'
+  | 'convertToExcursionTemplatePreview'
+  | 'convertToTransferRoutePreview'
+  | 'archiveTouringRoutePreview';
+
+type TouringRouteCleanupDryRunActionName =
+  | 'executeConvertToActivityMasterDryRun'
+  | 'executeConvertToExcursionTemplateDryRun'
+  | 'executeConvertToTransferRouteDryRun'
+  | 'executeArchiveTouringRouteDryRun';
+
+type ExecuteConvertToActivityMasterInput = {
+  dryRunAction?: string | null;
+  dryRunConfirmed?: boolean | null;
+  confirmationText?: string | null;
+};
+
+type RollbackConvertToActivityMasterInput = {
+  activityId?: string | null;
+  confirmationText?: string | null;
+};
 
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
@@ -215,6 +247,16 @@ function normalizeCanonicalCodePart(value: string | null | undefined) {
     .replace(/-+/g, '-');
 }
 
+function buildActivityMasterCodeFromTouringRoute(route: {
+  name?: string | null;
+  code?: string | null;
+  region?: string | null;
+  startCity?: string | null;
+  mainDestinations?: unknown;
+}) {
+  return buildCanonicalTouringRouteCode(route).replace(/^JOR-TR-/, 'JOR-ACT-').slice(0, 120);
+}
+
 export function buildCanonicalTouringRouteCode(route: {
   name?: string | null;
   region?: string | null;
@@ -292,6 +334,32 @@ function classifyTouringRouteAudit(route: {
   if (transferLike) return 'TRANSFER_ROUTE_CANDIDATE' as const;
   if (!normalizeWorkbookText(route.name)) return 'REVIEW' as const;
   return 'TOURING_ROUTE' as const;
+}
+
+function recommendTouringRouteCleanup(
+  route: {
+    code?: string | null;
+    name?: string | null;
+    durationDays?: number | null;
+    routeDescription?: string | null;
+    mainDestinations?: unknown;
+    overnightRisk?: boolean | null;
+    overnight?: boolean | null;
+    stops?: Array<{ city?: string | null; location?: string | null; notes?: string | null }> | null;
+  },
+  classification: TouringRouteAuditClassification,
+): TouringRouteCleanupRecommendation {
+  const text = getTouringRouteText(route).toLowerCase();
+  const stopCount = route.stops?.length || 0;
+
+  if (classification === 'ACTIVITY_CANDIDATE') return 'MOVE_TO_ACTIVITY_MASTER';
+  if (classification === 'EXCURSION_TEMPLATE_CANDIDATE') return 'CONVERT_TO_EXCURSION_TEMPLATE';
+  if (classification === 'REVIEW') return 'MANUAL_REVIEW';
+  if (classification === 'TRANSFER_ROUTE_CANDIDATE') {
+    return /camp|campsite|camp area|disi/.test(text) && stopCount > 1 ? 'MANUAL_REVIEW' : 'MOVE_TO_TRANSFER_ROUTE';
+  }
+
+  return 'KEEP_AS_TOURING_ROUTE';
 }
 
 function deriveOperationalComplexity(route: { durationDays?: number | null; overnightRisk?: boolean | null; overnight?: boolean | null; stops?: unknown[] | null; estimatedDriveHours?: number | null; estimatedDistanceKm?: number | null }) {
@@ -540,13 +608,12 @@ export class TouringRoutesService {
       include: this.include(),
       orderBy: [{ active: 'desc' }, { region: 'asc' }, { name: 'asc' }],
     });
-    const rows: Array<ReturnType<TouringRoutesService['buildOperationalAuditRow']>> = (routes || []).map((route: any) =>
-      this.buildOperationalAuditRow(route),
-    );
+    const rows = await Promise.all((routes || []).map((route: any) => this.buildOperationalAuditRow(route)));
     const counts = rows.reduce(
-      (summary: Record<string, number>, row: ReturnType<TouringRoutesService['buildOperationalAuditRow']>) => {
+      (summary: Record<string, number>, row) => {
         summary.total += 1;
         summary[row.classification] = (summary[row.classification] || 0) + 1;
+        summary[`recommendation:${row.cleanupRecommendation}`] = (summary[`recommendation:${row.cleanupRecommendation}`] || 0) + 1;
         if (row.selectorEligible) summary.selectorEligible += 1;
         return summary;
       },
@@ -554,6 +621,13 @@ export class TouringRoutesService {
         total: 0,
         selectorEligible: 0,
       } as Record<string, number>,
+    );
+    const recommendationCounts = rows.reduce(
+      (summary: Record<string, number>, row) => {
+        summary[row.cleanupRecommendation] = (summary[row.cleanupRecommendation] || 0) + 1;
+        return summary;
+      },
+      {} as Record<string, number>,
     );
 
     return {
@@ -567,7 +641,273 @@ export class TouringRoutesService {
         tariffMatrixExport: 'VehicleRatesService.exportTouringRouteTariffMatrix uses Touring Route Code from touring_routes.code',
       },
       counts,
+      recommendationCounts,
       rows,
+    };
+  }
+
+  async executeConvertToActivityMaster(id: string, input: ExecuteConvertToActivityMasterInput, actor: AuthenticatedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const confirmationText = normalizeWorkbookText(input?.confirmationText);
+    const requiredConfirmation = 'I understand this affects operational taxonomy';
+
+    if (confirmationText !== requiredConfirmation) {
+      throw new BadRequestException(`Confirmation text must exactly match: ${requiredConfirmation}`);
+    }
+    if (!input?.dryRunConfirmed || input?.dryRunAction !== 'executeConvertToActivityMasterDryRun') {
+      throw new BadRequestException('Activity Master conversion requires the matching dry-run preview first.');
+    }
+
+    const route = await this.findOne(id);
+    const auditRow = await this.buildOperationalAuditRow(route);
+    const activityDryRun = (auditRow.cleanupPreview.executionDryRuns || []).find(
+      (dryRun: any) => dryRun.action === 'executeConvertToActivityMasterDryRun',
+    );
+
+    if (auditRow.cleanupRecommendation !== 'MOVE_TO_ACTIVITY_MASTER' || auditRow.classification !== 'ACTIVITY_CANDIDATE') {
+      throw new BadRequestException('Only low-risk Activity Master candidates can be executed by this action.');
+    }
+    if (!activityDryRun || activityDryRun.mode !== 'DRY_RUN_ONLY') {
+      throw new BadRequestException('Activity Master dry-run preview is unavailable for this touring route.');
+    }
+    if (!activityDryRun.safeToExecute || Number(activityDryRun.safeExecutionScore || 0) < 80) {
+      throw new BadRequestException('Activity Master conversion is blocked by safe execution score.');
+    }
+    if (activityDryRun.conflicts?.existingActivityDuplicates > 0 || activityDryRun.conflicts?.hasConflicts) {
+      throw new BadRequestException('Activity Master conversion is blocked by cleanup conflicts.');
+    }
+    if (auditRow.cleanupPreview.impact.affectedBookings.active > 0) {
+      throw new BadRequestException('Activity Master conversion is blocked by active booking conflicts.');
+    }
+    if (route.active === false) {
+      throw new BadRequestException('Archived touring routes cannot be converted.');
+    }
+
+    const activityCode = buildActivityMasterCodeFromTouringRoute(route);
+    const duplicateActivity = await (this.prisma as any).activity.findFirst({
+      where: {
+        OR: [
+          { code: { equals: activityCode, mode: 'insensitive' } },
+          { name: { equals: normalizeWorkbookText(route.name), mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, code: true, name: true },
+    });
+
+    if (duplicateActivity) {
+      throw new BadRequestException(`Activity Master duplicate detected for ${duplicateActivity.code || duplicateActivity.name}.`);
+    }
+
+    const executedAt = new Date();
+    const legacyAliases = auditRow.legacyAliases || [];
+    const rollbackSnapshot = activityDryRun.rollbackSnapshotPreview;
+    const routeHistoryNote = [
+      `[${executedAt.toISOString()}] Converted to Activity Master ${activityCode}.`,
+      'Original touring route archived and hidden from selectors via active=false.',
+      `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+      `Rollback snapshot: ${JSON.stringify({
+        routeId: route.id,
+        routeCode: route.code,
+        routeName: route.name,
+        active: route.active !== false,
+        activityCode,
+      })}`,
+    ].join(' ');
+    const reviewNotes = [normalizeWorkbookText(route.reviewNotes), routeHistoryNote].filter(Boolean).join('\n');
+    const routeStops = route.stops || [];
+    const firstStop = routeStops[0];
+    const lastStop = routeStops[routeStops.length - 1];
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const activity = await (tx as any).activity.create({
+        data: {
+          code: activityCode,
+          name: route.name,
+          description: route.routeDescription || `Converted from touring route ${route.code}.`,
+          category: 'Activity / Experience',
+          city: auditRow.safeFields.primaryOperatingCity || route.startCity || 'Aqaba',
+          region: auditRow.region || route.region || 'Aqaba',
+          supplierCompanyId: companyId,
+          pricingBasis: 'PER_GROUP',
+          costPrice: 0,
+          sellPrice: 0,
+          durationHours: route.includedHours ?? null,
+          guideRequired: Boolean(auditRow.safeFields.guideRequired),
+          sicPossible: Boolean(route.sicPossible),
+          familyFriendly: false,
+          startPoint: firstStop?.location || firstStop?.city || route.startCity || null,
+          endPoint: lastStop?.location || lastStop?.city || route.startCity || null,
+          operationalNotes: [
+            `Created by Touring Route cleanup executor from route ${route.code} (${route.id}).`,
+            'Tariffs/pricing intentionally initialized to zero for Activity Master review.',
+          ].join(' '),
+          categoryTags: ['Touring Route Cleanup', 'Activity Master', 'Aqaba'],
+          reviewNotes: [
+            `Source touring route id: ${route.id}`,
+            `Source touring route code: ${route.code}`,
+            `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}`,
+          ].join('\n'),
+          active: true,
+        },
+      });
+
+      const archivedRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: {
+          active: false,
+          reviewNotes,
+        },
+        include: this.include(),
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId,
+          userId: actor.id,
+          action: 'touring_route.convert_to_activity_master',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'EXECUTE_ONE_ROW',
+            supportedRecommendation: 'MOVE_TO_ACTIVITY_MASTER',
+            activityId: activity.id,
+            activityCode: activity.code,
+            dryRunAction: input.dryRunAction,
+            safeExecutionScore: activityDryRun.safeExecutionScore,
+            rollbackSnapshot,
+            referenceMigrationPreview: activityDryRun.referenceMigrationPreview,
+            preservesHistoricalAliases: true,
+            deletesOriginalTouringRoute: false,
+            archivedOriginalTouringRoute: true,
+            hiddenFromSelectors: true,
+          },
+        },
+      });
+
+      return { activity, archivedRoute };
+    });
+
+    return {
+      success: true,
+      action: 'executeConvertToActivityMaster',
+      mode: 'EXECUTE_ONE_ROW',
+      supportedRecommendation: 'MOVE_TO_ACTIVITY_MASTER',
+      activity: {
+        id: result.activity.id,
+        code: result.activity.code,
+        name: result.activity.name,
+        active: result.activity.active,
+      },
+      touringRoute: {
+        id: result.archivedRoute.id,
+        code: result.archivedRoute.code,
+        name: result.archivedRoute.name,
+        active: result.archivedRoute.active,
+        hiddenFromSelectors: result.archivedRoute.active === false,
+        preservedHistorically: true,
+      },
+      rollbackSupport: {
+        supported: true,
+        snapshot: rollbackSnapshot,
+        restorePlan: [
+          'Deactivate or review the linked Activity Master record.',
+          'Restore the original touring route active state from the audit log snapshot.',
+          'Keep historical aliases and review notes intact.',
+        ],
+      },
+      auditTrail: {
+        action: 'touring_route.convert_to_activity_master',
+        logged: true,
+      },
+    };
+  }
+
+  async rollbackConvertToActivityMaster(id: string, input: RollbackConvertToActivityMasterInput, actor: AuthenticatedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const confirmationText = normalizeWorkbookText(input?.confirmationText);
+    const activityId = normalizeWorkbookText(input?.activityId);
+    const requiredConfirmation = 'I understand this affects operational taxonomy';
+
+    if (confirmationText !== requiredConfirmation) {
+      throw new BadRequestException(`Confirmation text must exactly match: ${requiredConfirmation}`);
+    }
+    if (!activityId) {
+      throw new BadRequestException('Linked Activity Master id is required for rollback.');
+    }
+
+    const route = await this.findOne(id);
+    const activity = await (this.prisma as any).activity.findUnique({
+      where: { id: activityId },
+      select: { id: true, code: true, name: true, active: true, reviewNotes: true },
+    });
+
+    if (!activity) {
+      throw new BadRequestException('Linked Activity Master record was not found.');
+    }
+    if (!normalizeWorkbookText(activity.reviewNotes).includes(`Source touring route id: ${route.id}`)) {
+      throw new BadRequestException('Activity Master record is not linked to this touring route cleanup conversion.');
+    }
+
+    const executedAt = new Date();
+    const rollbackNote = `[${executedAt.toISOString()}] Rolled back Activity Master conversion ${activity.code || activity.id}. Activity deactivated; touring route restored for selectors.`;
+    const reviewNotes = [normalizeWorkbookText(route.reviewNotes), rollbackNote].filter(Boolean).join('\n');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const restoredRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: {
+          active: true,
+          reviewNotes,
+        },
+        include: this.include(),
+      });
+      const deactivatedActivity = await (tx as any).activity.update({
+        where: { id: activity.id },
+        data: {
+          active: false,
+          reviewNotes: [normalizeWorkbookText(activity.reviewNotes), rollbackNote].filter(Boolean).join('\n'),
+        },
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId,
+          userId: actor.id,
+          action: 'touring_route.rollback_activity_master_conversion',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'ROLLBACK_ONE_ROW',
+            activityId: activity.id,
+            activityCode: activity.code,
+            restoresTouringRouteSelectorVisibility: true,
+            deletesData: false,
+          },
+        },
+      });
+
+      return { restoredRoute, deactivatedActivity };
+    });
+
+    return {
+      success: true,
+      action: 'rollbackConvertToActivityMaster',
+      mode: 'ROLLBACK_ONE_ROW',
+      activity: {
+        id: result.deactivatedActivity.id,
+        code: result.deactivatedActivity.code,
+        active: result.deactivatedActivity.active,
+      },
+      touringRoute: {
+        id: result.restoredRoute.id,
+        code: result.restoredRoute.code,
+        active: result.restoredRoute.active,
+        selectorVisible: result.restoredRoute.active !== false,
+      },
+      auditTrail: {
+        action: 'touring_route.rollback_activity_master_conversion',
+        logged: true,
+      },
     };
   }
 
@@ -585,6 +925,7 @@ export class TouringRoutesService {
       Name: row.name,
       Region: row.region,
       Classification: row.classification,
+      'Cleanup Recommendation': row.cleanupRecommendation,
       'Selector Eligible': row.selectorEligible ? 'Yes' : 'No',
       'Candidate Target': row.candidateTarget,
       'Operational Type': row.safeFields.operationalType,
@@ -1078,8 +1419,9 @@ export class TouringRoutesService {
     return chunks;
   }
 
-  private buildOperationalAuditRow(route: any) {
+  private async buildOperationalAuditRow(route: any) {
     const classification = classifyTouringRouteAudit(route);
+    const cleanupRecommendation = recommendTouringRouteCleanup(route, classification);
     const suggestedCanonicalCode = buildCanonicalTouringRouteCode(route);
     const currentCode = normalizeWorkbookText(route.code);
     const region = deriveTouringRouteRegion(route);
@@ -1087,12 +1429,20 @@ export class TouringRoutesService {
     const overnight = Boolean(route.overnight || route.overnightRisk || Number(route.durationDays || 1) > 1);
     const stopCount = route.stops?.length || 0;
     const legacyAliases = currentCode && currentCode !== suggestedCanonicalCode ? [currentCode] : [];
+    const cleanupImpact = await this.buildCleanupImpactPreview(route, legacyAliases);
+    const cleanupWarnings = this.buildCleanupPreviewWarnings(cleanupImpact);
     const warnings = [
       currentCode && currentCode !== suggestedCanonicalCode ? 'Current code should be preserved as alias/history only' : '',
       classification === 'ACTIVITY_CANDIDATE' ? 'Aqaba experience should be reviewed for Activity inventory' : '',
       classification === 'EXCURSION_TEMPLATE_CANDIDATE' ? 'Simple day tour should be reviewed for Excursion Template inventory' : '',
       classification === 'TRANSFER_ROUTE_CANDIDATE' ? 'One-way operational movement should be reviewed outside Touring Routes' : '',
+      ...cleanupWarnings,
     ].filter(Boolean);
+    const safeToConvert =
+      cleanupRecommendation !== 'MANUAL_REVIEW' &&
+      cleanupImpact.affectedQuotes.active === 0 &&
+      cleanupImpact.affectedBookings.active === 0 &&
+      cleanupImpact.affectedDepartures.total === 0;
 
     return {
       id: route.id,
@@ -1103,6 +1453,18 @@ export class TouringRoutesService {
       active: route.active !== false,
       region,
       classification: classification as TouringRouteAuditClassification,
+      cleanupRecommendation: cleanupRecommendation as TouringRouteCleanupRecommendation,
+      cleanupPreview: {
+        mutatesData: false,
+        safeToConvert,
+        impact: cleanupImpact,
+        actions: this.buildCleanupPreviewActions(cleanupRecommendation, cleanupImpact, safeToConvert),
+        executionDryRuns: await this.buildCleanupExecutionDryRuns(route, cleanupRecommendation, cleanupImpact, safeToConvert, {
+          currentCode,
+          suggestedCanonicalCode,
+          legacyAliases,
+        }),
+      },
       selectorEligible,
       candidateTarget:
         classification === 'ACTIVITY_CANDIDATE'
@@ -1136,6 +1498,245 @@ export class TouringRoutesService {
       },
       warnings,
     };
+  }
+
+  private async buildCleanupImpactPreview(route: any, legacyAliases: string[]) {
+    const id = route.id;
+    const quoteItems = await this.safeCount('quoteItem', { touringRouteId: id });
+    const activeQuoteItems = await this.safeCount('quoteItem', {
+      touringRouteId: id,
+      quote: { status: { in: ['DRAFT', 'READY', 'SENT', 'ACCEPTED', 'CONFIRMED', 'REVISION_REQUESTED'] } },
+    });
+    const excursionTemplateComponents = await this.safeCount('excursionTemplateComponent', { touringRouteId: id });
+    const activeExcursionTemplateComponents = await this.safeCount('excursionTemplateComponent', { touringRouteId: id, active: true });
+    const packageTemplateComponents = await this.safeCount('packageTemplateComponent', { touringRouteId: id });
+    const activePackageTemplateComponents = await this.safeCount('packageTemplateComponent', { touringRouteId: id, active: true });
+    const bookingServices = await this.safeCount('bookingService', { touringRouteId: id });
+    const activeBookingServices = await this.safeCount('bookingService', {
+      touringRouteId: id,
+      booking: { status: { in: ['draft', 'confirmed', 'in_progress'] } },
+    });
+    const departureServices = await this.safeCount('bookingService', {
+      touringRouteId: id,
+      booking: { seriesDeparture: { isNot: null } },
+    });
+
+    return {
+      affectedQuotes: {
+        total: quoteItems,
+        active: activeQuoteItems,
+      },
+      affectedTemplates: {
+        total: excursionTemplateComponents + packageTemplateComponents,
+        active: activeExcursionTemplateComponents + activePackageTemplateComponents,
+        excursionTemplateComponents,
+        packageTemplateComponents,
+      },
+      affectedBookings: {
+        total: bookingServices,
+        active: activeBookingServices,
+      },
+      affectedSelectorReferences: {
+        total: activeQuoteItems + activeExcursionTemplateComponents + activePackageTemplateComponents + activeBookingServices,
+        quoteItems: activeQuoteItems,
+        excursionTemplateComponents: activeExcursionTemplateComponents,
+        packageTemplateComponents: activePackageTemplateComponents,
+        bookingServices: activeBookingServices,
+      },
+      affectedRouteAliases: {
+        total: legacyAliases.length,
+        aliases: legacyAliases,
+        preserved: true,
+      },
+      affectedDepartures: {
+        total: departureServices,
+      },
+    };
+  }
+
+  private async safeCount(modelName: string, where: Record<string, unknown>) {
+    const model = (this.prisma as any)?.[modelName];
+    if (!model?.count) return 0;
+    try {
+      return await model.count({ where });
+    } catch {
+      return 0;
+    }
+  }
+
+  private async buildCleanupExecutionDryRuns(
+    route: any,
+    recommendation: TouringRouteCleanupRecommendation,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    safeToConvert: boolean,
+    codes: { currentCode: string; suggestedCanonicalCode: string; legacyAliases: string[] },
+  ) {
+    const actionForRecommendation: Partial<Record<TouringRouteCleanupRecommendation, TouringRouteCleanupDryRunActionName>> = {
+      MOVE_TO_ACTIVITY_MASTER: 'executeConvertToActivityMasterDryRun',
+      CONVERT_TO_EXCURSION_TEMPLATE: 'executeConvertToExcursionTemplateDryRun',
+      MOVE_TO_TRANSFER_ROUTE: 'executeConvertToTransferRouteDryRun',
+    };
+    const actions: TouringRouteCleanupDryRunActionName[] = [];
+    const primaryAction = actionForRecommendation[recommendation];
+    if (primaryAction) actions.push(primaryAction);
+    if (recommendation !== 'KEEP_AS_TOURING_ROUTE') actions.push('executeArchiveTouringRouteDryRun');
+
+    const conflicts = await this.buildCleanupConflictPreview(route, codes.suggestedCanonicalCode, impact);
+    const warnings = this.buildCleanupPreviewWarnings(impact);
+    const safeExecutionScore = this.calculateSafeExecutionScore(impact, conflicts, recommendation);
+
+    return actions.map((action) => ({
+      action,
+      mode: 'DRY_RUN_ONLY' as const,
+      mutatesData: false,
+      deletesData: false,
+      safeExecutionScore,
+      safeToExecute: safeToConvert && safeExecutionScore >= 80,
+      preservesHistoricalAliases: true,
+      rollbackSnapshotPreview: {
+        touringRoute: {
+          id: route.id,
+          code: codes.currentCode,
+          name: route.name,
+          active: route.active !== false,
+          suggestedCanonicalCode: codes.suggestedCanonicalCode,
+          legacyAliases: codes.legacyAliases,
+        },
+        stops: (route.stops || []).map((stop: any) => ({
+          order: stop.order,
+          city: stop.city,
+          location: stop.location || null,
+          notes: stop.notes || null,
+        })),
+        pricings: (route.pricings || []).map((pricing: any) => ({
+          id: pricing.id,
+          pricingBasis: pricing.pricingBasis,
+          supplierId: pricing.supplierId || null,
+          vehicleId: pricing.vehicleId || null,
+          active: pricing.active !== false,
+        })),
+      },
+      referenceMigrationPreview: {
+        quotes: impact.affectedQuotes,
+        bookings: impact.affectedBookings,
+        templates: impact.affectedTemplates,
+        selectorReferences: impact.affectedSelectorReferences,
+        aliases: impact.affectedRouteAliases,
+      },
+      conflicts,
+      warnings,
+    }));
+  }
+
+  private async buildCleanupConflictPreview(
+    route: any,
+    suggestedCanonicalCode: string,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+  ) {
+    const normalizedName = normalizeWorkbookText(route.name);
+    const currentCode = normalizeWorkbookText(route.code);
+    const existingActivityDuplicates = await this.safeCount('activity', {
+      OR: [{ name: { equals: normalizedName, mode: 'insensitive' } }, { code: { equals: currentCode, mode: 'insensitive' } }],
+    });
+    const existingExcursionTemplateDuplicates = await this.safeCount('excursionTemplate', {
+      OR: [{ name: { equals: normalizedName, mode: 'insensitive' } }, { code: { equals: currentCode, mode: 'insensitive' } }],
+    });
+    const canonicalCodeConflicts = await this.safeCount('touringRoute', {
+      code: suggestedCanonicalCode,
+      id: { not: route.id },
+    });
+
+    return {
+      existingActivityDuplicates,
+      existingExcursionTemplateDuplicates,
+      canonicalCodeConflicts,
+      activeDepartureConflicts: impact.affectedDepartures.total,
+      hasConflicts:
+        existingActivityDuplicates > 0 ||
+        existingExcursionTemplateDuplicates > 0 ||
+        canonicalCodeConflicts > 0 ||
+        impact.affectedDepartures.total > 0,
+    };
+  }
+
+  private calculateSafeExecutionScore(
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    conflicts: {
+      existingActivityDuplicates: number;
+      existingExcursionTemplateDuplicates: number;
+      canonicalCodeConflicts: number;
+      activeDepartureConflicts: number;
+    },
+    recommendation: TouringRouteCleanupRecommendation,
+  ) {
+    let score = recommendation === 'MANUAL_REVIEW' ? 40 : 100;
+    score -= Math.min(30, impact.affectedQuotes.active * 10);
+    score -= Math.min(30, impact.affectedBookings.active * 15);
+    score -= Math.min(20, impact.affectedTemplates.active * 5);
+    score -= Math.min(30, conflicts.activeDepartureConflicts * 15);
+    score -= Math.min(20, (conflicts.existingActivityDuplicates + conflicts.existingExcursionTemplateDuplicates) * 10);
+    score -= conflicts.canonicalCodeConflicts > 0 ? 25 : 0;
+    return Math.max(0, Math.min(100, score));
+  }
+
+  private buildCleanupPreviewWarnings(impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>) {
+    return [
+      impact.affectedQuotes.total > 0 || impact.affectedBookings.total > 0 || impact.affectedTemplates.total > 0
+        ? 'Production usage detected; cleanup must remain preview-only until explicitly approved'
+        : '',
+      impact.affectedQuotes.active > 0 ? 'Active quote references detected' : '',
+      impact.affectedBookings.active > 0 ? 'Active booking references detected' : '',
+      impact.affectedDepartures.total > 0 ? 'Departure references detected' : '',
+    ].filter(Boolean);
+  }
+
+  private buildCleanupPreviewActions(
+    recommendation: TouringRouteCleanupRecommendation,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    safeToConvert: boolean,
+  ) {
+    const actionForRecommendation: Partial<Record<TouringRouteCleanupRecommendation, TouringRouteCleanupPreviewActionName>> = {
+      MOVE_TO_ACTIVITY_MASTER: 'convertToActivityMasterPreview',
+      CONVERT_TO_EXCURSION_TEMPLATE: 'convertToExcursionTemplatePreview',
+      MOVE_TO_TRANSFER_ROUTE: 'convertToTransferRoutePreview',
+    };
+    const primaryAction = actionForRecommendation[recommendation];
+    const actions: Array<{
+      action: TouringRouteCleanupPreviewActionName;
+      available: boolean;
+      safeToConvert: boolean;
+      mutatesData: false;
+      preservesHistoricalAliases: true;
+      impact: typeof impact;
+      warnings: string[];
+    }> = [];
+    const warnings = this.buildCleanupPreviewWarnings(impact);
+
+    if (primaryAction) {
+      actions.push({
+        action: primaryAction,
+        available: true,
+        safeToConvert,
+        mutatesData: false,
+        preservesHistoricalAliases: true,
+        impact,
+        warnings,
+      });
+    }
+
+    if (recommendation !== 'KEEP_AS_TOURING_ROUTE') {
+      actions.push({
+        action: 'archiveTouringRoutePreview',
+        available: true,
+        safeToConvert,
+        mutatesData: false,
+        preservesHistoricalAliases: true,
+        impact,
+        warnings,
+      });
+    }
+
+    return actions;
   }
 
   private include() {

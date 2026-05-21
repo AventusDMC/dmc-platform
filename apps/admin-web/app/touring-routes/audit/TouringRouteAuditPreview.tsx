@@ -1,41 +1,57 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
-type AuditClassification =
-  | 'TOURING_ROUTE'
-  | 'ACTIVITY_CANDIDATE'
-  | 'EXCURSION_TEMPLATE_CANDIDATE'
-  | 'TRANSFER_ROUTE_CANDIDATE'
-  | 'REVIEW'
-  | string;
+import { useEffect, useMemo, useState } from 'react';
 
 type AuditRow = {
   id: string;
-  currentCode: string;
-  suggestedCanonicalCode: string;
-  legacyAliases: string[];
-  name: string;
-  region: string;
-  classification: AuditClassification;
-  selectorEligible: boolean;
-  candidateTarget: string;
-  safeFields?: {
-    operationalType?: string;
-    routeCategory?: string;
-    primaryOperatingCity?: string;
-    operationalComplexity?: string;
-  };
+  currentCode?: string;
+  suggestedCanonicalCode?: string;
+  legacyAliases?: string[];
+  name?: string;
+  region?: string;
+  classification: string;
+  cleanupRecommendation: string;
+  selectorEligible?: boolean;
   warnings?: string[];
+  cleanupPreview?: {
+    safeToConvert: boolean;
+    impact: {
+      affectedQuotes: { total: number; active: number };
+      affectedTemplates: { total: number; active: number };
+      affectedBookings: { total: number; active: number };
+      affectedSelectorReferences: { total: number };
+      affectedRouteAliases: { total: number; aliases: string[]; preserved: boolean };
+      affectedDepartures: { total: number };
+    };
+    executionDryRuns?: Array<{
+      safeExecutionScore: number;
+      safeToExecute: boolean;
+      conflicts: {
+        existingActivityDuplicates: number;
+        existingExcursionTemplateDuplicates: number;
+        canonicalCodeConflicts: number;
+        activeDepartureConflicts: number;
+      };
+      warnings?: string[];
+    }>;
+  };
 };
 
 type AuditPreview = {
-  success: boolean;
   mode: 'preview';
   mutatesData: boolean;
   canonicalCodeFormat: string;
   counts: Record<string, number>;
+  recommendationCounts?: Record<string, number>;
   rows: AuditRow[];
+};
+
+const RECOMMENDATION_LABELS: Record<string, string> = {
+  KEEP_AS_TOURING_ROUTE: 'Keep Touring',
+  MOVE_TO_ACTIVITY_MASTER: 'Move to Activity',
+  CONVERT_TO_EXCURSION_TEMPLATE: 'Convert to Excursion',
+  MOVE_TO_TRANSFER_ROUTE: 'Move to Transfer',
+  MANUAL_REVIEW: 'Manual Review',
 };
 
 const CLASSIFICATION_LABELS: Record<string, string> = {
@@ -50,6 +66,7 @@ export function TouringRouteAuditPreview() {
   const [audit, setAudit] = useState<AuditPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recommendationFilter, setRecommendationFilter] = useState('ALL');
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +106,11 @@ export function TouringRouteAuditPreview() {
     };
   }, []);
 
+  const filteredRows = useMemo(() => {
+    const rows = audit?.rows || [];
+    return recommendationFilter === 'ALL' ? rows : rows.filter((row) => row.cleanupRecommendation === recommendationFilter);
+  }, [audit?.rows, recommendationFilter]);
+
   if (loading) {
     return (
       <section className="workspace-section">
@@ -110,117 +132,116 @@ export function TouringRouteAuditPreview() {
 
   const totalAudited = audit.counts.total || audit.rows.length;
   const selectorEligible = audit.counts.selectorEligible || audit.rows.filter((row) => row.selectorEligible).length;
-  const classifications = Object.entries(audit.counts)
-    .filter(([key]) => key !== 'total' && key !== 'selectorEligible')
-    .sort(([left], [right]) => left.localeCompare(right));
+  const recommendationCounts = Object.entries(audit.recommendationCounts || {}).sort(([left], [right]) => left.localeCompare(right));
 
   return (
     <>
-      <section className="dashboard-grid">
+      <section className="dashboard-grid touring-audit-summary-grid">
         <AuditMetric label="Total audited" value={formatNumber(totalAudited)} helper={audit.canonicalCodeFormat} />
         <AuditMetric label="Selector eligible" value={formatNumber(selectorEligible)} helper="True operational touring routes" />
         <AuditMetric label="Mode" value={audit.mode} helper={audit.mutatesData ? 'Unexpected mutation risk' : 'Read-only'} />
       </section>
 
-      <section className="workspace-section">
+      <section className="workspace-section touring-audit-filter-panel">
         <div className="workspace-section-head">
           <div>
-            <p className="eyebrow">Classification Counts</p>
-            <h2>Audit summary</h2>
+            <p className="eyebrow">Filter</p>
+            <h2>Cleanup recommendations</h2>
           </div>
-        </div>
-        <div className="touring-audit-counts">
-          {classifications.length > 0 ? (
-            classifications.map(([classification, count]) => (
-              <div key={classification} className="touring-audit-count">
-                <ClassificationBadge classification={classification} />
-                <strong>{formatNumber(count)}</strong>
-              </div>
-            ))
-          ) : (
-            <p className="detail-copy">No classification counts returned.</p>
-          )}
+          <label className="field-label">
+            Recommendation
+            <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value)}>
+              <option value="ALL">All recommendations</option>
+              {recommendationCounts.map(([recommendation, count]) => (
+                <option key={recommendation} value={recommendation}>
+                  {RECOMMENDATION_LABELS[recommendation] || recommendation} ({formatNumber(count)})
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </section>
 
-      <section className="workspace-section">
+      <section className="touring-audit-card-list" aria-label="Touring route audit rows">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">Rows</p>
-            <h2>Touring route audit rows</h2>
+            <h2>{formatNumber(filteredRows.length)} audit rows</h2>
           </div>
         </div>
-        <div className="table-wrap touring-audit-table-wrap">
-          <table className="touring-audit-table">
-            <thead>
-              <tr>
-                <th>Route</th>
-                <th>Classification</th>
-                <th>Canonical Code</th>
-                <th>Legacy Aliases</th>
-                <th>Selector</th>
-                <th>Operational Fields</th>
-                <th>Warnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audit.rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <strong>{row.name || 'Unnamed touring route'}</strong>
-                    <div className="table-subcopy">{row.currentCode || row.id}</div>
-                  </td>
-                  <td>
-                    <ClassificationBadge classification={row.classification} />
-                    <div className="table-subcopy">{row.candidateTarget || 'TOURING_ROUTE'}</div>
-                  </td>
-                  <td>
-                    <code>{row.suggestedCanonicalCode}</code>
-                  </td>
-                  <td>
-                    {(row.legacyAliases || []).length > 0 ? (
-                      <div className="touring-audit-aliases">
-                        {(row.legacyAliases || []).map((alias) => (
-                          <code key={alias}>{alias}</code>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="table-subcopy">None</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={row.selectorEligible ? 'status-badge' : 'status-badge status-badge-expired'}>
-                      {row.selectorEligible ? 'Eligible' : 'Hidden'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="table-subcopy">
-                      <strong>{row.region || 'General'}</strong>
-                      {' | '}
-                      {row.safeFields?.routeCategory || 'Uncategorized'}
-                      {' | '}
-                      {row.safeFields?.operationalComplexity || 'LOW'}
-                    </div>
-                    <div className="table-subcopy">{row.safeFields?.primaryOperatingCity || 'City pending'}</div>
-                  </td>
-                  <td>
-                    {(row.warnings || []).length > 0 ? (
-                      <ul className="touring-audit-warning-list">
-                        {(row.warnings || []).map((warning) => (
-                          <li key={warning}>{warning}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="table-subcopy">No warnings</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+        {filteredRows.length > 0 ? (
+          filteredRows.map((row) => <AuditRouteCard key={row.id} row={row} />)
+        ) : (
+          <section className="workspace-section">
+            <p className="detail-copy">No rows match this filter.</p>
+          </section>
+        )}
       </section>
     </>
+  );
+}
+
+function AuditRouteCard({ row }: { row: AuditRow }) {
+  const dryRun = row.cleanupPreview?.executionDryRuns?.[0];
+  const impact = row.cleanupPreview?.impact;
+  const conflicts = dryRun?.conflicts;
+  const warnings = [...(row.warnings || []), ...(dryRun?.warnings || [])].filter(Boolean);
+
+  return (
+    <article className="workspace-section touring-audit-card">
+      <div className="touring-audit-card-head">
+        <div>
+          <p className="eyebrow">{row.currentCode || row.id}</p>
+          <h2>{row.name || 'Unnamed touring route'}</h2>
+          <p className="detail-copy">{row.suggestedCanonicalCode || 'Canonical code pending'}</p>
+        </div>
+        <div className="touring-audit-score-box">
+          <span>Safe score</span>
+          <strong>{dryRun?.safeExecutionScore ?? 'N/A'}</strong>
+          <small>{dryRun?.safeToExecute ? 'Safe by dry-run score' : 'Blocked or review required'}</small>
+        </div>
+      </div>
+
+      <div className="touring-audit-card-badges">
+        <Badge>{CLASSIFICATION_LABELS[row.classification] || row.classification}</Badge>
+        <Badge>{RECOMMENDATION_LABELS[row.cleanupRecommendation] || row.cleanupRecommendation}</Badge>
+        <Badge>{row.selectorEligible ? 'Selector eligible' : 'Hidden from selector'}</Badge>
+      </div>
+
+      <div className="touring-audit-card-grid">
+        <InfoBlock title="References">
+          {impact ? (
+            <>
+              <span>Quotes: {formatNumber(impact.affectedQuotes.total)} ({formatNumber(impact.affectedQuotes.active)} active)</span>
+              <span>Bookings: {formatNumber(impact.affectedBookings.total)} ({formatNumber(impact.affectedBookings.active)} active)</span>
+              <span>Templates: {formatNumber(impact.affectedTemplates.total)} ({formatNumber(impact.affectedTemplates.active)} active)</span>
+              <span>Selectors: {formatNumber(impact.affectedSelectorReferences.total)}</span>
+              <span>Departures: {formatNumber(impact.affectedDepartures.total)}</span>
+            </>
+          ) : (
+            <span>No reference preview returned.</span>
+          )}
+        </InfoBlock>
+
+        <InfoBlock title="Warnings">
+          {warnings.length > 0 ? warnings.map((warning) => <span key={warning}>{warning}</span>) : <span>No warnings.</span>}
+        </InfoBlock>
+
+        <InfoBlock title="Conflicts">
+          {conflicts ? (
+            <>
+              <span>Activity duplicates: {formatNumber(conflicts.existingActivityDuplicates)}</span>
+              <span>Excursion duplicates: {formatNumber(conflicts.existingExcursionTemplateDuplicates)}</span>
+              <span>Code conflicts: {formatNumber(conflicts.canonicalCodeConflicts)}</span>
+              <span>Departure conflicts: {formatNumber(conflicts.activeDepartureConflicts)}</span>
+            </>
+          ) : (
+            <span>No conflict preview returned.</span>
+          )}
+        </InfoBlock>
+      </div>
+    </article>
   );
 }
 
@@ -234,9 +255,17 @@ function AuditMetric({ label, value, helper }: { label: string; value: string; h
   );
 }
 
-function ClassificationBadge({ classification }: { classification: string }) {
-  const label = CLASSIFICATION_LABELS[classification] || classification;
-  return <span className={`status-badge touring-audit-badge touring-audit-badge-${classification.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
+function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="touring-audit-info-block">
+      <strong>{title}</strong>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="status-badge touring-audit-badge">{children}</span>;
 }
 
 function formatNumber(value: number) {
