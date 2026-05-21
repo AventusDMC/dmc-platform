@@ -467,4 +467,128 @@ test('touring route cleanup execution preview reports impact and actions without
   assert.match(row.warnings.join(' | '), /Active quote references detected/);
   assert.match(row.warnings.join(' | '), /Active booking references detected/);
 });
+
+function createActivityExecutionPrismaMock(route: any, counts: Record<string, number> = {}) {
+  const countFor = (modelName: string) => async ({ where }: any = {}) => {
+    const routeId = where?.touringRouteId || 'none';
+    const activeKey =
+      where?.quote?.status || where?.booking?.status || where?.active === true || where?.booking?.seriesDeparture ? ':active' : '';
+    return counts[`${modelName}:${routeId}${activeKey}`] ?? counts[`${modelName}:${routeId}`] ?? 0;
+  };
+  const state: any = { activityCreate: null, routeUpdate: null, auditLogCreate: null };
+  const tx = {
+    activity: {
+      create: async ({ data }: any) => {
+        state.activityCreate = data;
+        return { id: 'activity-created', ...data };
+      },
+    },
+    touringRoute: {
+      update: async ({ data }: any) => {
+        state.routeUpdate = data;
+        return { ...route, ...data };
+      },
+    },
+    auditLog: {
+      create: async ({ data }: any) => {
+        state.auditLogCreate = data;
+        return { id: 'audit-log-created', ...data };
+      },
+    },
+  };
+
+  return {
+    state,
+    touringRoute: {
+      findUnique: async () => route,
+      count: countFor('touringRoute'),
+    },
+    quoteItem: { count: countFor('quoteItem') },
+    excursionTemplateComponent: { count: countFor('excursionTemplateComponent') },
+    packageTemplateComponent: { count: countFor('packageTemplateComponent') },
+    bookingService: { count: countFor('bookingService') },
+    activity: {
+      count: countFor('activity'),
+      findFirst: async () => null,
+    },
+    excursionTemplate: { count: countFor('excursionTemplate') },
+    $transaction: async (callback: any) => callback(tx),
+  };
+}
+
+test('activity master execution converts one low-risk Aqaba candidate and preserves touring history', async () => {
+  const route = {
+    id: 'aqaba-glass-boat',
+    code: 'AQB-GLASS',
+    name: 'Aqaba Glass Boat Experience',
+    startCity: 'Aqaba',
+    durationDays: 1,
+    routeDescription: 'Aqaba glass boat activity',
+    region: 'Aqaba',
+    active: true,
+    mainDestinations: ['Aqaba Marina'],
+    reviewNotes: 'legacy note',
+    stops: [{ order: 1, city: 'Aqaba', location: 'Aqaba Marina' }],
+    pricings: [],
+  };
+  const prisma = createActivityExecutionPrismaMock(route);
+  const service = new TouringRoutesService(prisma as any);
+
+  const result = (await service.executeConvertToActivityMaster(
+    route.id,
+    {
+      dryRunAction: 'executeConvertToActivityMasterDryRun',
+      dryRunConfirmed: true,
+      confirmationText: 'I understand this affects operational taxonomy',
+    },
+    { id: 'user-1', email: 'ops@example.com', role: 'admin', firstName: 'Ops', lastName: 'User', name: 'Ops User', auditLabel: 'Ops User', companyId: 'company-1' },
+  )) as any;
+
+  assert.equal(result.action, 'executeConvertToActivityMaster');
+  assert.equal(result.supportedRecommendation, 'MOVE_TO_ACTIVITY_MASTER');
+  assert.equal(result.activity.code, 'JOR-ACT-AQABA-AQABA-GLASS-BOAT-EXPERIENCE');
+  assert.equal(result.touringRoute.active, false);
+  assert.equal(result.touringRoute.hiddenFromSelectors, true);
+  assert.equal(prisma.state.activityCreate.supplierCompanyId, 'company-1');
+  assert.equal(prisma.state.activityCreate.pricingBasis, 'PER_GROUP');
+  assert.match(prisma.state.routeUpdate.reviewNotes, /Original touring route archived and hidden from selectors/);
+  assert.equal(prisma.state.auditLogCreate.action, 'touring_route.convert_to_activity_master');
+  assert.equal(prisma.state.auditLogCreate.metadata.deletesOriginalTouringRoute, false);
+  assert.equal(prisma.state.auditLogCreate.metadata.archivedOriginalTouringRoute, true);
+});
+
+test('activity master execution is blocked when active booking conflicts exist', async () => {
+  const route = {
+    id: 'aqaba-boat-active-booking',
+    code: 'AQB-BOAT',
+    name: 'Aqaba Boat Experience',
+    startCity: 'Aqaba',
+    durationDays: 1,
+    routeDescription: 'Aqaba glass boat activity',
+    region: 'Aqaba',
+    active: true,
+    mainDestinations: ['Aqaba Marina'],
+    stops: [],
+    pricings: [],
+  };
+  const prisma = createActivityExecutionPrismaMock(route, {
+    'bookingService:aqaba-boat-active-booking': 1,
+    'bookingService:aqaba-boat-active-booking:active': 1,
+  });
+  const service = new TouringRoutesService(prisma as any);
+
+  await assert.rejects(
+    () =>
+      service.executeConvertToActivityMaster(
+        route.id,
+        {
+          dryRunAction: 'executeConvertToActivityMasterDryRun',
+          dryRunConfirmed: true,
+          confirmationText: 'I understand this affects operational taxonomy',
+        },
+        { id: 'user-1', email: 'ops@example.com', role: 'admin', firstName: 'Ops', lastName: 'User', name: 'Ops User', auditLabel: 'Ops User', companyId: 'company-1' },
+      ),
+    /safe execution score|active booking conflicts/,
+  );
+});
 }

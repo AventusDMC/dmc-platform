@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import ExcelJS = require('exceljs');
 import * as XLSX from 'xlsx';
+import { AuthenticatedActor } from '../auth/auth.types';
+import { requireActorCompanyId } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -89,6 +91,17 @@ type TouringRouteCleanupDryRunActionName =
   | 'executeConvertToExcursionTemplateDryRun'
   | 'executeConvertToTransferRouteDryRun'
   | 'executeArchiveTouringRouteDryRun';
+
+type ExecuteConvertToActivityMasterInput = {
+  dryRunAction?: string | null;
+  dryRunConfirmed?: boolean | null;
+  confirmationText?: string | null;
+};
+
+type RollbackConvertToActivityMasterInput = {
+  activityId?: string | null;
+  confirmationText?: string | null;
+};
 
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
@@ -232,6 +245,16 @@ function normalizeCanonicalCodePart(value: string | null | undefined) {
     .replace(/[^A-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .replace(/-+/g, '-');
+}
+
+function buildActivityMasterCodeFromTouringRoute(route: {
+  name?: string | null;
+  code?: string | null;
+  region?: string | null;
+  startCity?: string | null;
+  mainDestinations?: unknown;
+}) {
+  return buildCanonicalTouringRouteCode(route).replace(/^JOR-TR-/, 'JOR-ACT-').slice(0, 120);
 }
 
 export function buildCanonicalTouringRouteCode(route: {
@@ -620,6 +643,271 @@ export class TouringRoutesService {
       counts,
       recommendationCounts,
       rows,
+    };
+  }
+
+  async executeConvertToActivityMaster(id: string, input: ExecuteConvertToActivityMasterInput, actor: AuthenticatedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const confirmationText = normalizeWorkbookText(input?.confirmationText);
+    const requiredConfirmation = 'I understand this affects operational taxonomy';
+
+    if (confirmationText !== requiredConfirmation) {
+      throw new BadRequestException(`Confirmation text must exactly match: ${requiredConfirmation}`);
+    }
+    if (!input?.dryRunConfirmed || input?.dryRunAction !== 'executeConvertToActivityMasterDryRun') {
+      throw new BadRequestException('Activity Master conversion requires the matching dry-run preview first.');
+    }
+
+    const route = await this.findOne(id);
+    const auditRow = await this.buildOperationalAuditRow(route);
+    const activityDryRun = (auditRow.cleanupPreview.executionDryRuns || []).find(
+      (dryRun: any) => dryRun.action === 'executeConvertToActivityMasterDryRun',
+    );
+
+    if (auditRow.cleanupRecommendation !== 'MOVE_TO_ACTIVITY_MASTER' || auditRow.classification !== 'ACTIVITY_CANDIDATE') {
+      throw new BadRequestException('Only low-risk Activity Master candidates can be executed by this action.');
+    }
+    if (!activityDryRun || activityDryRun.mode !== 'DRY_RUN_ONLY') {
+      throw new BadRequestException('Activity Master dry-run preview is unavailable for this touring route.');
+    }
+    if (!activityDryRun.safeToExecute || Number(activityDryRun.safeExecutionScore || 0) < 80) {
+      throw new BadRequestException('Activity Master conversion is blocked by safe execution score.');
+    }
+    if (activityDryRun.conflicts?.existingActivityDuplicates > 0 || activityDryRun.conflicts?.hasConflicts) {
+      throw new BadRequestException('Activity Master conversion is blocked by cleanup conflicts.');
+    }
+    if (auditRow.cleanupPreview.impact.affectedBookings.active > 0) {
+      throw new BadRequestException('Activity Master conversion is blocked by active booking conflicts.');
+    }
+    if (route.active === false) {
+      throw new BadRequestException('Archived touring routes cannot be converted.');
+    }
+
+    const activityCode = buildActivityMasterCodeFromTouringRoute(route);
+    const duplicateActivity = await (this.prisma as any).activity.findFirst({
+      where: {
+        OR: [
+          { code: { equals: activityCode, mode: 'insensitive' } },
+          { name: { equals: normalizeWorkbookText(route.name), mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, code: true, name: true },
+    });
+
+    if (duplicateActivity) {
+      throw new BadRequestException(`Activity Master duplicate detected for ${duplicateActivity.code || duplicateActivity.name}.`);
+    }
+
+    const executedAt = new Date();
+    const legacyAliases = auditRow.legacyAliases || [];
+    const rollbackSnapshot = activityDryRun.rollbackSnapshotPreview;
+    const routeHistoryNote = [
+      `[${executedAt.toISOString()}] Converted to Activity Master ${activityCode}.`,
+      'Original touring route archived and hidden from selectors via active=false.',
+      `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+      `Rollback snapshot: ${JSON.stringify({
+        routeId: route.id,
+        routeCode: route.code,
+        routeName: route.name,
+        active: route.active !== false,
+        activityCode,
+      })}`,
+    ].join(' ');
+    const reviewNotes = [normalizeWorkbookText(route.reviewNotes), routeHistoryNote].filter(Boolean).join('\n');
+    const routeStops = route.stops || [];
+    const firstStop = routeStops[0];
+    const lastStop = routeStops[routeStops.length - 1];
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const activity = await (tx as any).activity.create({
+        data: {
+          code: activityCode,
+          name: route.name,
+          description: route.routeDescription || `Converted from touring route ${route.code}.`,
+          category: 'Activity / Experience',
+          city: auditRow.safeFields.primaryOperatingCity || route.startCity || 'Aqaba',
+          region: auditRow.region || route.region || 'Aqaba',
+          supplierCompanyId: companyId,
+          pricingBasis: 'PER_GROUP',
+          costPrice: 0,
+          sellPrice: 0,
+          durationHours: route.includedHours ?? null,
+          guideRequired: Boolean(auditRow.safeFields.guideRequired),
+          sicPossible: Boolean(route.sicPossible),
+          familyFriendly: false,
+          startPoint: firstStop?.location || firstStop?.city || route.startCity || null,
+          endPoint: lastStop?.location || lastStop?.city || route.startCity || null,
+          operationalNotes: [
+            `Created by Touring Route cleanup executor from route ${route.code} (${route.id}).`,
+            'Tariffs/pricing intentionally initialized to zero for Activity Master review.',
+          ].join(' '),
+          categoryTags: ['Touring Route Cleanup', 'Activity Master', 'Aqaba'],
+          reviewNotes: [
+            `Source touring route id: ${route.id}`,
+            `Source touring route code: ${route.code}`,
+            `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}`,
+          ].join('\n'),
+          active: true,
+        },
+      });
+
+      const archivedRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: {
+          active: false,
+          reviewNotes,
+        },
+        include: this.include(),
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId,
+          userId: actor.id,
+          action: 'touring_route.convert_to_activity_master',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'EXECUTE_ONE_ROW',
+            supportedRecommendation: 'MOVE_TO_ACTIVITY_MASTER',
+            activityId: activity.id,
+            activityCode: activity.code,
+            dryRunAction: input.dryRunAction,
+            safeExecutionScore: activityDryRun.safeExecutionScore,
+            rollbackSnapshot,
+            referenceMigrationPreview: activityDryRun.referenceMigrationPreview,
+            preservesHistoricalAliases: true,
+            deletesOriginalTouringRoute: false,
+            archivedOriginalTouringRoute: true,
+            hiddenFromSelectors: true,
+          },
+        },
+      });
+
+      return { activity, archivedRoute };
+    });
+
+    return {
+      success: true,
+      action: 'executeConvertToActivityMaster',
+      mode: 'EXECUTE_ONE_ROW',
+      supportedRecommendation: 'MOVE_TO_ACTIVITY_MASTER',
+      activity: {
+        id: result.activity.id,
+        code: result.activity.code,
+        name: result.activity.name,
+        active: result.activity.active,
+      },
+      touringRoute: {
+        id: result.archivedRoute.id,
+        code: result.archivedRoute.code,
+        name: result.archivedRoute.name,
+        active: result.archivedRoute.active,
+        hiddenFromSelectors: result.archivedRoute.active === false,
+        preservedHistorically: true,
+      },
+      rollbackSupport: {
+        supported: true,
+        snapshot: rollbackSnapshot,
+        restorePlan: [
+          'Deactivate or review the linked Activity Master record.',
+          'Restore the original touring route active state from the audit log snapshot.',
+          'Keep historical aliases and review notes intact.',
+        ],
+      },
+      auditTrail: {
+        action: 'touring_route.convert_to_activity_master',
+        logged: true,
+      },
+    };
+  }
+
+  async rollbackConvertToActivityMaster(id: string, input: RollbackConvertToActivityMasterInput, actor: AuthenticatedActor) {
+    const companyId = requireActorCompanyId(actor);
+    const confirmationText = normalizeWorkbookText(input?.confirmationText);
+    const activityId = normalizeWorkbookText(input?.activityId);
+    const requiredConfirmation = 'I understand this affects operational taxonomy';
+
+    if (confirmationText !== requiredConfirmation) {
+      throw new BadRequestException(`Confirmation text must exactly match: ${requiredConfirmation}`);
+    }
+    if (!activityId) {
+      throw new BadRequestException('Linked Activity Master id is required for rollback.');
+    }
+
+    const route = await this.findOne(id);
+    const activity = await (this.prisma as any).activity.findUnique({
+      where: { id: activityId },
+      select: { id: true, code: true, name: true, active: true, reviewNotes: true },
+    });
+
+    if (!activity) {
+      throw new BadRequestException('Linked Activity Master record was not found.');
+    }
+    if (!normalizeWorkbookText(activity.reviewNotes).includes(`Source touring route id: ${route.id}`)) {
+      throw new BadRequestException('Activity Master record is not linked to this touring route cleanup conversion.');
+    }
+
+    const executedAt = new Date();
+    const rollbackNote = `[${executedAt.toISOString()}] Rolled back Activity Master conversion ${activity.code || activity.id}. Activity deactivated; touring route restored for selectors.`;
+    const reviewNotes = [normalizeWorkbookText(route.reviewNotes), rollbackNote].filter(Boolean).join('\n');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const restoredRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: {
+          active: true,
+          reviewNotes,
+        },
+        include: this.include(),
+      });
+      const deactivatedActivity = await (tx as any).activity.update({
+        where: { id: activity.id },
+        data: {
+          active: false,
+          reviewNotes: [normalizeWorkbookText(activity.reviewNotes), rollbackNote].filter(Boolean).join('\n'),
+        },
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId,
+          userId: actor.id,
+          action: 'touring_route.rollback_activity_master_conversion',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'ROLLBACK_ONE_ROW',
+            activityId: activity.id,
+            activityCode: activity.code,
+            restoresTouringRouteSelectorVisibility: true,
+            deletesData: false,
+          },
+        },
+      });
+
+      return { restoredRoute, deactivatedActivity };
+    });
+
+    return {
+      success: true,
+      action: 'rollbackConvertToActivityMaster',
+      mode: 'ROLLBACK_ONE_ROW',
+      activity: {
+        id: result.deactivatedActivity.id,
+        code: result.deactivatedActivity.code,
+        active: result.deactivatedActivity.active,
+      },
+      touringRoute: {
+        id: result.restoredRoute.id,
+        code: result.restoredRoute.code,
+        active: result.restoredRoute.active,
+        selectorVisible: result.restoredRoute.active !== false,
+      },
+      auditTrail: {
+        action: 'touring_route.rollback_activity_master_conversion',
+        logged: true,
+      },
     };
   }
 

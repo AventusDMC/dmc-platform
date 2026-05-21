@@ -112,6 +112,8 @@ const RECOMMENDATION_LABELS: Record<string, string> = {
   MANUAL_REVIEW: 'Manual Review',
 };
 
+const ACTIVITY_MASTER_CONFIRMATION = 'I understand this affects operational taxonomy';
+
 export function TouringRouteAuditPreview() {
   const [audit, setAudit] = useState<AuditPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -394,15 +396,88 @@ function ImpactSummary({ row }: { row: AuditRow }) {
 function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => void }) {
   const dryRuns = row.cleanupPreview?.executionDryRuns || [];
   const firstDryRun = dryRuns[0];
+  const activityMasterDryRun = dryRuns.find((dryRun) => dryRun.action === 'executeConvertToActivityMasterDryRun');
+  const [confirmationText, setConfirmationText] = useState('');
+  const [executing, setExecuting] = useState(false);
+  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [rollbackExecuting, setRollbackExecuting] = useState(false);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
+  const [rollbackResult, setRollbackResult] = useState<any>(null);
+  const canExecuteActivityMaster =
+    row.cleanupRecommendation === 'MOVE_TO_ACTIVITY_MASTER' &&
+    row.classification === 'ACTIVITY_CANDIDATE' &&
+    Boolean(activityMasterDryRun?.safeToExecute) &&
+    confirmationText === ACTIVITY_MASTER_CONFIRMATION;
+
+  async function executeActivityMasterConversion() {
+    if (!activityMasterDryRun || !canExecuteActivityMaster) return;
+
+    try {
+      setExecuting(true);
+      setExecutionError(null);
+      const response = await fetch(`/api/touring-routes/${encodeURIComponent(row.id)}/cleanup/convert-to-activity-master`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dryRunAction: activityMasterDryRun.action,
+          dryRunConfirmed: true,
+          confirmationText,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || `Activity Master conversion failed with ${response.status}`);
+      }
+
+      setExecutionResult(payload);
+    } catch (error) {
+      setExecutionError(error instanceof Error ? error.message : 'Activity Master conversion failed.');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  async function rollbackActivityMasterConversion() {
+    const activityId = executionResult?.activity?.id;
+    if (!activityId || confirmationText !== ACTIVITY_MASTER_CONFIRMATION) return;
+
+    try {
+      setRollbackExecuting(true);
+      setRollbackError(null);
+      const response = await fetch(`/api/touring-routes/${encodeURIComponent(row.id)}/cleanup/convert-to-activity-master/rollback`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activityId,
+          confirmationText,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || `Activity Master rollback failed with ${response.status}`);
+      }
+
+      setRollbackResult(payload);
+    } catch (error) {
+      setRollbackError(error instanceof Error ? error.message : 'Activity Master rollback failed.');
+    } finally {
+      setRollbackExecuting(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="touring-cleanup-dry-run-title">
         <div className="workspace-section-head">
           <div>
-            <p className="eyebrow">Dry-Run Only</p>
+            <p className="eyebrow">{activityMasterDryRun ? 'Controlled Execution' : 'Dry-Run Only'}</p>
             <h2 id="touring-cleanup-dry-run-title">{row.name || 'Touring route cleanup preview'}</h2>
-            <p className="detail-copy">No database writes, deletes, selector hiding, or production execution path is available here.</p>
+            <p className="detail-copy">One-row execution is available only for low-risk Activity Master candidates after this dry-run preview.</p>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             Close
@@ -481,6 +556,60 @@ function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => 
                         )}
                       </td>
                     </tr>
+                    {activityMasterDryRun ? (
+                      <tr>
+                        <th>Activity Master execution</th>
+                        <td>
+                          <div className="table-subcopy">
+                            Execute one row only. The original touring route is archived, hidden from selectors, and preserved historically.
+                          </div>
+                          <label className="field-label">
+                            Confirmation
+                            <input
+                              type="text"
+                              value={confirmationText}
+                              onChange={(event) => setConfirmationText(event.target.value)}
+                              placeholder={ACTIVITY_MASTER_CONFIRMATION}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="primary-button"
+                            disabled={!canExecuteActivityMaster || executing || Boolean(executionResult)}
+                            onClick={executeActivityMasterConversion}
+                          >
+                            {executing ? 'Executing...' : 'Execute Activity Master Conversion'}
+                          </button>
+                          {!activityMasterDryRun.safeToExecute ? (
+                            <div className="table-subcopy">Execution blocked by dry-run score or conflicts.</div>
+                          ) : null}
+                          {executionError ? <div className="form-error">{executionError}</div> : null}
+                          {executionResult ? (
+                            <div className="table-subcopy">
+                              Created Activity Master <code>{executionResult.activity?.code}</code>. Touring route is now{' '}
+                              {executionResult.touringRoute?.hiddenFromSelectors ? 'hidden from selectors' : 'still visible'}.
+                            </div>
+                          ) : null}
+                          {executionResult && !rollbackResult ? (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={rollbackExecuting || confirmationText !== ACTIVITY_MASTER_CONFIRMATION}
+                              onClick={rollbackActivityMasterConversion}
+                            >
+                              {rollbackExecuting ? 'Rolling back...' : 'Rollback Activity Master Conversion'}
+                            </button>
+                          ) : null}
+                          {rollbackError ? <div className="form-error">{rollbackError}</div> : null}
+                          {rollbackResult ? (
+                            <div className="table-subcopy">
+                              Rollback complete. Touring route selector visibility is{' '}
+                              {rollbackResult.touringRoute?.selectorVisible ? 'restored' : 'still hidden'}.
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>

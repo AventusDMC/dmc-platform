@@ -1,5 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Actor } from '../auth/auth.decorators';
+import { AuthenticatedActor } from '../auth/auth.types';
 import { TouringRoutesService } from './touring-routes.service';
 
 const { memoryStorage } = require('multer');
@@ -123,6 +125,16 @@ export class TouringRoutesController {
   @Post(':id/duplicate')
   duplicate(@Param('id') id: string) {
     return this.touringRoutesService.duplicate(id);
+  }
+
+  @Post(':id/cleanup/convert-to-activity-master')
+  executeConvertToActivityMaster(@Param('id') id: string, @Body() body: Record<string, unknown>, @Actor() actor: AuthenticatedActor) {
+    return this.touringRoutesService.executeConvertToActivityMaster(id, body as any, actor);
+  }
+
+  @Post(':id/cleanup/convert-to-activity-master/rollback')
+  rollbackConvertToActivityMaster(@Param('id') id: string, @Body() body: Record<string, unknown>, @Actor() actor: AuthenticatedActor) {
+    return this.touringRoutesService.rollbackConvertToActivityMaster(id, body as any, actor);
   }
 
   @Patch(':id')
