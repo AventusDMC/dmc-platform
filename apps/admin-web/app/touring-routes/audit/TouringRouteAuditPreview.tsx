@@ -38,6 +38,42 @@ type AuditRow = {
       preservesHistoricalAliases: boolean;
       warnings: string[];
     }>;
+    executionDryRuns?: Array<{
+      action: string;
+      mode: 'DRY_RUN_ONLY';
+      mutatesData: boolean;
+      deletesData: boolean;
+      safeExecutionScore: number;
+      safeToExecute: boolean;
+      preservesHistoricalAliases: boolean;
+      rollbackSnapshotPreview: {
+        touringRoute: {
+          id: string;
+          code: string;
+          name: string;
+          active: boolean;
+          suggestedCanonicalCode: string;
+          legacyAliases: string[];
+        };
+        stops: Array<Record<string, unknown>>;
+        pricings: Array<Record<string, unknown>>;
+      };
+      referenceMigrationPreview: {
+        quotes: { total: number; active: number };
+        bookings: { total: number; active: number };
+        templates: { total: number; active: number };
+        selectorReferences: { total: number };
+        aliases: { total: number; aliases: string[]; preserved: boolean };
+      };
+      conflicts: {
+        existingActivityDuplicates: number;
+        existingExcursionTemplateDuplicates: number;
+        canonicalCodeConflicts: number;
+        activeDepartureConflicts: number;
+        hasConflicts: boolean;
+      };
+      warnings: string[];
+    }>;
   };
   selectorEligible: boolean;
   candidateTarget: string;
@@ -81,6 +117,7 @@ export function TouringRouteAuditPreview() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recommendationFilter, setRecommendationFilter] = useState('ALL');
+  const [selectedDryRun, setSelectedDryRun] = useState<AuditRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -255,6 +292,9 @@ export function TouringRouteAuditPreview() {
                         {(row.cleanupPreview?.actions || []).map((action) => (
                           <code key={action.action}>{formatActionName(action.action)}</code>
                         ))}
+                        <button type="button" className="secondary-button" onClick={() => setSelectedDryRun(row)}>
+                          Dry-run
+                        </button>
                       </div>
                     ) : (
                       <span className="table-subcopy">No cleanup action</span>
@@ -309,6 +349,8 @@ export function TouringRouteAuditPreview() {
           </table>
         </div>
       </section>
+
+      {selectedDryRun ? <ExecutionDryRunModal row={selectedDryRun} onClose={() => setSelectedDryRun(null)} /> : null}
     </>
   );
 }
@@ -345,6 +387,109 @@ function ImpactSummary({ row }: { row: AuditRow }) {
       <div>Selectors: {formatNumber(impact.affectedSelectorReferences.total)}</div>
       <div>Aliases: {formatNumber(impact.affectedRouteAliases.total)} preserved</div>
       <div>Departures: {formatNumber(impact.affectedDepartures.total)}</div>
+    </div>
+  );
+}
+
+function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => void }) {
+  const dryRuns = row.cleanupPreview?.executionDryRuns || [];
+  const firstDryRun = dryRuns[0];
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="touring-cleanup-dry-run-title">
+        <div className="workspace-section-head">
+          <div>
+            <p className="eyebrow">Dry-Run Only</p>
+            <h2 id="touring-cleanup-dry-run-title">{row.name || 'Touring route cleanup preview'}</h2>
+            <p className="detail-copy">No database writes, deletes, selector hiding, or production execution path is available here.</p>
+          </div>
+          <button type="button" className="secondary-button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        {dryRuns.length > 0 ? (
+          <div className="workspace-section">
+            <div className="touring-audit-counts">
+              {dryRuns.map((dryRun) => (
+                <div key={dryRun.action} className="touring-audit-count">
+                  <code>{formatActionName(dryRun.action)}</code>
+                  <strong>{dryRun.safeExecutionScore}</strong>
+                  <span>{dryRun.safeToExecute ? 'Safe score' : 'Blocked/review'}</span>
+                </div>
+              ))}
+            </div>
+
+            {firstDryRun ? (
+              <div className="table-wrap">
+                <table className="touring-audit-table">
+                  <tbody>
+                    <tr>
+                      <th>Rollback snapshot</th>
+                      <td>
+                        <code>{firstDryRun.rollbackSnapshotPreview.touringRoute.code || row.id}</code>
+                        <div className="table-subcopy">
+                          {formatNumber(firstDryRun.rollbackSnapshotPreview.stops.length)} stops,{' '}
+                          {formatNumber(firstDryRun.rollbackSnapshotPreview.pricings.length)} pricing rows
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Reference migration preview</th>
+                      <td>
+                        <ImpactSummary row={row} />
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Aliases</th>
+                      <td>
+                        {(firstDryRun.referenceMigrationPreview.aliases.aliases || []).length > 0 ? (
+                          <div className="touring-audit-aliases">
+                            {firstDryRun.referenceMigrationPreview.aliases.aliases.map((alias) => (
+                              <code key={alias}>{alias}</code>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="table-subcopy">No aliases</span>
+                        )}
+                        <div className="table-subcopy">
+                          {firstDryRun.referenceMigrationPreview.aliases.preserved ? 'Historical aliases preserved' : 'Alias preservation missing'}
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Conflicts</th>
+                      <td>
+                        <div className="table-subcopy">Activity duplicates: {formatNumber(firstDryRun.conflicts.existingActivityDuplicates)}</div>
+                        <div className="table-subcopy">Excursion duplicates: {formatNumber(firstDryRun.conflicts.existingExcursionTemplateDuplicates)}</div>
+                        <div className="table-subcopy">Canonical code conflicts: {formatNumber(firstDryRun.conflicts.canonicalCodeConflicts)}</div>
+                        <div className="table-subcopy">Active departure conflicts: {formatNumber(firstDryRun.conflicts.activeDepartureConflicts)}</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>Warnings</th>
+                      <td>
+                        {(firstDryRun.warnings || []).length > 0 ? (
+                          <ul className="touring-audit-warning-list">
+                            {firstDryRun.warnings.map((warning) => (
+                              <li key={warning}>{warning}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span className="table-subcopy">No dry-run warnings</span>
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="detail-copy">No dry-run actions are available for this recommendation.</p>
+        )}
+      </section>
     </div>
   );
 }

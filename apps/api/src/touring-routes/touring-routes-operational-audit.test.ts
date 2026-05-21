@@ -21,6 +21,7 @@ function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {
   return {
     touringRoute: {
       findMany: async () => routes,
+      count: countFor('touringRoute'),
     },
     route: {
       findMany: async () => {
@@ -60,6 +61,18 @@ function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {
       count: countFor('bookingService'),
       update: async () => {
         throw new Error('audit preview must not update booking services');
+      },
+    },
+    activity: {
+      count: countFor('activity'),
+      create: async () => {
+        throw new Error('dry-run must not create activities');
+      },
+    },
+    excursionTemplate: {
+      count: countFor('excursionTemplate'),
+      create: async () => {
+        throw new Error('dry-run must not create excursion templates');
       },
     },
   };
@@ -412,6 +425,9 @@ test('touring route cleanup execution preview reports impact and actions without
         'packageTemplateComponent:petra-day:active': 1,
         'bookingService:petra-day': 2,
         'bookingService:petra-day:active': 1,
+        'activity:none': 1,
+        'excursionTemplate:none': 1,
+        'touringRoute:none': 1,
       },
     ) as any,
   );
@@ -433,6 +449,20 @@ test('touring route cleanup execution preview reports impact and actions without
   assert.equal(row.cleanupPreview.impact.affectedBookings.active, 1);
   assert.equal(row.cleanupPreview.impact.affectedSelectorReferences.total, 4);
   assert.equal(row.cleanupPreview.impact.affectedRouteAliases.preserved, true);
+  assert.deepEqual(
+    row.cleanupPreview.executionDryRuns.map((dryRun: any) => dryRun.action),
+    ['executeConvertToExcursionTemplateDryRun', 'executeArchiveTouringRouteDryRun'],
+  );
+  assert.equal(row.cleanupPreview.executionDryRuns[0].mode, 'DRY_RUN_ONLY');
+  assert.equal(row.cleanupPreview.executionDryRuns[0].mutatesData, false);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].deletesData, false);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].rollbackSnapshotPreview.touringRoute.code, 'PETRA-FD');
+  assert.equal(row.cleanupPreview.executionDryRuns[0].referenceMigrationPreview.aliases.preserved, true);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].conflicts.existingActivityDuplicates, 1);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].conflicts.existingExcursionTemplateDuplicates, 1);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].conflicts.canonicalCodeConflicts, 1);
+  assert.equal(row.cleanupPreview.executionDryRuns[0].conflicts.hasConflicts, true);
+  assert.ok(row.cleanupPreview.executionDryRuns[0].safeExecutionScore < 80);
   assert.match(row.warnings.join(' | '), /Production usage detected/);
   assert.match(row.warnings.join(' | '), /Active quote references detected/);
   assert.match(row.warnings.join(' | '), /Active booking references detected/);

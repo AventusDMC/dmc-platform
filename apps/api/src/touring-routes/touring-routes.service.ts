@@ -84,6 +84,12 @@ type TouringRouteCleanupPreviewActionName =
   | 'convertToTransferRoutePreview'
   | 'archiveTouringRoutePreview';
 
+type TouringRouteCleanupDryRunActionName =
+  | 'executeConvertToActivityMasterDryRun'
+  | 'executeConvertToExcursionTemplateDryRun'
+  | 'executeConvertToTransferRouteDryRun'
+  | 'executeArchiveTouringRouteDryRun';
+
 type TouringWorkbookMode = 'preview' | 'import';
 type TouringWorkbookStatus = 'NEW' | 'UPDATED' | 'UNCHANGED' | 'OVERLAP' | 'SKIPPED';
 type TouringWorkbookDecompressionError = {
@@ -1165,6 +1171,11 @@ export class TouringRoutesService {
         safeToConvert,
         impact: cleanupImpact,
         actions: this.buildCleanupPreviewActions(cleanupRecommendation, cleanupImpact, safeToConvert),
+        executionDryRuns: await this.buildCleanupExecutionDryRuns(route, cleanupRecommendation, cleanupImpact, safeToConvert, {
+          currentCode,
+          suggestedCanonicalCode,
+          legacyAliases,
+        }),
       },
       selectorEligible,
       candidateTarget:
@@ -1263,6 +1274,121 @@ export class TouringRoutesService {
     } catch {
       return 0;
     }
+  }
+
+  private async buildCleanupExecutionDryRuns(
+    route: any,
+    recommendation: TouringRouteCleanupRecommendation,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    safeToConvert: boolean,
+    codes: { currentCode: string; suggestedCanonicalCode: string; legacyAliases: string[] },
+  ) {
+    const actionForRecommendation: Partial<Record<TouringRouteCleanupRecommendation, TouringRouteCleanupDryRunActionName>> = {
+      MOVE_TO_ACTIVITY_MASTER: 'executeConvertToActivityMasterDryRun',
+      CONVERT_TO_EXCURSION_TEMPLATE: 'executeConvertToExcursionTemplateDryRun',
+      MOVE_TO_TRANSFER_ROUTE: 'executeConvertToTransferRouteDryRun',
+    };
+    const actions: TouringRouteCleanupDryRunActionName[] = [];
+    const primaryAction = actionForRecommendation[recommendation];
+    if (primaryAction) actions.push(primaryAction);
+    if (recommendation !== 'KEEP_AS_TOURING_ROUTE') actions.push('executeArchiveTouringRouteDryRun');
+
+    const conflicts = await this.buildCleanupConflictPreview(route, codes.suggestedCanonicalCode, impact);
+    const warnings = this.buildCleanupPreviewWarnings(impact);
+    const safeExecutionScore = this.calculateSafeExecutionScore(impact, conflicts, recommendation);
+
+    return actions.map((action) => ({
+      action,
+      mode: 'DRY_RUN_ONLY' as const,
+      mutatesData: false,
+      deletesData: false,
+      safeExecutionScore,
+      safeToExecute: safeToConvert && safeExecutionScore >= 80,
+      preservesHistoricalAliases: true,
+      rollbackSnapshotPreview: {
+        touringRoute: {
+          id: route.id,
+          code: codes.currentCode,
+          name: route.name,
+          active: route.active !== false,
+          suggestedCanonicalCode: codes.suggestedCanonicalCode,
+          legacyAliases: codes.legacyAliases,
+        },
+        stops: (route.stops || []).map((stop: any) => ({
+          order: stop.order,
+          city: stop.city,
+          location: stop.location || null,
+          notes: stop.notes || null,
+        })),
+        pricings: (route.pricings || []).map((pricing: any) => ({
+          id: pricing.id,
+          pricingBasis: pricing.pricingBasis,
+          supplierId: pricing.supplierId || null,
+          vehicleId: pricing.vehicleId || null,
+          active: pricing.active !== false,
+        })),
+      },
+      referenceMigrationPreview: {
+        quotes: impact.affectedQuotes,
+        bookings: impact.affectedBookings,
+        templates: impact.affectedTemplates,
+        selectorReferences: impact.affectedSelectorReferences,
+        aliases: impact.affectedRouteAliases,
+      },
+      conflicts,
+      warnings,
+    }));
+  }
+
+  private async buildCleanupConflictPreview(
+    route: any,
+    suggestedCanonicalCode: string,
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+  ) {
+    const normalizedName = normalizeWorkbookText(route.name);
+    const currentCode = normalizeWorkbookText(route.code);
+    const existingActivityDuplicates = await this.safeCount('activity', {
+      OR: [{ name: { equals: normalizedName, mode: 'insensitive' } }, { code: { equals: currentCode, mode: 'insensitive' } }],
+    });
+    const existingExcursionTemplateDuplicates = await this.safeCount('excursionTemplate', {
+      OR: [{ name: { equals: normalizedName, mode: 'insensitive' } }, { code: { equals: currentCode, mode: 'insensitive' } }],
+    });
+    const canonicalCodeConflicts = await this.safeCount('touringRoute', {
+      code: suggestedCanonicalCode,
+      id: { not: route.id },
+    });
+
+    return {
+      existingActivityDuplicates,
+      existingExcursionTemplateDuplicates,
+      canonicalCodeConflicts,
+      activeDepartureConflicts: impact.affectedDepartures.total,
+      hasConflicts:
+        existingActivityDuplicates > 0 ||
+        existingExcursionTemplateDuplicates > 0 ||
+        canonicalCodeConflicts > 0 ||
+        impact.affectedDepartures.total > 0,
+    };
+  }
+
+  private calculateSafeExecutionScore(
+    impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>,
+    conflicts: {
+      existingActivityDuplicates: number;
+      existingExcursionTemplateDuplicates: number;
+      canonicalCodeConflicts: number;
+      activeDepartureConflicts: number;
+    },
+    recommendation: TouringRouteCleanupRecommendation,
+  ) {
+    let score = recommendation === 'MANUAL_REVIEW' ? 40 : 100;
+    score -= Math.min(30, impact.affectedQuotes.active * 10);
+    score -= Math.min(30, impact.affectedBookings.active * 15);
+    score -= Math.min(20, impact.affectedTemplates.active * 5);
+    score -= Math.min(30, conflicts.activeDepartureConflicts * 15);
+    score -= Math.min(20, (conflicts.existingActivityDuplicates + conflicts.existingExcursionTemplateDuplicates) * 10);
+    score -= conflicts.canonicalCodeConflicts > 0 ? 25 : 0;
+    return Math.max(0, Math.min(100, score));
   }
 
   private buildCleanupPreviewWarnings(impact: Awaited<ReturnType<TouringRoutesService['buildCleanupImpactPreview']>>) {
