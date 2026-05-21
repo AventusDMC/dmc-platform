@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default function TouringRouteAuditPage() {
   return (
-    <main className="page">
+    <main className="page touring-audit-page">
       <section className="panel workspace-panel workspace-panel-wide">
         <AdminBreadcrumbs
           items={[
@@ -23,7 +23,7 @@ export default function TouringRouteAuditPage() {
               Read-only preview for separating operational touring route skeletons from activity, excursion template, and transfer candidates.
             </p>
           </div>
-          <Link href="/transport?tab=touring-routes" className="secondary-button">
+          <Link href="/transport?tab=touring-routes" className="secondary-button touring-audit-nav-link">
             Touring Routes
           </Link>
         </div>

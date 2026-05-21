@@ -5973,6 +5973,22 @@ select option:checked {
   vertical-align: middle;
 }
 
+.touring-audit-page,
+.touring-audit-page * {
+  pointer-events: auto;
+}
+
+.touring-audit-page {
+  position: relative;
+  z-index: 1;
+}
+
+.touring-audit-page :where(a, button, select, input, label) {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .touring-audit-counts {
   display: flex;
   flex-wrap: wrap;
@@ -6036,7 +6052,7 @@ select option:checked {
   pointer-events: auto;
 }
 
-.modal-backdrop {
+.touring-audit-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 120;
@@ -6045,9 +6061,10 @@ select option:checked {
   padding: 1.5rem;
   overflow: auto;
   background: rgba(15, 23, 42, 0.42);
+  pointer-events: auto;
 }
 
-.modal-card {
+.touring-audit-modal-card {
   position: relative;
   z-index: 121;
   width: min(960px, 100%);

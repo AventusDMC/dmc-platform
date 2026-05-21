@@ -481,8 +481,8 @@ function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => 
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="touring-cleanup-dry-run-title">
+    <div className="touring-audit-modal-backdrop" role="presentation">
+      <section className="touring-audit-modal-card" role="dialog" aria-modal="true" aria-labelledby="touring-cleanup-dry-run-title">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">{activityMasterDryRun ? 'Controlled Execution' : 'Dry-Run Only'}</p>
