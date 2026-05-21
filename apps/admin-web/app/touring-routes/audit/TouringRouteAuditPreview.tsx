@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 type AuditClassification =
@@ -10,7 +11,7 @@ type AuditClassification =
   | 'REVIEW'
   | string;
 
-type AuditRow = {
+export type AuditRow = {
   id: string;
   currentCode: string;
   suggestedCanonicalCode: string;
@@ -119,7 +120,6 @@ export function TouringRouteAuditPreview() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [recommendationFilter, setRecommendationFilter] = useState('ALL');
-  const [selectedDryRun, setSelectedDryRun] = useState<AuditRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,21 +261,25 @@ export function TouringRouteAuditPreview() {
           <table className="touring-audit-table">
             <thead>
               <tr>
+                <th>Review</th>
                 <th>Route</th>
                 <th>Classification</th>
                 <th>Recommendation</th>
-                <th>Preview Actions</th>
-                <th>Impact</th>
+                <th>Score</th>
                 <th>Canonical Code</th>
                 <th>Legacy Aliases</th>
                 <th>Selector</th>
-                <th>Operational Fields</th>
                 <th>Warnings</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.map((row) => (
                 <tr key={row.id}>
+                  <td>
+                    <Link href={`/touring-routes/audit/${encodeURIComponent(row.id)}`} className="secondary-button touring-audit-review-link">
+                      Review
+                    </Link>
+                  </td>
                   <td>
                     <strong>{row.name || 'Unnamed touring route'}</strong>
                     <div className="table-subcopy">{row.currentCode || row.id}</div>
@@ -289,31 +293,7 @@ export function TouringRouteAuditPreview() {
                     <div className="table-subcopy">{row.cleanupPreview?.safeToConvert ? 'Safe to convert' : 'Review before converting'}</div>
                   </td>
                   <td>
-                    {(row.cleanupPreview?.actions || []).length > 0 ? (
-                      <div className="touring-audit-actions">
-                        <div className="touring-audit-aliases">
-                          {(row.cleanupPreview?.actions || []).map((action) => (
-                            <code key={action.action}>{formatActionName(action.action)}</code>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          className="secondary-button touring-audit-dry-run-button"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setSelectedDryRun(row);
-                          }}
-                        >
-                          Dry-run
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="table-subcopy">No cleanup action</span>
-                    )}
-                  </td>
-                  <td>
-                    <ImpactSummary row={row} />
+                    <SafeExecutionScore row={row} />
                   </td>
                   <td>
                     <code>{row.suggestedCanonicalCode}</code>
@@ -335,16 +315,6 @@ export function TouringRouteAuditPreview() {
                     </span>
                   </td>
                   <td>
-                    <div className="table-subcopy">
-                      <strong>{row.region || 'General'}</strong>
-                      {' | '}
-                      {row.safeFields?.routeCategory || 'Uncategorized'}
-                      {' | '}
-                      {row.safeFields?.operationalComplexity || 'LOW'}
-                    </div>
-                    <div className="table-subcopy">{row.safeFields?.primaryOperatingCity || 'City pending'}</div>
-                  </td>
-                  <td>
                     {(row.warnings || []).length > 0 ? (
                       <ul className="touring-audit-warning-list">
                         {(row.warnings || []).map((warning) => (
@@ -361,8 +331,6 @@ export function TouringRouteAuditPreview() {
           </table>
         </div>
       </section>
-
-      {selectedDryRun ? <ExecutionDryRunModal row={selectedDryRun} onClose={() => setSelectedDryRun(null)} /> : null}
     </>
   );
 }
@@ -377,17 +345,30 @@ function AuditMetric({ label, value, helper }: { label: string; value: string; h
   );
 }
 
-function ClassificationBadge({ classification }: { classification: string }) {
+export function ClassificationBadge({ classification }: { classification: string }) {
   const label = CLASSIFICATION_LABELS[classification] || classification;
   return <span className={`status-badge touring-audit-badge touring-audit-badge-${classification.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
 }
 
-function RecommendationBadge({ recommendation }: { recommendation: string }) {
+export function RecommendationBadge({ recommendation }: { recommendation: string }) {
   const label = RECOMMENDATION_LABELS[recommendation] || recommendation;
   return <span className={`status-badge touring-audit-badge touring-audit-badge-${recommendation.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>{label}</span>;
 }
 
-function ImpactSummary({ row }: { row: AuditRow }) {
+export function SafeExecutionScore({ row }: { row: AuditRow }) {
+  const dryRuns = row.cleanupPreview?.executionDryRuns || [];
+  const score = dryRuns[0]?.safeExecutionScore;
+
+  if (score === undefined) return <span className="table-subcopy">No dry-run</span>;
+
+  return (
+    <span className={dryRuns[0]?.safeToExecute ? 'status-badge' : 'status-badge status-badge-expired'}>
+      {formatNumber(score)}
+    </span>
+  );
+}
+
+export function ImpactSummary({ row }: { row: AuditRow }) {
   const impact = row.cleanupPreview?.impact;
   if (!impact) return <span className="table-subcopy">No impact preview</span>;
 
@@ -403,7 +384,7 @@ function ImpactSummary({ row }: { row: AuditRow }) {
   );
 }
 
-function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => void }) {
+export function ExecutionDryRunPanel({ row }: { row: AuditRow }) {
   const dryRuns = row.cleanupPreview?.executionDryRuns || [];
   const firstDryRun = dryRuns[0];
   const activityMasterDryRun = dryRuns.find((dryRun) => dryRun.action === 'executeConvertToActivityMasterDryRun');
@@ -481,17 +462,13 @@ function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => 
   }
 
   return (
-    <div className="touring-audit-modal-backdrop" role="presentation">
-      <section className="touring-audit-modal-card" role="dialog" aria-modal="true" aria-labelledby="touring-cleanup-dry-run-title">
+      <section className="workspace-section touring-audit-detail-panel" aria-labelledby="touring-cleanup-dry-run-title">
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">{activityMasterDryRun ? 'Controlled Execution' : 'Dry-Run Only'}</p>
             <h2 id="touring-cleanup-dry-run-title">{row.name || 'Touring route cleanup preview'}</h2>
             <p className="detail-copy">One-row execution is available only for low-risk Activity Master candidates after this dry-run preview.</p>
           </div>
-          <button type="button" className="secondary-button" onClick={onClose}>
-            Close
-          </button>
         </div>
 
         {dryRuns.length > 0 ? (
@@ -629,17 +606,16 @@ function ExecutionDryRunModal({ row, onClose }: { row: AuditRow; onClose: () => 
           <p className="detail-copy">No dry-run actions are available for this recommendation.</p>
         )}
       </section>
-    </div>
   );
 }
 
-function formatActionName(action: string) {
+export function formatActionName(action: string) {
   return action
     .replace(/Preview$/, '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/^./, (value) => value.toUpperCase());
 }
 
-function formatNumber(value: number) {
+export function formatNumber(value: number) {
   return new Intl.NumberFormat('en-US').format(value || 0);
 }

@@ -6013,7 +6013,7 @@ select option:checked {
 }
 
 .touring-audit-table {
-  min-width: 1120px;
+  min-width: 960px;
 }
 
 .touring-audit-table td {
@@ -6036,44 +6036,9 @@ select option:checked {
   gap: 0.35rem;
 }
 
-.touring-audit-actions {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  pointer-events: auto;
-}
-
-.touring-audit-dry-run-button {
+.touring-audit-review-link {
   position: relative;
   z-index: 3;
-  pointer-events: auto;
-}
-
-.touring-audit-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  overflow: auto;
-  background: rgba(15, 23, 42, 0.42);
-  pointer-events: auto;
-}
-
-.touring-audit-modal-card {
-  position: relative;
-  z-index: 121;
-  width: min(960px, 100%);
-  max-height: min(88vh, 920px);
-  overflow: auto;
-  border: 1px solid #dfe5ee;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
   pointer-events: auto;
 }
 
