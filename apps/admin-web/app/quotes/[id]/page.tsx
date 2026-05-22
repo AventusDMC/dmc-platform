@@ -2368,12 +2368,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     return entries.findIndex((entry) => `${entry.blockerType}:${entry.itemId || 'quote'}:${entry.reason}` === key) === index;
   });
   const convertBlocked = activeConvertBlockers.length > 0;
+  const conversionBlockedMessage = activeConvertBlockers[0]?.reason || null;
   if (process.env.NODE_ENV === 'development') {
     console.log({
       convertBlocked,
       activeConvertBlockers,
       unresolvedItems: readiness.unresolvedItems,
-      conversionBlockedMessage: activeConvertBlockers[0]?.reason || null,
+      conversionBlockedMessage,
     });
   }
   const conversionBlockerSummary = {
@@ -2411,6 +2412,39 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         ))}
       </div>
     </div>
+  ) : null;
+  const conversionDebugPanel = convertBlocked ? (
+    <section className="admin-card">
+      <h3>Conversion Debug</h3>
+      {convertBlocked && activeConvertBlockers.length === 0 ? (
+        <p className="form-error">STATE MISMATCH: convert is blocked but no active blockers exist.</p>
+      ) : null}
+      <div className="quote-preview-total-list">
+        <div>
+          <span>convertBlocked</span>
+          <strong>{String(convertBlocked)}</strong>
+        </div>
+        <div>
+          <span>activeConvertBlockers.length</span>
+          <strong>{activeConvertBlockers.length}</strong>
+        </div>
+        <div>
+          <span>unresolvedItems</span>
+          <strong>{readiness.unresolvedItems}</strong>
+        </div>
+      </div>
+      <p className="detail-copy">conversionBlockedMessage: {conversionBlockedMessage || 'null'}</p>
+      <div className="section-stack">
+        <div>
+          <strong>activeConvertBlockers JSON</strong>
+          <pre className="debug-json">{JSON.stringify(activeConvertBlockers, null, 2)}</pre>
+        </div>
+        <div>
+          <strong>quote.convertBlockers JSON</strong>
+          <pre className="debug-json">{JSON.stringify(quote.convertBlockers || [], null, 2)}</pre>
+        </div>
+      </div>
+    </section>
   ) : null;
   const itineraryExists = quote.itineraries.length > 0 || quoteItinerary.days.length > 0;
   const servicesReadyForNext = itineraryExists;
@@ -2605,6 +2639,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                 <div className="section-stack">
                   <button type="button" className="secondary-button" disabled>Convert</button>
                   {conversionBlockerDetails}
+                  {conversionDebugPanel}
                 </div>
               ) : (
                 <ConvertToBookingButton quoteId={quote.id} label="Convert" />
@@ -3370,6 +3405,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                         Convert to booking
                       </button>
                       {conversionBlockerDetails}
+                      {conversionDebugPanel}
                     </div>
                   ) : (
                     <ConvertToBookingButton quoteId={quote.id} />
@@ -3637,6 +3673,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       <div className="section-stack">
                         <button type="button" className="primary-button" disabled>Convert blocked</button>
                         {conversionBlockerDetails}
+                        {conversionDebugPanel}
                       </div>
                     ) : (
                       <ConvertToBookingButton quoteId={quote.id} />
