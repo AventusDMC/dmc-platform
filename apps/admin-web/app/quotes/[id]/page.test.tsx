@@ -119,7 +119,9 @@ describe('quote detail page regression', () => {
   it('renders exact conversion blockers from workflow diagnostics while keeping conversion disabled', () => {
     expectSourceContains(pageSource, [
       'const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())',
-      'const backendConvertBlockers = (quote.convertBlockers || []).filter((blocker) => blocker.active)',
+      'const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : []',
+      "console.log('convertBlockers', convertBlockers)",
+      'const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active)',
       'const activeConvertBlockers = [',
       'const pricingMismatchBlockers = readiness.blockers.filter((issue) =>',
       'const missingSupplierBlockers = allQuotePricingItems',
@@ -139,6 +141,12 @@ describe('quote detail page regression', () => {
       'reconfirmationDueAt',
       '{conversionBlockerDetails}',
       'convertBlocked || quoteReadOnly ? (',
+    ]);
+    assert.doesNotMatch(pageSource, /Resolve blocking issues before conversion/);
+    assert.doesNotMatch(pageSource, /conversionBlockedMessage/);
+    expectSourceContains(quoteDetailApiRouteSource, [
+      'cache: \'no-store\'',
+      'forwardProxyJsonResponse(response)',
     ]);
   });
 

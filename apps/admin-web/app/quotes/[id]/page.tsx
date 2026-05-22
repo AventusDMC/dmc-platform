@@ -2329,7 +2329,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       .map((item) => [item.itemId as string, item]),
   );
   const quoteItemsById = new Map(allQuotePricingItems.map((item) => [item.id, item]));
-  const backendConvertBlockers = (quote.convertBlockers || []).filter((blocker) => blocker.active);
+  const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : [];
+  if (process.env.NODE_ENV === 'development') {
+    console.log('convertBlockers', convertBlockers);
+  }
+  const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active);
   const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())
     .filter((item) => item.missingWorkflowFields.length > 0)
     .map((diagnostic) => {
@@ -2407,7 +2411,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     return entries.findIndex((entry) => `${entry.blockerType}:${entry.itemId || 'quote'}:${entry.reason}` === key) === index;
   });
   const convertBlocked = activeConvertBlockers.length > 0;
-  const conversionBlockedMessage = activeConvertBlockers[0]?.reason || null;
   const conversionBlockerSummary = {
     unresolvedItems: activeConvertBlockers.length,
     pricingMismatches: activeConvertBlockers.filter((blocker) =>
@@ -2683,7 +2686,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : convertBlocked || quoteReadOnly ? (
                 <div className="section-stack">
                   <button type="button" className="secondary-button" disabled>Convert</button>
-                  {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
                   {conversionBlockerDetails}
                 </div>
               ) : (
@@ -3445,7 +3447,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       <button type="button" className="secondary-button" disabled>
                         Convert to booking
                       </button>
-                      {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
                       {conversionBlockerDetails}
                     </div>
                   ) : (
@@ -3711,7 +3712,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     ) : convertBlocked || quoteReadOnly ? (
                       <div className="section-stack">
                         <button type="button" className="primary-button" disabled>Convert blocked</button>
-                        {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
                         {conversionBlockerDetails}
                       </div>
                     ) : (
