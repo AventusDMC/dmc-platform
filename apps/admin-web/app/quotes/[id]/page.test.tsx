@@ -114,6 +114,27 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('renders exact conversion blockers from workflow diagnostics while keeping conversion disabled', () => {
+    expectSourceContains(pageSource, [
+      'const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())',
+      'const pricingMismatchBlockers = readiness.blockers.filter((issue) =>',
+      'const missingSupplierBlockers = allQuotePricingItems',
+      'const statusMismatchBlockers = conversionRequirementMessage',
+      'const conversionBlockerSummary = {',
+      'unresolvedItems: reviewBlockingIssues.length',
+      'pricingMismatches: pricingMismatchBlockers.length',
+      'missingOperationalFields: operationalFieldBlockers.length',
+      'Imported Activity',
+      'formatWorkflowFieldName(field)',
+      'serviceDate',
+      'startTime or pickupTime',
+      'pickupLocation or meetingPoint',
+      'reconfirmationDueAt',
+      '{conversionBlockerDetails}',
+      'convertBlocked || quoteReadOnly ? (',
+    ]);
+  });
+
   it('renders the redesigned quote header with key quote metadata', () => {
     expectSourceContains(pageSource, [
       '<p className="eyebrow">Quote {quoteNumberLabel}</p>',
