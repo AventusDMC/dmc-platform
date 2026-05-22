@@ -2323,45 +2323,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         : !quote.acceptedVersionId
           ? 'Save/accept a version before converting.'
           : null;
-  const workflowDiagnosticsByItemId = new Map(
-    (quote.workflowDiagnostics || [])
-      .filter((item) => item.itemId)
-      .map((item) => [item.itemId as string, item]),
-  );
-  const quoteItemsById = new Map(allQuotePricingItems.map((item) => [item.id, item]));
   const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : [];
   if (process.env.NODE_ENV === 'development') {
     console.log('convertBlockers', convertBlockers);
   }
   const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active);
-  const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())
-    .filter((item) => item.missingWorkflowFields.length > 0)
-    .map((diagnostic) => {
-      const quoteItem = diagnostic.itemId ? quoteItemsById.get(diagnostic.itemId) : null;
-      const itemType =
-        quoteItem && isQuoteServiceMissingSupplier(quoteItem) && isActivityQuoteItem(quoteItem)
-          ? 'Imported Activity'
-          : quoteItem
-            ? getQuoteItemCategory(quoteItem)
-            : 'Quote Item';
-      return {
-        ...diagnostic,
-        itemType,
-        itemName: diagnostic.itemName || (quoteItem ? getQuoteItemDisplayName(quoteItem) : 'Quote item'),
-        href: diagnostic.itemId ? `${buildStepHref('services')}#quote-item-${diagnostic.itemId}` : buildStepHref('services'),
-      };
-    });
-  const pricingMismatchBlockers = readiness.blockers.filter((issue) =>
-    ['service-missing-price', 'service-zero-sell', 'service-missing-currency', 'pricing-configuration'].includes(issue.code),
-  );
-  const missingSupplierBlockers = allQuotePricingItems
-    .filter((item) => isQuoteServiceMissingSupplier(item))
-    .map((item) => ({
-      itemId: item.id,
-      itemName: getQuoteItemDisplayName(item),
-      itemType: getQuoteItemCategory(item),
-      href: `${buildStepHref('services')}#quote-item-${item.id}`,
-    }));
   const statusMismatchBlockers = conversionRequirementMessage
     ? [
         {
@@ -2397,26 +2363,25 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       reason: blocker.reason,
       href: blocker.itemId ? `${buildStepHref('services')}#quote-item-${blocker.itemId}` : buildStepHref('review'),
     })),
-    ...missingSupplierBlockers.map((item) => ({
-      blockerType: 'missing-supplier',
-      source: 'Service Planner',
-      active: true,
-      itemId: item.itemId,
-      itemName: item.itemName,
-      reason: `${titleCase(item.itemType)} requires a real supplier before booking conversion.`,
-      href: item.href,
-    })),
   ].filter((blocker, index, entries) => {
     const key = `${blocker.blockerType}:${blocker.itemId || 'quote'}:${blocker.reason}`;
     return entries.findIndex((entry) => `${entry.blockerType}:${entry.itemId || 'quote'}:${entry.reason}` === key) === index;
   });
   const convertBlocked = activeConvertBlockers.length > 0;
+  if (process.env.NODE_ENV === 'development') {
+    console.log({
+      convertBlocked,
+      activeConvertBlockers,
+      unresolvedItems: readiness.unresolvedItems,
+      conversionBlockedMessage: activeConvertBlockers[0]?.reason || null,
+    });
+  }
   const conversionBlockerSummary = {
     unresolvedItems: activeConvertBlockers.length,
     pricingMismatches: activeConvertBlockers.filter((blocker) =>
       ['pricing-configuration', 'service-missing-price', 'service-zero-sell', 'pricing-mismatch'].includes(blocker.blockerType),
-    ).length + pricingMismatchBlockers.length,
-    missingOperationalFields: operationalFieldBlockers.length,
+    ).length,
+    missingOperationalFields: activeConvertBlockers.filter((blocker) => blocker.blockerType === 'workflow-fields').length,
   };
   const conversionBlockerDetails = convertBlocked ? (
     <div className="section-stack">
@@ -2445,55 +2410,6 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
           </p>
         ))}
       </div>
-      {statusMismatchBlockers.length > 0 ? (
-        <div>
-          <strong>Status / acceptance</strong>
-          {statusMismatchBlockers.map((item) => (
-            <p key={item.id} className="form-error">
-              <Link href={item.href}>{item.title}</Link>: {item.description}
-            </p>
-          ))}
-        </div>
-      ) : null}
-      {operationalFieldBlockers.length > 0 ? (
-        <div>
-          <strong>Missing operational fields</strong>
-          {operationalFieldBlockers.map((item) => (
-            <div key={item.itemId || item.itemName} className="form-error">
-              <Link href={item.href}>
-                {item.itemType} - {item.itemName} {item.itemId ? `(${item.itemId})` : ''}
-              </Link>
-              <ul>
-                {item.missingWorkflowFields.map((field) => (
-                  <li key={field}>{formatWorkflowFieldName(field)}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {pricingMismatchBlockers.length > 0 ? (
-        <div>
-          <strong>Pricing sync / commercial blockers</strong>
-          {pricingMismatchBlockers.map((issue) => (
-            <p key={issue.id} className="form-error">
-              <Link href={issue.href}>{issue.title}</Link>: {issue.description}
-            </p>
-          ))}
-        </div>
-      ) : null}
-      {missingSupplierBlockers.length > 0 ? (
-        <div>
-          <strong>Missing supplier</strong>
-          {missingSupplierBlockers.map((item) => (
-            <p key={item.itemId} className="form-error">
-              <Link href={item.href}>
-                {titleCase(item.itemType)} - {item.itemName} ({item.itemId})
-              </Link>
-            </p>
-          ))}
-        </div>
-      ) : null}
     </div>
   ) : null;
   const itineraryExists = quote.itineraries.length > 0 || quoteItinerary.days.length > 0;
@@ -2683,7 +2599,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : null}
               {quote.booking ? (
                 <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
-              ) : convertBlocked || quoteReadOnly ? (
+              ) : quoteReadOnly ? (
+                <button type="button" className="secondary-button" disabled>Convert</button>
+              ) : convertBlocked ? (
                 <div className="section-stack">
                   <button type="button" className="secondary-button" disabled>Convert</button>
                   {conversionBlockerDetails}
@@ -3442,7 +3360,11 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
-                  ) : quoteReadOnly || convertBlocked ? (
+                  ) : quoteReadOnly ? (
+                    <button type="button" className="secondary-button" disabled>
+                      Convert to booking
+                    </button>
+                  ) : convertBlocked ? (
                     <div className="section-stack">
                       <button type="button" className="secondary-button" disabled>
                         Convert to booking
@@ -3709,7 +3631,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
-                    ) : convertBlocked || quoteReadOnly ? (
+                    ) : quoteReadOnly ? (
+                      <button type="button" className="primary-button" disabled>Convert</button>
+                    ) : convertBlocked ? (
                       <div className="section-stack">
                         <button type="button" className="primary-button" disabled>Convert blocked</button>
                         {conversionBlockerDetails}

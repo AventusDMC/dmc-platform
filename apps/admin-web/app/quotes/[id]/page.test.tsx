@@ -118,32 +118,28 @@ describe('quote detail page regression', () => {
 
   it('renders exact conversion blockers from workflow diagnostics while keeping conversion disabled', () => {
     expectSourceContains(pageSource, [
-      'const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())',
       'const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : []',
       "console.log('convertBlockers', convertBlockers)",
       'const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active)',
       'const activeConvertBlockers = [',
-      'const pricingMismatchBlockers = readiness.blockers.filter((issue) =>',
-      'const missingSupplierBlockers = allQuotePricingItems',
       'const statusMismatchBlockers = conversionRequirementMessage',
       'const conversionBlockerSummary = {',
       'unresolvedItems: activeConvertBlockers.length',
       'const convertBlocked = activeConvertBlockers.length > 0',
+      'console.log({',
+      'unresolvedItems: readiness.unresolvedItems',
       'Active convert blockers',
       '[{blocker.source}] {blocker.reason}',
       'pricingMismatches: activeConvertBlockers.filter((blocker) =>',
-      'missingOperationalFields: operationalFieldBlockers.length',
-      'Imported Activity',
-      'formatWorkflowFieldName(field)',
-      'serviceDate',
-      'startTime or pickupTime',
-      'pickupLocation or meetingPoint',
-      'reconfirmationDueAt',
+      "missingOperationalFields: activeConvertBlockers.filter((blocker) => blocker.blockerType === 'workflow-fields').length",
       '{conversionBlockerDetails}',
-      'convertBlocked || quoteReadOnly ? (',
+      ') : quoteReadOnly ? (',
+      ') : convertBlocked ? (',
     ]);
     assert.doesNotMatch(pageSource, /Resolve blocking issues before conversion/);
-    assert.doesNotMatch(pageSource, /conversionBlockedMessage/);
+    assert.doesNotMatch(pageSource, /convertBlocked \|\| quoteReadOnly/);
+    assert.doesNotMatch(pageSource, /quoteReadOnly \|\| convertBlocked/);
+    assert.doesNotMatch(pageSource, /missingSupplierBlockers/);
     expectSourceContains(quoteDetailApiRouteSource, [
       'cache: \'no-store\'',
       'forwardProxyJsonResponse(response)',
@@ -285,7 +281,8 @@ describe('quote detail page regression', () => {
       "const quoteAcceptedForConversion = quote.status === 'ACCEPTED';",
       "Accept the quote before converting to booking.",
       "Save/accept a version before converting.",
-      'convertBlocked || quoteReadOnly ? (',
+      ') : quoteReadOnly ? (',
+      ') : convertBlocked ? (',
       '<button type="button" className="secondary-button" disabled>Convert</button>',
       'Cancelled quotes cannot be converted to bookings.',
       '<ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />',
