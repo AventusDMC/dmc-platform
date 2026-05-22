@@ -36,7 +36,7 @@ type BookingType = 'FIT' | 'GROUP' | 'SERIES';
 type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type AuditEntityType = 'booking' | 'booking_service';
-type SupplierConfirmationStatus = 'NOT_SENT' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
+type SupplierConfirmationStatus = 'NOT_SENT' | 'REQUESTED' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
 type AuditLog = {
   id: string;
@@ -495,6 +495,7 @@ type Booking = {
     supplierReference: string | null;
     reconfirmationRequired: boolean;
     reconfirmationDueAt: string | null;
+    operationalNotes?: string | null;
     notes: string | null;
     status: 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
     statusNote: string | null;
@@ -1176,7 +1177,19 @@ function renderCommonOperationFields(service: BookingOperationRow) {
     <>
       <label>
         Confirmation
-        <input type="text" name="confirmationNumber" defaultValue={service.confirmationNumber || ''} />
+        <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+      </label>
+      <label>
+        Confirmation status
+        <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
+          {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+            <option key={status} value={status}>{formatSupplierConfirmationStatus(status as SupplierConfirmationStatus)}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Confirmation notes
+        <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
       </label>
       <label>
         Status
@@ -1184,7 +1197,7 @@ function renderCommonOperationFields(service: BookingOperationRow) {
       </label>
       <label>
         Notes
-        <input type="text" name="notes" defaultValue={service.notes || ''} />
+        <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
       </label>
     </>
   );
@@ -1204,6 +1217,8 @@ function renderOperationTypeAwareEditor(
     <details className={`operations-row-details booking-operation-editor booking-operation-editor-${editorType.toLowerCase()}`}>
       <summary>{getOperationEditorHeading(editorType)}</summary>
       <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form operation-type-editor-form">
+        <input type="hidden" name="bookingId" value={booking.id} />
+        <input type="hidden" name="operationId" value={service.id} />
         <input type="hidden" name="type" value={editorType} />
         <div className="operation-type-editor-header">
           <strong>{formatOperationType(editorType)}</strong>
@@ -1232,6 +1247,7 @@ function renderOperationTypeAwareEditor(
               Supplier
               {renderSupplierOptions(suppliers, service.supplierId)}
             </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
             {renderCommonOperationFields(service)}
           </>
         ) : null}
@@ -1242,6 +1258,7 @@ function renderOperationTypeAwareEditor(
               Hotel supplier
               {renderSupplierOptions(suppliers, service.supplierId)}
             </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
             {renderOperationalDateInput(service)}
             <div className="form-helper">
               Rooming summary: {booking.rooming.badge.breakdown.unassignedRooms > 0 ? `${booking.rooming.badge.breakdown.unassignedRooms} rooms need review` : 'Rooming shell available'}
@@ -1276,6 +1293,7 @@ function renderOperationTypeAwareEditor(
               Supplier
               {renderSupplierOptions(suppliers, service.supplierId)}
             </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
             {renderCommonOperationFields(service)}
           </>
         ) : null}
@@ -1310,11 +1328,16 @@ function renderOperationTypeAwareEditor(
             </label>
             <label>
               Ticket handling
-              <input type="text" name="notes" defaultValue={service.notes || ''} />
+              <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
             </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
             <label>
               Confirmation
-              <input type="text" name="confirmationNumber" defaultValue={service.confirmationNumber || ''} />
+              <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+            </label>
+            <label>
+              Confirmation notes
+              <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
             </label>
             <label>
               Status
@@ -1329,9 +1352,10 @@ function renderOperationTypeAwareEditor(
               Supplier
               {renderSupplierOptions(suppliers, service.supplierId)}
             </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
             <label>
               Operational notes
-              <input type="text" name="notes" defaultValue={service.notes || ''} />
+              <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
             </label>
             <label>
               Meeting point
@@ -1343,7 +1367,19 @@ function renderOperationTypeAwareEditor(
             </label>
             <label>
               Confirmation
-              <input type="text" name="confirmationNumber" defaultValue={service.confirmationNumber || ''} />
+              <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+            </label>
+            <label>
+              Confirmation notes
+              <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
+            </label>
+            <label>
+              Confirmation status
+              <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
+                {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+                  <option key={status} value={status}>{formatSupplierConfirmationStatus(status as SupplierConfirmationStatus)}</option>
+                ))}
+              </select>
             </label>
             <label>
               Status

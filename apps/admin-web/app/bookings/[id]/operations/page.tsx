@@ -27,6 +27,8 @@ type OperationsGridRow = {
   confirmationNotes?: string | null;
   confirmationRequestedAt?: string | null;
   confirmationReceivedAt?: string | null;
+  pickupLocation?: string | null;
+  dropoffLocation?: string | null;
 };
 
 type SupplierOption = {
@@ -56,11 +58,30 @@ type OperationsGridResponse = {
   rows: OperationsGridRow[];
 };
 
+type BookingReadinessResponse = {
+  rooming?: {
+    badge?: {
+      count?: number;
+      breakdown?: {
+        unassignedPassengers?: number;
+        unassignedRooms?: number;
+        occupancyIssues?: number;
+      };
+    };
+  };
+};
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-function formatDate(value: string | null) {
+type Severity = 'INFO' | 'ACTION REQUIRED' | 'CRITICAL';
+type Readiness = 'Ready' | 'Pending' | 'Blocked' | 'Critical';
+type Phase = 'Critical Issues' | 'Needs Assignment' | 'Needs Confirmation' | 'Ready for Voucher' | 'Operationally Ready';
+
+const PHASES: Phase[] = ['Critical Issues', 'Needs Assignment', 'Needs Confirmation', 'Ready for Voucher', 'Operationally Ready'];
+
+function formatDate(value: string | null | undefined) {
   if (!value) {
     return '-';
   }
@@ -104,6 +125,16 @@ async function loadOperationsGrid(id: string) {
   }
 }
 
+async function loadBookingReadiness(id: string) {
+  try {
+    return await adminPageFetchJson<BookingReadinessResponse>(`/api/bookings/${id}`, 'Booking readiness', {
+      cache: 'no-store',
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function loadSuppliers() {
   try {
     return await adminPageFetchJson<SupplierOption[]>('/api/suppliers', 'Suppliers', {
@@ -129,30 +160,170 @@ function supplierMatchesService(supplier: SupplierOption, serviceType: string) {
   return true;
 }
 
-function getConfirmationRowClass(row: OperationsGridRow, assigned: string | null | undefined) {
-  const classes: string[] = [];
-  const status = String(row.supplierConfirmationStatus || 'NOT_SENT').toUpperCase();
-  if (!assigned || row.assignmentStatus === 'UNASSIGNED') {
-    classes.push('table-row-warning');
-  }
-  if (status === 'REJECTED') {
-    classes.push('table-row-critical');
-  } else if (status === 'REQUESTED' || status === 'NOT_SENT') {
-    classes.push('table-row-warning');
-  } else if (status === 'CONFIRMED') {
-    classes.push('table-row-ready');
+function isAssigned(row: OperationsGridRow) {
+  return Boolean(row.assignedSupplierId || row.supplierId) && String(row.assignmentStatus || '').toUpperCase() !== 'UNASSIGNED';
+}
+
+function isConfirmationRejected(row: OperationsGridRow) {
+  return String(row.supplierConfirmationStatus || '').toUpperCase() === 'REJECTED';
+}
+
+function isConfirmationConfirmed(row: OperationsGridRow) {
+  return String(row.supplierConfirmationStatus || '').toUpperCase() === 'CONFIRMED';
+}
+
+function isVoucherPending(row: OperationsGridRow) {
+  return !['GENERATED', 'SENT', 'ISSUED'].includes(String(row.voucherStatus || '').toUpperCase());
+}
+
+function isTimingMissing(row: OperationsGridRow) {
+  return !row.operationalDate || !row.operationalTime;
+}
+
+function getRowReadiness(row: OperationsGridRow): { readiness: Readiness; severity: Severity; reasons: string[] } {
+  const reasons: string[] = [];
+  if (isConfirmationRejected(row)) reasons.push('Rejected supplier confirmation');
+  if (isTimingMissing(row)) reasons.push('Missing operational date or time');
+  if (!isAssigned(row)) reasons.push('Supplier unassigned');
+  if (isAssigned(row) && !isConfirmationConfirmed(row) && !isConfirmationRejected(row)) reasons.push('Supplier confirmation pending');
+  if (isAssigned(row) && isConfirmationConfirmed(row) && isVoucherPending(row)) reasons.push('Voucher pending');
+
+  if (isConfirmationRejected(row) || isTimingMissing(row)) {
+    return { readiness: 'Critical', severity: 'CRITICAL', reasons };
   }
 
-  return classes.length > 0 ? classes.join(' ') : undefined;
+  if (!isAssigned(row)) {
+    return { readiness: 'Blocked', severity: 'ACTION REQUIRED', reasons };
+  }
+
+  if (!isConfirmationConfirmed(row) || isVoucherPending(row)) {
+    return { readiness: 'Pending', severity: 'ACTION REQUIRED', reasons };
+  }
+
+  return { readiness: 'Ready', severity: 'INFO', reasons: ['Operationally ready'] };
+}
+
+function getRowPhase(row: OperationsGridRow): Phase {
+  if (isConfirmationRejected(row) || isTimingMissing(row)) return 'Critical Issues';
+  if (!isAssigned(row)) return 'Needs Assignment';
+  if (!isConfirmationConfirmed(row)) return 'Needs Confirmation';
+  if (isVoucherPending(row)) return 'Ready for Voucher';
+  return 'Operationally Ready';
+}
+
+function getSeverityClass(value: string) {
+  return value.toLowerCase().replace(/\s+/g, '-');
+}
+
+function getAffectedHref(rows: OperationsGridRow[]) {
+  return rows[0] ? `#operation-${rows[0].id}` : '#operations-list';
+}
+
+function renderAssignmentForm(bookingId: string, row: OperationsGridRow, suppliers: SupplierOption[], compact = false) {
+  const rowSuppliers = suppliers.filter((supplier) => isSupplierVisible(supplier) && supplierMatchesService(supplier, row.serviceType));
+  return (
+    <form className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'} method="post" action={`/api/bookings/${bookingId}/operations/${row.id}/assign-supplier`}>
+      <select name="supplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
+        <option value="">Unassigned</option>
+        {rowSuppliers.map((supplier) => (
+          <option key={supplier.id} value={supplier.id}>
+            {supplier.name}
+          </option>
+        ))}
+      </select>
+      <input type="hidden" name="assignmentStatus" value="ASSIGNED" />
+      {!compact ? <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" /> : null}
+      <button type="submit" className="button button-secondary">Assign Supplier</button>
+    </form>
+  );
+}
+
+function renderConfirmationRequestForm(bookingId: string, row: OperationsGridRow) {
+  return (
+    <form className="operations-inline-form operations-quick-form" method="post" action={`/api/bookings/${bookingId}/operations/${row.id}/confirmation`}>
+      <input type="hidden" name="supplierConfirmationStatus" value="REQUESTED" />
+      <input type="hidden" name="confirmationReference" value={row.confirmationReference || row.supplierConfirmationCode || ''} />
+      <button type="submit" className="button button-secondary">Request Confirmation</button>
+    </form>
+  );
+}
+
+function renderVoucherForm(bookingId: string, row: OperationsGridRow) {
+  return (
+    <form className="operations-inline-form operations-quick-form" method="post" action={`/api/bookings/${bookingId}/services/${row.id}/voucher`}>
+      <input type="hidden" name="notes" value={row.confirmationNotes || row.assignmentNotes || ''} />
+      <button type="submit" className="button button-secondary">Generate Voucher</button>
+    </form>
+  );
+}
+
+function renderConfirmationForm(bookingId: string, row: OperationsGridRow) {
+  return (
+    <form className="operations-inline-form" method="post" action={`/api/bookings/${bookingId}/operations/${row.id}/confirmation`}>
+      <select
+        name="supplierConfirmationStatus"
+        defaultValue={row.supplierConfirmationStatus || 'NOT_SENT'}
+        aria-label={`Confirmation status for ${row.description || row.serviceType}`}
+      >
+        {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+          <option key={status} value={status}>
+            {formatLabel(status)}
+          </option>
+        ))}
+      </select>
+      <input
+        name="confirmationReference"
+        defaultValue={row.confirmationReference || row.supplierConfirmationCode || ''}
+        placeholder="Reference"
+        aria-label="Confirmation reference"
+      />
+      <input
+        name="confirmationNotes"
+        defaultValue={row.confirmationNotes || ''}
+        placeholder="Notes"
+        aria-label="Confirmation notes"
+      />
+      <button type="submit" name="supplierConfirmationStatus" value="REQUESTED" className="button button-secondary">
+        Request Confirmation
+      </button>
+      <button type="submit" name="supplierConfirmationStatus" value="CONFIRMED" className="button button-secondary">
+        Mark Confirmed
+      </button>
+      <button type="submit" name="supplierConfirmationStatus" value="REJECTED" className="button button-secondary">
+        Mark Rejected
+      </button>
+    </form>
+  );
 }
 
 export default async function BookingOperationsPage({ params }: PageProps) {
   const { id } = await params;
-  const [grid, suppliers] = await Promise.all([loadOperationsGrid(id), loadSuppliers()]);
+  const [grid, suppliers, bookingReadiness] = await Promise.all([loadOperationsGrid(id), loadSuppliers(), loadBookingReadiness(id)]);
   const manifest = grid.passengerManifest;
+  const roomingIncompleteCount = Number(bookingReadiness?.rooming?.badge?.count || 0);
+  const rows = grid.rows;
+  const suppliersUnassignedRows = rows.filter((row) => !isAssigned(row));
+  const confirmationsRejectedRows = rows.filter(isConfirmationRejected);
+  const confirmationsPendingRows = rows.filter((row) => isAssigned(row) && !isConfirmationConfirmed(row) && !isConfirmationRejected(row));
+  const vouchersPendingRows = rows.filter((row) => isAssigned(row) && isConfirmationConfirmed(row) && isVoucherPending(row));
+  const manifestIncomplete = manifest ? manifest.status !== 'COMPLETE' || manifest.namesPending || manifest.incompleteRecords > 0 : false;
+  const readyRows = rows.filter((row) => getRowReadiness(row).readiness === 'Ready').length;
+  const readinessPercent = rows.length > 0 ? Math.round((readyRows / rows.length) * 100) : 0;
+  const groupedRows = PHASES.map((phase) => ({
+    phase,
+    rows: rows.filter((row) => getRowPhase(row) === phase),
+  }));
+  const actionItems = [
+    { label: 'Suppliers unassigned', count: suppliersUnassignedRows.length, severity: 'ACTION REQUIRED' as Severity, href: getAffectedHref(suppliersUnassignedRows) },
+    { label: 'Confirmations pending', count: confirmationsPendingRows.length, severity: 'ACTION REQUIRED' as Severity, href: getAffectedHref(confirmationsPendingRows) },
+    { label: 'Confirmations rejected', count: confirmationsRejectedRows.length, severity: 'CRITICAL' as Severity, href: getAffectedHref(confirmationsRejectedRows) },
+    { label: 'Vouchers pending', count: vouchersPendingRows.length, severity: 'ACTION REQUIRED' as Severity, href: getAffectedHref(vouchersPendingRows) },
+    { label: 'Manifest incomplete', count: manifestIncomplete ? 1 : 0, severity: 'INFO' as Severity, href: '#manifest-summary' },
+    { label: 'Rooming incomplete', count: roomingIncompleteCount, severity: roomingIncompleteCount > 0 ? 'INFO' as Severity : 'INFO' as Severity, href: '#rooming-summary' },
+  ];
 
   return (
-    <main className="admin-page-shell">
+    <main className="admin-page-shell booking-operations-simplified-page">
       <div className="admin-page-heading">
         <AdminBreadcrumbs
           items={[
@@ -165,7 +336,7 @@ export default async function BookingOperationsPage({ params }: PageProps) {
           <div>
             <h1>Operational Service Grid</h1>
             <p className="admin-muted-copy">
-              {grid.booking.bookingRef || 'Booking'} · {grid.rows.length} service rows
+              {grid.booking.bookingRef || 'Booking'} - {rows.length} service rows
             </p>
           </div>
           <div className="admin-heading-actions">
@@ -177,133 +348,145 @@ export default async function BookingOperationsPage({ params }: PageProps) {
         </div>
       </div>
 
-      {manifest ? (
-        <section className="admin-card">
-          <div className="admin-heading-row">
-            <div>
-              <p className="eyebrow">Passenger Manifest</p>
-              <h2>{manifest.status === 'COMPLETE' ? 'Complete' : 'Incomplete'}</h2>
-              <p className="admin-muted-copy">
-                {manifest.received}/{manifest.expected} passenger records received
-                {manifest.missingRecords > 0 ? ` - ${manifest.missingRecords} names pending` : ''}
-                {manifest.incompleteRecords > 0 ? ` - ${manifest.incompleteRecords} records incomplete` : ''}
-              </p>
-            </div>
-            <div className="admin-status-pill">
-              {manifest.voucherReady ? 'Voucher ready' : 'Final manifest pending'}
-            </div>
+      <section className="admin-card booking-operations-action-center" aria-label="Operational Action Center">
+        <div className="operations-card-head">
+          <div>
+            <p className="eyebrow">Operational Action Center</p>
+            <h2>Next actions</h2>
           </div>
-        </section>
-      ) : null}
-
-      <section className="admin-card">
-        <div className="table-scroll">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Day</th>
-                <th>Service type</th>
-                <th>Supplier</th>
-                <th>Assignment</th>
-                <th>Status</th>
-                <th>Operational date/time</th>
-                <th>Voucher status</th>
-                <th>Confirmation status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grid.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>No operational service rows have been generated for this booking.</td>
-                </tr>
-              ) : (
-                grid.rows.map((row) => {
-                  const assigned = row.assignedSupplierId || row.supplierId;
-                  const rowSuppliers = suppliers.filter((supplier) => isSupplierVisible(supplier) && supplierMatchesService(supplier, row.serviceType));
-                  return (
-                  <tr key={row.id} className={getConfirmationRowClass(row, assigned)}>
-                    <td>
-                      {row.dayNumber ? `Day ${row.dayNumber}` : '-'}
-                      {row.dayTitle ? <div className="table-subcopy">{row.dayTitle}</div> : null}
-                    </td>
-                    <td>
-                      {formatLabel(row.serviceType)}
-                      {row.description ? <div className="table-subcopy">{row.description}</div> : null}
-                    </td>
-                    <td>{row.assignedSupplierName || row.supplierName || '-'}</td>
-                    <td>
-                      <strong>{formatLabel(row.assignmentStatus || (assigned ? 'ASSIGNED' : 'UNASSIGNED'))}</strong>
-                      <form className="inline-form" method="post" action={`/api/bookings/${id}/operations/${row.id}/assign-supplier`}>
-                        <select name="supplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
-                          <option value="">Unassigned</option>
-                          {rowSuppliers.map((supplier) => (
-                            <option key={supplier.id} value={supplier.id}>
-                              {supplier.name}
-                            </option>
-                          ))}
-                        </select>
-                        <select name="assignmentStatus" defaultValue={row.assignmentStatus || (assigned ? 'ASSIGNED' : 'UNASSIGNED')} aria-label="Assignment status">
-                          {['UNASSIGNED', 'ASSIGNED', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
-                            <option key={status} value={status}>{formatLabel(status)}</option>
-                          ))}
-                        </select>
-                        <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" />
-                        <button type="submit" className="button button-secondary">Assign</button>
-                      </form>
-                    </td>
-                    <td>{formatLabel(row.status)}</td>
-                    <td>
-                      {formatDate(row.operationalDate)}
-                      {row.operationalTime ? <div className="table-subcopy">{row.operationalTime}</div> : null}
-                    </td>
-                    <td>{formatLabel(row.voucherStatus)}</td>
-                    <td>
-                      <strong>{formatLabel(row.supplierConfirmationStatus)}</strong>
-                      {row.confirmationRequestedAt ? <div className="table-subcopy">Requested {formatDate(row.confirmationRequestedAt)}</div> : null}
-                      {row.confirmationReceivedAt ? <div className="table-subcopy">Received {formatDate(row.confirmationReceivedAt)}</div> : null}
-                      <form className="inline-form" method="post" action={`/api/bookings/${id}/operations/${row.id}/confirmation`}>
-                        <select
-                          name="supplierConfirmationStatus"
-                          defaultValue={row.supplierConfirmationStatus || 'NOT_SENT'}
-                          aria-label={`Confirmation status for ${row.description || row.serviceType}`}
-                        >
-                          {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
-                            <option key={status} value={status}>
-                              {formatLabel(status)}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          name="confirmationReference"
-                          defaultValue={row.confirmationReference || row.supplierConfirmationCode || ''}
-                          placeholder="Reference"
-                          aria-label="Confirmation reference"
-                        />
-                        <input
-                          name="confirmationNotes"
-                          defaultValue={row.confirmationNotes || ''}
-                          placeholder="Notes"
-                          aria-label="Confirmation notes"
-                        />
-                        <button type="submit" name="supplierConfirmationStatus" value="REQUESTED" className="button button-secondary">
-                          Request Confirmation
-                        </button>
-                        <button type="submit" name="supplierConfirmationStatus" value="CONFIRMED" className="button button-secondary">
-                          Mark Confirmed
-                        </button>
-                        <button type="submit" name="supplierConfirmationStatus" value="REJECTED" className="button button-secondary">
-                          Mark Rejected
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          <span className={`operations-readiness-badge operations-readiness-${readinessPercent === 100 ? 'ready' : 'pending'}`}>
+            {readinessPercent}% ready
+          </span>
+        </div>
+        <div className="booking-operations-action-grid">
+          {actionItems.map((item) => (
+            <a key={item.label} className={`booking-operations-action-card severity-${getSeverityClass(item.severity)}`} href={item.href}>
+              <span>{item.severity}</span>
+              <strong>{item.count}</strong>
+              <p>{item.label}</p>
+            </a>
+          ))}
         </div>
       </section>
+
+      <div className="booking-operations-layout">
+        <aside className="booking-operations-sidebar app-sticky-panel" aria-label="Operational summary">
+          <h2>Summary</h2>
+          <div className="operations-summary-list">
+            <div><span>Pending suppliers</span><strong>{suppliersUnassignedRows.length}</strong></div>
+            <div><span>Pending confirmations</span><strong>{confirmationsPendingRows.length}</strong></div>
+            <div><span>Vouchers pending</span><strong>{vouchersPendingRows.length}</strong></div>
+            <div id="rooming-summary"><span>Rooming state</span><strong>{roomingIncompleteCount > 0 ? 'Incomplete' : 'Ready'}</strong></div>
+            <div id="manifest-summary"><span>Manifest state</span><strong>{manifestIncomplete ? 'Incomplete' : 'Ready'}</strong></div>
+            <div><span>Readiness</span><strong>{readinessPercent}%</strong></div>
+          </div>
+        </aside>
+
+        <section id="operations-list" className="booking-operations-groups">
+          {manifest ? (
+            <article className="admin-card booking-operations-manifest-card">
+              <div>
+                <p className="eyebrow">Passenger Manifest</p>
+                <h2>{manifest.status === 'COMPLETE' ? 'Complete' : 'Incomplete'}</h2>
+                <p className="admin-muted-copy">
+                  {manifest.received}/{manifest.expected} passenger records received
+                  {manifest.missingRecords > 0 ? ` - ${manifest.missingRecords} names pending` : ''}
+                  {manifest.incompleteRecords > 0 ? ` - ${manifest.incompleteRecords} records incomplete` : ''}
+                </p>
+              </div>
+              <span className="admin-status-pill">{manifest.voucherReady ? 'Voucher ready' : 'Final manifest pending'}</span>
+            </article>
+          ) : null}
+
+          {rows.length === 0 ? (
+            <section className="admin-card">
+              <p>No operational service rows have been generated for this booking.</p>
+            </section>
+          ) : null}
+
+          {groupedRows.map((group) => (
+            <section key={group.phase} className="admin-card booking-operations-phase">
+              <div className="operations-card-head">
+                <div>
+                  <p className="eyebrow">Operational phase</p>
+                  <h2>{group.phase}</h2>
+                </div>
+                <span className="admin-status-pill">{group.rows.length}</span>
+              </div>
+              {group.rows.length === 0 ? (
+                <p className="admin-muted-copy">No rows in this phase.</p>
+              ) : (
+                <div className="booking-operations-row-stack">
+                  {group.rows.map((row) => {
+                    const assigned = isAssigned(row);
+                    const supplierName = row.assignedSupplierName || row.supplierName || 'Unassigned';
+                    const readiness = getRowReadiness(row);
+                    const rowClass = `booking-operations-row-card readiness-${readiness.readiness.toLowerCase()} severity-${getSeverityClass(readiness.severity)}`;
+                    return (
+                      <article key={row.id} id={`operation-${row.id}`} className={rowClass}>
+                        <header className="booking-operations-row-head">
+                          <div>
+                            <span className="operation-type-pill">{formatLabel(row.serviceType)}</span>
+                            <h3>{row.description || formatLabel(row.serviceType)}</h3>
+                            <p className="admin-muted-copy">
+                              {row.dayNumber ? `Day ${row.dayNumber}` : 'Unscheduled'}{row.dayTitle ? ` - ${row.dayTitle}` : ''}
+                            </p>
+                          </div>
+                          <span className={`operations-readiness-badge operations-readiness-${readiness.readiness.toLowerCase()}`}>
+                            {readiness.readiness}
+                          </span>
+                        </header>
+
+                        <div className="booking-operations-key-grid">
+                          <div><span>Supplier</span><strong>{supplierName}</strong></div>
+                          <div><span>Status</span><strong>{formatLabel(row.status)}</strong></div>
+                          <div><span>Confirmation</span><strong>{formatLabel(row.supplierConfirmationStatus)}</strong></div>
+                          <div><span>Voucher</span><strong>{formatLabel(row.voucherStatus)}</strong></div>
+                          <div><span>Readiness</span><strong>{readiness.severity}</strong></div>
+                        </div>
+
+                        {readiness.reasons.length > 0 ? (
+                          <ul className="booking-operations-reason-list">
+                            {readiness.reasons.map((reason) => (
+                              <li key={reason}>{reason}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+
+                        <div className="booking-operations-quick-actions">
+                          {!assigned ? renderAssignmentForm(id, row, suppliers, true) : null}
+                          {assigned && !isConfirmationConfirmed(row) && !isConfirmationRejected(row) ? renderConfirmationRequestForm(id, row) : null}
+                          {assigned && isConfirmationConfirmed(row) && isVoucherPending(row) ? renderVoucherForm(id, row) : null}
+                        </div>
+
+                        <details className="operations-row-details">
+                          <summary>Secondary details</summary>
+                          <div className="operations-row-details-body">
+                            <div className="booking-operations-secondary-grid">
+                              <div><span>Operational date</span><strong>{formatDate(row.operationalDate)}</strong></div>
+                              <div><span>Operational time</span><strong>{row.operationalTime || '-'}</strong></div>
+                              <div><span>Reference</span><strong>{row.confirmationReference || row.supplierConfirmationCode || '-'}</strong></div>
+                              <div><span>Requested</span><strong>{formatDate(row.confirmationRequestedAt)}</strong></div>
+                              <div><span>Received</span><strong>{formatDate(row.confirmationReceivedAt)}</strong></div>
+                              <div><span>Pickup</span><strong>{row.pickupLocation || '-'}</strong></div>
+                              <div><span>Dropoff</span><strong>{row.dropoffLocation || '-'}</strong></div>
+                              <div><span>Notes</span><strong>{row.confirmationNotes || row.assignmentNotes || '-'}</strong></div>
+                            </div>
+                            <div className="booking-operations-editor-grid">
+                              {renderAssignmentForm(id, row, suppliers)}
+                              {renderConfirmationForm(id, row)}
+                            </div>
+                          </div>
+                        </details>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
+        </section>
+      </div>
     </main>
   );
 }

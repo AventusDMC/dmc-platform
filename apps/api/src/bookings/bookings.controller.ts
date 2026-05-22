@@ -267,6 +267,11 @@ type BookingOperationServiceBody = {
   pickupLocation?: string | null;
   meetingPoint?: string | null;
   participantCount?: number | string | null;
+  assignmentStatus?: 'UNASSIGNED' | 'ASSIGNED' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | null;
+  operationalNotes?: string | null;
+  supplierConfirmationStatus?: 'NOT_SENT' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | null;
+  confirmationReference?: string | null;
+  confirmationNotes?: string | null;
   confirmationNumber?: string | null;
   notes?: string | null;
   status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'OPERATIONAL_READY' | 'COMPLETED' | 'DONE';
@@ -1033,6 +1038,11 @@ export class BookingsController {
       pickupLocation: body.pickupLocation === undefined ? undefined : body.pickupLocation || null,
       meetingPoint: body.meetingPoint === undefined ? undefined : body.meetingPoint || null,
       participantCount: body.participantCount === undefined || body.participantCount === null ? undefined : Number(body.participantCount),
+      assignmentStatus: body.assignmentStatus === undefined ? undefined : body.assignmentStatus || null,
+      operationalNotes: body.operationalNotes === undefined ? undefined : body.operationalNotes || null,
+      supplierConfirmationStatus: body.supplierConfirmationStatus === undefined ? undefined : body.supplierConfirmationStatus || null,
+      confirmationReference: body.confirmationReference === undefined ? undefined : body.confirmationReference || null,
+      confirmationNotes: body.confirmationNotes === undefined ? undefined : body.confirmationNotes || null,
       confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       status: body.status === undefined ? undefined : body.status || null,
@@ -1065,6 +1075,11 @@ export class BookingsController {
       pickupLocation: body.pickupLocation === undefined ? undefined : body.pickupLocation || null,
       meetingPoint: body.meetingPoint === undefined ? undefined : body.meetingPoint || null,
       participantCount: body.participantCount === undefined || body.participantCount === null ? undefined : Number(body.participantCount),
+      assignmentStatus: body.assignmentStatus === undefined ? undefined : body.assignmentStatus || null,
+      operationalNotes: body.operationalNotes === undefined ? undefined : body.operationalNotes || null,
+      supplierConfirmationStatus: body.supplierConfirmationStatus === undefined ? undefined : body.supplierConfirmationStatus || null,
+      confirmationReference: body.confirmationReference === undefined ? undefined : body.confirmationReference || null,
+      confirmationNotes: body.confirmationNotes === undefined ? undefined : body.confirmationNotes || null,
       confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       status: body.status === undefined ? undefined : body.status || null,

@@ -4209,6 +4209,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       meetingPoint?: string | null;
       participantCount?: number | string | null;
       pickupTime?: string | null;
+      assignmentStatus?: string | null;
+      operationalNotes?: string | null;
+      supplierConfirmationStatus?: string | null;
+      confirmationReference?: string | null;
+      confirmationNotes?: string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
       status?: string | null;
@@ -4269,7 +4274,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           vehicleId: normalized.vehicleId,
           serviceDate: bookingDay.date,
           startTime: normalized.startTime,
+          operationalTime: normalized.startTime || normalized.pickupTime,
           pickupTime: normalized.pickupTime,
+          operationalNotes: normalized.operationalNotes,
           pickupLocation: normalized.pickupLocation,
           meetingPoint: normalized.meetingPoint,
           supplierId: normalized.supplierId,
@@ -4285,9 +4292,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             : {}),
           confirmationNumber: normalized.confirmationNumber,
           supplierReference: normalized.confirmationNumber,
+          supplierConfirmationCode: normalized.confirmationReference || normalized.confirmationNumber,
+          confirmationReference: normalized.confirmationReference || normalized.confirmationNumber,
+          confirmationNotes: normalized.confirmationNotes || normalized.notes,
+          supplierRemarks: normalized.confirmationNotes || normalized.notes,
+          supplierConfirmationStatus: normalized.supplierConfirmationStatus,
           description,
           notes: normalized.notes,
-          confirmationNotes: normalized.notes,
           qty: 1,
           unitCost: 0,
           unitSell: 0,
@@ -4298,6 +4309,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           childCount: bookingDay.booking.children,
           status: lifecycleStatus,
           confirmationStatus,
+          assignmentStatus: normalized.assignmentStatus,
         },
         include: {
           supplier: true,
@@ -4349,6 +4361,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       meetingPoint?: string | null;
       participantCount?: number | string | null;
       pickupTime?: string | null;
+      assignmentStatus?: string | null;
+      operationalNotes?: string | null;
+      supplierConfirmationStatus?: string | null;
+      confirmationReference?: string | null;
+      confirmationNotes?: string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
       status?: string | null;
@@ -4416,7 +4433,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           vehicleId: normalized.vehicleId,
           serviceDate: normalized.serviceDate,
           startTime: normalized.startTime,
+          operationalTime: normalized.startTime || normalized.pickupTime,
           pickupTime: normalized.pickupTime,
+          operationalNotes: normalized.operationalNotes,
           pickupLocation: normalized.pickupLocation,
           meetingPoint: normalized.meetingPoint,
           participantCount: normalized.participantCount,
@@ -4424,11 +4443,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           supplierName: normalized.supplierName,
           confirmationNumber: normalized.confirmationNumber,
           supplierReference: normalized.confirmationNumber,
+          supplierConfirmationCode: normalized.confirmationReference || normalized.confirmationNumber,
+          confirmationReference: normalized.confirmationReference || normalized.confirmationNumber,
+          confirmationNotes: normalized.confirmationNotes || normalized.notes,
+          supplierRemarks: normalized.confirmationNotes || normalized.notes,
+          supplierConfirmationStatus: normalized.supplierConfirmationStatus,
           description,
           notes: normalized.notes,
-          confirmationNotes: normalized.notes,
           status: lifecycleStatus,
           confirmationStatus,
+          assignmentStatus: normalized.assignmentStatus,
         },
         include: {
           supplier: true,
@@ -6779,6 +6803,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       pickupLocation?: string | null;
       meetingPoint?: string | null;
       participantCount?: number | string | null;
+      assignmentStatus?: string | null;
+      operationalNotes?: string | null;
+      supplierConfirmationStatus?: string | null;
+      confirmationReference?: string | null;
+      confirmationNotes?: string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
       status?: string | null;
@@ -6836,11 +6865,36 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.meetingPoint === undefined ? currentService?.meetingPoint ?? null : this.normalizeOptionalText(data.meetingPoint);
     const participantCount =
       data.participantCount === undefined ? currentService?.participantCount ?? null : this.normalizeOptionalInteger(data.participantCount, 'Participant count');
+    const assignmentStatus = this.normalizeSupplierAssignmentStatus(
+      data.assignmentStatus === undefined ? currentService?.assignmentStatus ?? null : data.assignmentStatus,
+      data.supplierId === undefined ? currentService?.assignedSupplierId || currentService?.supplierId || null : data.supplierId,
+    );
+    const operationalNotes =
+      data.operationalNotes === undefined
+        ? currentService?.operationalNotes ?? currentService?.notes ?? null
+        : this.normalizeOptionalText(data.operationalNotes);
+    const supplierConfirmationStatus =
+      data.supplierConfirmationStatus === undefined
+        ? currentService?.supplierConfirmationStatus || SupplierConfirmationStatus.NOT_SENT
+        : this.normalizeOperationalSupplierConfirmationStatus(data.supplierConfirmationStatus);
+    const confirmationReference =
+      data.confirmationReference === undefined
+        ? currentService?.confirmationReference || currentService?.supplierConfirmationCode || currentService?.confirmationNumber || null
+        : this.normalizeOptionalText(data.confirmationReference);
+    const confirmationNotes =
+      data.confirmationNotes === undefined
+        ? currentService?.confirmationNotes || currentService?.supplierRemarks || null
+        : this.normalizeOptionalText(data.confirmationNotes);
     const confirmationNumber =
       data.confirmationNumber === undefined
-        ? currentService?.confirmationNumber ?? null
+        ? (confirmationReference || currentService?.confirmationNumber || null)
         : this.normalizeOptionalText(data.confirmationNumber);
-    const notes = data.notes === undefined ? currentService?.notes ?? null : this.normalizeOptionalText(data.notes);
+    const notes =
+      data.notes === undefined
+        ? data.operationalNotes === undefined
+          ? currentService?.notes ?? null
+          : operationalNotes
+        : this.normalizeOptionalText(data.notes);
 
     let supplierId =
       data.supplierId === undefined ? currentService?.supplierId ?? null : this.normalizeOptionalText(data.supplierId);
@@ -6952,6 +7006,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         pickupLocation: null,
         meetingPoint: null,
         participantCount: null,
+        assignmentStatus,
+        operationalNotes,
+        supplierConfirmationStatus,
+        confirmationReference,
+        confirmationNotes,
         supplierId: null,
         supplierName: null,
         confirmationNumber: null,
@@ -6999,6 +7058,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         type === BookingOperationServiceType.ACTIVITY || type === BookingOperationServiceType.TICKET
           ? participantCount
           : currentService?.participantCount ?? null,
+      assignmentStatus,
+      operationalNotes,
+      supplierConfirmationStatus,
+      confirmationReference,
+      confirmationNotes,
       supplierId,
       supplierName,
       confirmationNumber,

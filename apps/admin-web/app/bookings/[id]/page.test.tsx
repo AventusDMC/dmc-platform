@@ -239,7 +239,7 @@ describe('booking detail page regression', () => {
       'formatOperationStatus(service.operationStatus || service.confirmationStatus)',
       'name="assignedTo"',
       'name="pickupTime"',
-      'name="confirmationNumber"',
+      'name="confirmationReference"',
       'renderOperationStatusOptions(service.operationStatus)',
       'BookingServiceTimeline',
       'Generate Voucher',
@@ -251,7 +251,7 @@ describe('booking detail page regression', () => {
       'assignedSupplierId',
       'assignmentStatus',
       'assignmentNotes',
-      'table-row-warning',
+      'booking-operations-row-card',
       'assign-supplier',
       'name="supplierId"',
       'name="assignmentStatus"',
@@ -274,8 +274,32 @@ describe('booking detail page regression', () => {
       'Mark Confirmed',
       'Mark Rejected',
       '/confirmation',
-      'table-row-critical',
-      'table-row-ready',
+      'severity-critical',
+      'operations-readiness-ready',
+    ]);
+  });
+
+  it('renders simplified operational action center and grouped workflow cards', () => {
+    expectSourceContains(operationsGridPageSource, [
+      'Operational Action Center',
+      'Suppliers unassigned',
+      'Confirmations pending',
+      'Confirmations rejected',
+      'Vouchers pending',
+      'Manifest incomplete',
+      'Rooming incomplete',
+      "'INFO'",
+      "'ACTION REQUIRED'",
+      "'CRITICAL'",
+      "'Needs Assignment'",
+      "'Needs Confirmation'",
+      "'Ready for Voucher'",
+      "'Operationally Ready'",
+      "'Critical Issues'",
+      'booking-operations-sidebar app-sticky-panel',
+      'Secondary details',
+      'Assign Supplier',
+      'Generate Voucher',
     ]);
   });
 
@@ -308,7 +332,7 @@ describe('booking detail page regression', () => {
       'Operational notes',
       'name="meetingPoint"',
       'name="startTime"',
-      'name="confirmationNumber"',
+      'name="confirmationReference"',
     ]);
   });
 
@@ -339,7 +363,7 @@ describe('booking detail page regression', () => {
       'Hotel supplier',
       'Rooming summary',
       'Occupancy:',
-      'name="confirmationNumber"',
+      'name="confirmationReference"',
     ]);
     assert.doesNotMatch(hotelEditor, /renderRouteOptions|renderVehicleOptions|name="guidePhone"/);
   });
@@ -354,6 +378,29 @@ describe('booking detail page regression', () => {
       "redirectUrl.searchParams.set('success'",
     ]);
     assert.doesNotMatch(serviceUpdateRouteSource, /Booking service not found/);
+  });
+
+  it('persists booking operation editor saves through service, assignment, and confirmation endpoints', () => {
+    expectSourceContains(pageSource, [
+      'name="bookingId"',
+      'name="operationId"',
+      'name="supplierId"',
+      'name="assignmentStatus"',
+      'name="operationalNotes"',
+      'name="meetingPoint"',
+      'name="startTime"',
+      'name="confirmationReference"',
+      'name="confirmationNotes"',
+      'name="supplierConfirmationStatus"',
+    ]);
+    expectSourceContains(serviceUpdateRouteSource, [
+      '/operations/${serviceId}/assign-supplier',
+      '/operations/${serviceId}/confirmation',
+      'savedFields',
+      'assignedSupplierId',
+      'operationalNotes',
+      'confirmationReference',
+    ]);
   });
 
   it('renders read-only operational readiness dashboard with counters and day indicators', () => {
