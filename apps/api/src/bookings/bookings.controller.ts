@@ -258,11 +258,30 @@ type BookingOperationServiceBody = {
   referenceId?: string | null;
   assignedTo?: string | null;
   guidePhone?: string | null;
+  guideRequiredLanguages?: string[] | string | null;
+  guideReportingTime?: string | null;
   vehicleId?: string | null;
+  serviceDate?: string | null;
+  startTime?: string | null;
   pickupTime?: string | null;
+  pickupLocation?: string | null;
+  meetingPoint?: string | null;
+  participantCount?: number | string | null;
   confirmationNumber?: string | null;
   notes?: string | null;
   status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'OPERATIONAL_READY' | 'COMPLETED' | 'DONE';
+};
+
+type BookingOperationSupplierAssignmentBody = {
+  supplierId?: string | null;
+  assignmentStatus?: 'UNASSIGNED' | 'ASSIGNED' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | null;
+  assignmentNotes?: string | null;
+};
+
+type BookingOperationSupplierConfirmationBody = {
+  supplierConfirmationStatus?: 'NOT_SENT' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | null;
+  confirmationReference?: string | null;
+  confirmationNotes?: string | null;
 };
 
 type CreateServiceVoucherBody = {
@@ -339,6 +358,41 @@ export class BookingsController {
     }
 
     return grid;
+  }
+
+  @Patch(':id/operations/:operationId/assign-supplier')
+  @Roles('admin', 'operations')
+  assignOperationalSupplier(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Body() body: BookingOperationSupplierAssignmentBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.assignOperationalSupplier(id, operationId, {
+      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
+      assignmentStatus: body.assignmentStatus === undefined ? undefined : body.assignmentStatus || null,
+      assignmentNotes: body.assignmentNotes === undefined ? undefined : body.assignmentNotes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Patch(':id/operations/:operationId/confirmation')
+  @Roles('admin', 'operations')
+  updateOperationalSupplierConfirmation(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Body() body: BookingOperationSupplierConfirmationBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.updateOperationalSupplierConfirmation(id, operationId, {
+      supplierConfirmationStatus:
+        body.supplierConfirmationStatus === undefined ? undefined : body.supplierConfirmationStatus || null,
+      confirmationReference: body.confirmationReference === undefined ? undefined : body.confirmationReference || null,
+      confirmationNotes: body.confirmationNotes === undefined ? undefined : body.confirmationNotes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
   }
 
   @Post('reconciliation/payment-proofs/confirm')
@@ -970,8 +1024,15 @@ export class BookingsController {
       referenceId: body.referenceId === undefined ? undefined : body.referenceId || null,
       assignedTo: body.assignedTo === undefined ? undefined : body.assignedTo || null,
       guidePhone: body.guidePhone === undefined ? undefined : body.guidePhone || null,
+      guideRequiredLanguages: body.guideRequiredLanguages === undefined ? undefined : body.guideRequiredLanguages || null,
+      guideReportingTime: body.guideReportingTime === undefined ? undefined : body.guideReportingTime || null,
       vehicleId: body.vehicleId === undefined ? undefined : body.vehicleId || null,
+      serviceDate: body.serviceDate === undefined ? undefined : body.serviceDate || null,
+      startTime: body.startTime === undefined ? undefined : body.startTime || null,
       pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      pickupLocation: body.pickupLocation === undefined ? undefined : body.pickupLocation || null,
+      meetingPoint: body.meetingPoint === undefined ? undefined : body.meetingPoint || null,
+      participantCount: body.participantCount === undefined || body.participantCount === null ? undefined : Number(body.participantCount),
       confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       status: body.status === undefined ? undefined : body.status || null,
@@ -995,8 +1056,15 @@ export class BookingsController {
       referenceId: body.referenceId === undefined ? undefined : body.referenceId || null,
       assignedTo: body.assignedTo === undefined ? undefined : body.assignedTo || null,
       guidePhone: body.guidePhone === undefined ? undefined : body.guidePhone || null,
+      guideRequiredLanguages: body.guideRequiredLanguages === undefined ? undefined : body.guideRequiredLanguages || null,
+      guideReportingTime: body.guideReportingTime === undefined ? undefined : body.guideReportingTime || null,
       vehicleId: body.vehicleId === undefined ? undefined : body.vehicleId || null,
+      serviceDate: body.serviceDate === undefined ? undefined : body.serviceDate || null,
+      startTime: body.startTime === undefined ? undefined : body.startTime || null,
       pickupTime: body.pickupTime === undefined ? undefined : body.pickupTime || null,
+      pickupLocation: body.pickupLocation === undefined ? undefined : body.pickupLocation || null,
+      meetingPoint: body.meetingPoint === undefined ? undefined : body.meetingPoint || null,
+      participantCount: body.participantCount === undefined || body.participantCount === null ? undefined : Number(body.participantCount),
       confirmationNumber: body.confirmationNumber === undefined ? undefined : body.confirmationNumber || null,
       notes: body.notes === undefined ? undefined : body.notes || null,
       status: body.status === undefined ? undefined : body.status || null,

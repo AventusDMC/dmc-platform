@@ -13,18 +13,29 @@ function normalizeFormValue(value: FormDataEntryValue | null) {
   return normalized || null;
 }
 
+function optionalFormValue(formData: FormData, name: string) {
+  return formData.has(name) ? normalizeFormValue(formData.get(name)) : undefined;
+}
+
 function buildPayload(formData: FormData) {
   return {
-    type: normalizeFormValue(formData.get('type')),
-    supplierId: normalizeFormValue(formData.get('supplierId')),
-    referenceId: normalizeFormValue(formData.get('referenceId')),
-    assignedTo: normalizeFormValue(formData.get('assignedTo')),
-    guidePhone: normalizeFormValue(formData.get('guidePhone')),
-    vehicleId: normalizeFormValue(formData.get('vehicleId')),
-    pickupTime: normalizeFormValue(formData.get('pickupTime')),
-    confirmationNumber: normalizeFormValue(formData.get('confirmationNumber')),
-    notes: normalizeFormValue(formData.get('notes')),
-    status: normalizeFormValue(formData.get('status')),
+    type: optionalFormValue(formData, 'type'),
+    supplierId: optionalFormValue(formData, 'supplierId'),
+    referenceId: optionalFormValue(formData, 'referenceId'),
+    assignedTo: optionalFormValue(formData, 'assignedTo'),
+    guidePhone: optionalFormValue(formData, 'guidePhone'),
+    guideRequiredLanguages: optionalFormValue(formData, 'guideRequiredLanguages'),
+    guideReportingTime: optionalFormValue(formData, 'guideReportingTime'),
+    vehicleId: optionalFormValue(formData, 'vehicleId'),
+    serviceDate: optionalFormValue(formData, 'serviceDate'),
+    startTime: optionalFormValue(formData, 'startTime'),
+    pickupTime: optionalFormValue(formData, 'pickupTime'),
+    pickupLocation: optionalFormValue(formData, 'pickupLocation'),
+    meetingPoint: optionalFormValue(formData, 'meetingPoint'),
+    participantCount: optionalFormValue(formData, 'participantCount'),
+    confirmationNumber: optionalFormValue(formData, 'confirmationNumber'),
+    notes: optionalFormValue(formData, 'notes'),
+    status: optionalFormValue(formData, 'status'),
   };
 }
 
@@ -78,6 +89,10 @@ export async function POST(
 
   const redirectUrl = new URL(referer || `/bookings/${id}?tab=operations`, request.url);
   redirectUrl.searchParams.set('tab', 'operations');
+  redirectUrl.searchParams.delete('warning');
+  redirectUrl.searchParams.delete('warningText');
+  redirectUrl.searchParams.delete('error');
+  redirectUrl.searchParams.delete('service');
   redirectUrl.searchParams.set('success', 'Booking service created successfully.');
   return NextResponse.redirect(redirectUrl, { status: 303 });
 }

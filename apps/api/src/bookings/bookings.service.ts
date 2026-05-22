@@ -169,6 +169,8 @@ const BOOKING_OPERATION_SERVICE_STATUSES = [
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
 const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'REQUESTED', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
 type SupplierConfirmationStatusValue = (typeof SUPPLIER_CONFIRMATION_STATUSES)[number];
+const SUPPLIER_ASSIGNMENT_STATUSES = ['UNASSIGNED', 'ASSIGNED', 'REQUESTED', 'CONFIRMED', 'REJECTED'] as const;
+type SupplierAssignmentStatusValue = (typeof SUPPLIER_ASSIGNMENT_STATUSES)[number];
 type SupplierConfirmationWorkflowAction = 'prepare_email' | 'mark_requested' | 'mark_confirmed' | 'mark_rejected' | 'reconfirm';
 type BookingOperationalAmendmentType =
   | 'add_service'
@@ -441,6 +443,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         include: {
           bookingDay: true,
           vehicle: true,
+          assignedSupplier: true,
           touringRoute: true,
           touringRoutePricing: {
             include: {
@@ -596,6 +599,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           description: service.description,
           supplierId: service.supplierId || service.touringRoutePricing?.supplier?.id || null,
           supplierName: service.supplierName || service.touringRoutePricing?.supplier?.name || null,
+          assignedSupplierId: service.assignedSupplierId || null,
+          assignedSupplierName: service.assignedSupplier?.name || service.assignedSupplierName || null,
+          assignmentStatus: service.assignmentStatus || (service.assignedSupplierId ? 'ASSIGNED' : 'UNASSIGNED'),
+          assignmentNotes: service.assignmentNotes || null,
+          assignedAt: service.assignedAt || null,
+          assignedBy: service.assignedBy || null,
           status: service.operationStatus || 'PENDING',
           operationalDate: service.operationalDate || service.serviceDate || day?.date || null,
           operationalTime: service.operationalTime || service.startTime || service.pickupTime || null,
@@ -603,6 +612,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           voucherGeneratedAt: service.voucherGeneratedAt || null,
           supplierConfirmationStatus: service.supplierConfirmationStatus || 'NOT_SENT',
           supplierConfirmationCode: service.supplierConfirmationCode || null,
+          confirmationReference: service.confirmationReference || service.supplierReference || service.confirmationNumber || null,
+          confirmationNotes: service.confirmationNotes || service.supplierRemarks || null,
+          confirmationRequestedAt: service.confirmationRequestedAt || service.confirmationSentAt || null,
+          confirmationReceivedAt: service.confirmationReceivedAt || service.supplierConfirmedAt || service.confirmationConfirmedAt || null,
+          confirmedBy: service.confirmedBy || null,
           pickupLocation: service.pickupLocation || null,
           dropoffLocation: service.dropoffLocation || null,
           assignedVehicleId: service.assignedVehicleId || service.vehicleId || null,
@@ -621,6 +635,266 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       passengerManifest,
       rows,
     };
+  }
+
+  async assignOperationalSupplier(
+    bookingId: string,
+    operationId: string,
+    data: {
+      supplierId?: string | null;
+      assignmentStatus?: string | null;
+      assignmentNotes?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const assignmentStatus = this.normalizeSupplierAssignmentStatus(data.assignmentStatus, data.supplierId);
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: operationId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: {
+        assignedSupplier: true,
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking operation row not found');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    const supplier = data.supplierId
+      ? await (this.prisma.supplier as any).findUnique({ where: { id: data.supplierId } })
+      : null;
+
+    if (data.supplierId && !supplier) {
+      throw new BadRequestException('Supplier not found');
+    }
+
+    if (supplier) {
+      this.assertSupplierIsAssignable(supplier);
+      this.assertSupplierCompatibleWithOperation(bookingService, supplier);
+    }
+
+    if (assignmentStatus !== 'UNASSIGNED' && !supplier) {
+      throw new BadRequestException('A supplier is required when assignment status is not UNASSIGNED');
+    }
+
+    const now = new Date();
+    const previousValue = `${bookingService.assignmentStatus || 'UNASSIGNED'}: ${this.formatSupplierAuditValue(
+      bookingService.assignedSupplierId,
+      bookingService.assignedSupplier?.name || null,
+    )}`;
+    const nextValue = `${assignmentStatus}: ${this.formatSupplierAuditValue(supplier?.id || null, supplier?.name || null)}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedService = await (tx.bookingService as any).update({
+        where: { id: operationId },
+        data: {
+          assignedSupplierId: supplier?.id || null,
+          assignmentStatus,
+          assignmentNotes: data.assignmentNotes === undefined ? bookingService.assignmentNotes : this.normalizeOptionalText(data.assignmentNotes),
+          assignedAt: supplier ? bookingService.assignedAt || now : null,
+          assignedBy: supplier ? this.normalizeActorUserId(data.actor) : null,
+          supplierConfirmationStatus:
+            assignmentStatus === 'REQUESTED'
+              ? SupplierConfirmationStatus.REQUESTED
+              : assignmentStatus === 'CONFIRMED'
+                ? SupplierConfirmationStatus.CONFIRMED
+                : assignmentStatus === 'REJECTED'
+                  ? SupplierConfirmationStatus.REJECTED
+                  : bookingService.supplierConfirmationStatus,
+          confirmationStatus:
+            assignmentStatus === 'CONFIRMED'
+              ? BookingServiceStatus.confirmed
+              : assignmentStatus === 'REQUESTED'
+                ? BookingServiceStatus.requested
+                : assignmentStatus === 'REJECTED'
+                  ? BookingServiceStatus.requested
+                  : bookingService.confirmationStatus,
+        },
+        include: {
+          assignedSupplier: true,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: 'booking_service_supplier_assigned',
+        oldValue: previousValue,
+        newValue: nextValue,
+        note: data.assignmentNotes ?? null,
+        actor: data.actor,
+      });
+
+      return updatedService;
+    });
+  }
+
+  async updateOperationalSupplierConfirmation(
+    bookingId: string,
+    operationId: string,
+    data: {
+      supplierConfirmationStatus?: string | null;
+      confirmationReference?: string | null;
+      confirmationNotes?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const nextStatus = this.normalizeOperationalSupplierConfirmationStatus(data.supplierConfirmationStatus);
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: operationId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking operation row not found');
+    }
+
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    if (nextStatus === SupplierConfirmationStatus.CONFIRMED && !bookingService.assignedSupplierId) {
+      throw new BadRequestException('Cannot confirm an operational row without an assigned supplier');
+    }
+
+    const now = new Date();
+    const reference =
+      data.confirmationReference === undefined
+        ? bookingService.confirmationReference || bookingService.supplierReference || bookingService.confirmationNumber || null
+        : this.normalizeOptionalText(data.confirmationReference);
+    const notes =
+      data.confirmationNotes === undefined
+        ? bookingService.confirmationNotes || bookingService.supplierRemarks || null
+        : this.normalizeOptionalText(data.confirmationNotes);
+    const nextConfirmationStatus =
+      nextStatus === SupplierConfirmationStatus.CONFIRMED
+        ? BookingServiceStatus.confirmed
+        : nextStatus === SupplierConfirmationStatus.NOT_SENT
+          ? BookingServiceStatus.pending
+          : BookingServiceStatus.requested;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedService = await (tx.bookingService as any).update({
+        where: { id: operationId },
+        data: {
+          supplierConfirmationStatus: nextStatus,
+          supplierConfirmationCode: reference,
+          confirmationReference: reference,
+          confirmationNotes: notes,
+          supplierReference: reference,
+          confirmationNumber: reference,
+          supplierRemarks: notes,
+          confirmationStatus: nextConfirmationStatus,
+          confirmationRequestedAt:
+            nextStatus === SupplierConfirmationStatus.NOT_SENT
+              ? null
+              : bookingService.confirmationRequestedAt || now,
+          confirmationSentAt:
+            nextStatus === SupplierConfirmationStatus.NOT_SENT
+              ? bookingService.confirmationSentAt
+              : bookingService.confirmationSentAt || now,
+          confirmationReceivedAt:
+            nextStatus === SupplierConfirmationStatus.CONFIRMED || nextStatus === SupplierConfirmationStatus.REJECTED
+              ? bookingService.confirmationReceivedAt || now
+              : null,
+          supplierConfirmedAt:
+            nextStatus === SupplierConfirmationStatus.CONFIRMED
+              ? bookingService.supplierConfirmedAt || now
+              : bookingService.supplierConfirmedAt,
+          confirmationConfirmedAt:
+            nextStatus === SupplierConfirmationStatus.CONFIRMED
+              ? bookingService.confirmationConfirmedAt || now
+              : null,
+          confirmedBy:
+            nextStatus === SupplierConfirmationStatus.CONFIRMED
+              ? this.normalizeActorUserId(data.actor)
+              : bookingService.confirmedBy || null,
+          operationStatus:
+            nextStatus === SupplierConfirmationStatus.CONFIRMED
+              ? 'OPERATIONAL_READY'
+              : nextStatus === SupplierConfirmationStatus.REJECTED
+                ? 'REJECTED'
+                : nextStatus === SupplierConfirmationStatus.REQUESTED
+                  ? 'REQUESTED'
+                  : bookingService.operationStatus,
+        },
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: 'booking_service_supplier_confirmation_updated',
+        oldValue: bookingService.supplierConfirmationStatus,
+        newValue: nextStatus,
+        note: notes,
+        actor: data.actor,
+      });
+
+      return updatedService;
+    });
+  }
+
+  private normalizeSupplierAssignmentStatus(value?: string | null, supplierId?: string | null): SupplierAssignmentStatusValue {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase() || (supplierId ? 'ASSIGNED' : 'UNASSIGNED');
+    if (!SUPPLIER_ASSIGNMENT_STATUSES.includes(normalized as SupplierAssignmentStatusValue)) {
+      throw new BadRequestException('Invalid supplier assignment status');
+    }
+
+    return normalized as SupplierAssignmentStatusValue;
+  }
+
+  private normalizeOperationalSupplierConfirmationStatus(value?: string | null) {
+    const normalized = this.normalizeOptionalText(value)?.toUpperCase() || SupplierConfirmationStatus.NOT_SENT;
+    const allowed: string[] = [
+      SupplierConfirmationStatus.NOT_SENT,
+      SupplierConfirmationStatus.REQUESTED,
+      SupplierConfirmationStatus.CONFIRMED,
+      SupplierConfirmationStatus.REJECTED,
+    ];
+    if (!allowed.includes(normalized)) {
+      throw new BadRequestException('Invalid supplier confirmation status');
+    }
+
+    return normalized as SupplierConfirmationStatus;
+  }
+
+  private assertSupplierIsAssignable(supplier: any) {
+    const status = String(supplier.status || '').toUpperCase();
+    if (supplier.active === false || supplier.isActive === false || status === 'INACTIVE' || status === 'ARCHIVED') {
+      throw new BadRequestException('Inactive or archived suppliers cannot be assigned to operational rows');
+    }
+  }
+
+  private assertSupplierCompatibleWithOperation(service: any, supplier: any) {
+    const operationType = String(service.operationType || service.serviceType || 'SERVICE').toUpperCase();
+    const supplierType = `${supplier.type || ''} ${supplier.name || ''}`.toUpperCase();
+    const compatibility: Record<string, RegExp> = {
+      TRANSPORT: /(TRANSPORT|TRANSFER|LOGISTIC|VEHICLE|FLEET)/,
+      ACTIVITY: /(ACTIVITY|EXCURSION|EXPERIENCE|TOUR|ATTRACTION)/,
+      HOTEL: /(HOTEL|ACCOMMODATION|LODGING)/,
+      GUIDE: /(GUIDE|GUIDING)/,
+      SERVICE: /(SERVICE|SUPPLIER|ASSISTANCE|OPERATION|TICKET|RESTAURANT|MEAL)/,
+      TICKET: /(TICKET|ATTRACTION|SERVICE|MUSEUM|SITE)/,
+      DINING: /(DINING|RESTAURANT|MEAL|SERVICE)/,
+      EXTERNAL_PACKAGE: /(PACKAGE|SERVICE|DMC|OPERATOR)/,
+    };
+    const rule = compatibility[operationType] || compatibility.SERVICE;
+
+    if (!rule.test(supplierType)) {
+      throw new BadRequestException(`Supplier ${supplier.name || supplier.id} is not compatible with ${operationType} operational rows`);
+    }
   }
 
   private buildPassengerManifestSummary(booking: {
@@ -3929,6 +4203,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       mealDietaryRequirements?: string[] | string | null;
       mealOperationalNotes?: string | null;
       vehicleId?: string | null;
+      serviceDate?: string | null;
+      startTime?: string | null;
+      pickupLocation?: string | null;
+      meetingPoint?: string | null;
+      participantCount?: number | string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
@@ -3989,7 +4268,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           mealOperationalNotes: normalized.mealOperationalNotes,
           vehicleId: normalized.vehicleId,
           serviceDate: bookingDay.date,
+          startTime: normalized.startTime,
           pickupTime: normalized.pickupTime,
+          pickupLocation: normalized.pickupLocation,
+          meetingPoint: normalized.meetingPoint,
           supplierId: normalized.supplierId,
           supplierName: normalized.supplierName,
           ...(this.isHotelService(normalized.type, normalized.type)
@@ -4011,7 +4293,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           unitSell: 0,
           totalCost: 0,
           totalSell: 0,
-          participantCount: bookingDay.booking.adults + bookingDay.booking.children,
+          participantCount: normalized.participantCount ?? bookingDay.booking.adults + bookingDay.booking.children,
           adultCount: bookingDay.booking.adults,
           childCount: bookingDay.booking.children,
           status: lifecycleStatus,
@@ -4061,6 +4343,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       mealDietaryRequirements?: string[] | string | null;
       mealOperationalNotes?: string | null;
       vehicleId?: string | null;
+      serviceDate?: string | null;
+      startTime?: string | null;
+      pickupLocation?: string | null;
+      meetingPoint?: string | null;
+      participantCount?: number | string | null;
       pickupTime?: string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
@@ -4127,7 +4414,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           mealDietaryRequirements: normalized.mealDietaryRequirements,
           mealOperationalNotes: normalized.mealOperationalNotes,
           vehicleId: normalized.vehicleId,
+          serviceDate: normalized.serviceDate,
+          startTime: normalized.startTime,
           pickupTime: normalized.pickupTime,
+          pickupLocation: normalized.pickupLocation,
+          meetingPoint: normalized.meetingPoint,
+          participantCount: normalized.participantCount,
           supplierId: normalized.supplierId,
           supplierName: normalized.supplierName,
           confirmationNumber: normalized.confirmationNumber,
@@ -6481,7 +6773,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       mealDietaryRequirements?: string[] | string | null;
       mealOperationalNotes?: string | null;
       vehicleId?: string | null;
+      serviceDate?: string | null;
+      startTime?: string | null;
       pickupTime?: string | null;
+      pickupLocation?: string | null;
+      meetingPoint?: string | null;
+      participantCount?: number | string | null;
       confirmationNumber?: string | null;
       notes?: string | null;
       status?: string | null;
@@ -6529,6 +6826,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       data.mealOperationalNotes === undefined ? currentService?.mealOperationalNotes ?? null : this.normalizeOptionalText(data.mealOperationalNotes);
     const pickupTime =
       data.pickupTime === undefined ? currentService?.pickupTime ?? null : this.normalizeTimeInput(data.pickupTime, 'Pickup time');
+    const serviceDate =
+      data.serviceDate === undefined ? currentService?.serviceDate ?? null : this.normalizeDateTimeInput(data.serviceDate);
+    const startTime =
+      data.startTime === undefined ? currentService?.startTime ?? null : this.normalizeTimeInput(data.startTime, 'Start time');
+    const pickupLocation =
+      data.pickupLocation === undefined ? currentService?.pickupLocation ?? null : this.normalizeOptionalText(data.pickupLocation);
+    const meetingPoint =
+      data.meetingPoint === undefined ? currentService?.meetingPoint ?? null : this.normalizeOptionalText(data.meetingPoint);
+    const participantCount =
+      data.participantCount === undefined ? currentService?.participantCount ?? null : this.normalizeOptionalInteger(data.participantCount, 'Participant count');
     const confirmationNumber =
       data.confirmationNumber === undefined
         ? currentService?.confirmationNumber ?? null
@@ -6639,7 +6946,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         vehicleId: null,
         vehicleName: null,
         routeName: null,
+        serviceDate,
+        startTime: null,
         pickupTime: null,
+        pickupLocation: null,
+        meetingPoint: null,
+        participantCount: null,
         supplierId: null,
         supplierName: null,
         confirmationNumber: null,
@@ -6666,10 +6978,27 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       vehicleId: type === BookingOperationServiceType.TRANSPORT ? vehicleId : null,
       vehicleName,
       routeName,
+      serviceDate,
+      startTime:
+        type === BookingOperationServiceType.ACTIVITY || type === BookingOperationServiceType.GUIDE || type === 'SERVICE' || type === BookingOperationServiceType.TICKET
+          ? startTime
+          : null,
       pickupTime:
         type === BookingOperationServiceType.TRANSPORT || type === BookingOperationServiceType.ACTIVITY || type === BookingOperationServiceType.DINING || type === 'SERVICE'
           ? pickupTime
           : null,
+      pickupLocation:
+        type === BookingOperationServiceType.ACTIVITY || type === 'SERVICE' || type === BookingOperationServiceType.TICKET
+          ? pickupLocation
+          : null,
+      meetingPoint:
+        type === BookingOperationServiceType.ACTIVITY || type === 'SERVICE'
+          ? meetingPoint
+          : null,
+      participantCount:
+        type === BookingOperationServiceType.ACTIVITY || type === BookingOperationServiceType.TICKET
+          ? participantCount
+          : currentService?.participantCount ?? null,
       supplierId,
       supplierName,
       confirmationNumber,
@@ -7082,7 +7411,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     if (service.supplierConfirmationStatus === SupplierConfirmationStatus.CONFIRMED || service.confirmationStatus === BookingServiceStatus.confirmed) {
       return 'confirmed';
     }
-    if (service.supplierConfirmationStatus === SupplierConfirmationStatus.SENT || service.confirmationStatus === BookingServiceStatus.requested) {
+    if (
+      service.supplierConfirmationStatus === SupplierConfirmationStatus.REQUESTED ||
+      service.supplierConfirmationStatus === SupplierConfirmationStatus.SENT ||
+      service.confirmationStatus === BookingServiceStatus.requested
+    ) {
       return 'requested';
     }
     if (!service.supplierId && !this.normalizeOptionalText(service.supplierName)) {
@@ -7383,9 +7716,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       (service) => service.supplierConfirmationStatus === SupplierConfirmationStatus.REJECTED,
     );
     const pendingSupplierConfirmations = activeServices.filter((service) =>
-      [SupplierConfirmationStatus.NOT_SENT, SupplierConfirmationStatus.SENT, SupplierConfirmationStatus.ACKNOWLEDGED].includes(
-        service.supplierConfirmationStatus,
-      ),
+      [
+        SupplierConfirmationStatus.NOT_SENT,
+        SupplierConfirmationStatus.REQUESTED,
+        SupplierConfirmationStatus.SENT,
+        SupplierConfirmationStatus.ACKNOWLEDGED,
+      ].includes(service.supplierConfirmationStatus),
     );
     const overdueSupplierConfirmations = pendingSupplierConfirmations.filter(
       (service) => service.confirmationDeadline && new Date(service.confirmationDeadline).getTime() < now.getTime(),
@@ -8684,6 +9020,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       operationStatus?: string | null;
       supplierId?: string | null;
       supplierName?: string | null;
+      assignedSupplierId?: string | null;
+      assignmentStatus?: string | null;
+      supplierConfirmationStatus?: string | null;
       supplierStatus?: string | null;
       referenceId?: string | null;
       vehicleId?: string | null;
@@ -8754,7 +9093,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       .flatMap((service) => service.vouchers || [])
       .filter((voucher) => [VOUCHER_STATUS_READY, VOUCHER_STATUS_SENT, VoucherStatus.ISSUED].includes(voucher.status as VoucherLifecycleStatusValue));
     const excursionIncompleteServices = services.filter((service) => this.isOperationalExcursionIncomplete(service));
-    const pendingConfirmations = services.filter((service) => service.confirmationStatus !== BookingServiceStatus.confirmed).length;
+    const unassignedSupplierServices = services.filter((service) => this.isOperationalSupplierUnassigned(service));
+    const rejectedSupplierServices = services.filter((service) => String(service.assignmentStatus || '').toUpperCase() === 'REJECTED');
+    const rejectedConfirmations = services.filter((service) => service.supplierConfirmationStatus === SupplierConfirmationStatus.REJECTED);
+    const pendingConfirmations = services.filter((service) => service.supplierConfirmationStatus !== SupplierConfirmationStatus.CONFIRMED).length;
     const optionalItemsNotSelected = this.countOptionalItemsNotSelected(booking.snapshotJson);
     const unresolvedItems =
       pricingUnresolvedServices.length +
@@ -8764,7 +9106,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       rooming.badge.breakdown.unassignedRooms +
       rooming.badge.breakdown.occupancyIssues +
       missingVoucherServices.length +
-      excursionIncompleteServices.length;
+      excursionIncompleteServices.length +
+      unassignedSupplierServices.length +
+      rejectedSupplierServices.length;
     const passengerManifest = this.buildPassengerManifestSummary({
       pax: booking.pax,
       adults: booking.adults,
@@ -8775,9 +9119,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       passengerManifest.status === 'COMPLETE' ? (unassignedPassengers > 0 ? 'warning' : 'ready') : 'warning';
     const status: ReadinessStatus =
       services.length === 0 && passengers.length === 0
-        ? 'pending'
+          ? 'pending'
         : pricingUnresolvedServices.length > 0 ||
             missingTransportServices.length > 0 ||
+            rejectedSupplierServices.length > 0 ||
+            rejectedConfirmations.length > 0 ||
             rooming.badge.breakdown.occupancyIssues > 0
           ? 'critical'
           : unresolvedItems > 0 || pendingConfirmations > 0 || draftVouchers.length > 0
@@ -8823,6 +9169,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           incomplete: excursionIncompleteServices.length,
           status: excursionIncompleteServices.length > 0 ? 'warning' : 'ready',
         },
+        supplierAssignments: {
+          unassigned: unassignedSupplierServices.length,
+          rejected: rejectedSupplierServices.length,
+          pendingConfirmation: pendingConfirmations,
+          rejectedConfirmation: rejectedConfirmations.length,
+          status: rejectedSupplierServices.length > 0 || rejectedConfirmations.length > 0 ? 'critical' : unassignedSupplierServices.length > 0 || pendingConfirmations > 0 ? 'warning' : 'ready',
+        },
       },
       counters: {
         passengers: passengers.length,
@@ -8856,6 +9209,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         ]),
         this.buildOperationalReadinessSection('Excursions', excursionIncompleteServices.length > 0 ? 'warning' : 'ready', excursionIncompleteServices.length, [
           excursionIncompleteServices.length > 0 ? `${excursionIncompleteServices.length} excursions need operational details` : null,
+        ]),
+        this.buildOperationalReadinessSection('Supplier confirmation', rejectedSupplierServices.length > 0 || rejectedConfirmations.length > 0 ? 'critical' : unassignedSupplierServices.length > 0 || pendingConfirmations > 0 ? 'warning' : 'ready', unassignedSupplierServices.length + rejectedSupplierServices.length + rejectedConfirmations.length + pendingConfirmations, [
+          unassignedSupplierServices.length > 0 ? `${unassignedSupplierServices.length} operational rows need supplier assignment` : null,
+          rejectedSupplierServices.length > 0 ? `${rejectedSupplierServices.length} supplier assignments rejected` : null,
+          rejectedConfirmations.length > 0 ? `${rejectedConfirmations.length} supplier confirmations rejected` : null,
+          pendingConfirmations > 0 ? `${pendingConfirmations} supplier confirmations missing` : null,
         ]),
       ],
     };
@@ -8910,10 +9269,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     return service.supplierStatus === 'unresolved' || (!service.supplierId && Boolean(this.normalizeOptionalText(service.supplierName))) || (totalCost <= 0 && totalSell <= 0);
   }
 
+  private isOperationalSupplierUnassigned(service: { assignedSupplierId?: string | null; assignmentStatus?: string | null; supplierId?: string | null }) {
+    const status = String(service.assignmentStatus || '').toUpperCase();
+    return status === 'UNASSIGNED' || (!service.assignedSupplierId && !service.supplierId);
+  }
+
   private isOperationalTransportMissing(service: {
     operationType?: string | null;
     serviceType?: string | null;
     description?: string | null;
+    assignedSupplierId?: string | null;
     supplierId?: string | null;
     referenceId?: string | null;
     vehicleId?: string | null;
@@ -8924,13 +9289,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    return !service.supplierId || !service.referenceId || !service.vehicleId || !this.normalizeOptionalText(service.pickupTime) || !this.normalizeOptionalText(service.assignedTo);
+    return (!service.assignedSupplierId && !service.supplierId) || !service.referenceId || !service.vehicleId || !this.normalizeOptionalText(service.pickupTime) || !this.normalizeOptionalText(service.assignedTo);
   }
 
   private isOperationalExcursionIncomplete(service: {
     operationType?: string | null;
     serviceType?: string | null;
     description?: string | null;
+    assignedSupplierId?: string | null;
     supplierId?: string | null;
     serviceDate?: string | Date | null;
     startTime?: string | null;
@@ -8946,7 +9312,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const participantCount = Number(service.participantCount || service.adultCount || 0) + Number(service.childCount || 0);
-    return !service.supplierId || !service.serviceDate || (!service.startTime && !service.pickupTime) || (!service.pickupLocation && !service.meetingPoint) || participantCount <= 0;
+    return (!service.assignedSupplierId && !service.supplierId) || !service.serviceDate || (!service.startTime && !service.pickupTime) || (!service.pickupLocation && !service.meetingPoint) || participantCount <= 0;
   }
 
   private isOperationalVoucherEligible(service: { operationType?: string | null; serviceType?: string | null; description?: string | null }) {

@@ -11,12 +11,31 @@ type OperationsGridRow = {
   dayTitle: string | null;
   serviceType: string;
   description: string | null;
+  supplierId?: string | null;
   supplierName: string | null;
+  assignedSupplierId?: string | null;
+  assignedSupplierName?: string | null;
+  assignmentStatus?: string | null;
+  assignmentNotes?: string | null;
   status: string;
   operationalDate: string | null;
   operationalTime: string | null;
   voucherStatus: string;
   supplierConfirmationStatus: string;
+  supplierConfirmationCode?: string | null;
+  confirmationReference?: string | null;
+  confirmationNotes?: string | null;
+  confirmationRequestedAt?: string | null;
+  confirmationReceivedAt?: string | null;
+};
+
+type SupplierOption = {
+  id: string;
+  name: string;
+  type?: string | null;
+  active?: boolean | null;
+  isActive?: boolean | null;
+  status?: string | null;
 };
 
 type OperationsGridResponse = {
@@ -85,9 +104,51 @@ async function loadOperationsGrid(id: string) {
   }
 }
 
+async function loadSuppliers() {
+  try {
+    return await adminPageFetchJson<SupplierOption[]>('/api/suppliers', 'Suppliers', {
+      cache: 'no-store',
+    });
+  } catch {
+    return [];
+  }
+}
+
+function isSupplierVisible(supplier: SupplierOption) {
+  return supplier.active !== false && supplier.isActive !== false && !['INACTIVE', 'ARCHIVED'].includes(String(supplier.status || '').toUpperCase());
+}
+
+function supplierMatchesService(supplier: SupplierOption, serviceType: string) {
+  const type = `${supplier.type || ''} ${supplier.name || ''}`.toUpperCase();
+  const normalized = String(serviceType || 'SERVICE').toUpperCase();
+  if (normalized === 'TRANSPORT') return /(TRANSPORT|TRANSFER|LOGISTIC|VEHICLE|FLEET)/.test(type);
+  if (normalized === 'ACTIVITY') return /(ACTIVITY|EXCURSION|EXPERIENCE|TOUR|ATTRACTION)/.test(type);
+  if (normalized === 'HOTEL') return /(HOTEL|ACCOMMODATION|LODGING)/.test(type);
+  if (normalized === 'GUIDE') return /(GUIDE|GUIDING)/.test(type);
+  if (normalized === 'TICKET') return /(TICKET|ATTRACTION|SERVICE|MUSEUM|SITE)/.test(type);
+  return true;
+}
+
+function getConfirmationRowClass(row: OperationsGridRow, assigned: string | null | undefined) {
+  const classes: string[] = [];
+  const status = String(row.supplierConfirmationStatus || 'NOT_SENT').toUpperCase();
+  if (!assigned || row.assignmentStatus === 'UNASSIGNED') {
+    classes.push('table-row-warning');
+  }
+  if (status === 'REJECTED') {
+    classes.push('table-row-critical');
+  } else if (status === 'REQUESTED' || status === 'NOT_SENT') {
+    classes.push('table-row-warning');
+  } else if (status === 'CONFIRMED') {
+    classes.push('table-row-ready');
+  }
+
+  return classes.length > 0 ? classes.join(' ') : undefined;
+}
+
 export default async function BookingOperationsPage({ params }: PageProps) {
   const { id } = await params;
-  const grid = await loadOperationsGrid(id);
+  const [grid, suppliers] = await Promise.all([loadOperationsGrid(id), loadSuppliers()]);
   const manifest = grid.passengerManifest;
 
   return (
@@ -143,6 +204,7 @@ export default async function BookingOperationsPage({ params }: PageProps) {
                 <th>Day</th>
                 <th>Service type</th>
                 <th>Supplier</th>
+                <th>Assignment</th>
                 <th>Status</th>
                 <th>Operational date/time</th>
                 <th>Voucher status</th>
@@ -152,11 +214,14 @@ export default async function BookingOperationsPage({ params }: PageProps) {
             <tbody>
               {grid.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>No operational service rows have been generated for this booking.</td>
+                  <td colSpan={8}>No operational service rows have been generated for this booking.</td>
                 </tr>
               ) : (
-                grid.rows.map((row) => (
-                  <tr key={row.id}>
+                grid.rows.map((row) => {
+                  const assigned = row.assignedSupplierId || row.supplierId;
+                  const rowSuppliers = suppliers.filter((supplier) => isSupplierVisible(supplier) && supplierMatchesService(supplier, row.serviceType));
+                  return (
+                  <tr key={row.id} className={getConfirmationRowClass(row, assigned)}>
                     <td>
                       {row.dayNumber ? `Day ${row.dayNumber}` : '-'}
                       {row.dayTitle ? <div className="table-subcopy">{row.dayTitle}</div> : null}
@@ -165,16 +230,75 @@ export default async function BookingOperationsPage({ params }: PageProps) {
                       {formatLabel(row.serviceType)}
                       {row.description ? <div className="table-subcopy">{row.description}</div> : null}
                     </td>
-                    <td>{row.supplierName || '-'}</td>
+                    <td>{row.assignedSupplierName || row.supplierName || '-'}</td>
+                    <td>
+                      <strong>{formatLabel(row.assignmentStatus || (assigned ? 'ASSIGNED' : 'UNASSIGNED'))}</strong>
+                      <form className="inline-form" method="post" action={`/api/bookings/${id}/operations/${row.id}/assign-supplier`}>
+                        <select name="supplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
+                          <option value="">Unassigned</option>
+                          {rowSuppliers.map((supplier) => (
+                            <option key={supplier.id} value={supplier.id}>
+                              {supplier.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select name="assignmentStatus" defaultValue={row.assignmentStatus || (assigned ? 'ASSIGNED' : 'UNASSIGNED')} aria-label="Assignment status">
+                          {['UNASSIGNED', 'ASSIGNED', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+                            <option key={status} value={status}>{formatLabel(status)}</option>
+                          ))}
+                        </select>
+                        <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" />
+                        <button type="submit" className="button button-secondary">Assign</button>
+                      </form>
+                    </td>
                     <td>{formatLabel(row.status)}</td>
                     <td>
                       {formatDate(row.operationalDate)}
                       {row.operationalTime ? <div className="table-subcopy">{row.operationalTime}</div> : null}
                     </td>
                     <td>{formatLabel(row.voucherStatus)}</td>
-                    <td>{formatLabel(row.supplierConfirmationStatus)}</td>
+                    <td>
+                      <strong>{formatLabel(row.supplierConfirmationStatus)}</strong>
+                      {row.confirmationRequestedAt ? <div className="table-subcopy">Requested {formatDate(row.confirmationRequestedAt)}</div> : null}
+                      {row.confirmationReceivedAt ? <div className="table-subcopy">Received {formatDate(row.confirmationReceivedAt)}</div> : null}
+                      <form className="inline-form" method="post" action={`/api/bookings/${id}/operations/${row.id}/confirmation`}>
+                        <select
+                          name="supplierConfirmationStatus"
+                          defaultValue={row.supplierConfirmationStatus || 'NOT_SENT'}
+                          aria-label={`Confirmation status for ${row.description || row.serviceType}`}
+                        >
+                          {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+                            <option key={status} value={status}>
+                              {formatLabel(status)}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          name="confirmationReference"
+                          defaultValue={row.confirmationReference || row.supplierConfirmationCode || ''}
+                          placeholder="Reference"
+                          aria-label="Confirmation reference"
+                        />
+                        <input
+                          name="confirmationNotes"
+                          defaultValue={row.confirmationNotes || ''}
+                          placeholder="Notes"
+                          aria-label="Confirmation notes"
+                        />
+                        <button type="submit" name="supplierConfirmationStatus" value="REQUESTED" className="button button-secondary">
+                          Request Confirmation
+                        </button>
+                        <button type="submit" name="supplierConfirmationStatus" value="CONFIRMED" className="button button-secondary">
+                          Mark Confirmed
+                        </button>
+                        <button type="submit" name="supplierConfirmationStatus" value="REJECTED" className="button button-secondary">
+                          Mark Rejected
+                        </button>
+                      </form>
+                    </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
