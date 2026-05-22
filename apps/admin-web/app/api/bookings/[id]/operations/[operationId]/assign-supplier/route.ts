@@ -13,23 +13,33 @@ function normalizeFormValue(value: FormDataEntryValue | null) {
   return normalized || null;
 }
 
+function optionalFormValue(formData: FormData, name: string) {
+  return formData.has(name) ? normalizeFormValue(formData.get(name)) : undefined;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; operationId: string }> },
 ) {
   const { id, operationId } = await params;
   const formData = await request.formData();
+  const assignedSupplierId = optionalFormValue(formData, 'assignedSupplierId') ?? optionalFormValue(formData, 'supplierId');
+  const payload = {
+    bookingId: optionalFormValue(formData, 'bookingId') || id,
+    operationId: optionalFormValue(formData, 'operationId') || operationId,
+    assignedSupplierId,
+    supplierId: assignedSupplierId,
+    assignmentStatus: optionalFormValue(formData, 'assignmentStatus'),
+    assignmentNotes: optionalFormValue(formData, 'assignmentNotes'),
+  };
+
   const response = await fetch(`${API_BASE_URL}/bookings/${id}/operations/${operationId}/assign-supplier`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
       ...buildActorHeaders(request),
     },
-    body: JSON.stringify({
-      supplierId: normalizeFormValue(formData.get('supplierId')),
-      assignmentStatus: normalizeFormValue(formData.get('assignmentStatus')),
-      assignmentNotes: normalizeFormValue(formData.get('assignmentNotes')),
-    }),
+    body: JSON.stringify(payload),
     cache: 'no-store',
     redirect: 'manual',
   });
@@ -47,6 +57,17 @@ export async function POST(
       response,
     );
   }
+
+  const savedPayload = await response.json().catch(() => null);
+  console.info('[booking-operation-assignment-save]', {
+    bookingId: id,
+    operationId,
+    incomingOperationId: payload.operationId,
+    incomingAssignedSupplierId: payload.assignedSupplierId ?? null,
+    returnedId: savedPayload?.id ?? null,
+    returnedAssignedSupplierId: savedPayload?.assignedSupplierId ?? null,
+    returnedAssignmentStatus: savedPayload?.assignmentStatus ?? null,
+  });
 
   const redirectUrl = new URL(referer || `/bookings/${id}/operations`, request.url);
   redirectUrl.searchParams.set('success', 'Supplier assignment updated.');

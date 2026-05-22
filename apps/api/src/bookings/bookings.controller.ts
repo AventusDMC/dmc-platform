@@ -279,6 +279,9 @@ type BookingOperationServiceBody = {
 
 type BookingOperationSupplierAssignmentBody = {
   supplierId?: string | null;
+  assignedSupplierId?: string | null;
+  bookingId?: string | null;
+  operationId?: string | null;
   assignmentStatus?: 'UNASSIGNED' | 'ASSIGNED' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | null;
   assignmentNotes?: string | null;
 };
@@ -373,8 +376,22 @@ export class BookingsController {
     @Body() body: BookingOperationSupplierAssignmentBody,
     @Actor() actor: AuthenticatedActor,
   ) {
+    const assignedSupplierId =
+      body.assignedSupplierId === undefined
+        ? body.supplierId === undefined
+          ? undefined
+          : body.supplierId || null
+        : body.assignedSupplierId || null;
+    console.info('[booking-operation-assignment]', {
+      bookingId: id,
+      operationId,
+      incomingBookingId: body.bookingId || null,
+      incomingOperationId: body.operationId || null,
+      incomingAssignedSupplierId: assignedSupplierId || null,
+    });
     return this.bookingsService.assignOperationalSupplier(id, operationId, {
-      supplierId: body.supplierId === undefined ? undefined : body.supplierId || null,
+      assignedSupplierId,
+      supplierId: assignedSupplierId,
       assignmentStatus: body.assignmentStatus === undefined ? undefined : body.assignmentStatus || null,
       assignmentNotes: body.assignmentNotes === undefined ? undefined : body.assignmentNotes || null,
       actor: this.toAuditActor(actor),

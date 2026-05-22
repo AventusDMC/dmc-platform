@@ -642,13 +642,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     operationId: string,
     data: {
       supplierId?: string | null;
+      assignedSupplierId?: string | null;
       assignmentStatus?: string | null;
       assignmentNotes?: string | null;
       actor?: AuditActor;
       companyActor?: CompanyScopedActor;
     },
   ) {
-    const assignmentStatus = this.normalizeSupplierAssignmentStatus(data.assignmentStatus, data.supplierId);
+    const assignedSupplierId = data.assignedSupplierId === undefined ? data.supplierId : data.assignedSupplierId;
+    const assignmentStatus = this.normalizeSupplierAssignmentStatus(data.assignmentStatus, assignedSupplierId);
     const bookingService = await (this.prisma.bookingService as any).findFirst({
       where: {
         id: operationId,
@@ -666,11 +668,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     await this.assertLatestBookingAmendment(bookingService.bookingId);
 
-    const supplier = data.supplierId
-      ? await (this.prisma.supplier as any).findUnique({ where: { id: data.supplierId } })
+    const supplier = assignedSupplierId
+      ? await (this.prisma.supplier as any).findUnique({ where: { id: assignedSupplierId } })
       : null;
 
-    if (data.supplierId && !supplier) {
+    if (assignedSupplierId && !supplier) {
       throw new BadRequestException('Supplier not found');
     }
 
@@ -719,6 +721,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         include: {
           assignedSupplier: true,
         },
+      });
+
+      console.info('[booking-operation-assignment-updated]', {
+        incomingOperationId: operationId,
+        incomingAssignedSupplierId: assignedSupplierId || null,
+        updatedRowId: updatedService.id,
+        returnedAssignedSupplierId: updatedService.assignedSupplierId || null,
       });
 
       await this.createAuditLog(tx, {

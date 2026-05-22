@@ -223,7 +223,9 @@ function renderAssignmentForm(bookingId: string, row: OperationsGridRow, supplie
   const rowSuppliers = suppliers.filter((supplier) => isSupplierVisible(supplier) && supplierMatchesService(supplier, row.serviceType));
   return (
     <form className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'} method="post" action={`/api/bookings/${bookingId}/operations/${row.id}/assign-supplier`}>
-      <select name="supplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
+      <input type="hidden" name="bookingId" value={bookingId} />
+      <input type="hidden" name="operationId" value={row.id} />
+      <select name="assignedSupplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
         <option value="">Unassigned</option>
         {rowSuppliers.map((supplier) => (
           <option key={supplier.id} value={supplier.id}>
@@ -443,6 +445,13 @@ export default async function BookingOperationsPage({ params }: PageProps) {
                           <div><span>Confirmation</span><strong>{formatLabel(row.supplierConfirmationStatus)}</strong></div>
                           <div><span>Voucher</span><strong>{formatLabel(row.voucherStatus)}</strong></div>
                           <div><span>Readiness</span><strong>{readiness.severity}</strong></div>
+                        </div>
+                        <div className="booking-operations-debug-grid" aria-label="Operation assignment debug">
+                          <span>operationId: {row.id}</span>
+                          <span>supplierId: {row.supplierId || '-'}</span>
+                          <span>assignedSupplierId: {row.assignedSupplierId || '-'}</span>
+                          <span>assignmentStatus: {row.assignmentStatus || '-'}</span>
+                          <span>assignedSupplierName: {row.assignedSupplierName || '-'}</span>
                         </div>
 
                         {readiness.reasons.length > 0 ? (
