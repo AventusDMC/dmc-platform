@@ -219,6 +219,7 @@ type QuoteItem = {
     fromPlace?: { name?: string | null; city?: string | null } | null;
     toPlace?: { name?: string | null; city?: string | null } | null;
     vehicle: {
+      id?: string | null;
       name?: string | null;
       vehicleType?: string | null;
       maxPax?: number | null;
@@ -332,6 +333,9 @@ type QuoteItemCardProps = {
     overrideCost: string;
     useOverride: boolean;
     transportServiceTypeId: string;
+    vehicleRateId?: string | null;
+    transportVehicleId?: string | null;
+    transportSupplierId?: string | null;
     routeId: string;
     routeName: string;
     hotelId: string;
@@ -655,6 +659,9 @@ export function QuoteItemCard({
       ...initialValues,
       serviceId: currentItem.serviceId || '',
       transportServiceTypeId: currentItem.transportServiceTypeId || currentItem.appliedVehicleRate?.serviceType?.id || '',
+      vehicleRateId: currentItem.appliedVehicleRate?.id || '',
+      transportVehicleId: currentItem.vehicleId || currentItem.appliedVehicleRate?.vehicle?.id || '',
+      transportSupplierId: currentItem.appliedVehicleRate?.supplier?.id || '',
       routeId: currentItem.routeId || currentItem.appliedVehicleRate?.routeId || '',
       touringRouteId: currentItem.touringRouteId || currentItem.touringRoute?.id || '',
       touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',
@@ -758,7 +765,7 @@ export function QuoteItemCard({
   }
 
   return (
-    <div>
+    <div id={`quote-item-${currentItem.id}`}>
       <article className="quote-item-row" data-activity-id={currentItem.activityId || currentItem.activity?.id || undefined}>
         <div className="quote-item-row-main">
           <div className="quote-item-row-head">
@@ -989,7 +996,7 @@ export function QuoteItemCard({
           itineraryDayTitle={itineraryDay?.title ?? null}
           itineraryDayDescription={itineraryDay?.description ?? null}
           itineraryId={item.itineraryId || undefined}
-          submitLabel="Save item"
+          submitLabel={currentItem.appliedVehicleRate || currentItem.routeId || currentItem.transportServiceTypeId ? 'Save changes' : 'Save item'}
           initialValues={currentInitialValues}
         />
       </InlineEntityActions>

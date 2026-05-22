@@ -86,6 +86,34 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('preserves saved transport quote item state while editing operational details', () => {
+    expectSourceContains(quoteItemCardSource, [
+      'vehicleRateId: currentItem.appliedVehicleRate?.id || \'\'',
+      'transportVehicleId: currentItem.vehicleId || currentItem.appliedVehicleRate?.vehicle?.id || \'\'',
+      'submitLabel={currentItem.appliedVehicleRate || currentItem.routeId || currentItem.transportServiceTypeId ? \'Save changes\' : \'Save item\'}',
+      '<div id={`quote-item-${currentItem.id}`}>',
+    ]);
+    expectSourceContains(quoteItemsFormSource, [
+      'transportSelectionMatchesSavedItem',
+      'savedTransportVehicleRateId',
+      'hasSavedTransportPricing',
+      'serviceId || initialValues?.serviceId || selectedService?.id || \'\'',
+      'Edit Transport',
+      "isTransportService && !isEditing ? 'Add Transport' : submitLabel",
+    ]);
+  });
+
+  it('surfaces exact workflow diagnostics and edit anchors for incomplete imported activities', () => {
+    expectSourceContains(pageSource, [
+      'workflowDiagnostics?: Array<',
+      'missingWorkflowFields: string[];',
+      'persistedOperationalFields?: Record<string, unknown>;',
+      'item.missingWorkflowFields.join(\', \')',
+      'href={`${buildStepHref(\'services\')}#quote-item-${item.itemId || \'\'}`}',
+      'Edit {item.itemName} {item.itemId ? `(${item.itemId})` : \'\'}: {item.missingWorkflowFields.join(\', \')}',
+    ]);
+  });
+
   it('renders the redesigned quote header with key quote metadata', () => {
     expectSourceContains(pageSource, [
       '<p className="eyebrow">Quote {quoteNumberLabel}</p>',

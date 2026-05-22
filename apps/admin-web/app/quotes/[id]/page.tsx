@@ -610,6 +610,12 @@ type Quote = {
     id: string;
     status: 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   } | null;
+  workflowDiagnostics?: Array<{
+    itemId: string | null;
+    itemName: string;
+    missingWorkflowFields: string[];
+    persistedOperationalFields?: Record<string, unknown>;
+  }>;
 };
 
 type QuoteVersion = {
@@ -1681,6 +1687,16 @@ function collectQuoteAuthoringSummary(quote: Quote) {
 }
 
 function collectIncompleteActivityItemLabels(quote: Quote) {
+  if (Array.isArray(quote.workflowDiagnostics) && quote.workflowDiagnostics.length > 0) {
+    return quote.workflowDiagnostics
+      .filter((item) => item.missingWorkflowFields.length > 0)
+      .map((item) => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        missingWorkflowFields: item.missingWorkflowFields,
+      }));
+  }
+
   const allItems = [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
 
   return allItems
@@ -1702,7 +1718,23 @@ function collectIncompleteActivityItemLabels(quote: Quote) {
         (item.paxCount ?? 0) <= 0
       );
     })
-    .map((item) => getQuoteItemDisplayName(item));
+    .map((item) => {
+      const missingWorkflowFields = [
+        !resolveQuoteItemServiceDate(quote, item) ? 'activity date' : null,
+        !item.startTime && !item.pickupTime ? 'start time or pickup time' : null,
+        !item.pickupLocation && !item.meetingPoint ? 'location or meeting point' : null,
+        !((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0) ? 'participant count' : null,
+        item.reconfirmationRequired && !item.reconfirmationDueAt ? 'reconfirmation due date' : null,
+        item.totalCost <= 0 || item.totalSell <= 0 ? 'cost/sell pricing' : null,
+        (item.paxCount ?? 0) <= 0 ? 'pax count' : null,
+      ].filter(Boolean) as string[];
+
+      return {
+        itemId: item.id,
+        itemName: getQuoteItemDisplayName(item),
+        missingWorkflowFields,
+      };
+    });
 }
 
 function isQuoteServiceMissingSupplier(item: Quote['quoteItems'][number]) {
@@ -2151,7 +2183,10 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
       ? `${authoringSummary.activityOperationalIssues} activity items are missing date, time, location, or counts.`
       : null,
     incompleteActivityItemLabels.length > 0
-      ? `Incomplete Imported Activity / activity items: ${incompleteActivityItemLabels.slice(0, 5).join(', ')}.`
+      ? `Incomplete Imported Activity / activity items: ${incompleteActivityItemLabels
+          .slice(0, 5)
+          .map((item) => `${item.itemName}${item.itemId ? ` (${item.itemId})` : ''} missing ${item.missingWorkflowFields.join(', ')}`)
+          .join('; ')}.`
       : null,
     authoringSummary.reconfirmationsDueSoon > 0 ? `${authoringSummary.reconfirmationsDueSoon} reconfirmations are due soon.` : null,
     (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') && !quote.acceptedVersionId
@@ -2694,6 +2729,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       </p>
                     ))
                   )}
+                  {incompleteActivityItemLabels.length > 0 ? (
+                    <div className="quote-warning-links">
+                      {incompleteActivityItemLabels.slice(0, 5).map((item) => (
+                        <Link
+                          key={item.itemId || item.itemName}
+                          href={`${buildStepHref('services')}#quote-item-${item.itemId || ''}`}
+                          className="secondary-button"
+                        >
+                          Edit {item.itemName} {item.itemId ? `(${item.itemId})` : ''}: {item.missingWorkflowFields.join(', ')}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
                 <article className="detail-card">
                   <p className="eyebrow">Trip Summary</p>

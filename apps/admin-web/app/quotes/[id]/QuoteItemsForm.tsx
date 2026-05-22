@@ -346,6 +346,9 @@ type QuoteItemInitialValues = {
   activityId?: string;
   activityRateVariantId?: string;
   ticketRateVariantId?: string;
+  vehicleRateId?: string | null;
+  transportVehicleId?: string | null;
+  transportSupplierId?: string | null;
   touringRouteId?: string;
   touringRoutePricingId?: string;
   touringRoute?: {
@@ -1287,9 +1290,18 @@ export function QuoteItemsForm({
         ? resolvedTransportPricing.routeId === routeId
         : resolvedTransportPricing.routeName === routeName.trim()),
   );
+  const savedTransportVehicleId = initialValues?.transportVehicleId || '';
+  const savedTransportVehicleRateId = initialValues?.vehicleRateId || '';
+  const transportSelectionMatchesSavedItem =
+    Boolean(isEditing && activeServiceType === 'transport' && !touringRouteId && !touringRoutePricingId && !initialValues?.touringRoute) &&
+    routeId === (initialValues?.routeId || '') &&
+    transportServiceTypeId === (initialValues?.transportServiceTypeId || '') &&
+    Boolean(savedTransportVehicleId || savedTransportVehicleRateId);
   const selectedTransportVehicleId = resolvedTransportMatchesCurrentSelection
     ? resolvedTransportPricing?.vehicle.id
-    : undefined;
+    : transportSelectionMatchesSavedItem
+      ? savedTransportVehicleId || undefined
+      : undefined;
   const transportRecommendationReasons = selectedTransportCandidate
     ? [
         selectedTransportCandidate.isRecommended
@@ -1391,8 +1403,7 @@ export function QuoteItemsForm({
   const isTransportVehicleSelected = Boolean(
     isTransportService &&
       selectedTransportVehicleId &&
-      resolvedTransportPricing &&
-      resolvedTransportMatchesCurrentSelection,
+      (transportSelectionMatchesSavedItem || (resolvedTransportPricing && resolvedTransportMatchesCurrentSelection)),
   );
 
   useEffect(() => {
@@ -2382,6 +2393,10 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (isEditing && routeId === (initialValues?.routeId || '')) {
+      return;
+    }
+
     if (!validTransportRoutes.some((route) => route.id === routeId)) {
       setRouteId('');
       setRouteName('');
@@ -2663,6 +2678,9 @@ export function QuoteItemsForm({
       }
 
       if (isTransportService && !isTouringTransportEdit) {
+        const hasResolvedTransportPricing = Boolean(resolvedTransportPricing && resolvedTransportMatchesCurrentSelection);
+        const hasSavedTransportPricing = Boolean(transportSelectionMatchesSavedItem && savedTransportVehicleRateId && Number(baseCost) > 0);
+
         if (!transportServiceTypeId) {
           throw new Error('Transport service type is required');
         }
@@ -2679,7 +2697,7 @@ export function QuoteItemsForm({
           throw new Error('Transport cost must be resolved before saving.');
         }
 
-        if (!resolvedTransportPricing || !resolvedTransportMatchesCurrentSelection) {
+        if (!hasResolvedTransportPricing && !hasSavedTransportPricing) {
           throw new Error('Transport pricing no longer matches the selected route or service type.');
         }
       }
@@ -2746,7 +2764,9 @@ export function QuoteItemsForm({
         isTransportService
           ? isTouringTransportEdit
             ? selectedService?.id || serviceId
-            : findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
+            : transportSelectionMatchesSavedItem
+              ? serviceId || initialValues?.serviceId || selectedService?.id || ''
+              : findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
           : serviceId;
       const resolvedHotelServiceId =
         isHotelService
@@ -2811,7 +2831,10 @@ export function QuoteItemsForm({
         sellPriceOverrideExplicit: hasManualSellOverride,
         markupPercent: Number(markupPercent),
         transportServiceTypeId: isTransportService && !isTouringTransportEdit ? transportServiceTypeId : undefined,
-        vehicleRateId: isTransportService && !isTouringTransportEdit ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,
+        vehicleRateId:
+          isTransportService && !isTouringTransportEdit
+            ? resolvedTransportPricing?.vehicleRateId || (transportSelectionMatchesSavedItem ? savedTransportVehicleRateId || undefined : undefined)
+            : undefined,
         transportVehicleId: isTransportService && !isTouringTransportEdit ? selectedTransportVehicleId : undefined,
         routeId: isTransportService && !isTouringTransportEdit ? routeId || undefined : undefined,
         routeName: isTransportService && !isTouringTransportEdit ? routeName.trim() : undefined,
@@ -2996,7 +3019,7 @@ export function QuoteItemsForm({
         <form id={serviceEntryFormId} ref={formRef} className="entity-form compact-form service-entry-form" onSubmit={handleSubmit} noValidate={isExternalPackageService}>
           <div className="service-entry-form-head">
             <div>
-              <strong>{SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
+              <strong>{isEditing && activeServiceType === 'transport' ? 'Edit Transport' : SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
               <p>{submitLabel}</p>
             </div>
             {!isEditing && !isExternalPackageService ? (
@@ -5023,7 +5046,7 @@ export function QuoteItemsForm({
                 (isHotelService && !selectedHotelBaseRate && !manualHotelRateDraft)
               }
             >
-              {isSubmitting ? 'Saving...' : isTransportService ? 'Add Transport' : submitLabel}
+              {isSubmitting ? 'Saving...' : isTransportService && !isEditing ? 'Add Transport' : submitLabel}
             </button>
           ) : needsServiceSelection ? (
             <div className="quote-service-empty-state">

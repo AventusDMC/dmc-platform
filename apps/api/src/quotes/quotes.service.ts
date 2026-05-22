@@ -9900,7 +9900,7 @@ export class QuotesService {
     return BookingOperationServiceType.ACTIVITY;
   }
 
-  private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
+  private buildQuoteWorkflowDiagnostics(snapshotJson: unknown) {
     const snapshot = (snapshotJson || {}) as {
       adults?: number | null;
       children?: number | null;
@@ -9941,39 +9941,14 @@ export class QuotesService {
       }>;
     };
 
-    const totalPax = Math.max(0, Number(snapshot.adults ?? 0) + Number(snapshot.children ?? 0));
-
-    if (totalPax <= 0) {
-      throw new BadRequestException('Quote workflow requires at least one passenger before moving to Ready, Sent, or Accepted.');
-    }
-
-    const normalizedPricingMode = this.normalizeQuotePricingMode(
-      snapshot.pricingMode,
-      this.normalizeQuotePricingType(snapshot.pricingType),
-    );
-
-    if (normalizedPricingMode === 'SLAB') {
-      this.quotePricingService.assertValidPricingConfig({
-        mode: 'group',
-        pricingSlabs: Array.isArray(snapshot.pricingSlabs) ? snapshot.pricingSlabs : [],
-      });
-    } else if (!Number.isFinite(Number(snapshot.fixedPricePerPerson ?? 0)) || Number(snapshot.fixedPricePerPerson ?? 0) < 0) {
-      throw new BadRequestException('Quote workflow requires a valid fixed price per person.');
-    }
-
     const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
-
-    if (quoteItems.length === 0) {
-      throw new BadRequestException('Quote workflow requires at least one priced quote item.');
-    }
-
     const itineraryContextById = new Map(
       (snapshot.itineraries ?? [])
         .filter((day): day is { id: string; dayNumber: number } => Boolean(day.id) && Number.isFinite(day.dayNumber))
         .map((day) => [day.id, { dayNumber: day.dayNumber }]),
     );
 
-    const invalidItems = quoteItems
+    return quoteItems
       .map((item, index) => {
         const missing: string[] = [];
         const quantity = Math.max(0, Number(item.quantity ?? 0));
@@ -10001,7 +9976,27 @@ export class QuotesService {
         });
 
         if (!isActivity) {
-          return { item, index, missing };
+          return {
+            itemId: item.id || null,
+            itemName: item.service?.name?.trim() || `item ${index + 1}`,
+            missingWorkflowFields: missing,
+            persistedOperationalFields: {
+              serviceDate: item.serviceDate ?? null,
+              itineraryId: item.itineraryId ?? null,
+              startTime: item.startTime ?? null,
+              pickupTime: item.pickupTime ?? null,
+              pickupLocation: item.pickupLocation ?? null,
+              meetingPoint: item.meetingPoint ?? null,
+              participantCount: item.participantCount ?? null,
+              adultCount: item.adultCount ?? null,
+              childCount: item.childCount ?? null,
+              paxCount: item.paxCount ?? null,
+              reconfirmationRequired: item.reconfirmationRequired ?? null,
+              reconfirmationDueAt: item.reconfirmationDueAt ?? null,
+              totalCost: item.totalCost ?? null,
+              totalSell: item.totalSell ?? null,
+            },
+          };
         }
 
         const resolvedServiceDate = this.resolveQuoteItemServiceDateValue({
@@ -10016,7 +10011,7 @@ export class QuotesService {
         const adultCount = Number(item.adultCount ?? 0);
         const childCount = Number(item.childCount ?? 0);
         const hasCounts = participantCount > 0 || adultCount + childCount > 0;
-        const reconfirmationComplete = !item.reconfirmationRequired || Boolean(item.reconfirmationDueAt?.trim());
+        const reconfirmationComplete = !item.reconfirmationRequired || Boolean(String(item.reconfirmationDueAt ?? '').trim());
 
         if (!resolvedServiceDate) {
           missing.push('activity date');
@@ -10034,14 +10029,75 @@ export class QuotesService {
           missing.push('reconfirmation due date');
         }
 
-        return { item, index, missing };
-      })
-      .filter(({ missing }) => missing.length > 0);
+        return {
+          itemId: item.id || null,
+          itemName: item.service?.name?.trim() || `item ${index + 1}`,
+          missingWorkflowFields: missing,
+          persistedOperationalFields: {
+            serviceDate: item.serviceDate ?? null,
+            itineraryId: item.itineraryId ?? null,
+            startTime: item.startTime ?? null,
+            pickupTime: item.pickupTime ?? null,
+            pickupLocation: item.pickupLocation ?? null,
+            meetingPoint: item.meetingPoint ?? null,
+            participantCount: item.participantCount ?? null,
+            adultCount: item.adultCount ?? null,
+            childCount: item.childCount ?? null,
+            paxCount: item.paxCount ?? null,
+            reconfirmationRequired: item.reconfirmationRequired ?? null,
+            reconfirmationDueAt: item.reconfirmationDueAt ?? null,
+            totalCost: item.totalCost ?? null,
+            totalSell: item.totalSell ?? null,
+          },
+        };
+      });
+  }
+
+  private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
+    const snapshot = (snapshotJson || {}) as {
+      adults?: number | null;
+      children?: number | null;
+      pricingMode?: string | null;
+      pricingType?: string | null;
+      fixedPricePerPerson?: number | null;
+      pricingSlabs?: QuotePricingSlabInput[];
+      quoteItems?: Array<{ id?: string | null }>;
+    };
+
+    const totalPax = Math.max(0, Number(snapshot.adults ?? 0) + Number(snapshot.children ?? 0));
+
+    if (totalPax <= 0) {
+      throw new BadRequestException('Quote workflow requires at least one passenger before moving to Ready, Sent, or Accepted.');
+    }
+
+    const normalizedPricingMode = this.normalizeQuotePricingMode(
+      snapshot.pricingMode,
+      this.normalizeQuotePricingType(snapshot.pricingType),
+    );
+
+    if (normalizedPricingMode === 'SLAB') {
+      this.quotePricingService.assertValidPricingConfig({
+        mode: 'group',
+        pricingSlabs: Array.isArray(snapshot.pricingSlabs) ? snapshot.pricingSlabs : [],
+      });
+    } else if (!Number.isFinite(Number(snapshot.fixedPricePerPerson ?? 0)) || Number(snapshot.fixedPricePerPerson ?? 0) < 0) {
+      throw new BadRequestException('Quote workflow requires a valid fixed price per person.');
+    }
+
+    const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
+
+    if (quoteItems.length === 0) {
+      throw new BadRequestException('Quote workflow requires at least one priced quote item.');
+    }
+
+    const invalidItems = this.buildQuoteWorkflowDiagnostics(snapshotJson).filter(
+      (item) => item.missingWorkflowFields.length > 0,
+    );
 
     if (invalidItems.length > 0) {
       const labels = invalidItems
         .slice(0, 3)
-        .map(({ item, index, missing }) => `${item.service?.name?.trim() || `item ${index + 1}`} missing ${missing.join(', ')}`)
+        .map((item) => `${item.itemName}${item.itemId ? ` (${item.itemId})` : ''} missing ${item.missingWorkflowFields.join(', ')}`)
         .join(', ');
       throw new BadRequestException(
         `Quote workflow is incomplete. Complete the listed quote item fields before booking conversion: ${labels}.`,
@@ -10555,12 +10611,16 @@ export class QuotesService {
       booking,
       isLatestRevision: !latestRevision,
     };
+    const hydratedQuoteWithDiagnostics = {
+      ...hydratedQuote,
+      workflowDiagnostics: this.buildQuoteWorkflowDiagnostics(hydratedQuote),
+    };
 
     try {
-      return this.attachResolvedQuoteFields(hydratedQuote);
+      return this.attachResolvedQuoteFields(hydratedQuoteWithDiagnostics);
     } catch (error) {
       console.error('[quote/findById]', error);
-      return hydratedQuote;
+      return hydratedQuoteWithDiagnostics;
     }
   }
 

@@ -229,44 +229,56 @@ test('cancelled quote conversion is rejected before creating a booking', async (
 
 test('imported activity missing operational fields blocks booking workflow with actionable fields', () => {
   const service = createQuotesService();
+  const snapshot = {
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'item-imported-activity',
+        quantity: 1,
+        paxCount: 0,
+        totalCost: 0,
+        totalSell: 0,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: null,
+        pickupTime: null,
+        pickupLocation: null,
+        meetingPoint: null,
+        participantCount: null,
+        adultCount: null,
+        childCount: null,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: null,
+        service: {
+          name: 'Imported Activity',
+          category: 'Activity',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  };
+
+  const diagnostics = (service as any).buildQuoteWorkflowDiagnostics(snapshot);
+  assert.deepEqual(diagnostics[0].missingWorkflowFields, [
+    'pax count',
+    'cost/sell pricing',
+    'start time or pickup time',
+    'location or meeting point',
+    'participant count',
+    'reconfirmation due date',
+  ]);
+  assert.equal(diagnostics[0].persistedOperationalFields.startTime, null);
+  assert.equal(diagnostics[0].persistedOperationalFields.pickupLocation, null);
 
   assert.throws(
-    () =>
-      (service as any).assertQuoteWorkflowStateIsComplete({
-        adults: 2,
-        children: 0,
-        pricingMode: 'FIXED',
-        pricingType: 'simple',
-        fixedPricePerPerson: 100,
-        travelStartDate: '2026-06-01T00:00:00.000Z',
-        itineraries: [{ id: 'day-1', dayNumber: 1 }],
-        quoteItems: [
-          {
-            id: 'item-imported-activity',
-            quantity: 1,
-            paxCount: 0,
-            totalCost: 0,
-            totalSell: 0,
-            itineraryId: 'day-1',
-            serviceDate: null,
-            startTime: null,
-            pickupTime: null,
-            pickupLocation: null,
-            meetingPoint: null,
-            participantCount: null,
-            adultCount: null,
-            childCount: null,
-            reconfirmationRequired: true,
-            reconfirmationDueAt: null,
-            service: {
-              name: 'Imported Activity',
-              category: 'Activity',
-              serviceType: { name: 'Activity', code: 'ACTIVITY' },
-            },
-          },
-        ],
-      }),
-    /Imported Activity missing pax count, cost\/sell pricing, start time or pickup time, location or meeting point, participant count, reconfirmation due date/,
+    () => (service as any).assertQuoteWorkflowStateIsComplete(snapshot),
+    /Imported Activity \(item-imported-activity\) missing pax count, cost\/sell pricing, start time or pickup time, location or meeting point, participant count, reconfirmation due date/,
   );
 });
 
@@ -309,6 +321,11 @@ test('completed imported activity booking workflow and service conversion succee
   };
 
   assert.doesNotThrow(() => (service as any).assertQuoteWorkflowStateIsComplete(snapshot));
+  const diagnostics = (service as any).buildQuoteWorkflowDiagnostics(snapshot);
+  assert.equal(diagnostics[0].itemId, 'item-imported-activity');
+  assert.deepEqual(diagnostics[0].missingWorkflowFields, []);
+  assert.equal(diagnostics[0].persistedOperationalFields.startTime, '09:00');
+  assert.equal(diagnostics[0].persistedOperationalFields.pickupLocation, 'Hotel lobby');
   const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(snapshot, {
     supplier: {
       findFirst: async () => null,
@@ -1163,7 +1180,14 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
     activityRateVariantId: 'activity-rate-variant-ignored-for-transport',
     ticketRateVariantId: 'ticket-rate-ignored-for-transport',
     entranceFeeId: 'entrance-ignored-for-transport',
+    excursionTemplateId: null,
+    excursionTemplateComponentId: null,
+    excursionTemplateComponentOptional: null,
     touringRouteId: 'touring-route-dead-sea',
+    touringRouteCode: 'DS_PET',
+    touringRouteActive: null,
+    touringRouteArchived: null,
+    touringRouteHiddenFromSelectors: null,
     touringRoutePricingId: 'touring-pricing-van',
   });
   assert.equal(bookingServices[0].operationType, 'TRANSPORT');
