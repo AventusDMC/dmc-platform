@@ -3983,3 +3983,42 @@ test('finance reconciliation phase one wires deposits partial payments supplier 
     assert.match(controllerSource, new RegExp(token));
   }
 });
+
+test('booking operational service grid foundation wires schema conversion validation and read endpoint', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+  const quotesSource = fs.readFileSync(path.join(__dirname, '..', 'quotes', 'quotes.service.ts'), 'utf8');
+
+  for (const token of [
+    'operationalDate',
+    'operationalTime',
+    'supplierConfirmationCode',
+    'voucherGeneratedAt',
+    'operationalNotes',
+    'pickupLocation',
+    'dropoffLocation',
+    'assignedVehicleId',
+    'assignedGuideId',
+    'SERVICE',
+    'TICKET',
+    'OPERATIONAL_READY',
+    'REQUESTED',
+  ]) {
+    assert.match(schemaSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'getOperationalServiceGrid',
+    'operations-grid',
+    'BookingOperationServiceType.TICKET',
+    'BookingOperationServiceType.SERVICE',
+    'validateBookingOperationalServiceRows',
+    'excursionTemplateComponentId',
+    'touringRouteCode',
+    'AQ_',
+    'JOR-TR-AQABA',
+  ]) {
+    assert.match(`${bookingsSource}\n${controllerSource}\n${quotesSource}`, new RegExp(token));
+  }
+});

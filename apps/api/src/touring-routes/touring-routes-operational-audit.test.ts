@@ -9,6 +9,8 @@ const { buildCanonicalTouringRouteCode, TouringRoutesService } = require('./tour
 const apiRoot = process.cwd().endsWith(join('apps', 'api')) ? process.cwd() : join(process.cwd(), 'apps', 'api');
 const schemaSource = readFileSync(join(apiRoot, 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(apiRoot, 'src', 'touring-routes', 'touring-routes.controller.ts'), 'utf8');
+const serviceSource = readFileSync(join(apiRoot, 'src', 'touring-routes', 'touring-routes.service.ts'), 'utf8');
+const packageSource = readFileSync(join(apiRoot, 'package.json'), 'utf8');
 
 function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {}) {
   const countFor = (modelName: string) => async ({ where }: any = {}) => {
@@ -104,6 +106,35 @@ test('touring route schema exposes safe classification fields without touching t
 
   assert.match(controllerSource, /operational-audit\/preview/);
   assert.match(controllerSource, /operational-audit\/export/);
+});
+
+test('Aqaba excursion pricing workbook commands are backend-only and guarded', () => {
+  assert.match(packageSource, /"pricing:aqaba-excursions:export": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts export"/);
+  assert.match(packageSource, /"pricing:aqaba-excursions:import-preview": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts import-preview"/);
+  assert.match(packageSource, /"pricing:aqaba-excursions:import": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts import"/);
+  assert.match(packageSource, /"repair:aqaba-excursion-duplicate-vehicle-rates:dry-run": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts repair-duplicate-vehicle-rates-dry-run"/);
+  assert.match(packageSource, /"repair:aqaba-excursion-duplicate-vehicle-rates:apply": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts repair-duplicate-vehicle-rates-apply"/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_IMPORT_CONFIRMATION = 'AQABA_EXCURSION_PRICING_IMPORT'/);
+  assert.match(serviceSource, /AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION = 'AQABA_EXCURSION_DUPLICATE_RATE_REPAIR'/);
+  assert.match(serviceSource, /workbook\.addWorksheet\('Transport Rates'\)/);
+  assert.match(serviceSource, /workbook\.addWorksheet\('Activity Rates'\)/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_SUPPLIER_NAME = 'Almushtari Logistics Services'/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES = \['Sedan 2', 'Mini Van 6', 'Van 9'\]/);
+  assert.match(serviceSource, /roundTripSellPrice/);
+  assert.match(serviceSource, /ROUND_TRIP_PER_VEHICLE/);
+  assert.match(serviceSource, /currency !== 'JOD'/);
+  assert.match(serviceSource, /supplierId must be a UUID/);
+  assert.match(serviceSource, /vehicleId must be a UUID/);
+  assert.match(serviceSource, /outboundRouteId must be a UUID/);
+  assert.match(serviceSource, /returnRouteId must be a UUID/);
+  assert.match(serviceSource, /split leg sellPrice/);
+  assert.match(serviceSource, /\['TRANSPORT_TEMPLATE', templateCode, supplierId \|\| 'NO_SUPPLIER', vehicleId\]\.join\('\|'\)/);
+  assert.match(serviceSource, /\['TRANSPORT_LEG', outboundRouteId, supplierId \|\| 'NO_SUPPLIER', vehicleId/);
+  assert.match(serviceSource, /dryRunAqabaExcursionDuplicateVehicleRateRepair/);
+  assert.match(serviceSource, /applyAqabaExcursionDuplicateVehicleRateRepair/);
+  assert.match(serviceSource, /active: false, notes/);
+  assert.match(serviceSource, /allowedRouteKeys\.set\(`\$\{templateCode\}\|\$\{component\.routeId\}`/);
+  assert.match(serviceSource, /allowedActivityKeys\.set\(`\$\{templateCode\}\|\$\{component\.activityId\}`/);
 });
 
 test('canonical touring route code uses JOR-TR region and route name consistently', () => {

@@ -51,6 +51,11 @@ async function main() {
       return;
     }
 
+    if (mode === 'aqaba-excursion-transport-service-types-repair-dry-run') {
+      printJson(await service.dryRunAqabaExcursionTransportServiceTypeRepair());
+      return;
+    }
+
     if (mode === 'apply') {
       const id = args.get('id') || '';
       const companyId = process.env.DMC_CLEANUP_COMPANY_ID || process.env.DMC_ACTIVITY_MASTER_COMPANY_ID || '';
@@ -81,7 +86,13 @@ async function main() {
       return;
     }
 
-    throw new Error('Usage: ts-node src/touring-routes/touring-routes-aqaba-activities-cleanup.cli.ts <dry-run|apply|batch-dry-run|batch-apply|aqaba-rt-dry-run|aqaba-rt-dependencies-dry-run|aqaba-rt-dependencies-apply|aqaba-rt-convert-dry-run|aqaba-rt-convert-apply> [--id=<touringRouteId>] [--confirm=AQABA_ACTIVITY_BATCH_CLEANUP|AQABA_RT_DEPENDENCIES|AQABA_RT_EXCURSION_CONVERSION]');
+    if (mode === 'aqaba-excursion-transport-service-types-repair-apply') {
+      const confirm = args.get('confirm') || '';
+      printJson(await service.applyAqabaExcursionTransportServiceTypeRepair({ confirm }));
+      return;
+    }
+
+    throw new Error('Usage: ts-node src/touring-routes/touring-routes-aqaba-activities-cleanup.cli.ts <dry-run|apply|batch-dry-run|batch-apply|aqaba-rt-dry-run|aqaba-rt-dependencies-dry-run|aqaba-rt-dependencies-apply|aqaba-rt-convert-dry-run|aqaba-rt-convert-apply|aqaba-excursion-transport-service-types-repair-dry-run|aqaba-excursion-transport-service-types-repair-apply> [--id=<touringRouteId>] [--confirm=AQABA_ACTIVITY_BATCH_CLEANUP|AQABA_RT_DEPENDENCIES|AQABA_RT_EXCURSION_CONVERSION|AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR]');
   } finally {
     await prisma.$disconnect();
   }

@@ -153,11 +153,21 @@ const SUPPLIER_PAYMENT_STATUSES = ['unpaid', 'scheduled', 'paid'] as const;
 const PAYMENT_TYPES = ['CLIENT', 'SUPPLIER'] as const;
 const PAYMENT_STATUSES = ['PENDING', 'PAID'] as const;
 const PAYMENT_METHODS = ['bank', 'cash', 'card', 'bank_transfer', 'cliq', 'mb_way', 'credit_card', 'custom_manual'] as const;
-const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'DINING', 'SERVICE', 'EXTERNAL_PACKAGE'] as const;
+const BOOKING_OPERATION_SERVICE_TYPES = ['TRANSPORT', 'GUIDE', 'HOTEL', 'ACTIVITY', 'DINING', 'SERVICE', 'TICKET', 'EXTERNAL_PACKAGE'] as const;
 type BookingOperationalServiceType = (typeof BOOKING_OPERATION_SERVICE_TYPES)[number];
-const BOOKING_OPERATION_SERVICE_STATUSES = ['PENDING', 'REQUESTED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'VOUCHER_SENT', 'COMPLETED', 'DONE'] as const;
+const BOOKING_OPERATION_SERVICE_STATUSES = [
+  'PENDING',
+  'REQUESTED',
+  'CONFIRMED',
+  'REJECTED',
+  'CANCELLED',
+  'VOUCHER_SENT',
+  'OPERATIONAL_READY',
+  'COMPLETED',
+  'DONE',
+] as const;
 type BookingOperationalExecutionStatus = (typeof BOOKING_OPERATION_SERVICE_STATUSES)[number];
-const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
+const SUPPLIER_CONFIRMATION_STATUSES = ['NOT_SENT', 'REQUESTED', 'SENT', 'ACKNOWLEDGED', 'CONFIRMED', 'REJECTED', 'CANCELLED'] as const;
 type SupplierConfirmationStatusValue = (typeof SUPPLIER_CONFIRMATION_STATUSES)[number];
 type SupplierConfirmationWorkflowAction = 'prepare_email' | 'mark_requested' | 'mark_confirmed' | 'mark_rejected' | 'reconfirm';
 type BookingOperationalAmendmentType =
@@ -543,6 +553,72 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         sourceQuoteId: baseBooking.quoteId,
       };
     }
+  }
+
+  async getOperationalServiceGrid(id: string, actor?: CompanyScopedActor) {
+    const booking = await this.findOne(id, actor);
+
+    if (!booking) {
+      return null;
+    }
+
+    const dayById = new Map<string, any>(
+      ((booking.days || booking.bookingDays || []) as any[]).map((day) => [day.id, day]),
+    );
+    const rows = ((booking.services || []) as any[])
+      .slice()
+      .sort((left, right) => {
+        const leftDay = left.bookingDayId ? dayById.get(left.bookingDayId)?.dayNumber ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+        const rightDay = right.bookingDayId ? dayById.get(right.bookingDayId)?.dayNumber ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+        if (leftDay !== rightDay) {
+          return leftDay - rightDay;
+        }
+
+        const orderDiff = Number(left.serviceOrder ?? 0) - Number(right.serviceOrder ?? 0);
+        return orderDiff || String(left.id).localeCompare(String(right.id));
+      })
+      .map((service, index) => {
+        const day = service.bookingDayId ? dayById.get(service.bookingDayId) : service.bookingDay || null;
+        const voucherStatus =
+          service.voucherStatus ||
+          ((service.vouchers || []).some((voucher: any) => String(voucher.status || '').toUpperCase() === 'SENT')
+            ? 'SENT'
+            : (service.vouchers || []).length > 0
+              ? 'GENERATED'
+              : 'NOT_GENERATED');
+
+        return {
+          id: service.id,
+          order: index + 1,
+          dayNumber: day?.dayNumber ?? null,
+          dayTitle: day?.title ?? null,
+          serviceType: service.operationType || service.serviceType || 'SERVICE',
+          description: service.description,
+          supplierId: service.supplierId || service.touringRoutePricing?.supplier?.id || null,
+          supplierName: service.supplierName || service.touringRoutePricing?.supplier?.name || null,
+          status: service.operationStatus || 'PENDING',
+          operationalDate: service.operationalDate || service.serviceDate || day?.date || null,
+          operationalTime: service.operationalTime || service.startTime || service.pickupTime || null,
+          voucherStatus,
+          voucherGeneratedAt: service.voucherGeneratedAt || null,
+          supplierConfirmationStatus: service.supplierConfirmationStatus || 'NOT_SENT',
+          supplierConfirmationCode: service.supplierConfirmationCode || null,
+          pickupLocation: service.pickupLocation || null,
+          dropoffLocation: service.dropoffLocation || null,
+          assignedVehicleId: service.assignedVehicleId || service.vehicleId || null,
+          assignedGuideId: service.assignedGuideId || service.guideId || null,
+        };
+      });
+
+    return {
+      booking: {
+        id: booking.id,
+        bookingRef: booking.bookingRef,
+        status: booking.status,
+        title: booking.quote?.title || booking.snapshotJson?.title || booking.bookingRef || 'Booking',
+      },
+      rows,
+    };
   }
 
   private attachBookingServiceProfitAliases(service: any, booking: any) {
@@ -1279,13 +1355,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             serviceDate: service.serviceDate,
             startTime: service.startTime,
             pickupTime: service.pickupTime,
+            operationalDate: service.operationalDate,
+            operationalTime: service.operationalTime,
+            operationalNotes: service.operationalNotes,
             pickupLocation: service.pickupLocation,
+            dropoffLocation: service.dropoffLocation,
+            assignedVehicleId: service.assignedVehicleId,
+            assignedGuideId: service.assignedGuideId,
             meetingPoint: service.meetingPoint,
             participantCount: service.participantCount,
             adultCount: service.adultCount,
             childCount: service.childCount,
             supplierReference: service.supplierReference,
             supplierConfirmationStatus: service.supplierConfirmationStatus,
+            supplierConfirmationCode: service.supplierConfirmationCode,
+            voucherStatus: service.voucherStatus,
+            voucherGeneratedAt: service.voucherGeneratedAt,
             confirmationSentAt: service.confirmationSentAt,
             supplierConfirmedAt: service.supplierConfirmedAt,
             supplierRemarks: service.supplierRemarks,

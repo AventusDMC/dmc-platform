@@ -392,6 +392,32 @@ function isExternalPackageItem(item: Pick<QuoteItem, 'service'>) {
   return !item.service || isExternalPackageCategory(item.service.serviceType?.code || item.service.serviceType?.name || item.service.category);
 }
 
+function isActivityServiceItem(item: Pick<QuoteItem, 'service' | 'activityId' | 'activity'>) {
+  if (item.activityId || item.activity) {
+    return true;
+  }
+
+  const category = `${item.service?.serviceType?.code || ''} ${item.service?.serviceType?.name || ''} ${item.service?.category || ''} ${item.service?.name || ''}`.toLowerCase();
+
+  return /activity|excursion|experience|tour|boat|snorkel|diving|dive|yacht|beach/.test(category);
+}
+
+function getIncompleteOperationalDetails(item: QuoteItem) {
+  if (!isActivityServiceItem(item)) {
+    return [];
+  }
+
+  return [
+    !item.serviceDate && !item.itineraryId ? 'activity date' : null,
+    !item.startTime && !item.pickupTime ? 'start time or pickup time' : null,
+    !item.pickupLocation && !item.meetingPoint ? 'location or meeting point' : null,
+    !((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0) ? 'participant count' : null,
+    item.reconfirmationRequired && !item.reconfirmationDueAt ? 'reconfirmation due date' : null,
+    item.totalCost <= 0 || item.totalSell <= 0 ? 'cost/sell pricing' : null,
+    (item.paxCount ?? 0) <= 0 ? 'pax count' : null,
+  ].filter((issue): issue is string => Boolean(issue));
+}
+
 function getQuoteItemServiceName(item: QuoteItem) {
   if (item.touringRoute) {
     return getQuoteItemOriginAwareExcursionName({
@@ -558,6 +584,7 @@ export function QuoteItemCard({
   const [detachContractError, setDetachContractError] = useState('');
   const isUnmatched = isUnmatchedImportedService(currentItem.service);
   const isExternalPackage = isExternalPackageItem(currentItem);
+  const incompleteOperationalDetails = getIncompleteOperationalDetails(currentItem);
   const hotelItemSummary = getHotelItemSummary(currentItem);
   const activityCatalogName = currentItem.activity?.name?.trim() || '';
   const activityCatalogDescription = currentItem.activity?.description?.trim() || '';
@@ -633,6 +660,21 @@ export function QuoteItemCard({
       touringRoutePricingId: currentItem.touringRoutePricingId || currentItem.touringRoutePricing?.id || '',
       touringRoute: currentItem.touringRoute,
       touringRoutePricing: currentItem.touringRoutePricing,
+      paxCount: String(currentItem.paxCount ?? initialValues.paxCount ?? totalPax),
+      participantCount: String(currentItem.participantCount ?? initialValues.participantCount ?? totalPax),
+      adultCount: String(currentItem.adultCount ?? initialValues.adultCount ?? quote.adults ?? 0),
+      childCount: String(currentItem.childCount ?? initialValues.childCount ?? quote.children ?? 0),
+      serviceDate: currentItem.serviceDate ? currentItem.serviceDate.slice(0, 10) : initialValues.serviceDate,
+      startTime: currentItem.startTime || initialValues.startTime,
+      pickupTime: currentItem.pickupTime || initialValues.pickupTime,
+      pickupLocation: currentItem.pickupLocation || initialValues.pickupLocation,
+      meetingPoint: currentItem.meetingPoint || initialValues.meetingPoint,
+      reconfirmationRequired: currentItem.reconfirmationRequired ?? initialValues.reconfirmationRequired,
+      reconfirmationDueAt: currentItem.reconfirmationDueAt ? currentItem.reconfirmationDueAt.slice(0, 16) : initialValues.reconfirmationDueAt,
+      baseCost: String(currentItem.baseCost ?? initialValues.baseCost ?? ''),
+      overrideCost: currentItem.overrideCost !== null && currentItem.overrideCost !== undefined ? String(currentItem.overrideCost) : initialValues.overrideCost,
+      sellPrice: currentItem.sellPrice !== null && currentItem.sellPrice !== undefined ? String(currentItem.sellPrice) : initialValues.sellPrice,
+      markupPercent: String(currentItem.markupPercent ?? initialValues.markupPercent),
       externalPackage: {
         packageName: currentItem.externalPackageName || currentItem.service?.name || '',
         country: currentItem.externalPackageCountry || '',
@@ -654,7 +696,7 @@ export function QuoteItemCard({
         clientItineraryText: currentItem.externalClientDescription || '',
       },
     }),
-    [currentItem, initialValues, quote.quoteCurrency],
+    [currentItem, initialValues, quote.adults, quote.children, quote.quoteCurrency, totalPax],
   );
 
   async function handleAssign(serviceId: string) {
@@ -831,6 +873,12 @@ export function QuoteItemCard({
             </p>
           ) : null}
           {reconfirmationWarning ? <p className="form-error">{reconfirmationWarning}</p> : null}
+          {incompleteOperationalDetails.length > 0 ? (
+            <div className="form-error">
+              <strong>Incomplete operational details</strong>
+              <span>: {getQuoteItemServiceName(currentItem)} needs {incompleteOperationalDetails.join(', ')}.</span>
+            </div>
+          ) : null}
           {detachContractError ? <p className="form-error">{detachContractError}</p> : null}
           {currentItem.contractId ? (
             <button

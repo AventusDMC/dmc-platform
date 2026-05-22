@@ -562,7 +562,7 @@ test('DMC full flow with first-class Activities preserves multi-company pricing 
 
   await assert.rejects(
     () => quotesService.updateStatus(incompleteQuote.id, { status: 'SENT' as any }, actor),
-    /complete all activity dates, timing, location, participant counts/i,
+    /Complete the listed quote item fields before booking conversion/i,
   );
 
   const acceptedSnapshot = {

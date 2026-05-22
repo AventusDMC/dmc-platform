@@ -2284,6 +2284,12 @@ model BookingService {
   serviceType                String
   operationType              String?
   operationStatus            String                        @default("PENDING")
+  operationalDate            DateTime?
+  operationalTime            String?
+  operationalNotes           String?
+  dropoffLocation            String?
+  assignedVehicleId          String?                       @db.Uuid
+  assignedGuideId            String?                       @db.Uuid
   referenceId                String?                       @db.Uuid
   assignedTo                 String?
   guidePhone                 String?
@@ -2308,6 +2314,9 @@ model BookingService {
   childCount                 Int?
   supplierReference          String?
   supplierConfirmationStatus SupplierConfirmationStatus    @default(NOT_SENT)
+  supplierConfirmationCode   String?
+  voucherStatus              String                        @default("NOT_GENERATED")
+  voucherGeneratedAt         DateTime?
   confirmationSentAt         DateTime?
   supplierConfirmedAt        DateTime?
   supplierRemarks            String?
@@ -2356,6 +2365,8 @@ model BookingService {
   @@index([sourceQuoteItemId])
   @@index([supplierId])
   @@index([vehicleId])
+  @@index([assignedVehicleId])
+  @@index([assignedGuideId])
   @@index([guideId])
   @@index([restaurantId])
   @@index([operationType, guideConfirmationStatus])
@@ -2488,6 +2499,8 @@ enum BookingOperationServiceType {
   GUIDE
   HOTEL
   ACTIVITY
+  SERVICE
+  TICKET
   DINING
   EXTERNAL_PACKAGE
 }
@@ -2496,6 +2509,10 @@ enum BookingOperationServiceStatus {
   PENDING
   REQUESTED
   CONFIRMED
+  REJECTED
+  VOUCHER_SENT
+  OPERATIONAL_READY
+  COMPLETED
   DONE
 }
 
@@ -2563,6 +2580,7 @@ enum BookingServiceStatus {
 
 enum SupplierConfirmationStatus {
   NOT_SENT
+  REQUESTED
   SENT
   ACKNOWLEDGED
   CONFIRMED

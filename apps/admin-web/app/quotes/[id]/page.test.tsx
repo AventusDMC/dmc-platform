@@ -1460,4 +1460,31 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(pageSource, /apiBaseUrl=\{API_BASE_URL\}/);
     assert.doesNotMatch(`${quotesTableSource}\n${cancelQuoteButtonSource}\n${inlineEntityActionsSource}`, /admin\/dashboard|router\.push\(["']\/admin\/dashboard["']\)/);
   });
+
+  it('surfaces imported activity completion fields before booking conversion', () => {
+    expectSourceContains(pageSource, [
+      'collectIncompleteActivityItemLabels',
+      'Incomplete Imported Activity / activity items:',
+    ]);
+
+    expectSourceContains(quoteItemCardSource, [
+      'Incomplete operational details',
+      'getIncompleteOperationalDetails',
+      'cost/sell pricing',
+      'pax count',
+    ]);
+
+    expectSourceContains(quoteItemsFormSource, [
+      'isImportedActivityEdit',
+      'showInlineActivityOperationalFields',
+      'Complete the operational details and quote pricing below before converting this quote to a booking.',
+      'Start Time',
+      'End Time / Duration',
+      'Pickup / Meeting Location',
+      'Reconfirmation Due Date',
+      'Save Activity',
+      'open={useOverride || isImportedActivityEdit || activityIssues.length > 0}',
+      'required={!isLegacyActivityEdit}',
+    ]);
+  });
 });

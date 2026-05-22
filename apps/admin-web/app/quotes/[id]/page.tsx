@@ -1680,6 +1680,31 @@ function collectQuoteAuthoringSummary(quote: Quote) {
   );
 }
 
+function collectIncompleteActivityItemLabels(quote: Quote) {
+  const allItems = [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
+
+  return allItems
+    .filter((item) => {
+      if (!isActivityQuoteItem(item)) {
+        return false;
+      }
+
+      const hasResolvedDate = Boolean(resolveQuoteItemServiceDate(quote, item));
+
+      return (
+        !hasResolvedDate ||
+        (!item.startTime && !item.pickupTime) ||
+        (!item.pickupLocation && !item.meetingPoint) ||
+        !((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0) ||
+        (item.reconfirmationRequired && !item.reconfirmationDueAt) ||
+        item.totalCost <= 0 ||
+        item.totalSell <= 0 ||
+        (item.paxCount ?? 0) <= 0
+      );
+    })
+    .map((item) => getQuoteItemDisplayName(item));
+}
+
 function isQuoteServiceMissingSupplier(item: Quote['quoteItems'][number]) {
   return item.service.supplierId === 'import-itinerary-system';
 }
@@ -2053,6 +2078,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteMarkupPercent = quote.totalCost > 0 ? Number(((quoteProfit / quote.totalCost) * 100).toFixed(2)) : 0;
   const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);
   const authoringSummary = collectQuoteAuthoringSummary(quote);
+  const incompleteActivityItemLabels = collectIncompleteActivityItemLabels(quote);
   const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
   const visibleQuoteItineraryDays = quoteItinerary.days.filter((day) => day.isActive && day.dayNumber <= expectedDayCount);
@@ -2123,6 +2149,9 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     authoringSummary.pricingIssues > 0 ? `${authoringSummary.pricingIssues} items are missing sell, cost, or pax details.` : null,
     authoringSummary.activityOperationalIssues > 0
       ? `${authoringSummary.activityOperationalIssues} activity items are missing date, time, location, or counts.`
+      : null,
+    incompleteActivityItemLabels.length > 0
+      ? `Incomplete Imported Activity / activity items: ${incompleteActivityItemLabels.slice(0, 5).join(', ')}.`
       : null,
     authoringSummary.reconfirmationsDueSoon > 0 ? `${authoringSummary.reconfirmationsDueSoon} reconfirmations are due soon.` : null,
     (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') && !quote.acceptedVersionId

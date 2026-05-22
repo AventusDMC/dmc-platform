@@ -1749,6 +1749,8 @@ export function QuoteItemsForm({
       ? Math.ceil(activityParticipantTotal / activityMaxPaxPerUnit)
       : null;
   const isLegacyActivityEdit = Boolean(isEditing && isActivityService && !activityId);
+  const isImportedActivityEdit = Boolean(isLegacyActivityEdit && selectedService?.supplierId === 'import-itinerary-system');
+  const showInlineActivityOperationalFields = Boolean(isEditing && isActivityService);
   const isActivitySelected = Boolean(
     isActivityService &&
       serviceId &&
@@ -1770,6 +1772,17 @@ export function QuoteItemsForm({
           reconfirmationRequired && !reconfirmationDueAt ? 'Reconfirmation is required, but no due date is set.' : null,
         ].filter((issue): issue is string => Boolean(issue))
       : [];
+  const importedActivityInlineIssues = isImportedActivityEdit
+    ? [
+        !(serviceDate || resolvedActivityServiceDate) ? 'Activity date is required.' : null,
+        !startTime ? 'Start time is required.' : null,
+        !(pickupLocation.trim() || meetingPoint.trim()) ? 'Pickup / meeting location is required.' : null,
+        !(Number(participantCount || 0) > 0 || Number(adultCount || 0) + Number(childCount || 0) > 0)
+          ? 'Participant count is required.'
+          : null,
+        reconfirmationRequired && !reconfirmationDueAt ? 'Reconfirmation due date is required.' : null,
+      ].filter((issue): issue is string => Boolean(issue))
+    : [];
   const roomCategoryDraftOptions = useMemo(
     () =>
       roomCategoryOptions.map((category) => ({
@@ -2769,7 +2782,7 @@ export function QuoteItemsForm({
         childCount: isActivityService ? Number(childCount || 0) : undefined,
         reconfirmationRequired: isActivityService ? reconfirmationRequired : undefined,
         reconfirmationDueAt:
-          isActivityService && reconfirmationRequired && reconfirmationDueAt
+          isActivityService && reconfirmationDueAt
             ? new Date(reconfirmationDueAt).toISOString()
             : isActivityService
               ? null
@@ -3768,7 +3781,70 @@ export function QuoteItemsForm({
                   {selectedService ? <span className="page-tab-badge">Activity selected</span> : null}
                 </div>
 
-                {activeActivities.length === 0 ? (
+                {isImportedActivityEdit ? (
+                  <>
+                    <div className="quote-service-empty-state">
+                      <strong>{selectedService?.name || 'Imported Activity'}</strong>
+                      <p>Complete the operational details and quote pricing below before converting this quote to a booking.</p>
+                    </div>
+                    <div className="quote-transport-step-fields">
+                      <label>
+                        Date
+                        <input value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} type="date" />
+                      </label>
+
+                      <label>
+                        Participant count
+                        <input value={participantCount} onChange={(event) => setParticipantCount(event.target.value)} type="number" min="1" required />
+                      </label>
+
+                      <label>
+                        Pricing basis
+                        <input value={activityPricingBasis.replace(/_/g, ' ')} readOnly />
+                      </label>
+
+                      <label>
+                        Start Time
+                        <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" required />
+                      </label>
+
+                      <label>
+                        End Time / Duration
+                        <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" placeholder="Optional" />
+                      </label>
+
+                      <label>
+                        Pickup / Meeting Location
+                        <input
+                          value={pickupLocation || meetingPoint}
+                          onChange={(event) => {
+                            setPickupLocation(event.target.value);
+                            if (!meetingPoint) {
+                              setMeetingPoint(event.target.value);
+                            }
+                          }}
+                          placeholder="Hotel lobby or meeting point"
+                          required
+                        />
+                      </label>
+
+                      <label>
+                        Reconfirmation Due Date
+                        <input
+                          value={reconfirmationDueAt}
+                          onChange={(event) => {
+                            setReconfirmationDueAt(event.target.value);
+                            if (event.target.value) {
+                              setReconfirmationRequired(true);
+                            }
+                          }}
+                          type="datetime-local"
+                          required={reconfirmationRequired}
+                        />
+                      </label>
+                    </div>
+                  </>
+                ) : activeActivities.length === 0 ? (
                   <div className="quote-service-empty-state">
                     <strong>No activities available</strong>
                     <p>Create an Activity Master record before adding it to the quote.</p>
@@ -3786,7 +3862,7 @@ export function QuoteItemsForm({
                           setActivityRateVariantId(nextActivity?.rateVariants?.find((variant) => variant.active !== false)?.id || '');
                           setServiceId(getActivityServiceBridge(nextActivity, services)?.id || '');
                         }}
-                        required
+                        required={!isLegacyActivityEdit}
                       >
                         <option value="">Select activity</option>
                         {activeActivities.map((activity) => (
@@ -3828,8 +3904,57 @@ export function QuoteItemsForm({
                       Pricing basis
                       <input value={activityPricingBasis.replace(/_/g, ' ')} readOnly />
                     </label>
+
+                    {showInlineActivityOperationalFields ? (
+                      <>
+                        <label>
+                          Start Time
+                          <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" required />
+                        </label>
+
+                        <label>
+                          End Time / Duration
+                          <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" placeholder="Optional" />
+                        </label>
+
+                        <label>
+                          Pickup / Meeting Location
+                          <input
+                            value={pickupLocation || meetingPoint}
+                            onChange={(event) => {
+                              setPickupLocation(event.target.value);
+                              if (!meetingPoint) {
+                                setMeetingPoint(event.target.value);
+                              }
+                            }}
+                            placeholder="Hotel lobby or meeting point"
+                            required
+                          />
+                        </label>
+
+                        <label>
+                          Reconfirmation Due Date
+                          <input
+                            value={reconfirmationDueAt}
+                            onChange={(event) => {
+                              setReconfirmationDueAt(event.target.value);
+                              if (event.target.value) {
+                                setReconfirmationRequired(true);
+                              }
+                            }}
+                            type="datetime-local"
+                            required={reconfirmationRequired}
+                          />
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 )}
+                {importedActivityInlineIssues.map((issue) => (
+                  <p key={issue} className="form-error">
+                    {issue}
+                  </p>
+                ))}
               </section>
 
               <section className="quote-hotel-step-panel quote-transport-step-panel">
@@ -3922,11 +4047,11 @@ export function QuoteItemsForm({
                   className="quote-transport-add-button"
                   disabled={isSubmitting || !isActivitySelected}
                 >
-                  {isSubmitting ? 'Saving...' : 'Add Activity'}
+                  {isSubmitting ? 'Saving...' : isEditing ? 'Save Activity' : 'Add Activity'}
                 </button>
               </section>
 
-              <details className="quote-advanced-settings" open={useOverride}>
+              <details className="quote-advanced-settings" open={useOverride || isImportedActivityEdit || activityIssues.length > 0}>
                 <summary>More options</summary>
 
                 <div className="form-row form-row-3">

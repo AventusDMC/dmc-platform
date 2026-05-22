@@ -227,6 +227,162 @@ test('cancelled quote conversion is rejected before creating a booking', async (
   );
 });
 
+test('imported activity missing operational fields blocks booking workflow with actionable fields', () => {
+  const service = createQuotesService();
+
+  assert.throws(
+    () =>
+      (service as any).assertQuoteWorkflowStateIsComplete({
+        adults: 2,
+        children: 0,
+        pricingMode: 'FIXED',
+        pricingType: 'simple',
+        fixedPricePerPerson: 100,
+        travelStartDate: '2026-06-01T00:00:00.000Z',
+        itineraries: [{ id: 'day-1', dayNumber: 1 }],
+        quoteItems: [
+          {
+            id: 'item-imported-activity',
+            quantity: 1,
+            paxCount: 0,
+            totalCost: 0,
+            totalSell: 0,
+            itineraryId: 'day-1',
+            serviceDate: null,
+            startTime: null,
+            pickupTime: null,
+            pickupLocation: null,
+            meetingPoint: null,
+            participantCount: null,
+            adultCount: null,
+            childCount: null,
+            reconfirmationRequired: true,
+            reconfirmationDueAt: null,
+            service: {
+              name: 'Imported Activity',
+              category: 'Activity',
+              serviceType: { name: 'Activity', code: 'ACTIVITY' },
+            },
+          },
+        ],
+      }),
+    /Imported Activity missing pax count, cost\/sell pricing, start time or pickup time, location or meeting point, participant count, reconfirmation due date/,
+  );
+});
+
+test('completed imported activity booking workflow and service conversion succeeds', async () => {
+  const service = createQuotesService();
+  const snapshot = {
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'item-imported-activity',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 80,
+        totalSell: 120,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: '09:00',
+        pickupTime: null,
+        pickupLocation: 'Hotel lobby',
+        meetingPoint: 'Visitor center',
+        participantCount: 2,
+        adultCount: 2,
+        childCount: 0,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: '2026-05-31T18:00:00.000Z',
+        service: {
+          name: 'Imported Activity',
+          category: 'Activity',
+          supplierName: 'Manual supplier',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  };
+
+  assert.doesNotThrow(() => (service as any).assertQuoteWorkflowStateIsComplete(snapshot));
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(snapshot, {
+    supplier: {
+      findFirst: async () => null,
+    },
+  });
+
+  assert.equal(bookingServices.length, 1);
+  assert.equal(bookingServices[0].operationType, 'ACTIVITY');
+  assert.equal(bookingServices[0].startTime, '09:00');
+  assert.equal(bookingServices[0].pickupLocation, 'Hotel lobby');
+  assert.equal(bookingServices[0].participantCount, 2);
+});
+
+test('Aqaba excursion template components still preserve conversion linkage', async () => {
+  const service = createQuotesService();
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion({
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'aqaba-outbound',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 20,
+        totalSell: 30,
+        itineraryId: 'day-1',
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-outbound',
+        service: { name: 'Outbound Local Transfer', category: 'Transport', serviceType: { name: 'Transport', code: 'TRANSPORT' } },
+      },
+      {
+        id: 'aqaba-activity',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 50,
+        totalSell: 70,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: '10:00',
+        meetingPoint: 'Pier',
+        participantCount: 2,
+        adultCount: 2,
+        childCount: 0,
+        reconfirmationRequired: false,
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-activity',
+        service: { name: 'Glass Boat Tour', category: 'Activity', serviceType: { name: 'Activity', code: 'ACTIVITY' } },
+      },
+      {
+        id: 'aqaba-return',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 20,
+        totalSell: 30,
+        itineraryId: 'day-1',
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-return',
+        service: { name: 'Return Local Transfer', category: 'Transport', serviceType: { name: 'Transport', code: 'TRANSPORT' } },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    bookingServices.map((row: any) => row.sourceMetadata.excursionTemplateComponentId),
+    ['component-outbound', 'component-activity', 'component-return'],
+  );
+});
+
+
 test('re-quote clones quote into a new revision and leaves original unchanged', async () => {
   let createdQuoteData: any;
   const createdItems: any[] = [];

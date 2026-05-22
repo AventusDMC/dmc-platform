@@ -253,7 +253,7 @@ type SupplierConfirmBookingServiceBody = {
 };
 
 type BookingOperationServiceBody = {
-  type?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'EXTERNAL_PACKAGE';
+  type?: 'TRANSPORT' | 'GUIDE' | 'HOTEL' | 'ACTIVITY' | 'SERVICE' | 'TICKET' | 'EXTERNAL_PACKAGE';
   supplierId?: string | null;
   referenceId?: string | null;
   assignedTo?: string | null;
@@ -262,7 +262,7 @@ type BookingOperationServiceBody = {
   pickupTime?: string | null;
   confirmationNumber?: string | null;
   notes?: string | null;
-  status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'COMPLETED' | 'DONE';
+  status?: 'PENDING' | 'REQUESTED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'VOUCHER_SENT' | 'OPERATIONAL_READY' | 'COMPLETED' | 'DONE';
 };
 
 type CreateServiceVoucherBody = {
@@ -327,6 +327,18 @@ export class BookingsController {
       actor,
       serviceType: serviceType || null,
     });
+  }
+
+  @Get(':id/operations-grid')
+  @Roles('admin', 'operations')
+  async getOperationalServiceGrid(@Param('id') id: string, @Actor() actor: AuthenticatedActor) {
+    const grid = await this.bookingsService.getOperationalServiceGrid(id, actor);
+
+    if (!grid) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    return grid;
   }
 
   @Post('reconciliation/payment-proofs/confirm')
