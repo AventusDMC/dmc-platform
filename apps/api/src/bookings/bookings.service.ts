@@ -609,6 +609,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           assignedGuideId: service.assignedGuideId || service.guideId || null,
         };
       });
+    const passengerManifest = this.buildPassengerManifestSummary(booking);
 
     return {
       booking: {
@@ -617,7 +618,45 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         status: booking.status,
         title: booking.quote?.title || booking.snapshotJson?.title || booking.bookingRef || 'Booking',
       },
+      passengerManifest,
       rows,
+    };
+  }
+
+  private buildPassengerManifestSummary(booking: {
+    pax?: number | null;
+    adults?: number | null;
+    children?: number | null;
+    passengers?: Array<{
+      id?: string | null;
+      fullName?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      nationality?: string | null;
+      passportNumber?: string | null;
+      passportExpiryDate?: string | Date | null;
+      passportExpiry?: string | Date | null;
+    }> | null;
+  }) {
+    const passengers = Array.isArray(booking.passengers) ? booking.passengers : [];
+    const expected = Math.max(0, Number(booking.pax || Number(booking.adults || 0) + Number(booking.children || 0) || passengers.length || 0));
+    const missingRecords = Math.max(expected - passengers.length, 0);
+    const incompleteRecords = passengers.filter((passenger) => {
+      const name =
+        passenger.fullName?.trim() ||
+        [passenger.firstName, passenger.lastName].filter(Boolean).join(' ').trim();
+      return !name || !passenger.nationality || !passenger.passportNumber || !(passenger.passportExpiryDate || passenger.passportExpiry);
+    }).length;
+    const status = missingRecords > 0 ? 'PENDING' : incompleteRecords > 0 ? 'INCOMPLETE' : 'COMPLETE';
+
+    return {
+      status,
+      expected,
+      received: passengers.length,
+      missingRecords,
+      incompleteRecords,
+      namesPending: missingRecords > 0,
+      voucherReady: status === 'COMPLETE',
     };
   }
 
@@ -8726,12 +8765,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       rooming.badge.breakdown.occupancyIssues +
       missingVoucherServices.length +
       excursionIncompleteServices.length;
+    const passengerManifest = this.buildPassengerManifestSummary({
+      pax: booking.pax,
+      adults: booking.adults,
+      children: booking.children,
+      passengers,
+    });
+    const passengerReadinessStatus: ReadinessStatus =
+      passengerManifest.status === 'COMPLETE' ? (unassignedPassengers > 0 ? 'warning' : 'ready') : 'warning';
     const status: ReadinessStatus =
       services.length === 0 && passengers.length === 0
         ? 'pending'
         : pricingUnresolvedServices.length > 0 ||
             missingTransportServices.length > 0 ||
-            missingPassengerRecords > 0 ||
             rooming.badge.breakdown.occupancyIssues > 0
           ? 'critical'
           : unresolvedItems > 0 || pendingConfirmations > 0 || draftVouchers.length > 0
@@ -8767,7 +8813,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           received: passengers.length,
           missingRecords: missingPassengerRecords,
           unassigned: unassignedPassengers,
-          status: missingPassengerRecords > 0 ? 'critical' : unassignedPassengers > 0 ? 'warning' : 'ready',
+          manifestStatus: passengerManifest.status,
+          incompleteRecords: passengerManifest.incompleteRecords,
+          namesPending: passengerManifest.namesPending,
+          voucherReady: passengerManifest.voucherReady,
+          status: passengerReadinessStatus,
         },
         excursions: {
           incomplete: excursionIncompleteServices.length,
@@ -8799,8 +8849,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           missingVoucherServices.length > 0 ? `${missingVoucherServices.length} vouchers not generated` : null,
           draftVouchers.length > 0 ? `${draftVouchers.length} vouchers still draft` : null,
         ]),
-        this.buildOperationalReadinessSection('Passengers', missingPassengerRecords > 0 ? 'critical' : unassignedPassengers > 0 ? 'warning' : 'ready', missingPassengerRecords + unassignedPassengers, [
-          missingPassengerRecords > 0 ? `${missingPassengerRecords} passenger records missing` : null,
+        this.buildOperationalReadinessSection('Passengers', passengerReadinessStatus, missingPassengerRecords + passengerManifest.incompleteRecords + unassignedPassengers, [
+          missingPassengerRecords > 0 ? `${missingPassengerRecords} passenger names pending` : null,
+          passengerManifest.incompleteRecords > 0 ? `${passengerManifest.incompleteRecords} passenger manifest records incomplete` : null,
           unassignedPassengers > 0 ? `${unassignedPassengers} passengers not assigned to rooms` : null,
         ]),
         this.buildOperationalReadinessSection('Excursions', excursionIncompleteServices.length > 0 ? 'warning' : 'ready', excursionIncompleteServices.length, [

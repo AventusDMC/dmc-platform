@@ -25,6 +25,15 @@ type OperationsGridResponse = {
     bookingRef: string | null;
     title: string | null;
   };
+  passengerManifest?: {
+    status: 'PENDING' | 'INCOMPLETE' | 'COMPLETE' | string;
+    expected: number;
+    received: number;
+    missingRecords: number;
+    incompleteRecords: number;
+    namesPending: boolean;
+    voucherReady: boolean;
+  };
   rows: OperationsGridRow[];
 };
 
@@ -79,6 +88,7 @@ async function loadOperationsGrid(id: string) {
 export default async function BookingOperationsPage({ params }: PageProps) {
   const { id } = await params;
   const grid = await loadOperationsGrid(id);
+  const manifest = grid.passengerManifest;
 
   return (
     <main className="admin-page-shell">
@@ -105,6 +115,25 @@ export default async function BookingOperationsPage({ params }: PageProps) {
           </div>
         </div>
       </div>
+
+      {manifest ? (
+        <section className="admin-card">
+          <div className="admin-heading-row">
+            <div>
+              <p className="eyebrow">Passenger Manifest</p>
+              <h2>{manifest.status === 'COMPLETE' ? 'Complete' : 'Incomplete'}</h2>
+              <p className="admin-muted-copy">
+                {manifest.received}/{manifest.expected} passenger records received
+                {manifest.missingRecords > 0 ? ` - ${manifest.missingRecords} names pending` : ''}
+                {manifest.incompleteRecords > 0 ? ` - ${manifest.incompleteRecords} records incomplete` : ''}
+              </p>
+            </div>
+            <div className="admin-status-pill">
+              {manifest.voucherReady ? 'Voucher ready' : 'Final manifest pending'}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="admin-card">
         <div className="table-scroll">

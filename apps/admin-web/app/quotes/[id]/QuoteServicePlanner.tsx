@@ -27,6 +27,7 @@ import {
   buildQuoteWorkspaceHref,
   buildQuoteReadinessModel,
   getQuoteServiceCategoryKey,
+  isActiveImportedQuoteServiceUnresolved,
   type QuoteReadinessDay,
   type QuoteReadinessItem,
   type QuoteReadinessQuote,
@@ -2925,7 +2926,7 @@ function ScopePlanner({
     items: localItems.filter((item) => item.itineraryId === summary.day.id),
   }));
   const unassignedItems = localItems.filter((item) => !item.itineraryId);
-  const unresolvedItems = localItems.filter((item): item is QuoteItem & { service: SupplierService } => getItemSupplierId(item) === 'import-itinerary-system' && Boolean(item.service));
+  const unresolvedItems = localItems.filter((item): item is QuoteItem & { service: SupplierService } => Boolean(item.service) && isActiveImportedQuoteServiceUnresolved(item));
   const workflow = buildServiceWorkflowState(localItems, plannerProps.quote.quoteType);
   const dayCompletenessRules = getDayCompletenessRules(plannerProps.quote.quoteType);
   const [activeServicePanel, setActiveServicePanel] = useState<ActiveServicePanel | null>(null);

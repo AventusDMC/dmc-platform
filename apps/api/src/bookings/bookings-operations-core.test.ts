@@ -1672,6 +1672,47 @@ test('operational readiness reports missing passport, unassigned passengers, and
   }).includes('room occupancy mismatch'), true);
 });
 
+test('operational readiness allows booking with passenger names pending as manifest warning', () => {
+  const service = createService({});
+  const readiness = (service as any).buildOperationalReadinessDashboard({
+    pax: 12,
+    adults: 12,
+    children: 0,
+    roomCount: 6,
+    snapshotJson: {},
+    days: [],
+    services: [
+      {
+        id: 'service-1',
+        serviceType: 'TRANSPORT',
+        operationType: 'TRANSPORT',
+        status: 'active',
+        totalCost: 100,
+        totalSell: 130,
+        supplierId: 'supplier-1',
+        referenceId: 'route-1',
+        vehicleId: 'vehicle-1',
+        confirmationStatus: 'confirmed',
+        vouchers: [],
+      },
+    ],
+    passengers: [],
+    roomingEntries: Array.from({ length: 6 }, (_, index) => ({
+      id: `room-${index + 1}`,
+      roomType: 'DBL',
+      occupancy: 'double',
+      assignments: [],
+    })),
+  });
+  const passengerSection = readiness.sections.find((section: any) => section.title === 'Passengers');
+
+  assert.equal(readiness.status, 'warning');
+  assert.equal(readiness.summary.passengers.manifestStatus, 'PENDING');
+  assert.equal(readiness.summary.passengers.namesPending, true);
+  assert.equal(readiness.summary.passengers.status, 'warning');
+  assert.match(passengerSection.issues.join(' '), /passenger names pending/i);
+});
+
 test('DMC admin booking access requires auth without single-client company filtering', async () => {
   let whereClause: any;
   const service = createService({

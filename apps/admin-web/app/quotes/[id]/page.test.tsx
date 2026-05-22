@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal-paths';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
+import { buildQuoteReadinessModel } from './quote-readiness';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
@@ -133,6 +134,80 @@ describe('quote detail page regression', () => {
       '{conversionBlockerDetails}',
       'convertBlocked || quoteReadOnly ? (',
     ]);
+  });
+
+  it('ignores resolved imported Aqaba cleanup history in operational readiness', () => {
+    const readiness = buildQuoteReadinessModel(
+      {
+        id: 'quote-aqaba',
+        quoteType: 'FIT',
+        travelStartDate: '2026-06-01T00:00:00.000Z',
+        nightCount: 1,
+        pricingMode: 'FIXED',
+        fixedPricePerPerson: 100,
+        pricingSlabs: [],
+        scenarios: [],
+        itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Aqaba', description: null }],
+        quoteItems: [
+          {
+            id: 'item-aqaba-excursion',
+            serviceId: 'imported-activity-service',
+            activityId: 'activity-glass-boat',
+            activityRateVariantId: 'variant-glass-boat',
+            ticketRateVariantId: null,
+            routeId: null,
+            transportServiceTypeId: null,
+            vehicleId: null,
+            itineraryId: 'day-1',
+            serviceDate: '2026-06-01T00:00:00.000Z',
+            startTime: '10:00',
+            pickupTime: null,
+            pickupLocation: 'Aqaba hotel',
+            meetingPoint: null,
+            participantCount: 2,
+            adultCount: 2,
+            childCount: 0,
+            reconfirmationRequired: true,
+            reconfirmationDueAt: '2026-05-31T10:00:00.000Z',
+            paxCount: 2,
+            totalCost: 40,
+            totalSell: 60,
+            currency: 'JOD',
+            service: {
+              id: 'imported-activity-service',
+              supplierId: 'import-itinerary-system',
+              name: 'Glass Boat Tour',
+              category: 'Activity',
+              serviceType: { id: 'activity-type', name: 'Activity', code: 'ACTIVITY' },
+            },
+            externalPackageCountry: null,
+            externalPackageName: null,
+            externalSupplierName: null,
+            externalPricingBasis: null,
+            externalNetCost: null,
+            externalPackagePricingMatrixJson: null,
+            externalPackageSingleSupplement: null,
+            externalIncludes: null,
+            externalExcludes: null,
+            externalInternalNotes: null,
+            externalHotelsOrSimilar: null,
+            externalClientDescription: null,
+            hotel: null,
+            pricingDescription: null,
+            packageTemplateComponentId: null,
+            excursionTemplateComponentId: 'aqaba-glass-boat-component',
+          },
+        ],
+        quoteOptions: [],
+      },
+      (step, params) => `/quotes/quote-aqaba?step=${step}${params?.day ? `&day=${params.day}` : ''}`,
+    );
+
+    assert.equal(readiness.unresolvedItems, 0);
+    assert.equal(readiness.cleanupItems.filter((issue) => issue.code === 'unresolved-imported-item').length, 0);
+    assert.equal(readiness.blockers.length, 0);
+    assert.equal(readiness.operationalReadinessDiagnostics[0].active, false);
+    assert.match(readiness.operationalReadinessDiagnostics[0].ignoredReason || '', /Historical imported-service marker ignored/);
   });
 
   it('renders the redesigned quote header with key quote metadata', () => {

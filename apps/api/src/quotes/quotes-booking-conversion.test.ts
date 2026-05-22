@@ -620,6 +620,89 @@ test('accepted quote conversion creates booking with client company pax dates an
   assert.equal(bookingCreateData.days.create.length, 3);
 });
 
+test('accepted group quote conversion allows passenger names pending when pax count is present', async () => {
+  let bookingCreateData: any;
+  let passengerCreateCalled = false;
+  const createdRoomingEntries: any[] = [];
+  const tx = {
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        clientCompanyId: 'client-company-1',
+        status: 'ACCEPTED',
+        acceptedVersionId: 'version-1',
+        booking: null,
+      }),
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        quoteId: 'quote-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'GROUP',
+          clientCompany: { id: 'client-company-1', name: 'Client Co' },
+          contact: {},
+          adults: 12,
+          children: 0,
+          roomCount: 6,
+          nightCount: 2,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Arrival', description: 'Arrival day' }],
+          quoteItems: [],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async () => [],
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return {
+          id: 'booking-1',
+          bookingRef: data.bookingRef,
+          quoteId: data.quoteId,
+          ...data,
+        };
+      },
+    },
+    bookingPassenger: {
+      create: async () => {
+        passengerCreateCalled = true;
+        throw new Error('passenger names should remain pending');
+      },
+    },
+    bookingRoomingEntry: {
+      create: async ({ data }: any) => {
+        const entry = { id: `room-${createdRoomingEntries.length + 1}`, ...data };
+        createdRoomingEntries.push(entry);
+        return entry;
+      },
+    },
+    bookingRoomingAssignment: {
+      create: async () => {
+        throw new Error('rooming assignment requires named passenger');
+      },
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  const booking = await service.convertToBooking('quote-1', { companyId: 'dmc-company-1' });
+
+  assert.equal(booking.id, 'booking-1');
+  assert.equal(bookingCreateData.pax, 12);
+  assert.equal(passengerCreateCalled, false);
+  assert.equal(createdRoomingEntries.length, 6);
+  assert.equal(createdRoomingEntries.every((entry) => entry.occupancy === 'unknown'), true);
+});
+
 test('accepted multi-country quote conversion creates booking with hotel and external package services', async () => {
   let bookingCreateData: any;
   const tx = {
