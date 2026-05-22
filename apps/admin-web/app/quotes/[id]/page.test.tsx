@@ -107,6 +107,7 @@ describe('quote detail page regression', () => {
   it('surfaces exact workflow diagnostics and edit anchors for incomplete imported activities', () => {
     expectSourceContains(pageSource, [
       'workflowDiagnostics?: Array<',
+      'convertBlockers?: Array<',
       'missingWorkflowFields: string[];',
       'persistedOperationalFields?: Record<string, unknown>;',
       'item.missingWorkflowFields.join(\', \')',
@@ -118,12 +119,17 @@ describe('quote detail page regression', () => {
   it('renders exact conversion blockers from workflow diagnostics while keeping conversion disabled', () => {
     expectSourceContains(pageSource, [
       'const operationalFieldBlockers = Array.from(workflowDiagnosticsByItemId.values())',
+      'const backendConvertBlockers = (quote.convertBlockers || []).filter((blocker) => blocker.active)',
+      'const activeConvertBlockers = [',
       'const pricingMismatchBlockers = readiness.blockers.filter((issue) =>',
       'const missingSupplierBlockers = allQuotePricingItems',
       'const statusMismatchBlockers = conversionRequirementMessage',
       'const conversionBlockerSummary = {',
-      'unresolvedItems: reviewBlockingIssues.length',
-      'pricingMismatches: pricingMismatchBlockers.length',
+      'unresolvedItems: activeConvertBlockers.length',
+      'const convertBlocked = activeConvertBlockers.length > 0',
+      'Active convert blockers',
+      '[{blocker.source}] {blocker.reason}',
+      'pricingMismatches: activeConvertBlockers.filter((blocker) =>',
       'missingOperationalFields: operationalFieldBlockers.length',
       'Imported Activity',
       'formatWorkflowFieldName(field)',

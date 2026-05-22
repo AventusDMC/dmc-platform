@@ -10053,6 +10053,80 @@ export class QuotesService {
       });
   }
 
+  private buildQuoteConvertBlockers(snapshotJson: unknown) {
+    const snapshot = (snapshotJson || {}) as {
+      adults?: number | null;
+      children?: number | null;
+      pricingMode?: string | null;
+      pricingType?: string | null;
+      fixedPricePerPerson?: number | null;
+      pricingSlabs?: QuotePricingSlabInput[];
+      quoteItems?: Array<{ id?: string | null }>;
+    };
+    const blockers: Array<{
+      blockerType: string;
+      source: string;
+      active: boolean;
+      itemId: string | null;
+      itemName: string | null;
+      reason: string;
+    }> = [];
+    const totalPax = Math.max(0, Number(snapshot.adults ?? 0) + Number(snapshot.children ?? 0));
+
+    blockers.push({
+      blockerType: 'passenger-count',
+      source: 'Quote Workflow',
+      active: totalPax <= 0,
+      itemId: null,
+      itemName: null,
+      reason: totalPax <= 0 ? 'Quote requires at least one passenger count before booking conversion.' : 'Passenger count is present; passenger names may remain pending.',
+    });
+
+    const normalizedPricingMode = this.normalizeQuotePricingMode(
+      snapshot.pricingMode,
+      this.normalizeQuotePricingType(snapshot.pricingType),
+    );
+    const pricingActive =
+      normalizedPricingMode === 'SLAB'
+        ? !Array.isArray(snapshot.pricingSlabs) || snapshot.pricingSlabs.length === 0
+        : !Number.isFinite(Number(snapshot.fixedPricePerPerson ?? 0)) || Number(snapshot.fixedPricePerPerson ?? 0) < 0;
+
+    blockers.push({
+      blockerType: 'pricing-configuration',
+      source: 'Quote Pricing',
+      active: pricingActive,
+      itemId: null,
+      itemName: null,
+      reason: pricingActive ? 'Quote pricing configuration is incomplete.' : 'Quote pricing configuration is valid.',
+    });
+
+    const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
+    blockers.push({
+      blockerType: 'quote-items',
+      source: 'Quote Workflow',
+      active: quoteItems.length === 0,
+      itemId: null,
+      itemName: null,
+      reason: quoteItems.length === 0 ? 'Quote requires at least one priced quote item.' : 'Quote has persisted quote items.',
+    });
+
+    for (const diagnostic of this.buildQuoteWorkflowDiagnostics(snapshotJson)) {
+      blockers.push({
+        blockerType: 'workflow-fields',
+        source: 'Quote Item Workflow',
+        active: diagnostic.missingWorkflowFields.length > 0,
+        itemId: diagnostic.itemId,
+        itemName: diagnostic.itemName,
+        reason:
+          diagnostic.missingWorkflowFields.length > 0
+            ? `Missing workflow fields: ${diagnostic.missingWorkflowFields.join(', ')}.`
+            : 'Workflow fields are complete.',
+      });
+    }
+
+    return blockers;
+  }
+
   private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
     const snapshot = (snapshotJson || {}) as {
       adults?: number | null;
@@ -10614,6 +10688,7 @@ export class QuotesService {
     const hydratedQuoteWithDiagnostics = {
       ...hydratedQuote,
       workflowDiagnostics: this.buildQuoteWorkflowDiagnostics(hydratedQuote),
+      convertBlockers: this.buildQuoteConvertBlockers(hydratedQuote),
     };
 
     try {

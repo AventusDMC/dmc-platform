@@ -703,6 +703,41 @@ test('accepted group quote conversion allows passenger names pending when pax co
   assert.equal(createdRoomingEntries.every((entry) => entry.occupancy === 'unknown'), true);
 });
 
+test('quote convert blockers ignore pending passenger names when pax and workflow fields are ready', () => {
+  const service = createQuotesService({});
+  const blockers = (service as any).buildQuoteConvertBlockers({
+    adults: 12,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 120,
+    quoteItems: [
+      {
+        id: 'item-ready-activity',
+        quantity: 1,
+        paxCount: 12,
+        totalCost: 200,
+        totalSell: 260,
+        serviceDate: '2026-06-01T00:00:00.000Z',
+        startTime: '10:00',
+        pickupLocation: 'Aqaba hotel',
+        participantCount: 12,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: '2026-05-30T00:00:00.000Z',
+        service: {
+          name: 'Ready Aqaba Excursion',
+          category: 'Activity',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  });
+
+  assert.equal(blockers.filter((blocker: any) => blocker.active).length, 0);
+  assert.equal(blockers.find((blocker: any) => blocker.blockerType === 'passenger-count')?.active, false);
+  assert.match(blockers.find((blocker: any) => blocker.blockerType === 'passenger-count')?.reason || '', /passenger names may remain pending/i);
+});
+
 test('accepted multi-country quote conversion creates booking with hotel and external package services', async () => {
   let bookingCreateData: any;
   const tx = {
