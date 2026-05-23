@@ -292,12 +292,33 @@ function isVoucherEligible(row: OperationsGridRow) {
 function renderVoucherForm(bookingId: string, row: OperationsGridRow) {
   const generated = isVoucherGenerated(row);
   const eligible = isVoucherEligible(row);
-  if (!eligible && !generated) {
+
+  const statusPill = generated ? (
+    <span className="status-pill" aria-label="Voucher status">
+      {String(row.voucherStatus || 'GENERATED').toUpperCase()}
+      {row.voucherGeneratedAt ? ` · ${formatDate(row.voucherGeneratedAt)}` : ''}
+    </span>
+  ) : null;
+
+  const viewLink = generated ? (
+    <a className="button button-tertiary" href={`/bookings/${bookingId}/operations/${row.id}/voucher`}>
+      View
+    </a>
+  ) : null;
+
+  // Ineligible (no supplier / rejected confirmation): even if a stale voucher
+  // exists from before the supplier was unassigned, do not expose a
+  // (Re)generate button — the backend would correctly reject the submit and
+  // the operator would just see the same eligibility error. Surface the View
+  // link instead so the existing snapshot is still reachable.
+  if (!eligible) {
     return (
       <div className="operations-quick-form operations-inline-form" aria-label="Voucher unavailable">
+        {statusPill}
         <span className="status-pill warning">
           {!isAssigned(row) ? 'Assign supplier first' : 'Confirmation rejected — re-assign supplier'}
         </span>
+        {viewLink}
       </div>
     );
   }
@@ -307,18 +328,9 @@ function renderVoucherForm(bookingId: string, row: OperationsGridRow) {
   return (
     <form className="operations-inline-form operations-quick-form" method="post" action={action}>
       <input type="hidden" name="notes" value={row.confirmationNotes || row.assignmentNotes || ''} />
-      {generated ? (
-        <span className="status-pill" aria-label="Voucher status">
-          {String(row.voucherStatus || 'GENERATED').toUpperCase()}
-          {row.voucherGeneratedAt ? ` · ${formatDate(row.voucherGeneratedAt)}` : ''}
-        </span>
-      ) : null}
+      {statusPill}
       <button type="submit" className="button button-secondary">{buttonLabel}</button>
-      {generated ? (
-        <a className="button button-tertiary" href={`/bookings/${bookingId}/operations/${row.id}/voucher`}>
-          View
-        </a>
-      ) : null}
+      {viewLink}
     </form>
   );
 }
@@ -544,10 +556,10 @@ export default async function BookingOperationsPage({ params, searchParams }: Pa
                         <div className="booking-operations-quick-actions">
                           {!assigned ? renderAssignmentForm(id, row, suppliers, true) : null}
                           {assigned && !isConfirmationConfirmed(row) && !isConfirmationRejected(row) ? renderConfirmationRequestForm(id, row) : null}
-                          {/* Voucher action shows whenever the supplier is assigned. The form
-                              itself handles eligibility (Regenerate vs Generate vs blocked) and
-                              shows current status + generated timestamp when one exists. */}
-                          {(assigned || isVoucherGenerated(row)) ? renderVoucherForm(id, row) : null}
+                          {/* Always render the voucher cell — the form decides what to show:
+                              eligibility pill + View when blocked, Generate when eligible + new,
+                              Regenerate + View when eligible + already generated. */}
+                          {renderVoucherForm(id, row)}
                         </div>
 
                         <details className="operations-row-details">
