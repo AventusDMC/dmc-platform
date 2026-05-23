@@ -227,6 +227,179 @@ test('cancelled quote conversion is rejected before creating a booking', async (
   );
 });
 
+test('imported activity missing operational fields blocks booking workflow with actionable fields', () => {
+  const service = createQuotesService();
+  const snapshot = {
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'item-imported-activity',
+        quantity: 1,
+        paxCount: 0,
+        totalCost: 0,
+        totalSell: 0,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: null,
+        pickupTime: null,
+        pickupLocation: null,
+        meetingPoint: null,
+        participantCount: null,
+        adultCount: null,
+        childCount: null,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: null,
+        service: {
+          name: 'Imported Activity',
+          category: 'Activity',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  };
+
+  const diagnostics = (service as any).buildQuoteWorkflowDiagnostics(snapshot);
+  assert.deepEqual(diagnostics[0].missingWorkflowFields, [
+    'pax count',
+    'cost/sell pricing',
+    'start time or pickup time',
+    'location or meeting point',
+    'participant count',
+    'reconfirmation due date',
+  ]);
+  assert.equal(diagnostics[0].persistedOperationalFields.startTime, null);
+  assert.equal(diagnostics[0].persistedOperationalFields.pickupLocation, null);
+
+  assert.throws(
+    () => (service as any).assertQuoteWorkflowStateIsComplete(snapshot),
+    /Imported Activity \(item-imported-activity\) missing pax count, cost\/sell pricing, start time or pickup time, location or meeting point, participant count, reconfirmation due date/,
+  );
+});
+
+test('completed imported activity booking workflow and service conversion succeeds', async () => {
+  const service = createQuotesService();
+  const snapshot = {
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'item-imported-activity',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 80,
+        totalSell: 120,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: '09:00',
+        pickupTime: null,
+        pickupLocation: 'Hotel lobby',
+        meetingPoint: 'Visitor center',
+        participantCount: 2,
+        adultCount: 2,
+        childCount: 0,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: '2026-05-31T18:00:00.000Z',
+        service: {
+          name: 'Imported Activity',
+          category: 'Activity',
+          supplierName: 'Manual supplier',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  };
+
+  assert.doesNotThrow(() => (service as any).assertQuoteWorkflowStateIsComplete(snapshot));
+  const diagnostics = (service as any).buildQuoteWorkflowDiagnostics(snapshot);
+  assert.equal(diagnostics[0].itemId, 'item-imported-activity');
+  assert.deepEqual(diagnostics[0].missingWorkflowFields, []);
+  assert.equal(diagnostics[0].persistedOperationalFields.startTime, '09:00');
+  assert.equal(diagnostics[0].persistedOperationalFields.pickupLocation, 'Hotel lobby');
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion(snapshot, {
+    supplier: {
+      findFirst: async () => null,
+    },
+  });
+
+  assert.equal(bookingServices.length, 1);
+  assert.equal(bookingServices[0].operationType, 'ACTIVITY');
+  assert.equal(bookingServices[0].startTime, '09:00');
+  assert.equal(bookingServices[0].pickupLocation, 'Hotel lobby');
+  assert.equal(bookingServices[0].participantCount, 2);
+});
+
+test('Aqaba excursion template components still preserve conversion linkage', async () => {
+  const service = createQuotesService();
+  const bookingServices = await (service as any).buildBookingServicesFromAcceptedVersion({
+    adults: 2,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 100,
+    travelStartDate: '2026-06-01T00:00:00.000Z',
+    itineraries: [{ id: 'day-1', dayNumber: 1 }],
+    quoteItems: [
+      {
+        id: 'aqaba-outbound',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 20,
+        totalSell: 30,
+        itineraryId: 'day-1',
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-outbound',
+        service: { name: 'Outbound Local Transfer', category: 'Transport', serviceType: { name: 'Transport', code: 'TRANSPORT' } },
+      },
+      {
+        id: 'aqaba-activity',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 50,
+        totalSell: 70,
+        itineraryId: 'day-1',
+        serviceDate: null,
+        startTime: '10:00',
+        meetingPoint: 'Pier',
+        participantCount: 2,
+        adultCount: 2,
+        childCount: 0,
+        reconfirmationRequired: false,
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-activity',
+        service: { name: 'Glass Boat Tour', category: 'Activity', serviceType: { name: 'Activity', code: 'ACTIVITY' } },
+      },
+      {
+        id: 'aqaba-return',
+        quantity: 1,
+        paxCount: 2,
+        totalCost: 20,
+        totalSell: 30,
+        itineraryId: 'day-1',
+        excursionTemplateId: 'template-aqaba',
+        excursionTemplateComponentId: 'component-return',
+        service: { name: 'Return Local Transfer', category: 'Transport', serviceType: { name: 'Transport', code: 'TRANSPORT' } },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    bookingServices.map((row: any) => row.sourceMetadata.excursionTemplateComponentId),
+    ['component-outbound', 'component-activity', 'component-return'],
+  );
+});
+
+
 test('re-quote clones quote into a new revision and leaves original unchanged', async () => {
   let createdQuoteData: any;
   const createdItems: any[] = [];
@@ -445,6 +618,124 @@ test('accepted quote conversion creates booking with client company pax dates an
   assert.equal(bookingCreateData.startDate.toISOString(), '2026-06-01T00:00:00.000Z');
   assert.equal(bookingCreateData.endDate.toISOString(), '2026-06-03T00:00:00.000Z');
   assert.equal(bookingCreateData.days.create.length, 3);
+});
+
+test('accepted group quote conversion allows passenger names pending when pax count is present', async () => {
+  let bookingCreateData: any;
+  let passengerCreateCalled = false;
+  const createdRoomingEntries: any[] = [];
+  const tx = {
+    quote: {
+      findFirst: async () => ({
+        id: 'quote-1',
+        clientCompanyId: 'client-company-1',
+        status: 'ACCEPTED',
+        acceptedVersionId: 'version-1',
+        booking: null,
+      }),
+    },
+    quoteVersion: {
+      findFirst: async () => ({
+        id: 'version-1',
+        quoteId: 'quote-1',
+        booking: null,
+        snapshotJson: {
+          bookingType: 'GROUP',
+          clientCompany: { id: 'client-company-1', name: 'Client Co' },
+          contact: {},
+          adults: 12,
+          children: 0,
+          roomCount: 6,
+          nightCount: 2,
+          travelStartDate: '2026-06-01T00:00:00.000Z',
+          itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Arrival', description: 'Arrival day' }],
+          quoteItems: [],
+        },
+      }),
+    },
+    supplier: {
+      findMany: async () => [],
+    },
+    booking: {
+      findFirst: async () => null,
+      create: async ({ data }: any) => {
+        bookingCreateData = data;
+        return {
+          id: 'booking-1',
+          bookingRef: data.bookingRef,
+          quoteId: data.quoteId,
+          ...data,
+        };
+      },
+    },
+    bookingPassenger: {
+      create: async () => {
+        passengerCreateCalled = true;
+        throw new Error('passenger names should remain pending');
+      },
+    },
+    bookingRoomingEntry: {
+      create: async ({ data }: any) => {
+        const entry = { id: `room-${createdRoomingEntries.length + 1}`, ...data };
+        createdRoomingEntries.push(entry);
+        return entry;
+      },
+    },
+    bookingRoomingAssignment: {
+      create: async () => {
+        throw new Error('rooming assignment requires named passenger');
+      },
+    },
+  };
+  const service = createQuotesService({
+    quote: {
+      findFirst: async () => null,
+    },
+    $transaction: async (callback: any) => callback(tx),
+  });
+
+  const booking = await service.convertToBooking('quote-1', { companyId: 'dmc-company-1' });
+
+  assert.equal(booking.id, 'booking-1');
+  assert.equal(bookingCreateData.pax, 12);
+  assert.equal(passengerCreateCalled, false);
+  assert.equal(createdRoomingEntries.length, 6);
+  assert.equal(createdRoomingEntries.every((entry) => entry.occupancy === 'unknown'), true);
+});
+
+test('quote convert blockers ignore pending passenger names when pax and workflow fields are ready', () => {
+  const service = createQuotesService({});
+  const blockers = (service as any).buildQuoteConvertBlockers({
+    adults: 12,
+    children: 0,
+    pricingMode: 'FIXED',
+    pricingType: 'simple',
+    fixedPricePerPerson: 120,
+    quoteItems: [
+      {
+        id: 'item-ready-activity',
+        quantity: 1,
+        paxCount: 12,
+        totalCost: 200,
+        totalSell: 260,
+        serviceDate: '2026-06-01T00:00:00.000Z',
+        startTime: '10:00',
+        pickupLocation: 'Aqaba hotel',
+        participantCount: 12,
+        reconfirmationRequired: true,
+        reconfirmationDueAt: '2026-05-30T00:00:00.000Z',
+        service: {
+          name: 'Ready Aqaba Excursion',
+          category: 'Activity',
+          serviceType: { name: 'Activity', code: 'ACTIVITY' },
+        },
+      },
+    ],
+  });
+
+  assert.equal(blockers.filter((blocker: any) => blocker.active).length, 0);
+  assert.equal(blockers.find((blocker: any) => blocker.blockerType === 'passenger-count')?.active, false);
+  assert.match(blockers.find((blocker: any) => blocker.blockerType === 'passenger-count')?.reason || '', /passenger names may remain pending/i);
 });
 
 test('accepted multi-country quote conversion creates booking with hotel and external package services', async () => {
@@ -1007,7 +1298,14 @@ test('buildBookingServicesFromAcceptedVersion carries touring route pricing supp
     activityRateVariantId: 'activity-rate-variant-ignored-for-transport',
     ticketRateVariantId: 'ticket-rate-ignored-for-transport',
     entranceFeeId: 'entrance-ignored-for-transport',
+    excursionTemplateId: null,
+    excursionTemplateComponentId: null,
+    excursionTemplateComponentOptional: null,
     touringRouteId: 'touring-route-dead-sea',
+    touringRouteCode: 'DS_PET',
+    touringRouteActive: null,
+    touringRouteArchived: null,
+    touringRouteHiddenFromSelectors: null,
     touringRoutePricingId: 'touring-pricing-van',
   });
   assert.equal(bookingServices[0].operationType, 'TRANSPORT');

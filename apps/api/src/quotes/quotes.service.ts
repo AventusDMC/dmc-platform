@@ -13,6 +13,7 @@ import {
   QuoteOptionPricingMode,
   QuoteStatus,
   ServiceUnitType,
+  SupplierConfirmationStatus,
   TransportPricingMode,
 } from '@prisma/client';
 import PDFDocument = require('pdfkit');
@@ -9394,6 +9395,9 @@ export class QuotesService {
         ticketRateVariantId?: string | null;
         entranceFeeId?: string | null;
         appliedVehicleRateId?: string | null;
+        excursionTemplateId?: string | null;
+        excursionTemplateComponentId?: string | null;
+        excursionTemplateComponentOptional?: boolean | null;
         optionId?: string | null;
         itineraryId?: string | null;
         quantity?: number | null;
@@ -9449,6 +9453,9 @@ export class QuotesService {
           code?: string | null;
           name?: string | null;
           startCity?: string | null;
+          active?: boolean | null;
+          archived?: boolean | null;
+          hiddenFromSelectors?: boolean | null;
         } | null;
       }>;
     };
@@ -9483,7 +9490,7 @@ export class QuotesService {
     const adultCount = Math.max(0, Number(snapshot.adults ?? 0));
     const childCount = Math.max(0, Number(snapshot.children ?? 0));
 
-    return Promise.all(
+    const bookingServices = await Promise.all(
       orderedItems
       .filter(({ item }) => !item.optionId)
       .slice()
@@ -9547,7 +9554,14 @@ export class QuotesService {
           activityRateVariantId: item.activityRateVariantId ?? null,
           ticketRateVariantId: item.ticketRateVariantId ?? null,
           entranceFeeId: item.entranceFeeId ?? null,
+          excursionTemplateId: item.excursionTemplateId ?? null,
+          excursionTemplateComponentId: item.excursionTemplateComponentId ?? null,
+          excursionTemplateComponentOptional: item.excursionTemplateComponentOptional ?? null,
           touringRouteId: item.touringRouteId || item.touringRoute?.id || item.touringRoutePricing?.touringRouteId || null,
+          touringRouteCode: item.touringRoute?.code || null,
+          touringRouteActive: item.touringRoute?.active ?? null,
+          touringRouteArchived: item.touringRoute?.archived ?? null,
+          touringRouteHiddenFromSelectors: item.touringRoute?.hiddenFromSelectors ?? null,
           touringRoutePricingId: item.touringRoutePricingId || item.touringRoutePricing?.id || null,
         } satisfies Prisma.InputJsonObject;
 
@@ -9575,10 +9589,20 @@ export class QuotesService {
           serviceType: normalizedServiceType,
           operationType,
           operationStatus: BookingOperationServiceStatus.PENDING,
+          operationalDate: serviceDate,
+          operationalTime: isActivityService ? item.startTime?.trim() || item.pickupTime?.trim() || null : item.startTime?.trim() || null,
+          supplierConfirmationStatus: SupplierConfirmationStatus.NOT_SENT,
+          supplierConfirmationCode: null,
+          voucherStatus: 'NOT_GENERATED',
+          voucherGeneratedAt: null,
+          operationalNotes: null,
           serviceDate,
           startTime: isActivityService ? item.startTime?.trim() || null : null,
           pickupTime: isActivityService ? item.pickupTime?.trim() || null : null,
           pickupLocation: isActivityService ? item.pickupLocation?.trim() || item.location?.trim() || null : null,
+          dropoffLocation: null,
+          assignedVehicleId: null,
+          assignedGuideId: null,
           meetingPoint: isActivityService ? item.meetingPoint?.trim() || null : null,
           participantCount: isActivityService ? resolvedParticipantCount : null,
           adultCount: isActivityService ? resolvedAdultCount : null,
@@ -9608,6 +9632,42 @@ export class QuotesService {
         };
       }),
     );
+    this.validateBookingOperationalServiceRows(bookingServices);
+    return bookingServices;
+  }
+
+  private validateBookingOperationalServiceRows(rows: Array<{ serviceOrder?: number | null; sourceMetadata?: any; touringRouteId?: string | null }>) {
+    let previousOrder = -1;
+    for (const row of rows) {
+      const serviceOrder = Number(row.serviceOrder ?? 0);
+      if (serviceOrder < previousOrder) {
+        throw new BadRequestException('Booking operational rows must preserve quote service order.');
+      }
+      previousOrder = serviceOrder;
+
+      const metadata = (row.sourceMetadata || {}) as {
+        excursionTemplateId?: string | null;
+        excursionTemplateComponentId?: string | null;
+        touringRouteId?: string | null;
+        touringRouteCode?: string | null;
+        touringRouteActive?: boolean | null;
+        touringRouteArchived?: boolean | null;
+        touringRouteHiddenFromSelectors?: boolean | null;
+      };
+      if (metadata.excursionTemplateId && !metadata.excursionTemplateComponentId) {
+        throw new BadRequestException('Excursion Template booking rows must preserve component linkage.');
+      }
+      if (metadata.touringRouteId && (metadata.touringRouteActive === false || metadata.touringRouteArchived === true)) {
+        throw new BadRequestException('Archived Touring Routes cannot appear in booking operational rows.');
+      }
+      const touringRouteCode = String(metadata.touringRouteCode || '').trim();
+      if (/\bAQ_(BOAT|YACHT|DIVE|SNORK|BEACH|SUB|GLASS|BER)\b/.test(touringRouteCode)) {
+        throw new BadRequestException('Archived AQ_* Touring Routes cannot appear in booking operational rows.');
+      }
+      if (/JOR-TR-AQABA-[A-Z0-9-]+-RT/.test(touringRouteCode)) {
+        throw new BadRequestException('Archived Aqaba RT Touring Routes cannot appear in booking operational rows.');
+      }
+    }
   }
 
   private buildBookingDaysFromAcceptedVersion(snapshotJson: unknown) {
@@ -9829,12 +9889,18 @@ export class QuotesService {
       return BookingOperationServiceType.EXTERNAL_PACKAGE;
     }
 
-    // Phase 1 keeps the existing booking operation enum. Operational assistance is
-    // classified canonically above, but stored in the existing generic bucket.
+    if (group === 'ticketing') {
+      return BookingOperationServiceType.TICKET;
+    }
+
+    if (group === 'operationalAssistance' || group === 'other') {
+      return BookingOperationServiceType.SERVICE;
+    }
+
     return BookingOperationServiceType.ACTIVITY;
   }
 
-  private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
+  private buildQuoteWorkflowDiagnostics(snapshotJson: unknown) {
     const snapshot = (snapshotJson || {}) as {
       adults?: number | null;
       children?: number | null;
@@ -9875,6 +9941,203 @@ export class QuotesService {
       }>;
     };
 
+    const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
+    const itineraryContextById = new Map(
+      (snapshot.itineraries ?? [])
+        .filter((day): day is { id: string; dayNumber: number } => Boolean(day.id) && Number.isFinite(day.dayNumber))
+        .map((day) => [day.id, { dayNumber: day.dayNumber }]),
+    );
+
+    return quoteItems
+      .map((item, index) => {
+        const missing: string[] = [];
+        const quantity = Math.max(0, Number(item.quantity ?? 0));
+        const paxCount = Math.max(0, Number(item.paxCount ?? 0));
+        const hasPricing = Number(item.totalCost ?? 0) > 0 && Number(item.totalSell ?? 0) > 0;
+
+        if (quantity <= 0) {
+          missing.push('quantity');
+        }
+        if (paxCount <= 0) {
+          missing.push('pax count');
+        }
+        if (!hasPricing) {
+          missing.push('cost/sell pricing');
+        }
+
+        const isActivity = this.isActivityService({
+          category: item.service?.category?.trim() || 'other',
+          serviceType: item.service?.serviceType
+            ? {
+                name: item.service.serviceType.name ?? '',
+                code: item.service.serviceType.code ?? null,
+              }
+            : null,
+        });
+
+        if (!isActivity) {
+          return {
+            itemId: item.id || null,
+            itemName: item.service?.name?.trim() || `item ${index + 1}`,
+            missingWorkflowFields: missing,
+            persistedOperationalFields: {
+              serviceDate: item.serviceDate ?? null,
+              itineraryId: item.itineraryId ?? null,
+              startTime: item.startTime ?? null,
+              pickupTime: item.pickupTime ?? null,
+              pickupLocation: item.pickupLocation ?? null,
+              meetingPoint: item.meetingPoint ?? null,
+              participantCount: item.participantCount ?? null,
+              adultCount: item.adultCount ?? null,
+              childCount: item.childCount ?? null,
+              paxCount: item.paxCount ?? null,
+              reconfirmationRequired: item.reconfirmationRequired ?? null,
+              reconfirmationDueAt: item.reconfirmationDueAt ?? null,
+              totalCost: item.totalCost ?? null,
+              totalSell: item.totalSell ?? null,
+            },
+          };
+        }
+
+        const resolvedServiceDate = this.resolveQuoteItemServiceDateValue({
+          explicitServiceDate: item.serviceDate,
+          itineraryId: item.itineraryId,
+          travelStartDate: snapshot.travelStartDate,
+          itineraryContextById,
+        });
+        const hasTime = Boolean(item.startTime?.trim() || item.pickupTime?.trim());
+        const hasLocation = Boolean(item.pickupLocation?.trim() || item.meetingPoint?.trim());
+        const participantCount = Number(item.participantCount ?? 0);
+        const adultCount = Number(item.adultCount ?? 0);
+        const childCount = Number(item.childCount ?? 0);
+        const hasCounts = participantCount > 0 || adultCount + childCount > 0;
+        const reconfirmationComplete = !item.reconfirmationRequired || Boolean(String(item.reconfirmationDueAt ?? '').trim());
+
+        if (!resolvedServiceDate) {
+          missing.push('activity date');
+        }
+        if (!hasTime) {
+          missing.push('start time or pickup time');
+        }
+        if (!hasLocation) {
+          missing.push('location or meeting point');
+        }
+        if (!hasCounts) {
+          missing.push('participant count');
+        }
+        if (!reconfirmationComplete) {
+          missing.push('reconfirmation due date');
+        }
+
+        return {
+          itemId: item.id || null,
+          itemName: item.service?.name?.trim() || `item ${index + 1}`,
+          missingWorkflowFields: missing,
+          persistedOperationalFields: {
+            serviceDate: item.serviceDate ?? null,
+            itineraryId: item.itineraryId ?? null,
+            startTime: item.startTime ?? null,
+            pickupTime: item.pickupTime ?? null,
+            pickupLocation: item.pickupLocation ?? null,
+            meetingPoint: item.meetingPoint ?? null,
+            participantCount: item.participantCount ?? null,
+            adultCount: item.adultCount ?? null,
+            childCount: item.childCount ?? null,
+            paxCount: item.paxCount ?? null,
+            reconfirmationRequired: item.reconfirmationRequired ?? null,
+            reconfirmationDueAt: item.reconfirmationDueAt ?? null,
+            totalCost: item.totalCost ?? null,
+            totalSell: item.totalSell ?? null,
+          },
+        };
+      });
+  }
+
+  private buildQuoteConvertBlockers(snapshotJson: unknown) {
+    const snapshot = (snapshotJson || {}) as {
+      adults?: number | null;
+      children?: number | null;
+      pricingMode?: string | null;
+      pricingType?: string | null;
+      fixedPricePerPerson?: number | null;
+      pricingSlabs?: QuotePricingSlabInput[];
+      quoteItems?: Array<{ id?: string | null }>;
+    };
+    const blockers: Array<{
+      blockerType: string;
+      source: string;
+      active: boolean;
+      itemId: string | null;
+      itemName: string | null;
+      reason: string;
+    }> = [];
+    const totalPax = Math.max(0, Number(snapshot.adults ?? 0) + Number(snapshot.children ?? 0));
+
+    blockers.push({
+      blockerType: 'passenger-count',
+      source: 'Quote Workflow',
+      active: totalPax <= 0,
+      itemId: null,
+      itemName: null,
+      reason: totalPax <= 0 ? 'Quote requires at least one passenger count before booking conversion.' : 'Passenger count is present; passenger names may remain pending.',
+    });
+
+    const normalizedPricingMode = this.normalizeQuotePricingMode(
+      snapshot.pricingMode,
+      this.normalizeQuotePricingType(snapshot.pricingType),
+    );
+    const pricingActive =
+      normalizedPricingMode === 'SLAB'
+        ? !Array.isArray(snapshot.pricingSlabs) || snapshot.pricingSlabs.length === 0
+        : !Number.isFinite(Number(snapshot.fixedPricePerPerson ?? 0)) || Number(snapshot.fixedPricePerPerson ?? 0) < 0;
+
+    blockers.push({
+      blockerType: 'pricing-configuration',
+      source: 'Quote Pricing',
+      active: pricingActive,
+      itemId: null,
+      itemName: null,
+      reason: pricingActive ? 'Quote pricing configuration is incomplete.' : 'Quote pricing configuration is valid.',
+    });
+
+    const quoteItems = (snapshot.quoteItems ?? []).filter((item) => this.isPersistedSnapshotQuoteItem(item));
+    blockers.push({
+      blockerType: 'quote-items',
+      source: 'Quote Workflow',
+      active: quoteItems.length === 0,
+      itemId: null,
+      itemName: null,
+      reason: quoteItems.length === 0 ? 'Quote requires at least one priced quote item.' : 'Quote has persisted quote items.',
+    });
+
+    for (const diagnostic of this.buildQuoteWorkflowDiagnostics(snapshotJson)) {
+      blockers.push({
+        blockerType: 'workflow-fields',
+        source: 'Quote Item Workflow',
+        active: diagnostic.missingWorkflowFields.length > 0,
+        itemId: diagnostic.itemId,
+        itemName: diagnostic.itemName,
+        reason:
+          diagnostic.missingWorkflowFields.length > 0
+            ? `Missing workflow fields: ${diagnostic.missingWorkflowFields.join(', ')}.`
+            : 'Workflow fields are complete.',
+      });
+    }
+
+    return blockers;
+  }
+
+  private assertQuoteWorkflowStateIsComplete(snapshotJson: unknown) {
+    const snapshot = (snapshotJson || {}) as {
+      adults?: number | null;
+      children?: number | null;
+      pricingMode?: string | null;
+      pricingType?: string | null;
+      fixedPricePerPerson?: number | null;
+      pricingSlabs?: QuotePricingSlabInput[];
+      quoteItems?: Array<{ id?: string | null }>;
+    };
+
     const totalPax = Math.max(0, Number(snapshot.adults ?? 0) + Number(snapshot.children ?? 0));
 
     if (totalPax <= 0) {
@@ -9901,61 +10164,17 @@ export class QuotesService {
       throw new BadRequestException('Quote workflow requires at least one priced quote item.');
     }
 
-    const itineraryContextById = new Map(
-      (snapshot.itineraries ?? [])
-        .filter((day): day is { id: string; dayNumber: number } => Boolean(day.id) && Number.isFinite(day.dayNumber))
-        .map((day) => [day.id, { dayNumber: day.dayNumber }]),
+    const invalidItems = this.buildQuoteWorkflowDiagnostics(snapshotJson).filter(
+      (item) => item.missingWorkflowFields.length > 0,
     );
-
-    const invalidItems = quoteItems
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => {
-        const quantity = Math.max(0, Number(item.quantity ?? 0));
-        const paxCount = Math.max(0, Number(item.paxCount ?? 0));
-        const hasPricing = Number(item.totalCost ?? 0) > 0 && Number(item.totalSell ?? 0) > 0;
-
-        if (quantity <= 0 || paxCount <= 0 || !hasPricing) {
-          return true;
-        }
-
-        const isActivity = this.isActivityService({
-          category: item.service?.category?.trim() || 'other',
-          serviceType: item.service?.serviceType
-            ? {
-                name: item.service.serviceType.name ?? '',
-                code: item.service.serviceType.code ?? null,
-              }
-            : null,
-        });
-
-        if (!isActivity) {
-          return false;
-        }
-
-        const resolvedServiceDate = this.resolveQuoteItemServiceDateValue({
-          explicitServiceDate: item.serviceDate,
-          itineraryId: item.itineraryId,
-          travelStartDate: snapshot.travelStartDate,
-          itineraryContextById,
-        });
-        const hasTime = Boolean(item.startTime?.trim() || item.pickupTime?.trim());
-        const hasLocation = Boolean(item.pickupLocation?.trim() || item.meetingPoint?.trim());
-        const participantCount = Number(item.participantCount ?? 0);
-        const adultCount = Number(item.adultCount ?? 0);
-        const childCount = Number(item.childCount ?? 0);
-        const hasCounts = participantCount > 0 || adultCount + childCount > 0;
-        const reconfirmationComplete = !item.reconfirmationRequired || Boolean(item.reconfirmationDueAt?.trim());
-
-        return !(resolvedServiceDate && hasTime && hasLocation && hasCounts && reconfirmationComplete);
-      });
 
     if (invalidItems.length > 0) {
       const labels = invalidItems
         .slice(0, 3)
-        .map(({ item, index }) => item.service?.name?.trim() || `item ${index + 1}`)
+        .map((item) => `${item.itemName}${item.itemId ? ` (${item.itemId})` : ''} missing ${item.missingWorkflowFields.join(', ')}`)
         .join(', ');
       throw new BadRequestException(
-        `Quote workflow is incomplete. Ensure each item has pricing and pax, and complete all activity dates, timing, location, participant counts, and reconfirmation due dates where required (${labels}).`,
+        `Quote workflow is incomplete. Complete the listed quote item fields before booking conversion: ${labels}.`,
       );
     }
   }
@@ -10466,12 +10685,17 @@ export class QuotesService {
       booking,
       isLatestRevision: !latestRevision,
     };
+    const hydratedQuoteWithDiagnostics = {
+      ...hydratedQuote,
+      workflowDiagnostics: this.buildQuoteWorkflowDiagnostics(hydratedQuote),
+      convertBlockers: this.buildQuoteConvertBlockers(hydratedQuote),
+    };
 
     try {
-      return this.attachResolvedQuoteFields(hydratedQuote);
+      return this.attachResolvedQuoteFields(hydratedQuoteWithDiagnostics);
     } catch (error) {
       console.error('[quote/findById]', error);
-      return hydratedQuote;
+      return hydratedQuoteWithDiagnostics;
     }
   }
 

@@ -6,6 +6,7 @@ import { AuthenticatedActor } from '../auth/auth.types';
 import { requireActorCompanyId } from '../auth/company-scope';
 import { normalizeOptionalString, requireTrimmedString, throwIfNotFound } from '../common/crud.helpers';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildRouteNormalizedKey, formatRouteName } from '../routes/route-normalization';
 
 type TouringRouteStopInput = {
   order?: number | null;
@@ -98,6 +99,37 @@ type ExecuteConvertToActivityMasterInput = {
   confirmationText?: string | null;
 };
 
+type AqabaActivityCleanupApplyInput = {
+  companyId: string;
+  userId?: string | null;
+};
+
+type AqabaActivityCleanupBatchApplyInput = AqabaActivityCleanupApplyInput & {
+  confirm?: string | null;
+};
+
+type AqabaRtDependenciesApplyInput = {
+  confirm?: string | null;
+};
+
+type AqabaRtExcursionConversionApplyInput = {
+  companyId: string;
+  userId?: string | null;
+  confirm?: string | null;
+};
+
+type AqabaExcursionTransportServiceTypeRepairInput = {
+  confirm?: string | null;
+};
+
+type AqabaExcursionPricingImportInput = {
+  confirm?: string | null;
+};
+
+type AqabaExcursionDuplicateVehicleRateRepairInput = {
+  confirm?: string | null;
+};
+
 type RollbackConvertToActivityMasterInput = {
   activityId?: string | null;
   confirmationText?: string | null;
@@ -126,6 +158,98 @@ type TouringWorkbookRouteRow = {
   includedHours: string;
   active: string;
 };
+
+const AQABA_ACTIVITY_BATCH_ALLOWED_CODES = ['AQ_BOAT', 'AQ_YACHT', 'AQ_DIVE', 'AQ_SNORK', 'AQ_BEACH', 'AQ_SUB'] as const;
+const AQABA_ACTIVITY_BATCH_CONFIRMATION = 'AQABA_ACTIVITY_BATCH_CLEANUP';
+const AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET = new Set<string>(AQABA_ACTIVITY_BATCH_ALLOWED_CODES);
+const AQABA_RT_CLEANUP_ALLOWED_CODES = [
+  'JOR-TR-AQABA-BERENICE-RT',
+  'JOR-TR-AQABA-DIVING-RT',
+  'JOR-TR-AQABA-GLASS-BOAT-RT',
+  'JOR-TR-AQABA-YACHT-RT',
+  'JOR-TR-AQABA-SNORKELING-RT',
+  'JOR-TR-AQABA-SOUTH-BEACH-RT',
+] as const;
+const AQABA_RT_CLEANUP_ALLOWED_CODE_SET = new Set<string>(AQABA_RT_CLEANUP_ALLOWED_CODES);
+const AQABA_RT_ACTIVITY_SITES: Record<string, { expectedActivityCode?: string; expectedActivityName: string; siteName: string; siteTerms: string[] }> = {
+  'JOR-TR-AQABA-BERENICE-RT': {
+    expectedActivityName: 'Berenice Beach Club',
+    siteName: 'Berenice Beach Club',
+    siteTerms: ['berenice', 'beach club'],
+  },
+  'JOR-TR-AQABA-DIVING-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE',
+    expectedActivityName: 'Scuba Diving Experience',
+    siteName: 'Aqaba Diving Site',
+    siteTerms: ['diving', 'dive', 'south beach'],
+  },
+  'JOR-TR-AQABA-GLASS-BOAT-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-GLASS-BOAT-TOUR',
+    expectedActivityName: 'Glass Boat Tour',
+    siteName: 'Aqaba Glass Boat Pier',
+    siteTerms: ['glass boat', 'marina', 'pier'],
+  },
+  'JOR-TR-AQABA-YACHT-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-PRIVATE-YACHT-CHARTER',
+    expectedActivityName: 'Private Yacht Charter',
+    siteName: 'Aqaba Marina',
+    siteTerms: ['yacht', 'marina'],
+  },
+  'JOR-TR-AQABA-SNORKELING-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SNORKELING-EXPERIENCE',
+    expectedActivityName: 'Snorkeling Experience',
+    siteName: 'Aqaba Snorkeling Site',
+    siteTerms: ['snorkeling', 'snorkel', 'south beach'],
+  },
+  'JOR-TR-AQABA-SOUTH-BEACH-RT': {
+    expectedActivityCode: 'JOR-ACT-SOUTH-SOUTH-BEACH-DAY',
+    expectedActivityName: 'South Beach Day',
+    siteName: 'South Beach Aqaba',
+    siteTerms: ['south beach', 'beach'],
+  },
+};
+const AQABA_RT_DEPENDENCIES_CONFIRMATION = 'AQABA_RT_DEPENDENCIES';
+const AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION = 'AQABA_RT_EXCURSION_CONVERSION';
+const AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR_CONFIRMATION = 'AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR';
+const AQABA_EXCURSION_PRICING_IMPORT_CONFIRMATION = 'AQABA_EXCURSION_PRICING_IMPORT';
+const AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION = 'AQABA_EXCURSION_DUPLICATE_RATE_REPAIR';
+const AQABA_EXCURSION_PRICING_SUPPLIER_NAME = 'Almushtari Logistics Services';
+const AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES = ['Sedan 2', 'Mini Van 6', 'Van 9'] as const;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const AQABA_RT_DEPENDENCY_PLACE_NAMES = ['Berenice Beach Club', 'Aqaba Glass Boat Pier', 'Aqaba Marina'] as const;
+const AQABA_RT_DEPENDENCY_ROUTE_PAIRS = [
+  ['Aqaba', 'Berenice Beach Club'],
+  ['Berenice Beach Club', 'Aqaba'],
+  ['Aqaba', 'Aqaba South Beach'],
+  ['Aqaba South Beach', 'Aqaba'],
+  ['Aqaba', 'Aqaba Glass Boat Pier'],
+  ['Aqaba Glass Boat Pier', 'Aqaba'],
+  ['Aqaba', 'Aqaba Marina'],
+  ['Aqaba Marina', 'Aqaba'],
+] as const;
+const QUOTE_TRANSPORT_TAXONOMY_ARCHIVED_TOURING_ROUTE_CODES = [
+  ...AQABA_ACTIVITY_BATCH_ALLOWED_CODES,
+  'AQ_GLASS',
+  ...AQABA_RT_CLEANUP_ALLOWED_CODES,
+] as const;
+const QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES = [
+  'JOR-EXC-AQABA-BERENICE',
+  'JOR-EXC-AQABA-DIVING',
+  'JOR-EXC-AQABA-GLASS-BOAT',
+  'JOR-EXC-AQABA-SNORKELING',
+  'JOR-EXC-AQABA-SOUTH-BEACH',
+  'JOR-EXC-AQABA-YACHT',
+] as const;
+const QUOTE_TRANSPORT_TAXONOMY_ACTIVITY_NAMES = [
+  'Boat Trip Experience',
+  'Private Yacht Charter',
+  'Scuba Diving Experience',
+  'Snorkeling Experience',
+  'South Beach Day',
+  'Submarine Experience',
+  'Glass Boat Tour',
+  'Berenice Beach Club',
+] as const;
 
 type TouringWorkbookStopRow = {
   tourCode: string;
@@ -321,7 +445,10 @@ function classifyTouringRouteAudit(route: {
   const stopCount = route.stops?.length || 0;
   const overnight = Boolean(route.overnight || route.overnightRisk || /\bon\b|overnight/.test(text));
   const oneWay = /\bow\b|one way|one-way/.test(text);
-  const aqabaExperience = /aqaba/.test(text) && /glass boat|snorkel|diving|dive|yacht|berenice|south beach|marina|beach club/.test(text);
+  const legacyAqabaActivityCode = AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET.has(normalizeWorkbookText(route.code));
+  const aqabaExperience =
+    (/aqaba/.test(text) || legacyAqabaActivityCode) &&
+    /boat|glass boat|snorkel|snorkeling|diving|dive|yacht|submarine|\bsub\b|berenice|south beach|marina|beach club|beach/.test(text);
   const simpleExcursion =
     !overnight &&
     Number(route.durationDays || 1) <= 1 &&
@@ -360,6 +487,19 @@ function recommendTouringRouteCleanup(
   }
 
   return 'KEEP_AS_TOURING_ROUTE';
+}
+
+function hasRoundTripOrMovementStyleName(route: { name?: string | null; code?: string | null; routeDescription?: string | null }) {
+  const name = normalizeWorkbookText(route.name).toUpperCase();
+  const code = normalizeWorkbookText(route.code).toUpperCase();
+  const description = normalizeWorkbookText(route.routeDescription).toUpperCase();
+  const text = [name, code, description].filter(Boolean).join(' ');
+
+  return (
+    /\bRT\b|ROUND[\s-]?TRIP|RETURN TRANSFER|ONE[\s-]?WAY|\bOW\b|TRANSFER/.test(text) ||
+    /->|↔|→| TO /.test(name) ||
+    /^JOR-TR-/.test(code)
+  );
 }
 
 function deriveOperationalComplexity(route: { durationDays?: number | null; overnightRisk?: boolean | null; overnight?: boolean | null; stops?: unknown[] | null; estimatedDriveHours?: number | null; estimatedDistanceKm?: number | null }) {
@@ -643,6 +783,2187 @@ export class TouringRoutesService {
       counts,
       recommendationCounts,
       rows,
+    };
+  }
+
+  async dryRunAqabaActivityCleanup(input: { id?: string | null } = {}) {
+    const id = normalizeWorkbookText(input.id);
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: id ? { id } : undefined,
+      include: this.include(),
+      orderBy: [{ active: 'desc' }, { region: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const auditRow = await this.buildOperationalAuditRow(route);
+      if (auditRow.classification !== 'ACTIVITY_CANDIDATE' || auditRow.cleanupRecommendation !== 'MOVE_TO_ACTIVITY_MASTER') {
+        continue;
+      }
+
+      const proposedActivityCode = buildActivityMasterCodeFromTouringRoute(route);
+      const duplicateActivities = await this.findDuplicateActivitiesForTouringRoute(route, proposedActivityCode);
+      const impact = auditRow.cleanupPreview.impact;
+      const dryRun = (auditRow.cleanupPreview.executionDryRuns || []).find(
+        (entry: any) => entry.action === 'executeConvertToActivityMasterDryRun',
+      );
+      const blockingReasons = [
+        route.active === false ? 'Touring route is already inactive/archived' : '',
+        hasRoundTripOrMovementStyleName(route) ? 'Round-trip or movement-style route names are excluded from Activity Master cleanup' : '',
+        duplicateActivities.length > 0 ? 'Duplicate Activity Master record already exists' : '',
+        impact.affectedQuotes.total > 0 ? 'Quote references exist' : '',
+        impact.affectedBookings.total > 0 ? 'Booking references exist' : '',
+        impact.affectedTemplates.active > 0 ? 'Active excursion/template references exist' : '',
+        impact.affectedDepartures.total > 0 ? 'Departure references exist' : '',
+        dryRun && Number(dryRun.safeExecutionScore || 0) < 80 ? 'Safe execution score is below 80' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        code: normalizeWorkbookText(route.code),
+        touringRouteId: route.id,
+        name: route.name,
+        currentCode: normalizeWorkbookText(route.code),
+        proposedActivity: {
+          name: route.name,
+          code: proposedActivityCode,
+        },
+        existingDuplicateActivityCheck: {
+          duplicateCount: duplicateActivities.length,
+          duplicates: duplicateActivities,
+        },
+        quoteReferences: impact.affectedQuotes,
+        bookingReferences: impact.affectedBookings,
+        excursionTemplateReferences: impact.affectedTemplates,
+        safeExecutionScore: dryRun?.safeExecutionScore ?? null,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      category: 'Aqaba activity-like Touring Routes',
+      supportedApplyAction: 'MOVE_TO_ACTIVITY_MASTER',
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async dryRunAqabaActivityCleanupBatch() {
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: AQABA_ACTIVITY_BATCH_ALLOWED_CODES as unknown as string[] } },
+      include: this.include(),
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const code = normalizeWorkbookText(route.code);
+      if (!AQABA_ACTIVITY_BATCH_ALLOWED_CODE_SET.has(code)) continue;
+
+      const dryRun = await this.dryRunAqabaActivityCleanup({ id: route.id });
+      const candidate = dryRun.candidates.find((entry: any) => entry.touringRouteId === route.id);
+
+      if (candidate) {
+        candidates.push(candidate);
+        continue;
+      }
+
+      const duplicateActivities = await this.findDuplicateActivitiesForTouringRoute(route, buildActivityMasterCodeFromTouringRoute(route));
+      candidates.push({
+        code,
+        touringRouteId: route.id,
+        name: route.name,
+        currentCode: code,
+        proposedActivity: {
+          name: route.name,
+          code: buildActivityMasterCodeFromTouringRoute(route),
+        },
+        existingDuplicateActivityCheck: {
+          duplicateCount: duplicateActivities.length,
+          duplicates: duplicateActivities,
+        },
+        quoteReferences: { total: 0, active: 0 },
+        bookingReferences: { total: 0, active: 0 },
+        excursionTemplateReferences: { total: 0, active: 0, excursionTemplateComponents: 0, packageTemplateComponents: 0 },
+        safeExecutionScore: null,
+        safeToConvert: false,
+        blockingReasons: ['Allowed legacy code did not classify as an Aqaba activity cleanup candidate'],
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'BATCH_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      allowedCodes: AQABA_ACTIVITY_BATCH_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_GLASS', 'AQ_BER'],
+      excludedRoutePatterns: ['JOR-TR-AQABA-*-RT', 'JOR-TR-SOUTH-PETRA-AQABA-RT', 'round-trip or movement-style names'],
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async dryRunAqabaRoundTripCleanup() {
+    const routes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: AQABA_RT_CLEANUP_ALLOWED_CODES as unknown as string[] } },
+      include: this.include(),
+      orderBy: [{ code: 'asc' }, { name: 'asc' }],
+    });
+    const candidates = [];
+
+    for (const route of routes || []) {
+      const code = normalizeWorkbookText(route.code);
+      if (!AQABA_RT_CLEANUP_ALLOWED_CODE_SET.has(code)) continue;
+
+      const siteConfig = AQABA_RT_ACTIVITY_SITES[code];
+      const auditRow = await this.buildOperationalAuditRow(route);
+      const impact = auditRow.cleanupPreview.impact;
+      const activity = await this.findExpectedAqabaRtActivityMaster(siteConfig);
+      const basePlace = await this.findCanonicalPlaceByTerms(['aqaba hotel', 'aqaba base', 'aqaba city', 'aqaba']);
+      const sitePlace = await this.findCanonicalPlaceByTerms(siteConfig.siteTerms);
+      const outboundRoute = await this.findExistingTransferRoute(basePlace, sitePlace);
+      const returnRoute = await this.findExistingTransferRoute(sitePlace, basePlace);
+      const excursionCode = code.replace(/^JOR-TR-/, 'JOR-EXC-').replace(/-RT$/, '');
+      const blockingReasons = [
+        !activity ? 'Matching Activity Master record is missing' : '',
+        !basePlace ? 'Canonical Aqaba base/hotel/city place is missing' : '',
+        !sitePlace ? `Canonical activity site place is missing for ${siteConfig.siteName}` : '',
+        basePlace && sitePlace && !outboundRoute ? 'Outbound local transfer route is missing' : '',
+        basePlace && sitePlace && !returnRoute ? 'Return local transfer route is missing' : '',
+        impact.affectedQuotes.total > 0 ? 'Quote references exist' : '',
+        impact.affectedBookings.total > 0 ? 'Booking references exist' : '',
+        impact.affectedTemplates.total > 0 ? 'Package/excursion template references exist' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        touringRouteId: route.id,
+        currentCode: code,
+        name: route.name,
+        proposedExcursionTemplate: {
+          name: `${route.name.replace(/\s+RT\b/i, '').trim()} Excursion`,
+          code: excursionCode,
+          components: ['OUTBOUND_LOCAL_TRANSFER', 'ACTIVITY_MASTER', 'RETURN_LOCAL_TRANSFER'],
+        },
+        matchedActivityMaster: activity
+          ? {
+              id: activity.id,
+              code: activity.code || null,
+              name: activity.name,
+              active: activity.active !== false,
+            }
+          : null,
+        expectedActivityMaster: {
+          code: siteConfig.expectedActivityCode || null,
+          name: siteConfig.expectedActivityName,
+        },
+        missingActivityMasterWarning: activity
+          ? null
+          : `Expected Activity Master missing: ${siteConfig.expectedActivityCode || siteConfig.expectedActivityName}`,
+        proposedOutboundTransferRoute: {
+          from: basePlace?.name || 'Aqaba base/hotel/city',
+          to: sitePlace?.name || siteConfig.siteName,
+          existingRoute: outboundRoute
+            ? {
+                id: outboundRoute.id,
+                name: outboundRoute.name,
+                normalizedKey: outboundRoute.normalizedKey || null,
+                isActive: outboundRoute.isActive !== false,
+              }
+            : null,
+        },
+        proposedReturnTransferRoute: {
+          from: sitePlace?.name || siteConfig.siteName,
+          to: basePlace?.name || 'Aqaba base/hotel/city',
+          existingRoute: returnRoute
+            ? {
+                id: returnRoute.id,
+                name: returnRoute.name,
+                normalizedKey: returnRoute.normalizedKey || null,
+                isActive: returnRoute.isActive !== false,
+              }
+            : null,
+        },
+        requiredCanonicalPlaces: {
+          aqabaBaseExists: Boolean(basePlace),
+          activitySiteExists: Boolean(sitePlace),
+          aqabaBase: basePlace ? { id: basePlace.id, name: basePlace.name, active: basePlace.isActive !== false } : null,
+          activitySite: sitePlace ? { id: sitePlace.id, name: sitePlace.name, active: sitePlace.isActive !== false } : null,
+        },
+        requiredTransferRoutes: {
+          outboundExists: Boolean(outboundRoute),
+          returnExists: Boolean(returnRoute),
+        },
+        quoteReferences: impact.affectedQuotes,
+        bookingReferences: impact.affectedBookings,
+        packageExcursionTemplateReferences: impact.affectedTemplates,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+        recommendedAction: blockingReasons.length === 0 ? 'CONVERT_TO_EXCURSION_TEMPLATE_WITH_TRANSFERS' : 'MANUAL_REVIEW',
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_* legacy activity rows', 'JOR-TR-SOUTH-PETRA-AQABA-RT'],
+      transportPricingLogicChanged: false,
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async dryRunAqabaRoundTripDependencies() {
+    const existingPlaces = await this.resolveAqabaRtDependencyPlaces();
+    const placePlans = AQABA_RT_DEPENDENCY_PLACE_NAMES.map((name) => {
+      const matches = existingPlaces.byName.get(normalizeWorkbookText(name).toLowerCase()) || [];
+      return {
+        name,
+        exists: matches.length > 0,
+        existing: matches,
+        willCreate: matches.length === 0,
+        duplicateCollisionCount: Math.max(0, matches.length - 1),
+        safe: matches.length <= 1,
+      };
+    });
+
+    const routePlans = [];
+    for (const [fromName, toName] of AQABA_RT_DEPENDENCY_ROUTE_PAIRS) {
+      const fromPlace = existingPlaces.primaryByName.get(normalizeWorkbookText(fromName).toLowerCase()) || null;
+      const toPlace = existingPlaces.primaryByName.get(normalizeWorkbookText(toName).toLowerCase()) || null;
+      const normalizedKey = buildRouteNormalizedKey(fromName, toName);
+      const matches = await this.findRoutesByNormalizedKey(normalizedKey);
+      const fromWillExist = Boolean(fromPlace || AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(fromName as any));
+      const toWillExist = Boolean(toPlace || AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(toName as any));
+      routePlans.push({
+        from: fromName,
+        to: toName,
+        proposedRouteCode: this.buildAqabaRtDependencyRouteCode(fromName, toName),
+        proposedRouteName: formatRouteName(fromName, toName),
+        normalizedKey,
+        fromPlaceExists: Boolean(fromPlace),
+        toPlaceExists: Boolean(toPlace),
+        fromPlaceWillExistAfterApply: fromWillExist,
+        toPlaceWillExistAfterApply: toWillExist,
+        exists: matches.length > 0,
+        existing: matches,
+        willCreate: Boolean(fromWillExist && toWillExist && matches.length === 0),
+        duplicateCollisionCount: Math.max(0, matches.length - 1),
+        safe: Boolean(fromWillExist && toWillExist && matches.length <= 1),
+        blockingReasons: [
+          !fromWillExist ? `Missing from place: ${fromName}` : '',
+          !toWillExist ? `Missing to place: ${toName}` : '',
+          matches.length > 1 ? `Route normalizedKey collision: ${normalizedKey}` : '',
+        ].filter(Boolean),
+      });
+    }
+
+    const missingPlaces = placePlans.filter((entry) => !entry.exists);
+    const existingPlaceRows = placePlans.filter((entry) => entry.exists);
+    const missingTransferRoutes = routePlans.filter((entry) => !entry.exists);
+    const existingTransferRoutes = routePlans.filter((entry) => entry.exists);
+    const safeToApply =
+      placePlans.every((entry) => entry.safe) &&
+      routePlans.every((entry) => entry.safe);
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DEPENDENCIES_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      affectsQuotesOrBookings: false,
+      allowedPlacesToCreate: AQABA_RT_DEPENDENCY_PLACE_NAMES,
+      allowedTransferRoutePairs: AQABA_RT_DEPENDENCY_ROUTE_PAIRS.map(([from, to]) => ({ from, to })),
+      missingPlaces,
+      existingPlaces: existingPlaceRows,
+      missingTransferRoutes,
+      existingTransferRoutes,
+      duplicateCollisionChecks: {
+        placeCollisions: placePlans.filter((entry) => entry.duplicateCollisionCount > 0),
+        routeCollisions: routePlans.filter((entry) => entry.duplicateCollisionCount > 0),
+      },
+      safeToApply,
+      blockingReasons: [
+        ...placePlans.flatMap((entry) => (entry.duplicateCollisionCount > 0 ? [`Place duplicate collision: ${entry.name}`] : [])),
+        ...routePlans.flatMap((entry) => entry.blockingReasons),
+      ],
+    };
+  }
+
+  async applyAqabaRoundTripDependencies(input: AqabaRtDependenciesApplyInput) {
+    const confirm = normalizeWorkbookText(input.confirm);
+    if (confirm !== AQABA_RT_DEPENDENCIES_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba RT dependency setup requires --confirm=${AQABA_RT_DEPENDENCIES_CONFIRMATION}.`);
+    }
+
+    const before = await this.dryRunAqabaRoundTripDependencies();
+    if (before.duplicateCollisionChecks.placeCollisions.length > 0 || before.duplicateCollisionChecks.routeCollisions.length > 0) {
+      throw new BadRequestException('Aqaba RT dependency setup is blocked by duplicate/collision checks.');
+    }
+
+    const createdPlaces = [];
+    for (const place of before.missingPlaces) {
+      if (!AQABA_RT_DEPENDENCY_PLACE_NAMES.includes(place.name as any)) continue;
+      const created = await (this.prisma as any).place.create({
+        data: {
+          name: place.name,
+          type: 'ATTRACTION',
+          city: 'Aqaba',
+          country: 'Jordan',
+          isActive: true,
+        },
+        select: { id: true, name: true, city: true, type: true, isActive: true },
+      });
+      createdPlaces.push(created);
+    }
+
+    const afterPlaces = await this.resolveAqabaRtDependencyPlaces();
+    const createdTransferRoutes = [];
+    const skippedTransferRoutes = [];
+    for (const [fromName, toName] of AQABA_RT_DEPENDENCY_ROUTE_PAIRS) {
+      const normalizedKey = buildRouteNormalizedKey(fromName, toName);
+      const existingRoutes = await this.findRoutesByNormalizedKey(normalizedKey);
+      if (existingRoutes.length > 0) {
+        skippedTransferRoutes.push({ from: fromName, to: toName, normalizedKey, reason: 'already exists' });
+        continue;
+      }
+
+      const fromPlace = afterPlaces.primaryByName.get(normalizeWorkbookText(fromName).toLowerCase()) || null;
+      const toPlace = afterPlaces.primaryByName.get(normalizeWorkbookText(toName).toLowerCase()) || null;
+      if (!fromPlace || !toPlace) {
+        skippedTransferRoutes.push({ from: fromName, to: toName, normalizedKey, reason: 'endpoint place missing' });
+        continue;
+      }
+
+      const created = await (this.prisma as any).route.create({
+        data: {
+          fromPlaceId: fromPlace.id,
+          toPlaceId: toPlace.id,
+          name: formatRouteName(fromName, toName),
+          normalizedKey,
+          routeType: 'TRANSFER_ROUTE',
+          notes: `Aqaba RT dependency setup route code: ${this.buildAqabaRtDependencyRouteCode(fromName, toName)}. No pricing/rates created.`,
+          isActive: true,
+        },
+        select: { id: true, name: true, normalizedKey: true, routeType: true, isActive: true },
+      });
+      createdTransferRoutes.push(created);
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_DEPENDENCIES_APPLY' as const,
+      mutatesData: true,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      affectsQuotesOrBookings: false,
+      createdPlaces,
+      createdTransferRoutes,
+      skippedTransferRoutes,
+      counts: {
+        createdPlaces: createdPlaces.length,
+        createdTransferRoutes: createdTransferRoutes.length,
+        skippedTransferRoutes: skippedTransferRoutes.length,
+      },
+    };
+  }
+
+  async dryRunAqabaRoundTripExcursionConversion() {
+    const baseDryRun = await this.dryRunAqabaRoundTripCleanup();
+    const candidates = [];
+
+    for (const candidate of baseDryRun.candidates as any[]) {
+      const duplicateTemplate = await this.findDuplicateExcursionTemplateForAqabaRt(candidate.proposedExcursionTemplate);
+      const outboundRouteId = candidate.proposedOutboundTransferRoute?.existingRoute?.id || null;
+      const activityMasterId = candidate.matchedActivityMaster?.id || null;
+      const returnRouteId = candidate.proposedReturnTransferRoute?.existingRoute?.id || null;
+      const blockingReasons = [
+        ...(candidate.blockingReasons || []),
+        duplicateTemplate ? 'Duplicate Excursion Template already exists' : '',
+        !outboundRouteId ? 'Outbound transfer route id is missing' : '',
+        !activityMasterId ? 'Activity Master id is missing' : '',
+        !returnRouteId ? 'Return transfer route id is missing' : '',
+      ].filter(Boolean);
+
+      candidates.push({
+        touringRouteId: candidate.touringRouteId,
+        currentCode: candidate.currentCode,
+        name: candidate.name,
+        proposedExcursionTemplate: candidate.proposedExcursionTemplate,
+        outboundTransferRouteId: outboundRouteId,
+        activityMasterId,
+        returnTransferRouteId: returnRouteId,
+        matchedActivityMaster: candidate.matchedActivityMaster,
+        duplicateExcursionTemplateCheck: {
+          duplicateFound: Boolean(duplicateTemplate),
+          duplicate: duplicateTemplate,
+        },
+        quoteReferences: candidate.quoteReferences,
+        bookingReferences: candidate.bookingReferences,
+        packageExcursionTemplateReferences: candidate.packageExcursionTemplateReferences,
+        safeToConvert: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_EXCURSION_CONVERSION_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      explicitlyExcludedCodes: ['AQ_* legacy activity rows', 'JOR-TR-SOUTH-PETRA-AQABA-RT'],
+      totalCandidates: candidates.length,
+      candidates,
+    };
+  }
+
+  async applyAqabaRoundTripExcursionConversion(input: AqabaRtExcursionConversionApplyInput) {
+    const companyId = normalizeWorkbookText(input.companyId);
+    const confirm = normalizeWorkbookText(input.confirm);
+
+    if (!companyId) {
+      throw new BadRequestException('Aqaba RT excursion conversion requires DMC_CLEANUP_COMPANY_ID.');
+    }
+    if (confirm !== AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba RT excursion conversion requires --confirm=${AQABA_RT_EXCURSION_CONVERSION_CONFIRMATION}.`);
+    }
+
+    const dryRun = await this.dryRunAqabaRoundTripExcursionConversion();
+    const summary: {
+      converted: any[];
+      skipped: any[];
+      blocked: any[];
+      errors: any[];
+    } = {
+      converted: [],
+      skipped: [],
+      blocked: [],
+      errors: [],
+    };
+
+    for (const candidate of dryRun.candidates as any[]) {
+      if (candidate.duplicateExcursionTemplateCheck?.duplicateFound) {
+        summary.skipped.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          reason: 'duplicate excursion template exists',
+          duplicate: candidate.duplicateExcursionTemplateCheck.duplicate,
+        });
+        continue;
+      }
+      if (!candidate.safeToConvert) {
+        summary.blocked.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          blockingReasons: candidate.blockingReasons,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.convertOneAqabaRtToExcursionTemplate(candidate, {
+          companyId,
+          userId: normalizeWorkbookText(input.userId) || '00000000-0000-0000-0000-000000000000',
+        });
+        summary.converted.push(result);
+      } catch (error) {
+        summary.errors.push({
+          currentCode: candidate.currentCode,
+          touringRouteId: candidate.touringRouteId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_RT_EXCURSION_CONVERSION_APPLY' as const,
+      mutatesData: true,
+      deletesData: false,
+      createsPricing: false,
+      importsTariffs: false,
+      allowedCodes: AQABA_RT_CLEANUP_ALLOWED_CODES,
+      converted: summary.converted,
+      skipped: summary.skipped,
+      blocked: summary.blocked,
+      errors: summary.errors,
+      counts: {
+        converted: summary.converted.length,
+        skipped: summary.skipped.length,
+        blocked: summary.blocked.length,
+        errors: summary.errors.length,
+      },
+    };
+  }
+
+  async dryRunAqabaExcursionTransportServiceTypeRepair() {
+    const serviceType = await this.findCanonicalLocalTransferServiceType();
+    const templates = await this.findAqabaExcursionTemplatesWithTransportComponents();
+    const inspectedComponents = [];
+    const blockingReasons = [];
+
+    if (!serviceType) {
+      blockingReasons.push('No canonical local/private transfer TransportServiceType was found.');
+    }
+
+    for (const code of QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES) {
+      const template = templates.find((entry: any) => normalizeWorkbookText(entry.code) === code);
+      if (!template) {
+        blockingReasons.push(`Missing Aqaba Excursion Template: ${code}`);
+        continue;
+      }
+      const transportComponents = (template.components || [])
+        .filter((component: any) => component.active !== false && component.componentType === 'TRANSPORT')
+        .sort((left: any, right: any) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
+
+      if (transportComponents.length !== 2) {
+        blockingReasons.push(`${code} expected 2 active transport components, found ${transportComponents.length}.`);
+      }
+
+      for (const component of transportComponents) {
+        const missingTransportServiceType = !normalizeWorkbookText(component.transportServiceTypeId);
+        inspectedComponents.push({
+          templateCode: code,
+          templateId: template.id,
+          componentId: component.id,
+          label: component.label,
+          sortOrder: component.sortOrder,
+          routeId: component.routeId || null,
+          currentTransportServiceTypeId: component.transportServiceTypeId || null,
+          missingTransportServiceType,
+          proposedServiceTypeId: missingTransportServiceType ? serviceType?.id || null : component.transportServiceTypeId,
+          proposedServiceTypeName: missingTransportServiceType ? serviceType?.name || null : component.transportServiceType?.name || null,
+          proposedServiceTypeCode: missingTransportServiceType ? serviceType?.code || null : component.transportServiceType?.code || null,
+          willUpdate: Boolean(missingTransportServiceType && serviceType?.id),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      changesPricing: false,
+      changesTransferRoutes: false,
+      changesActivities: false,
+      changesTemplates: false,
+      allowedTemplateCodes: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES,
+      inspectedComponentCount: inspectedComponents.length,
+      missingTransportServiceTypeCount: inspectedComponents.filter((component) => component.missingTransportServiceType).length,
+      proposedServiceType: serviceType
+        ? { id: serviceType.id, name: serviceType.name, code: serviceType.code || null, classification: serviceType.classification || null }
+        : null,
+      components: inspectedComponents,
+      safeToApply: inspectedComponents.length === 12 && blockingReasons.length === 0 && Boolean(serviceType?.id),
+      blockingReasons,
+    };
+  }
+
+  async applyAqabaExcursionTransportServiceTypeRepair(input: AqabaExcursionTransportServiceTypeRepairInput) {
+    const confirm = normalizeWorkbookText(input.confirm);
+    if (confirm !== AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR_CONFIRMATION) {
+      throw new BadRequestException(
+        `Aqaba Excursion transport service type repair requires --confirm=${AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR_CONFIRMATION}.`,
+      );
+    }
+
+    const dryRun = await this.dryRunAqabaExcursionTransportServiceTypeRepair();
+    if (!dryRun.safeToApply) {
+      throw new BadRequestException(`Aqaba Excursion transport service type repair is blocked: ${dryRun.blockingReasons.join('; ')}`);
+    }
+
+    const updated = [];
+    const skipped = [];
+    for (const component of dryRun.components) {
+      if (!component.missingTransportServiceType) {
+        skipped.push({ componentId: component.componentId, templateCode: component.templateCode, reason: 'already has transportServiceTypeId' });
+        continue;
+      }
+
+      const result = await (this.prisma as any).excursionTemplateComponent.update({
+        where: { id: component.componentId },
+        data: { transportServiceTypeId: component.proposedServiceTypeId },
+        select: { id: true, templateId: true, label: true, sortOrder: true, transportServiceTypeId: true },
+      });
+      updated.push({
+        templateCode: component.templateCode,
+        componentId: result.id,
+        transportServiceTypeId: result.transportServiceTypeId,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_EXCURSION_TRANSPORT_SERVICE_TYPE_REPAIR_APPLY' as const,
+      mutatesData: updated.length > 0,
+      deletesData: false,
+      changesPricing: false,
+      changesTransferRoutes: false,
+      changesActivities: false,
+      changesTemplates: false,
+      updated,
+      skipped,
+      counts: {
+        updated: updated.length,
+        skipped: skipped.length,
+      },
+    };
+  }
+
+  async validateQuoteTransportTaxonomy() {
+    const failedChecks: string[] = [];
+    const archivedRouteLeaks = [];
+    const templatesVerified = [];
+    const componentIssues = [];
+    const activityIssues = [];
+    const transferIssues = [];
+
+    const touringRoutes = await (this.prisma as any).touringRoute.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_ARCHIVED_TOURING_ROUTE_CODES as unknown as string[] } },
+      select: { id: true, code: true, name: true, active: true },
+      orderBy: [{ code: 'asc' }],
+    });
+    const touringByCode = new Map<string, any>((touringRoutes || []).map((route: any) => [normalizeWorkbookText(route.code), route]));
+
+    for (const code of QUOTE_TRANSPORT_TAXONOMY_ARCHIVED_TOURING_ROUTE_CODES) {
+      const route: any = touringByCode.get(code);
+      if (!route) {
+        archivedRouteLeaks.push({ code, issue: 'Touring Route not found for archive validation' });
+        failedChecks.push(`Missing Touring Route archive target: ${code}`);
+        continue;
+      }
+      if (route.active !== false) {
+        archivedRouteLeaks.push({
+          code,
+          touringRouteId: route.id,
+          name: route.name,
+          active: route.active !== false,
+          selectorEligible: route.active !== false,
+          issue: 'Touring Route is still active/selector-visible',
+        });
+        failedChecks.push(`Touring Route still active: ${code}`);
+      }
+    }
+
+    const templates = await (this.prisma as any).excursionTemplate.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES as unknown as string[] } },
+      include: {
+        components: {
+          include: {
+            activity: true,
+            route: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }],
+        },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+    const templateByCode = new Map<string, any>((templates || []).map((template: any) => [normalizeWorkbookText(template.code), template]));
+
+    for (const code of QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES) {
+      const template: any = templateByCode.get(code);
+      if (!template) {
+        componentIssues.push({ templateCode: code, issue: 'Excursion Template is missing' });
+        failedChecks.push(`Missing Excursion Template: ${code}`);
+        continue;
+      }
+      if (template.active === false) {
+        componentIssues.push({ templateCode: code, templateId: template.id, issue: 'Excursion Template is inactive' });
+        failedChecks.push(`Inactive Excursion Template: ${code}`);
+      }
+
+      const components = template.components || [];
+      const expectedComponents = [
+        { sortOrder: 1, componentType: 'TRANSPORT', dependency: 'OUTBOUND_LOCAL_TRANSFER' },
+        { sortOrder: 2, componentType: 'ACTIVITY', dependency: 'ACTIVITY_MASTER' },
+        { sortOrder: 3, componentType: 'TRANSPORT', dependency: 'RETURN_LOCAL_TRANSFER' },
+      ];
+      if (components.length !== 3) {
+        componentIssues.push({ templateCode: code, templateId: template.id, issue: `Expected exactly 3 components, found ${components.length}` });
+        failedChecks.push(`Wrong component count for ${code}`);
+      }
+
+      for (const expected of expectedComponents) {
+        const component = components.find((entry: any) => Number(entry.sortOrder) === expected.sortOrder);
+        if (!component) {
+          componentIssues.push({ templateCode: code, templateId: template.id, sortOrder: expected.sortOrder, issue: 'Component is missing' });
+          failedChecks.push(`Missing component ${expected.sortOrder} for ${code}`);
+          continue;
+        }
+        if (component.componentType !== expected.componentType) {
+          componentIssues.push({
+            templateCode: code,
+            templateId: template.id,
+            componentId: component.id,
+            sortOrder: expected.sortOrder,
+            issue: `Expected ${expected.componentType}, found ${component.componentType}`,
+          });
+          failedChecks.push(`Wrong component type for ${code} #${expected.sortOrder}`);
+        }
+        if (expected.componentType === 'TRANSPORT' && (!component.routeId || !component.route || component.route?.isActive === false)) {
+          componentIssues.push({
+            templateCode: code,
+            templateId: template.id,
+            componentId: component.id,
+            sortOrder: expected.sortOrder,
+            routeId: component.routeId || null,
+            issue: 'Transport component is not linked to an active route',
+          });
+          failedChecks.push(`Inactive/missing component route for ${code} #${expected.sortOrder}`);
+        }
+        if (expected.componentType === 'ACTIVITY' && (!component.activityId || !component.activity || component.activity?.active === false)) {
+          componentIssues.push({
+            templateCode: code,
+            templateId: template.id,
+            componentId: component.id,
+            sortOrder: expected.sortOrder,
+            activityId: component.activityId || null,
+            issue: 'Activity component is not linked to an active Activity Master record',
+          });
+          failedChecks.push(`Inactive/missing component activity for ${code}`);
+        }
+      }
+
+      if (!componentIssues.some((issue: any) => issue.templateCode === code)) {
+        templatesVerified.push({
+          code,
+          id: template.id,
+          name: template.name,
+          active: template.active !== false,
+          componentCount: components.length,
+          componentIds: components.map((component: any) => ({
+            sortOrder: component.sortOrder,
+            componentType: component.componentType,
+            routeId: component.routeId || null,
+            activityId: component.activityId || null,
+          })),
+        });
+      }
+    }
+
+    const activities = await (this.prisma as any).activity.findMany({
+      where: {
+        OR: QUOTE_TRANSPORT_TAXONOMY_ACTIVITY_NAMES.map((name) => ({
+          name: { equals: name, mode: 'insensitive' },
+        })),
+      },
+      select: { id: true, code: true, name: true, active: true },
+      orderBy: [{ name: 'asc' }],
+    });
+    const activitiesByName = new Map<string, any>((activities || []).map((activity: any) => [normalizeWorkbookText(activity.name).toLowerCase(), activity]));
+    for (const name of QUOTE_TRANSPORT_TAXONOMY_ACTIVITY_NAMES) {
+      const activity: any = activitiesByName.get(normalizeWorkbookText(name).toLowerCase());
+      if (!activity) {
+        activityIssues.push({ name, issue: 'Activity Master record is missing' });
+        failedChecks.push(`Missing Activity Master: ${name}`);
+      } else if (activity.active === false) {
+        activityIssues.push({ name, id: activity.id, code: activity.code || null, issue: 'Activity Master record is inactive' });
+        failedChecks.push(`Inactive Activity Master: ${name}`);
+      }
+    }
+
+    for (const [fromName, toName] of AQABA_RT_DEPENDENCY_ROUTE_PAIRS) {
+      const normalizedKey = buildRouteNormalizedKey(fromName, toName);
+      const routes = await this.findRoutesByNormalizedKey(normalizedKey);
+      const activeRoutes = routes.filter((route: any) => route.isActive !== false);
+      if (activeRoutes.length === 0) {
+        transferIssues.push({ from: fromName, to: toName, normalizedKey, issue: 'Required local transfer route is missing or inactive' });
+        failedChecks.push(`Missing/inactive transfer route: ${fromName} -> ${toName}`);
+      }
+    }
+
+    return {
+      passed: failedChecks.length === 0,
+      failedChecks,
+      archivedRouteLeaks,
+      templatesVerified,
+      componentIssues,
+      activityIssues,
+      transferIssues,
+    };
+  }
+
+  async validateQuoteAqabaExcursionExpansion() {
+    const failedChecks: string[] = [];
+    const templatesChecked = [];
+    const expansionIssues = [];
+    const pricingIssues = [];
+    const archivedRouteUsage = [];
+    const missingComponents = [];
+
+    const templates = await (this.prisma as any).excursionTemplate.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES as unknown as string[] } },
+      include: {
+        components: {
+          include: {
+            activity: true,
+            route: true,
+            touringRoute: true,
+            transportServiceType: true,
+            supplierService: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+    const templateByCode = new Map<string, any>((templates || []).map((template: any) => [normalizeWorkbookText(template.code), template]));
+
+    for (const code of QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES) {
+      const template: any = templateByCode.get(code);
+      if (!template) {
+        missingComponents.push({ templateCode: code, issue: 'Excursion Template is missing' });
+        failedChecks.push(`Missing Aqaba Excursion Template: ${code}`);
+        continue;
+      }
+      if (template.active === false) {
+        expansionIssues.push({ templateCode: code, templateId: template.id, issue: 'Excursion Template is inactive' });
+        failedChecks.push(`Inactive Aqaba Excursion Template: ${code}`);
+      }
+
+      const components = (template.components || []).filter((component: any) => component.active !== false);
+      const expected = [
+        { sortOrder: 1, role: 'outbound transport', componentType: 'TRANSPORT' },
+        { sortOrder: 2, role: 'activity', componentType: 'ACTIVITY' },
+        { sortOrder: 3, role: 'return transport', componentType: 'TRANSPORT' },
+      ];
+      if (components.length !== 3) {
+        missingComponents.push({ templateCode: code, templateId: template.id, issue: `Expected exactly 3 active components, found ${components.length}` });
+        failedChecks.push(`Wrong active component count for ${code}`);
+      }
+
+      const quoteServicePayloads = [];
+      for (const expectation of expected) {
+        const component = components.find((entry: any) => Number(entry.sortOrder) === expectation.sortOrder);
+        if (!component) {
+          missingComponents.push({ templateCode: code, templateId: template.id, sortOrder: expectation.sortOrder, role: expectation.role, issue: 'Component is missing' });
+          failedChecks.push(`Missing ${expectation.role} component for ${code}`);
+          continue;
+        }
+        if (component.componentType !== expectation.componentType) {
+          expansionIssues.push({
+            templateCode: code,
+            templateId: template.id,
+            componentId: component.id,
+            sortOrder: component.sortOrder,
+            issue: `Expected ${expectation.componentType}, found ${component.componentType}`,
+          });
+          failedChecks.push(`Wrong component type for ${code} #${expectation.sortOrder}`);
+          continue;
+        }
+
+        if (component.componentType === 'TRANSPORT') {
+          if (!component.routeId || !component.route || component.route.isActive === false) {
+            expansionIssues.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              sortOrder: component.sortOrder,
+              issue: 'Transport component must link to an active transfer route',
+            });
+            failedChecks.push(`Transport component cannot expand for ${code} #${expectation.sortOrder}`);
+            continue;
+          }
+          const transportServiceTypeId = this.getComponentTransportServiceTypeId(component);
+          if (!transportServiceTypeId) {
+            expansionIssues.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              routeId: component.routeId,
+              sortOrder: component.sortOrder,
+              issue: 'Quote expansion requires transportServiceTypeId for route-based transport components',
+            });
+            failedChecks.push(`Transport component missing service type for ${code} #${expectation.sortOrder}`);
+          }
+
+          const activeVehicleRateCount = await this.safeCount('vehicleRate', {
+            routeId: component.routeId,
+            active: true,
+          });
+          if (activeVehicleRateCount === 0) {
+            pricingIssues.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              componentType: 'TRANSPORT',
+              routeId: component.routeId,
+              routeName: component.route?.name || null,
+              pricingAvailable: false,
+              issue: 'No active VehicleRate rows are available for this transfer route',
+            });
+          }
+
+          const payload = {
+            componentId: component.id,
+            serviceLane: 'transport',
+            routeId: component.routeId,
+            transportServiceTypeId,
+            touringRouteId: component.touringRouteId || null,
+            excursionTemplateId: template.id,
+            excursionTemplateComponentId: component.id,
+          };
+          quoteServicePayloads.push(payload);
+          const legacyUsage = this.detectLegacyAqabaPayloadUsage(payload, component);
+          if (legacyUsage.length > 0) {
+            archivedRouteUsage.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              sortOrder: component.sortOrder,
+              issues: legacyUsage,
+            });
+            failedChecks.push(`Archived/legacy route usage in ${code} #${expectation.sortOrder}`);
+          }
+        }
+
+        if (component.componentType === 'ACTIVITY') {
+          if (!component.activityId || !component.activity || component.activity.active === false) {
+            expansionIssues.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              sortOrder: component.sortOrder,
+              issue: 'Activity component must link to an active Activity Master record',
+            });
+            failedChecks.push(`Activity component cannot expand for ${code}`);
+            continue;
+          }
+
+          const activeVariantCount = await this.safeCount('activityRateVariant', {
+            activityId: component.activityId,
+            active: true,
+          });
+          const basePriceAvailable = Number(component.activity.costPrice || 0) > 0 || Number(component.activity.sellPrice || 0) > 0;
+          if (activeVariantCount === 0 && !basePriceAvailable) {
+            pricingIssues.push({
+              templateCode: code,
+              templateId: template.id,
+              componentId: component.id,
+              componentType: 'ACTIVITY',
+              activityId: component.activityId,
+              activityName: component.activity.name,
+              pricingAvailable: false,
+              issue: 'No active ActivityRateVariant or base Activity price is available',
+            });
+          }
+
+          quoteServicePayloads.push({
+            componentId: component.id,
+            serviceLane: 'activity',
+            activityId: component.activityId,
+            excursionTemplateId: template.id,
+            excursionTemplateComponentId: component.id,
+          });
+        }
+      }
+
+      templatesChecked.push({
+        code,
+        id: template.id,
+        name: template.name,
+        active: template.active !== false,
+        componentCount: components.length,
+        quoteServicePayloads,
+        canProduceQuoteServicePayloads:
+          quoteServicePayloads.length === 3 &&
+          !expansionIssues.some((issue: any) => issue.templateCode === code) &&
+          !missingComponents.some((issue: any) => issue.templateCode === code) &&
+          !archivedRouteUsage.some((issue: any) => issue.templateCode === code),
+      });
+    }
+
+    return {
+      passed: failedChecks.length === 0,
+      failedChecks,
+      templatesChecked,
+      expansionIssues,
+      pricingIssues,
+      archivedRouteUsage,
+      missingComponents,
+    };
+  }
+
+  async dryRunAqabaExcursionPricingReadiness() {
+    const templates = await (this.prisma as any).excursionTemplate.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES as unknown as string[] } },
+      include: {
+        components: {
+          include: {
+            activity: {
+              include: {
+                rateVariants: {
+                  where: { active: true },
+                  orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                },
+              },
+            },
+            route: true,
+            transportServiceType: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+    const templateByCode = new Map<string, any>((templates || []).map((template: any) => [normalizeWorkbookText(template.code), template]));
+    const rows = [];
+
+    for (const code of QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES) {
+      const template = templateByCode.get(code);
+      if (!template) {
+        rows.push({
+          code,
+          template: null,
+          transportComponents: [],
+          activityComponents: [],
+          missingPricingRows: [{ componentType: 'TEMPLATE', issue: 'Template is missing' }],
+          recommendedPricingAction: 'MANUAL_REVIEW',
+          safeToPrice: false,
+          blockingReasons: ['Template is missing'],
+        });
+        continue;
+      }
+
+      const missingPricingRows = [];
+      const blockingReasons = [];
+      const transportComponents = [];
+      const activityComponents = [];
+
+      for (const component of (template.components || []).filter((entry: any) => entry.active !== false)) {
+        if (component.componentType === 'TRANSPORT') {
+          const vehicleRates = component.routeId
+            ? await (this.prisma as any).vehicleRate.findMany({
+                where: { routeId: component.routeId, active: true },
+                include: {
+                  supplier: true,
+                  vehicle: true,
+                  serviceType: true,
+                },
+                orderBy: [{ minPax: 'asc' }, { maxPax: 'asc' }, { price: 'asc' }],
+              })
+            : [];
+          const supplierCoverage = Array.from(new Set((vehicleRates || []).map((rate: any) => rate.supplier?.name || rate.supplierId || 'Unassigned supplier')));
+          const vehicleCoverage = Array.from(new Set((vehicleRates || []).map((rate: any) => rate.vehicle?.name || rate.vehicleId).filter(Boolean)));
+          const hasVehicleRate = vehicleRates.length > 0;
+
+          if (!component.routeId || !component.route || component.route.isActive === false) {
+            blockingReasons.push(`Transport component ${component.id} is missing an active transfer route`);
+          }
+          if (!hasVehicleRate) {
+            missingPricingRows.push({
+              componentId: component.id,
+              componentType: 'TRANSPORT',
+              routeId: component.routeId || null,
+              routeName: component.route?.name || null,
+              issue: 'No active VehicleRate rows found for this transfer route',
+            });
+          }
+
+          transportComponents.push({
+            componentId: component.id,
+            label: component.label,
+            sortOrder: component.sortOrder,
+            routeId: component.routeId || null,
+            routeName: component.route?.name || null,
+            transportServiceTypeId: this.getComponentTransportServiceTypeId(component),
+            transportServiceTypeName: component.transportServiceType?.name || null,
+            vehicleRateExists: hasVehicleRate,
+            vehicleRateCount: vehicleRates.length,
+            supplierCoverage,
+            vehicleCoverage,
+            sampleRates: (vehicleRates || []).slice(0, 5).map((rate: any) => ({
+              id: rate.id,
+              supplier: rate.supplier?.name || rate.supplierId || null,
+              vehicle: rate.vehicle?.name || rate.vehicleId || null,
+              minPax: rate.minPax,
+              maxPax: rate.maxPax,
+              price: rate.price,
+              currency: rate.currency,
+              serviceType: rate.serviceType?.name || null,
+            })),
+          });
+        }
+
+        if (component.componentType === 'ACTIVITY') {
+          const activity = component.activity || null;
+          const activeVariants = activity?.rateVariants || [];
+          const basePriceExists = Boolean(activity && (Number(activity.costPrice || 0) > 0 || Number(activity.sellPrice || 0) > 0));
+          const hasActivityPricing = activeVariants.length > 0 || basePriceExists;
+
+          if (!component.activityId || !activity || activity.active === false) {
+            blockingReasons.push(`Activity component ${component.id} is missing an active Activity Master record`);
+          }
+          if (!hasActivityPricing) {
+            missingPricingRows.push({
+              componentId: component.id,
+              componentType: 'ACTIVITY',
+              activityId: component.activityId || null,
+              activityName: activity?.name || null,
+              issue: 'No active ActivityRateVariant or base Activity price found',
+            });
+          }
+
+          activityComponents.push({
+            componentId: component.id,
+            label: component.label,
+            sortOrder: component.sortOrder,
+            activityId: component.activityId || null,
+            activityName: activity?.name || null,
+            activityActive: activity ? activity.active !== false : false,
+            activityRateVariantExists: activeVariants.length > 0,
+            activityRateVariantCount: activeVariants.length,
+            basePriceExists,
+            baseCostPrice: activity?.costPrice ?? null,
+            baseSellPrice: activity?.sellPrice ?? null,
+            sampleVariants: activeVariants.slice(0, 5).map((variant: any) => ({
+              id: variant.id,
+              label: variant.label,
+              costPrice: variant.costPrice,
+              sellPrice: variant.sellPrice,
+              currency: variant.currency,
+              active: variant.active !== false,
+            })),
+          });
+        }
+      }
+
+      const safeToPrice = blockingReasons.length === 0;
+      rows.push({
+        template: {
+          id: template.id,
+          code: template.code,
+          name: template.name,
+          active: template.active !== false,
+        },
+        transportComponents,
+        activityComponents,
+        missingPricingRows,
+        recommendedPricingAction:
+          missingPricingRows.length === 0
+            ? 'NO_ACTION_PRICING_READY'
+            : safeToPrice
+              ? 'ADD_MISSING_VEHICLE_AND_ACTIVITY_RATES'
+              : 'FIX_COMPONENT_LINKS_BEFORE_PRICING',
+        safeToPrice,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_EXCURSION_PRICING_READINESS_DRY_RUN' as const,
+      mutatesData: false,
+      createsPricing: false,
+      changesRoutes: false,
+      changesActivities: false,
+      changesTemplates: false,
+      touchesHistoricalTouringRoutes: false,
+      templatesChecked: rows.length,
+      rows,
+      summary: {
+        safeToPrice: rows.filter((row) => row.safeToPrice).length,
+        blocked: rows.filter((row) => !row.safeToPrice).length,
+        missingPricingRows: rows.reduce((total, row) => total + row.missingPricingRows.length, 0),
+      },
+    };
+  }
+
+  async exportAqabaExcursionPricingWorkbook(outputPath: string) {
+    const readiness = await this.dryRunAqabaExcursionPricingReadiness();
+    const pricingCatalog = await this.resolveAqabaExcursionPricingCatalog();
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'DMC API';
+    workbook.created = new Date();
+
+    const transportSheet = workbook.addWorksheet('Transport Rates');
+    transportSheet.columns = [
+      { header: 'templateCode', key: 'templateCode', width: 30 },
+      { header: 'templateName', key: 'templateName', width: 42 },
+      { header: 'outboundRouteId', key: 'outboundRouteId', width: 38 },
+      { header: 'outboundRouteName', key: 'outboundRouteName', width: 42 },
+      { header: 'returnRouteId', key: 'returnRouteId', width: 38 },
+      { header: 'returnRouteName', key: 'returnRouteName', width: 42 },
+      { header: 'supplierName', key: 'supplierName', width: 34 },
+      { header: 'supplierId', key: 'supplierId', width: 38 },
+      { header: 'vehicleName', key: 'vehicleName', width: 28 },
+      { header: 'vehicleId', key: 'vehicleId', width: 38 },
+      { header: 'roundTripCostPrice', key: 'roundTripCostPrice', width: 20 },
+      { header: 'roundTripSellPrice', key: 'roundTripSellPrice', width: 20 },
+      { header: 'currency', key: 'currency', width: 12 },
+      { header: 'pricingBasis', key: 'pricingBasis', width: 16 },
+      { header: 'notes', key: 'notes', width: 50 },
+    ];
+
+    const activitySheet = workbook.addWorksheet('Activity Rates');
+    activitySheet.columns = [
+      { header: 'templateCode', key: 'templateCode', width: 30 },
+      { header: 'templateName', key: 'templateName', width: 36 },
+      { header: 'activityId', key: 'activityId', width: 38 },
+      { header: 'activityName', key: 'activityName', width: 34 },
+      { header: 'variantName', key: 'variantName', width: 30 },
+      { header: 'costPrice', key: 'costPrice', width: 14 },
+      { header: 'sellPrice', key: 'sellPrice', width: 14 },
+      { header: 'currency', key: 'currency', width: 12 },
+      { header: 'pricingBasis', key: 'pricingBasis', width: 16 },
+      { header: 'notes', key: 'notes', width: 50 },
+    ];
+
+    for (const row of readiness.rows || []) {
+      const templateCode = row.template?.code || row.code;
+      const templateName = row.template?.name || '';
+      const outboundComponent = (row.transportComponents || []).find((component: any) => Number(component.sortOrder) === 1);
+      const returnComponent = (row.transportComponents || []).find((component: any) => Number(component.sortOrder) === 3);
+      const hasMissingTransportPricing = (row.transportComponents || []).some((component: any) => !component.vehicleRateExists);
+      if (hasMissingTransportPricing && outboundComponent?.routeId && returnComponent?.routeId) {
+        for (const vehicleName of AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES) {
+          const vehicle = pricingCatalog.vehiclesByName.get(vehicleName);
+          transportSheet.addRow({
+            templateCode,
+            templateName,
+            outboundRouteId: outboundComponent.routeId || '',
+            outboundRouteName: outboundComponent.routeName || '',
+            returnRouteId: returnComponent.routeId || '',
+            returnRouteName: returnComponent.routeName || '',
+            supplierName: pricingCatalog.supplier?.name || AQABA_EXCURSION_PRICING_SUPPLIER_NAME,
+            supplierId: pricingCatalog.supplier?.id || '',
+            vehicleName,
+            vehicleId: vehicle?.id || '',
+            roundTripCostPrice: '',
+            roundTripSellPrice: '',
+            currency: 'JOD',
+            pricingBasis: 'ROUND_TRIP_PER_VEHICLE',
+            notes: '',
+          });
+        }
+      }
+
+      for (const component of row.activityComponents || []) {
+        if (component.activityRateVariantExists || component.basePriceExists) continue;
+        activitySheet.addRow({
+          templateCode,
+          templateName,
+          activityId: component.activityId || '',
+          activityName: component.activityName || '',
+          variantName: '',
+          costPrice: '',
+          sellPrice: '',
+          currency: 'JOD',
+          pricingBasis: 'PER_PERSON',
+          notes: '',
+        });
+      }
+    }
+
+    [transportSheet, activitySheet].forEach((sheet) => {
+      sheet.getRow(1).font = { bold: true };
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    });
+
+    await workbook.xlsx.writeFile(outputPath);
+
+    return {
+      success: true,
+      mode: 'AQABA_EXCURSION_PRICING_WORKBOOK_EXPORT' as const,
+      mutatesData: false,
+      outputPath,
+      sheets: {
+        transportRates: Math.max(transportSheet.rowCount - 1, 0),
+        activityRates: Math.max(activitySheet.rowCount - 1, 0),
+      },
+      allowedTemplateCodes: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES,
+    };
+  }
+
+  async previewAqabaExcursionPricingWorkbookImport(workbookPath: string) {
+    return this.processAqabaExcursionPricingWorkbookImport(workbookPath, false);
+  }
+
+  async importAqabaExcursionPricingWorkbook(workbookPath: string, input: AqabaExcursionPricingImportInput) {
+    const confirm = normalizeWorkbookText(input.confirm);
+    if (confirm !== AQABA_EXCURSION_PRICING_IMPORT_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba excursion pricing import requires --confirm=${AQABA_EXCURSION_PRICING_IMPORT_CONFIRMATION}.`);
+    }
+    return this.processAqabaExcursionPricingWorkbookImport(workbookPath, true);
+  }
+
+  async dryRunAqabaExcursionDuplicateVehicleRateRepair() {
+    const context = await this.buildAqabaExcursionPricingImportContext();
+    const allowedRouteIds = Array.from(context.allowedRouteIds.keys());
+    const supplierId = context.pricingCatalog.supplier.id;
+
+    const rates = await (this.prisma as any).vehicleRate.findMany({
+      where: {
+        active: true,
+        routeId: { in: allowedRouteIds },
+        supplierId,
+      },
+      include: {
+        supplier: true,
+        vehicle: true,
+        serviceType: true,
+        route: true,
+      },
+      orderBy: [{ routeName: 'asc' }, { vehicleId: 'asc' }, { serviceTypeId: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const groups = new Map<string, any[]>();
+    for (const rate of rates || []) {
+      const key = [rate.routeId, rate.supplierId || 'NO_SUPPLIER', rate.vehicleId, rate.serviceTypeId].join('|');
+      const existing = groups.get(key) || [];
+      existing.push(rate);
+      groups.set(key, existing);
+    }
+
+    const duplicateGroups = [];
+    for (const groupRates of groups.values()) {
+      if (groupRates.length <= 1) continue;
+      const sorted = [...groupRates].sort((left: any, right: any) => {
+        const leftTime = new Date(left.createdAt || 0).getTime();
+        const rightTime = new Date(right.createdAt || 0).getTime();
+        return leftTime - rightTime || String(left.id).localeCompare(String(right.id));
+      });
+      const keptRate = sorted[0];
+      const duplicates = sorted.slice(1);
+      const duplicateRateIds = duplicates.map((rate: any) => rate.id);
+      const duplicatePrices = sorted.map((rate: any) => ({
+        id: rate.id,
+        price: rate.price,
+        currency: rate.currency,
+        createdAt: rate.createdAt || null,
+      }));
+      const priceKeys = new Set(sorted.map((rate: any) => `${Number(rate.price)}|${normalizeWorkbookText(rate.currency).toUpperCase()}`));
+      const blockingReasons = [];
+
+      if (priceKeys.size > 1) {
+        blockingReasons.push('Duplicate active rates have conflicting price/currency values');
+      }
+
+      const duplicateQuoteReferences = [];
+      for (const rate of duplicates) {
+        const quoteReferences = await this.safeCount('quoteItem', { appliedVehicleRateId: rate.id });
+        if (quoteReferences > 0) {
+          duplicateQuoteReferences.push({ vehicleRateId: rate.id, quoteReferences });
+        }
+      }
+      if (duplicateQuoteReferences.length > 0) {
+        blockingReasons.push('One or more duplicate rates are referenced by quote items');
+      }
+
+      duplicateGroups.push({
+        routeId: keptRate.routeId,
+        routeName: keptRate.route?.name || keptRate.routeName,
+        supplierId: keptRate.supplierId || null,
+        supplierName: keptRate.supplier?.name || null,
+        vehicleId: keptRate.vehicleId,
+        vehicleName: keptRate.vehicle?.name || null,
+        serviceTypeId: keptRate.serviceTypeId,
+        serviceTypeName: keptRate.serviceType?.name || null,
+        activeRateCount: sorted.length,
+        duplicateRateIds,
+        keptRateId: keptRate.id,
+        duplicatePrices,
+        duplicateQuoteReferences,
+        safeToRepair: blockingReasons.length === 0,
+        blockingReasons,
+      });
+    }
+
+    return {
+      success: true,
+      mode: 'AQABA_EXCURSION_DUPLICATE_VEHICLE_RATE_REPAIR_DRY_RUN' as const,
+      mutatesData: false,
+      deletesData: false,
+      touchesQuotesOrBookings: false,
+      allowedTemplateCodes: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES,
+      allowedRouteIds,
+      supplier: context.pricingCatalog.supplier,
+      duplicateGroups,
+      summary: {
+        duplicateGroups: duplicateGroups.length,
+        safeToRepair: duplicateGroups.filter((group) => group.safeToRepair).length,
+        blocked: duplicateGroups.filter((group) => !group.safeToRepair).length,
+        duplicateRates: duplicateGroups.reduce((total, group) => total + group.duplicateRateIds.length, 0),
+      },
+    };
+  }
+
+  async applyAqabaExcursionDuplicateVehicleRateRepair(input: AqabaExcursionDuplicateVehicleRateRepairInput) {
+    const confirm = normalizeWorkbookText(input.confirm);
+    if (confirm !== AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba excursion duplicate VehicleRate repair requires --confirm=${AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION}.`);
+    }
+
+    const dryRun = await this.dryRunAqabaExcursionDuplicateVehicleRateRepair();
+    const repaired = [];
+    const blocked = [];
+
+    for (const group of dryRun.duplicateGroups) {
+      if (!group.safeToRepair) {
+        blocked.push(group);
+        continue;
+      }
+
+      for (const duplicateRateId of group.duplicateRateIds) {
+        const current = await (this.prisma as any).vehicleRate.findUnique({
+          where: { id: duplicateRateId },
+          select: { id: true, notes: true, active: true },
+        });
+        if (!current?.active) continue;
+        const repairNote = `Archived by ${AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION}; kept VehicleRate ${group.keptRateId}; scoped to Aqaba excursion duplicate cleanup.`;
+        const notes = [normalizeWorkbookText(current.notes), repairNote].filter(Boolean).join(' | ');
+        const updated = await (this.prisma as any).vehicleRate.update({
+          where: { id: duplicateRateId },
+          data: { active: false, notes },
+          select: { id: true, active: true, routeId: true, supplierId: true, vehicleId: true, serviceTypeId: true },
+        });
+        repaired.push({
+          archivedRateId: updated.id,
+          keptRateId: group.keptRateId,
+          routeId: updated.routeId,
+          supplierId: updated.supplierId,
+          vehicleId: updated.vehicleId,
+          serviceTypeId: updated.serviceTypeId,
+        });
+      }
+    }
+
+    return {
+      success: blocked.length === 0,
+      mode: 'AQABA_EXCURSION_DUPLICATE_VEHICLE_RATE_REPAIR_APPLY' as const,
+      mutatesData: repaired.length > 0,
+      deletesData: false,
+      touchesQuotesOrBookings: false,
+      repaired,
+      blocked,
+      summary: {
+        archivedDuplicateRates: repaired.length,
+        blockedGroups: blocked.length,
+      },
+    };
+  }
+
+  private async processAqabaExcursionPricingWorkbookImport(workbookPath: string, apply: boolean) {
+    const normalizedPath = normalizeWorkbookText(workbookPath);
+    if (!normalizedPath) {
+      throw new BadRequestException('Aqaba excursion pricing import requires a workbook path.');
+    }
+
+    const context = await this.buildAqabaExcursionPricingImportContext();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(normalizedPath);
+
+    const transportRows = this.readPricingWorkbookSheet(workbook, 'Transport Rates');
+    const activityRows = this.readPricingWorkbookSheet(workbook, 'Activity Rates');
+    const rows: any[] = [];
+    const duplicateKeys = new Map<string, number>();
+    const failedChecks: string[] = [];
+    const getDuplicateKeys = (parsed: any): string[] =>
+      Array.isArray(parsed.duplicateKeys)
+        ? parsed.duplicateKeys.map((key: unknown) => normalizeWorkbookText(key)).filter(Boolean)
+        : [normalizeWorkbookText(parsed.duplicateKey)].filter(Boolean);
+
+    for (const row of transportRows) {
+      const parsed = await this.validateAqabaExcursionTransportPricingRow(row, context);
+      rows.push(parsed);
+      if (parsed.action !== 'SKIP_EMPTY') {
+        for (const duplicateKey of getDuplicateKeys(parsed)) {
+          duplicateKeys.set(duplicateKey, (duplicateKeys.get(duplicateKey) || 0) + 1);
+        }
+      }
+    }
+
+    for (const row of activityRows) {
+      const parsed = await this.validateAqabaExcursionActivityPricingRow(row, context);
+      rows.push(parsed);
+      if (parsed.action !== 'SKIP_EMPTY') {
+        for (const duplicateKey of getDuplicateKeys(parsed)) {
+          duplicateKeys.set(duplicateKey, (duplicateKeys.get(duplicateKey) || 0) + 1);
+        }
+      }
+    }
+
+    for (const row of rows) {
+      const rowDuplicateKeys = row.action === 'SKIP_EMPTY' ? [] : getDuplicateKeys(row);
+      const duplicatedKeys = rowDuplicateKeys.filter((duplicateKey: string) => (duplicateKeys.get(duplicateKey) || 0) > 1);
+      if (duplicatedKeys.length > 0) {
+        row.blockingReasons.push(`Duplicate rate row in workbook: ${duplicatedKeys.join(', ')}`);
+      }
+      row.safeToApply = row.blockingReasons.length === 0 && row.action === 'CREATE';
+      if (row.blockingReasons.length > 0) {
+        failedChecks.push(`${row.sheet} row ${row.rowNumber}: ${row.blockingReasons.join('; ')}`);
+      }
+    }
+
+    const applicableRows = rows.filter((row) => row.safeToApply);
+    const skippedRows = rows.filter((row) => row.action !== 'CREATE' && row.blockingReasons.length === 0);
+    const result: any = {
+      success: failedChecks.length === 0,
+      mode: apply ? 'AQABA_EXCURSION_PRICING_IMPORT' : 'AQABA_EXCURSION_PRICING_IMPORT_PREVIEW',
+      mutatesData: apply,
+      workbookPath: normalizedPath,
+      allowedTemplateCodes: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES,
+      safeToApply: failedChecks.length === 0,
+      failedChecks,
+      summary: {
+        workbookRows: rows.length,
+        creatableRows: applicableRows.length,
+        skippedRows: skippedRows.length,
+        blockedRows: rows.filter((row) => row.blockingReasons.length > 0).length,
+      },
+      rows: rows.map(({ duplicateKey, duplicateKeys, data, ...row }) => row),
+      created: {
+        vehicleRates: [],
+        activityRateVariants: [],
+      },
+    };
+
+    if (!apply) return result;
+    if (failedChecks.length > 0) {
+      throw new BadRequestException(`Aqaba excursion pricing import is blocked: ${failedChecks.join(' | ')}`);
+    }
+
+    for (const row of applicableRows) {
+      if (row.kind === 'TRANSPORT') {
+        for (const rateData of row.data || []) {
+          const created = await (this.prisma as any).vehicleRate.create({
+            data: rateData,
+            include: { supplier: true, vehicle: true, serviceType: true, route: true },
+          });
+          result.created.vehicleRates.push({
+            id: created.id,
+            templateCode: row.templateCode,
+            routeId: created.routeId,
+            routeName: created.routeName,
+            supplierId: created.supplierId || null,
+            supplierName: created.supplier?.name || null,
+            vehicleId: created.vehicleId,
+            vehicleName: created.vehicle?.name || null,
+            price: created.price,
+            roundTripSellPrice: row.roundTripSellPrice,
+            currency: created.currency,
+            pricingBasis: 'ROUND_TRIP_PER_VEHICLE_SPLIT_LEG',
+          });
+        }
+      }
+
+      if (row.kind === 'ACTIVITY') {
+        const created = await (this.prisma as any).activityRateVariant.create({
+          data: row.data,
+        });
+        result.created.activityRateVariants.push({
+          id: created.id,
+          activityId: created.activityId,
+          name: created.name,
+          costPrice: created.costPrice,
+          sellPrice: created.sellPrice,
+          currency: created.currency,
+        });
+      }
+    }
+
+    result.summary.createdVehicleRates = result.created.vehicleRates.length;
+    result.summary.createdActivityRateVariants = result.created.activityRateVariants.length;
+    return result;
+  }
+
+  private readPricingWorkbookSheet(workbook: ExcelJS.Workbook, sheetName: string) {
+    const sheet = workbook.getWorksheet(sheetName);
+    if (!sheet) return [];
+    const headerRow = sheet.getRow(1);
+    const headerByColumn = new Map<number, string>();
+    headerRow.eachCell((cell, columnNumber) => {
+      headerByColumn.set(columnNumber, normalizeWorkbookHeader(this.excelCellValue(cell.value)));
+    });
+
+    const rows: any[] = [];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const data: Record<string, string> = {};
+      row.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+        const header = headerByColumn.get(columnNumber);
+        if (header) data[header] = normalizeWorkbookText(this.excelCellValue(cell.value));
+      });
+      if (Object.values(data).some((value) => normalizeWorkbookText(value))) {
+        rows.push({ sheet: sheetName, rowNumber, data });
+      }
+    });
+    return rows;
+  }
+
+  private excelCellValue(value: unknown): unknown {
+    if (!value || value instanceof Date) return value;
+    if (typeof value === 'object') {
+      const objectValue = value as any;
+      if (objectValue.text !== undefined) return objectValue.text;
+      if (objectValue.result !== undefined) return objectValue.result;
+      if (Array.isArray(objectValue.richText)) return objectValue.richText.map((entry: any) => entry.text || '').join('');
+    }
+    return value;
+  }
+
+  private async buildAqabaExcursionPricingImportContext() {
+    const pricingCatalog = await this.resolveAqabaExcursionPricingCatalog();
+    const templates = await (this.prisma as any).excursionTemplate.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES as unknown as string[] } },
+      include: {
+        components: {
+          include: { activity: true, route: true, transportServiceType: true },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+
+    const templatesByCode = new Map<string, any>();
+    const allowedRouteIds = new Map<string, any>();
+    const allowedRouteKeys = new Map<string, any>();
+    const transportPairsByTemplateCode = new Map<string, any>();
+    const allowedActivityIds = new Map<string, any>();
+    const allowedActivityKeys = new Map<string, any>();
+
+    for (const template of templates || []) {
+      const templateCode = normalizeWorkbookText(template.code);
+      if (!QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES.includes(templateCode as any)) continue;
+      templatesByCode.set(templateCode, template);
+      const transportComponents = (template.components || [])
+        .filter((entry: any) => entry.active !== false && entry.componentType === 'TRANSPORT')
+        .sort((left: any, right: any) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
+      const outboundComponent = transportComponents.find((entry: any) => Number(entry.sortOrder) === 1) || transportComponents[0] || null;
+      const returnComponent = transportComponents.find((entry: any) => Number(entry.sortOrder) === 3) || transportComponents[1] || null;
+      transportPairsByTemplateCode.set(templateCode, { template, outboundComponent, returnComponent });
+      for (const component of (template.components || []).filter((entry: any) => entry.active !== false)) {
+        if (component.componentType === 'TRANSPORT' && component.routeId) {
+          const entry = { template, component, route: component.route };
+          allowedRouteIds.set(component.routeId, entry);
+          allowedRouteKeys.set(`${templateCode}|${component.routeId}`, entry);
+        }
+        if (component.componentType === 'ACTIVITY' && component.activityId) {
+          const entry = { template, component, activity: component.activity };
+          allowedActivityIds.set(component.activityId, entry);
+          allowedActivityKeys.set(`${templateCode}|${component.activityId}`, entry);
+        }
+      }
+    }
+
+    return { templatesByCode, allowedRouteIds, allowedRouteKeys, transportPairsByTemplateCode, allowedActivityIds, allowedActivityKeys, pricingCatalog };
+  }
+
+  private async resolveAqabaExcursionPricingCatalog() {
+    const supplier = await (this.prisma as any).supplier.findFirst({
+      where: { name: { equals: AQABA_EXCURSION_PRICING_SUPPLIER_NAME, mode: 'insensitive' }, type: { equals: 'transport', mode: 'insensitive' } },
+      select: { id: true, name: true, type: true },
+    });
+    const vehicles = await (this.prisma as any).vehicle.findMany({
+      where: {
+        OR: AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES.map((name) => ({ name: { equals: name, mode: 'insensitive' } })),
+      },
+      select: { id: true, name: true, maxPax: true, vehicleType: true, supplierId: true, resolvedSupplierId: true, supplierName: true },
+      orderBy: [{ maxPax: 'asc' }, { name: 'asc' }],
+    });
+
+    const vehiclesByName = new Map<string, any>();
+    for (const name of AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES) {
+      const matches = (vehicles || []).filter((vehicle: any) => normalizeWorkbookText(vehicle.name).toLowerCase() === name.toLowerCase());
+      const supplierSpecific =
+        matches.find((vehicle: any) => supplier?.id && normalizeWorkbookText(vehicle.resolvedSupplierId) === supplier.id) ||
+        matches.find((vehicle: any) => normalizeWorkbookText(vehicle.supplierName).toLowerCase() === AQABA_EXCURSION_PRICING_SUPPLIER_NAME.toLowerCase()) ||
+        matches[0] ||
+        null;
+      if (supplierSpecific) vehiclesByName.set(name, supplierSpecific);
+    }
+
+    const missing: string[] = [];
+    if (!supplier?.id) missing.push(`Missing transport supplier: ${AQABA_EXCURSION_PRICING_SUPPLIER_NAME}`);
+    for (const name of AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES) {
+      if (!vehiclesByName.get(name)?.id) missing.push(`Missing FIT vehicle: ${name}`);
+    }
+    if (missing.length > 0) {
+      throw new BadRequestException(`Aqaba excursion pricing workbook requires canonical catalog rows: ${missing.join('; ')}`);
+    }
+
+    return {
+      supplier,
+      vehiclesByName,
+      allowedVehicleIds: new Set(Array.from(vehiclesByName.values()).map((vehicle: any) => vehicle.id)),
+    };
+  }
+
+  private parseOptionalWorkbookMoney(value: unknown, label: string, blockingReasons: string[]) {
+    const raw = normalizeWorkbookText(value);
+    if (!raw) return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      blockingReasons.push(`${label} must be a non-negative number`);
+      return null;
+    }
+    return parsed;
+  }
+
+  private async validateAqabaExcursionTransportPricingRow(row: any, context: any) {
+    const data = row.data;
+    const blockingReasons: string[] = [];
+    const templateCode = normalizeWorkbookText(data.templatecode);
+    const outboundRouteId = normalizeWorkbookText(data.outboundrouteid);
+    const returnRouteId = normalizeWorkbookText(data.returnrouteid);
+    const supplierId = normalizeWorkbookText(data.supplierid);
+    const vehicleId = normalizeWorkbookText(data.vehicleid);
+    const currency = normalizeWorkbookText(data.currency || 'JOD').toUpperCase();
+    const pricingBasis = normalizeWorkbookText(data.pricingbasis || 'ROUND_TRIP_PER_VEHICLE').toUpperCase();
+    const roundTripCostPrice = this.parseOptionalWorkbookMoney(data.roundtripcostprice, 'roundTripCostPrice', blockingReasons);
+    const roundTripSellPrice = this.parseOptionalWorkbookMoney(data.roundtripsellprice, 'roundTripSellPrice', blockingReasons);
+    const isEmptyPricingRow = roundTripCostPrice === null && roundTripSellPrice === null;
+
+    const template = context.templatesByCode.get(templateCode);
+    const transportPair = context.transportPairsByTemplateCode.get(templateCode);
+    if (!template || !QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES.includes(templateCode as any)) {
+      blockingReasons.push('templateCode is not one of the allowed Aqaba Excursion Templates');
+    }
+
+    if (!outboundRouteId) {
+      blockingReasons.push('outboundRouteId is required for transport pricing rows');
+    } else if (!UUID_PATTERN.test(outboundRouteId)) {
+      blockingReasons.push('outboundRouteId must be a UUID');
+    }
+    if (!returnRouteId) {
+      blockingReasons.push('returnRouteId is required for transport pricing rows');
+    } else if (!UUID_PATTERN.test(returnRouteId)) {
+      blockingReasons.push('returnRouteId must be a UUID');
+    }
+    if (!supplierId) {
+      blockingReasons.push('supplierId is required for transport pricing rows');
+    } else if (!UUID_PATTERN.test(supplierId)) {
+      blockingReasons.push('supplierId must be a UUID');
+    }
+    if (!vehicleId) {
+      blockingReasons.push('vehicleId is required for transport pricing rows');
+    } else if (!UUID_PATTERN.test(vehicleId)) {
+      blockingReasons.push('vehicleId must be a UUID');
+    }
+
+    const outboundRouteContext = context.allowedRouteKeys.get(`${templateCode}|${outboundRouteId}`) || null;
+    const returnRouteContext = context.allowedRouteKeys.get(`${templateCode}|${returnRouteId}`) || null;
+    if (!outboundRouteContext) {
+      blockingReasons.push('outboundRouteId is unknown or not linked to the allowed Aqaba excursion outbound component');
+    }
+    if (!returnRouteContext) {
+      blockingReasons.push('returnRouteId is unknown or not linked to the allowed Aqaba excursion return component');
+    }
+    if (transportPair?.outboundComponent?.routeId && outboundRouteId !== transportPair.outboundComponent.routeId) {
+      blockingReasons.push('outboundRouteId does not match the template outbound transport component');
+    }
+    if (transportPair?.returnComponent?.routeId && returnRouteId !== transportPair.returnComponent.routeId) {
+      blockingReasons.push('returnRouteId does not match the template return transport component');
+    }
+    if (supplierId && supplierId !== context.pricingCatalog.supplier.id) {
+      blockingReasons.push(`supplierId must be ${AQABA_EXCURSION_PRICING_SUPPLIER_NAME}; Alpha or other transport suppliers are not allowed`);
+    }
+    if (vehicleId && !context.pricingCatalog.allowedVehicleIds.has(vehicleId)) {
+      blockingReasons.push('vehicleId is not one of the allowed FIT vehicles: Sedan 2, Mini Van 6, Van 9');
+    }
+    if (currency !== 'JOD') {
+      blockingReasons.push('currency must be JOD');
+    }
+    if (pricingBasis !== 'ROUND_TRIP_PER_VEHICLE') {
+      blockingReasons.push('Transport pricingBasis must be ROUND_TRIP_PER_VEHICLE');
+    }
+
+    if (isEmptyPricingRow) {
+      return {
+        kind: 'TRANSPORT',
+        sheet: row.sheet,
+        rowNumber: row.rowNumber,
+        templateCode,
+        outboundRouteId,
+        returnRouteId,
+        supplierId: supplierId || null,
+        vehicleId: vehicleId || null,
+        action: 'SKIP_EMPTY',
+        safeToApply: false,
+        blockingReasons,
+      };
+    }
+
+    if (roundTripSellPrice === null) blockingReasons.push('roundTripSellPrice is required for transport pricing rows');
+
+    const [supplier, vehicle] = await Promise.all([
+      supplierId && UUID_PATTERN.test(supplierId) ? (this.prisma as any).supplier.findUnique({ where: { id: supplierId } }) : Promise.resolve(null),
+      vehicleId && UUID_PATTERN.test(vehicleId) ? (this.prisma as any).vehicle.findUnique({ where: { id: vehicleId } }) : Promise.resolve(null),
+    ]);
+    if (supplierId && UUID_PATTERN.test(supplierId) && !supplier) blockingReasons.push('supplierId is unknown');
+    if (vehicleId && UUID_PATTERN.test(vehicleId) && !vehicle) blockingReasons.push('vehicleId is unknown');
+
+    const outboundServiceTypeId = outboundRouteContext ? this.getComponentTransportServiceTypeId(outboundRouteContext.component) : null;
+    const returnServiceTypeId = returnRouteContext ? this.getComponentTransportServiceTypeId(returnRouteContext.component) : null;
+    const serviceTypeId = outboundServiceTypeId || returnServiceTypeId;
+    if (!serviceTypeId) blockingReasons.push('Transport component is missing transportServiceTypeId');
+
+    const [existingOutbound, existingReturn] =
+      outboundRouteId && returnRouteId && vehicleId && serviceTypeId
+        ? await Promise.all([
+            (this.prisma as any).vehicleRate.findFirst({
+              where: {
+                routeId: outboundRouteId,
+                vehicleId,
+                serviceTypeId: outboundServiceTypeId || serviceTypeId,
+                supplierId: supplierId || null,
+                minPax: 1,
+                maxPax: 99,
+                active: true,
+              },
+              select: { id: true, price: true, currency: true },
+            }),
+            (this.prisma as any).vehicleRate.findFirst({
+              where: {
+                routeId: returnRouteId,
+                vehicleId,
+                serviceTypeId: returnServiceTypeId || serviceTypeId,
+                supplierId: supplierId || null,
+                minPax: 1,
+                maxPax: 99,
+                active: true,
+              },
+              select: { id: true, price: true, currency: true },
+            }),
+          ])
+        : [null, null];
+    const action = existingOutbound && existingReturn ? 'SKIP_EXISTING' : 'CREATE';
+    const legSellPrice = roundTripSellPrice === null ? null : roundTripSellPrice / 2;
+    const legCostPrice = roundTripCostPrice === null ? null : roundTripCostPrice / 2;
+    if (
+      existingOutbound &&
+      legSellPrice !== null &&
+      (Number(existingOutbound.price) !== legSellPrice || normalizeWorkbookText(existingOutbound.currency).toUpperCase() !== currency)
+    ) {
+      blockingReasons.push(`Existing outbound VehicleRate collision ${existingOutbound.id} has different split price or currency`);
+    }
+    if (
+      existingReturn &&
+      legSellPrice !== null &&
+      (Number(existingReturn.price) !== legSellPrice || normalizeWorkbookText(existingReturn.currency).toUpperCase() !== currency)
+    ) {
+      blockingReasons.push(`Existing return VehicleRate collision ${existingReturn.id} has different split price or currency`);
+    }
+
+    const notes = [
+      normalizeWorkbookText(data.notes),
+      roundTripCostPrice !== null ? `Workbook roundTripCostPrice=${roundTripCostPrice}; split leg costPrice=${legCostPrice}` : '',
+      roundTripSellPrice !== null ? `Workbook roundTripSellPrice=${roundTripSellPrice}; split leg sellPrice=${legSellPrice}` : '',
+      `Aqaba excursion RT pricing import template=${templateCode}; generated split legs to prevent double charging`,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return {
+      kind: 'TRANSPORT',
+      sheet: row.sheet,
+      rowNumber: row.rowNumber,
+      templateCode,
+      templateName: template?.name || normalizeWorkbookText(data.templatename),
+      outboundRouteId,
+      outboundRouteName: outboundRouteContext?.route?.name || normalizeWorkbookText(data.outboundroutename),
+      returnRouteId,
+      returnRouteName: returnRouteContext?.route?.name || normalizeWorkbookText(data.returnroutename),
+      supplierId: supplierId || null,
+      supplierName: supplier?.name || normalizeWorkbookText(data.suppliername) || null,
+      vehicleId,
+      vehicleName: vehicle?.name || normalizeWorkbookText(data.vehiclename) || null,
+      roundTripCostPrice,
+      roundTripSellPrice,
+      splitLegCostPrice: legCostPrice,
+      splitLegSellPrice: legSellPrice,
+      currency,
+      pricingBasis,
+      existingOutboundRateId: existingOutbound?.id || null,
+      existingReturnRateId: existingReturn?.id || null,
+      action,
+      duplicateKey: ['TRANSPORT_TEMPLATE', templateCode, supplierId || 'NO_SUPPLIER', vehicleId].join('|'),
+      duplicateKeys: [
+        ['TRANSPORT_TEMPLATE', templateCode, supplierId || 'NO_SUPPLIER', vehicleId].join('|'),
+        ['TRANSPORT_LEG', outboundRouteId, supplierId || 'NO_SUPPLIER', vehicleId, outboundServiceTypeId || serviceTypeId || 'NO_SERVICE_TYPE'].join('|'),
+        ['TRANSPORT_LEG', returnRouteId, supplierId || 'NO_SUPPLIER', vehicleId, returnServiceTypeId || serviceTypeId || 'NO_SERVICE_TYPE'].join('|'),
+      ],
+      safeToApply: false,
+      blockingReasons,
+      data: [
+        existingOutbound
+          ? null
+          : {
+              vehicleId,
+              serviceTypeId: outboundServiceTypeId || serviceTypeId,
+              supplierId: supplierId || null,
+              routeId: outboundRouteId,
+              fromPlaceId: outboundRouteContext?.route?.fromPlaceId || null,
+              toPlaceId: outboundRouteContext?.route?.toPlaceId || null,
+              routeName: outboundRouteContext?.route?.name || normalizeWorkbookText(data.outboundroutename),
+              minPax: 1,
+              maxPax: 99,
+              price: legSellPrice,
+              currency,
+              notes: [notes, 'RT split leg=outbound'].filter(Boolean).join(' | '),
+              active: true,
+              validFrom: new Date('2026-01-01T00:00:00.000Z'),
+              validTo: new Date('2099-12-31T00:00:00.000Z'),
+            },
+        existingReturn
+          ? null
+          : {
+              vehicleId,
+              serviceTypeId: returnServiceTypeId || serviceTypeId,
+              supplierId: supplierId || null,
+              routeId: returnRouteId,
+              fromPlaceId: returnRouteContext?.route?.fromPlaceId || null,
+              toPlaceId: returnRouteContext?.route?.toPlaceId || null,
+              routeName: returnRouteContext?.route?.name || normalizeWorkbookText(data.returnroutename),
+              minPax: 1,
+              maxPax: 99,
+              price: legSellPrice,
+              currency,
+              notes: [notes, 'RT split leg=return'].filter(Boolean).join(' | '),
+              active: true,
+              validFrom: new Date('2026-01-01T00:00:00.000Z'),
+              validTo: new Date('2099-12-31T00:00:00.000Z'),
+            },
+      ].filter(Boolean),
+    };
+  }
+
+  private async validateAqabaExcursionActivityPricingRow(row: any, context: any) {
+    const data = row.data;
+    const blockingReasons: string[] = [];
+    const templateCode = normalizeWorkbookText(data.templatecode);
+    const activityId = normalizeWorkbookText(data.activityid);
+    const variantName = normalizeWorkbookText(data.variantname);
+    const currency = normalizeWorkbookText(data.currency || 'JOD').toUpperCase();
+    const pricingBasis = normalizeWorkbookText(data.pricingbasis || 'PER_PERSON').toUpperCase();
+    const costPrice = this.parseOptionalWorkbookMoney(data.costprice, 'costPrice', blockingReasons);
+    const sellPrice = this.parseOptionalWorkbookMoney(data.sellprice, 'sellPrice', blockingReasons);
+    const isEmptyPricingRow = !variantName && costPrice === null && sellPrice === null;
+    const template = context.templatesByCode.get(templateCode);
+    const activityContext = context.allowedActivityKeys.get(`${templateCode}|${activityId}`) || null;
+
+    if (!template || !QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES.includes(templateCode as any)) {
+      blockingReasons.push('templateCode is not one of the allowed Aqaba Excursion Templates');
+    }
+    if (!activityContext) {
+      blockingReasons.push('activityId is unknown or not linked to an allowed Aqaba excursion activity component');
+    }
+    if (currency !== 'JOD') {
+      blockingReasons.push('currency must be JOD');
+    }
+    if (!['PER_PERSON', 'PER_GROUP'].includes(pricingBasis)) {
+      blockingReasons.push('Activity pricingBasis must be PER_PERSON or PER_GROUP');
+    }
+
+    if (isEmptyPricingRow) {
+      return {
+        kind: 'ACTIVITY',
+        sheet: row.sheet,
+        rowNumber: row.rowNumber,
+        templateCode,
+        activityId,
+        action: 'SKIP_EMPTY',
+        safeToApply: false,
+        blockingReasons,
+      };
+    }
+
+    if (!variantName) blockingReasons.push('variantName is required for activity pricing rows');
+    if (costPrice === null) blockingReasons.push('costPrice is required for activity pricing rows');
+    if (sellPrice === null) blockingReasons.push('sellPrice is required for activity pricing rows');
+
+    const activity = activityId ? await (this.prisma as any).activity.findUnique({ where: { id: activityId } }) : null;
+    if (!activity) blockingReasons.push('activityId is unknown');
+
+    const existing =
+      activityId && variantName
+        ? await (this.prisma as any).activityRateVariant.findFirst({
+            where: { activityId, name: { equals: variantName, mode: 'insensitive' }, active: true },
+            select: { id: true, costPrice: true, sellPrice: true, currency: true, pricingBasis: true },
+          })
+        : null;
+    const action = existing ? 'SKIP_EXISTING' : 'CREATE';
+    if (
+      existing &&
+      (Number(existing.costPrice) !== costPrice ||
+        Number(existing.sellPrice) !== sellPrice ||
+        normalizeWorkbookText(existing.currency).toUpperCase() !== currency ||
+        normalizeWorkbookText(existing.pricingBasis).toUpperCase() !== pricingBasis)
+    ) {
+      blockingReasons.push(`Existing ActivityRateVariant collision ${existing.id} has different pricing`);
+    }
+
+    const existingCount =
+      activityId && typeof (this.prisma as any).activityRateVariant?.count === 'function'
+        ? await (this.prisma as any).activityRateVariant.count({ where: { activityId } })
+        : 0;
+
+    return {
+      kind: 'ACTIVITY',
+      sheet: row.sheet,
+      rowNumber: row.rowNumber,
+      templateCode,
+      templateName: template?.name || normalizeWorkbookText(data.templatename),
+      activityId,
+      activityName: activity?.name || normalizeWorkbookText(data.activityname),
+      variantName,
+      costPrice,
+      sellPrice,
+      currency,
+      pricingBasis,
+      existingRateVariantId: existing?.id || null,
+      action,
+      duplicateKey: ['ACTIVITY', templateCode, activityId, normalizeWorkbookKey(variantName)].join('|'),
+      safeToApply: false,
+      blockingReasons,
+      data: {
+        activityId,
+        name: variantName,
+        pricingBasis,
+        currency,
+        costPrice,
+        sellPrice,
+        notes: normalizeWorkbookText(data.notes) || `Aqaba excursion pricing import template=${templateCode}`,
+        active: true,
+        sortOrder: existingCount + 1,
+      },
+    };
+  }
+
+  async applyAqabaActivityCleanup(id: string, input: AqabaActivityCleanupApplyInput) {
+    const routeId = normalizeWorkbookText(id);
+    const companyId = normalizeWorkbookText(input.companyId);
+
+    if (!routeId) {
+      throw new BadRequestException('Aqaba activity cleanup apply requires --id=<touringRouteId>.');
+    }
+    if (!companyId) {
+      throw new BadRequestException('Aqaba activity cleanup apply requires DMC_CLEANUP_COMPANY_ID for the Activity Master owner and audit log.');
+    }
+
+    const dryRun = await this.dryRunAqabaActivityCleanup({ id: routeId });
+    const candidate = dryRun.candidates.find((entry: any) => entry.touringRouteId === routeId);
+    if (!candidate) {
+      throw new BadRequestException('Only Aqaba activity-like Touring Routes can be converted by this cleanup command.');
+    }
+    if (!candidate.safeToConvert) {
+      throw new BadRequestException(`Aqaba activity cleanup is blocked: ${candidate.blockingReasons.join('; ')}`);
+    }
+
+    return this.executeConvertToActivityMaster(
+      routeId,
+      {
+        dryRunAction: 'executeConvertToActivityMasterDryRun',
+        dryRunConfirmed: true,
+        confirmationText: 'I understand this affects operational taxonomy',
+      },
+      {
+        id: normalizeWorkbookText(input.userId) || '00000000-0000-0000-0000-000000000000',
+        email: 'system@dmc.local',
+        role: 'admin',
+        firstName: 'System',
+        lastName: 'Cleanup',
+        name: 'System Cleanup',
+        auditLabel: 'System Cleanup CLI',
+        companyId,
+      },
+    );
+  }
+
+  async applyAqabaActivityCleanupBatch(input: AqabaActivityCleanupBatchApplyInput) {
+    const companyId = normalizeWorkbookText(input.companyId);
+    const confirm = normalizeWorkbookText(input.confirm);
+
+    if (!companyId) {
+      throw new BadRequestException('Aqaba activity batch cleanup requires DMC_CLEANUP_COMPANY_ID.');
+    }
+    if (confirm !== AQABA_ACTIVITY_BATCH_CONFIRMATION) {
+      throw new BadRequestException(`Aqaba activity batch cleanup requires --confirm=${AQABA_ACTIVITY_BATCH_CONFIRMATION}.`);
+    }
+
+    const dryRun = await this.dryRunAqabaActivityCleanupBatch();
+    const summary: {
+      converted: any[];
+      skipped: any[];
+      blocked: any[];
+      errors: any[];
+    } = {
+      converted: [],
+      skipped: [],
+      blocked: [],
+      errors: [],
+    };
+
+    for (const candidate of dryRun.candidates as any[]) {
+      if (candidate.blockingReasons.includes('Touring route is already inactive/archived')) {
+        summary.skipped.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          reason: 'already archived',
+        });
+        continue;
+      }
+      if (!candidate.safeToConvert) {
+        summary.blocked.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          blockingReasons: candidate.blockingReasons,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.applyAqabaActivityCleanup(candidate.touringRouteId, {
+          companyId,
+          userId: input.userId,
+        });
+        summary.converted.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          activity: result.activity,
+          touringRoute: result.touringRoute,
+        });
+      } catch (error) {
+        summary.errors.push({
+          code: candidate.code,
+          touringRouteId: candidate.touringRouteId,
+          name: candidate.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      mode: 'BATCH_APPLY' as const,
+      supportedApplyAction: 'MOVE_TO_ACTIVITY_MASTER',
+      allowedCodes: AQABA_ACTIVITY_BATCH_ALLOWED_CODES,
+      converted: summary.converted,
+      skipped: summary.skipped,
+      blocked: summary.blocked,
+      errors: summary.errors,
+      counts: {
+        converted: summary.converted.length,
+        skipped: summary.skipped.length,
+        blocked: summary.blocked.length,
+        errors: summary.errors.length,
+      },
     };
   }
 
@@ -1657,6 +3978,385 @@ export class TouringRoutesService {
         canonicalCodeConflicts > 0 ||
         impact.affectedDepartures.total > 0,
     };
+  }
+
+  private async findDuplicateActivitiesForTouringRoute(route: any, proposedActivityCode: string) {
+    const normalizedName = normalizeWorkbookText(route.name);
+    const currentCode = normalizeWorkbookText(route.code);
+    const filters = [
+      proposedActivityCode ? { code: { equals: proposedActivityCode, mode: 'insensitive' } } : null,
+      currentCode ? { code: { equals: currentCode, mode: 'insensitive' } } : null,
+      normalizedName ? { name: { equals: normalizedName, mode: 'insensitive' } } : null,
+    ].filter(Boolean);
+    const model = (this.prisma as any)?.activity;
+
+    if (!model?.findMany || filters.length === 0) return [];
+
+    return model.findMany({
+      where: { OR: filters },
+      select: { id: true, code: true, name: true, active: true },
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      take: 20,
+    });
+  }
+
+  private async findExpectedAqabaRtActivityMaster(siteConfig: { expectedActivityCode?: string; expectedActivityName: string }) {
+    const model = (this.prisma as any)?.activity;
+    if (!model?.findFirst) return null;
+
+    const expectedCode = normalizeWorkbookText(siteConfig.expectedActivityCode);
+    const expectedName = normalizeWorkbookText(siteConfig.expectedActivityName);
+
+    if (expectedCode) {
+      const codeMatch = await model.findFirst({
+        where: { active: true, code: { equals: expectedCode, mode: 'insensitive' } },
+        select: { id: true, code: true, name: true, active: true },
+      });
+      if (codeMatch) return codeMatch;
+    }
+
+    if (!expectedName) return null;
+
+    return model.findFirst({
+      where: {
+        active: true,
+        name: { equals: expectedName, mode: 'insensitive' },
+        OR: [{ code: null }, { code: '' }],
+      },
+      select: { id: true, code: true, name: true, active: true },
+    });
+  }
+
+  private async findCanonicalPlaceByTerms(terms: string[]) {
+    const model = (this.prisma as any)?.place;
+    if (!model?.findMany) return null;
+
+    const filters = terms
+      .map((term) => normalizeWorkbookText(term))
+      .filter(Boolean)
+      .map((term) => ({ name: { contains: term, mode: 'insensitive' } }));
+    if (filters.length === 0) return null;
+
+    const places = await model.findMany({
+      where: { isActive: true, OR: filters },
+      select: { id: true, name: true, city: true, type: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      take: 5,
+    });
+
+    return places?.[0] || null;
+  }
+
+  private async findExistingTransferRoute(fromPlace: any, toPlace: any) {
+    const model = (this.prisma as any)?.route;
+    if (!model?.findMany || !fromPlace?.id || !toPlace?.id) return null;
+
+    const routes = await model.findMany({
+      where: {
+        fromPlaceId: fromPlace.id,
+        toPlaceId: toPlace.id,
+        isActive: true,
+      },
+      select: { id: true, name: true, normalizedKey: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      take: 5,
+    });
+
+    return routes?.[0] || null;
+  }
+
+  private async resolveAqabaRtDependencyPlaces() {
+    const names = Array.from(
+      new Set([
+        ...AQABA_RT_DEPENDENCY_PLACE_NAMES,
+        ...AQABA_RT_DEPENDENCY_ROUTE_PAIRS.flatMap(([from, to]) => [from, to]),
+      ]),
+    );
+    const byName = new Map<string, any[]>();
+    const primaryByName = new Map<string, any>();
+
+    for (const name of names) {
+      const matches = await this.findPlacesByExactName(name);
+      const key = normalizeWorkbookText(name).toLowerCase();
+      byName.set(key, matches);
+      if (matches[0]) primaryByName.set(key, matches[0]);
+    }
+
+    return { byName, primaryByName };
+  }
+
+  private async findPlacesByExactName(name: string) {
+    const model = (this.prisma as any)?.place;
+    if (!model?.findMany) return [];
+
+    return model.findMany({
+      where: { name: { equals: name, mode: 'insensitive' }, isActive: true },
+      select: { id: true, name: true, city: true, type: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  private async findRoutesByNormalizedKey(normalizedKey: string) {
+    const model = (this.prisma as any)?.route;
+    if (!model?.findMany) return [];
+
+    return model.findMany({
+      where: { normalizedKey },
+      select: { id: true, name: true, normalizedKey: true, routeType: true, isActive: true },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+  }
+
+  private async findDuplicateExcursionTemplateForAqabaRt(template: { code?: string | null; name?: string | null }) {
+    const model = (this.prisma as any)?.excursionTemplate;
+    if (!model?.findFirst) return null;
+    const code = normalizeWorkbookText(template.code);
+    const name = normalizeWorkbookText(template.name);
+
+    return model.findFirst({
+      where: {
+        OR: [
+          code ? { code: { equals: code, mode: 'insensitive' } } : null,
+          name ? { name: { equals: name, mode: 'insensitive' } } : null,
+        ].filter(Boolean),
+      },
+      select: { id: true, code: true, name: true, active: true },
+    });
+  }
+
+  private async findCanonicalLocalTransferServiceType() {
+    const model = (this.prisma as any)?.transportServiceType;
+    if (!model?.findFirst) return null;
+
+    const exactCodeMatch = await model.findFirst({
+      where: {
+        code: { in: ['PRIVATE_TRANSFER', 'POINT_TO_POINT'] },
+        classification: 'ROUTE_TRANSFER',
+      },
+      select: { id: true, name: true, code: true, classification: true },
+      orderBy: [{ code: 'desc' }],
+    });
+    if (exactCodeMatch) return exactCodeMatch;
+
+    return model.findFirst({
+      where: {
+        classification: 'ROUTE_TRANSFER',
+        OR: [
+          { name: { contains: 'Private', mode: 'insensitive' } },
+          { name: { contains: 'Point', mode: 'insensitive' } },
+          { name: { contains: 'Local', mode: 'insensitive' } },
+          { code: { contains: 'TRANSFER', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, name: true, code: true, classification: true },
+      orderBy: [{ name: 'asc' }],
+    });
+  }
+
+  private async findAqabaExcursionTemplatesWithTransportComponents() {
+    return (this.prisma as any).excursionTemplate.findMany({
+      where: { code: { in: QUOTE_TRANSPORT_TAXONOMY_EXCURSION_TEMPLATE_CODES as unknown as string[] } },
+      include: {
+        components: {
+          where: { componentType: 'TRANSPORT' },
+          include: {
+            route: true,
+            transportServiceType: true,
+          },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        },
+      },
+      orderBy: [{ code: 'asc' }],
+    });
+  }
+
+  private getComponentTransportServiceTypeId(component: any) {
+    return (
+      normalizeWorkbookText(component.transportServiceTypeId) ||
+      normalizeWorkbookText(component.transportServiceType?.id) ||
+      normalizeWorkbookText(component.transportServiceType?.transportServiceTypeId) ||
+      null
+    );
+  }
+
+  private detectLegacyAqabaPayloadUsage(payload: any, component: any) {
+    const issues: string[] = [];
+    if (payload.serviceLane !== 'transport') {
+      return issues;
+    }
+
+    const touringRouteCode = normalizeWorkbookText(component.touringRoute?.code || component.touringRouteCode);
+
+    if (payload.touringRouteId) {
+      issues.push(`Component references TouringRoute ${touringRouteCode || component.touringRouteId}`);
+      if (component.touringRoute?.active === false) {
+        issues.push('Payload references an inactive TouringRoute');
+      }
+      if (/\bAQ_(BOAT|YACHT|DIVE|SNORK|BEACH|SUB|GLASS|BER)\b/.test(touringRouteCode)) {
+        issues.push('Payload references old AQ_* code');
+      }
+      if (/JOR-TR-AQABA-[A-Z0-9-]+-RT/.test(touringRouteCode)) {
+        issues.push('Payload references old JOR-TR-AQABA-*-RT Touring Route directly');
+      }
+    }
+
+    return issues;
+  }
+
+  private async convertOneAqabaRtToExcursionTemplate(
+    candidate: {
+      touringRouteId: string;
+      currentCode: string;
+      name: string;
+      proposedExcursionTemplate: { name: string; code: string };
+      outboundTransferRouteId: string;
+      activityMasterId: string;
+      returnTransferRouteId: string;
+    },
+    actor: { companyId: string; userId: string },
+  ) {
+    const route = await this.findOne(candidate.touringRouteId);
+    if (!AQABA_RT_CLEANUP_ALLOWED_CODE_SET.has(normalizeWorkbookText(route.code))) {
+      throw new BadRequestException('Only allowlisted Aqaba RT Touring Routes can be converted.');
+    }
+    if (route.active === false) {
+      throw new BadRequestException('Archived touring routes cannot be converted.');
+    }
+
+    const duplicateTemplate = await this.findDuplicateExcursionTemplateForAqabaRt(candidate.proposedExcursionTemplate);
+    if (duplicateTemplate) {
+      throw new BadRequestException(`Duplicate Excursion Template already exists: ${duplicateTemplate.code || duplicateTemplate.name}.`);
+    }
+
+    const executedAt = new Date();
+    const legacyAliases = [normalizeWorkbookText(route.code)].filter(Boolean);
+    const reviewNotes = [
+      normalizeWorkbookText(route.reviewNotes),
+      `[${executedAt.toISOString()}] Converted to Excursion Template ${candidate.proposedExcursionTemplate.code}.`,
+      `Original Aqaba RT Touring Route archived and hidden from selectors via active=false.`,
+      `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const template = await (tx as any).excursionTemplate.create({
+        data: {
+          code: candidate.proposedExcursionTemplate.code,
+          name: candidate.proposedExcursionTemplate.name,
+          description: route.routeDescription || `Converted from Aqaba RT touring route ${route.code}.`,
+          defaultDepartureCity: 'Aqaba',
+          region: 'Aqaba',
+          categoryTags: ['Touring Route Cleanup', 'Aqaba RT', 'Excursion Template'],
+          sicPossible: Boolean(route.sicPossible),
+          familyFriendly: false,
+          durationMinutes: route.includedHours ? Math.round(Number(route.includedHours) * 60) : null,
+          operationalNotes: [
+            `Created by Aqaba RT cleanup executor from touring route ${route.code} (${route.id}).`,
+            'Components are operational skeleton only: outbound local transfer, Activity Master, return local transfer.',
+            'Pricing/rates/tariffs intentionally not created or imported.',
+            `Historical aliases preserved: ${legacyAliases.length > 0 ? legacyAliases.join(', ') : 'none'}.`,
+          ].join(' '),
+          active: true,
+          components: {
+            create: [
+              {
+                componentType: 'TRANSPORT',
+                label: 'Outbound local transfer',
+                sortOrder: 1,
+                routeId: candidate.outboundTransferRouteId,
+                suggestedDepartureCity: 'Aqaba',
+                suggestedArrivalCity: 'Activity site',
+                operationalDependency: 'OUTBOUND_LOCAL_TRANSFER',
+                operationalNotes: `Created from touring route ${route.code}; no pricing created.`,
+              },
+              {
+                componentType: 'ACTIVITY',
+                label: 'Activity Master',
+                sortOrder: 2,
+                activityId: candidate.activityMasterId,
+                operationalDependency: 'ACTIVITY_MASTER',
+                operationalNotes: `Linked existing Activity Master during touring route cleanup for ${route.code}.`,
+              },
+              {
+                componentType: 'TRANSPORT',
+                label: 'Return local transfer',
+                sortOrder: 3,
+                routeId: candidate.returnTransferRouteId,
+                suggestedDepartureCity: 'Activity site',
+                suggestedArrivalCity: 'Aqaba',
+                operationalDependency: 'RETURN_LOCAL_TRANSFER',
+                operationalNotes: `Created from touring route ${route.code}; no pricing created.`,
+              },
+            ],
+          },
+        },
+        include: { components: true },
+      });
+
+      const archivedRoute = await (tx as any).touringRoute.update({
+        where: { id: route.id },
+        data: { active: false, reviewNotes },
+        include: this.include(),
+      });
+
+      await (tx as any).auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: 'touring_route.aqaba_rt.convert_to_excursion_template',
+          entity: 'TouringRoute',
+          entityId: route.id,
+          metadata: {
+            mode: 'AQABA_RT_EXCURSION_CONVERSION',
+            templateId: template.id,
+            templateCode: template.code,
+            sourceTouringRouteCode: route.code,
+            legacyAliases,
+            outboundTransferRouteId: candidate.outboundTransferRouteId,
+            activityMasterId: candidate.activityMasterId,
+            returnTransferRouteId: candidate.returnTransferRouteId,
+            deletesOriginalTouringRoute: false,
+            archivedOriginalTouringRoute: true,
+            hiddenFromSelectors: true,
+            createsPricing: false,
+            importsTariffs: false,
+          },
+        },
+      });
+
+      return { template, archivedRoute };
+    });
+
+    return {
+      currentCode: candidate.currentCode,
+      touringRouteId: result.archivedRoute.id,
+      excursionTemplate: {
+        id: result.template.id,
+        code: result.template.code,
+        name: result.template.name,
+        active: result.template.active,
+        componentCount: result.template.components?.length || 0,
+      },
+      touringRoute: {
+        id: result.archivedRoute.id,
+        code: result.archivedRoute.code,
+        active: result.archivedRoute.active,
+        hiddenFromSelectors: result.archivedRoute.active === false,
+        preservedHistorically: true,
+      },
+    };
+  }
+
+  private buildAqabaRtDependencyRouteCode(fromName: string, toName: string) {
+    const codePart = (value: string) =>
+      normalizeWorkbookText(value)
+        .toUpperCase()
+        .replace(/&/g, ' AND ')
+        .replace(/[^A-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-');
+    return `JOR-TRF-${codePart(fromName)}-${codePart(toName)}`.slice(0, 120);
   }
 
   private calculateSafeExecutionScore(

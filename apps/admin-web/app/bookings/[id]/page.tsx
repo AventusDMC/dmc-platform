@@ -36,7 +36,7 @@ type BookingType = 'FIT' | 'GROUP' | 'SERIES';
 type ClientInvoiceStatus = 'unbilled' | 'invoiced' | 'paid';
 type SupplierPaymentStatus = 'unpaid' | 'scheduled' | 'paid';
 type AuditEntityType = 'booking' | 'booking_service';
-type SupplierConfirmationStatus = 'NOT_SENT' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
+type SupplierConfirmationStatus = 'NOT_SENT' | 'REQUESTED' | 'SENT' | 'ACKNOWLEDGED' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
 
 type AuditLog = {
   id: string;
@@ -495,6 +495,7 @@ type Booking = {
     supplierReference: string | null;
     reconfirmationRequired: boolean;
     reconfirmationDueAt: string | null;
+    operationalNotes?: string | null;
     notes: string | null;
     status: 'pending' | 'ready' | 'in_progress' | 'confirmed' | 'cancelled';
     statusNote: string | null;
@@ -1136,6 +1137,265 @@ function renderSupplierOptions(suppliers: Supplier[], defaultValue?: string | nu
         </option>
       ))}
     </select>
+  );
+}
+
+type BookingOperationRow = Booking['services'][number];
+
+function getOperationEditorType(service: Pick<BookingOperationRow, 'operationType' | 'serviceType'>) {
+  const type = String(service.operationType || service.serviceType || 'SERVICE').toUpperCase();
+  if (type === 'TRANSPORT' || type === 'HOTEL' || type === 'ACTIVITY' || type === 'GUIDE' || type === 'TICKET') {
+    return type;
+  }
+  return 'SERVICE';
+}
+
+function getOperationEditorHeading(editorType: string) {
+  const headings: Record<string, string> = {
+    TRANSPORT: 'Transport operation details',
+    HOTEL: 'Hotel operation details',
+    ACTIVITY: 'Activity operation details',
+    GUIDE: 'Guide operation details',
+    TICKET: 'Ticket operation details',
+    SERVICE: 'Service details',
+  };
+
+  return headings[editorType] || 'Service details';
+}
+
+function renderOperationalDateInput(service: BookingOperationRow) {
+  return (
+    <label>
+      Operational date
+      <input type="date" name="serviceDate" defaultValue={service.serviceDate ? service.serviceDate.slice(0, 10) : ''} />
+    </label>
+  );
+}
+
+function renderCommonOperationFields(service: BookingOperationRow) {
+  return (
+    <>
+      <label>
+        Confirmation
+        <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+      </label>
+      <label>
+        Confirmation status
+        <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
+          {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+            <option key={status} value={status}>{formatSupplierConfirmationStatus(status as SupplierConfirmationStatus)}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Confirmation notes
+        <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
+      </label>
+      <label>
+        Status
+        {renderOperationStatusOptions(service.operationStatus)}
+      </label>
+      <label>
+        Notes
+        <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
+      </label>
+    </>
+  );
+}
+
+function renderOperationTypeAwareEditor(
+  booking: Booking,
+  day: NonNullable<Booking['days']>[number],
+  service: BookingOperationRow,
+  suppliers: Supplier[],
+  vehicles: Vehicle[],
+  transportRoutes: TransportRoute[],
+) {
+  const editorType = getOperationEditorType(service);
+
+  return (
+    <details className={`operations-row-details booking-operation-editor booking-operation-editor-${editorType.toLowerCase()}`}>
+      <summary>{getOperationEditorHeading(editorType)}</summary>
+      <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form operation-type-editor-form">
+        <input type="hidden" name="bookingId" value={booking.id} />
+        <input type="hidden" name="operationId" value={service.id} />
+        <input type="hidden" name="type" value={editorType} />
+        <div className="operation-type-editor-header">
+          <strong>{formatOperationType(editorType)}</strong>
+          <span>{service.description}</span>
+        </div>
+
+        {editorType === 'TRANSPORT' ? (
+          <>
+            <label>
+              Route
+              {renderRouteOptions(transportRoutes, service.referenceId)}
+            </label>
+            <label>
+              Vehicle
+              {renderVehicleOptions(vehicles, service.vehicleId)}
+            </label>
+            <label>
+              Driver
+              <input type="text" name="assignedTo" defaultValue={service.assignedTo || ''} />
+            </label>
+            <label>
+              Pickup time
+              <input type="time" name="pickupTime" defaultValue={service.pickupTime || ''} />
+            </label>
+            <label>
+              Supplier
+              {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            {renderCommonOperationFields(service)}
+          </>
+        ) : null}
+
+        {editorType === 'HOTEL' ? (
+          <>
+            <label>
+              Hotel supplier
+              {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            {renderOperationalDateInput(service)}
+            <div className="form-helper">
+              Rooming summary: {booking.rooming.badge.breakdown.unassignedRooms > 0 ? `${booking.rooming.badge.breakdown.unassignedRooms} rooms need review` : 'Rooming shell available'}
+            </div>
+            <div className="form-helper">
+              Occupancy: {booking.rooming.badge.breakdown.occupancyIssues > 0 ? `${booking.rooming.badge.breakdown.occupancyIssues} occupancy issues` : `${booking.roomCount} rooms expected`}
+            </div>
+            {renderCommonOperationFields(service)}
+          </>
+        ) : null}
+
+        {editorType === 'ACTIVITY' ? (
+          <>
+            {renderOperationalDateInput(service)}
+            <label>
+              Start time
+              <input type="time" name="startTime" defaultValue={service.startTime || ''} />
+            </label>
+            <label>
+              Pickup time
+              <input type="time" name="pickupTime" defaultValue={service.pickupTime || ''} />
+            </label>
+            <label>
+              Meeting point
+              <input type="text" name="meetingPoint" defaultValue={service.meetingPoint || service.pickupLocation || ''} />
+            </label>
+            <label>
+              Participant count
+              <input type="number" name="participantCount" min={0} defaultValue={service.participantCount ?? getServicePaxCount(service, booking)} />
+            </label>
+            <label>
+              Supplier
+              {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            {renderCommonOperationFields(service)}
+          </>
+        ) : null}
+
+        {editorType === 'GUIDE' ? (
+          <>
+            <label>
+              Assigned guide
+              <input type="text" name="assignedTo" defaultValue={service.assignedTo || service.guide?.fullName || ''} />
+            </label>
+            <label>
+              Guide phone
+              <input type="text" name="guidePhone" defaultValue={service.guidePhone || service.guide?.phone || ''} />
+            </label>
+            <label>
+              Language
+              <input type="text" name="guideRequiredLanguages" defaultValue={(service.guideRequiredLanguages || []).join(', ')} />
+            </label>
+            <label>
+              Working hours
+              <input type="time" name="guideReportingTime" defaultValue={service.guideReportingTime || service.startTime || ''} />
+            </label>
+            {renderCommonOperationFields(service)}
+          </>
+        ) : null}
+
+        {editorType === 'TICKET' ? (
+          <>
+            <label>
+              Supplier
+              {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            <label>
+              Ticket handling
+              <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
+            </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            <label>
+              Confirmation
+              <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+            </label>
+            <label>
+              Confirmation notes
+              <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
+            </label>
+            <label>
+              Status
+              {renderOperationStatusOptions(service.operationStatus)}
+            </label>
+          </>
+        ) : null}
+
+        {editorType === 'SERVICE' ? (
+          <>
+            <label>
+              Supplier
+              {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            <label>
+              Operational notes
+              <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
+            </label>
+            <label>
+              Meeting point
+              <input type="text" name="meetingPoint" defaultValue={service.meetingPoint || service.pickupLocation || ''} />
+            </label>
+            <label>
+              Timing
+              <input type="time" name="startTime" defaultValue={service.startTime || service.pickupTime || ''} />
+            </label>
+            <label>
+              Confirmation
+              <input type="text" name="confirmationReference" defaultValue={service.confirmationNumber || service.supplierReference || ''} />
+            </label>
+            <label>
+              Confirmation notes
+              <input type="text" name="confirmationNotes" defaultValue={service.confirmationNotes || service.supplierRemarks || ''} />
+            </label>
+            <label>
+              Confirmation status
+              <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
+                {['NOT_SENT', 'REQUESTED', 'CONFIRMED', 'REJECTED'].map((status) => (
+                  <option key={status} value={status}>{formatSupplierConfirmationStatus(status as SupplierConfirmationStatus)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Status
+              {renderOperationStatusOptions(service.operationStatus)}
+            </label>
+          </>
+        ) : null}
+
+        <div className="quote-status-actions">
+          <button type="submit">Save</button>
+          <button type="submit" name="_method" value="DELETE" className="secondary-button">
+            Delete
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }
 
@@ -2148,57 +2408,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                             <button type="submit">Update</button>
                                           </form>
                                         ) : (
-                                          <details>
-                                            <summary>Edit</summary>
-                                            <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
-                                              <label>
-                                                Type
-                                                {renderOperationTypeOptions(service.operationType || service.serviceType)}
-                                              </label>
-                                              <label>
-                                                Route
-                                                {renderRouteOptions(transportRoutes, service.referenceId)}
-                                              </label>
-                                              <label>
-                                                Vehicle
-                                                {renderVehicleOptions(vehicles, service.vehicleId)}
-                                              </label>
-                                              <label>
-                                                Supplier
-                                                {renderSupplierOptions(suppliers, service.supplierId)}
-                                              </label>
-                                              <label>
-                                                Driver / guide
-                                                <input type="text" name="assignedTo" defaultValue={service.assignedTo || ''} />
-                                              </label>
-                                              <label>
-                                                Guide phone
-                                                <input type="text" name="guidePhone" defaultValue={service.guidePhone || ''} />
-                                              </label>
-                                              <label>
-                                                Pickup time
-                                                <input type="time" name="pickupTime" defaultValue={service.pickupTime || ''} />
-                                              </label>
-                                              <label>
-                                                Confirmation
-                                                <input type="text" name="confirmationNumber" defaultValue={service.confirmationNumber || ''} />
-                                              </label>
-                                              <label>
-                                                Status
-                                                {renderOperationStatusOptions(service.operationStatus)}
-                                              </label>
-                                              <label>
-                                                Notes
-                                                <input type="text" name="notes" defaultValue={service.notes || ''} />
-                                              </label>
-                                              <div className="quote-status-actions">
-                                                <button type="submit">Save</button>
-                                                <button type="submit" name="_method" value="DELETE" className="secondary-button">
-                                                  Delete
-                                                </button>
-                                              </div>
-                                            </form>
-                                          </details>
+                                          renderOperationTypeAwareEditor(booking, day, service, suppliers, vehicles, transportRoutes)
                                         )}
                                         <details>
                                           <summary>Supplier confirmation</summary>

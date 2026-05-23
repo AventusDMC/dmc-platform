@@ -176,6 +176,7 @@ export type QuoteReadinessModel = {
   blockers: QuoteReadinessIssue[];
   warnings: QuoteReadinessIssue[];
   cleanupItems: QuoteReadinessIssue[];
+  operationalReadinessDiagnostics: QuoteOperationalReadinessDiagnostic[];
   statusLabel: 'Draft' | 'In Progress' | 'Needs Review' | 'Ready to Share';
   completionPercent: number;
   totalDays: number;
@@ -185,6 +186,14 @@ export type QuoteReadinessModel = {
   unassignedSuppliers: number;
   daySummaries: QuoteReadinessDaySummary[];
   unassignedItems: QuoteReadinessItem[];
+};
+
+export type QuoteOperationalReadinessDiagnostic = {
+  blockerType: string;
+  source: string;
+  active: boolean;
+  ignoredReason: string | null;
+  itemId?: string;
 };
 
 export type ServicePlannerCategory = 'hotel' | 'transport' | 'guide' | 'activity' | 'ticketing' | 'meal' | 'externalPackage' | 'other';
@@ -296,6 +305,28 @@ function getQuoteReadinessItemName(item: QuoteReadinessItem) {
 
 export function isQuoteServiceMissingPrice(item: Pick<QuoteReadinessItem, 'totalCost' | 'totalSell' | 'paxCount'>) {
   return item.totalCost <= 0 || item.totalSell <= 0 || !item.paxCount;
+}
+
+export function hasActiveOperationalWorkflowIssue(item: QuoteReadinessItem) {
+  const category = getQuoteServiceCategoryKey(item.service, item);
+
+  if (category === 'activity' || category === 'ticketing') {
+    const hasTime = Boolean(item.startTime || item.pickupTime);
+    const hasLocation = Boolean(item.pickupLocation || item.meetingPoint);
+    const hasCounts = Boolean((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0);
+    const reconfirmationComplete = !item.reconfirmationRequired || Boolean(item.reconfirmationDueAt);
+    return !item.serviceDate || !hasTime || !hasLocation || !hasCounts || !reconfirmationComplete;
+  }
+
+  if (category === 'transport') {
+    return !item.routeId && !item.transportServiceTypeId && !item.vehicleId;
+  }
+
+  return false;
+}
+
+export function isActiveImportedQuoteServiceUnresolved(item: QuoteReadinessItem) {
+  return isImportedQuoteService(item) && (isQuoteServiceMissingPrice(item) || hasActiveOperationalWorkflowIssue(item));
 }
 
 function isMissingCurrency(item: Pick<QuoteReadinessItem, 'currency'>) {
@@ -494,8 +525,9 @@ export function buildQuoteReadinessModel(
   const blockers: QuoteReadinessIssue[] = [];
   const warnings: QuoteReadinessIssue[] = [];
   const cleanupItems: QuoteReadinessIssue[] = [];
+  const operationalReadinessDiagnostics: QuoteOperationalReadinessDiagnostic[] = [];
   const unassignedItems = allItems.filter((item) => !item.itineraryId);
-  const unresolvedItems = allItems.filter(isImportedQuoteService).length;
+  const unresolvedItems = allItems.filter(isActiveImportedQuoteServiceUnresolved).length;
   const unpricedServices = allItems.filter(isQuoteServiceMissingPrice).length;
   const unassignedSuppliers = unresolvedItems;
   const tripStart = normalizeDateOnly(quote.travelStartDate);
@@ -600,7 +632,7 @@ export function buildQuoteReadinessModel(
       cleanupItems: [],
       suggestions,
       unpricedCount: items.filter(isQuoteServiceMissingPrice).length,
-      unresolvedCount: items.filter(isImportedQuoteService).length,
+      unresolvedCount: items.filter(isActiveImportedQuoteServiceUnresolved).length,
       completionPercent: 0,
       status: 'ready',
     };
@@ -691,20 +723,33 @@ export function buildQuoteReadinessModel(
         day: item.itineraryId || undefined,
         addCategory: getQuoteServiceCategoryKey(item.service, item),
       });
-      cleanupItems.push({
-        id: `item-import-${item.id}`,
-        severity: 'cleanup',
-        code: 'unresolved-imported-item',
-        title: `${getQuoteReadinessItemName(item)} is still unresolved from import`,
-        description: 'Assign a real supplier service or remove the placeholder before sharing.',
-        href,
+      const importedIssueActive = isActiveImportedQuoteServiceUnresolved(item);
+      operationalReadinessDiagnostics.push({
+        blockerType: 'unresolved-imported-item',
         source: 'Service Planner',
+        active: importedIssueActive,
+        ignoredReason: importedIssueActive
+          ? null
+          : 'Historical imported-service marker ignored because pricing and operational workflow fields are resolved.',
         itemId: item.id,
-        dayId: item.itineraryId || undefined,
-        action: item.itineraryId
-          ? { type: 'focus-day', step: 'services', href, dayId: item.itineraryId }
-          : { type: 'navigate', step: 'services', href },
       });
+
+      if (importedIssueActive) {
+        cleanupItems.push({
+          id: `item-import-${item.id}`,
+          severity: 'cleanup',
+          code: 'unresolved-imported-item',
+          title: `${getQuoteReadinessItemName(item)} is still unresolved from import`,
+          description: 'Assign a real supplier service or complete active pricing/workflow details before sharing.',
+          href,
+          source: 'Service Planner',
+          itemId: item.id,
+          dayId: item.itineraryId || undefined,
+          action: item.itineraryId
+            ? { type: 'focus-day', step: 'services', href, dayId: item.itineraryId }
+            : { type: 'navigate', step: 'services', href },
+        });
+      }
     }
 
     if (isMissingCurrency(item)) {
@@ -872,7 +917,7 @@ export function buildQuoteReadinessModel(
   const dedupedWarnings = dedupeIssues(warnings);
   const dedupedCleanupItems = dedupeIssues(cleanupItems);
   const daysWithServices = daySummaries.filter((summary) => summary.items.length > 0).length;
-  const resolvedServices = allItems.filter((item) => !isImportedQuoteService(item) && !isQuoteServiceMissingPrice(item)).length;
+  const resolvedServices = allItems.filter((item) => !isActiveImportedQuoteServiceUnresolved(item) && !isQuoteServiceMissingPrice(item)).length;
   const pricingConfigured =
     quote.pricingMode === 'SLAB' ? quote.pricingSlabs.length > 0 && quote.scenarios.length > 0 : quote.fixedPricePerPerson > 0;
   const totalCheckpoints = Math.max(sortedDays.length, 1) + Math.max(allItems.length, 1) + 3;
@@ -882,7 +927,7 @@ export function buildQuoteReadinessModel(
 
   const daySummariesWithStatus = daySummaries.map((summary) => {
     const serviceTarget = Math.max(summary.items.length, summary.suggestions.length || 1);
-    const resolvedItems = summary.items.filter((item) => !isImportedQuoteService(item) && !isQuoteServiceMissingPrice(item)).length;
+    const resolvedItems = summary.items.filter((item) => !isActiveImportedQuoteServiceUnresolved(item) && !isQuoteServiceMissingPrice(item)).length;
     const itemCompletion = serviceTarget > 0 ? Math.round((resolvedItems / serviceTarget) * 100) : 100;
     const blockerCount = dedupedBlockers.filter((issue) => issue.dayId === summary.day.id).length;
     const warningCount = dedupedWarnings.filter((issue) => issue.dayId === summary.day.id).length;
@@ -900,6 +945,7 @@ export function buildQuoteReadinessModel(
     blockers: dedupedBlockers,
     warnings: dedupedWarnings,
     cleanupItems: dedupedCleanupItems,
+    operationalReadinessDiagnostics,
     statusLabel: deriveQuoteStatusLabel({
       blockers: dedupedBlockers,
       warnings: dedupedWarnings,

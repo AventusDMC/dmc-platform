@@ -346,6 +346,9 @@ type QuoteItemInitialValues = {
   activityId?: string;
   activityRateVariantId?: string;
   ticketRateVariantId?: string;
+  vehicleRateId?: string | null;
+  transportVehicleId?: string | null;
+  transportSupplierId?: string | null;
   touringRouteId?: string;
   touringRoutePricingId?: string;
   touringRoute?: {
@@ -1287,9 +1290,18 @@ export function QuoteItemsForm({
         ? resolvedTransportPricing.routeId === routeId
         : resolvedTransportPricing.routeName === routeName.trim()),
   );
+  const savedTransportVehicleId = initialValues?.transportVehicleId || '';
+  const savedTransportVehicleRateId = initialValues?.vehicleRateId || '';
+  const transportSelectionMatchesSavedItem =
+    Boolean(isEditing && activeServiceType === 'transport' && !touringRouteId && !touringRoutePricingId && !initialValues?.touringRoute) &&
+    routeId === (initialValues?.routeId || '') &&
+    transportServiceTypeId === (initialValues?.transportServiceTypeId || '') &&
+    Boolean(savedTransportVehicleId || savedTransportVehicleRateId);
   const selectedTransportVehicleId = resolvedTransportMatchesCurrentSelection
     ? resolvedTransportPricing?.vehicle.id
-    : undefined;
+    : transportSelectionMatchesSavedItem
+      ? savedTransportVehicleId || undefined
+      : undefined;
   const transportRecommendationReasons = selectedTransportCandidate
     ? [
         selectedTransportCandidate.isRecommended
@@ -1391,8 +1403,7 @@ export function QuoteItemsForm({
   const isTransportVehicleSelected = Boolean(
     isTransportService &&
       selectedTransportVehicleId &&
-      resolvedTransportPricing &&
-      resolvedTransportMatchesCurrentSelection,
+      (transportSelectionMatchesSavedItem || (resolvedTransportPricing && resolvedTransportMatchesCurrentSelection)),
   );
 
   useEffect(() => {
@@ -1749,6 +1760,8 @@ export function QuoteItemsForm({
       ? Math.ceil(activityParticipantTotal / activityMaxPaxPerUnit)
       : null;
   const isLegacyActivityEdit = Boolean(isEditing && isActivityService && !activityId);
+  const isImportedActivityEdit = Boolean(isLegacyActivityEdit && selectedService?.supplierId === 'import-itinerary-system');
+  const showInlineActivityOperationalFields = Boolean(isEditing && isActivityService);
   const isActivitySelected = Boolean(
     isActivityService &&
       serviceId &&
@@ -1770,6 +1783,17 @@ export function QuoteItemsForm({
           reconfirmationRequired && !reconfirmationDueAt ? 'Reconfirmation is required, but no due date is set.' : null,
         ].filter((issue): issue is string => Boolean(issue))
       : [];
+  const importedActivityInlineIssues = isImportedActivityEdit
+    ? [
+        !(serviceDate || resolvedActivityServiceDate) ? 'Activity date is required.' : null,
+        !startTime ? 'Start time is required.' : null,
+        !(pickupLocation.trim() || meetingPoint.trim()) ? 'Pickup / meeting location is required.' : null,
+        !(Number(participantCount || 0) > 0 || Number(adultCount || 0) + Number(childCount || 0) > 0)
+          ? 'Participant count is required.'
+          : null,
+        reconfirmationRequired && !reconfirmationDueAt ? 'Reconfirmation due date is required.' : null,
+      ].filter((issue): issue is string => Boolean(issue))
+    : [];
   const roomCategoryDraftOptions = useMemo(
     () =>
       roomCategoryOptions.map((category) => ({
@@ -2369,6 +2393,10 @@ export function QuoteItemsForm({
       return;
     }
 
+    if (isEditing && routeId === (initialValues?.routeId || '')) {
+      return;
+    }
+
     if (!validTransportRoutes.some((route) => route.id === routeId)) {
       setRouteId('');
       setRouteName('');
@@ -2650,6 +2678,9 @@ export function QuoteItemsForm({
       }
 
       if (isTransportService && !isTouringTransportEdit) {
+        const hasResolvedTransportPricing = Boolean(resolvedTransportPricing && resolvedTransportMatchesCurrentSelection);
+        const hasSavedTransportPricing = Boolean(transportSelectionMatchesSavedItem && savedTransportVehicleRateId && Number(baseCost) > 0);
+
         if (!transportServiceTypeId) {
           throw new Error('Transport service type is required');
         }
@@ -2666,7 +2697,7 @@ export function QuoteItemsForm({
           throw new Error('Transport cost must be resolved before saving.');
         }
 
-        if (!resolvedTransportPricing || !resolvedTransportMatchesCurrentSelection) {
+        if (!hasResolvedTransportPricing && !hasSavedTransportPricing) {
           throw new Error('Transport pricing no longer matches the selected route or service type.');
         }
       }
@@ -2733,7 +2764,9 @@ export function QuoteItemsForm({
         isTransportService
           ? isTouringTransportEdit
             ? selectedService?.id || serviceId
-            : findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
+            : transportSelectionMatchesSavedItem
+              ? serviceId || initialValues?.serviceId || selectedService?.id || ''
+              : findSupplierServiceForTransportSelection(filteredServices, selectedTransportCandidate || resolvedTransportPricing)?.id || ''
           : serviceId;
       const resolvedHotelServiceId =
         isHotelService
@@ -2769,7 +2802,7 @@ export function QuoteItemsForm({
         childCount: isActivityService ? Number(childCount || 0) : undefined,
         reconfirmationRequired: isActivityService ? reconfirmationRequired : undefined,
         reconfirmationDueAt:
-          isActivityService && reconfirmationRequired && reconfirmationDueAt
+          isActivityService && reconfirmationDueAt
             ? new Date(reconfirmationDueAt).toISOString()
             : isActivityService
               ? null
@@ -2798,7 +2831,10 @@ export function QuoteItemsForm({
         sellPriceOverrideExplicit: hasManualSellOverride,
         markupPercent: Number(markupPercent),
         transportServiceTypeId: isTransportService && !isTouringTransportEdit ? transportServiceTypeId : undefined,
-        vehicleRateId: isTransportService && !isTouringTransportEdit ? resolvedTransportPricing?.vehicleRateId || undefined : undefined,
+        vehicleRateId:
+          isTransportService && !isTouringTransportEdit
+            ? resolvedTransportPricing?.vehicleRateId || (transportSelectionMatchesSavedItem ? savedTransportVehicleRateId || undefined : undefined)
+            : undefined,
         transportVehicleId: isTransportService && !isTouringTransportEdit ? selectedTransportVehicleId : undefined,
         routeId: isTransportService && !isTouringTransportEdit ? routeId || undefined : undefined,
         routeName: isTransportService && !isTouringTransportEdit ? routeName.trim() : undefined,
@@ -2983,7 +3019,7 @@ export function QuoteItemsForm({
         <form id={serviceEntryFormId} ref={formRef} className="entity-form compact-form service-entry-form" onSubmit={handleSubmit} noValidate={isExternalPackageService}>
           <div className="service-entry-form-head">
             <div>
-              <strong>{SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
+              <strong>{isEditing && activeServiceType === 'transport' ? 'Edit Transport' : SERVICE_TYPE_BUTTONS.find((button) => button.key === activeServiceType)?.label}</strong>
               <p>{submitLabel}</p>
             </div>
             {!isEditing && !isExternalPackageService ? (
@@ -3768,7 +3804,70 @@ export function QuoteItemsForm({
                   {selectedService ? <span className="page-tab-badge">Activity selected</span> : null}
                 </div>
 
-                {activeActivities.length === 0 ? (
+                {isImportedActivityEdit ? (
+                  <>
+                    <div className="quote-service-empty-state">
+                      <strong>{selectedService?.name || 'Imported Activity'}</strong>
+                      <p>Complete the operational details and quote pricing below before converting this quote to a booking.</p>
+                    </div>
+                    <div className="quote-transport-step-fields">
+                      <label>
+                        Date
+                        <input value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} type="date" />
+                      </label>
+
+                      <label>
+                        Participant count
+                        <input value={participantCount} onChange={(event) => setParticipantCount(event.target.value)} type="number" min="1" required />
+                      </label>
+
+                      <label>
+                        Pricing basis
+                        <input value={activityPricingBasis.replace(/_/g, ' ')} readOnly />
+                      </label>
+
+                      <label>
+                        Start Time
+                        <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" required />
+                      </label>
+
+                      <label>
+                        End Time / Duration
+                        <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" placeholder="Optional" />
+                      </label>
+
+                      <label>
+                        Pickup / Meeting Location
+                        <input
+                          value={pickupLocation || meetingPoint}
+                          onChange={(event) => {
+                            setPickupLocation(event.target.value);
+                            if (!meetingPoint) {
+                              setMeetingPoint(event.target.value);
+                            }
+                          }}
+                          placeholder="Hotel lobby or meeting point"
+                          required
+                        />
+                      </label>
+
+                      <label>
+                        Reconfirmation Due Date
+                        <input
+                          value={reconfirmationDueAt}
+                          onChange={(event) => {
+                            setReconfirmationDueAt(event.target.value);
+                            if (event.target.value) {
+                              setReconfirmationRequired(true);
+                            }
+                          }}
+                          type="datetime-local"
+                          required={reconfirmationRequired}
+                        />
+                      </label>
+                    </div>
+                  </>
+                ) : activeActivities.length === 0 ? (
                   <div className="quote-service-empty-state">
                     <strong>No activities available</strong>
                     <p>Create an Activity Master record before adding it to the quote.</p>
@@ -3786,7 +3885,7 @@ export function QuoteItemsForm({
                           setActivityRateVariantId(nextActivity?.rateVariants?.find((variant) => variant.active !== false)?.id || '');
                           setServiceId(getActivityServiceBridge(nextActivity, services)?.id || '');
                         }}
-                        required
+                        required={!isLegacyActivityEdit}
                       >
                         <option value="">Select activity</option>
                         {activeActivities.map((activity) => (
@@ -3828,8 +3927,57 @@ export function QuoteItemsForm({
                       Pricing basis
                       <input value={activityPricingBasis.replace(/_/g, ' ')} readOnly />
                     </label>
+
+                    {showInlineActivityOperationalFields ? (
+                      <>
+                        <label>
+                          Start Time
+                          <input value={startTime} onChange={(event) => setStartTime(event.target.value)} type="time" required />
+                        </label>
+
+                        <label>
+                          End Time / Duration
+                          <input value={pickupTime} onChange={(event) => setPickupTime(event.target.value)} type="time" placeholder="Optional" />
+                        </label>
+
+                        <label>
+                          Pickup / Meeting Location
+                          <input
+                            value={pickupLocation || meetingPoint}
+                            onChange={(event) => {
+                              setPickupLocation(event.target.value);
+                              if (!meetingPoint) {
+                                setMeetingPoint(event.target.value);
+                              }
+                            }}
+                            placeholder="Hotel lobby or meeting point"
+                            required
+                          />
+                        </label>
+
+                        <label>
+                          Reconfirmation Due Date
+                          <input
+                            value={reconfirmationDueAt}
+                            onChange={(event) => {
+                              setReconfirmationDueAt(event.target.value);
+                              if (event.target.value) {
+                                setReconfirmationRequired(true);
+                              }
+                            }}
+                            type="datetime-local"
+                            required={reconfirmationRequired}
+                          />
+                        </label>
+                      </>
+                    ) : null}
                   </div>
                 )}
+                {importedActivityInlineIssues.map((issue) => (
+                  <p key={issue} className="form-error">
+                    {issue}
+                  </p>
+                ))}
               </section>
 
               <section className="quote-hotel-step-panel quote-transport-step-panel">
@@ -3922,11 +4070,11 @@ export function QuoteItemsForm({
                   className="quote-transport-add-button"
                   disabled={isSubmitting || !isActivitySelected}
                 >
-                  {isSubmitting ? 'Saving...' : 'Add Activity'}
+                  {isSubmitting ? 'Saving...' : isEditing ? 'Save Activity' : 'Add Activity'}
                 </button>
               </section>
 
-              <details className="quote-advanced-settings" open={useOverride}>
+              <details className="quote-advanced-settings" open={useOverride || isImportedActivityEdit || activityIssues.length > 0}>
                 <summary>More options</summary>
 
                 <div className="form-row form-row-3">
@@ -4898,7 +5046,7 @@ export function QuoteItemsForm({
                 (isHotelService && !selectedHotelBaseRate && !manualHotelRateDraft)
               }
             >
-              {isSubmitting ? 'Saving...' : isTransportService ? 'Add Transport' : submitLabel}
+              {isSubmitting ? 'Saving...' : isTransportService && !isEditing ? 'Add Transport' : submitLabel}
             </button>
           ) : needsServiceSelection ? (
             <div className="quote-service-empty-state">

@@ -6,26 +6,20 @@ export type ApiValidationError = {
   message: string;
 };
 
-function clearSessionCookie() {
-  if (typeof document === 'undefined') {
-    return;
-  }
-
-  document.cookie = 'dmc_session=; Max-Age=0; path=/; SameSite=None; Secure';
-}
-
 function redirectToLogin() {
   if (typeof window === 'undefined') {
     return;
   }
 
+  // Route through the server endpoint so the httpOnly session cookie is actually
+  // cleared (client-side document.cookie cannot touch an httpOnly cookie). This
+  // is what stops the login page from immediately bouncing back into a loop.
   const next = `${window.location.pathname}${window.location.search}`;
-  window.location.assign(`/login?reason=session-expired&next=${encodeURIComponent(next)}`);
+  window.location.assign(`/api/auth/session-expired?next=${encodeURIComponent(next)}`);
 }
 
 export async function getApiError(response: Response, fallback: string) {
   if (response.status === 401) {
-    clearSessionCookie();
     redirectToLogin();
 
     return {

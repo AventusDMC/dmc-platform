@@ -1,13 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { clearSessionCookie } from '../session-cookie';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true });
-  response.cookies.set('dmc_session', '', {
-    httpOnly: true,
-    sameSite: 'none',
-    secure: true,
-    path: '/',
-    maxAge: 0,
-  });
-  return response;
+  return clearSessionCookie(response, request);
 }

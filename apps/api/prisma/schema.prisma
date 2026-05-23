@@ -1860,6 +1860,7 @@ model Supplier {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   bookingServices       BookingService[]
+  assignedBookingServices BookingService[]     @relation("BookingServiceAssignedSupplier")
   transportPricingRules TransportPricingRule[]
   touringRoutePricings  TouringRoutePricing[]
   vehicleRates          VehicleRate[]
@@ -2284,6 +2285,12 @@ model BookingService {
   serviceType                String
   operationType              String?
   operationStatus            String                        @default("PENDING")
+  operationalDate            DateTime?
+  operationalTime            String?
+  operationalNotes           String?
+  dropoffLocation            String?
+  assignedVehicleId          String?                       @db.Uuid
+  assignedGuideId            String?                       @db.Uuid
   referenceId                String?                       @db.Uuid
   assignedTo                 String?
   guidePhone                 String?
@@ -2308,6 +2315,17 @@ model BookingService {
   childCount                 Int?
   supplierReference          String?
   supplierConfirmationStatus SupplierConfirmationStatus    @default(NOT_SENT)
+  supplierConfirmationCode   String?
+  confirmationReference      String?
+  confirmationReceivedAt     DateTime?
+  confirmedBy                String?                       @db.Uuid
+  assignedSupplierId         String?                       @db.Uuid
+  assignmentStatus           SupplierAssignmentStatus      @default(UNASSIGNED)
+  assignmentNotes            String?
+  assignedAt                 DateTime?
+  assignedBy                 String?                       @db.Uuid
+  voucherStatus              String                        @default("NOT_GENERATED")
+  voucherGeneratedAt         DateTime?
   confirmationSentAt         DateTime?
   supplierConfirmedAt        DateTime?
   supplierRemarks            String?
@@ -2344,6 +2362,7 @@ model BookingService {
   auditLogs                  BookingAuditLog[]
   vouchers                   Voucher[]
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  assignedSupplier           Supplier?                     @relation("BookingServiceAssignedSupplier", fields: [assignedSupplierId], references: [id], onDelete: SetNull)
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   guide                      Guide?                        @relation(fields: [guideId], references: [id], onDelete: SetNull)
   restaurant                 Restaurant?                   @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
@@ -2355,7 +2374,12 @@ model BookingService {
   @@index([bookingId, serviceOrder])
   @@index([sourceQuoteItemId])
   @@index([supplierId])
+  @@index([assignedSupplierId])
+  @@index([assignmentStatus])
+  @@index([supplierConfirmationStatus])
   @@index([vehicleId])
+  @@index([assignedVehicleId])
+  @@index([assignedGuideId])
   @@index([guideId])
   @@index([restaurantId])
   @@index([operationType, guideConfirmationStatus])
@@ -2488,6 +2512,8 @@ enum BookingOperationServiceType {
   GUIDE
   HOTEL
   ACTIVITY
+  SERVICE
+  TICKET
   DINING
   EXTERNAL_PACKAGE
 }
@@ -2496,7 +2522,19 @@ enum BookingOperationServiceStatus {
   PENDING
   REQUESTED
   CONFIRMED
+  REJECTED
+  VOUCHER_SENT
+  OPERATIONAL_READY
+  COMPLETED
   DONE
+}
+
+enum SupplierAssignmentStatus {
+  UNASSIGNED
+  ASSIGNED
+  REQUESTED
+  CONFIRMED
+  REJECTED
 }
 
 enum VoucherType {
@@ -2563,6 +2601,7 @@ enum BookingServiceStatus {
 
 enum SupplierConfirmationStatus {
   NOT_SENT
+  REQUESTED
   SENT
   ACKNOWLEDGED
   CONFIRMED

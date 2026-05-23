@@ -43,7 +43,7 @@ import { RouteOption } from '../../lib/routes';
 import { formatNightCountLabel } from '../../lib/formatters';
 import { calculateMarginPercent, calculateProfit, formatMarginPercent, getQuoteMarginWarning } from '../../lib/financials';
 import { getValidatedTripSummary } from '../../lib/tripSummary';
-import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
+import { buildQuoteReadinessModel, buildQuoteWorkspaceHref, isActiveImportedQuoteServiceUnresolved, type QuotePricingFocus, type ServicePlannerCategory } from './quote-readiness';
 
 import { ADMIN_API_BASE_URL, adminPageFetchJson, isNextRedirectError } from '../../lib/admin-server';
 import { readSessionActor } from '../../lib/auth-session';
@@ -610,6 +610,20 @@ type Quote = {
     id: string;
     status: 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   } | null;
+  workflowDiagnostics?: Array<{
+    itemId: string | null;
+    itemName: string;
+    missingWorkflowFields: string[];
+    persistedOperationalFields?: Record<string, unknown>;
+  }>;
+  convertBlockers?: Array<{
+    blockerType: string;
+    source: string;
+    active: boolean;
+    itemId: string | null;
+    itemName: string | null;
+    reason: string;
+  }>;
 };
 
 type QuoteVersion = {
@@ -1400,6 +1414,30 @@ function formatQuoteStatus(status: QuoteStatus) {
     .join(' ');
 }
 
+function titleCase(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatWorkflowFieldName(field: string) {
+  const normalized = field.trim().toLowerCase();
+  const fieldLabels: Record<string, string> = {
+    'activity date': 'serviceDate',
+    'start time or pickup time': 'startTime or pickupTime',
+    'location or meeting point': 'pickupLocation or meetingPoint',
+    'participant count': 'participantCount',
+    'reconfirmation due date': 'reconfirmationDueAt',
+    'cost/sell pricing': 'totalCost / totalSell',
+    'pax count': 'paxCount',
+    quantity: 'quantity',
+  };
+
+  return fieldLabels[normalized] || field;
+}
+
 function formatInvoiceStatus(status?: 'DRAFT' | 'ISSUED' | 'PAID' | 'CANCELLED' | null) {
   if (!status) {
     return 'Not created';
@@ -1680,8 +1718,59 @@ function collectQuoteAuthoringSummary(quote: Quote) {
   );
 }
 
+function collectIncompleteActivityItemLabels(quote: Quote) {
+  if (Array.isArray(quote.workflowDiagnostics) && quote.workflowDiagnostics.length > 0) {
+    return quote.workflowDiagnostics
+      .filter((item) => item.missingWorkflowFields.length > 0)
+      .map((item) => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        missingWorkflowFields: item.missingWorkflowFields,
+      }));
+  }
+
+  const allItems = [...quote.quoteItems, ...quote.quoteOptions.flatMap((option) => option.quoteItems)];
+
+  return allItems
+    .filter((item) => {
+      if (!isActivityQuoteItem(item)) {
+        return false;
+      }
+
+      const hasResolvedDate = Boolean(resolveQuoteItemServiceDate(quote, item));
+
+      return (
+        !hasResolvedDate ||
+        (!item.startTime && !item.pickupTime) ||
+        (!item.pickupLocation && !item.meetingPoint) ||
+        !((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0) ||
+        (item.reconfirmationRequired && !item.reconfirmationDueAt) ||
+        item.totalCost <= 0 ||
+        item.totalSell <= 0 ||
+        (item.paxCount ?? 0) <= 0
+      );
+    })
+    .map((item) => {
+      const missingWorkflowFields = [
+        !resolveQuoteItemServiceDate(quote, item) ? 'activity date' : null,
+        !item.startTime && !item.pickupTime ? 'start time or pickup time' : null,
+        !item.pickupLocation && !item.meetingPoint ? 'location or meeting point' : null,
+        !((item.participantCount ?? 0) > 0 || (item.adultCount ?? 0) + (item.childCount ?? 0) > 0) ? 'participant count' : null,
+        item.reconfirmationRequired && !item.reconfirmationDueAt ? 'reconfirmation due date' : null,
+        item.totalCost <= 0 || item.totalSell <= 0 ? 'cost/sell pricing' : null,
+        (item.paxCount ?? 0) <= 0 ? 'pax count' : null,
+      ].filter(Boolean) as string[];
+
+      return {
+        itemId: item.id,
+        itemName: getQuoteItemDisplayName(item),
+        missingWorkflowFields,
+      };
+    });
+}
+
 function isQuoteServiceMissingSupplier(item: Quote['quoteItems'][number]) {
-  return item.service.supplierId === 'import-itinerary-system';
+  return item.service.supplierId === 'import-itinerary-system' && isActiveImportedQuoteServiceUnresolved(item);
 }
 
 function isQuoteServiceMissingPrice(item: Quote['quoteItems'][number]) {
@@ -2053,6 +2142,7 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
   const quoteMarkupPercent = quote.totalCost > 0 ? Number(((quoteProfit / quote.totalCost) * 100).toFixed(2)) : 0;
   const quoteMarginWarning = getQuoteMarginWarning(quote.totalSell, quote.totalCost);
   const authoringSummary = collectQuoteAuthoringSummary(quote);
+  const incompleteActivityItemLabels = collectIncompleteActivityItemLabels(quote);
   const expectedDayCount = getAutoItineraryDayCount(quote.nightCount);
   const sortedDays = [...quote.itineraries].filter((day) => day.dayNumber <= expectedDayCount).sort((a, b) => a.dayNumber - b.dayNumber);
   const visibleQuoteItineraryDays = quoteItinerary.days.filter((day) => day.isActive && day.dayNumber <= expectedDayCount);
@@ -2123,6 +2213,12 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
     authoringSummary.pricingIssues > 0 ? `${authoringSummary.pricingIssues} items are missing sell, cost, or pax details.` : null,
     authoringSummary.activityOperationalIssues > 0
       ? `${authoringSummary.activityOperationalIssues} activity items are missing date, time, location, or counts.`
+      : null,
+    incompleteActivityItemLabels.length > 0
+      ? `Incomplete Imported Activity / activity items: ${incompleteActivityItemLabels
+          .slice(0, 5)
+          .map((item) => `${item.itemName}${item.itemId ? ` (${item.itemId})` : ''} missing ${item.missingWorkflowFields.join(', ')}`)
+          .join('; ')}.`
       : null,
     authoringSummary.reconfirmationsDueSoon > 0 ? `${authoringSummary.reconfirmationsDueSoon} reconfirmations are due soon.` : null,
     (quote.status === 'ACCEPTED' || quote.status === 'CONFIRMED') && !quote.acceptedVersionId
@@ -2227,9 +2323,129 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
         : !quote.acceptedVersionId
           ? 'Save/accept a version before converting.'
           : null;
-  const conversionReadinessMessage = reviewBlockingIssues.length > 0 ? 'Resolve blocking issues before conversion.' : null;
-  const convertBlocked = Boolean(conversionRequirementMessage || conversionReadinessMessage);
-  const conversionBlockedMessage = conversionRequirementMessage || conversionReadinessMessage;
+  const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : [];
+  if (process.env.NODE_ENV === 'development') {
+    console.log('convertBlockers', convertBlockers);
+  }
+  const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active);
+  const statusMismatchBlockers = conversionRequirementMessage
+    ? [
+        {
+          id: 'conversion-status',
+          blockerType: 'status-mismatch',
+          source: 'Quote Status',
+          active: true,
+          itemId: null,
+          itemName: null,
+          title: quote.status === 'ACCEPTED' ? 'Accepted quote state' : `Quote status: ${formatQuoteStatus(quote.status)}`,
+          description: conversionRequirementMessage,
+          href: buildStepHref('review'),
+          reason: conversionRequirementMessage,
+        },
+      ]
+    : [];
+  const activeConvertBlockers = [
+    ...statusMismatchBlockers.map((item) => ({
+      blockerType: item.blockerType,
+      source: item.source,
+      active: item.active,
+      itemId: item.itemId,
+      itemName: item.itemName,
+      reason: item.reason,
+      href: item.href,
+    })),
+    ...backendConvertBlockers.map((blocker) => ({
+      blockerType: blocker.blockerType,
+      source: blocker.source,
+      active: blocker.active,
+      itemId: blocker.itemId,
+      itemName: blocker.itemName,
+      reason: blocker.reason,
+      href: blocker.itemId ? `${buildStepHref('services')}#quote-item-${blocker.itemId}` : buildStepHref('review'),
+    })),
+  ].filter((blocker, index, entries) => {
+    const key = `${blocker.blockerType}:${blocker.itemId || 'quote'}:${blocker.reason}`;
+    return entries.findIndex((entry) => `${entry.blockerType}:${entry.itemId || 'quote'}:${entry.reason}` === key) === index;
+  });
+  const convertBlocked = activeConvertBlockers.length > 0;
+  const conversionBlockedMessage = activeConvertBlockers[0]?.reason || null;
+  if (process.env.NODE_ENV === 'development') {
+    console.log({
+      convertBlocked,
+      activeConvertBlockers,
+      unresolvedItems: readiness.unresolvedItems,
+      conversionBlockedMessage,
+    });
+  }
+  const conversionBlockerSummary = {
+    unresolvedItems: activeConvertBlockers.length,
+    pricingMismatches: activeConvertBlockers.filter((blocker) =>
+      ['pricing-configuration', 'service-missing-price', 'service-zero-sell', 'pricing-mismatch'].includes(blocker.blockerType),
+    ).length,
+    missingOperationalFields: activeConvertBlockers.filter((blocker) => blocker.blockerType === 'workflow-fields').length,
+  };
+  const conversionBlockerDetails = convertBlocked ? (
+    <div className="section-stack">
+      <div className="quote-preview-total-list">
+        <div>
+          <span>Unresolved items</span>
+          <strong>{conversionBlockerSummary.unresolvedItems}</strong>
+        </div>
+        <div>
+          <span>Pricing mismatches</span>
+          <strong>{conversionBlockerSummary.pricingMismatches}</strong>
+        </div>
+        <div>
+          <span>Missing operational fields</span>
+          <strong>{conversionBlockerSummary.missingOperationalFields}</strong>
+        </div>
+      </div>
+      <div>
+        <strong>Active convert blockers</strong>
+        {activeConvertBlockers.map((blocker) => (
+          <p key={`${blocker.blockerType}-${blocker.itemId || 'quote'}-${blocker.reason}`} className="form-error">
+            <Link href={blocker.href}>
+              {blocker.itemName ? `${blocker.itemName}${blocker.itemId ? ` (${blocker.itemId})` : ''}` : titleCase(blocker.blockerType)}
+            </Link>
+            : [{blocker.source}] {blocker.reason}
+          </p>
+        ))}
+      </div>
+    </div>
+  ) : null;
+  const conversionDebugPanel = convertBlocked ? (
+    <section className="admin-card">
+      <h3>Conversion Debug</h3>
+      {convertBlocked && activeConvertBlockers.length === 0 ? (
+        <p className="form-error">STATE MISMATCH: convert is blocked but no active blockers exist.</p>
+      ) : null}
+      <div className="quote-preview-total-list">
+        <div>
+          <span>convertBlocked</span>
+          <strong>{String(convertBlocked)}</strong>
+        </div>
+        <div>
+          <span>activeConvertBlockers.length</span>
+          <strong>{activeConvertBlockers.length}</strong>
+        </div>
+        <div>
+          <span>unresolvedItems</span>
+          <strong>{readiness.unresolvedItems}</strong>
+        </div>
+      </div>
+      <p className="detail-copy">conversionBlockedMessage: {conversionBlockedMessage || 'null'}</p>
+      <div className="section-stack">
+        <div>
+          <strong>activeConvertBlockers JSON</strong>
+          <pre className="debug-json">{JSON.stringify(activeConvertBlockers, null, 2)}</pre>
+        </div>
+        <div>
+          <strong>quote.convertBlockers JSON</strong>
+          <pre className="debug-json">{JSON.stringify(quote.convertBlockers || [], null, 2)}</pre>
+        </div>
+      </div>
+    </section>
+  ) : null;
   const itineraryExists = quote.itineraries.length > 0 || quoteItinerary.days.length > 0;
   const servicesReadyForNext = itineraryExists;
   const previewReadyForNext = readiness.blockers.length === 0;
@@ -2417,10 +2633,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
               ) : null}
               {quote.booking ? (
                 <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">Booking</Link>
-              ) : convertBlocked || quoteReadOnly ? (
+              ) : quoteReadOnly ? (
+                <button type="button" className="secondary-button" disabled>Convert</button>
+              ) : convertBlocked ? (
                 <div className="section-stack">
                   <button type="button" className="secondary-button" disabled>Convert</button>
-                  {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
+                  {conversionBlockerDetails}
+                  {conversionDebugPanel}
                 </div>
               ) : (
                 <ConvertToBookingButton quoteId={quote.id} label="Convert" />
@@ -2665,6 +2884,19 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                       </p>
                     ))
                   )}
+                  {incompleteActivityItemLabels.length > 0 ? (
+                    <div className="quote-warning-links">
+                      {incompleteActivityItemLabels.slice(0, 5).map((item) => (
+                        <Link
+                          key={item.itemId || item.itemName}
+                          href={`${buildStepHref('services')}#quote-item-${item.itemId || ''}`}
+                          className="secondary-button"
+                        >
+                          Edit {item.itemName} {item.itemId ? `(${item.itemId})` : ''}: {item.missingWorkflowFields.join(', ')}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
                 <article className="detail-card">
                   <p className="eyebrow">Trip Summary</p>
@@ -3163,12 +3395,17 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <Link href={`/bookings/${quote.booking.id}`} className="secondary-button">
                       View booking
                     </Link>
-                  ) : quoteReadOnly || convertBlocked ? (
+                  ) : quoteReadOnly ? (
+                    <button type="button" className="secondary-button" disabled>
+                      Convert to booking
+                    </button>
+                  ) : convertBlocked ? (
                     <div className="section-stack">
                       <button type="button" className="secondary-button" disabled>
                         Convert to booking
                       </button>
-                      {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
+                      {conversionBlockerDetails}
+                      {conversionDebugPanel}
                     </div>
                   ) : (
                     <ConvertToBookingButton quoteId={quote.id} />
@@ -3430,10 +3667,13 @@ export default async function QuoteDetailsPage({ params, searchParams }: QuoteDe
                     <DownloadPdfButton apiBaseUrl={ACTION_API_BASE_URL} quoteId={quote.id} />
                     {quote.booking ? (
                       <Link href={`/bookings/${quote.booking.id}`} className="primary-button">Open booking</Link>
-                    ) : convertBlocked || quoteReadOnly ? (
+                    ) : quoteReadOnly ? (
+                      <button type="button" className="primary-button" disabled>Convert</button>
+                    ) : convertBlocked ? (
                       <div className="section-stack">
                         <button type="button" className="primary-button" disabled>Convert blocked</button>
-                        {conversionBlockedMessage ? <p className="form-error">{conversionBlockedMessage}</p> : null}
+                        {conversionBlockerDetails}
+                        {conversionDebugPanel}
                       </div>
                     ) : (
                       <ConvertToBookingButton quoteId={quote.id} />

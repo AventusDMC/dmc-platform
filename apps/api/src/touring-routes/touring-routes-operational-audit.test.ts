@@ -9,6 +9,8 @@ const { buildCanonicalTouringRouteCode, TouringRoutesService } = require('./tour
 const apiRoot = process.cwd().endsWith(join('apps', 'api')) ? process.cwd() : join(process.cwd(), 'apps', 'api');
 const schemaSource = readFileSync(join(apiRoot, 'prisma', 'schema.prisma'), 'utf8');
 const controllerSource = readFileSync(join(apiRoot, 'src', 'touring-routes', 'touring-routes.controller.ts'), 'utf8');
+const serviceSource = readFileSync(join(apiRoot, 'src', 'touring-routes', 'touring-routes.service.ts'), 'utf8');
+const packageSource = readFileSync(join(apiRoot, 'package.json'), 'utf8');
 
 function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {}) {
   const countFor = (modelName: string) => async ({ where }: any = {}) => {
@@ -65,6 +67,8 @@ function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {
     },
     activity: {
       count: countFor('activity'),
+      findMany: async () => [],
+      findFirst: async () => null,
       create: async () => {
         throw new Error('dry-run must not create activities');
       },
@@ -73,6 +77,12 @@ function createAuditPrismaMock(routes: any[], counts: Record<string, number> = {
       count: countFor('excursionTemplate'),
       create: async () => {
         throw new Error('dry-run must not create excursion templates');
+      },
+    },
+    place: {
+      findMany: async () => [],
+      create: async () => {
+        throw new Error('dry-run must not create places');
       },
     },
   };
@@ -96,6 +106,35 @@ test('touring route schema exposes safe classification fields without touching t
 
   assert.match(controllerSource, /operational-audit\/preview/);
   assert.match(controllerSource, /operational-audit\/export/);
+});
+
+test('Aqaba excursion pricing workbook commands are backend-only and guarded', () => {
+  assert.match(packageSource, /"pricing:aqaba-excursions:export": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts export"/);
+  assert.match(packageSource, /"pricing:aqaba-excursions:import-preview": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts import-preview"/);
+  assert.match(packageSource, /"pricing:aqaba-excursions:import": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts import"/);
+  assert.match(packageSource, /"repair:aqaba-excursion-duplicate-vehicle-rates:dry-run": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts repair-duplicate-vehicle-rates-dry-run"/);
+  assert.match(packageSource, /"repair:aqaba-excursion-duplicate-vehicle-rates:apply": "ts-node src\/touring-routes\/aqaba-excursion-pricing-workbook\.cli\.ts repair-duplicate-vehicle-rates-apply"/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_IMPORT_CONFIRMATION = 'AQABA_EXCURSION_PRICING_IMPORT'/);
+  assert.match(serviceSource, /AQABA_EXCURSION_DUPLICATE_RATE_REPAIR_CONFIRMATION = 'AQABA_EXCURSION_DUPLICATE_RATE_REPAIR'/);
+  assert.match(serviceSource, /workbook\.addWorksheet\('Transport Rates'\)/);
+  assert.match(serviceSource, /workbook\.addWorksheet\('Activity Rates'\)/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_SUPPLIER_NAME = 'Almushtari Logistics Services'/);
+  assert.match(serviceSource, /AQABA_EXCURSION_PRICING_FIT_VEHICLE_NAMES = \['Sedan 2', 'Mini Van 6', 'Van 9'\]/);
+  assert.match(serviceSource, /roundTripSellPrice/);
+  assert.match(serviceSource, /ROUND_TRIP_PER_VEHICLE/);
+  assert.match(serviceSource, /currency !== 'JOD'/);
+  assert.match(serviceSource, /supplierId must be a UUID/);
+  assert.match(serviceSource, /vehicleId must be a UUID/);
+  assert.match(serviceSource, /outboundRouteId must be a UUID/);
+  assert.match(serviceSource, /returnRouteId must be a UUID/);
+  assert.match(serviceSource, /split leg sellPrice/);
+  assert.match(serviceSource, /\['TRANSPORT_TEMPLATE', templateCode, supplierId \|\| 'NO_SUPPLIER', vehicleId\]\.join\('\|'\)/);
+  assert.match(serviceSource, /\['TRANSPORT_LEG', outboundRouteId, supplierId \|\| 'NO_SUPPLIER', vehicleId/);
+  assert.match(serviceSource, /dryRunAqabaExcursionDuplicateVehicleRateRepair/);
+  assert.match(serviceSource, /applyAqabaExcursionDuplicateVehicleRateRepair/);
+  assert.match(serviceSource, /active: false, notes/);
+  assert.match(serviceSource, /allowedRouteKeys\.set\(`\$\{templateCode\}\|\$\{component\.routeId\}`/);
+  assert.match(serviceSource, /allowedActivityKeys\.set\(`\$\{templateCode\}\|\$\{component\.activityId\}`/);
 });
 
 test('canonical touring route code uses JOR-TR region and route name consistently', () => {
@@ -468,7 +507,8 @@ test('touring route cleanup execution preview reports impact and actions without
   assert.match(row.warnings.join(' | '), /Active booking references detected/);
 });
 
-function createActivityExecutionPrismaMock(route: any, counts: Record<string, number> = {}) {
+function createActivityExecutionPrismaMock(routeOrRoutes: any, counts: Record<string, number> = {}) {
+  const routes = Array.isArray(routeOrRoutes) ? routeOrRoutes : [routeOrRoutes];
   const countFor = (modelName: string) => async ({ where }: any = {}) => {
     const routeId = where?.touringRouteId || 'none';
     const activeKey =
@@ -484,8 +524,9 @@ function createActivityExecutionPrismaMock(route: any, counts: Record<string, nu
       },
     },
     touringRoute: {
-      update: async ({ data }: any) => {
+      update: async ({ where, data }: any) => {
         state.routeUpdate = data;
+        const route = routes.find((entry: any) => entry.id === where?.id) || routes[0];
         return { ...route, ...data };
       },
     },
@@ -500,7 +541,8 @@ function createActivityExecutionPrismaMock(route: any, counts: Record<string, nu
   return {
     state,
     touringRoute: {
-      findUnique: async () => route,
+      findUnique: async ({ where }: any = {}) => routes.find((entry: any) => entry.id === where?.id) || routes[0],
+      findMany: async () => routes,
       count: countFor('touringRoute'),
     },
     quoteItem: { count: countFor('quoteItem') },
@@ -509,6 +551,7 @@ function createActivityExecutionPrismaMock(route: any, counts: Record<string, nu
     bookingService: { count: countFor('bookingService') },
     activity: {
       count: countFor('activity'),
+      findMany: async () => [],
       findFirst: async () => null,
     },
     excursionTemplate: { count: countFor('excursionTemplate') },
@@ -555,6 +598,577 @@ test('activity master execution converts one low-risk Aqaba candidate and preser
   assert.equal(prisma.state.auditLogCreate.action, 'touring_route.convert_to_activity_master');
   assert.equal(prisma.state.auditLogCreate.metadata.deletesOriginalTouringRoute, false);
   assert.equal(prisma.state.auditLogCreate.metadata.archivedOriginalTouringRoute, true);
+});
+
+test('aqaba activity cleanup dry-run lists only safe activity candidates without mutations', async () => {
+  const routes = [
+    {
+      id: 'aqaba-glass-boat',
+      code: 'AQB-GLASS',
+      name: 'Aqaba Glass Boat Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba glass boat activity',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [{ order: 1, city: 'Aqaba', location: 'Aqaba Marina' }],
+      pricings: [],
+    },
+    {
+      id: 'petra-day',
+      code: 'PETRA-FD',
+      name: 'Petra Full Day Tour',
+      startCity: 'Amman',
+      durationDays: 1,
+      region: 'South',
+      active: true,
+      mainDestinations: ['Petra'],
+      stops: [{ order: 1, city: 'Petra' }],
+      pricings: [],
+    },
+  ];
+  const service = new TouringRoutesService(createAuditPrismaMock(routes) as any);
+
+  const dryRun = (await service.dryRunAqabaActivityCleanup()) as any;
+
+  assert.equal(dryRun.mode, 'DRY_RUN');
+  assert.equal(dryRun.mutatesData, false);
+  assert.equal(dryRun.deletesData, false);
+  assert.equal(dryRun.totalCandidates, 1);
+  assert.equal(dryRun.candidates[0].touringRouteId, 'aqaba-glass-boat');
+  assert.equal(dryRun.candidates[0].proposedActivity.code, 'JOR-ACT-AQABA-AQABA-GLASS-BOAT-EXPERIENCE');
+  assert.equal(dryRun.candidates[0].existingDuplicateActivityCheck.duplicateCount, 0);
+  assert.deepEqual(dryRun.candidates[0].quoteReferences, { total: 0, active: 0 });
+  assert.deepEqual(dryRun.candidates[0].bookingReferences, { total: 0, active: 0 });
+  assert.equal(dryRun.candidates[0].safeToConvert, true);
+});
+
+test('aqaba activity cleanup dry-run blocks duplicate and referenced rows', async () => {
+  const route = {
+    id: 'aqaba-yacht',
+    code: 'AQB-YACHT',
+    name: 'Aqaba Yacht Experience',
+    startCity: 'Aqaba',
+    durationDays: 1,
+    routeDescription: 'Aqaba yacht activity',
+    region: 'Aqaba',
+    active: true,
+    mainDestinations: ['Aqaba Marina'],
+    stops: [{ order: 1, city: 'Aqaba', location: 'Aqaba Marina' }],
+    pricings: [],
+  };
+  const prisma = createAuditPrismaMock([route], {
+    'quoteItem:aqaba-yacht': 1,
+    'quoteItem:aqaba-yacht:active': 1,
+    'activity:none': 1,
+  }) as any;
+  prisma.activity.findMany = async () => [{ id: 'activity-1', code: 'JOR-ACT-AQABA-AQABA-YACHT-EXPERIENCE', name: 'Aqaba Yacht Experience', active: true }];
+  const service = new TouringRoutesService(prisma);
+
+  const dryRun = (await service.dryRunAqabaActivityCleanup()) as any;
+
+  assert.equal(dryRun.totalCandidates, 1);
+  assert.equal(dryRun.candidates[0].safeToConvert, false);
+  assert.match(dryRun.candidates[0].blockingReasons.join('\n'), /Duplicate Activity Master record already exists/);
+  assert.match(dryRun.candidates[0].blockingReasons.join('\n'), /Quote references exist/);
+});
+
+test('aqaba activity cleanup apply requires an exact safe route id and company id', async () => {
+  const route = {
+    id: 'petra-day',
+    code: 'PETRA-FD',
+    name: 'Petra Full Day Tour',
+    startCity: 'Amman',
+    durationDays: 1,
+    region: 'South',
+    active: true,
+    mainDestinations: ['Petra'],
+    stops: [{ order: 1, city: 'Petra' }],
+    pricings: [],
+  };
+  const service = new TouringRoutesService(createAuditPrismaMock([route]) as any);
+
+  await assert.rejects(() => service.applyAqabaActivityCleanup('', { companyId: 'company-1' }), /requires --id/);
+  await assert.rejects(() => service.applyAqabaActivityCleanup('petra-day', { companyId: '' }), /DMC_CLEANUP_COMPANY_ID/);
+  await assert.rejects(() => service.applyAqabaActivityCleanup('petra-day', { companyId: 'company-1' }), /Only Aqaba activity-like Touring Routes/);
+});
+
+test('aqaba activity batch dry-run evaluates only allowed legacy codes and blocks movement-style rows', async () => {
+  const routes = [
+    {
+      id: 'aq-boat',
+      code: 'AQ_BOAT',
+      name: 'Aqaba Boat Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aq-yacht-rt',
+      code: 'AQ_YACHT',
+      name: 'Aqaba Yacht RT Transfer',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aq-glass',
+      code: 'AQ_GLASS',
+      name: 'Aqaba Glass Boat Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aqaba-rt',
+      code: 'JOR-TR-AQABA-BOAT-RT',
+      name: 'Aqaba Boat RT',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+  ];
+  const service = new TouringRoutesService(createAuditPrismaMock(routes) as any);
+
+  const dryRun = (await service.dryRunAqabaActivityCleanupBatch()) as any;
+  const byCode = new Map(dryRun.candidates.map((entry: any) => [entry.code, entry]));
+
+  assert.equal(dryRun.mode, 'BATCH_DRY_RUN');
+  assert.equal(dryRun.mutatesData, false);
+  assert.deepEqual(dryRun.allowedCodes, ['AQ_BOAT', 'AQ_YACHT', 'AQ_DIVE', 'AQ_SNORK', 'AQ_BEACH', 'AQ_SUB']);
+  assert.equal(byCode.has('AQ_BOAT'), true);
+  assert.equal(byCode.has('AQ_YACHT'), true);
+  assert.equal(byCode.has('AQ_GLASS'), false);
+  assert.equal(byCode.has('JOR-TR-AQABA-BOAT-RT'), false);
+  assert.equal((byCode.get('AQ_BOAT') as any).safeToConvert, true);
+  assert.equal((byCode.get('AQ_YACHT') as any).safeToConvert, false);
+  assert.match((byCode.get('AQ_YACHT') as any).blockingReasons.join('\n'), /Round-trip or movement-style/);
+});
+
+test('aqaba activity batch apply requires confirmation and converts only safe allowed rows', async () => {
+  const routes = [
+    {
+      id: 'aq-boat',
+      code: 'AQ_BOAT',
+      name: 'Aqaba Boat Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba boat activity',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aq-snork-archived',
+      code: 'AQ_SNORK',
+      name: 'Aqaba Snorkeling Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba snorkeling activity',
+      region: 'Aqaba',
+      active: false,
+      mainDestinations: ['Aqaba South Beach'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aq-yacht-blocked',
+      code: 'AQ_YACHT',
+      name: 'Aqaba Yacht Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba yacht activity',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+  ];
+  const prisma = createActivityExecutionPrismaMock(routes, {
+    'quoteItem:aq-yacht-blocked': 1,
+  });
+  const service = new TouringRoutesService(prisma as any);
+
+  await assert.rejects(
+    () => service.applyAqabaActivityCleanupBatch({ companyId: 'company-1', confirm: 'WRONG' }),
+    /AQABA_ACTIVITY_BATCH_CLEANUP/,
+  );
+
+  const result = (await service.applyAqabaActivityCleanupBatch({
+    companyId: 'company-1',
+    confirm: 'AQABA_ACTIVITY_BATCH_CLEANUP',
+  })) as any;
+
+  assert.equal(result.counts.converted, 1);
+  assert.equal(result.converted[0].code, 'AQ_BOAT');
+  assert.equal(result.converted[0].activity.code, 'JOR-ACT-AQABA-AQABA-BOAT-EXPERIENCE');
+  assert.equal(result.counts.skipped, 1);
+  assert.equal(result.skipped[0].code, 'AQ_SNORK');
+  assert.equal(result.counts.blocked, 1);
+  assert.equal(result.blocked[0].code, 'AQ_YACHT');
+  assert.equal(result.counts.errors, 0);
+});
+
+test('aqaba rt cleanup dry-run proposes excursion template with activity and transfer components only for allowed rt codes', async () => {
+  const routes = [
+    {
+      id: 'aqaba-diving-rt',
+      code: 'JOR-TR-AQABA-DIVING-RT',
+      name: 'Aqaba Diving RT',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba diving round trip',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['South Beach'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'aqaba-glass-rt',
+      code: 'JOR-TR-AQABA-GLASS-BOAT-RT',
+      name: 'Aqaba Glass Boat RT',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba glass boat round trip',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'legacy-aq-yacht',
+      code: 'AQ_YACHT',
+      name: 'Aqaba Yacht Experience',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['Aqaba Marina'],
+      stops: [],
+      pricings: [],
+    },
+    {
+      id: 'petra-aqaba-rt',
+      code: 'JOR-TR-SOUTH-PETRA-AQABA-RT',
+      name: 'Petra Aqaba RT',
+      startCity: 'Petra',
+      durationDays: 1,
+      region: 'South',
+      active: true,
+      mainDestinations: ['Aqaba'],
+      stops: [],
+      pricings: [],
+    },
+  ];
+  const prisma = createAuditPrismaMock(routes) as any;
+  prisma.touringRoute.findMany = async ({ where }: any = {}) =>
+    routes.filter((route) => !where?.code?.in || where.code.in.includes(route.code));
+  prisma.activity.findFirst = async ({ where }: any = {}) => {
+    if (where?.code?.equals === 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE') {
+      return { id: 'activity-diving', code: 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE', name: 'Scuba Diving Experience', active: true };
+    }
+    if (where?.name?.equals === 'Discover Scuba Diving') {
+      throw new Error('loose/wrong Activity name must not be queried');
+    }
+    return null;
+  };
+  prisma.place.findMany = async ({ where }: any = {}) => {
+    const terms = JSON.stringify(where || {}).toLowerCase();
+    if (terms.includes('aqaba hotel') || terms.includes('aqaba base') || terms.includes('aqaba city') || terms.includes('aqaba')) {
+      return [{ id: 'place-aqaba', name: 'Aqaba City', city: 'Aqaba', type: 'CITY', isActive: true }];
+    }
+    if (terms.includes('south beach') || terms.includes('diving') || terms.includes('dive')) {
+      return [{ id: 'place-south-beach', name: 'South Beach Aqaba', city: 'Aqaba', type: 'ATTRACTION', isActive: true }];
+    }
+    return [];
+  };
+  prisma.route.findMany = async ({ where }: any = {}) => {
+    if (where?.fromPlaceId === 'place-aqaba' && where?.toPlaceId === 'place-south-beach') {
+      return [{ id: 'route-out', name: 'Aqaba City to South Beach Aqaba', normalizedKey: 'aqaba-city__south-beach-aqaba', isActive: true }];
+    }
+    if (where?.fromPlaceId === 'place-south-beach' && where?.toPlaceId === 'place-aqaba') {
+      return [{ id: 'route-return', name: 'South Beach Aqaba to Aqaba City', normalizedKey: 'south-beach-aqaba__aqaba-city', isActive: true }];
+    }
+    return [];
+  };
+  const service = new TouringRoutesService(prisma);
+
+  const dryRun = (await service.dryRunAqabaRoundTripCleanup()) as any;
+  const byCode = new Map(dryRun.candidates.map((entry: any) => [entry.currentCode, entry]));
+
+  assert.equal(dryRun.mode, 'AQABA_RT_DRY_RUN');
+  assert.equal(dryRun.mutatesData, false);
+  assert.equal(byCode.has('JOR-TR-AQABA-DIVING-RT'), true);
+  assert.equal(byCode.has('JOR-TR-AQABA-GLASS-BOAT-RT'), true);
+  assert.equal(byCode.has('AQ_YACHT'), false);
+  assert.equal(byCode.has('JOR-TR-SOUTH-PETRA-AQABA-RT'), false);
+  assert.equal((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).recommendedAction, 'CONVERT_TO_EXCURSION_TEMPLATE_WITH_TRANSFERS');
+  assert.deepEqual((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).proposedExcursionTemplate.components, [
+    'OUTBOUND_LOCAL_TRANSFER',
+    'ACTIVITY_MASTER',
+    'RETURN_LOCAL_TRANSFER',
+  ]);
+  assert.equal((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).expectedActivityMaster.code, 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE');
+  assert.equal((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).matchedActivityMaster.id, 'activity-diving');
+  assert.equal((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).requiredCanonicalPlaces.aqabaBaseExists, true);
+  assert.equal((byCode.get('JOR-TR-AQABA-DIVING-RT') as any).requiredTransferRoutes.outboundExists, true);
+  assert.equal((byCode.get('JOR-TR-AQABA-GLASS-BOAT-RT') as any).recommendedAction, 'MANUAL_REVIEW');
+  assert.match((byCode.get('JOR-TR-AQABA-GLASS-BOAT-RT') as any).missingActivityMasterWarning, /No Activity Master/);
+});
+
+test('aqaba rt dependency dry-run and apply create only missing allowlisted places and transfer routes', async () => {
+  const places = [
+    { id: 'place-aqaba', name: 'Aqaba', city: 'Aqaba', type: 'CITY', isActive: true },
+    { id: 'place-south-beach', name: 'Aqaba South Beach', city: 'Aqaba', type: 'ATTRACTION', isActive: true },
+  ];
+  const routes: any[] = [];
+  const prisma = {
+    touringRoute: { findMany: async () => [] },
+    quoteItem: { count: async () => 0 },
+    excursionTemplateComponent: { count: async () => 0 },
+    packageTemplateComponent: { count: async () => 0 },
+    bookingService: { count: async () => 0 },
+    activity: { count: async () => 0, findFirst: async () => null, findMany: async () => [] },
+    excursionTemplate: { count: async () => 0 },
+    vehicleRate: {
+      create: async () => {
+        throw new Error('dependency setup must not create pricing/rates');
+      },
+    },
+    transportPricingRule: {
+      create: async () => {
+        throw new Error('dependency setup must not create pricing rules');
+      },
+    },
+    place: {
+      findMany: async ({ where }: any = {}) => {
+        const expectedName = where?.name?.equals;
+        return places.filter((place) => place.isActive && place.name.toLowerCase() === String(expectedName || '').toLowerCase());
+      },
+      create: async ({ data }: any) => {
+        const existing = places.find((place) => place.name.toLowerCase() === data.name.toLowerCase());
+        if (existing) return existing;
+        const created = { id: `place-${places.length + 1}`, ...data };
+        places.push(created);
+        return created;
+      },
+    },
+    route: {
+      findMany: async ({ where }: any = {}) => routes.filter((route) => route.normalizedKey === where?.normalizedKey),
+      create: async ({ data }: any) => {
+        const existing = routes.find((route) => route.normalizedKey === data.normalizedKey);
+        if (existing) return existing;
+        const created = { id: `route-${routes.length + 1}`, ...data };
+        routes.push(created);
+        return created;
+      },
+    },
+  };
+  const service = new TouringRoutesService(prisma as any);
+
+  const dryRun = (await service.dryRunAqabaRoundTripDependencies()) as any;
+
+  assert.equal(dryRun.mode, 'AQABA_RT_DEPENDENCIES_DRY_RUN');
+  assert.equal(dryRun.mutatesData, false);
+  assert.equal(dryRun.createsPricing, false);
+  assert.equal(dryRun.missingPlaces.length, 3);
+  assert.equal(dryRun.missingTransferRoutes.length, 8);
+  assert.equal(dryRun.safeToApply, true);
+  assert.ok(dryRun.missingTransferRoutes.some((route: any) => route.proposedRouteCode === 'JOR-TRF-AQABA-AQABA-MARINA'));
+
+  await assert.rejects(
+    () => service.applyAqabaRoundTripDependencies({ confirm: 'WRONG' }),
+    /AQABA_RT_DEPENDENCIES/,
+  );
+
+  const applied = (await service.applyAqabaRoundTripDependencies({ confirm: 'AQABA_RT_DEPENDENCIES' })) as any;
+  assert.equal(applied.createsPricing, false);
+  assert.equal(applied.counts.createdPlaces, 3);
+  assert.equal(applied.counts.createdTransferRoutes, 8);
+  assert.equal(routes.length, 8);
+
+  const appliedAgain = (await service.applyAqabaRoundTripDependencies({ confirm: 'AQABA_RT_DEPENDENCIES' })) as any;
+  assert.equal(appliedAgain.counts.createdPlaces, 0);
+  assert.equal(appliedAgain.counts.createdTransferRoutes, 0);
+  assert.equal(routes.length, 8);
+  assert.equal(places.filter((place) => place.name === 'Aqaba Marina').length, 1);
+});
+
+test('aqaba rt excursion conversion dry-run and apply create ordered template components idempotently', async () => {
+  const touringRoutes = [
+    {
+      id: 'aqaba-diving-rt',
+      code: 'JOR-TR-AQABA-DIVING-RT',
+      name: 'Aqaba Diving RT',
+      startCity: 'Aqaba',
+      durationDays: 1,
+      routeDescription: 'Aqaba diving round trip',
+      region: 'Aqaba',
+      active: true,
+      mainDestinations: ['South Beach'],
+      reviewNotes: 'legacy aqaba rt row',
+      stops: [],
+      pricings: [],
+    },
+  ];
+  const templates: any[] = [];
+  const state: any = { templateCreate: null, routeUpdate: null, auditLogCreate: null };
+  const prisma = {
+    touringRoute: {
+      findMany: async ({ where }: any = {}) => touringRoutes.filter((route) => !where?.code?.in || where.code.in.includes(route.code)),
+      findUnique: async ({ where }: any = {}) => touringRoutes.find((route) => route.id === where?.id),
+    },
+    quoteItem: { count: async () => 0 },
+    excursionTemplateComponent: { count: async () => 0 },
+    packageTemplateComponent: { count: async () => 0 },
+    bookingService: { count: async () => 0 },
+    activity: {
+      count: async () => 0,
+      findFirst: async ({ where }: any = {}) =>
+        where?.code?.equals === 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE'
+          ? { id: 'activity-diving', code: 'JOR-ACT-SOUTH-SCUBA-DIVING-EXPERIENCE', name: 'Scuba Diving Experience', active: true }
+          : null,
+      findMany: async () => [],
+    },
+    excursionTemplate: {
+      count: async () => 0,
+      findFirst: async ({ where }: any = {}) => {
+        const code = where?.OR?.find((entry: any) => entry?.code)?.code?.equals;
+        const name = where?.OR?.find((entry: any) => entry?.name)?.name?.equals;
+        return templates.find((template) => template.code === code || template.name === name) || null;
+      },
+    },
+    place: {
+      findMany: async ({ where }: any = {}) => {
+        const text = JSON.stringify(where || {}).toLowerCase();
+        if (text.includes('aqaba hotel') || text.includes('aqaba base') || text.includes('aqaba city') || text.includes('aqaba')) {
+          return [{ id: 'place-aqaba', name: 'Aqaba', city: 'Aqaba', type: 'CITY', isActive: true }];
+        }
+        if (text.includes('south beach') || text.includes('diving') || text.includes('dive')) {
+          return [{ id: 'place-south-beach', name: 'Aqaba South Beach', city: 'Aqaba', type: 'ATTRACTION', isActive: true }];
+        }
+        return [];
+      },
+    },
+    route: {
+      findMany: async ({ where }: any = {}) => {
+        if (where?.fromPlaceId === 'place-aqaba' && where?.toPlaceId === 'place-south-beach') {
+          return [{ id: 'route-out', name: 'Aqaba to Aqaba South Beach', normalizedKey: 'aqaba_aqaba_south_beach', routeType: 'TRANSFER_ROUTE', isActive: true }];
+        }
+        if (where?.fromPlaceId === 'place-south-beach' && where?.toPlaceId === 'place-aqaba') {
+          return [{ id: 'route-return', name: 'Aqaba South Beach to Aqaba', normalizedKey: 'aqaba_south_beach_aqaba', routeType: 'TRANSFER_ROUTE', isActive: true }];
+        }
+        return [];
+      },
+    },
+    vehicleRate: {
+      create: async () => {
+        throw new Error('conversion must not create pricing/rates');
+      },
+    },
+    transportPricingRule: {
+      create: async () => {
+        throw new Error('conversion must not create pricing rules');
+      },
+    },
+    $transaction: async (callback: any) =>
+      callback({
+        excursionTemplate: {
+          create: async ({ data }: any) => {
+            state.templateCreate = data;
+            const created = {
+              id: 'template-diving',
+              code: data.code,
+              name: data.name,
+              active: data.active,
+              components: data.components.create.map((component: any, index: number) => ({ id: `component-${index + 1}`, ...component })),
+            };
+            templates.push(created);
+            return created;
+          },
+        },
+        touringRoute: {
+          update: async ({ where, data }: any) => {
+            state.routeUpdate = data;
+            const route = touringRoutes.find((entry) => entry.id === where.id) as any;
+            Object.assign(route, data);
+            return route;
+          },
+        },
+        auditLog: {
+          create: async ({ data }: any) => {
+            state.auditLogCreate = data;
+            return { id: 'audit-log', ...data };
+          },
+        },
+      }),
+  };
+  const service = new TouringRoutesService(prisma as any);
+
+  const dryRun = (await service.dryRunAqabaRoundTripExcursionConversion()) as any;
+  const candidate = dryRun.candidates.find((entry: any) => entry.currentCode === 'JOR-TR-AQABA-DIVING-RT');
+
+  assert.equal(dryRun.mode, 'AQABA_RT_EXCURSION_CONVERSION_DRY_RUN');
+  assert.equal(dryRun.mutatesData, false);
+  assert.equal(dryRun.createsPricing, false);
+  assert.equal(candidate.outboundTransferRouteId, 'route-out');
+  assert.equal(candidate.activityMasterId, 'activity-diving');
+  assert.equal(candidate.returnTransferRouteId, 'route-return');
+  assert.equal(candidate.duplicateExcursionTemplateCheck.duplicateFound, false);
+  assert.equal(candidate.safeToConvert, true);
+
+  await assert.rejects(
+    () => service.applyAqabaRoundTripExcursionConversion({ companyId: 'company-1', confirm: 'WRONG' }),
+    /AQABA_RT_EXCURSION_CONVERSION/,
+  );
+
+  const applied = (await service.applyAqabaRoundTripExcursionConversion({
+    companyId: 'company-1',
+    confirm: 'AQABA_RT_EXCURSION_CONVERSION',
+  })) as any;
+
+  assert.equal(applied.counts.converted, 1);
+  assert.equal(applied.converted[0].excursionTemplate.componentCount, 3);
+  assert.equal(state.templateCreate.components.create[0].componentType, 'TRANSPORT');
+  assert.equal(state.templateCreate.components.create[0].routeId, 'route-out');
+  assert.equal(state.templateCreate.components.create[1].componentType, 'ACTIVITY');
+  assert.equal(state.templateCreate.components.create[1].activityId, 'activity-diving');
+  assert.equal(state.templateCreate.components.create[2].componentType, 'TRANSPORT');
+  assert.equal(state.templateCreate.components.create[2].routeId, 'route-return');
+  assert.equal(state.routeUpdate.active, false);
+  assert.match(state.routeUpdate.reviewNotes, /Converted to Excursion Template/);
+  assert.equal(state.auditLogCreate.action, 'touring_route.aqaba_rt.convert_to_excursion_template');
+  assert.equal(state.auditLogCreate.metadata.createsPricing, false);
+
+  const appliedAgain = (await service.applyAqabaRoundTripExcursionConversion({
+    companyId: 'company-1',
+    confirm: 'AQABA_RT_EXCURSION_CONVERSION',
+  })) as any;
+  assert.equal(appliedAgain.counts.converted, 0);
+  assert.equal(appliedAgain.counts.skipped, 1);
+  assert.equal(templates.length, 1);
 });
 
 test('activity master execution is blocked when active booking conflicts exist', async () => {

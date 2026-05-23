@@ -24238,6 +24238,200 @@ video {
   gap: 0.85rem;
 }
 
+.booking-operations-simplified-page {
+  max-width: 1680px;
+}
+
+.booking-operations-action-center,
+.booking-operations-phase,
+.booking-operations-manifest-card {
+  margin-bottom: 16px;
+}
+
+.booking-operations-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.booking-operations-action-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.booking-operations-action-card span,
+.booking-operations-key-grid span,
+.booking-operations-secondary-grid span,
+.booking-operations-sidebar span {
+  color: var(--admin-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.booking-operations-action-card strong {
+  font-size: 1.55rem;
+}
+
+.severity-critical {
+  border-color: rgba(185, 28, 28, 0.45);
+  background: rgba(254, 242, 242, 0.9);
+}
+
+.severity-action-required {
+  border-color: rgba(180, 83, 9, 0.45);
+  background: rgba(255, 251, 235, 0.9);
+}
+
+.severity-info {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(239, 246, 255, 0.9);
+}
+
+.booking-operations-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.booking-operations-sidebar {
+  padding: 18px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-card-bg);
+}
+
+.booking-operations-groups {
+  min-width: 0;
+}
+
+.booking-operations-manifest-card,
+.booking-operations-row-head,
+.operations-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.booking-operations-row-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.booking-operations-row-card {
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--admin-surface);
+}
+
+.booking-operations-row-card.severity-critical {
+  border-left: 5px solid #b91c1c;
+}
+
+.booking-operations-row-card.severity-action-required {
+  border-left: 5px solid #b45309;
+}
+
+.booking-operations-row-card.severity-info {
+  border-left: 5px solid #2563eb;
+}
+
+.operation-type-pill,
+.operations-readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-border);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.operations-readiness-ready {
+  color: #166534;
+  border-color: rgba(22, 101, 52, 0.3);
+  background: rgba(240, 253, 244, 0.95);
+}
+
+.operations-readiness-pending {
+  color: #92400e;
+  border-color: rgba(146, 64, 14, 0.3);
+  background: rgba(255, 251, 235, 0.95);
+}
+
+.operations-readiness-blocked,
+.operations-readiness-critical {
+  color: #991b1b;
+  border-color: rgba(153, 27, 27, 0.3);
+  background: rgba(254, 242, 242, 0.95);
+}
+
+.booking-operations-key-grid,
+.booking-operations-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.booking-operations-key-grid > div,
+.booking-operations-secondary-grid > div {
+  display: grid;
+  gap: 3px;
+}
+
+.booking-operations-reason-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--admin-text);
+}
+
+.booking-operations-quick-actions,
+.booking-operations-editor-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.operations-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.operations-inline-form select,
+.operations-inline-form input {
+  min-height: 34px;
+}
+
+.operations-quick-form {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .booking-operations-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-operations-sidebar {
+    position: static;
+  }
+}
+
 .booking-dashboard-day-readiness {
   display: flex;
   flex-wrap: wrap;

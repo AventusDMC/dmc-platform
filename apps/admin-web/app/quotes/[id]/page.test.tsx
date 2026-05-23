@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { getDefaultProposalPreviewHref, getQuoteExportPdfHref } from './proposal-paths';
 import { formatOriginAwareExcursionName } from './excursion-origin-display';
+import { buildQuoteReadinessModel } from './quote-readiness';
 
 const pageSource = readFileSync(new URL('./page.tsx', import.meta.url), 'utf8');
 const loadingSource = readFileSync(new URL('./loading.tsx', import.meta.url), 'utf8');
@@ -86,6 +87,146 @@ describe('quote detail page regression', () => {
     ]);
   });
 
+  it('preserves saved transport quote item state while editing operational details', () => {
+    expectSourceContains(quoteItemCardSource, [
+      'vehicleRateId: currentItem.appliedVehicleRate?.id || \'\'',
+      'transportVehicleId: currentItem.vehicleId || currentItem.appliedVehicleRate?.vehicle?.id || \'\'',
+      'submitLabel={currentItem.appliedVehicleRate || currentItem.routeId || currentItem.transportServiceTypeId ? \'Save changes\' : \'Save item\'}',
+      '<div id={`quote-item-${currentItem.id}`}>',
+    ]);
+    expectSourceContains(quoteItemsFormSource, [
+      'transportSelectionMatchesSavedItem',
+      'savedTransportVehicleRateId',
+      'hasSavedTransportPricing',
+      'serviceId || initialValues?.serviceId || selectedService?.id || \'\'',
+      'Edit Transport',
+      "isTransportService && !isEditing ? 'Add Transport' : submitLabel",
+    ]);
+  });
+
+  it('surfaces exact workflow diagnostics and edit anchors for incomplete imported activities', () => {
+    expectSourceContains(pageSource, [
+      'workflowDiagnostics?: Array<',
+      'convertBlockers?: Array<',
+      'missingWorkflowFields: string[];',
+      'persistedOperationalFields?: Record<string, unknown>;',
+      'item.missingWorkflowFields.join(\', \')',
+      'href={`${buildStepHref(\'services\')}#quote-item-${item.itemId || \'\'}`}',
+      'Edit {item.itemName} {item.itemId ? `(${item.itemId})` : \'\'}: {item.missingWorkflowFields.join(\', \')}',
+    ]);
+  });
+
+  it('renders exact conversion blockers from workflow diagnostics while keeping conversion disabled', () => {
+    expectSourceContains(pageSource, [
+      'const convertBlockers = Array.isArray(quote.convertBlockers) ? quote.convertBlockers : []',
+      "console.log('convertBlockers', convertBlockers)",
+      'const backendConvertBlockers = convertBlockers.filter((blocker) => blocker.active)',
+      'const activeConvertBlockers = [',
+      'const statusMismatchBlockers = conversionRequirementMessage',
+      'const conversionBlockerSummary = {',
+      'unresolvedItems: activeConvertBlockers.length',
+      'const convertBlocked = activeConvertBlockers.length > 0',
+      'const conversionBlockedMessage = activeConvertBlockers[0]?.reason || null',
+      'console.log({',
+      'unresolvedItems: readiness.unresolvedItems',
+      'Active convert blockers',
+      '[{blocker.source}] {blocker.reason}',
+      'pricingMismatches: activeConvertBlockers.filter((blocker) =>',
+      "missingOperationalFields: activeConvertBlockers.filter((blocker) => blocker.blockerType === 'workflow-fields').length",
+      '{conversionBlockerDetails}',
+      'Conversion Debug',
+      'activeConvertBlockers.length',
+      'STATE MISMATCH: convert is blocked but no active blockers exist.',
+      'activeConvertBlockers JSON',
+      'quote.convertBlockers JSON',
+      '{conversionDebugPanel}',
+      ') : quoteReadOnly ? (',
+      ') : convertBlocked ? (',
+    ]);
+    assert.doesNotMatch(pageSource, /Resolve blocking issues before conversion/);
+    assert.doesNotMatch(pageSource, /convertBlocked \|\| quoteReadOnly/);
+    assert.doesNotMatch(pageSource, /quoteReadOnly \|\| convertBlocked/);
+    assert.doesNotMatch(pageSource, /missingSupplierBlockers/);
+    expectSourceContains(quoteDetailApiRouteSource, [
+      'cache: \'no-store\'',
+      'forwardProxyJsonResponse(response)',
+    ]);
+  });
+
+  it('ignores resolved imported Aqaba cleanup history in operational readiness', () => {
+    const readiness = buildQuoteReadinessModel(
+      {
+        id: 'quote-aqaba',
+        quoteType: 'FIT',
+        travelStartDate: '2026-06-01T00:00:00.000Z',
+        nightCount: 1,
+        pricingMode: 'FIXED',
+        fixedPricePerPerson: 100,
+        pricingSlabs: [],
+        scenarios: [],
+        itineraries: [{ id: 'day-1', dayNumber: 1, title: 'Aqaba', description: null }],
+        quoteItems: [
+          {
+            id: 'item-aqaba-excursion',
+            serviceId: 'imported-activity-service',
+            activityId: 'activity-glass-boat',
+            activityRateVariantId: 'variant-glass-boat',
+            ticketRateVariantId: null,
+            routeId: null,
+            transportServiceTypeId: null,
+            vehicleId: null,
+            itineraryId: 'day-1',
+            serviceDate: '2026-06-01T00:00:00.000Z',
+            startTime: '10:00',
+            pickupTime: null,
+            pickupLocation: 'Aqaba hotel',
+            meetingPoint: null,
+            participantCount: 2,
+            adultCount: 2,
+            childCount: 0,
+            reconfirmationRequired: true,
+            reconfirmationDueAt: '2026-05-31T10:00:00.000Z',
+            paxCount: 2,
+            totalCost: 40,
+            totalSell: 60,
+            currency: 'JOD',
+            service: {
+              id: 'imported-activity-service',
+              supplierId: 'import-itinerary-system',
+              name: 'Glass Boat Tour',
+              category: 'Activity',
+              serviceType: { id: 'activity-type', name: 'Activity', code: 'ACTIVITY' },
+            },
+            externalPackageCountry: null,
+            externalPackageName: null,
+            externalSupplierName: null,
+            externalPricingBasis: null,
+            externalNetCost: null,
+            externalPackagePricingMatrixJson: null,
+            externalPackageSingleSupplement: null,
+            externalIncludes: null,
+            externalExcludes: null,
+            externalInternalNotes: null,
+            externalHotelsOrSimilar: null,
+            externalClientDescription: null,
+            hotel: null,
+            pricingDescription: null,
+            packageTemplateComponentId: null,
+            excursionTemplateComponentId: 'aqaba-glass-boat-component',
+          },
+        ],
+        quoteOptions: [],
+      },
+      (step, params) => `/quotes/quote-aqaba?step=${step}${params?.day ? `&day=${params.day}` : ''}`,
+    );
+
+    assert.equal(readiness.unresolvedItems, 0);
+    assert.equal(readiness.cleanupItems.filter((issue) => issue.code === 'unresolved-imported-item').length, 0);
+    assert.equal(readiness.blockers.length, 0);
+    assert.equal(readiness.operationalReadinessDiagnostics[0].active, false);
+    assert.match(readiness.operationalReadinessDiagnostics[0].ignoredReason || '', /Historical imported-service marker ignored/);
+  });
+
   it('renders the redesigned quote header with key quote metadata', () => {
     expectSourceContains(pageSource, [
       '<p className="eyebrow">Quote {quoteNumberLabel}</p>',
@@ -147,7 +288,8 @@ describe('quote detail page regression', () => {
       "const quoteAcceptedForConversion = quote.status === 'ACCEPTED';",
       "Accept the quote before converting to booking.",
       "Save/accept a version before converting.",
-      'convertBlocked || quoteReadOnly ? (',
+      ') : quoteReadOnly ? (',
+      ') : convertBlocked ? (',
       '<button type="button" className="secondary-button" disabled>Convert</button>',
       'Cancelled quotes cannot be converted to bookings.',
       '<ReviseQuoteButton quoteId={quote.id} disabled={quoteReadOnly} />',
@@ -1459,5 +1601,32 @@ describe('quote detail page regression', () => {
     assert.doesNotMatch(quotesTableSource, /NEXT_PUBLIC_API_URL|dmcapi-production|railway\.app/i);
     assert.doesNotMatch(pageSource, /apiBaseUrl=\{API_BASE_URL\}/);
     assert.doesNotMatch(`${quotesTableSource}\n${cancelQuoteButtonSource}\n${inlineEntityActionsSource}`, /admin\/dashboard|router\.push\(["']\/admin\/dashboard["']\)/);
+  });
+
+  it('surfaces imported activity completion fields before booking conversion', () => {
+    expectSourceContains(pageSource, [
+      'collectIncompleteActivityItemLabels',
+      'Incomplete Imported Activity / activity items:',
+    ]);
+
+    expectSourceContains(quoteItemCardSource, [
+      'Incomplete operational details',
+      'getIncompleteOperationalDetails',
+      'cost/sell pricing',
+      'pax count',
+    ]);
+
+    expectSourceContains(quoteItemsFormSource, [
+      'isImportedActivityEdit',
+      'showInlineActivityOperationalFields',
+      'Complete the operational details and quote pricing below before converting this quote to a booking.',
+      'Start Time',
+      'End Time / Duration',
+      'Pickup / Meeting Location',
+      'Reconfirmation Due Date',
+      'Save Activity',
+      'open={useOverride || isImportedActivityEdit || activityIssues.length > 0}',
+      'required={!isLegacyActivityEdit}',
+    ]);
   });
 });

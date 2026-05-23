@@ -12,6 +12,9 @@ const bookingPaymentsSectionSource = readFileSync(new URL('./BookingPaymentsSect
 const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx', import.meta.url), 'utf8');
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
+const operationsGridPageSource = readFileSync(new URL('./operations/page.tsx', import.meta.url), 'utf8');
+const operationAssignmentRouteSource = readFileSync(new URL('../../api/bookings/[id]/operations/[operationId]/assign-supplier/route.ts', import.meta.url), 'utf8');
+const serviceUpdateRouteSource = readFileSync(new URL('../../api/bookings/[id]/days/[dayId]/services/[serviceId]/route.ts', import.meta.url), 'utf8');
 const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
 const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
 const invoiceGenerationRouteSource = readFileSync(new URL('../../api/bookings/[id]/invoice/route.ts', import.meta.url), 'utf8');
@@ -28,6 +31,15 @@ function getTabSection(tab: string) {
   assert.notEqual(start, -1, `Expected ${tab} tab section to exist`);
 
   const next = pageSource.indexOf('activeTab ===', start + 1);
+  return next === -1 ? pageSource.slice(start) : pageSource.slice(start, next);
+}
+
+function getOperationEditorBranch(type: string) {
+  const marker = `editorType === '${type}'`;
+  const start = pageSource.indexOf(marker);
+  assert.notEqual(start, -1, `Expected ${type} operation editor branch to exist`);
+
+  const next = pageSource.indexOf("{editorType === '", start + marker.length);
   return next === -1 ? pageSource.slice(start) : pageSource.slice(start, next);
 }
 
@@ -228,10 +240,175 @@ describe('booking detail page regression', () => {
       'formatOperationStatus(service.operationStatus || service.confirmationStatus)',
       'name="assignedTo"',
       'name="pickupTime"',
-      'name="confirmationNumber"',
+      'name="confirmationReference"',
       'renderOperationStatusOptions(service.operationStatus)',
       'BookingServiceTimeline',
       'Generate Voucher',
+    ]);
+  });
+
+  it('exposes supplier assignment workflow on the operations grid', () => {
+    expectSourceContains(`${operationsGridPageSource}\n${operationAssignmentRouteSource}`, [
+      'assignedSupplierId',
+      'assignmentStatus',
+      'assignmentNotes',
+      'booking-operations-row-card',
+      'assign-supplier',
+      'method="POST"',
+      'name="assignedSupplierId"',
+      'name="bookingId"',
+      'name="operationId"',
+      'name="assignmentStatus"',
+      'name="assignmentNotes"',
+      "redirectUrl.searchParams.set('tab', 'operations')",
+      'assignedSupplierId = optionalFormValue',
+      'Operation assignment debug',
+      'UNASSIGNED',
+      'REQUESTED',
+      'CONFIRMED',
+      'REJECTED',
+    ]);
+    assert.doesNotMatch(operationsGridPageSource, /OperationSupplierAssignmentForm|CLIENT EDITOR ACTIVE/);
+    assert.doesNotMatch(operationAssignmentRouteSource, /warningText|console\./);
+  });
+
+  it('exposes supplier confirmation workflow on the operations grid', () => {
+    expectSourceContains(operationsGridPageSource, [
+      'supplierConfirmationStatus',
+      'confirmationReference',
+      'confirmationNotes',
+      'confirmationRequestedAt',
+      'confirmationReceivedAt',
+      'Request Confirmation',
+      'Mark Confirmed',
+      'Mark Rejected',
+      '/confirmation',
+      'severity-critical',
+      'operations-readiness-ready',
+    ]);
+  });
+
+  it('renders simplified operational action center and grouped workflow cards', () => {
+    expectSourceContains(operationsGridPageSource, [
+      'Operational Action Center',
+      'Suppliers unassigned',
+      'Confirmations pending',
+      'Confirmations rejected',
+      'Vouchers pending',
+      'Manifest incomplete',
+      'Rooming incomplete',
+      "'INFO'",
+      "'ACTION REQUIRED'",
+      "'CRITICAL'",
+      "'Needs Assignment'",
+      "'Needs Confirmation'",
+      "'Ready for Voucher'",
+      "'Operationally Ready'",
+      "'Critical Issues'",
+      'booking-operations-sidebar app-sticky-panel',
+      'Secondary details',
+      'Assign Supplier',
+      'Generate Voucher',
+    ]);
+  });
+
+  it('renders operation-type-aware booking service editors', () => {
+    expectSourceContains(pageSource, [
+      'renderOperationTypeAwareEditor',
+      'booking-operation-editor-${editorType.toLowerCase()}',
+      'getOperationEditorHeading',
+      'Transport operation details',
+      'Hotel operation details',
+      'Activity operation details',
+      'Guide operation details',
+      'Ticket operation details',
+      'Service details',
+      "editorType === 'TRANSPORT'",
+      "editorType === 'HOTEL'",
+      "editorType === 'ACTIVITY'",
+      "editorType === 'GUIDE'",
+      "editorType === 'TICKET'",
+      "editorType === 'SERVICE'",
+    ]);
+    assert.doesNotMatch(pageSource, />\{editorType\} editor</);
+    assert.doesNotMatch(pageSource, /SERVICE editor|HOTEL editor|TRANSPORT editor|ACTIVITY editor|GUIDE editor|TICKET editor/);
+  });
+
+  it('keeps SERVICE operation editors free of transport-only fields', () => {
+    const serviceEditor = getOperationEditorBranch('SERVICE');
+    assert.doesNotMatch(serviceEditor, /renderRouteOptions|renderVehicleOptions|name="assignedTo"|name="guidePhone"/);
+    expectSourceContains(serviceEditor, [
+      'Operational notes',
+      'name="meetingPoint"',
+      'name="startTime"',
+      'name="confirmationReference"',
+    ]);
+  });
+
+  it('keeps TRANSPORT operation editors focused on route and vehicle execution', () => {
+    const transportEditor = getOperationEditorBranch('TRANSPORT');
+    expectSourceContains(transportEditor, [
+      'renderRouteOptions(transportRoutes, service.referenceId)',
+      'renderVehicleOptions(vehicles, service.vehicleId)',
+      'Driver',
+      'name="pickupTime"',
+    ]);
+  });
+
+  it('renders ACTIVITY operation editors with timing and participant controls only', () => {
+    const activityEditor = getOperationEditorBranch('ACTIVITY');
+    expectSourceContains(activityEditor, [
+      'name="startTime"',
+      'name="pickupTime"',
+      'name="meetingPoint"',
+      'name="participantCount"',
+    ]);
+    assert.doesNotMatch(activityEditor, /renderRouteOptions|renderVehicleOptions|name="guidePhone"/);
+  });
+
+  it('renders HOTEL operation editors with rooming and occupancy context', () => {
+    const hotelEditor = getOperationEditorBranch('HOTEL');
+    expectSourceContains(hotelEditor, [
+      'Hotel supplier',
+      'Rooming summary',
+      'Occupancy:',
+      'name="confirmationReference"',
+    ]);
+    assert.doesNotMatch(hotelEditor, /renderRouteOptions|renderVehicleOptions|name="guidePhone"/);
+  });
+
+  it('softens stale operation update errors and clears stale warnings after successful saves', () => {
+    expectSourceContains(serviceUpdateRouteSource, [
+      'response.status === 404',
+      'This operation row was refreshed or is no longer available. Please reopen the row.',
+      "redirectUrl.searchParams.delete('warningText')",
+      "redirectUrl.searchParams.delete('warning')",
+      "redirectUrl.searchParams.delete('error')",
+      "redirectUrl.searchParams.set('success'",
+    ]);
+    assert.doesNotMatch(serviceUpdateRouteSource, /Booking service not found/);
+  });
+
+  it('persists booking operation editor saves through service, assignment, and confirmation endpoints', () => {
+    expectSourceContains(pageSource, [
+      'name="bookingId"',
+      'name="operationId"',
+      'name="supplierId"',
+      'name="assignmentStatus"',
+      'name="operationalNotes"',
+      'name="meetingPoint"',
+      'name="startTime"',
+      'name="confirmationReference"',
+      'name="confirmationNotes"',
+      'name="supplierConfirmationStatus"',
+    ]);
+    expectSourceContains(serviceUpdateRouteSource, [
+      '/operations/${serviceId}/assign-supplier',
+      '/operations/${serviceId}/confirmation',
+      'savedFields',
+      'assignedSupplierId',
+      'operationalNotes',
+      'confirmationReference',
     ]);
   });
 

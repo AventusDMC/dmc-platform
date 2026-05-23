@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type AuditRow = {
   id: string;
@@ -66,7 +66,6 @@ export function TouringRouteAuditPreview() {
   const [audit, setAudit] = useState<AuditPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [recommendationFilter, setRecommendationFilter] = useState('ALL');
 
   useEffect(() => {
     let cancelled = false;
@@ -106,11 +105,6 @@ export function TouringRouteAuditPreview() {
     };
   }, []);
 
-  const filteredRows = useMemo(() => {
-    const rows = audit?.rows || [];
-    return recommendationFilter === 'ALL' ? rows : rows.filter((row) => row.cleanupRecommendation === recommendationFilter);
-  }, [audit?.rows, recommendationFilter]);
-
   if (loading) {
     return (
       <section className="workspace-section">
@@ -145,20 +139,16 @@ export function TouringRouteAuditPreview() {
       <section className="workspace-section touring-audit-filter-panel">
         <div className="workspace-section-head">
           <div>
-            <p className="eyebrow">Filter</p>
+            <p className="eyebrow">Recommendations</p>
             <h2>Cleanup recommendations</h2>
           </div>
-          <label className="field-label">
-            Recommendation
-            <select value={recommendationFilter} onChange={(event) => setRecommendationFilter(event.target.value)}>
-              <option value="ALL">All recommendations</option>
-              {recommendationCounts.map(([recommendation, count]) => (
-                <option key={recommendation} value={recommendation}>
-                  {RECOMMENDATION_LABELS[recommendation] || recommendation} ({formatNumber(count)})
-                </option>
-              ))}
-            </select>
-          </label>
+        </div>
+        <div className="touring-audit-card-badges">
+          {recommendationCounts.map(([recommendation, count]) => (
+            <span key={recommendation} className="status-badge touring-audit-badge">
+              {RECOMMENDATION_LABELS[recommendation] || recommendation}: {formatNumber(count)}
+            </span>
+          ))}
         </div>
       </section>
 
@@ -166,12 +156,12 @@ export function TouringRouteAuditPreview() {
         <div className="workspace-section-head">
           <div>
             <p className="eyebrow">Rows</p>
-            <h2>{formatNumber(filteredRows.length)} audit rows</h2>
+            <h2>{formatNumber(audit.rows.length)} audit rows</h2>
           </div>
         </div>
 
-        {filteredRows.length > 0 ? (
-          filteredRows.map((row) => <AuditRouteCard key={row.id} row={row} />)
+        {audit.rows.length > 0 ? (
+          audit.rows.map((row) => <AuditRouteCard key={row.id} row={row} />)
         ) : (
           <section className="workspace-section">
             <p className="detail-copy">No rows match this filter.</p>

@@ -1672,6 +1672,47 @@ test('operational readiness reports missing passport, unassigned passengers, and
   }).includes('room occupancy mismatch'), true);
 });
 
+test('operational readiness allows booking with passenger names pending as manifest warning', () => {
+  const service = createService({});
+  const readiness = (service as any).buildOperationalReadinessDashboard({
+    pax: 12,
+    adults: 12,
+    children: 0,
+    roomCount: 6,
+    snapshotJson: {},
+    days: [],
+    services: [
+      {
+        id: 'service-1',
+        serviceType: 'TRANSPORT',
+        operationType: 'TRANSPORT',
+        status: 'active',
+        totalCost: 100,
+        totalSell: 130,
+        supplierId: 'supplier-1',
+        referenceId: 'route-1',
+        vehicleId: 'vehicle-1',
+        confirmationStatus: 'confirmed',
+        vouchers: [],
+      },
+    ],
+    passengers: [],
+    roomingEntries: Array.from({ length: 6 }, (_, index) => ({
+      id: `room-${index + 1}`,
+      roomType: 'DBL',
+      occupancy: 'double',
+      assignments: [],
+    })),
+  });
+  const passengerSection = readiness.sections.find((section: any) => section.title === 'Passengers');
+
+  assert.equal(readiness.status, 'warning');
+  assert.equal(readiness.summary.passengers.manifestStatus, 'PENDING');
+  assert.equal(readiness.summary.passengers.namesPending, true);
+  assert.equal(readiness.summary.passengers.status, 'warning');
+  assert.match(passengerSection.issues.join(' '), /passenger names pending/i);
+});
+
 test('DMC admin booking access requires auth without single-client company filtering', async () => {
   let whereClause: any;
   const service = createService({
@@ -3981,5 +4022,60 @@ test('finance reconciliation phase one wires deposits partial payments supplier 
 
   for (const token of ['BookingPaymentMethodBody', 'cliq', 'mb_way', 'custom_manual']) {
     assert.match(controllerSource, new RegExp(token));
+  }
+});
+
+test('booking operational service grid foundation wires schema conversion validation and read endpoint', () => {
+  const schemaSource = fs.readFileSync(path.join(__dirname, '..', '..', 'prisma', 'schema.prisma'), 'utf8');
+  const bookingsSource = fs.readFileSync(path.join(__dirname, 'bookings.service.ts'), 'utf8');
+  const controllerSource = fs.readFileSync(path.join(__dirname, 'bookings.controller.ts'), 'utf8');
+  const quotesSource = fs.readFileSync(path.join(__dirname, '..', 'quotes', 'quotes.service.ts'), 'utf8');
+
+  for (const token of [
+    'operationalDate',
+    'operationalTime',
+    'supplierConfirmationCode',
+    'confirmationReference',
+    'confirmationReceivedAt',
+    'confirmedBy',
+    'voucherGeneratedAt',
+    'operationalNotes',
+    'pickupLocation',
+    'dropoffLocation',
+    'assignedVehicleId',
+    'assignedGuideId',
+    'assignedSupplierId',
+    'assignmentStatus',
+    'SupplierAssignmentStatus',
+    'SERVICE',
+    'TICKET',
+    'OPERATIONAL_READY',
+    'REQUESTED',
+  ]) {
+    assert.match(schemaSource, new RegExp(token));
+  }
+
+  for (const token of [
+    'getOperationalServiceGrid',
+    'operations-grid',
+    'assignOperationalSupplier',
+    'assign-supplier',
+    'assignedSupplierId',
+    'updateOperationalSupplierConfirmation',
+    "operations/:operationId/confirmation",
+    'Cannot confirm an operational row without an assigned supplier',
+    'booking_service_supplier_confirmation_updated',
+    'assertSupplierCompatibleWithOperation',
+    'Inactive or archived suppliers cannot be assigned',
+    'booking_service_supplier_assigned',
+    'BookingOperationServiceType.TICKET',
+    'BookingOperationServiceType.SERVICE',
+    'validateBookingOperationalServiceRows',
+    'excursionTemplateComponentId',
+    'touringRouteCode',
+    'AQ_',
+    'JOR-TR-AQABA',
+  ]) {
+    assert.match(`${bookingsSource}\n${controllerSource}\n${quotesSource}`, new RegExp(token));
   }
 });
