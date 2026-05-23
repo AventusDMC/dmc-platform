@@ -10438,7 +10438,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       bookingRef: booking.bookingRef || null,
       client: {
         name: clientSnapshot.name || null,
-        companyName: booking.clientCompany?.name || null,
+        // No `clientCompany` relation on Booking — pull from the snapshot JSON
+        // which already captures company info at booking creation time.
+        companyName:
+          clientSnapshot.companyName || clientSnapshot.company?.name || clientSnapshot.company || null,
       },
       serviceType: service.serviceType || null,
       serviceName: service.description || null,
@@ -10487,7 +10490,6 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           include: {
             passengers: true,
             roomingEntries: { include: { assignments: { include: { bookingPassenger: true } } } },
-            clientCompany: true,
           },
         },
         bookingDay: true,
