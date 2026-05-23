@@ -382,13 +382,6 @@ export class BookingsController {
           ? undefined
           : body.supplierId || null
         : body.assignedSupplierId || null;
-    console.info('[booking-operation-assignment]', {
-      bookingId: id,
-      operationId,
-      incomingBookingId: body.bookingId || null,
-      incomingOperationId: body.operationId || null,
-      incomingAssignedSupplierId: assignedSupplierId || null,
-    });
     return this.bookingsService.assignOperationalSupplier(id, operationId, {
       assignedSupplierId,
       supplierId: assignedSupplierId,

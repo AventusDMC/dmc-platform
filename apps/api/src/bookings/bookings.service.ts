@@ -723,13 +723,6 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      console.info('[booking-operation-assignment-updated]', {
-        incomingOperationId: operationId,
-        incomingAssignedSupplierId: assignedSupplierId || null,
-        updatedRowId: updatedService.id,
-        returnedAssignedSupplierId: updatedService.assignedSupplierId || null,
-      });
-
       await this.createAuditLog(tx, {
         bookingId: bookingService.bookingId,
         bookingServiceId: bookingService.id,

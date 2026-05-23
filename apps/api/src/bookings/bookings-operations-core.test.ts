@@ -4061,8 +4061,6 @@ test('booking operational service grid foundation wires schema conversion valida
     'assignOperationalSupplier',
     'assign-supplier',
     'assignedSupplierId',
-    'incomingAssignedSupplierId',
-    'returnedAssignedSupplierId',
     'updateOperationalSupplierConfirmation',
     "operations/:operationId/confirmation",
     'Cannot confirm an operational row without an assigned supplier',

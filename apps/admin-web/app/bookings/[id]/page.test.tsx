@@ -13,7 +13,7 @@ const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx'
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const operationsGridPageSource = readFileSync(new URL('./operations/page.tsx', import.meta.url), 'utf8');
-const operationSupplierAssignmentFormSource = readFileSync(new URL('./operations/OperationSupplierAssignmentForm.tsx', import.meta.url), 'utf8');
+const operationAssignmentRouteSource = readFileSync(new URL('../../api/bookings/[id]/operations/[operationId]/assign-supplier/route.ts', import.meta.url), 'utf8');
 const serviceUpdateRouteSource = readFileSync(new URL('../../api/bookings/[id]/days/[dayId]/services/[serviceId]/route.ts', import.meta.url), 'utf8');
 const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
 const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
@@ -248,39 +248,28 @@ describe('booking detail page regression', () => {
   });
 
   it('exposes supplier assignment workflow on the operations grid', () => {
-    expectSourceContains(`${operationsGridPageSource}\n${operationSupplierAssignmentFormSource}`, [
+    expectSourceContains(`${operationsGridPageSource}\n${operationAssignmentRouteSource}`, [
       'assignedSupplierId',
       'assignmentStatus',
       'assignmentNotes',
       'booking-operations-row-card',
       'assign-supplier',
+      'method="POST"',
       'name="assignedSupplierId"',
       'name="bookingId"',
       'name="operationId"',
       'name="assignmentStatus"',
       'name="assignmentNotes"',
-      'preventDefault()',
-      'stopPropagation()',
-      'fetch(endpoint',
-      'router.refresh()',
-      "console.log('SAVE CLICKED')",
-      'Endpoint called',
-      'Save clicked',
-      'Payload sent',
-      'Endpoint response',
-      'Save success',
-      'CLIENT EDITOR ACTIVE',
-      'data-client-editor-active',
-      'if (!clientReady)',
-      'useEffect',
-      'data-operation-assignment-save',
-      'type="button"',
+      "redirectUrl.searchParams.set('tab', 'operations')",
+      'assignedSupplierId = optionalFormValue',
       'Operation assignment debug',
       'UNASSIGNED',
       'REQUESTED',
       'CONFIRMED',
       'REJECTED',
     ]);
+    assert.doesNotMatch(operationsGridPageSource, /OperationSupplierAssignmentForm|CLIENT EDITOR ACTIVE/);
+    assert.doesNotMatch(operationAssignmentRouteSource, /warningText|console\./);
   });
 
   it('exposes supplier confirmation workflow on the operations grid', () => {

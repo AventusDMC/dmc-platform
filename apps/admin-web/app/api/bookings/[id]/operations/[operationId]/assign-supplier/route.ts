@@ -18,20 +18,6 @@ function optionalFormValue(formData: FormData, name: string) {
 }
 
 async function readAssignmentPayload(request: NextRequest) {
-  const contentType = request.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const body = await request.json().catch(() => ({}));
-    const assignedSupplierId = body.assignedSupplierId === undefined ? body.supplierId : body.assignedSupplierId;
-    return {
-      bookingId: body.bookingId,
-      operationId: body.operationId,
-      assignedSupplierId: assignedSupplierId === undefined ? undefined : assignedSupplierId || null,
-      supplierId: assignedSupplierId === undefined ? undefined : assignedSupplierId || null,
-      assignmentStatus: body.assignmentStatus === undefined ? undefined : body.assignmentStatus || null,
-      assignmentNotes: body.assignmentNotes === undefined ? undefined : body.assignmentNotes || null,
-    };
-  }
-
   const formData = await request.formData();
   const assignedSupplierId = optionalFormValue(formData, 'assignedSupplierId') ?? optionalFormValue(formData, 'supplierId');
   return {
@@ -58,11 +44,6 @@ export async function POST(
     assignmentStatus: incomingPayload.assignmentStatus,
     assignmentNotes: incomingPayload.assignmentNotes,
   };
-  console.info('[booking-operation-assignment-proxy] Payload sent', {
-    bookingId: id,
-    operationId,
-    payload,
-  });
 
   const response = await fetch(`${API_BASE_URL}/bookings/${id}/operations/${operationId}/assign-supplier`, {
     method: 'PATCH',
@@ -75,58 +56,19 @@ export async function POST(
     redirect: 'manual',
   });
 
-  const referer = request.headers.get('referer');
-  const wantsJson = request.headers.get('accept')?.includes('application/json') || request.headers.get('x-requested-with') === 'fetch';
-
   if (!response.ok) {
-    const errorPayload = await response.json().catch(() => null);
-    console.info('[booking-operation-assignment-proxy] Endpoint response', {
-      ok: false,
-      status: response.status,
-      response: errorPayload,
-    });
-    if (wantsJson) {
-      return NextResponse.json(errorPayload || { message: 'Failed to assign supplier.' }, { status: response.status });
-    }
-
     return buildProtectedActionErrorRedirect(
       {
         request,
-        referer,
-        fallbackPath: `/bookings/${id}/operations`,
+        referer: request.headers.get('referer'),
+        fallbackPath: `/bookings/${id}?tab=operations`,
         genericError: 'Failed to assign supplier.',
       },
       response,
     );
   }
 
-  const savedPayload = await response.json().catch(() => null);
-  console.info('[booking-operation-assignment-proxy] Endpoint response', {
-    ok: true,
-    status: response.status,
-    response: savedPayload,
-  });
-  console.info('[booking-operation-assignment-save]', {
-    bookingId: id,
-    operationId,
-    incomingOperationId: payload.operationId,
-    incomingAssignedSupplierId: payload.assignedSupplierId ?? null,
-    returnedId: savedPayload?.id ?? null,
-    returnedAssignedSupplierId: savedPayload?.assignedSupplierId ?? null,
-    returnedAssignmentStatus: savedPayload?.assignmentStatus ?? null,
-  });
-
-  if (wantsJson) {
-    return NextResponse.json({
-      ok: true,
-      operationId,
-      assignedSupplierId: savedPayload?.assignedSupplierId ?? null,
-      assignmentStatus: savedPayload?.assignmentStatus ?? null,
-      row: savedPayload,
-    });
-  }
-
-  const redirectUrl = new URL(referer || `/bookings/${id}/operations`, request.url);
-  redirectUrl.searchParams.set('success', 'Supplier assignment updated.');
+  const redirectUrl = new URL(`/bookings/${id}`, request.url);
+  redirectUrl.searchParams.set('tab', 'operations');
   return NextResponse.redirect(redirectUrl, { status: 303 });
 }
