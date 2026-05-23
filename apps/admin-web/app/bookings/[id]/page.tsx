@@ -2419,51 +2419,14 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                         </div>
                                         <div className="table-subcopy">{service.notes || service.confirmationNotes || service.supplierRemarks || 'No notes'}</div>
                                         {service.confirmationSentAt ? <div className="table-subcopy">Sent: {formatDateTime(service.confirmationSentAt)}</div> : null}
-                                        {service.operationType === 'EXTERNAL_PACKAGE' ? (
-                                          <form action={`/api/bookings/${booking.id}/days/${day.id}/services/${service.id}`} method="POST" className="quote-status-form">
-                                            <input type="hidden" name="type" value="EXTERNAL_PACKAGE" />
-                                            <label>
-                                              Status
-                                              {renderOperationStatusOptions(service.operationStatus)}
-                                            </label>
-                                            <label>
-                                              Notes
-                                              <input type="text" name="notes" defaultValue={service.notes || ''} />
-                                            </label>
-                                            <button type="submit">Update</button>
-                                          </form>
-                                        ) : (
-                                          renderOperationTypeAwareEditor(booking, day, service, suppliers, vehicles, transportRoutes)
-                                        )}
-                                        <details>
-                                          <summary>Supplier confirmation</summary>
-                                          <form action={`/api/bookings/services/${service.id}/supplier-confirmation`} method="POST" className="quote-status-form">
-                                            <label>
-                                              Status
-                                              <select name="supplierConfirmationStatus" defaultValue={service.supplierConfirmationStatus || 'NOT_SENT'}>
-                                                <option value="NOT_SENT">Not sent</option>
-                                                <option value="SENT">Sent</option>
-                                                <option value="ACKNOWLEDGED">Acknowledged</option>
-                                                <option value="CONFIRMED">Confirmed</option>
-                                                <option value="REJECTED">Rejected</option>
-                                                <option value="CANCELLED">Cancelled</option>
-                                              </select>
-                                            </label>
-                                            <label>
-                                              Supplier reference
-                                              <input type="text" name="supplierReference" defaultValue={service.supplierReference || service.confirmationNumber || ''} />
-                                            </label>
-                                            <label>
-                                              Remarks
-                                              <input type="text" name="supplierRemarks" defaultValue={service.supplierRemarks || ''} />
-                                            </label>
-                                            <label>
-                                              Deadline
-                                              <input type="datetime-local" name="confirmationDeadline" defaultValue={service.confirmationDeadline ? service.confirmationDeadline.slice(0, 16) : ''} />
-                                            </label>
-                                            <button type="submit">Save supplier confirmation</button>
-                                          </form>
-                                        </details>
+                                        <div className="quote-status-actions">
+                                          <Link
+                                            href={`/bookings/${booking.id}/operations#operation-${service.id}`}
+                                            className="secondary-button"
+                                          >
+                                            Edit in operations grid
+                                          </Link>
+                                        </div>
                                         {service.vouchers && service.vouchers.length > 0 ? (
                                           <div className="quote-status-actions">
                                             <BookingServiceVoucherDownloadButton

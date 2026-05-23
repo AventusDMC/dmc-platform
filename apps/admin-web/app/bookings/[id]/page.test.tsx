@@ -244,9 +244,6 @@ describe('booking detail page regression', () => {
 
     expectSourceContains(operationsSection, [
       'AdvancedFiltersPanel title="Booking controls"',
-      'renderSupplierOptions(suppliers',
-      'renderVehicleOptions(vehicles',
-      'renderRouteOptions(transportRoutes',
       '<th>Service</th>',
       '<th>Date / Day</th>',
       '<th>Vehicle / Pax</th>',
@@ -257,12 +254,11 @@ describe('booking detail page regression', () => {
       'getServicePaxCount(service, booking)',
       'getVoucherReadinessLabel(service)',
       'formatOperationStatus(service.operationStatus || service.confirmationStatus)',
-      'name="assignedTo"',
-      'name="pickupTime"',
-      // confirmationReference is reached transitively via renderCommonOperationFields
-      // and the per-type editor branches; covered by the per-branch tests below.
-      'renderOperationTypeAwareEditor',
-      'renderOperationStatusOptions(service.operationStatus)',
+      // The Day-assignments table is now read-only; editing (supplier assignment,
+      // confirmation, operational fields) routes through the operations grid via
+      // a per-row anchor link.
+      '/operations#operation-${service.id}',
+      'Edit in operations grid',
       'BookingServiceTimeline',
       'Generate Voucher',
     ]);
