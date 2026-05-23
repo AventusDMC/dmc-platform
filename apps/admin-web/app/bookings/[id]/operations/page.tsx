@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { AdminBackButton } from '../../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../lib/admin-server';
+import { BookingFeedbackBannerCleanup } from '../BookingFeedbackBannerCleanup';
 
 type OperationsGridRow = {
   id: string;
@@ -73,6 +74,12 @@ type BookingReadinessResponse = {
 
 type PageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{
+    warningText?: string;
+    warning?: string;
+    success?: string;
+    error?: string;
+  }>;
 };
 
 type Severity = 'INFO' | 'ACTION REQUIRED' | 'CRITICAL';
@@ -307,8 +314,12 @@ function renderConfirmationForm(bookingId: string, row: OperationsGridRow) {
   );
 }
 
-export default async function BookingOperationsPage({ params }: PageProps) {
+export default async function BookingOperationsPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
+  const successMessage = resolvedSearchParams?.success || '';
+  const errorMessage = resolvedSearchParams?.error || '';
   const [grid, suppliers, bookingReadiness] = await Promise.all([loadOperationsGrid(id), loadSuppliers(), loadBookingReadiness(id)]);
   const manifest = grid.passengerManifest;
   const roomingIncompleteCount = Number(bookingReadiness?.rooming?.badge?.count || 0);
@@ -358,6 +369,15 @@ export default async function BookingOperationsPage({ params }: PageProps) {
           </div>
         </div>
       </div>
+
+      {warningMessage || successMessage || errorMessage ? (
+        <section className="warning-banner" aria-live="polite">
+          {warningMessage ? <p className="form-error">{warningMessage}</p> : null}
+          {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
+          {successMessage ? <p className="form-helper">{successMessage}</p> : null}
+          <BookingFeedbackBannerCleanup />
+        </section>
+      ) : null}
 
       <section className="admin-card booking-operations-action-center" aria-label="Operational Action Center">
         <div className="operations-card-head">
