@@ -7,9 +7,10 @@ import { PrismaService } from '../prisma/prisma.service';
 // when it failed to resolve). This script nulls out those bad values for rows
 // already in the DB. Operators can re-assign suppliers from the UI afterwards.
 //
-// Usage:
-//   dry-run: ts-node src/bookings/cleanup-uuid-supplier-names.cli.ts dry-run
-//   apply:   ts-node src/bookings/cleanup-uuid-supplier-names.cli.ts apply --confirm=CLEANUP_UUID_SUPPLIER_NAMES
+// Usage (from apps/api):
+//   dry-run: npm run cleanup:booking-services:uuid-supplier-names:dry-run
+//   apply:   npm run cleanup:booking-services:uuid-supplier-names:apply -- --confirm=CLEANUP_UUID_SUPPLIER_NAMES
+// Or invoke ts-node directly via npx if you skip the npm script wrapper.
 
 const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const APPLY_CONFIRM_TOKEN = 'CLEANUP_UUID_SUPPLIER_NAMES';
