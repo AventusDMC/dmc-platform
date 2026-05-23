@@ -17,6 +17,7 @@ import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 import { BookingDocumentActions } from './BookingDocumentActions';
 import { BookingFeedbackBannerCleanup } from './BookingFeedbackBannerCleanup';
+import { DeleteOperationButton } from './DeleteOperationButton';
 import { BookingServiceVoucherDownloadButton } from './BookingServiceVoucherDownloadButton';
 import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
 import { BookingServiceTimeline } from './BookingServiceTimeline';
@@ -1401,9 +1402,7 @@ function renderOperationTypeAwareEditor(
 
         <div className="quote-status-actions">
           <button type="submit">Save</button>
-          <button type="submit" name="_method" value="DELETE" className="secondary-button">
-            Delete
-          </button>
+          <DeleteOperationButton description={service.description || ''} />
         </div>
       </form>
     </details>
@@ -1445,13 +1444,13 @@ function getBookingWorkflowStep(status: BookingStatus) {
   return 'cancelled';
 }
 
-function getBookingPrimaryAction(status: BookingStatus, allowedTransitions: BookingStatus[]) {
+function getBookingPrimaryAction(status: BookingStatus, allowedTransitions: BookingStatus[], bookingId: string) {
   if (allowedTransitions.includes('confirmed')) {
     return { label: 'Confirm booking', targetStatus: 'confirmed' as BookingStatus };
   }
 
   if (status === 'confirmed') {
-    return { label: 'Assign operations', hrefTab: 'services' as BookingDetailTab };
+    return { label: 'Assign operations', href: `/bookings/${bookingId}/operations` };
   }
 
   if (allowedTransitions.includes('completed')) {
@@ -1660,7 +1659,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
     { id: 'closed', label: 'Closed' },
     { id: 'cancelled', label: 'Cancelled' },
   ];
-  const primaryAction = bookingReadOnly ? null : getBookingPrimaryAction(booking.status, allowedTransitions);
+  const primaryAction = bookingReadOnly ? null : getBookingPrimaryAction(booking.status, allowedTransitions, booking.id);
 
   return (
     <main className="page booking-ops-page bookings-workspace-page">
@@ -1756,7 +1755,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                   Assign operations
                 </button>
               ) : (
-                <Link href={buildTabHref('services')} className="secondary-button">
+                <Link href={`/bookings/${booking.id}/operations`} className="secondary-button">
                   Assign operations
                 </Link>
               )}
@@ -2305,6 +2304,9 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                         <p className="eyebrow">Operations</p>
                         <h2>Day assignments</h2>
                       </div>
+                      <Link href={`/bookings/${booking.id}/operations`} className="secondary-button">
+                        Open operations grid
+                      </Link>
                     </div>
                     <div className="section-stack">
                       {(booking.days || []).map((day) => {
@@ -3210,8 +3212,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                 </div>
                 <p className="workspace-sidebar-note">Internal / Admin profit summary. Supplier costs are not included in client documents.</p>
                 {primaryAction ? (
-                  primaryAction.hrefTab ? (
-                    <Link href={buildTabHref(primaryAction.hrefTab)} className="primary-button booking-dashboard-primary-action">
+                  primaryAction.href ? (
+                    <Link href={primaryAction.href} className="primary-button booking-dashboard-primary-action">
                       {primaryAction.label}
                     </Link>
                   ) : (

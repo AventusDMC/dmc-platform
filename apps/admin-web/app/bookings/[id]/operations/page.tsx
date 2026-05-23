@@ -244,7 +244,7 @@ function renderAssignmentForm(bookingId: string, row: OperationsGridRow, supplie
         ))}
       </select>
       <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" />
-      <button type="submit" className="button button-secondary">Save</button>
+      <button type="submit" className="button button-secondary">Assign Supplier</button>
     </form>
   );
 }
