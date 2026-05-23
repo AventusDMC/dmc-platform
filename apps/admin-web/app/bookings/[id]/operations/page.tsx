@@ -251,6 +251,18 @@ function renderAssignmentForm(bookingId: string, row: OperationsGridRow, supplie
         ))}
       </select>
       <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" />
+      <input
+        type="date"
+        name="serviceDate"
+        defaultValue={row.operationalDate ? row.operationalDate.slice(0, 10) : ''}
+        aria-label={`Operational date for ${row.description || row.serviceType}`}
+      />
+      <input
+        type="time"
+        name="startTime"
+        defaultValue={row.operationalTime || ''}
+        aria-label={`Operational time for ${row.description || row.serviceType}`}
+      />
       <button type="submit" className="button button-secondary">Assign Supplier</button>
     </form>
   );
