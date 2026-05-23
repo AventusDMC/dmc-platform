@@ -1316,6 +1316,7 @@ function renderOperationTypeAwareEditor(
 
         {editorType === 'GUIDE' ? (
           <>
+            {renderOperationalDateInput(service)}
             <label>
               Assigned guide
               <input type="text" name="assignedTo" defaultValue={service.assignedTo || service.guide?.fullName || ''} />
@@ -1341,6 +1342,11 @@ function renderOperationTypeAwareEditor(
             <label>
               Supplier
               {renderSupplierOptions(suppliers, service.supplierId)}
+            </label>
+            {renderOperationalDateInput(service)}
+            <label>
+              Visit time
+              <input type="time" name="startTime" defaultValue={service.startTime || ''} />
             </label>
             <label>
               Ticket handling
@@ -1369,6 +1375,7 @@ function renderOperationTypeAwareEditor(
               {renderSupplierOptions(suppliers, service.supplierId)}
             </label>
             <input type="hidden" name="assignmentStatus" value={service.supplierId ? 'ASSIGNED' : 'UNASSIGNED'} />
+            {renderOperationalDateInput(service)}
             <label>
               Operational notes
               <input type="text" name="operationalNotes" defaultValue={service.operationalNotes || service.notes || ''} />
