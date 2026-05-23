@@ -607,7 +607,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           assignedBy: service.assignedBy || null,
           status: service.operationStatus || 'PENDING',
           operationalDate: service.operationalDate || service.serviceDate || day?.date || null,
-          operationalTime: service.operationalTime || service.startTime || service.pickupTime || null,
+          operationalTime: service.operationalTime || service.startTime || service.pickupTime || service.guideReportingTime || null,
           voucherStatus,
           voucherGeneratedAt: service.voucherGeneratedAt || null,
           supplierConfirmationStatus: service.supplierConfirmationStatus || 'NOT_SENT',
