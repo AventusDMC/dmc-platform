@@ -43,6 +43,11 @@ export async function resolveOperationalSupplier({
           supplierStatus: 'resolved',
         };
       }
+
+      console.warn('[supplier-resolver] supplierId did not resolve to a supplier', {
+        supplierId: normalizedSupplierId,
+        hadSupplierName: Boolean(normalizedSupplierName),
+      });
     } catch {
       // Keep operational flows non-blocking; unresolved supplier state is surfaced to callers.
     }
@@ -51,7 +56,7 @@ export async function resolveOperationalSupplier({
   if (normalizedSupplierId || normalizedSupplierName) {
     return {
       supplierId: null,
-      supplierName: normalizedSupplierName || normalizedSupplierId,
+      supplierName: normalizedSupplierName,
       supplierStatus: 'unresolved',
     };
   }

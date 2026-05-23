@@ -16,6 +16,7 @@ import { formatNightCountLabel } from '../../lib/formatters';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
 import { BookingDocumentActions } from './BookingDocumentActions';
+import { BookingFeedbackBannerCleanup } from './BookingFeedbackBannerCleanup';
 import { BookingServiceVoucherDownloadButton } from './BookingServiceVoucherDownloadButton';
 import { BookingRoomingSummaryCard } from './BookingRoomingSummaryCard';
 import { BookingServiceTimeline } from './BookingServiceTimeline';
@@ -25,7 +26,17 @@ import { type BookingPaymentRecord } from './BookingPaymentsSection';
 import { CancelBookingButton } from './CancelBookingButton';
 import { AmendBookingButton } from './AmendBookingButton';
 
+import { isBackendUuid } from '../../lib/backend-uuid';
 import { ADMIN_API_BASE_URL, adminPageFetchJson, getPublicAppBaseUrl } from '../../lib/admin-server';
+
+function getDisplayableSupplierName(value: string | null | undefined) {
+  // Defensive: historically a buggy resolver could write a supplier *id* into the
+  // supplier *name* column when the id failed to lookup. Hide UUID-shaped values
+  // so the operator sees "Not assigned" + the unresolved badge instead of a raw UUID.
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed && !isBackendUuid(trimmed) ? trimmed : null;
+}
 
 const API_BASE_URL = ADMIN_API_BASE_URL;
 const ACTION_API_BASE_URL = '/api';
@@ -1774,6 +1785,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
               {warningMessage ? renderFeedbackMessage(warningMessage, 'form-error') : null}
               {resolvedSearchParams?.success ? renderFeedbackMessage(resolvedSearchParams.success, 'form-helper') : null}
               {resolvedSearchParams?.error ? renderFeedbackMessage(resolvedSearchParams.error, 'form-error') : null}
+              <BookingFeedbackBannerCleanup />
             </section>
           ) : null}
 
@@ -2354,9 +2366,9 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                               </div>
                                             </td>
                                             <td>
-                                              {service.supplierName || service.touringRoutePricing?.supplier?.name || 'Not assigned'}
+                                              {getDisplayableSupplierName(service.supplierName) || service.touringRoutePricing?.supplier?.name || 'Not assigned'}
                                               {service.supplierStatus === 'unresolved' ? <span className="status-pill warning supplier-warning-badge">Unresolved supplier</span> : null}
-                                              {!service.supplierId && service.supplierName ? <div className="table-subcopy">Review unresolved supplier text</div> : null}
+                                              {!service.supplierId && getDisplayableSupplierName(service.supplierName) ? <div className="table-subcopy">Review unresolved supplier text</div> : null}
                                               <div className="table-subcopy">{service.supplierReference ? `Ref: ${service.supplierReference}` : 'No supplier ref'}</div>
                                             </td>
                                             <td>
