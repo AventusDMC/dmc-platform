@@ -34,6 +34,13 @@ function buildLoginRedirectPath(pathname: string) {
   return `/login?reason=session-expired&next=${encodeURIComponent(pathname || '/')}`;
 }
 
+// Used when a token IS present but the API rejected it (401). Routing through the
+// session-expired endpoint clears the stale cookie before landing on /login,
+// which is what prevents the /login <-> dashboard redirect loop.
+function buildSessionExpiredPath(pathname: string) {
+  return `/api/auth/session-expired?next=${encodeURIComponent(pathname || '/')}`;
+}
+
 function isHtmlResponse(contentType: string) {
   return contentType.toLowerCase().includes('text/html');
 }
@@ -111,7 +118,7 @@ export async function adminPageFetch(input: string | URL, init: AdminPageFetchIn
   });
 
   if (response.status === 401) {
-    redirect(buildLoginRedirectPath(pathname));
+    redirect(buildSessionExpiredPath(pathname));
   }
 
   if (response.status === 403) {
