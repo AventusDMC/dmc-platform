@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, MouseEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type SupplierOption = {
@@ -35,8 +35,7 @@ export function OperationSupplierAssignmentForm({
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [message, setMessage] = useState<string | null>(null);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveAssignment() {
     const endpoint = `/api/bookings/${bookingId}/operations/${operationId}/assign-supplier`;
     const payload = {
       bookingId,
@@ -46,8 +45,10 @@ export function OperationSupplierAssignmentForm({
       assignmentNotes: compact ? undefined : notes || null,
     };
 
+    console.log('SAVE CLICKED');
     console.log('[booking-operation-assignment-ui] Save clicked', { bookingId, operationId });
     console.log('[booking-operation-assignment-ui] Payload sent', payload);
+    console.log('[booking-operation-assignment-ui] Endpoint called', endpoint);
     setStatus('saving');
     setMessage(null);
 
@@ -91,8 +92,24 @@ export function OperationSupplierAssignmentForm({
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    await saveAssignment();
+  }
+
+  async function handleSaveClick(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    await saveAssignment();
+  }
+
   return (
-    <form className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'} onSubmit={handleSubmit}>
+    <form
+      className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'}
+      onSubmit={handleSubmit}
+      data-operation-assignment-form={operationId}
+    >
       <input type="hidden" name="bookingId" value={bookingId} />
       <input type="hidden" name="operationId" value={operationId} />
       <select
@@ -118,8 +135,14 @@ export function OperationSupplierAssignmentForm({
           aria-label="Assignment notes"
         />
       ) : null}
-      <button type="submit" className="button button-secondary" disabled={status === 'saving'}>
-        {status === 'saving' ? 'Saving...' : 'Assign Supplier'}
+      <button
+        type="button"
+        className="button button-secondary"
+        disabled={status === 'saving'}
+        onClick={handleSaveClick}
+        data-operation-assignment-save={operationId}
+      >
+        {status === 'saving' ? 'Saving...' : 'Save'}
       </button>
       {message ? <span className={`operations-inline-status operations-inline-status-${status}`}>{message}</span> : null}
     </form>
