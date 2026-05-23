@@ -13,6 +13,7 @@ const amendBookingButtonSource = readFileSync(new URL('./AmendBookingButton.tsx'
 const voucherPageSource = readFileSync(new URL('./voucher/page.tsx', import.meta.url), 'utf8');
 const supplierConfirmationPageSource = readFileSync(new URL('./supplier-confirmation/page.tsx', import.meta.url), 'utf8');
 const operationsGridPageSource = readFileSync(new URL('./operations/page.tsx', import.meta.url), 'utf8');
+const operationSupplierAssignmentFormSource = readFileSync(new URL('./operations/OperationSupplierAssignmentForm.tsx', import.meta.url), 'utf8');
 const serviceUpdateRouteSource = readFileSync(new URL('../../api/bookings/[id]/days/[dayId]/services/[serviceId]/route.ts', import.meta.url), 'utf8');
 const financePageSource = readFileSync(new URL('../../finance/page.tsx', import.meta.url), 'utf8');
 const financialDocumentPdfRouteSource = readFileSync(new URL('../../api/bookings/[id]/financial-documents/[documentType]/pdf/route.ts', import.meta.url), 'utf8');
@@ -247,7 +248,7 @@ describe('booking detail page regression', () => {
   });
 
   it('exposes supplier assignment workflow on the operations grid', () => {
-    expectSourceContains(operationsGridPageSource, [
+    expectSourceContains(`${operationsGridPageSource}\n${operationSupplierAssignmentFormSource}`, [
       'assignedSupplierId',
       'assignmentStatus',
       'assignmentNotes',
@@ -258,6 +259,13 @@ describe('booking detail page regression', () => {
       'name="operationId"',
       'name="assignmentStatus"',
       'name="assignmentNotes"',
+      'preventDefault()',
+      'fetch(endpoint',
+      'router.refresh()',
+      'Save clicked',
+      'Payload sent',
+      'Endpoint response',
+      'Save success',
       'Operation assignment debug',
       'UNASSIGNED',
       'REQUESTED',

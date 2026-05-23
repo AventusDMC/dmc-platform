@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { AdminBackButton } from '../../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../lib/admin-server';
+import { OperationSupplierAssignmentForm } from './OperationSupplierAssignmentForm';
 
 type OperationsGridRow = {
   id: string;
@@ -222,21 +223,16 @@ function getAffectedHref(rows: OperationsGridRow[]) {
 function renderAssignmentForm(bookingId: string, row: OperationsGridRow, suppliers: SupplierOption[], compact = false) {
   const rowSuppliers = suppliers.filter((supplier) => isSupplierVisible(supplier) && supplierMatchesService(supplier, row.serviceType));
   return (
-    <form className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'} method="post" action={`/api/bookings/${bookingId}/operations/${row.id}/assign-supplier`}>
-      <input type="hidden" name="bookingId" value={bookingId} />
-      <input type="hidden" name="operationId" value={row.id} />
-      <select name="assignedSupplierId" defaultValue={row.assignedSupplierId || row.supplierId || ''} aria-label={`Supplier for ${row.description || row.serviceType}`}>
-        <option value="">Unassigned</option>
-        {rowSuppliers.map((supplier) => (
-          <option key={supplier.id} value={supplier.id}>
-            {supplier.name}
-          </option>
-        ))}
-      </select>
-      <input type="hidden" name="assignmentStatus" value="ASSIGNED" />
-      {!compact ? <input name="assignmentNotes" defaultValue={row.assignmentNotes || ''} placeholder="Notes" aria-label="Assignment notes" /> : null}
-      <button type="submit" className="button button-secondary">Assign Supplier</button>
-    </form>
+    <OperationSupplierAssignmentForm
+      bookingId={bookingId}
+      operationId={row.id}
+      serviceLabel={row.description || row.serviceType}
+      assignedSupplierId={row.assignedSupplierId}
+      supplierId={row.supplierId}
+      assignmentNotes={row.assignmentNotes}
+      suppliers={rowSuppliers.map((supplier) => ({ id: supplier.id, name: supplier.name }))}
+      compact={compact}
+    />
   );
 }
 
