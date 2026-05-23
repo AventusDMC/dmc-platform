@@ -10377,6 +10377,226 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // ---- Operational voucher generation (basic foundation) -----------------
+  // Distinct from the legacy createServiceVoucher path: this builds a snapshot
+  // of the row at generation time, persists status=GENERATED + generatedAt/By,
+  // and returns warnings the caller can surface to the operator. No PDF, no
+  // email/WhatsApp — those layers will hang off this snapshot later.
+
+  private resolveOperationalVoucherType(service: any): VoucherType {
+    const normalized = String(service?.operationType || service?.serviceType || '').trim().toUpperCase();
+
+    if (normalized === 'TRANSPORT') return VoucherType.TRANSPORT;
+    if (normalized === 'HOTEL' || normalized === 'ACCOMMODATION') return VoucherType.HOTEL;
+    if (normalized === 'GUIDE' || normalized === 'GUIDING') return VoucherType.GUIDE;
+    if (normalized === 'ACTIVITY') return 'ACTIVITY' as VoucherType;
+    if (normalized === 'TICKET' || normalized === 'TICKETING') return 'TICKET' as VoucherType;
+    if (normalized === 'SERVICE') return 'SERVICE' as VoucherType;
+    if (normalized === 'EXCURSION') return 'EXCURSION' as VoucherType;
+    if (normalized === 'EXTERNAL_PACKAGE') return VoucherType.EXTERNAL_PACKAGE;
+
+    if (service?.touringRouteId || service?.touringRoutePricingId || service?.touringRoute) {
+      return 'EXCURSION' as VoucherType;
+    }
+
+    const text = [service?.serviceType, service?.description].filter(Boolean).join(' ').toLowerCase();
+    if (text.includes('transport') || text.includes('transfer') || text.includes('vehicle')) return VoucherType.TRANSPORT;
+    if (text.includes('hotel') || text.includes('accommodation')) return VoucherType.HOTEL;
+    if (text.includes('guide')) return VoucherType.GUIDE;
+    if (text.includes('ticket') || text.includes('museum') || text.includes('site')) return 'TICKET' as VoucherType;
+    if (text.includes('activity') || text.includes('tour') || text.includes('experience')) return 'ACTIVITY' as VoucherType;
+    if (text.includes('excursion')) return 'EXCURSION' as VoucherType;
+    if (text.includes('external') || text.includes('package')) return VoucherType.EXTERNAL_PACKAGE;
+
+    // SERVICE is the catch-all for generic operational rows (operational_assistance,
+    // meet & assist, etc.). Always classifiable now — no more BadRequestException
+    // from this helper, which fits the "any row with a supplier can get a voucher"
+    // foundation goal.
+    return 'SERVICE' as VoucherType;
+  }
+
+  private buildOperationalVoucherSnapshot(service: any, voucherType: VoucherType, warnings: string[]) {
+    const booking = service.booking || {};
+    const passengers = booking.passengers || [];
+    const namesPending = passengers.filter((p: any) => !p.firstName || !p.lastName).length;
+    const supplier = service.supplier || service.touringRoutePricing?.supplier || null;
+    const clientSnapshot = (booking.clientSnapshotJson || {}) as any;
+    const day = service.bookingDay;
+    const operationalDate = service.operationalDate || service.serviceDate || day?.date || null;
+    const operationalTime = service.operationalTime || service.startTime || service.pickupTime || null;
+    const isTransport = String(voucherType) === 'TRANSPORT';
+    const isHotel = String(voucherType) === 'HOTEL';
+    const roomingEntries = booking.roomingEntries || [];
+    const assignedPax = roomingEntries.reduce(
+      (total: number, room: any) => total + (Array.isArray(room.assignments) ? room.assignments.length : 0),
+      0,
+    );
+
+    return {
+      voucherVersion: 1,
+      generatedAt: new Date().toISOString(),
+      bookingRef: booking.bookingRef || null,
+      client: {
+        name: clientSnapshot.name || null,
+        companyName: booking.clientCompany?.name || null,
+      },
+      serviceType: service.serviceType || null,
+      serviceName: service.description || null,
+      operationType: service.operationType || null,
+      voucherType: String(voucherType),
+      date: operationalDate ? new Date(operationalDate).toISOString().slice(0, 10) : null,
+      time: operationalTime || null,
+      pickup: isTransport
+        ? { location: service.pickupLocation || null, time: service.pickupTime || null }
+        : null,
+      meetingPoint: service.meetingPoint || null,
+      dropoff: isTransport
+        ? (service.touringRoute?.destination || service.touringRoutePricing?.touringRoute?.destination || null)
+        : null,
+      supplier: supplier
+        ? { id: supplier.id || null, name: supplier.name || null }
+        : { id: service.supplierId || null, name: service.supplierName || null },
+      paxCount: service.participantCount || booking.pax || passengers.length || 0,
+      passengerManifest: {
+        total: passengers.length,
+        namesPending,
+        complete: passengers.length > 0 && namesPending === 0,
+      },
+      rooming: isHotel
+        ? { roomCount: roomingEntries.length, assignedPax }
+        : null,
+      operationalNotes: service.operationalNotes || service.notes || null,
+      confirmationReference: service.confirmationReference || service.confirmationNumber || service.supplierReference || null,
+      warnings,
+    };
+  }
+
+  async generateOperationalVoucher(
+    bookingId: string,
+    bookingServiceId: string,
+    data: { actor?: AuditActor; companyActor?: CompanyScopedActor; notes?: string | null },
+  ) {
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: bookingServiceId,
+        bookingId,
+        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+      },
+      include: {
+        booking: {
+          include: {
+            passengers: true,
+            roomingEntries: { include: { assignments: { include: { bookingPassenger: true } } } },
+            clientCompany: true,
+          },
+        },
+        bookingDay: true,
+        vehicle: true,
+        supplier: true,
+        touringRoute: true,
+        touringRoutePricing: { include: { supplier: true, vehicle: true, touringRoute: true } },
+      },
+    });
+
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    const supplierId = this.normalizeOptionalText(bookingService.supplierId);
+    if (!supplierId) {
+      throw new BadRequestException('Cannot generate voucher: no supplier is assigned to this operation row.');
+    }
+
+    const confirmationStatus = String(bookingService.supplierConfirmationStatus || '').toUpperCase();
+    if (confirmationStatus === 'REJECTED') {
+      throw new BadRequestException(
+        'Cannot generate voucher: supplier confirmation is REJECTED. Update the confirmation or re-assign the supplier first.',
+      );
+    }
+
+    const voucherType = this.resolveOperationalVoucherType(bookingService);
+    const warnings: string[] = [];
+
+    const passengers = bookingService.booking?.passengers || [];
+    const namesPending = passengers.filter((p: any) => !p.firstName || !p.lastName).length;
+    if (namesPending > 0) {
+      warnings.push(`${namesPending} passenger name${namesPending === 1 ? '' : 's'} still pending — voucher generated but the manifest is incomplete.`);
+    }
+
+    const operationalDate = bookingService.operationalDate || bookingService.serviceDate || bookingService.bookingDay?.date || null;
+    const operationalTime = bookingService.operationalTime || bookingService.startTime || bookingService.pickupTime || null;
+    if (!operationalDate) {
+      throw new BadRequestException('Cannot generate voucher: operational date is missing. Set the date on the operation row first.');
+    }
+    const requiresTime = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'EXCURSION'];
+    if (requiresTime.includes(String(voucherType)) && !operationalTime) {
+      warnings.push('Operational time is not set — voucher generated but the supplier will need a time before the row is fully operational.');
+    }
+
+    const snapshot = this.buildOperationalVoucherSnapshot(bookingService, voucherType, warnings);
+    const notes = this.normalizeOptionalText(data.notes) || this.normalizeOptionalText(bookingService.notes) || null;
+    const now = new Date();
+    const generatedBy = data.actor?.userId || null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await (tx.voucher as any).findUnique({ where: { bookingServiceId } });
+
+      const baseData: any = {
+        type: voucherType,
+        supplierId,
+        status: VoucherStatus.GENERATED,
+        generatedAt: now,
+        generatedBy,
+        snapshotJson: snapshot,
+        notes,
+      };
+
+      const voucher = existing
+        ? await (tx.voucher as any).update({ where: { id: existing.id }, data: baseData })
+        : await (tx.voucher as any).create({ data: { bookingId, bookingServiceId, ...baseData } });
+
+      await this.createAuditLog(tx, {
+        bookingId,
+        bookingServiceId,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingServiceId,
+        action: existing ? 'service_voucher_regenerated' : 'service_voucher_generated',
+        newValue: `${voucher.type}: ${voucher.id}`,
+        note: warnings.length > 0 ? warnings.join(' | ') : null,
+        actor: data.actor,
+      });
+
+      return { voucher, warnings };
+    });
+  }
+
+  async getOperationalVoucher(
+    bookingId: string,
+    bookingServiceId: string,
+    actor?: CompanyScopedActor,
+  ) {
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: bookingServiceId,
+        bookingId,
+        ...this.buildBookingServiceCompanyWhere(actor),
+      },
+      select: { id: true },
+    });
+    if (!bookingService) {
+      throw new NotFoundException('Booking service not found');
+    }
+
+    const voucher = await (this.prisma.voucher as any).findUnique({
+      where: { bookingServiceId },
+      include: { supplier: true },
+    });
+    if (!voucher) {
+      throw new NotFoundException('No voucher has been generated for this operation row yet.');
+    }
+    return voucher;
+  }
+
   async getSupplierConfirmationQueues(input: {
     actor?: CompanyScopedActor;
     serviceType?: string | null;

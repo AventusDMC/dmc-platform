@@ -22,6 +22,7 @@ type OperationsGridRow = {
   operationalDate: string | null;
   operationalTime: string | null;
   voucherStatus: string;
+  voucherGeneratedAt?: string | null;
   supplierConfirmationStatus: string;
   supplierConfirmationCode?: string | null;
   confirmationReference?: string | null;
@@ -278,11 +279,46 @@ function renderConfirmationRequestForm(bookingId: string, row: OperationsGridRow
   );
 }
 
+function isVoucherGenerated(row: OperationsGridRow) {
+  return ['GENERATED', 'SENT', 'ISSUED', 'READY'].includes(String(row.voucherStatus || '').toUpperCase());
+}
+
+function isVoucherEligible(row: OperationsGridRow) {
+  // Spec: supplier assigned (required) + confirmation not REJECTED.
+  // Pending passenger names and missing operational time are warnings, not blocks.
+  return isAssigned(row) && !isConfirmationRejected(row);
+}
+
 function renderVoucherForm(bookingId: string, row: OperationsGridRow) {
+  const generated = isVoucherGenerated(row);
+  const eligible = isVoucherEligible(row);
+  if (!eligible && !generated) {
+    return (
+      <div className="operations-quick-form operations-inline-form" aria-label="Voucher unavailable">
+        <span className="status-pill warning">
+          {!isAssigned(row) ? 'Assign supplier first' : 'Confirmation rejected — re-assign supplier'}
+        </span>
+      </div>
+    );
+  }
+
+  const action = `/api/bookings/${bookingId}/operations/${row.id}/voucher/generate`;
+  const buttonLabel = generated ? 'Regenerate Voucher' : 'Generate Voucher';
   return (
-    <form className="operations-inline-form operations-quick-form" method="post" action={`/api/bookings/${bookingId}/services/${row.id}/voucher`}>
+    <form className="operations-inline-form operations-quick-form" method="post" action={action}>
       <input type="hidden" name="notes" value={row.confirmationNotes || row.assignmentNotes || ''} />
-      <button type="submit" className="button button-secondary">Generate Voucher</button>
+      {generated ? (
+        <span className="status-pill" aria-label="Voucher status">
+          {String(row.voucherStatus || 'GENERATED').toUpperCase()}
+          {row.voucherGeneratedAt ? ` · ${formatDate(row.voucherGeneratedAt)}` : ''}
+        </span>
+      ) : null}
+      <button type="submit" className="button button-secondary">{buttonLabel}</button>
+      {generated ? (
+        <a className="button button-tertiary" href={`/bookings/${bookingId}/operations/${row.id}/voucher`}>
+          View
+        </a>
+      ) : null}
     </form>
   );
 }
@@ -508,7 +544,10 @@ export default async function BookingOperationsPage({ params, searchParams }: Pa
                         <div className="booking-operations-quick-actions">
                           {!assigned ? renderAssignmentForm(id, row, suppliers, true) : null}
                           {assigned && !isConfirmationConfirmed(row) && !isConfirmationRejected(row) ? renderConfirmationRequestForm(id, row) : null}
-                          {assigned && isConfirmationConfirmed(row) && isVoucherPending(row) ? renderVoucherForm(id, row) : null}
+                          {/* Voucher action shows whenever the supplier is assigned. The form
+                              itself handles eligibility (Regenerate vs Generate vs blocked) and
+                              shows current status + generated timestamp when one exists. */}
+                          {(assigned || isVoucherGenerated(row)) ? renderVoucherForm(id, row) : null}
                         </div>
 
                         <details className="operations-row-details">
