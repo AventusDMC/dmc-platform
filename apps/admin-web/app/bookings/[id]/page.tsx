@@ -1274,7 +1274,7 @@ function renderOperationTypeAwareEditor(
             {renderOperationalDateInput(service)}
             <label>
               Check-in time
-              <input type="time" name="startTime" defaultValue={service.startTime || service.operationalTime || ''} />
+              <input type="time" name="startTime" defaultValue={service.startTime || service.pickupTime || ''} />
             </label>
             <div className="form-helper">
               Rooming summary: {booking.rooming.badge.breakdown.unassignedRooms > 0 ? `${booking.rooming.badge.breakdown.unassignedRooms} rooms need review` : 'Rooming shell available'}
