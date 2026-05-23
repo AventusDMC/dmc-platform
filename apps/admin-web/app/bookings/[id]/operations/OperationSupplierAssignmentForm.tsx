@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, MouseEvent, useState } from 'react';
+import { MouseEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type SupplierOption = {
@@ -34,6 +34,11 @@ export function OperationSupplierAssignmentForm({
   const [notes, setNotes] = useState(assignmentNotes || '');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [message, setMessage] = useState<string | null>(null);
+  const [clientReady, setClientReady] = useState(false);
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   async function saveAssignment() {
     const endpoint = `/api/bookings/${bookingId}/operations/${operationId}/assign-supplier`;
@@ -92,12 +97,6 @@ export function OperationSupplierAssignmentForm({
     }
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    await saveAssignment();
-  }
-
   async function handleSaveClick(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -105,11 +104,12 @@ export function OperationSupplierAssignmentForm({
   }
 
   return (
-    <form
+    <div
       className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'}
-      onSubmit={handleSubmit}
       data-operation-assignment-form={operationId}
+      data-client-editor-active={clientReady ? 'true' : 'false'}
     >
+      <span className="operations-inline-status operations-inline-status-idle">CLIENT EDITOR ACTIVE</span>
       <input type="hidden" name="bookingId" value={bookingId} />
       <input type="hidden" name="operationId" value={operationId} />
       <select
@@ -145,6 +145,6 @@ export function OperationSupplierAssignmentForm({
         {status === 'saving' ? 'Saving...' : 'Save'}
       </button>
       {message ? <span className={`operations-inline-status operations-inline-status-${status}`}>{message}</span> : null}
-    </form>
+    </div>
   );
 }
