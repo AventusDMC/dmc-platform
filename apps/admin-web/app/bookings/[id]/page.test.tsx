@@ -271,6 +271,7 @@ describe('booking detail page regression', () => {
       'Save success',
       'CLIENT EDITOR ACTIVE',
       'data-client-editor-active',
+      'if (!clientReady)',
       'useEffect',
       'data-operation-assignment-save',
       'type="button"',

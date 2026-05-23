@@ -103,6 +103,18 @@ export function OperationSupplierAssignmentForm({
     await saveAssignment();
   }
 
+  if (!clientReady) {
+    return (
+      <div
+        className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'}
+        data-operation-assignment-form={operationId}
+        data-client-editor-active="false"
+      >
+        <span className="operations-inline-status operations-inline-status-idle">CLIENT EDITOR ACTIVE</span>
+      </div>
+    );
+  }
+
   return (
     <div
       className={compact ? 'operations-inline-form operations-quick-form' : 'operations-inline-form'}
