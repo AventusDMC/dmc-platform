@@ -27,6 +27,9 @@ async function readAssignmentPayload(request: NextRequest) {
     supplierId: assignedSupplierId,
     assignmentStatus: optionalFormValue(formData, 'assignmentStatus'),
     assignmentNotes: optionalFormValue(formData, 'assignmentNotes'),
+    serviceDate: optionalFormValue(formData, 'serviceDate'),
+    startTime: optionalFormValue(formData, 'startTime'),
+    pickupTime: optionalFormValue(formData, 'pickupTime'),
   };
 }
 
@@ -66,6 +69,42 @@ export async function POST(
       },
       response,
     );
+  }
+
+  // Operations grid form bundles serviceDate / startTime / pickupTime alongside
+  // the supplier assignment so operators can set everything from one row card.
+  // Persist those via the operational endpoint when present; the supplier assign
+  // has already succeeded by this point.
+  if (
+    incomingPayload.serviceDate !== undefined ||
+    incomingPayload.startTime !== undefined ||
+    incomingPayload.pickupTime !== undefined
+  ) {
+    const operationalResponse = await fetch(`${API_BASE_URL}/bookings/services/${operationId}/operational`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildActorHeaders(request),
+      },
+      body: JSON.stringify({
+        serviceDate: incomingPayload.serviceDate ?? undefined,
+        startTime: incomingPayload.startTime ?? undefined,
+        pickupTime: incomingPayload.pickupTime ?? undefined,
+      }),
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+    if (!operationalResponse.ok) {
+      return buildProtectedActionErrorRedirect(
+        {
+          request,
+          referer: request.headers.get('referer'),
+          fallbackPath: `/bookings/${id}?tab=operations`,
+          genericError: 'Supplier assigned, but failed to save operational date/time.',
+        },
+        operationalResponse,
+      );
+    }
   }
 
   // Default destination: the booking operations tab.
