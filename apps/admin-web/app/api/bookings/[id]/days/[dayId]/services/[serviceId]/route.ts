@@ -150,21 +150,6 @@ export async function POST(
       }
     }
 
-    console.info('[booking-operation-save]', {
-      bookingId: id,
-      operationId: serviceId,
-      savedFields: {
-        supplierId: savedPayload?.supplierId ?? null,
-        assignedSupplierId: savedPayload?.assignedSupplierId ?? null,
-        assignmentStatus: savedPayload?.assignmentStatus ?? null,
-        operationalNotes: savedPayload?.operationalNotes ?? null,
-        meetingPoint: savedPayload?.meetingPoint ?? null,
-        pickupLocation: savedPayload?.pickupLocation ?? null,
-        startTime: savedPayload?.startTime ?? null,
-        confirmationReference: savedPayload?.confirmationReference ?? null,
-        confirmationNotes: savedPayload?.confirmationNotes ?? null,
-      },
-    });
   }
 
   const redirectUrl = new URL(referer || `/bookings/${id}?tab=operations`, request.url);
