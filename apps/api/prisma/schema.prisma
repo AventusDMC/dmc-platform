@@ -2481,6 +2481,10 @@ model Voucher {
   supplierId       String?        @db.Uuid
   status           VoucherStatus  @default(DRAFT)
   issuedAt         DateTime?
+  generatedAt      DateTime?
+  generatedBy      String?        @db.Uuid
+  sentAt           DateTime?
+  snapshotJson     Json?
   notes            String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
@@ -2490,6 +2494,7 @@ model Voucher {
 
   @@index([bookingId, status])
   @@index([supplierId])
+  @@index([generatedAt])
   @@map("vouchers")
 }
 
@@ -2544,6 +2549,8 @@ enum VoucherType {
   GUIDE
   ACTIVITY
   EXTERNAL_PACKAGE
+  TICKET
+  SERVICE
 }
 
 enum VoucherStatus {
@@ -2552,6 +2559,7 @@ enum VoucherStatus {
   SENT
   ISSUED
   CANCELLED
+  GENERATED
 }
 
 enum BookingType {

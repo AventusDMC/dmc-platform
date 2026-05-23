@@ -1333,6 +1333,31 @@ export class BookingsController {
     });
   }
 
+  @Post(':id/operations/:operationId/voucher/generate')
+  @Roles('admin', 'operations')
+  generateOperationalVoucher(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Body() body: CreateServiceVoucherBody,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.generateOperationalVoucher(id, operationId, {
+      notes: body?.notes === undefined ? undefined : body.notes || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
+  @Get(':id/operations/:operationId/voucher')
+  @Roles('admin', 'operations')
+  getOperationalVoucher(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.getOperationalVoucher(id, operationId, actor);
+  }
+
   @Post('services/bulk-actions')
   @Roles('admin', 'operations')
   bulkUpdateServiceStatuses(
