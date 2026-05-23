@@ -10479,11 +10479,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     bookingServiceId: string,
     data: { actor?: AuditActor; companyActor?: CompanyScopedActor; notes?: string | null },
   ) {
+    // Use the same loose company scoping as the assignment flow above
+    // (buildBookingCompanyWhere just asserts the actor has a company). The
+    // strict buildBookingServiceCompanyWhere variant scopes to
+    // `booking.quote.clientCompanyId == actor.companyId`, which excludes the
+    // operating DMC's own staff from acting on bookings they manage on behalf
+    // of a different client company. That mismatch is what surfaced as
+    // "Booking service not found" on the operations grid after PR #15.
     const bookingService = await (this.prisma.bookingService as any).findFirst({
       where: {
         id: bookingServiceId,
         bookingId,
-        ...this.buildBookingServiceCompanyWhere(data.companyActor),
+        booking: this.buildBookingCompanyWhere(data.companyActor),
       },
       include: {
         booking: {
@@ -10581,7 +10588,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       where: {
         id: bookingServiceId,
         bookingId,
-        ...this.buildBookingServiceCompanyWhere(actor),
+        booking: this.buildBookingCompanyWhere(actor),
       },
       select: { id: true },
     });

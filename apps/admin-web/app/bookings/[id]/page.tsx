@@ -2440,12 +2440,12 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                                               </Link>
                                             ) : null}
                                           </div>
-                                        ) : (
-                                          <form action={`/api/bookings/${booking.id}/services/${service.id}/voucher`} method="POST" className="quote-status-form">
-                                            <input type="hidden" name="notes" value={service.notes || ''} />
-                                            <button type="submit">Generate Voucher</button>
-                                          </form>
-                                        )}
+                                        ) : null}
+                                        {/* Voucher *generation* lives on the operations grid (one
+                                            card per row, with status pill + Generate/Regenerate +
+                                            View link). The booking-page table is a read-only summary;
+                                            keeping a Generate button here would split the workflow
+                                            and bypass the new snapshot-based eligibility checks. */}
                                       </td>
                                     </tr>
                                   ))}

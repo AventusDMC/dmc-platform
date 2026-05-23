@@ -260,7 +260,6 @@ describe('booking detail page regression', () => {
       '/operations#operation-${service.id}',
       'Edit in operations grid',
       'BookingServiceTimeline',
-      'Generate Voucher',
     ]);
   });
 
