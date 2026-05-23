@@ -6438,6 +6438,35 @@ table:not(.quote-client-itinerary-table):not(.invoice-portal-table) tbody tr:las
   border-bottom: 0;
 }
 
+/* Booking page Day-assignments table: strong row separation so operators can
+   actually see where one row ends and the next begins, even when the inline
+   editor in the Action column expands a row to twice the height. Scoped to
+   the booking ops panel so it doesn't affect other data tables. */
+.booking-ops-panel-card .data-table tbody td {
+  vertical-align: top;
+  border-bottom: 2px solid #d8e0eb;
+}
+
+.booking-ops-panel-card .data-table tbody tr:nth-child(odd) td {
+  background: #fbfcfd;
+}
+
+.booking-ops-panel-card .data-table tbody tr:hover td {
+  background: #eef4fb;
+}
+
+.booking-ops-panel-card .data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.booking-ops-panel-card .data-table .operations-row-details {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .empty-state,
 .catalog-empty-state,
 .quote-builder-empty-state,
