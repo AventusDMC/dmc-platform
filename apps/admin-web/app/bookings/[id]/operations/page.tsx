@@ -455,13 +455,15 @@ export default async function BookingOperationsPage({ params }: PageProps) {
                           <div><span>Voucher</span><strong>{formatLabel(row.voucherStatus)}</strong></div>
                           <div><span>Readiness</span><strong>{readiness.severity}</strong></div>
                         </div>
-                        <div className="booking-operations-debug-grid" aria-label="Operation assignment debug">
-                          <span>operationId: {row.id}</span>
-                          <span>supplierId: {row.supplierId || '-'}</span>
-                          <span>assignedSupplierId: {row.assignedSupplierId || '-'}</span>
-                          <span>assignmentStatus: {row.assignmentStatus || '-'}</span>
-                          <span>assignedSupplierName: {row.assignedSupplierName || '-'}</span>
-                        </div>
+                        {process.env.NODE_ENV !== 'production' ? (
+                          <div className="booking-operations-debug-grid" aria-label="Operation assignment debug">
+                            <span>operationId: {row.id}</span>
+                            <span>supplierId: {row.supplierId || '-'}</span>
+                            <span>assignedSupplierId: {row.assignedSupplierId || '-'}</span>
+                            <span>assignmentStatus: {row.assignmentStatus || '-'}</span>
+                            <span>assignedSupplierName: {row.assignedSupplierName || '-'}</span>
+                          </div>
+                        ) : null}
 
                         {readiness.reasons.length > 0 ? (
                           <ul className="booking-operations-reason-list">

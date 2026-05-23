@@ -68,7 +68,26 @@ export async function POST(
     );
   }
 
+  // Default destination: the booking operations tab.
   const redirectUrl = new URL(`/bookings/${id}`, request.url);
   redirectUrl.searchParams.set('tab', 'operations');
-  return NextResponse.redirect(redirectUrl, { status: 303 });
+
+  // Prefer returning the operator to the exact page they submitted from (the
+  // operations grid page or the operations tab) so the freshly persisted
+  // assignment is visible after the no-store refetch, instead of bouncing them
+  // elsewhere. Only honour a same-origin referer scoped to this booking.
+  let target = redirectUrl;
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer, request.url);
+      if (refererUrl.origin === request.nextUrl.origin && refererUrl.pathname.startsWith(`/bookings/${id}`)) {
+        target = refererUrl;
+      }
+    } catch {
+      target = redirectUrl;
+    }
+  }
+
+  return NextResponse.redirect(target, { status: 303 });
 }

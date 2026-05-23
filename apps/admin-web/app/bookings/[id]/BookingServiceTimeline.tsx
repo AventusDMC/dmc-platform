@@ -1,12 +1,30 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
 import { isActivityTaxonomyGroup, resolveServiceTaxonomyGroup } from '../../lib/service-taxonomy';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
+
+// Fixed display timezone for all operational dates/times. Pinning an explicit
+// timezone makes server-rendered and client-rendered output identical, which is
+// what eliminates the React #418 hydration mismatch (the server runs in UTC, a
+// browser in local time). This is the operations team's working timezone; change
+// this single constant if the team operates elsewhere.
+const OPERATIONS_TIME_ZONE = 'Asia/Amman';
+
+// Returns false on the server and on the first client render, then true after
+// mount. Used to defer rendering of values that depend on the current time
+// (Date.now()), which cannot match between server and client.
+function useHydrated() {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+  return hydrated;
+}
 
 type AuditLog = {
   id: string;
@@ -248,7 +266,7 @@ function buildServiceGroups(services: BookingService[]): ServiceGroup[] {
       label:
         key === 'unscheduled'
           ? 'Date Pending'
-          : new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(key)),
+          : new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: OPERATIONS_TIME_ZONE }).format(new Date(key)),
       services: groupedServices.sort((left, right) => {
         const leftTime = left.startTime || left.pickupTime || '';
         const rightTime = right.startTime || right.pickupTime || '';
@@ -294,6 +312,7 @@ function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: OPERATIONS_TIME_ZONE,
   }).format(new Date(value));
 }
 
@@ -305,6 +324,8 @@ export function BookingServiceTimeline({
   highlightServiceId,
   finance,
 }: BookingServiceTimelineProps) {
+  const hydrated = useHydrated();
+
   if (services.length === 0) {
     return (
       <BookingOperationsEmptyState
@@ -332,7 +353,9 @@ export function BookingServiceTimeline({
           <div className="booking-service-group-list">
             {group.services.map((service) => {
               const activityService = isActivityService(service.serviceType);
-              const reconfirmationWarning = getReconfirmationWarning(service);
+              // Time-relative (Date.now()) — only evaluate after mount so the
+              // server and first client render agree (avoids hydration mismatch).
+              const reconfirmationWarning = hydrated ? getReconfirmationWarning(service) : null;
               const supplierReference = service.supplierReference || service.confirmationNumber;
               const marginMetrics = getMarginMetrics(service.totalSell, service.totalCost);
               const executionDetails = buildExecutionDetails(service);
