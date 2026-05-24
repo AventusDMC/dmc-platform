@@ -305,14 +305,22 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
               const label = `Room ${room.roomNumber ?? idx + 1}`;
               // Per operator spec, the room code line at the bottom is just
               // occupancy + meal plan joined with " / " (e.g. "DBL / HB").
-              // roomType (free-text like "Premium Room") is too verbose for
-              // this dispatch line and is captured in the room.notes instead.
-              const codeLine = [
-                formatRoomOccupancy(room.occupancy),
-                snapshot.hotel?.mealPlan,
-              ]
+              const occupancyCode = formatRoomOccupancy(room.occupancy);
+              const codeLine = [occupancyCode, snapshot.hotel?.mealPlan]
                 .filter(Boolean)
                 .join(' / ');
+              // If the operator typed an occupancy code into the free-text
+              // roomType field too (e.g. "DBL" in both places), don't render
+              // it as a separate subnote — the codeLine already shows it.
+              const roomTypeForDisplay = (() => {
+                if (!room.roomType) return null;
+                const normalized = String(room.roomType).trim().toUpperCase();
+                if (!normalized) return null;
+                if (normalized === occupancyCode) return null;
+                if (Object.values(ROOM_OCCUPANCY_LABELS).includes(normalized)) return null;
+                if (Object.keys(ROOM_OCCUPANCY_LABELS).map((k) => k.toUpperCase()).includes(normalized)) return null;
+                return room.roomType;
+              })();
               const passengers = Array.isArray(room.passengers) ? room.passengers : [];
               return (
                 <div
@@ -341,9 +349,9 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
                   {codeLine ? (
                     <p style={{ margin: '0.4rem 0 0', fontWeight: 600 }}>{codeLine}</p>
                   ) : null}
-                  {room.roomType || room.notes ? (
+                  {roomTypeForDisplay || room.notes ? (
                     <p style={{ margin: '0.25rem 0 0', color: '#667085', fontSize: '0.85rem' }}>
-                      {[room.roomType, room.notes].filter(Boolean).join(' — ')}
+                      {[roomTypeForDisplay, room.notes].filter(Boolean).join(' — ')}
                     </p>
                   ) : null}
                 </div>

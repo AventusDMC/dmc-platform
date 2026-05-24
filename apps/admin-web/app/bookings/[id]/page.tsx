@@ -2812,8 +2812,21 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
                               return (
                                 <tr key={entry.id}>
                                   <td>
-                                    <strong>{getRoomLabel(entry)}</strong>
-                                    <span className="table-subcopy">{getRoomGroupCode(entry)}</span>
+                                    {(() => {
+                                      const label = getRoomLabel(entry);
+                                      const code = getRoomGroupCode(entry);
+                                      // Hide the group-code subcopy when it just repeats
+                                      // the room label (common: operator typed "DBL" as
+                                      // roomType, so both render the same). Otherwise the
+                                      // cell reads "DBLDBL" stacked.
+                                      const showCode = String(label || '').trim().toUpperCase() !== String(code || '').trim().toUpperCase();
+                                      return (
+                                        <>
+                                          <strong>{label}</strong>
+                                          {showCode ? <span className="table-subcopy">{code}</span> : null}
+                                        </>
+                                      );
+                                    })()}
                                   </td>
                                   <td>
                                     {formatRoomOccupancy(entry.occupancy)}
