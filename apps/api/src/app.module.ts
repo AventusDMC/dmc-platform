@@ -46,6 +46,8 @@ import { DriversController } from './drivers/drivers.controller';
 import { DriversService } from './drivers/drivers.service';
 import { RecoveryController, RecoveryMetricsController } from './recovery/recovery.controller';
 import { RecoveryService } from './recovery/recovery.service';
+import { ResourcesController } from './resources/resources.controller';
+import { ResourcesService } from './resources/resources.service';
 import { SimulationsController } from './simulations/simulations.controller';
 import { SimulationsService } from './simulations/simulations.service';
 import { GuidesController } from './guides/guides.controller';
@@ -146,6 +148,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     GuidesController,
     RecoveryController,
     RecoveryMetricsController,
+    ResourcesController,
     SimulationsController,
     RestaurantsController,
     SeriesController,
@@ -214,6 +217,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     DriversService,
     GuidesService,
     RecoveryService,
+    ResourcesService,
     SimulationsService,
     RestaurantsService,
     SeriesService,
