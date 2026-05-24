@@ -4,6 +4,7 @@ import { AdminBackButton } from '../../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../lib/admin-server';
 import { BookingFeedbackBannerCleanup } from '../BookingFeedbackBannerCleanup';
+import { OPERATIONS_TIME_ZONE } from '../../../lib/operations-timezone';
 
 type OperationsGridRow = {
   id: string;
@@ -103,6 +104,7 @@ function formatDate(value: string | null | undefined) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    timeZone: OPERATIONS_TIME_ZONE,
   }).format(date);
 }
 

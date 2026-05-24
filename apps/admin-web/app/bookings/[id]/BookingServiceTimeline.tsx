@@ -4,16 +4,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { InlineRowEditorShell } from '../../components/InlineRowEditorShell';
 import { RowDetailsPanel } from '../../components/RowDetailsPanel';
 import { getMarginColor, getMarginMetrics } from '../../lib/financials';
+import { OPERATIONS_TIME_ZONE } from '../../lib/operations-timezone';
 import { isActivityTaxonomyGroup, resolveServiceTaxonomyGroup } from '../../lib/service-taxonomy';
 import { BookingOperationsEmptyState } from './BookingOperationsEmptyState';
 import { BookingOperationsStatusBadge } from './BookingOperationsStatusBadge';
-
-// Fixed display timezone for all operational dates/times. Pinning an explicit
-// timezone makes server-rendered and client-rendered output identical, which is
-// what eliminates the React #418 hydration mismatch (the server runs in UTC, a
-// browser in local time). This is the operations team's working timezone; change
-// this single constant if the team operates elsewhere.
-const OPERATIONS_TIME_ZONE = 'Asia/Amman';
 
 // Returns false on the server and on the first client render, then true after
 // mount. Used to defer rendering of values that depend on the current time

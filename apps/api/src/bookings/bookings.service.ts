@@ -10582,7 +10582,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const snapshot = this.buildOperationalVoucherSnapshot(bookingService, voucherType, warnings);
-    const notes = this.normalizeOptionalText(data.notes) || this.normalizeOptionalText(bookingService.notes) || null;
+    // Mirror of the snapshot fix in PR #22: do NOT fall back to
+    // bookingService.notes for the voucher.notes column either. service.notes
+    // on hotel rows contains contract metadata with the supplier COST
+    // ("Rate USD 45.00 x 2 pax x 1 night"). voucher.notes is also a
+    // user-facing field — the detail page renders it as a fallback when
+    // snapshot.operationalNotes is null, so seeding it from service.notes
+    // leaks margin the same way. Operator-typed notes only.
+    const notes = this.normalizeOptionalText(data.notes) || null;
     const now = new Date();
     const generatedBy = data.actor?.userId || null;
 
