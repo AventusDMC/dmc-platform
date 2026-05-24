@@ -42,6 +42,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     children: [
       { label: 'Bookings', href: '/bookings' },
       { label: 'Operations', href: '/operations' },
+      { label: 'Dispatch', href: '/operations/dispatch' },
       { label: 'Series', href: '/series' },
       { label: 'Passengers & Documents', href: '/bookings' },
     ],
