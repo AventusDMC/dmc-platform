@@ -10419,7 +10419,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const booking = service.booking || {};
     const passengers = booking.passengers || [];
     const namesPending = passengers.filter((p: any) => !p.firstName || !p.lastName).length;
-    const supplier = service.supplier || service.touringRoutePricing?.supplier || null;
+    // Prefer the operationally-assigned supplier (set by the assign-supplier
+    // form on the operations grid) over the catalog-level supplierId field —
+    // they often differ because assignOperationalSupplier writes only
+    // assignedSupplierId, not supplierId.
+    const supplier =
+      service.assignedSupplier ||
+      service.supplier ||
+      service.touringRoutePricing?.supplier ||
+      null;
     const clientSnapshot = (booking.clientSnapshotJson || {}) as any;
     const day = service.bookingDay;
     const operationalDate = service.operationalDate || service.serviceDate || day?.date || null;
@@ -10458,7 +10466,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         : null,
       supplier: supplier
         ? { id: supplier.id || null, name: supplier.name || null }
-        : { id: service.supplierId || null, name: service.supplierName || null },
+        : {
+            id: service.assignedSupplierId || service.supplierId || null,
+            name: service.assignedSupplierName || service.supplierName || null,
+          },
       paxCount: service.participantCount || booking.pax || passengers.length || 0,
       passengerManifest: {
         total: passengers.length,
@@ -10502,6 +10513,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         bookingDay: true,
         vehicle: true,
         supplier: true,
+        assignedSupplier: true,
         touringRoute: true,
         touringRoutePricing: { include: { supplier: true, vehicle: true, touringRoute: true } },
       },
@@ -10511,7 +10523,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException('Booking service not found');
     }
 
-    const supplierId = this.normalizeOptionalText(bookingService.supplierId);
+    // assignOperationalSupplier (the per-row form on the operations grid) writes
+    // assignedSupplierId but does NOT touch supplierId — bookingService.supplierId
+    // stays null for any row assigned through that flow. The grid display reads
+    // assignedSupplierName first, which is why the row *looks* assigned. Honor
+    // either column so voucher eligibility matches what the UI shows.
+    const supplierId =
+      this.normalizeOptionalText(bookingService.assignedSupplierId) ||
+      this.normalizeOptionalText(bookingService.supplierId);
     if (!supplierId) {
       throw new BadRequestException('Cannot generate voucher: no supplier is assigned to this operation row.');
     }
