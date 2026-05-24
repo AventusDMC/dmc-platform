@@ -10490,7 +10490,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       rooming: isHotel
         ? { roomCount: roomingEntries.length, assignedPax }
         : null,
-      operationalNotes: service.operationalNotes || service.notes || null,
+      // IMPORTANT: do NOT fall back to service.notes here. service.notes for
+      // hotel rows is populated from the contract metadata at booking
+      // conversion time (e.g. "Corp Amman Hotel Travel Agent Agreement 2026 |
+      // ... | Rate USD 45.00 x 2 pax x 1 night | Supplements USD 20.00") and
+      // contains the supplier COST. Snapshots persist to vouchers.snapshotJson
+      // and could be read by any future client-facing surface that displays
+      // operational notes — leaking margins. operationalNotes is the
+      // operator-typed field intended for operational instructions; leave it
+      // null when empty rather than seeding cost data into the snapshot.
+      operationalNotes: service.operationalNotes || null,
       confirmationReference: service.confirmationReference || service.confirmationNumber || service.supplierReference || null,
       warnings,
     };
