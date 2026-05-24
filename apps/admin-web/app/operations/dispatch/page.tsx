@@ -481,7 +481,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
         {row.guideName ? <StatusPill label="Guide" value={`Guide: ${row.guideName}`} ok /> : null}
       </div>
 
-      {row.reasons.length > 0 ? (
+      {Array.isArray(row.reasons) && row.reasons.length > 0 ? (
         <ul style={{ margin: 0, paddingLeft: '1.1rem', color: isCritical ? '#7a271a' : '#b54708', fontSize: '0.88rem', fontWeight: 500 }}>
           {row.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
@@ -590,7 +590,9 @@ function LaneBlock({ lane, startOpen, returnTo }: { lane: Lane; startOpen: boole
     evening: [],
     unscheduled: [],
   };
-  for (const row of lane.rows) {
+  const rows = Array.isArray(lane.rows) ? lane.rows : [];
+  for (const row of rows) {
+    if (!row) continue;
     buckets[getTimeBucket(row.time)].push(row);
   }
   // Sort within bucket by time ascending.
@@ -727,15 +729,30 @@ function renderDispatchBody({
   view: 'timeline' | 'lanes';
   returnTo: string;
 }) {
+  // DEBUG: embed the raw API response so we can View Source to inspect
+  // shape mismatches between backend response and frontend types when render
+  // crashes. Safe to leave in: it's data the operator already has access to.
+  const debugJson = (() => {
+    try {
+      return JSON.stringify(data);
+    } catch {
+      return '"<unserializable>"';
+    }
+  })();
   return (
     <main className="admin-page-shell">
+      <script
+        id="dispatch-debug"
+        type="application/json"
+        dangerouslySetInnerHTML={{ __html: debugJson }}
+      />
       <div className="admin-page-heading">
         <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Dispatch' }]} />
         <div className="admin-heading-row">
           <div>
             <h1>Operations Dispatch</h1>
             <p className="admin-muted-copy">
-              {data.range.label} · {data.range.from}{data.range.from !== data.range.to ? ` → ${data.range.to}` : ''} · {c.totalRows} service rows in window
+              {data.range?.label || 'Range'} · {data.range?.from || '—'}{data.range?.from && data.range?.from !== data.range?.to ? ` → ${data.range.to}` : ''} · {c?.totalRows ?? 0} service rows in window
             </p>
           </div>
           <div className="admin-heading-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -984,9 +1001,11 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
   // shows in both lanes; here it should appear once on the timeline).
   const seen = new Set<string>();
   const allRows: DispatchRow[] = [];
-  for (const lane of Object.values(data.lanes)) {
+  const lanes = data.lanes ? Object.values(data.lanes) : [];
+  for (const lane of lanes) {
+    if (!lane || !Array.isArray(lane.rows)) continue;
     for (const row of lane.rows) {
-      if (seen.has(row.serviceId)) continue;
+      if (!row || !row.serviceId || seen.has(row.serviceId)) continue;
       seen.add(row.serviceId);
       allRows.push(row);
     }
@@ -1053,15 +1072,33 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
   );
 }
 
+const EMPTY_LANE: Lane = { label: '', rows: [], total: 0, critical: 0, actionRequired: 0, ready: 0 };
+
 function LanesView({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
+  // Guard against an older API response shape missing the lanes block —
+  // render an empty state instead of crashing the page.
+  if (!data.lanes) {
+    return (
+      <section style={{ color: '#667085', padding: '1rem', border: '1px dashed #d0d5dd', borderRadius: 8 }}>
+        Lanes view is not available for this response. Switch to Timeline view.
+      </section>
+    );
+  }
+  const l = data.lanes;
+  const arrivals = l.arrivals || { ...EMPTY_LANE, label: 'Arrivals' };
+  const departures = l.departures || { ...EMPTY_LANE, label: 'Departures' };
+  const hotels = l.hotels || { ...EMPTY_LANE, label: 'Hotels' };
+  const transport = l.transport || { ...EMPTY_LANE, label: 'Transport' };
+  const activities = l.activities || { ...EMPTY_LANE, label: 'Activities' };
+  const guides = l.guides || { ...EMPTY_LANE, label: 'Guides' };
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-      <LaneBlock lane={data.lanes.arrivals} startOpen={data.lanes.arrivals.total > 0} returnTo={returnTo} />
-      <LaneBlock lane={data.lanes.departures} startOpen={data.lanes.departures.total > 0} returnTo={returnTo} />
-      <LaneBlock lane={data.lanes.hotels} startOpen={data.lanes.hotels.critical > 0 || data.lanes.hotels.actionRequired > 0} returnTo={returnTo} />
-      <LaneBlock lane={data.lanes.transport} startOpen={data.lanes.transport.critical > 0 || data.lanes.transport.actionRequired > 0} returnTo={returnTo} />
-      <LaneBlock lane={data.lanes.activities} startOpen={data.lanes.activities.critical > 0} returnTo={returnTo} />
-      <LaneBlock lane={data.lanes.guides} startOpen={data.lanes.guides.critical > 0} returnTo={returnTo} />
+      <LaneBlock lane={arrivals} startOpen={arrivals.total > 0} returnTo={returnTo} />
+      <LaneBlock lane={departures} startOpen={departures.total > 0} returnTo={returnTo} />
+      <LaneBlock lane={hotels} startOpen={hotels.critical > 0 || hotels.actionRequired > 0} returnTo={returnTo} />
+      <LaneBlock lane={transport} startOpen={transport.critical > 0 || transport.actionRequired > 0} returnTo={returnTo} />
+      <LaneBlock lane={activities} startOpen={activities.critical > 0} returnTo={returnTo} />
+      <LaneBlock lane={guides} startOpen={guides.critical > 0} returnTo={returnTo} />
     </section>
   );
 }
