@@ -303,13 +303,16 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {snapshot.hotel.occupancy.map((room, idx) => {
               const label = `Room ${room.roomNumber ?? idx + 1}`;
-              const inlineMeta = [
-                room.roomType,
+              // Per operator spec, the room code line at the bottom is just
+              // occupancy + meal plan joined with " / " (e.g. "DBL / HB").
+              // roomType (free-text like "Premium Room") is too verbose for
+              // this dispatch line and is captured in the room.notes instead.
+              const codeLine = [
                 formatRoomOccupancy(room.occupancy),
                 snapshot.hotel?.mealPlan,
               ]
                 .filter(Boolean)
-                .join(' · ');
+                .join(' / ');
               const passengers = Array.isArray(room.passengers) ? room.passengers : [];
               return (
                 <div
@@ -321,10 +324,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
                     background: '#fbfcfd',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
-                    <strong>{label}</strong>
-                    {inlineMeta ? <span style={{ color: '#667085', fontSize: '0.85rem' }}>{inlineMeta}</span> : null}
-                  </div>
+                  <strong>{label}</strong>
                   {passengers.length > 0 ? (
                     <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.25rem' }}>
                       {passengers.map((p, pidx) => (
@@ -338,8 +338,13 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
                   ) : (
                     <p style={{ margin: '0.4rem 0 0', color: '#b54708' }}>No guests assigned to this room yet.</p>
                   )}
-                  {room.notes ? (
-                    <p style={{ margin: '0.4rem 0 0', color: '#667085', fontSize: '0.85rem' }}>{room.notes}</p>
+                  {codeLine ? (
+                    <p style={{ margin: '0.4rem 0 0', fontWeight: 600 }}>{codeLine}</p>
+                  ) : null}
+                  {room.roomType || room.notes ? (
+                    <p style={{ margin: '0.25rem 0 0', color: '#667085', fontSize: '0.85rem' }}>
+                      {[room.roomType, room.notes].filter(Boolean).join(' — ')}
+                    </p>
                   ) : null}
                 </div>
               );
