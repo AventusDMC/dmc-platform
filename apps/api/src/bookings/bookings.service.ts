@@ -10442,16 +10442,40 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const day = service.bookingDay;
     const operationalDate = service.operationalDate || service.serviceDate || day?.date || null;
     const operationalTime = service.operationalTime || service.startTime || service.pickupTime || null;
-    const isTransport = String(voucherType) === 'TRANSPORT';
-    const isHotel = String(voucherType) === 'HOTEL';
+    const vtype = String(voucherType);
+    const isTransport = vtype === 'TRANSPORT';
+    const isHotel = vtype === 'HOTEL';
+    const isActivity = vtype === 'ACTIVITY' || vtype === 'EXCURSION';
+    const isGuide = vtype === 'GUIDE';
     const roomingEntries = booking.roomingEntries || [];
     const assignedPax = roomingEntries.reduce(
       (total: number, room: any) => total + (Array.isArray(room.assignments) ? room.assignments.length : 0),
       0,
     );
+    const hotelMetadata =
+      service.sourceMetadata && typeof service.sourceMetadata === 'object'
+        ? (service.sourceMetadata as any).hotelReservation || null
+        : null;
+    const transportRoute =
+      service.touringRoute || service.touringRoutePricing?.touringRoute || null;
+    const vehicle =
+      service.vehicle || service.touringRoutePricing?.vehicle || null;
+    const supplierContact = supplier
+      ? { email: supplier.email || null, phone: supplier.phone || null }
+      : null;
+    const occupancyBreakdown = isHotel
+      ? roomingEntries.map((room: any) => ({
+          roomType: room.roomType || null,
+          occupancy: room.occupancy || null,
+          paxCount: Array.isArray(room.assignments) ? room.assignments.length : 0,
+        }))
+      : null;
 
     return {
-      voucherVersion: 1,
+      // v2 adds per-type sub-blocks (transport / hotel / activity / guide).
+      // Older v1 snapshots stay readable — the detail page renders new sub-
+      // blocks only when present, falling back to the v1 generic fields.
+      voucherVersion: 2,
       generatedAt: new Date().toISOString(),
       bookingRef: booking.bookingRef || null,
       client: {
@@ -10501,6 +10525,72 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       // null when empty rather than seeding cost data into the snapshot.
       operationalNotes: service.operationalNotes || null,
       confirmationReference: service.confirmationReference || service.confirmationNumber || service.supplierReference || null,
+      // Per-type completeness blocks. Each is present only when the voucher
+      // type matches; the detail page hides any block that's null.
+      transport: isTransport
+        ? {
+            routeName: transportRoute?.name || null,
+            routeCode: transportRoute?.code || null,
+            vehicleType: vehicle?.vehicleType || vehicle?.name || null,
+            vehicleName: vehicle?.name || null,
+            driverName: service.assignedTo || null,
+            // No dedicated driverPhone field on BookingService yet — supplier.phone
+            // is the dispatch contact in the meantime.
+            driverPhone: null,
+            emergencyContact: supplierContact,
+            operationalRemarks: service.supplierRemarks || null,
+          }
+        : null,
+      hotel: isHotel
+        ? {
+            confirmationNumber: service.confirmationNumber || service.confirmationReference || null,
+            checkIn: operationalDate ? new Date(operationalDate).toISOString().slice(0, 10) : null,
+            // Hotel check-out is not modelled on BookingService directly. Fall
+            // back to sourceMetadata.hotelReservation.checkOut if a quote
+            // captured it; otherwise leave null and the detail page hides it.
+            checkOut: hotelMetadata?.checkOut || hotelMetadata?.releaseDate || null,
+            mealPlan: hotelMetadata?.mealPlan || hotelMetadata?.boardBasis || null,
+            roomCount: roomingEntries.length,
+            assignedPax,
+            occupancy: occupancyBreakdown,
+            specialRequests:
+              hotelMetadata?.specialRequests || hotelMetadata?.notes || null,
+            emergencyContact: supplierContact,
+          }
+        : null,
+      activity: isActivity
+        ? {
+            meetingPoint: service.meetingPoint || null,
+            startTime: service.startTime || service.pickupTime || null,
+            participants: {
+              total: service.participantCount ?? null,
+              adults: service.adultCount ?? null,
+              children: service.childCount ?? null,
+            },
+            // Inclusions / exclusions are not modelled on BookingService yet.
+            // Pull from sourceMetadata if a quote captured them.
+            inclusions: Array.isArray(service.sourceMetadata?.inclusions) ? service.sourceMetadata.inclusions : null,
+            exclusions: Array.isArray(service.sourceMetadata?.exclusions) ? service.sourceMetadata.exclusions : null,
+            assignedGuide: service.guide?.fullName || service.assignedTo || null,
+            assignedGuidePhone: service.guide?.phone || service.guidePhone || null,
+            operationalNotes: service.operationalNotes || null,
+          }
+        : null,
+      guide: isGuide
+        ? {
+            guideName: service.guide?.fullName || service.assignedTo || null,
+            guideLanguages:
+              (service.guide?.languages && service.guide.languages.length > 0
+                ? service.guide.languages
+                : service.guideRequiredLanguages) || [],
+            reportingTime: service.guideReportingTime || service.startTime || null,
+            // No structured workingHours field on Guide yet; reportingTime is
+            // the start, and the booking day duration implies the end.
+            workingHours: null,
+            phone: service.guide?.phone || service.guidePhone || null,
+            email: service.guide?.email || null,
+          }
+        : null,
       warnings,
     };
   }
@@ -10534,6 +10624,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         vehicle: true,
         supplier: true,
         assignedSupplier: true,
+        guide: true,
+        activity: true,
         touringRoute: true,
         touringRoutePricing: { include: { supplier: true, vehicle: true, touringRoute: true } },
       },
@@ -10579,6 +10671,40 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const requiresTime = ['TRANSPORT', 'TICKET', 'ACTIVITY', 'EXCURSION'];
     if (requiresTime.includes(String(voucherType)) && !operationalTime) {
       warnings.push('Operational time is not set — voucher generated but the supplier will need a time before the row is fully operational.');
+    }
+
+    // Per-type dispatch readiness warnings — voucher generates anyway, but
+    // surface the gaps so operators know what to fill in before the supplier
+    // can actually execute the row.
+    const vt = String(voucherType);
+    if (vt === 'TRANSPORT') {
+      if (!this.normalizeOptionalText(bookingService.pickupLocation)) {
+        warnings.push('Pickup location missing — dispatch needs an address before the driver can proceed.');
+      }
+      if (!this.normalizeOptionalText(bookingService.assignedTo)) {
+        warnings.push('Driver not assigned — voucher generated but no driver name is on file.');
+      }
+    }
+    if (vt === 'HOTEL') {
+      const rooming = bookingService.booking?.roomingEntries || [];
+      const totalAssignedPax = rooming.reduce(
+        (sum: number, room: any) => sum + (Array.isArray(room.assignments) ? room.assignments.length : 0),
+        0,
+      );
+      if (rooming.length === 0 || totalAssignedPax === 0) {
+        warnings.push('Rooming not yet set up — hotel cannot confirm specific rooms without a rooming plan.');
+      }
+    }
+    if (vt === 'ACTIVITY' || vt === 'EXCURSION') {
+      if (!this.normalizeOptionalText(bookingService.meetingPoint)) {
+        warnings.push('Meeting point not set — passengers will not know where to gather.');
+      }
+    }
+    if (vt === 'GUIDE') {
+      const guideName = bookingService.guide?.fullName || bookingService.assignedTo;
+      if (!this.normalizeOptionalText(guideName)) {
+        warnings.push('Guide name not set — voucher generated but no guide is on file.');
+      }
     }
 
     const snapshot = this.buildOperationalVoucherSnapshot(bookingService, voucherType, warnings);
