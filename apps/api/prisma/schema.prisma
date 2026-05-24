@@ -2314,6 +2314,8 @@ model BookingService {
   adultCount                 Int?
   childCount                 Int?
   nights                     Int?                          // Number of nights for HOTEL operation rows; used to derive checkOut from serviceDate
+  mealPlan                   HotelMealPlan?                // HOTEL operation rows: RO / BB / HB / FB / AI
+  specialRequests            String?                       // Free-form text — king bed, twin, smoking/non-smoking, honeymoon, accessibility, etc.
   supplierReference          String?
   supplierConfirmationStatus SupplierConfirmationStatus    @default(NOT_SENT)
   supplierConfirmationCode   String?
