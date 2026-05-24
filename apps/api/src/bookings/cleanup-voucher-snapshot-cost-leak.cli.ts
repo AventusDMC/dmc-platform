@@ -39,23 +39,30 @@ function printJson(payload: unknown) {
   console.log(JSON.stringify(payload, null, 2));
 }
 
-function findLeakedField(snapshot: any): { field: string; value: string } | null {
-  if (!snapshot || typeof snapshot !== 'object') return null;
-  const candidates: Array<{ field: string; value: any }> = [
-    { field: 'operationalNotes', value: snapshot.operationalNotes },
-    { field: 'notes', value: snapshot.notes },
-  ];
-  for (const c of candidates) {
-    if (typeof c.value === 'string' && COST_PATTERN.test(c.value)) {
-      return { field: c.field, value: c.value };
+type Leak = { source: 'snapshot' | 'column'; field: string; value: string };
+
+function findLeakedFields(voucher: any): Leak[] {
+  const leaks: Leak[] = [];
+  const snapshot = voucher.snapshotJson;
+  if (snapshot && typeof snapshot === 'object') {
+    for (const field of ['operationalNotes', 'notes']) {
+      const value = (snapshot as any)[field];
+      if (typeof value === 'string' && COST_PATTERN.test(value)) {
+        leaks.push({ source: 'snapshot', field, value });
+      }
     }
   }
-  return null;
+  // voucher.notes is a top-level column (set by generateOperationalVoucher /
+  // createServiceVoucher). The detail page renders it as a fallback when
+  // snapshot.operationalNotes is null, so a rate-laden value here leaks too.
+  if (typeof voucher.notes === 'string' && COST_PATTERN.test(voucher.notes)) {
+    leaks.push({ source: 'column', field: 'notes', value: voucher.notes });
+  }
+  return leaks;
 }
 
 async function findLeakedVouchers(prisma: PrismaService) {
   const vouchers = await (prisma as any).voucher.findMany({
-    where: { snapshotJson: { not: null } },
     select: {
       id: true,
       bookingId: true,
@@ -63,14 +70,15 @@ async function findLeakedVouchers(prisma: PrismaService) {
       type: true,
       status: true,
       snapshotJson: true,
+      notes: true,
     },
   });
   return vouchers
     .map((v: any) => {
-      const leak = findLeakedField(v.snapshotJson);
-      return leak ? { voucher: v, leak } : null;
+      const leaks = findLeakedFields(v);
+      return leaks.length > 0 ? { voucher: v, leaks } : null;
     })
-    .filter(Boolean) as Array<{ voucher: any; leak: { field: string; value: string } }>;
+    .filter(Boolean) as Array<{ voucher: any; leaks: Leak[] }>;
 }
 
 async function main() {
@@ -86,8 +94,8 @@ async function main() {
       bookingServiceId: entry.voucher.bookingServiceId,
       type: entry.voucher.type,
       status: entry.voucher.status,
-      leakedField: entry.leak.field,
-      leakedValue: entry.leak.value,
+      leakedFields: entry.leaks.map((leak) => `${leak.source}.${leak.field}`),
+      leakedValues: entry.leaks.map((leak) => leak.value),
     }));
 
     if (mode === 'dry-run') {
@@ -119,19 +127,20 @@ async function main() {
       const scrubbed = await prisma.$transaction(async (tx) => {
         let count = 0;
         for (const entry of leaked) {
-          const before = entry.voucher.snapshotJson as Record<string, any>;
-          // Clone, null the leaked fields, leave everything else intact.
-          const after = { ...before };
-          if (typeof after.operationalNotes === 'string' && COST_PATTERN.test(after.operationalNotes)) {
-            after.operationalNotes = null;
+          const update: Record<string, any> = {};
+          const snapshotLeaks = entry.leaks.filter((l) => l.source === 'snapshot');
+          if (snapshotLeaks.length > 0 && entry.voucher.snapshotJson && typeof entry.voucher.snapshotJson === 'object') {
+            const after = { ...(entry.voucher.snapshotJson as Record<string, any>) };
+            for (const leak of snapshotLeaks) {
+              after[leak.field] = null;
+            }
+            update.snapshotJson = after;
           }
-          if (typeof after.notes === 'string' && COST_PATTERN.test(after.notes)) {
-            after.notes = null;
+          const columnLeak = entry.leaks.find((l) => l.source === 'column' && l.field === 'notes');
+          if (columnLeak) {
+            update.notes = null;
           }
-          await (tx as any).voucher.update({
-            where: { id: entry.voucher.id },
-            data: { snapshotJson: after },
-          });
+          await (tx as any).voucher.update({ where: { id: entry.voucher.id }, data: update });
           await (tx as any).bookingAuditLog.create({
             data: {
               bookingId: entry.voucher.bookingId,
@@ -139,7 +148,7 @@ async function main() {
               entityType: 'booking_service' as const,
               entityId: entry.voucher.bookingServiceId,
               action: 'voucher_snapshot_cost_leak_scrubbed',
-              oldValue: entry.leak.value,
+              oldValue: entry.leaks.map((l) => `${l.source}.${l.field}: ${l.value}`).join(' | '),
               newValue: null,
               actor: 'cleanup-voucher-snapshot-cost-leak.cli',
             },
