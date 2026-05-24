@@ -40,8 +40,12 @@ import { ExcursionTemplatesController } from './excursion-templates/excursion-te
 import { ExcursionTemplatesService } from './excursion-templates/excursion-templates.service';
 import { GalleryController } from './gallery/gallery.controller';
 import { GalleryService } from './gallery/gallery.service';
+import { DispatchEventsController } from './dispatch-events/dispatch-events.controller';
+import { DispatchEventsService } from './dispatch-events/dispatch-events.service';
 import { DriversController } from './drivers/drivers.controller';
 import { DriversService } from './drivers/drivers.service';
+import { SimulationsController } from './simulations/simulations.controller';
+import { SimulationsService } from './simulations/simulations.service';
 import { GuidesController } from './guides/guides.controller';
 import { GuidesService } from './guides/guides.service';
 import { RestaurantsController } from './restaurants/restaurants.controller';
@@ -135,8 +139,10 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesController,
     ContractSupplementsController,
     GalleryController,
+    DispatchEventsController,
     DriversController,
     GuidesController,
+    SimulationsController,
     RestaurantsController,
     SeriesController,
     HotelCategoriesController,
@@ -200,8 +206,10 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesService,
     ContractSupplementsService,
     GalleryService,
+    DispatchEventsService,
     DriversService,
     GuidesService,
+    SimulationsService,
     RestaurantsService,
     SeriesService,
     HotelCategoriesService,

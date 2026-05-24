@@ -33,6 +33,7 @@ type DispatchRow = {
   voucherStatus: string;
   voucherId: string | null;
   voucherGeneratedAt: string | null;
+  delayMinutes: number | null;
   driverName: string | null;
   driverPhone: string | null;
   driverLicenseNumber: string | null;
@@ -97,11 +98,16 @@ type DispatchResponse = {
     activeIssuesCount: number;
     delayedCount: number;
     inProgressCount: number;
+    activeIncidentsCount: number;
+    delayedOperationsCount: number;
+    escalatedIssuesCount: number;
+    resolutionQueueCount: number;
   };
   execution: {
     inProgress: { label: string; count: number; rows: DispatchRow[] };
     delayedIssues: { label: string; count: number; rows: DispatchRow[] };
     completedToday: { label: string; count: number; rows: DispatchRow[] };
+    resolutionQueue?: { label: string; count: number; rows: DispatchRow[] };
   };
   sections: {
     criticalIssues: { count: number; rows: DispatchRow[] };
@@ -161,6 +167,40 @@ const EXECUTION_TONE: Record<ExecutionStatus, { bg: string; text: string; border
   ISSUE: { bg: '#fef3f2', text: '#b42318', border: '#f04438', label: 'ISSUE' },
   CANCELLED: { bg: '#f2f4f7', text: '#667085', border: '#d0d5dd', label: 'CANCELLED' },
 };
+
+// SLA breach colour ramp — 1-14m: warning amber, 15-29m: stronger amber,
+// 30m+: red (operator SLA breached). Surfaces on the dispatch card as a
+// compact "Delayed Xm" pill so drift is visible at a glance.
+function DelayPill({ minutes }: { minutes: number }) {
+  const tone =
+    minutes >= 30
+      ? { bg: '#fef3f2', text: '#b42318', border: '#f04438' }
+      : minutes >= 15
+      ? { bg: '#fff8eb', text: '#b54708', border: '#f79009' }
+      : { bg: '#fffbeb', text: '#a16207', border: '#fde68a' };
+  const label = minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ''}` : `${minutes}m`;
+  return (
+    <span
+      style={{
+        background: tone.bg,
+        color: tone.text,
+        border: `1px solid ${tone.border}`,
+        padding: '0.15rem 0.5rem',
+        borderRadius: 999,
+        fontSize: '0.7rem',
+        fontWeight: 800,
+        letterSpacing: '0.04em',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+      title={minutes >= 30 ? 'SLA breach — over 30 minutes delayed' : 'Delayed'}
+    >
+      ⏱ DELAYED {label}
+    </span>
+  );
+}
 
 function ExecutionPill({ status }: { status: ExecutionStatus }) {
   const tone = EXECUTION_TONE[status] || EXECUTION_TONE.READY;
@@ -466,6 +506,7 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
           <SeverityPill severity={row.severity} />
           {row.executionStatus && row.executionStatus !== 'READY' ? <ExecutionPill status={row.executionStatus} /> : null}
+          {row.delayMinutes && row.delayMinutes > 0 ? <DelayPill minutes={row.delayMinutes} /> : null}
         </div>
       </div>
 
@@ -817,6 +858,14 @@ function renderDispatchBody({
                 {opt.label}
               </Link>
             ))}
+            <Link
+              href="/operations/simulation"
+              className="button button-secondary"
+              style={{ borderStyle: 'dashed' }}
+              title="Inject realistic operational scenarios"
+            >
+              🧪 Simulation
+            </Link>
           </div>
         </div>
       </div>
@@ -887,6 +936,54 @@ function renderDispatchBody({
               tone={c.delayedCount > 0 ? 'action' : 'ready'}
             />
           </section>
+
+          {/* Stability counters — incident health surfaces. Drawn between the
+              prep counters and Live Ops so an operator who just opened the
+              page sees "is anything actively broken" before scrolling. */}
+          {c.activeIncidentsCount > 0 || c.delayedOperationsCount > 0 || c.escalatedIssuesCount > 0 || c.resolutionQueueCount > 0 ? (
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '0.6rem' }}>
+              <CounterCard label="Active Incidents" value={c.activeIncidentsCount} tone={c.activeIncidentsCount > 0 ? 'critical' : 'ready'} />
+              <CounterCard label="Delayed Operations" value={c.delayedOperationsCount} tone={c.delayedOperationsCount > 0 ? 'action' : 'ready'} />
+              <CounterCard label="Escalated Issues" value={c.escalatedIssuesCount} tone={c.escalatedIssuesCount > 0 ? 'critical' : 'ready'} sub="HIGH or CRITICAL" />
+              <CounterCard label="Resolution Queue" value={c.resolutionQueueCount} tone={c.resolutionQueueCount > 0 ? 'critical' : 'ready'} sub="Open > 30 min" />
+            </section>
+          ) : null}
+
+          {/* Resolution Queue — list of ISSUE-state rows ordered oldest-first
+              so the most-overdue incident is at the top. Hidden when empty. */}
+          {data.execution?.resolutionQueue && data.execution.resolutionQueue.count > 0 ? (
+            <section
+              style={{
+                background: '#fef3f2',
+                border: '2px solid #f04438',
+                borderRadius: 12,
+                padding: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+              }}
+              aria-label="Resolution queue"
+            >
+              <div>
+                <p style={{ margin: 0, color: '#b42318', fontWeight: 700, fontSize: '0.78rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Resolution Queue · oldest first
+                </p>
+                <h2 style={{ margin: 0, color: '#7a271a' }}>
+                  {data.execution.resolutionQueue.count} incident{data.execution.resolutionQueue.count === 1 ? '' : 's'} need resolution
+                </h2>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {data.execution.resolutionQueue.rows.slice(0, 10).map((row) => (
+                  <DispatchCard key={`res-${row.serviceId}`} row={row} returnTo={returnTo} />
+                ))}
+                {data.execution.resolutionQueue.count > 10 ? (
+                  <p style={{ margin: 0, color: '#7a271a', fontSize: '0.85rem' }}>
+                    + {data.execution.resolutionQueue.count - 10} more in the queue.
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
           {/* Live Operations command panel — drawn FIRST because what's
               happening right now beats what's still being prepared. Type-split

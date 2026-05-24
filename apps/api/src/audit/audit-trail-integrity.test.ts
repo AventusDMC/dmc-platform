@@ -29,7 +29,7 @@ function createQuotesService(prisma: any, auditEntries: any[] = []) {
 }
 
 function createBookingsService(prisma: any) {
-  return new BookingsService(prisma, { log: async () => null } as any);
+  return new BookingsService(prisma, { log: async () => null } as any, { log: async () => null } as any);
 }
 
 test('AuditService stores actor company user entity metadata and timestamp-ready data', async () => {

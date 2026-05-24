@@ -29,7 +29,7 @@ function createQuotesService(prisma: Record<string, any>) {
 }
 
 function createBookingsService(prisma: Record<string, any>) {
-  return new BookingsService(prisma as any, { log: async () => null } as any);
+  return new BookingsService(prisma as any, { log: async () => null } as any, { log: async () => null } as any);
 }
 
 test('multi-company services still require authenticated actor context', async () => {

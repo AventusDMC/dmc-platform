@@ -3,7 +3,7 @@ import assert = require('node:assert/strict');
 const { BookingsService } = require('./bookings.service');
 
 function createBookingsService() {
-  return new BookingsService({} as any);
+  return new BookingsService({} as any, {} as any, {} as any);
 }
 
 test('activity services cannot be marked ready without a service date', () => {

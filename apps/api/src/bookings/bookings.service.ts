@@ -18,6 +18,7 @@ import nodemailer = require('nodemailer');
 import * as XLSX from 'xlsx';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { DispatchEventsService } from '../dispatch-events/dispatch-events.service';
 import { requireActorCompanyId, type CompanyScopedActor } from '../auth/company-scope';
 import { resolveOperationalSupplier } from '../common/supplier-resolver';
 import { resolveServiceTaxonomyGroup } from '../common/service-taxonomy';
@@ -198,6 +199,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly dispatchEvents: DispatchEventsService,
   ) {}
 
   onModuleInit() {
@@ -685,7 +687,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     const previousValue = `vehicle=${bookingService.vehicle?.name || '—'} driver=${bookingService.driver?.fullName || bookingService.assignedTo || '—'}`;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const updateData: Record<string, unknown> = {};
       if (data.vehicleId !== undefined) updateData.vehicleId = data.vehicleId || null;
       if (data.driverId !== undefined) updateData.driverId = data.driverId || null;
@@ -708,6 +710,32 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       });
       return updated;
     });
+
+    // Log driver/vehicle (re)assignment as separate event types so the
+    // replay log distinguishes the two — operators care which one changed.
+    if (data.driverId !== undefined) {
+      await this.dispatchEvents.log({
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        eventType: 'REASSIGNED_DRIVER',
+        severity: 'INFO',
+        actor: this.normalizeActorEmail(data.actor),
+        notes: `Driver: ${result.driver?.fullName || '—'}`,
+        payload: { driverId: data.driverId || null, driverName: result.driver?.fullName || null },
+      });
+    }
+    if (data.vehicleId !== undefined) {
+      await this.dispatchEvents.log({
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        eventType: 'REASSIGNED_VEHICLE',
+        severity: 'INFO',
+        actor: this.normalizeActorEmail(data.actor),
+        notes: `Vehicle: ${result.vehicle?.name || '—'}`,
+        payload: { vehicleId: data.vehicleId || null, vehicleName: result.vehicle?.name || null },
+      });
+    }
+    return result;
   }
 
   async assignOperationalSupplier(
@@ -5768,7 +5796,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     updateData.executionStatus = nextStatus;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await (tx.bookingService as any).update({
         where: { id: bookingServiceId },
         data: updateData,
@@ -5792,6 +5820,59 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       return updated;
     });
+
+    // Append-only dispatch event log — drives the /operations/simulation
+    // replay timeline. Outside the transaction so a logging failure cannot
+    // roll back the underlying state transition.
+    const eventTypeByAction: Record<string, 'DISPATCHED' | 'STARTED' | 'COMPLETED' | 'ISSUE_RAISED' | 'ISSUE_RESOLVED' | 'CANCELLED'> = {
+      dispatch: 'DISPATCHED',
+      start: 'STARTED',
+      complete: 'COMPLETED',
+      issue: 'ISSUE_RAISED',
+      resolve: 'ISSUE_RESOLVED',
+      cancel: 'CANCELLED',
+    };
+    const evType = eventTypeByAction[data.action];
+    if (evType) {
+      const sev =
+        evType === 'ISSUE_RAISED'
+          ? issueSeverityNormalized === 'CRITICAL'
+            ? 'CRITICAL'
+            : issueSeverityNormalized === 'HIGH'
+            ? 'CRITICAL'
+            : 'WARNING'
+          : evType === 'CANCELLED'
+          ? 'WARNING'
+          : 'INFO';
+      await this.dispatchEvents.log({
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        eventType: evType,
+        severity: sev as any,
+        actor: this.normalizeActorEmail(actor),
+        notes: notes || null,
+        payload: {
+          previousState: current,
+          nextState: nextStatus,
+          issueType: issueTypeNormalized || undefined,
+          issueSeverity: issueSeverityNormalized || undefined,
+        },
+      });
+    }
+    return result;
+  }
+
+  // Best-effort actor label for event logging — prefers email when the
+  // audit-actor envelope carries one, falls back to id, then "system".
+  // Accepts any shape — the AuditActor union has a few variants but they all
+  // either carry an email or an id, so duck-typing is safer than a strict
+  // structural match.
+  private normalizeActorEmail(actor?: any): string {
+    if (!actor) return 'system';
+    if (typeof actor.email === 'string' && actor.email) return actor.email;
+    if (typeof actor.id === 'string' && actor.id) return actor.id;
+    if (typeof actor.userId === 'string' && actor.userId) return actor.userId;
+    return 'system';
   }
 
   async updateOperationalServiceStatus(
@@ -11699,6 +11780,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         issueSeverity: (service as any).issueSeverity || null,
         issueNotes: (service as any).issueNotes || null,
         dispatchNotes: (service as any).dispatchNotes || null,
+        delayMinutes: (service as any).delayMinutes ?? null,
         // Driver: prefer the linked Driver entity, fall back to the legacy
         // free-text `assignedTo` field for backwards compatibility on rows
         // pre-dating the Driver model.
@@ -12104,6 +12186,25 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         activeIssuesCount: rows.filter(hasIssue).length,
         delayedCount: delayedRowsAll.length,
         inProgressCount: inProgressRowsAll.length,
+        // Stability-testing counters — surface incidents requiring action.
+        // activeIncidents: rows in ISSUE state right now.
+        // delayedOperations: rows with an explicit delayMinutes > 0.
+        // escalatedIssues: rows in ISSUE state with HIGH or CRITICAL severity.
+        // resolutionQueue: rows in ISSUE state that have been open >30 min
+        //   (would-be SLA breach). Computed cheap on the fly from
+        //   issueReportedAt vs now.
+        activeIncidentsCount: rows.filter((r: any) => String(r.executionStatus || '').toUpperCase() === 'ISSUE').length,
+        delayedOperationsCount: rows.filter((r: any) => Number(r.delayMinutes || 0) > 0).length,
+        escalatedIssuesCount: rows.filter((r: any) => {
+          const sev = String(r.issueSeverity || '').toUpperCase();
+          return String(r.executionStatus || '').toUpperCase() === 'ISSUE' && (sev === 'HIGH' || sev === 'CRITICAL');
+        }).length,
+        resolutionQueueCount: rows.filter((r: any) => {
+          if (String(r.executionStatus || '').toUpperCase() !== 'ISSUE') return false;
+          const reported = r.issueReportedAt ? new Date(r.issueReportedAt).getTime() : 0;
+          if (!reported) return true;
+          return Date.now() - reported > 30 * 60 * 1000;
+        }).length,
       },
       sections: {
         arrivals: { ...sections.arrivals, count: sections.arrivals.rows.length },
@@ -12127,6 +12228,23 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         inProgress: { label: 'In Progress', count: inProgressRowsAll.length, rows: inProgressRowsAll.slice(0, 50) },
         delayedIssues: { label: 'Delayed / Issues', count: delayedRowsAll.length, rows: delayedRowsAll.slice(0, 50) },
         completedToday: { label: 'Completed Today', count: completedTodayRowsAll.length, rows: completedTodayRowsAll.slice(0, 50) },
+        // Resolution queue: rows in ISSUE state, ordered with oldest first so
+        // the most-overdue incident sits at the top. Drives the stability
+        // dashboard's "needs resolution" section.
+        resolutionQueue: (() => {
+          const queue = rows
+            .filter((r: any) => String(r.executionStatus || '').toUpperCase() === 'ISSUE')
+            .sort((a: any, b: any) => {
+              const ta = a.issueReportedAt ? new Date(a.issueReportedAt).getTime() : 0;
+              const tb = b.issueReportedAt ? new Date(b.issueReportedAt).getTime() : 0;
+              return ta - tb;
+            });
+          return {
+            label: 'Resolution Queue',
+            count: queue.length,
+            rows: queue.slice(0, 50),
+          };
+        })(),
       },
     };
   }
