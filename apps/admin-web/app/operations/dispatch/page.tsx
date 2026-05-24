@@ -95,6 +95,7 @@ type DispatchResponse = {
 type PageProps = {
   searchParams?: Promise<{
     range?: string;
+    view?: string;
   }>;
 };
 
@@ -104,15 +105,22 @@ const RANGE_OPTIONS = [
   { value: 'next-7-days', label: 'Next 7 days' },
 ] as const;
 
-const SEVERITY_TONE: Record<Severity, { bg: string; border: string; pillBg: string; pillText: string; label: string }> = {
-  CRITICAL: { bg: '#fef3f2', border: '#f04438', pillBg: '#f04438', pillText: '#ffffff', label: 'CRITICAL' },
-  'ACTION REQUIRED': { bg: '#fff8eb', border: '#f79009', pillBg: '#f79009', pillText: '#ffffff', label: 'ACTION' },
-  INFO: { bg: '#f0fdf4', border: '#12b76a', pillBg: '#12b76a', pillText: '#ffffff', label: 'READY' },
+const SEVERITY_TONE: Record<Severity, { bg: string; border: string; pillBg: string; pillText: string; label: string; icon: string }> = {
+  CRITICAL: { bg: '#fef3f2', border: '#f04438', pillBg: '#f04438', pillText: '#ffffff', label: 'CRITICAL', icon: '⚠' },
+  'ACTION REQUIRED': { bg: '#fff8eb', border: '#f79009', pillBg: '#f79009', pillText: '#ffffff', label: 'ACTION', icon: '!' },
+  INFO: { bg: '#f0fdf4', border: '#12b76a', pillBg: '#12b76a', pillText: '#ffffff', label: 'READY', icon: '✓' },
 };
 
 function severityTone(severity: Severity) {
   return SEVERITY_TONE[severity] || SEVERITY_TONE.INFO;
 }
+
+const VIEW_OPTIONS = [
+  { value: 'timeline', label: 'Timeline' },
+  { value: 'lanes', label: 'Lanes' },
+] as const;
+
+const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, 'ACTION REQUIRED': 1, INFO: 2 };
 
 function formatTime(time: string | null) {
   if (!time) return null;
@@ -147,11 +155,26 @@ function formatDate(value: string | null) {
   }
 }
 
-function buildHref(range: string) {
+function buildHref({ range, view }: { range: string; view: string }) {
   const params = new URLSearchParams();
   params.set('range', range);
+  if (view && view !== 'timeline') params.set('view', view);
   return `/operations/dispatch?${params.toString()}`;
 }
+
+const BUCKET_LABELS = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  unscheduled: 'Unscheduled',
+} as const;
+
+const BUCKET_ICON = {
+  morning: '☀',
+  afternoon: '🌤',
+  evening: '🌙',
+  unscheduled: '—',
+} as const;
 
 function CounterCard({
   label,
@@ -199,13 +222,19 @@ function SeverityPill({ severity }: { severity: Severity }) {
       style={{
         background: tone.pillBg,
         color: tone.pillText,
-        padding: '0.15rem 0.5rem',
+        padding: severity === 'CRITICAL' ? '0.25rem 0.6rem' : '0.15rem 0.5rem',
         borderRadius: 999,
-        fontSize: '0.68rem',
-        fontWeight: 700,
-        letterSpacing: '0.04em',
+        fontSize: severity === 'CRITICAL' ? '0.78rem' : '0.68rem',
+        fontWeight: 800,
+        letterSpacing: '0.06em',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.3rem',
+        boxShadow: severity === 'CRITICAL' ? '0 0 0 3px rgba(240, 68, 56, 0.18)' : 'none',
       }}
+      aria-label={tone.label}
     >
+      <span aria-hidden style={{ fontSize: '0.85em' }}>{tone.icon}</span>
       {tone.label}
     </span>
   );
@@ -232,31 +261,49 @@ function StatusPill({ label, value, ok }: { label: string; value: string; ok: bo
 function DispatchCard({ row }: { row: DispatchRow }) {
   const tone = severityTone(row.severity);
   const time = formatTime(row.time);
+  const isCritical = row.severity === 'CRITICAL';
+  // Operational action buttons — bigger, color-intent. Primary action is
+  // whatever is most likely needed next given the row's state.
+  const needsSupplier = !row.supplierName;
+  const needsConfirmation = row.confirmationStatus !== 'CONFIRMED' && row.confirmationStatus !== 'REJECTED';
+  const needsVoucher = !['GENERATED', 'SENT', 'ISSUED', 'READY'].includes(row.voucherStatus);
+  const primaryAction = (() => {
+    if (needsSupplier) return { label: 'Assign supplier', href: `/bookings/${row.bookingId}/operations` };
+    if (needsConfirmation) return { label: 'Manage confirmation', href: `/bookings/${row.bookingId}/operations` };
+    if (needsVoucher) return { label: 'Generate voucher', href: `/bookings/${row.bookingId}/operations` };
+    if (row.voucherId) return { label: 'Open voucher', href: `/bookings/${row.bookingId}/operations/${row.serviceId}/voucher` };
+    return { label: 'Operations grid', href: `/bookings/${row.bookingId}/operations` };
+  })();
   return (
     <article
       style={{
-        background: '#ffffff',
-        borderLeft: `4px solid ${tone.border}`,
-        borderRadius: 8,
-        padding: '0.7rem 0.9rem',
+        background: isCritical ? tone.bg : '#ffffff',
+        border: isCritical ? `2px solid ${tone.border}` : '1px solid #e4e7ec',
+        borderLeft: isCritical ? `8px solid ${tone.border}` : `4px solid ${tone.border}`,
+        borderRadius: 10,
+        padding: isCritical ? '0.9rem 1rem' : '0.7rem 0.9rem',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.4rem',
-        boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+        gap: '0.5rem',
+        boxShadow: isCritical ? '0 4px 14px rgba(240, 68, 56, 0.12)' : '0 1px 2px rgba(15,23,42,0.04)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'baseline' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', minWidth: 0, flex: 1 }}>
-          {time ? <strong style={{ fontSize: '1rem', color: '#101828' }}>{time}</strong> : null}
-          <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#101828', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.7rem', minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
+          {time ? (
+            <strong style={{ fontSize: '1.5rem', color: isCritical ? '#7a271a' : '#101828', fontVariantNumeric: 'tabular-nums', minWidth: '3.5rem' }}>
+              {time}
+            </strong>
+          ) : null}
+          <span style={{ fontSize: '1.05rem', fontWeight: 700, color: isCritical ? '#7a271a' : '#101828' }}>
             {row.description || row.serviceType || 'Service'}
           </span>
         </div>
         <SeverityPill severity={row.severity} />
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', color: '#475467', fontSize: '0.82rem' }}>
-        <span>{row.bookingRef || 'Booking'}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', color: '#475467', fontSize: '0.85rem' }}>
+        <span><strong>{row.bookingRef || 'Booking'}</strong></span>
         {row.clientName ? <span>· {row.clientName}</span> : null}
         {row.dayNumber ? <span>· Day {row.dayNumber}{row.dayTitle ? ` (${row.dayTitle})` : ''}</span> : null}
       </div>
@@ -271,24 +318,76 @@ function DispatchCard({ row }: { row: DispatchRow }) {
       </div>
 
       {row.reasons.length > 0 ? (
-        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#b54708', fontSize: '0.8rem' }}>
+        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: isCritical ? '#7a271a' : '#b54708', fontSize: '0.88rem', fontWeight: 500 }}>
           {row.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
         </ul>
       ) : null}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-        <Link className="button button-tertiary" href={`/bookings/${row.bookingId}`}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginTop: '0.15rem' }}>
+        <Link
+          href={primaryAction.href}
+          style={{
+            background: isCritical ? '#b42318' : '#175cd3',
+            color: '#ffffff',
+            padding: '0.5rem 0.85rem',
+            borderRadius: 8,
+            fontWeight: 700,
+            fontSize: '0.85rem',
+            textDecoration: 'none',
+          }}
+        >
+          {primaryAction.label}
+        </Link>
+        <Link
+          href={`/bookings/${row.bookingId}`}
+          style={{
+            background: '#ffffff',
+            color: '#175cd3',
+            padding: '0.5rem 0.85rem',
+            borderRadius: 8,
+            fontWeight: 600,
+            fontSize: '0.85rem',
+            textDecoration: 'none',
+            border: '1px solid #d0d5dd',
+          }}
+        >
           Open booking
         </Link>
-        <Link className="button button-tertiary" href={`/bookings/${row.bookingId}/operations`}>
-          Operations
-        </Link>
-        {row.voucherId ? (
-          <Link className="button button-tertiary" href={`/bookings/${row.bookingId}/operations/${row.serviceId}/voucher`}>
-            Voucher
+        {row.voucherId && primaryAction.label !== 'Open voucher' ? (
+          <Link
+            href={`/bookings/${row.bookingId}/operations/${row.serviceId}/voucher`}
+            style={{
+              background: '#ffffff',
+              color: '#175cd3',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              textDecoration: 'none',
+              border: '1px solid #d0d5dd',
+            }}
+          >
+            View voucher
           </Link>
+        ) : null}
+        {row.supplierPhone ? (
+          <a
+            href={`tel:${row.supplierPhone}`}
+            style={{
+              background: '#ffffff',
+              color: '#067647',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              textDecoration: 'none',
+              border: '1px solid #abefc6',
+            }}
+          >
+            Call supplier
+          </a>
         ) : null}
       </div>
 
@@ -388,6 +487,7 @@ function LaneBlock({ lane, startOpen }: { lane: Lane; startOpen: boolean }) {
 export default async function DispatchPage({ searchParams }: PageProps) {
   const resolved = searchParams ? await searchParams : undefined;
   const range = resolved?.range || 'today';
+  const view = resolved?.view === 'lanes' ? 'lanes' : 'timeline';
 
   const query = new URLSearchParams();
   query.set('range', range);
@@ -433,12 +533,32 @@ export default async function DispatchPage({ searchParams }: PageProps) {
               {data.range.label} · {data.range.from}{data.range.from !== data.range.to ? ` → ${data.range.to}` : ''} · {c.totalRows} service rows in window
             </p>
           </div>
-          <div className="admin-heading-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="admin-heading-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.25rem', background: '#f2f4f7', padding: '0.2rem', borderRadius: 8 }}>
+              {VIEW_OPTIONS.map((opt) => (
+                <Link
+                  key={opt.value}
+                  href={buildHref({ range, view: opt.value })}
+                  style={{
+                    padding: '0.35rem 0.7rem',
+                    borderRadius: 6,
+                    background: view === opt.value ? '#ffffff' : 'transparent',
+                    color: view === opt.value ? '#101828' : '#475467',
+                    fontWeight: view === opt.value ? 700 : 500,
+                    fontSize: '0.85rem',
+                    textDecoration: 'none',
+                    boxShadow: view === opt.value ? '0 1px 2px rgba(15,23,42,0.06)' : 'none',
+                  }}
+                >
+                  {opt.label}
+                </Link>
+              ))}
+            </div>
             {RANGE_OPTIONS.map((opt) => (
               <Link
                 key={opt.value}
                 className={`button ${range === opt.value ? 'button-primary' : 'button-secondary'}`}
-                href={buildHref(opt.value)}
+                href={buildHref({ range: opt.value, view })}
               >
                 {opt.label}
               </Link>
@@ -534,15 +654,8 @@ export default async function DispatchPage({ searchParams }: PageProps) {
             </section>
           )}
 
-          {/* Collapsible lanes */}
-          <section style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            <LaneBlock lane={data.lanes.arrivals} startOpen={data.lanes.arrivals.total > 0} />
-            <LaneBlock lane={data.lanes.departures} startOpen={data.lanes.departures.total > 0} />
-            <LaneBlock lane={data.lanes.hotels} startOpen={data.lanes.hotels.critical > 0 || data.lanes.hotels.actionRequired > 0} />
-            <LaneBlock lane={data.lanes.transport} startOpen={data.lanes.transport.critical > 0 || data.lanes.transport.actionRequired > 0} />
-            <LaneBlock lane={data.lanes.activities} startOpen={data.lanes.activities.critical > 0} />
-            <LaneBlock lane={data.lanes.guides} startOpen={data.lanes.guides.critical > 0} />
-          </section>
+          {/* View body: timeline-first (default) or lane-based */}
+          {view === 'timeline' ? <TimelineView data={data} /> : <LanesView data={data} />}
         </div>
 
         {/* STICKY SIDEBAR */}
@@ -571,6 +684,97 @@ export default async function DispatchPage({ searchParams }: PageProps) {
         </aside>
       </div>
     </main>
+  );
+}
+
+// Timeline view — flattens all unique rows across lanes, groups by time bucket
+// (Morning/Afternoon/Evening/Unscheduled), critical rows pinned to top of each
+// bucket. The dispatch team thinks "08:30 airport pickup → 11:00 hotel
+// check-in → 17:00 departure transfer", not by data type. This is the default.
+function TimelineView({ data }: { data: DispatchResponse }) {
+  // Deduplicate rows across lanes (a transport row that's also an arrival
+  // shows in both lanes; here it should appear once on the timeline).
+  const seen = new Set<string>();
+  const allRows: DispatchRow[] = [];
+  for (const lane of Object.values(data.lanes)) {
+    for (const row of lane.rows) {
+      if (seen.has(row.serviceId)) continue;
+      seen.add(row.serviceId);
+      allRows.push(row);
+    }
+  }
+  const buckets: Record<keyof typeof BUCKET_LABELS, DispatchRow[]> = {
+    morning: [],
+    afternoon: [],
+    evening: [],
+    unscheduled: [],
+  };
+  for (const row of allRows) buckets[getTimeBucket(row.time)].push(row);
+  // Within bucket: critical first, then by time ascending.
+  for (const list of Object.values(buckets)) {
+    list.sort((a, b) => {
+      const sr = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+      if (sr !== 0) return sr;
+      return String(a.time || '99:99').localeCompare(String(b.time || '99:99'));
+    });
+  }
+  const bucketOrder = ['morning', 'afternoon', 'evening', 'unscheduled'] as const;
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {bucketOrder.map((key) => {
+        const rows = buckets[key];
+        if (rows.length === 0) return null;
+        const critical = rows.filter((r) => r.severity === 'CRITICAL').length;
+        return (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.5rem',
+                position: 'sticky',
+                top: 0,
+                background: '#ffffff',
+                padding: '0.5rem 0.25rem',
+                zIndex: 1,
+                borderBottom: '2px solid #e4e7ec',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span aria-hidden>{BUCKET_ICON[key]}</span>
+                {BUCKET_LABELS[key]}
+                <span style={{ color: '#667085', fontWeight: 500, fontSize: '0.95rem' }}>· {rows.length}</span>
+              </h3>
+              {critical > 0 ? (
+                <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.2rem 0.55rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 800 }}>
+                  ⚠ {critical} critical
+                </span>
+              ) : null}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+              {rows.map((row) => <DispatchCard key={`tl-${row.serviceId}`} row={row} />)}
+            </div>
+          </div>
+        );
+      })}
+      {allRows.length === 0 ? (
+        <p style={{ color: '#667085' }}>No services in this window.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function LanesView({ data }: { data: DispatchResponse }) {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+      <LaneBlock lane={data.lanes.arrivals} startOpen={data.lanes.arrivals.total > 0} />
+      <LaneBlock lane={data.lanes.departures} startOpen={data.lanes.departures.total > 0} />
+      <LaneBlock lane={data.lanes.hotels} startOpen={data.lanes.hotels.critical > 0 || data.lanes.hotels.actionRequired > 0} />
+      <LaneBlock lane={data.lanes.transport} startOpen={data.lanes.transport.critical > 0 || data.lanes.transport.actionRequired > 0} />
+      <LaneBlock lane={data.lanes.activities} startOpen={data.lanes.activities.critical > 0} />
+      <LaneBlock lane={data.lanes.guides} startOpen={data.lanes.guides.critical > 0} />
+    </section>
   );
 }
 
