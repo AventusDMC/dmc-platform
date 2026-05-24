@@ -33,6 +33,8 @@ type OperationsGridRow = {
   pickupLocation?: string | null;
   dropoffLocation?: string | null;
   nights?: number | null;
+  mealPlan?: string | null;
+  specialRequests?: string | null;
 };
 
 type SupplierOption = {
@@ -268,16 +270,39 @@ function renderAssignmentForm(bookingId: string, row: OperationsGridRow, supplie
         aria-label={`Operational time for ${row.description || row.serviceType}`}
       />
       {String(row.serviceType || '').toUpperCase().match(/HOTEL|ACCOMMODATION|LODGING/) ? (
-        <input
-          type="number"
-          name="nights"
-          min={1}
-          step={1}
-          defaultValue={row.nights ?? ''}
-          placeholder="Nights"
-          aria-label={`Number of nights for ${row.description || row.serviceType}`}
-          style={{ width: '5rem' }}
-        />
+        <>
+          <input
+            type="number"
+            name="nights"
+            min={1}
+            step={1}
+            defaultValue={row.nights ?? ''}
+            placeholder="Nights"
+            aria-label={`Number of nights for ${row.description || row.serviceType}`}
+            style={{ width: '5rem' }}
+          />
+          <select
+            name="mealPlan"
+            defaultValue={row.mealPlan || ''}
+            aria-label={`Meal plan for ${row.description || row.serviceType}`}
+            style={{ width: '6rem' }}
+          >
+            <option value="">Meal plan</option>
+            <option value="RO">RO (Room only)</option>
+            <option value="BB">BB (Bed & breakfast)</option>
+            <option value="HB">HB (Half board)</option>
+            <option value="FB">FB (Full board)</option>
+            <option value="AI">AI (All inclusive)</option>
+          </select>
+          <input
+            type="text"
+            name="specialRequests"
+            defaultValue={row.specialRequests || ''}
+            placeholder="Special requests"
+            aria-label={`Special requests for ${row.description || row.serviceType}`}
+            style={{ width: '14rem' }}
+          />
+        </>
       ) : null}
       <button type="submit" className="button button-secondary">Assign Supplier</button>
     </form>

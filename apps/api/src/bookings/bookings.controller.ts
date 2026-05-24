@@ -69,6 +69,8 @@ type UpdateBookingServiceOperationalBody = {
   adultCount?: number | null;
   childCount?: number | null;
   nights?: number | string | null;
+  mealPlan?: string | null;
+  specialRequests?: string | null;
   supplierReference?: string | null;
   reconfirmationRequired?: boolean | null;
   reconfirmationDueAt?: string | null;
@@ -1244,6 +1246,8 @@ export class BookingsController {
         body.nights === undefined || body.nights === null || body.nights === ''
           ? undefined
           : Number(body.nights),
+      mealPlan: body.mealPlan === undefined ? undefined : body.mealPlan || null,
+      specialRequests: body.specialRequests === undefined ? undefined : body.specialRequests || null,
       supplierReference: body.supplierReference === undefined ? undefined : body.supplierReference || null,
       reconfirmationRequired:
         body.reconfirmationRequired === undefined || body.reconfirmationRequired === null

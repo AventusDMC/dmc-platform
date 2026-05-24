@@ -31,6 +31,8 @@ async function readAssignmentPayload(request: NextRequest) {
     startTime: optionalFormValue(formData, 'startTime'),
     pickupTime: optionalFormValue(formData, 'pickupTime'),
     nights: optionalFormValue(formData, 'nights'),
+    mealPlan: optionalFormValue(formData, 'mealPlan'),
+    specialRequests: optionalFormValue(formData, 'specialRequests'),
   };
 }
 
@@ -80,7 +82,9 @@ export async function POST(
     incomingPayload.serviceDate !== undefined ||
     incomingPayload.startTime !== undefined ||
     incomingPayload.pickupTime !== undefined ||
-    incomingPayload.nights !== undefined
+    incomingPayload.nights !== undefined ||
+    incomingPayload.mealPlan !== undefined ||
+    incomingPayload.specialRequests !== undefined
   ) {
     const operationalResponse = await fetch(`${API_BASE_URL}/bookings/services/${operationId}/operational`, {
       method: 'PATCH',
@@ -93,6 +97,8 @@ export async function POST(
         startTime: incomingPayload.startTime ?? undefined,
         pickupTime: incomingPayload.pickupTime ?? undefined,
         nights: incomingPayload.nights ?? undefined,
+        mealPlan: incomingPayload.mealPlan ?? undefined,
+        specialRequests: incomingPayload.specialRequests ?? undefined,
       }),
       cache: 'no-store',
       redirect: 'manual',

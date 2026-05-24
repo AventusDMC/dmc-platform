@@ -19,6 +19,20 @@ type TransportSnapshot = {
   operationalRemarks?: string | null;
 } | null;
 
+type RoomSnapshot = {
+  roomNumber?: number;
+  roomType?: string | null;
+  occupancy?: string | null;
+  paxCount?: number;
+  passengers?: Array<{
+    title?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    fullName?: string | null;
+  }>;
+  notes?: string | null;
+};
+
 type HotelSnapshot = {
   confirmationNumber?: string | null;
   checkIn?: string | null;
@@ -27,7 +41,7 @@ type HotelSnapshot = {
   mealPlan?: string | null;
   roomCount?: number | null;
   assignedPax?: number | null;
-  occupancy?: Array<{ roomType?: string | null; occupancy?: string | null; paxCount?: number }> | null;
+  occupancy?: RoomSnapshot[] | null;
   specialRequests?: string | null;
   emergencyContact?: SupplierContact;
 } | null;
@@ -257,18 +271,55 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
               {[snapshot.hotel.emergencyContact?.phone, snapshot.hotel.emergencyContact?.email].filter(Boolean).join(' · ') || null}
             </Detail>
           </div>
-          {snapshot.hotel.occupancy && snapshot.hotel.occupancy.length > 0 ? (
-            <div style={{ marginTop: '0.75rem' }}>
-              <p className="eyebrow" style={{ fontSize: '0.75rem' }}>Occupancy breakdown</p>
-              <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                {snapshot.hotel.occupancy.map((room, idx) => (
-                  <li key={idx}>
-                    {[room.roomType, room.occupancy, `${room.paxCount ?? 0} pax`].filter(Boolean).join(' · ')}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+        </section>
+      ) : null}
+
+      {/* Dispatch-grade rooming card: each room as its own block with guest
+          names, room type, occupancy, meal plan inline. Hotel front desk uses
+          this to find guests at check-in. */}
+      {snapshot.hotel?.occupancy && snapshot.hotel.occupancy.length > 0 ? (
+        <section className="admin-card">
+          <p className="eyebrow">Rooming</p>
+          <h2>Guest assignments</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {snapshot.hotel.occupancy.map((room, idx) => {
+              const label = `Room ${room.roomNumber ?? idx + 1}`;
+              const inlineMeta = [room.roomType, room.occupancy, snapshot.hotel?.mealPlan].filter(Boolean).join(' · ');
+              const passengers = Array.isArray(room.passengers) ? room.passengers : [];
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    border: '1px solid #d8e0eb',
+                    borderRadius: 8,
+                    padding: '0.75rem 0.9rem',
+                    background: '#fbfcfd',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem' }}>
+                    <strong>{label}</strong>
+                    {inlineMeta ? <span style={{ color: '#667085', fontSize: '0.85rem' }}>{inlineMeta}</span> : null}
+                  </div>
+                  {passengers.length > 0 ? (
+                    <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.25rem' }}>
+                      {passengers.map((p, pidx) => (
+                        <li key={pidx}>
+                          {[p.title, p.fullName || [p.firstName, p.lastName].filter(Boolean).join(' ')]
+                            .filter(Boolean)
+                            .join(' ') || 'Guest name pending'}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ margin: '0.4rem 0 0', color: '#b54708' }}>No guests assigned to this room yet.</p>
+                  )}
+                  {room.notes ? (
+                    <p style={{ margin: '0.4rem 0 0', color: '#667085', fontSize: '0.85rem' }}>{room.notes}</p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </section>
       ) : null}
 
@@ -323,21 +374,15 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
       ) : null}
 
       <section className="admin-card">
-        <p className="eyebrow">Passengers & rooming</p>
-        <h2>Manifest status</h2>
+        <p className="eyebrow">Manifest</p>
+        <h2>Passenger records</h2>
         <div className="voucher-detail-grid">
-          <Detail label="Passenger records">
+          <Detail label="Records">
             {snapshot.passengerManifest?.total ?? 0}
             {snapshot.passengerManifest?.expected ? ` of ${snapshot.passengerManifest.expected} expected` : ''}
           </Detail>
           <Detail label="Names pending">{snapshot.passengerManifest?.namesPending}</Detail>
-          <Detail label="Manifest complete">{snapshot.passengerManifest?.complete ? 'Yes' : 'No'}</Detail>
-          {snapshot.rooming ? (
-            <>
-              <Detail label="Room count">{snapshot.rooming.roomCount}</Detail>
-              <Detail label="Assigned pax">{snapshot.rooming.assignedPax}</Detail>
-            </>
-          ) : null}
+          <Detail label="Complete">{snapshot.passengerManifest?.complete ? 'Yes' : 'No'}</Detail>
         </div>
       </section>
 

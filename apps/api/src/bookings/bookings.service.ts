@@ -622,6 +622,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           assignedVehicleId: service.assignedVehicleId || service.vehicleId || null,
           assignedGuideId: service.assignedGuideId || service.guideId || null,
           nights: (service as any).nights ?? null,
+          mealPlan: (service as any).mealPlan ?? null,
+          specialRequests: (service as any).specialRequests ?? null,
         };
       });
     const passengerManifest = this.buildPassengerManifestSummary(booking);
@@ -5382,6 +5384,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       adultCount?: number | null;
       childCount?: number | null;
       nights?: number | string | null;
+      mealPlan?: string | null;
+      specialRequests?: string | null;
       supplierReference?: string | null;
       reconfirmationRequired?: boolean;
       reconfirmationDueAt?: string | null;
@@ -5421,6 +5425,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         adultCount: true,
         childCount: true,
         nights: true,
+        mealPlan: true,
+        specialRequests: true,
         supplierReference: true,
         sourceMetadata: true,
         reconfirmationRequired: true,
@@ -5465,6 +5471,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             const n = Number(data.nights);
             return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
           })();
+    const mealPlan =
+      data.mealPlan === undefined
+        ? (bookingService as any).mealPlan ?? null
+        : (() => {
+            const normalized = String(data.mealPlan || '').trim().toUpperCase();
+            const allowed: string[] = ['RO', 'BB', 'HB', 'FB', 'AI'];
+            return allowed.includes(normalized) ? normalized : null;
+          })();
+    const specialRequests =
+      data.specialRequests === undefined
+        ? (bookingService as any).specialRequests ?? null
+        : this.normalizeOptionalText(data.specialRequests);
     const hotelReservationMetadata = this.isHotelService(bookingService.serviceType, bookingService.operationType)
       ? this.buildHotelReservationMetadata(bookingService.sourceMetadata, data)
       : bookingService.sourceMetadata;
@@ -5509,6 +5527,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           adultCount: counts.adultCount,
           childCount: counts.childCount,
           nights,
+          mealPlan: mealPlan as any,
+          specialRequests,
           supplierReference,
           confirmationNumber: supplierReference ?? null,
           sourceMetadata: hotelReservationMetadata as Prisma.InputJsonValue,
@@ -10477,11 +10497,30 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       ? { email: supplier.email || null, phone: supplier.phone || null }
       : null;
     const occupancyBreakdown = isHotel
-      ? roomingEntries.map((room: any) => ({
-          roomType: room.roomType || null,
-          occupancy: room.occupancy || null,
-          paxCount: Array.isArray(room.assignments) ? room.assignments.length : 0,
-        }))
+      ? roomingEntries.map((room: any, index: number) => {
+          const passengers = Array.isArray(room.assignments)
+            ? room.assignments
+                .map((assignment: any) => assignment.bookingPassenger)
+                .filter((passenger: any) => passenger)
+                .map((passenger: any) => ({
+                  title: passenger.title || null,
+                  firstName: passenger.firstName || null,
+                  lastName: passenger.lastName || null,
+                  fullName:
+                    passenger.fullName ||
+                    [passenger.firstName, passenger.lastName].filter(Boolean).join(' ') ||
+                    null,
+                }))
+            : [];
+          return {
+            roomNumber: index + 1,
+            roomType: room.roomType || null,
+            occupancy: room.occupancy || null,
+            paxCount: passengers.length,
+            passengers,
+            notes: room.notes || null,
+          };
+        })
       : null;
 
     return {
@@ -10573,12 +10612,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
                 ? derivedCheckOut.toISOString().slice(0, 10)
                 : hotelMetadata?.checkOut || hotelMetadata?.releaseDate || null,
               nights: nights > 0 ? nights : null,
-              mealPlan: hotelMetadata?.mealPlan || hotelMetadata?.boardBasis || null,
+              // Prefer the new structured mealPlan column; legacy snapshots may
+              // have captured it on sourceMetadata.hotelReservation, so keep
+              // the fallback for older rows that haven't been re-saved.
+              mealPlan:
+                service.mealPlan ||
+                hotelMetadata?.mealPlan ||
+                hotelMetadata?.boardBasis ||
+                null,
               roomCount: roomingEntries.length,
               assignedPax,
               occupancy: occupancyBreakdown,
               specialRequests:
-                hotelMetadata?.specialRequests || hotelMetadata?.notes || null,
+                service.specialRequests ||
+                hotelMetadata?.specialRequests ||
+                hotelMetadata?.notes ||
+                null,
               emergencyContact: supplierContact,
             };
           })()
