@@ -43,6 +43,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       { label: 'Bookings', href: '/bookings' },
       { label: 'Operations', href: '/operations' },
       { label: 'Dispatch', href: '/operations/dispatch' },
+      { label: 'Recovery', href: '/operations/recovery' },
       { label: 'Simulation', href: '/operations/simulation' },
       { label: 'Series', href: '/series' },
       { label: 'Passengers & Documents', href: '/bookings' },

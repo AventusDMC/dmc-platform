@@ -859,6 +859,13 @@ function renderDispatchBody({
               </Link>
             ))}
             <Link
+              href="/operations/recovery"
+              className="button button-primary"
+              title="Active-incident command center: recovery actions, replacements, impact"
+            >
+              🛠 Recovery
+            </Link>
+            <Link
               href="/operations/simulation"
               className="button button-secondary"
               style={{ borderStyle: 'dashed' }}
