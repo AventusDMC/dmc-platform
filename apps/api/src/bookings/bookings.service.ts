@@ -11660,6 +11660,74 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
     const pct = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom) * 100) : 0);
 
+    // Counters that the new dispatch UX shows as the top counter cards.
+    const missingSuppliersCount = rows.filter((r: any) => !isAssigned(r)).length;
+    const pendingConfirmationsCount = rows.filter((r: any) => !isConfirmationConfirmed(r)).length;
+    const vouchersPendingCount = total - vouchersGenerated;
+
+    // Lanes — ALL rows in window grouped by service-type lane. Distinct from
+    // `sections` above (which only contains rows that have issues for that
+    // section). Lanes give the dispatch UX a complete by-type view so the
+    // operator can scan the day, not just the exceptions.
+    //
+    // Each row carries its own severity + reasons (CRITICAL if it has any
+    // hard blockers, ACTION REQUIRED if it has lighter gaps, INFO if it's
+    // ready). The frontend renders chronological sub-groups (Morning /
+    // Afternoon / Evening) and lets the operator collapse lanes that are
+    // already operationally ready.
+    const classifyRowSeverity = (r: any): { severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL'; reasons: string[] } => {
+      const critical: string[] = [];
+      const action: string[] = [];
+      if (isConfirmationRejected(r)) critical.push('Confirmation rejected');
+      if (!isAssigned(r)) critical.push('No supplier assigned');
+      if (isTransport(r)) {
+        if (!r.pickupLocation) critical.push('Pickup location missing');
+        if (!r.vehicleName) action.push('Vehicle not assigned');
+        if (!r.driverName) action.push('Driver not assigned');
+      }
+      if (isGuide(r)) {
+        if (!r.guideName) critical.push('Guide not assigned');
+        if (!r.guideReportingTime) action.push('Reporting time not set');
+        if (Array.isArray(r.guideLanguages) && r.guideLanguages.length === 0) action.push('Guide language not set');
+      }
+      if (isActivity(r) && !r.meetingPoint) critical.push('Meeting point missing');
+      if (!isConfirmationConfirmed(r) && !isConfirmationRejected(r)) action.push('Confirmation pending');
+      if (!hasVoucher(r)) action.push('Voucher not generated');
+      const reasons = [...critical, ...action];
+      const severity = critical.length > 0 ? 'CRITICAL' : reasons.length > 0 ? 'ACTION REQUIRED' : 'INFO';
+      return { severity, reasons };
+    };
+
+    type LaneRow = any & { severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL'; reasons: string[] };
+    const lanes: Record<'arrivals' | 'departures' | 'hotels' | 'transport' | 'activities' | 'guides', LaneRow[]> = {
+      arrivals: [],
+      departures: [],
+      hotels: [],
+      transport: [],
+      activities: [],
+      guides: [],
+    };
+    for (const row of rows) {
+      const sev = classifyRowSeverity(row);
+      const enriched: LaneRow = { ...row, severity: sev.severity, reasons: sev.reasons };
+      // A row can land in multiple lanes (e.g. an arrival is also a transport
+      // row). We intentionally include in both — operator can collapse the
+      // lane they don't need.
+      if (isArrival(row)) lanes.arrivals.push(enriched);
+      else if (isDeparture(row)) lanes.departures.push(enriched);
+      if (isHotel(row)) lanes.hotels.push(enriched);
+      if (isTransport(row) && !isArrival(row) && !isDeparture(row)) lanes.transport.push(enriched);
+      if (isActivity(row)) lanes.activities.push(enriched);
+      if (isGuide(row)) lanes.guides.push(enriched);
+    }
+
+    const laneCount = (lane: LaneRow[]) => ({
+      total: lane.length,
+      critical: lane.filter((r) => r.severity === 'CRITICAL').length,
+      actionRequired: lane.filter((r) => r.severity === 'ACTION REQUIRED').length,
+      ready: lane.filter((r) => r.severity === 'INFO').length,
+    });
+
     return {
       range: {
         label: rangeLabel,
@@ -11684,6 +11752,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         hotelTotalCount: hotelRows.length,
         manifestCompleteCount: manifestComplete.complete,
         manifestTotalCount: manifestComplete.total,
+        // New counters for the dispatch UX top cards.
+        missingSuppliersCount,
+        pendingConfirmationsCount,
+        vouchersPendingCount,
+        todaysArrivalsCount: sections.arrivals.rows.length,
+        criticalIssuesCount: sections.criticalIssues.rows.length,
       },
       sections: {
         arrivals: { ...sections.arrivals, count: sections.arrivals.rows.length },
@@ -11692,6 +11766,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         guideDispatch: { ...sections.guideDispatch, count: sections.guideDispatch.rows.length },
         hotelOperations: { ...sections.hotelOperations, count: sections.hotelOperations.rows.length },
         criticalIssues: { ...sections.criticalIssues, count: sections.criticalIssues.rows.length },
+      },
+      // New lanes structure for the redesigned dispatch UX.
+      lanes: {
+        arrivals: { label: 'Arrivals', rows: lanes.arrivals, ...laneCount(lanes.arrivals) },
+        departures: { label: 'Departures', rows: lanes.departures, ...laneCount(lanes.departures) },
+        hotels: { label: 'Hotels', rows: lanes.hotels, ...laneCount(lanes.hotels) },
+        transport: { label: 'Transport', rows: lanes.transport, ...laneCount(lanes.transport) },
+        activities: { label: 'Activities', rows: lanes.activities, ...laneCount(lanes.activities) },
+        guides: { label: 'Guides', rows: lanes.guides, ...laneCount(lanes.guides) },
       },
     };
   }
