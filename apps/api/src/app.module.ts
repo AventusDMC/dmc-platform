@@ -55,6 +55,8 @@ import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
 import { ProductionReadinessController } from './production-readiness/production-readiness.controller';
 import { ProductionReadinessService } from './production-readiness/production-readiness.service';
+import { RehearsalController } from './simulations/rehearsal.controller';
+import { RehearsalScoringService } from './simulations/rehearsal-scoring.service';
 import { ScaleSimulationController } from './simulations/scale-simulation.controller';
 import { ScaleSimulationService } from './simulations/scale-simulation.service';
 import { SimulationsController } from './simulations/simulations.controller';
@@ -160,6 +162,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RecoveryController,
     RecoveryMetricsController,
     ProductionReadinessController,
+    RehearsalController,
     ResourcesController,
     ScaleSimulationController,
     SimulationsController,
@@ -234,6 +237,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     IntelligenceService,
     RecoveryService,
     ProductionReadinessService,
+    RehearsalScoringService,
     ResourcesService,
     ScaleSimulationService,
     SimulationsService,
