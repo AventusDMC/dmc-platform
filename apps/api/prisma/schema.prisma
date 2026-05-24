@@ -2316,6 +2316,18 @@ model BookingService {
   nights                     Int?                          // Number of nights for HOTEL operation rows; used to derive checkOut from serviceDate
   mealPlan                   HotelMealPlan?                // HOTEL operation rows: RO / BB / HB / FB / AI
   specialRequests            String?                       // Free-form text — king bed, twin, smoking/non-smoking, honeymoon, accessibility, etc.
+  // Execution lifecycle (live operations tracking — distinct from
+  // operationStatus / supplierConfirmationStatus which are about *preparation*).
+  executionStatus            BookingServiceExecutionStatus @default(READY)
+  dispatchedAt               DateTime?
+  dispatchNotes              String?
+  startedAt                  DateTime?
+  completedAt                DateTime?
+  completedBy                String?                       @db.Uuid
+  issueReportedAt            DateTime?
+  issueType                  BookingServiceIssueType?
+  issueSeverity              BookingServiceIssueSeverity?
+  issueNotes                 String?
   supplierReference          String?
   supplierConfirmationStatus SupplierConfirmationStatus    @default(NOT_SENT)
   supplierConfirmationCode   String?
@@ -2647,6 +2659,35 @@ enum HotelMealPlan {
   HB
   FB
   AI
+}
+
+// Live execution lifecycle for operational rows. Distinct from operationStatus
+// (which tracks preparation: PENDING -> CONFIRMED -> VOUCHER_SENT -> COMPLETED).
+// Execution status is what operations teams update while the trip is running.
+enum BookingServiceExecutionStatus {
+  READY
+  DISPATCHED
+  IN_PROGRESS
+  COMPLETED
+  ISSUE
+  CANCELLED
+}
+
+enum BookingServiceIssueType {
+  DRIVER_DELAY
+  SUPPLIER_NO_SHOW
+  FLIGHT_DELAY
+  ROOM_PROBLEM
+  GUEST_MISSING
+  OVERBOOKING
+  OTHER
+}
+
+enum BookingServiceIssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 enum HotelOccupancyType {
