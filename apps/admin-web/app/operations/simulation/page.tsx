@@ -131,11 +131,29 @@ export default async function SimulationPage({
     <main className="admin-page-shell">
       <div className="admin-page-heading">
         <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Simulation' }]} />
-        <h1>Operational Simulation & Stability Testing</h1>
-        <p className="admin-muted-copy">
-          Inject realistic operational chaos to stress-test the dispatch workflow. Pick a booking, apply a scenario, then
-          use the live dispatch dashboard to resolve. Every action lands in the event timeline below.
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div>
+            <h1>Operational Simulation & Stability Testing</h1>
+            <p className="admin-muted-copy">
+              Inject realistic operational chaos to stress-test the dispatch workflow. Pick a booking, apply a scenario, then
+              use the live dispatch dashboard to resolve. Every action lands in the event timeline below.
+            </p>
+          </div>
+          <Link
+            href="/operations/simulation/scale"
+            style={{
+              background: '#7e22ce',
+              color: '#ffffff',
+              padding: '0.6rem 1rem',
+              borderRadius: 8,
+              fontWeight: 700,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            🌊 Scale Simulation →
+          </Link>
+        </div>
       </div>
 
       {resolved?.success ? (

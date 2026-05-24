@@ -51,6 +51,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
       { label: 'Intelligence', href: '/operations/intelligence' },
       { label: 'Financial Intel', href: '/operations/intelligence/financial' },
       { label: 'Simulation', href: '/operations/simulation' },
+      { label: 'Scale Sim', href: '/operations/simulation/scale' },
       { label: 'Series', href: '/series' },
       { label: 'Passengers & Documents', href: '/bookings' },
     ],

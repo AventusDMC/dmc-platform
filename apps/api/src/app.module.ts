@@ -53,6 +53,8 @@ import { RecoveryController, RecoveryMetricsController } from './recovery/recove
 import { RecoveryService } from './recovery/recovery.service';
 import { ResourcesController } from './resources/resources.controller';
 import { ResourcesService } from './resources/resources.service';
+import { ScaleSimulationController } from './simulations/scale-simulation.controller';
+import { ScaleSimulationService } from './simulations/scale-simulation.service';
 import { SimulationsController } from './simulations/simulations.controller';
 import { SimulationsService } from './simulations/simulations.service';
 import { GuidesController } from './guides/guides.controller';
@@ -156,6 +158,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RecoveryController,
     RecoveryMetricsController,
     ResourcesController,
+    ScaleSimulationController,
     SimulationsController,
     RestaurantsController,
     SeriesController,
@@ -228,6 +231,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     IntelligenceService,
     RecoveryService,
     ResourcesService,
+    ScaleSimulationService,
     SimulationsService,
     RestaurantsService,
     SeriesService,
