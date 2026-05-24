@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { AdminBreadcrumbs } from '../../components/AdminBreadcrumbs';
-import { ADMIN_API_BASE_URL, adminPageFetchJson } from '../../lib/admin-server';
+import {
+  ADMIN_API_BASE_URL,
+  adminPageFetchJson,
+  isNextRedirectError,
+} from '../../lib/admin-server';
 import { OPERATIONS_TIME_ZONE } from '../../lib/operations-timezone';
 
 type Severity = 'INFO' | 'ACTION REQUIRED' | 'CRITICAL';
@@ -678,6 +682,9 @@ export default async function DispatchPage({ searchParams }: PageProps) {
       { cache: 'no-store' },
     );
   } catch (error) {
+    // Re-throw Next.js redirects (session-expired, login) — swallowing them
+    // would break auth flow.
+    if (isNextRedirectError(error)) throw error;
     fetchError = error instanceof Error ? error.message : String(error);
   }
 
@@ -699,27 +706,10 @@ export default async function DispatchPage({ searchParams }: PageProps) {
   const c = data.counters;
   const criticalRows = data.sections?.criticalIssues?.rows ?? [];
 
-  try {
-    return renderDispatchBody({ data, c, criticalRows, range, view, returnTo });
-  } catch (renderError) {
-    const msg = renderError instanceof Error ? `${renderError.message}\n\n${renderError.stack || ''}` : String(renderError);
-    return (
-      <main className="admin-page-shell">
-        <div className="admin-page-heading">
-          <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Dispatch' }]} />
-          <h1>Operations Dispatch</h1>
-        </div>
-        <section className="warning-banner" aria-label="Dispatch render error">
-          <p className="form-error"><strong>Dispatch loaded but failed to render. Backend response sample below.</strong></p>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', maxHeight: '20rem', overflow: 'auto' }}>{msg}</pre>
-          <details style={{ marginTop: '0.5rem' }}>
-            <summary>Raw response (first 8KB)</summary>
-            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.75rem', maxHeight: '20rem', overflow: 'auto' }}>{JSON.stringify(data, null, 2).slice(0, 8000)}</pre>
-          </details>
-        </section>
-      </main>
-    );
-  }
+  // Any render error from below bubbles up to ./error.tsx (the Next.js error
+  // boundary) which surfaces the actual message + digest instead of a blank
+  // "Application error" screen.
+  return renderDispatchBody({ data, c, criticalRows, range, view, returnTo });
 }
 
 function renderDispatchBody({
