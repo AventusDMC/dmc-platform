@@ -1806,6 +1806,18 @@ export default async function OperationsPage({ searchParams }: OperationsPagePro
           description="Start with queue health, then move into exceptions and service-level actions. Finance indicators stay visible, but separate from operational triage."
           actions={
             <>
+              <Link
+                href="/operations/dispatch"
+                className="dashboard-toolbar-link"
+                style={{
+                  background: '#175cd3',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  border: '1px solid #175cd3',
+                }}
+              >
+                Open Dispatch →
+              </Link>
               <Link href={buildOperationsHref(currentFilters, { groupBy: 'booking' })} className="dashboard-toolbar-link">
                 Booking queue
               </Link>
