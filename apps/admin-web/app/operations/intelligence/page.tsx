@@ -84,17 +84,19 @@ type IntelligenceDashboard = {
   warnings: string[];
 };
 
-async function loadDashboard(): Promise<IntelligenceDashboard | null> {
+async function loadDashboard(): Promise<{ data: IntelligenceDashboard | null; error: string | null }> {
   try {
-    return await adminPageFetchJson<IntelligenceDashboard>(
+    const data = await adminPageFetchJson<IntelligenceDashboard>(
       `${ADMIN_API_BASE_URL}/operations/intelligence?rangeDays=30`,
       'Intelligence dashboard',
       { cache: 'no-store' },
     );
+    return { data, error: null };
   } catch (error) {
     if (isNextRedirectError(error)) throw error;
     console.error('[intelligence] fetch failed', error);
-    return null;
+    const message = error instanceof Error ? `${error.message}\n${error.stack || ''}` : String(error);
+    return { data: null, error: message };
   }
 }
 
@@ -115,7 +117,7 @@ function heatmapTone(value: number, max: number) {
 }
 
 export default async function IntelligencePage() {
-  const data = await loadDashboard();
+  const { data, error } = await loadDashboard();
 
   if (!data) {
     return (
@@ -124,8 +126,35 @@ export default async function IntelligencePage() {
           <AdminBreadcrumbs items={[{ label: 'Operations', href: '/operations' }, { label: 'Intelligence' }]} />
           <h1>Operations Intelligence</h1>
         </div>
-        <section className="warning-banner" aria-label="Intelligence error">
-          <p>Could not load intelligence dashboard. Backend may be redeploying.</p>
+        <section
+          style={{
+            background: '#fef3f2',
+            border: '2px solid #f04438',
+            borderRadius: 12,
+            padding: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <strong style={{ color: '#b42318' }}>Could not load intelligence dashboard.</strong>
+          {error ? (
+            <details>
+              <summary style={{ cursor: 'pointer', color: '#7a271a', fontWeight: 600 }}>Error details</summary>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '0.78rem',
+                  color: '#7a271a',
+                  maxHeight: '20rem',
+                  overflow: 'auto',
+                  marginTop: '0.5rem',
+                }}
+              >
+                {error}
+              </pre>
+            </details>
+          ) : null}
         </section>
       </main>
     );
