@@ -49,6 +49,8 @@ import { ExecutiveService } from './intelligence/executive.service';
 import { FinancialIntelligenceService } from './intelligence/financial-intelligence.service';
 import { IntelligenceController } from './intelligence/intelligence.controller';
 import { IntelligenceService } from './intelligence/intelligence.service';
+import { QuoteIntelligenceController } from './intelligence/quote-intelligence.controller';
+import { QuoteIntelligenceService } from './intelligence/quote-intelligence.service';
 import { RecoveryController, RecoveryMetricsController } from './recovery/recovery.controller';
 import { RecoveryService } from './recovery/recovery.service';
 import { ResourcesController } from './resources/resources.controller';
@@ -162,6 +164,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     RecoveryController,
     RecoveryMetricsController,
     ProductionReadinessController,
+    QuoteIntelligenceController,
     RehearsalController,
     ResourcesController,
     ScaleSimulationController,
@@ -237,6 +240,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     IntelligenceService,
     RecoveryService,
     ProductionReadinessService,
+    QuoteIntelligenceService,
     RehearsalScoringService,
     ResourcesService,
     ScaleSimulationService,
