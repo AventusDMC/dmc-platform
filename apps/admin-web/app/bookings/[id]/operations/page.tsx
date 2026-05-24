@@ -35,6 +35,12 @@ type OperationsGridRow = {
   nights?: number | null;
   mealPlan?: string | null;
   specialRequests?: string | null;
+  vehicleId?: string | null;
+  vehicleName?: string | null;
+  vehiclePlateNumber?: string | null;
+  driverId?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
 };
 
 type SupplierOption = {
@@ -158,6 +164,25 @@ async function loadSuppliers() {
   }
 }
 
+type VehicleOption = { id: string; name: string; vehicleType?: string | null; plateNumber?: string | null; supplierId?: string | null };
+type DriverOption = { id: string; fullName: string; phone?: string | null; supplierId?: string | null; active?: boolean };
+
+async function loadVehicles(): Promise<VehicleOption[]> {
+  try {
+    return await adminPageFetchJson<VehicleOption[]>('/api/vehicles', 'Vehicles', { cache: 'no-store' });
+  } catch {
+    return [];
+  }
+}
+
+async function loadDrivers(): Promise<DriverOption[]> {
+  try {
+    return await adminPageFetchJson<DriverOption[]>('/api/drivers?active=true', 'Drivers', { cache: 'no-store' });
+  } catch {
+    return [];
+  }
+}
+
 function isSupplierVisible(supplier: SupplierOption) {
   return supplier.active !== false && supplier.isActive !== false && !['INACTIVE', 'ARCHIVED'].includes(String(supplier.status || '').toUpperCase());
 }
@@ -230,6 +255,64 @@ function getSeverityClass(value: string) {
 
 function getAffectedHref(rows: OperationsGridRow[]) {
   return rows[0] ? `#operation-${rows[0].id}` : '#operations-list';
+}
+
+// Transport-only: vehicle + driver picker. Renders as a separate inline form
+// alongside the supplier assignment so operators can update either side
+// independently without touching the supplier confirmation flow.
+function renderTransportForm(
+  bookingId: string,
+  row: OperationsGridRow,
+  vehicles: VehicleOption[],
+  drivers: DriverOption[],
+) {
+  // Scope vehicle list to the supplier already assigned (or all vehicles if
+  // no supplier yet). Driver list is filtered the same way. The dropdown
+  // ALWAYS includes any current selection even if it falls outside the
+  // filter, so we never accidentally hide an existing assignment.
+  const supplierId = row.assignedSupplierId || row.supplierId || null;
+  const filterBySupplier = <T extends { supplierId?: string | null; id: string }>(items: T[], currentId?: string | null) =>
+    items.filter((item) => {
+      if (currentId && item.id === currentId) return true;
+      if (!supplierId) return true;
+      if (!item.supplierId) return true;
+      return item.supplierId === supplierId;
+    });
+  const visibleVehicles = filterBySupplier(vehicles, row.vehicleId);
+  const visibleDrivers = filterBySupplier(drivers, row.driverId);
+  return (
+    <form
+      className="operations-inline-form"
+      method="POST"
+      action={`/api/bookings/${bookingId}/operations/${row.id}/assign-transport`}
+    >
+      <select
+        name="vehicleId"
+        defaultValue={row.vehicleId || ''}
+        aria-label={`Vehicle for ${row.description || row.serviceType}`}
+      >
+        <option value="">No vehicle</option>
+        {visibleVehicles.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.name}{v.plateNumber ? ` · ${v.plateNumber}` : ''}{v.vehicleType ? ` (${v.vehicleType})` : ''}
+          </option>
+        ))}
+      </select>
+      <select
+        name="driverId"
+        defaultValue={row.driverId || ''}
+        aria-label={`Driver for ${row.description || row.serviceType}`}
+      >
+        <option value="">No driver</option>
+        {visibleDrivers.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.fullName}{d.phone ? ` · ${d.phone}` : ''}
+          </option>
+        ))}
+      </select>
+      <button type="submit" className="button button-secondary">Assign vehicle / driver</button>
+    </form>
+  );
 }
 
 function renderAssignmentForm(bookingId: string, row: OperationsGridRow, suppliers: SupplierOption[], compact = false) {
@@ -420,7 +503,13 @@ export default async function BookingOperationsPage({ params, searchParams }: Pa
   const warningMessage = resolvedSearchParams?.warningText || resolvedSearchParams?.warning || '';
   const successMessage = resolvedSearchParams?.success || '';
   const errorMessage = resolvedSearchParams?.error || '';
-  const [grid, suppliers, bookingReadiness] = await Promise.all([loadOperationsGrid(id), loadSuppliers(), loadBookingReadiness(id)]);
+  const [grid, suppliers, bookingReadiness, vehicles, drivers] = await Promise.all([
+    loadOperationsGrid(id),
+    loadSuppliers(),
+    loadBookingReadiness(id),
+    loadVehicles(),
+    loadDrivers(),
+  ]);
   const manifest = grid.passengerManifest;
   const roomingIncompleteCount = Number(bookingReadiness?.rooming?.badge?.count || 0);
   const rows = grid.rows;
@@ -617,6 +706,15 @@ export default async function BookingOperationsPage({ params, searchParams }: Pa
                             </div>
                             <div className="booking-operations-editor-grid">
                               {renderAssignmentForm(id, row, suppliers)}
+                              {/* Transport rows get a separate vehicle+driver
+                                  picker. Independent of the supplier
+                                  assignment so the operator can fill in the
+                                  driver later without re-triggering the
+                                  confirmation flow. */}
+                              {String(row.serviceType || '').toUpperCase() === 'TRANSPORT' ||
+                              /TRANSFER|TRANSPORT/.test(String(row.serviceType || '').toUpperCase())
+                                ? renderTransportForm(id, row, vehicles, drivers)
+                                : null}
                               {renderConfirmationForm(id, row)}
                             </div>
                           </div>

@@ -34,8 +34,11 @@ type DispatchRow = {
   voucherId: string | null;
   voucherGeneratedAt: string | null;
   driverName: string | null;
+  driverPhone: string | null;
+  driverLicenseNumber: string | null;
   vehicleName: string | null;
   vehicleType: string | null;
+  vehiclePlateNumber: string | null;
   guideName: string | null;
   guidePhone: string | null;
   guideLanguages: string[];
@@ -476,8 +479,20 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
         <StatusPill label="Supplier" value={row.supplierName || 'Supplier missing'} ok={Boolean(row.supplierName)} />
         <StatusPill label="Confirmation" value={row.confirmationStatus} ok={row.confirmationStatus === 'CONFIRMED'} />
         <StatusPill label="Voucher" value={row.voucherStatus} ok={['GENERATED', 'SENT', 'ISSUED', 'READY'].includes(row.voucherStatus)} />
-        {row.driverName ? <StatusPill label="Driver" value={`Driver: ${row.driverName}`} ok /> : null}
-        {row.vehicleName ? <StatusPill label="Vehicle" value={row.vehicleName} ok /> : null}
+        {row.driverName ? (
+          <StatusPill
+            label="Driver"
+            value={`Driver: ${row.driverName}${row.driverPhone ? ` · ${row.driverPhone}` : ''}`}
+            ok
+          />
+        ) : null}
+        {row.vehicleName ? (
+          <StatusPill
+            label="Vehicle"
+            value={`${row.vehicleName}${row.vehiclePlateNumber ? ` · ${row.vehiclePlateNumber}` : ''}`}
+            ok
+          />
+        ) : null}
         {row.guideName ? <StatusPill label="Guide" value={`Guide: ${row.guideName}`} ok /> : null}
       </div>
 
@@ -545,6 +560,23 @@ function DispatchCard({ row, returnTo = '/operations/dispatch' }: { row: Dispatc
           >
             View voucher
           </Link>
+        ) : null}
+        {row.driverPhone ? (
+          <a
+            href={`tel:${row.driverPhone}`}
+            style={{
+              background: '#ffffff',
+              color: '#067647',
+              padding: '0.5rem 0.85rem',
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              textDecoration: 'none',
+              border: '1px solid #abefc6',
+            }}
+          >
+            Call driver
+          </a>
         ) : null}
         {row.supplierPhone ? (
           <a

@@ -40,6 +40,8 @@ import { ExcursionTemplatesController } from './excursion-templates/excursion-te
 import { ExcursionTemplatesService } from './excursion-templates/excursion-templates.service';
 import { GalleryController } from './gallery/gallery.controller';
 import { GalleryService } from './gallery/gallery.service';
+import { DriversController } from './drivers/drivers.controller';
+import { DriversService } from './drivers/drivers.service';
 import { GuidesController } from './guides/guides.controller';
 import { GuidesService } from './guides/guides.service';
 import { RestaurantsController } from './restaurants/restaurants.controller';
@@ -133,6 +135,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesController,
     ContractSupplementsController,
     GalleryController,
+    DriversController,
     GuidesController,
     RestaurantsController,
     SeriesController,
@@ -197,6 +200,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     ContractPoliciesService,
     ContractSupplementsService,
     GalleryService,
+    DriversService,
     GuidesService,
     RestaurantsService,
     SeriesService,
