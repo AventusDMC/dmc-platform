@@ -5578,6 +5578,152 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  // Execution lifecycle state machine. Distinct from updateOperationalServiceStatus
+  // (which manages the preparation status PENDING/REQUESTED/CONFIRMED). This is
+  // for live trip-day execution: dispatched → in-progress → completed, with
+  // ISSUE as a side-state that preserves where the row was via audit log.
+  async updateExecutionState(
+    bookingServiceId: string,
+    data: {
+      action: 'dispatch' | 'start' | 'complete' | 'issue' | 'resolve' | 'cancel';
+      notes?: string | null;
+      issueType?: string | null;
+      issueSeverity?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const actor = data.actor;
+    const bookingService = (await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: bookingServiceId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        executionStatus: true,
+        dispatchedAt: true,
+        startedAt: true,
+        completedAt: true,
+        completedBy: true,
+        issueReportedAt: true,
+        issueType: true,
+        issueSeverity: true,
+        issueNotes: true,
+        dispatchNotes: true,
+      },
+    })) as {
+      id: string;
+      bookingId: string;
+      executionStatus: string | null;
+      dispatchedAt: Date | null;
+      startedAt: Date | null;
+      completedAt: Date | null;
+      completedBy: string | null;
+      issueReportedAt: Date | null;
+      issueType: string | null;
+      issueSeverity: string | null;
+      issueNotes: string | null;
+      dispatchNotes: string | null;
+    } | null;
+    if (!bookingService) throw new NotFoundException('Booking service not found');
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    const now = new Date();
+    const current = (bookingService as any).executionStatus || 'READY';
+    const notes = this.normalizeOptionalText(data.notes);
+
+    const allowedIssueTypes = ['DRIVER_DELAY', 'SUPPLIER_NO_SHOW', 'FLIGHT_DELAY', 'ROOM_PROBLEM', 'GUEST_MISSING', 'OVERBOOKING', 'OTHER'];
+    const allowedIssueSeverities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const issueTypeNormalized = (() => {
+      const v = String(data.issueType || '').trim().toUpperCase();
+      return allowedIssueTypes.includes(v) ? v : null;
+    })();
+    const issueSeverityNormalized = (() => {
+      const v = String(data.issueSeverity || '').trim().toUpperCase();
+      return allowedIssueSeverities.includes(v) ? v : null;
+    })();
+
+    let nextStatus: string = current;
+    const updateData: any = {};
+
+    if (data.action === 'dispatch') {
+      // READY -> DISPATCHED (also accept re-dispatch from ISSUE).
+      if (current === 'COMPLETED' || current === 'CANCELLED') {
+        throw new BadRequestException(`Cannot dispatch: row is already ${current}`);
+      }
+      nextStatus = 'DISPATCHED';
+      updateData.dispatchedAt = (bookingService as any).dispatchedAt || now;
+      if (notes !== undefined) updateData.dispatchNotes = notes;
+    } else if (data.action === 'start') {
+      if (!['DISPATCHED', 'ISSUE'].includes(current)) {
+        throw new BadRequestException(`Cannot start: row must be DISPATCHED (currently ${current})`);
+      }
+      nextStatus = 'IN_PROGRESS';
+      updateData.startedAt = (bookingService as any).startedAt || now;
+    } else if (data.action === 'complete') {
+      if (current === 'COMPLETED' || current === 'CANCELLED') {
+        throw new BadRequestException(`Cannot complete: row is already ${current}`);
+      }
+      nextStatus = 'COMPLETED';
+      updateData.completedAt = now;
+      updateData.completedBy = this.normalizeActorUserId(actor);
+      // If completing without dispatch/start being recorded (operator marks
+      // straight to completed retroactively), backfill timestamps so the
+      // audit trail isn't a null gap.
+      if (!(bookingService as any).dispatchedAt) updateData.dispatchedAt = now;
+      if (!(bookingService as any).startedAt) updateData.startedAt = now;
+    } else if (data.action === 'issue') {
+      nextStatus = 'ISSUE';
+      updateData.issueReportedAt = now;
+      if (issueTypeNormalized) updateData.issueType = issueTypeNormalized as any;
+      if (issueSeverityNormalized) updateData.issueSeverity = issueSeverityNormalized as any;
+      if (notes !== undefined) updateData.issueNotes = notes;
+    } else if (data.action === 'resolve') {
+      if (current !== 'ISSUE') {
+        throw new BadRequestException('Resolve only applies to rows with an active issue');
+      }
+      // Pick the most operationally-truthful next state after resolution.
+      nextStatus = (bookingService as any).startedAt ? 'IN_PROGRESS' : (bookingService as any).dispatchedAt ? 'DISPATCHED' : 'READY';
+      updateData.issueType = null;
+      updateData.issueSeverity = null;
+      updateData.issueReportedAt = null;
+      if (notes !== undefined) updateData.issueNotes = notes;
+    } else if (data.action === 'cancel') {
+      nextStatus = 'CANCELLED';
+    } else {
+      throw new BadRequestException(`Unknown execution action: ${data.action}`);
+    }
+
+    updateData.executionStatus = nextStatus;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await (tx.bookingService as any).update({
+        where: { id: bookingServiceId },
+        data: updateData,
+      });
+
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: `service_execution_${data.action}`,
+        oldValue: String(current),
+        newValue: String(nextStatus),
+        note: [
+          notes,
+          issueTypeNormalized ? `issueType=${issueTypeNormalized}` : null,
+          issueSeverityNormalized ? `severity=${issueSeverityNormalized}` : null,
+        ].filter(Boolean).join(' | ') || null,
+        actor,
+      });
+
+      return updated;
+    });
+  }
+
   async updateOperationalServiceStatus(
     bookingServiceId: string,
     data: {
@@ -11466,6 +11612,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         voucherStatus: service.voucherStatus || (voucher ? 'GENERATED' : 'NOT_GENERATED'),
         voucherId: voucher?.id || null,
         voucherGeneratedAt: service.voucherGeneratedAt || voucher?.generatedAt || null,
+        // Execution lifecycle (live execution tracking) — exposed so the
+        // dispatch UI can show the right actions per state.
+        executionStatus: (service as any).executionStatus || 'READY',
+        dispatchedAt: (service as any).dispatchedAt || null,
+        startedAt: (service as any).startedAt || null,
+        completedAt: (service as any).completedAt || null,
+        issueReportedAt: (service as any).issueReportedAt || null,
+        issueType: (service as any).issueType || null,
+        issueSeverity: (service as any).issueSeverity || null,
+        issueNotes: (service as any).issueNotes || null,
+        dispatchNotes: (service as any).dispatchNotes || null,
         driverName: service.assignedTo || null,
         vehicleName: service.vehicle?.name || null,
         vehicleType: service.vehicle?.vehicleType || null,
@@ -11665,6 +11822,38 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const pendingConfirmationsCount = rows.filter((r: any) => !isConfirmationConfirmed(r)).length;
     const vouchersPendingCount = total - vouchersGenerated;
 
+    // Execution lifecycle classifiers — distinct from preparation status.
+    const isDispatched = (r: any) => ['DISPATCHED', 'IN_PROGRESS'].includes(String(r.executionStatus || '').toUpperCase());
+    const isInProgress = (r: any) => String(r.executionStatus || '').toUpperCase() === 'IN_PROGRESS';
+    const isExecCompleted = (r: any) => String(r.executionStatus || '').toUpperCase() === 'COMPLETED';
+    const hasIssue = (r: any) => String(r.executionStatus || '').toUpperCase() === 'ISSUE';
+    const isDelayed = (r: any) => {
+      // A row past its operational time, not yet completed/cancelled and not
+      // an explicit ISSUE — operator needs to know it's drifting.
+      if (isExecCompleted(r) || String(r.executionStatus || '').toUpperCase() === 'CANCELLED') return false;
+      if (hasIssue(r)) return false;
+      if (!r.date) return false;
+      const rowDate = new Date(r.date);
+      if (!Number.isFinite(rowDate.getTime())) return false;
+      const time = r.time ? String(r.time).match(/(\d{1,2}):(\d{2})/) : null;
+      const expected = new Date(rowDate);
+      if (time) expected.setUTCHours(Number(time[1]), Number(time[2]), 0, 0);
+      else expected.setUTCHours(23, 59, 59, 999);
+      return expected.getTime() < Date.now();
+    };
+    const completedToday = (r: any) => {
+      if (!isExecCompleted(r) || !r.completedAt) return false;
+      const completedDate = new Date(r.completedAt);
+      const todayStart = new Date(today);
+      const todayEnd = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      return completedDate >= todayStart && completedDate < todayEnd;
+    };
+
+    const inProgressRowsAll = rows.filter((r: any) => isDispatched(r));
+    const delayedRowsAll = rows.filter((r: any) => hasIssue(r) || isDelayed(r));
+    const completedTodayRowsAll = rows.filter((r: any) => completedToday(r));
+    const dispatchCompletionPct = pct(rows.filter(isExecCompleted).length, total);
+
     // Lanes — ALL rows in window grouped by service-type lane. Distinct from
     // `sections` above (which only contains rows that have issues for that
     // section). Lanes give the dispatch UX a complete by-type view so the
@@ -11758,6 +11947,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         vouchersPendingCount,
         todaysArrivalsCount: sections.arrivals.rows.length,
         criticalIssuesCount: sections.criticalIssues.rows.length,
+        // Execution lifecycle counters.
+        dispatchCompletionPct,
+        completedTodayCount: completedTodayRowsAll.length,
+        activeIssuesCount: rows.filter(hasIssue).length,
+        delayedCount: delayedRowsAll.length,
+        inProgressCount: inProgressRowsAll.length,
       },
       sections: {
         arrivals: { ...sections.arrivals, count: sections.arrivals.rows.length },
@@ -11775,6 +11970,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         transport: { label: 'Transport', rows: lanes.transport, ...laneCount(lanes.transport) },
         activities: { label: 'Activities', rows: lanes.activities, ...laneCount(lanes.activities) },
         guides: { label: 'Guides', rows: lanes.guides, ...laneCount(lanes.guides) },
+      },
+      // Live execution sections. Cap each to 50 to keep the response sane.
+      execution: {
+        inProgress: { label: 'In Progress', count: inProgressRowsAll.length, rows: inProgressRowsAll.slice(0, 50) },
+        delayedIssues: { label: 'Delayed / Issues', count: delayedRowsAll.length, rows: delayedRowsAll.slice(0, 50) },
+        completedToday: { label: 'Completed Today', count: completedTodayRowsAll.length, rows: completedTodayRowsAll.slice(0, 50) },
       },
     };
   }

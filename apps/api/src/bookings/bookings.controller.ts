@@ -1299,6 +1299,36 @@ export class BookingsController {
     );
   }
 
+  // Operations Execution Lifecycle v1 — single endpoint, action-driven state
+  // machine. Frontend dispatch buttons POST { action: 'dispatch' | 'start' |
+  // 'complete' | 'issue' | 'resolve' | 'cancel', notes?, issueType?, issueSeverity? }.
+  @Patch('services/:serviceId/execution')
+  @Roles('admin', 'operations')
+  updateExecutionState(
+    @Param('serviceId') serviceId: string,
+    @Body() body: {
+      action?: string;
+      notes?: string | null;
+      issueType?: string | null;
+      issueSeverity?: string | null;
+    },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    const allowed = ['dispatch', 'start', 'complete', 'issue', 'resolve', 'cancel'] as const;
+    const action = String(body.action || '').toLowerCase();
+    if (!allowed.includes(action as any)) {
+      throw new BadRequestException(`Unknown execution action: ${body.action || '(missing)'}`);
+    }
+    return this.bookingsService.updateExecutionState(serviceId, {
+      action: action as (typeof allowed)[number],
+      notes: body.notes === undefined ? undefined : body.notes || null,
+      issueType: body.issueType === undefined ? undefined : body.issueType || null,
+      issueSeverity: body.issueSeverity === undefined ? undefined : body.issueSeverity || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Patch('services/:serviceId/status')
   @Roles('admin', 'operations')
   updateManualServiceStatus(
