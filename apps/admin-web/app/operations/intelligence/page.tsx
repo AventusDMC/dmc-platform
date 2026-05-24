@@ -174,20 +174,36 @@ export default async function IntelligencePage() {
               which suppliers and resources are risky, and what's coming next.
             </p>
           </div>
-          <Link
-            href="/operations/dispatch"
-            style={{
-              background: '#175cd3',
-              color: '#ffffff',
-              padding: '0.6rem 1rem',
-              borderRadius: 8,
-              fontWeight: 700,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Open Dispatch →
-          </Link>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Link
+              href="/operations/intelligence/financial"
+              style={{
+                background: '#b54708',
+                color: '#ffffff',
+                padding: '0.6rem 1rem',
+                borderRadius: 8,
+                fontWeight: 700,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              💰 Financial Convergence →
+            </Link>
+            <Link
+              href="/operations/dispatch"
+              style={{
+                background: '#175cd3',
+                color: '#ffffff',
+                padding: '0.6rem 1rem',
+                borderRadius: 8,
+                fontWeight: 700,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Open Dispatch →
+            </Link>
+          </div>
         </div>
       </div>
 
