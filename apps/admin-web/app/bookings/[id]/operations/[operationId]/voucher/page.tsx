@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { AdminBackButton } from '../../../../../components/AdminBackButton';
 import { AdminBreadcrumbs } from '../../../../../components/AdminBreadcrumbs';
 import { adminPageFetchJson } from '../../../../../lib/admin-server';
+import { OPERATIONS_TIME_ZONE } from '../../../../../lib/operations-timezone';
 
 type VoucherSnapshot = {
   voucherVersion?: number;
@@ -48,7 +49,11 @@ type PageProps = {
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '-';
   try {
-    return new Date(value).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(value).toLocaleString('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: OPERATIONS_TIME_ZONE,
+    });
   } catch {
     return value;
   }
