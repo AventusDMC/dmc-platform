@@ -11778,6 +11778,24 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         issueReportedAt: (service as any).issueReportedAt || null,
         issueType: (service as any).issueType || null,
         issueSeverity: (service as any).issueSeverity || null,
+        // Effective severity = stored issueSeverity bumped by SLA aging.
+        // The frontend renders this on the card as the operator-facing
+        // severity badge (an old LOW that's been open 45m is effectively
+        // HIGH and should be shown that way).
+        issueEffectiveSeverity: (() => {
+          if (!(service as any).issueReportedAt) return (service as any).issueSeverity || null;
+          const ageMin = Math.max(0, Math.floor((Date.now() - new Date((service as any).issueReportedAt).getTime()) / 60000));
+          const order = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+          const base = (order.includes(String((service as any).issueSeverity || '').toUpperCase()) ? String((service as any).issueSeverity).toUpperCase() : 'MEDIUM');
+          let level = order.indexOf(base);
+          if (ageMin >= 60) level = Math.max(level, order.indexOf('CRITICAL'));
+          else if (ageMin >= 30) level = Math.max(level, order.indexOf('HIGH'));
+          else if (ageMin >= 15) level = Math.max(level, order.indexOf('MEDIUM'));
+          return order[level];
+        })(),
+        issueAgeMinutes: (service as any).issueReportedAt
+          ? Math.max(0, Math.floor((Date.now() - new Date((service as any).issueReportedAt).getTime()) / 60000))
+          : null,
         issueNotes: (service as any).issueNotes || null,
         dispatchNotes: (service as any).dispatchNotes || null,
         delayMinutes: (service as any).delayMinutes ?? null,
@@ -11881,6 +11899,34 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       return 'far';
     };
 
+    // SLA aging — how long has an open issue been in ISSUE state? Drives
+    // severity escalation, "Resolution Queue · oldest first" ordering, and
+    // SLA breach counters (open > 30 min).
+    const issueAgeMinutesOf = (r: any): number => {
+      if (!r.issueReportedAt) return 0;
+      const t = new Date(r.issueReportedAt).getTime();
+      if (!Number.isFinite(t)) return 0;
+      return Math.max(0, Math.floor((Date.now() - t) / 60000));
+    };
+
+    // Effective issue severity = the operator's reported severity, climbed
+    // up the ladder by SLA aging. Implements spec item #8:
+    //   LOW → MEDIUM after 15m open
+    //   MEDIUM → HIGH after 30m
+    //   HIGH → CRITICAL after 60m
+    type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    const SEV_ORDER: Severity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const effectiveIssueSeverityOf = (r: any): Severity => {
+      const stored = String(r.issueSeverity || 'MEDIUM').toUpperCase() as Severity;
+      const base: Severity = (SEV_ORDER as string[]).includes(stored) ? stored : 'MEDIUM';
+      const age = issueAgeMinutesOf(r);
+      let level = SEV_ORDER.indexOf(base);
+      if (age >= 60) level = Math.max(level, SEV_ORDER.indexOf('CRITICAL'));
+      else if (age >= 30) level = Math.max(level, SEV_ORDER.indexOf('HIGH'));
+      else if (age >= 15) level = Math.max(level, SEV_ORDER.indexOf('MEDIUM'));
+      return SEV_ORDER[level];
+    };
+
     // Time-aware severity classifier — single source of truth for both the
     // "critical issues" banner and per-lane severity badges. Returns the
     // computed severity and the human-readable reasons that drove it.
@@ -11908,10 +11954,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (execStatus === 'COMPLETED' || execStatus === 'CANCELLED') {
         return { severity: 'INFO', reasons: [] };
       }
-      // Operator-reported live issue beats any time-based logic.
+      // Operator-reported live issue beats any time-based logic. Row
+      // severity stays CRITICAL (red) so the dispatch card keeps the visual
+      // weight, but the underlying issueSeverity is allowed to escalate by
+      // age via `effectiveIssueSeverityOf` (LOW→MEDIUM→HIGH→CRITICAL).
       if (execStatus === 'ISSUE') {
-        const reason = (r as any).issueNotes || `Active ${(r as any).issueSeverity || ''} issue`.trim();
-        return { severity: 'CRITICAL', reasons: [reason || 'Active issue reported'] };
+        const effective = effectiveIssueSeverityOf(r);
+        const ageMin = issueAgeMinutesOf(r);
+        const ageLabel = ageMin > 0 ? ` · open ${ageMin}m` : '';
+        const reason = (r as any).issueNotes || `Active ${effective} issue${ageLabel}`;
+        return { severity: 'CRITICAL', reasons: [reason] };
       }
 
       const imm = imminenceOf(r);
@@ -12196,7 +12248,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         activeIncidentsCount: rows.filter((r: any) => String(r.executionStatus || '').toUpperCase() === 'ISSUE').length,
         delayedOperationsCount: rows.filter((r: any) => Number(r.delayMinutes || 0) > 0).length,
         escalatedIssuesCount: rows.filter((r: any) => {
-          const sev = String(r.issueSeverity || '').toUpperCase();
+          // Use effective (age-bumped) severity, not just the stored value.
+          const sev = String(r.issueEffectiveSeverity || r.issueSeverity || '').toUpperCase();
           return String(r.executionStatus || '').toUpperCase() === 'ISSUE' && (sev === 'HIGH' || sev === 'CRITICAL');
         }).length,
         resolutionQueueCount: rows.filter((r: any) => {
@@ -12204,6 +12257,33 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           const reported = r.issueReportedAt ? new Date(r.issueReportedAt).getTime() : 0;
           if (!reported) return true;
           return Date.now() - reported > 30 * 60 * 1000;
+        }).length,
+        // Recovery-intelligence counters (v1):
+        //  recoveryQueue       — every active incident (== activeIncidents,
+        //                         renamed for the Recovery page)
+        //  awaitingReassignment — incidents where no supplier is assigned
+        //                         OR confirmation is REJECTED (replacement
+        //                         needed)
+        //  slaBreaches         — incidents open > 30 min (matches the
+        //                         existing resolutionQueueCount, but
+        //                         labelled differently for the SLA card)
+        //  escalatedIncidents  — incidents with effective severity HIGH or
+        //                         CRITICAL (== escalatedIssuesCount alias)
+        recoveryQueueCount: rows.filter((r: any) => String(r.executionStatus || '').toUpperCase() === 'ISSUE').length,
+        awaitingReassignmentCount: rows.filter((r: any) => {
+          if (String(r.executionStatus || '').toUpperCase() !== 'ISSUE') return false;
+          // No supplier OR a rejected confirmation -> reassignment needed.
+          const noSupplier = !r.supplierId && !r.assignedSupplierId;
+          const rejected = String(r.confirmationStatus || '').toUpperCase() === 'REJECTED';
+          return noSupplier || rejected;
+        }).length,
+        slaBreachesCount: rows.filter((r: any) => {
+          if (String(r.executionStatus || '').toUpperCase() !== 'ISSUE') return false;
+          return Number(r.issueAgeMinutes || 0) >= 30;
+        }).length,
+        escalatedIncidentsCount: rows.filter((r: any) => {
+          const sev = String(r.issueEffectiveSeverity || r.issueSeverity || '').toUpperCase();
+          return String(r.executionStatus || '').toUpperCase() === 'ISSUE' && (sev === 'HIGH' || sev === 'CRITICAL');
         }).length,
       },
       sections: {
