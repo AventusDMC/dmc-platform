@@ -39,4 +39,24 @@ export class OperationsDashboardController {
       date,
     });
   }
+
+  // /operations/dispatch — daily operational dispatch view, distinct from the
+  // department-grouped /operations/dashboard above. Accepts a range
+  // (today | tomorrow | next-7-days) plus optional serviceType/supplier
+  // filters.
+  @Get('dispatch')
+  @Roles('admin', 'operations')
+  getDispatch(
+    @Actor() actor: AuthenticatedActor,
+    @Query('range') range?: string,
+    @Query('serviceType') serviceType?: string,
+    @Query('supplier') supplier?: string,
+  ) {
+    return this.bookingsService.getDispatchDashboard({
+      actor,
+      range,
+      serviceType,
+      supplier,
+    });
+  }
 }

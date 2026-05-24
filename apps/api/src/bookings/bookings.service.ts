@@ -11348,6 +11348,354 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  // Operations Dispatch Dashboard v1 — date-windowed, section-themed cut of
+  // BookingService rows for the daily execution view at /operations/dispatch.
+  // Distinct from getOperationsDashboard (which is department-grouped) — this
+  // is "what happens today / what is blocked / what is operationally ready".
+  async getDispatchDashboard(input: {
+    actor?: CompanyScopedActor;
+    range?: string | null;
+    serviceType?: string | null;
+    supplier?: string | null;
+  }) {
+    requireActorCompanyId(input.actor);
+
+    const range = (input.range || 'today').toLowerCase();
+    const today = this.startOfUtcDay(new Date());
+    const oneDay = 24 * 60 * 60 * 1000;
+    let windowStart: Date;
+    let windowEnd: Date;
+    let rangeLabel: string;
+    if (range === 'tomorrow') {
+      windowStart = new Date(today.getTime() + oneDay);
+      windowEnd = new Date(today.getTime() + 2 * oneDay);
+      rangeLabel = 'tomorrow';
+    } else if (range === 'next-7-days' || range === 'week') {
+      windowStart = today;
+      windowEnd = new Date(today.getTime() + 7 * oneDay);
+      rangeLabel = 'next-7-days';
+    } else {
+      windowStart = today;
+      windowEnd = new Date(today.getTime() + oneDay);
+      rangeLabel = 'today';
+    }
+
+    const serviceTypeFilter = this.normalizeOptionalText(input.serviceType)?.toUpperCase() || null;
+    const supplierFilter = this.normalizeOptionalText(input.supplier);
+
+    const serviceWhereAnd: Prisma.BookingServiceWhereInput[] = [
+      {
+        OR: [
+          { serviceDate: { gte: windowStart, lt: windowEnd } },
+          { operationalDate: { gte: windowStart, lt: windowEnd } },
+          { bookingDay: { date: { gte: windowStart, lt: windowEnd } } },
+        ],
+      },
+    ];
+    if (serviceTypeFilter) {
+      serviceWhereAnd.push({
+        OR: [{ serviceType: serviceTypeFilter }, { operationType: serviceTypeFilter }],
+      });
+    }
+    if (supplierFilter) {
+      serviceWhereAnd.push({
+        OR: [
+          { supplierId: supplierFilter },
+          { assignedSupplierId: supplierFilter },
+          { supplierName: { contains: supplierFilter, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    const services = await (this.prisma.bookingService as any).findMany({
+      where: { AND: serviceWhereAnd },
+      include: {
+        booking: {
+          select: {
+            id: true,
+            bookingRef: true,
+            pax: true,
+            snapshotJson: true,
+            clientSnapshotJson: true,
+            startDate: true,
+            endDate: true,
+            roomingEntries: { select: { id: true, assignments: { select: { id: true } } } },
+            passengers: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+        bookingDay: { select: { id: true, date: true, dayNumber: true, title: true } },
+        vehicle: { select: { id: true, name: true, vehicleType: true } },
+        supplier: { select: { id: true, name: true, phone: true } },
+        assignedSupplier: { select: { id: true, name: true, phone: true } },
+        guide: { select: { id: true, fullName: true, phone: true, languages: true } },
+        touringRoute: { select: { id: true, name: true } },
+        vouchers: { select: { id: true, status: true, generatedAt: true, type: true } },
+      },
+      orderBy: [{ serviceDate: 'asc' }, { operationalTime: 'asc' }, { startTime: 'asc' }],
+    });
+
+    const buildRow = (service: any) => {
+      const supplierEntity = service.assignedSupplier || service.supplier || null;
+      const supplierName =
+        supplierEntity?.name || service.assignedSupplierName || service.supplierName || null;
+      const supplierId = supplierEntity?.id || service.assignedSupplierId || service.supplierId || null;
+      const voucher = Array.isArray(service.vouchers) ? service.vouchers[0] : null;
+      const op = String(service.operationType || service.serviceType || '').toUpperCase();
+      return {
+        bookingId: service.bookingId,
+        bookingRef: service.booking?.bookingRef || null,
+        bookingTitle:
+          (service.booking?.snapshotJson as any)?.title ||
+          service.booking?.bookingRef ||
+          'Booking',
+        clientName: (service.booking?.clientSnapshotJson as any)?.name || null,
+        serviceId: service.id,
+        serviceType: service.serviceType || null,
+        operationType: op || null,
+        description: service.description || null,
+        date: service.operationalDate || service.serviceDate || service.bookingDay?.date || null,
+        time: service.operationalTime || service.startTime || service.pickupTime || null,
+        dayNumber: service.bookingDay?.dayNumber ?? null,
+        dayTitle: service.bookingDay?.title ?? null,
+        supplierId,
+        supplierName,
+        supplierPhone: supplierEntity?.phone || null,
+        assignmentStatus: service.assignmentStatus || 'UNASSIGNED',
+        confirmationStatus: service.supplierConfirmationStatus || 'NOT_SENT',
+        operationStatus: service.operationStatus || 'PENDING',
+        voucherStatus: service.voucherStatus || (voucher ? 'GENERATED' : 'NOT_GENERATED'),
+        voucherId: voucher?.id || null,
+        voucherGeneratedAt: service.voucherGeneratedAt || voucher?.generatedAt || null,
+        driverName: service.assignedTo || null,
+        vehicleName: service.vehicle?.name || null,
+        vehicleType: service.vehicle?.vehicleType || null,
+        guideName: service.guide?.fullName || service.assignedTo || null,
+        guidePhone: service.guide?.phone || service.guidePhone || null,
+        guideLanguages: service.guide?.languages || service.guideRequiredLanguages || [],
+        guideReportingTime: service.guideReportingTime || null,
+        pickupLocation: service.pickupLocation || null,
+        dropoffLocation: service.dropoffLocation || null,
+        meetingPoint: service.meetingPoint || null,
+        confirmationReference: service.confirmationReference || service.confirmationNumber || null,
+        routeName: service.touringRoute?.name || null,
+      };
+    };
+
+    const rows = services.map(buildRow);
+
+    // Classification helpers.
+    const isTransport = (r: any) =>
+      String(r.operationType).toUpperCase() === 'TRANSPORT' ||
+      /TRANSFER|TRANSPORT/.test(String(r.serviceType).toUpperCase());
+    const isHotel = (r: any) =>
+      String(r.operationType).toUpperCase() === 'HOTEL' ||
+      /ACCOMMODATION|LODGING/.test(String(r.serviceType).toUpperCase());
+    const isGuide = (r: any) =>
+      String(r.operationType).toUpperCase() === 'GUIDE' ||
+      /GUIDE|GUIDING/.test(String(r.serviceType).toUpperCase());
+    const isActivity = (r: any) =>
+      ['ACTIVITY', 'EXCURSION', 'TICKET'].includes(String(r.operationType).toUpperCase()) ||
+      /ACTIVITY|EXCURSION|TICKET|MUSEUM|SITE/.test(String(r.serviceType).toUpperCase());
+    const isArrival = (r: any) =>
+      isTransport(r) &&
+      (r.dayNumber === 1 || /ARRIVAL|AIRPORT|MEET|ASSIST/i.test(String(r.description)));
+    const isDeparture = (r: any) =>
+      (isTransport(r) || /DEPARTURE/i.test(String(r.description))) &&
+      /DEPARTURE|AIRPORT/i.test(`${r.description} ${r.dayTitle}`);
+    const isAssigned = (r: any) =>
+      Boolean(r.supplierId) && String(r.assignmentStatus).toUpperCase() !== 'UNASSIGNED';
+    const isConfirmationRejected = (r: any) =>
+      String(r.confirmationStatus).toUpperCase() === 'REJECTED';
+    const isConfirmationConfirmed = (r: any) =>
+      String(r.confirmationStatus).toUpperCase() === 'CONFIRMED';
+    const hasVoucher = (r: any) =>
+      ['GENERATED', 'SENT', 'ISSUED', 'READY'].includes(String(r.voucherStatus).toUpperCase());
+
+    type Section = {
+      label: string;
+      severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL';
+      rows: Array<any & { severity: string; reasons: string[] }>;
+    };
+
+    const sections: Record<string, Section> = {
+      arrivals: { label: "Today's Arrivals", severity: 'INFO', rows: [] },
+      departures: { label: "Tomorrow's Departures", severity: 'INFO', rows: [] },
+      transportDispatch: { label: 'Transport Dispatch', severity: 'ACTION REQUIRED', rows: [] },
+      guideDispatch: { label: 'Guide Dispatch', severity: 'ACTION REQUIRED', rows: [] },
+      hotelOperations: { label: 'Hotel Operations', severity: 'ACTION REQUIRED', rows: [] },
+      criticalIssues: { label: 'Critical Issues', severity: 'CRITICAL', rows: [] },
+    };
+
+    const rowDateInRange = (r: any, start: Date, end: Date) => {
+      if (!r.date) return false;
+      const d = new Date(r.date);
+      return d.getTime() >= start.getTime() && d.getTime() < end.getTime();
+    };
+    const todayStart = today;
+    const todayEnd = new Date(today.getTime() + oneDay);
+    const tomorrowStart = new Date(today.getTime() + oneDay);
+    const tomorrowEnd = new Date(today.getTime() + 2 * oneDay);
+
+    for (const row of rows) {
+      const reasons: string[] = [];
+      let severity: 'INFO' | 'ACTION REQUIRED' | 'CRITICAL' = 'INFO';
+
+      // Critical issues — collect any rows with hard blockers regardless of date
+      // (the date window already constrains to the user's chosen range).
+      const criticalReasons: string[] = [];
+      if (isConfirmationRejected(row)) criticalReasons.push('Supplier confirmation rejected');
+      if (!isAssigned(row)) criticalReasons.push('No supplier assigned');
+      if (isTransport(row) && !row.pickupLocation) criticalReasons.push('Pickup location missing');
+      if ((isActivity(row) || isGuide(row)) && !row.meetingPoint)
+        criticalReasons.push('Meeting point missing');
+      if (criticalReasons.length > 0) {
+        sections.criticalIssues.rows.push({ ...row, severity: 'CRITICAL', reasons: criticalReasons });
+      }
+
+      // Today's Arrivals — restricted to today's window, transport/arrival-shaped.
+      if (rowDateInRange(row, todayStart, todayEnd) && isArrival(row)) {
+        const arrivalReasons: string[] = [];
+        if (!row.driverName) arrivalReasons.push('Driver not assigned');
+        if (!row.pickupLocation) arrivalReasons.push('Pickup location missing');
+        if (!hasVoucher(row)) arrivalReasons.push('Voucher not generated');
+        const sev = arrivalReasons.length > 1 ? 'ACTION REQUIRED' : arrivalReasons.length === 1 ? 'ACTION REQUIRED' : 'INFO';
+        sections.arrivals.rows.push({ ...row, severity: sev, reasons: arrivalReasons });
+      }
+
+      // Tomorrow's Departures — restricted to tomorrow's window.
+      if (rowDateInRange(row, tomorrowStart, tomorrowEnd) && (isDeparture(row) || isHotel(row) || isTransport(row))) {
+        const depReasons: string[] = [];
+        if (isTransport(row) && !row.time) depReasons.push('Pickup time missing');
+        if (!hasVoucher(row)) depReasons.push('Voucher pending');
+        const sev = depReasons.length > 0 ? 'ACTION REQUIRED' : 'INFO';
+        sections.departures.rows.push({ ...row, severity: sev, reasons: depReasons });
+      }
+
+      // Transport Dispatch — ALL transport rows in window with issues.
+      if (isTransport(row)) {
+        const tReasons: string[] = [];
+        if (!row.vehicleName) tReasons.push('Missing vehicle');
+        if (!row.driverName) tReasons.push('Missing driver');
+        if (!isConfirmationConfirmed(row)) tReasons.push('Unconfirmed transport');
+        if (!hasVoucher(row)) tReasons.push('Voucher pending');
+        if (tReasons.length > 0) {
+          const sev = tReasons.some((r) => r.startsWith('Missing'))
+            ? 'CRITICAL'
+            : 'ACTION REQUIRED';
+          sections.transportDispatch.rows.push({ ...row, severity: sev, reasons: tReasons });
+        }
+      }
+
+      // Guide Dispatch.
+      if (isGuide(row)) {
+        const gReasons: string[] = [];
+        if (!row.guideName) gReasons.push('Guide not assigned');
+        if (
+          Array.isArray(row.guideLanguages) &&
+          row.guideLanguages.length === 0
+        )
+          gReasons.push('Language not set');
+        if (!row.guideReportingTime) gReasons.push('Reporting time missing');
+        if (gReasons.length > 0) {
+          const sev = !row.guideName ? 'CRITICAL' : 'ACTION REQUIRED';
+          sections.guideDispatch.rows.push({ ...row, severity: sev, reasons: gReasons });
+        }
+      }
+
+      // Hotel Operations.
+      if (isHotel(row)) {
+        const hReasons: string[] = [];
+        const rooming = row.booking?.roomingEntries || [];
+        const assignedPax = rooming.reduce(
+          (sum: number, r: any) => sum + (Array.isArray(r.assignments) ? r.assignments.length : 0),
+          0,
+        );
+        if (rooming.length === 0 || assignedPax === 0) hReasons.push('Rooming incomplete');
+        if (!isConfirmationConfirmed(row)) hReasons.push('Confirmation pending');
+        if (!hasVoucher(row)) hReasons.push('Hotel voucher missing');
+        if (hReasons.length > 0) {
+          const sev = hReasons.includes('Rooming incomplete') ? 'CRITICAL' : 'ACTION REQUIRED';
+          sections.hotelOperations.rows.push({ ...row, severity: sev, reasons: hReasons });
+        }
+      }
+    }
+
+    // Readiness counters across ALL rows in the window.
+    const total = rows.length;
+    const operationallyReady = rows.filter(
+      (r: any) =>
+        isAssigned(r) &&
+        isConfirmationConfirmed(r) &&
+        hasVoucher(r) &&
+        !isConfirmationRejected(r),
+    ).length;
+    const vouchersGenerated = rows.filter(hasVoucher).length;
+    const confirmationsComplete = rows.filter(isConfirmationConfirmed).length;
+    const hotelRows = rows.filter(isHotel);
+    const hotelRoomingComplete = hotelRows.filter((r: any) => {
+      const rooming = (r as any).booking?.roomingEntries || (services.find((s: any) => s.id === r.serviceId) as any)?.booking?.roomingEntries || [];
+      const assignedPax = rooming.reduce(
+        (sum: number, room: any) => sum + (Array.isArray(room.assignments) ? room.assignments.length : 0),
+        0,
+      );
+      return rooming.length > 0 && assignedPax > 0;
+    }).length;
+    const manifestComplete = (() => {
+      // Use distinct bookings — for each booking, is passenger count >= booking.pax?
+      const seenBookings = new Map<string, { expected: number; total: number }>();
+      for (const service of services) {
+        const b = service.booking;
+        if (!b || seenBookings.has(b.id)) continue;
+        const expected = Number(b.pax || 0);
+        const totalPax = (b.passengers || []).length;
+        seenBookings.set(b.id, { expected, total: totalPax });
+      }
+      if (seenBookings.size === 0) return { complete: 0, total: 0 };
+      let complete = 0;
+      for (const v of seenBookings.values()) {
+        if (v.expected === 0 || v.total >= v.expected) complete += 1;
+      }
+      return { complete, total: seenBookings.size };
+    })();
+
+    const pct = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom) * 100) : 0);
+
+    return {
+      range: {
+        label: rangeLabel,
+        from: windowStart.toISOString().slice(0, 10),
+        to: new Date(windowEnd.getTime() - 1).toISOString().slice(0, 10),
+      },
+      filters: {
+        serviceType: serviceTypeFilter,
+        supplier: supplierFilter,
+      },
+      counters: {
+        operationsReadyPct: pct(operationallyReady, total),
+        vouchersGeneratedPct: pct(vouchersGenerated, total),
+        confirmationsCompletePct: pct(confirmationsComplete, total),
+        roomingCompletePct: pct(hotelRoomingComplete, hotelRows.length),
+        manifestCompletePct: pct(manifestComplete.complete, manifestComplete.total),
+        totalRows: total,
+        operationallyReadyCount: operationallyReady,
+        vouchersGeneratedCount: vouchersGenerated,
+        confirmationsCompleteCount: confirmationsComplete,
+        hotelRoomingCompleteCount: hotelRoomingComplete,
+        hotelTotalCount: hotelRows.length,
+        manifestCompleteCount: manifestComplete.complete,
+        manifestTotalCount: manifestComplete.total,
+      },
+      sections: {
+        arrivals: { ...sections.arrivals, count: sections.arrivals.rows.length },
+        departures: { ...sections.departures, count: sections.departures.rows.length },
+        transportDispatch: { ...sections.transportDispatch, count: sections.transportDispatch.rows.length },
+        guideDispatch: { ...sections.guideDispatch, count: sections.guideDispatch.rows.length },
+        hotelOperations: { ...sections.hotelOperations, count: sections.hotelOperations.rows.length },
+        criticalIssues: { ...sections.criticalIssues, count: sections.criticalIssues.rows.length },
+      },
+    };
+  }
+
   async getOperationsMobileData(input: { actor?: CompanyScopedActor; date?: string | null }) {
     requireActorCompanyId(input.actor);
     const selectedDate = this.normalizeDashboardDate(input.date);
