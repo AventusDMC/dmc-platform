@@ -114,6 +114,25 @@ type PageProps = {
   params: Promise<{ id: string; operationId: string }>;
 };
 
+// BookingRoomOccupancy enum → hotel-industry abbreviation. "unknown" is the
+// schema default when no specific occupancy was set; treat it as no data so
+// the inline room meta doesn't read "unknown · HB" (which looks like a real
+// occupancy label instead of "we don't know yet").
+const ROOM_OCCUPANCY_LABELS: Record<string, string> = {
+  single: 'SGL',
+  double: 'DBL',
+  twin: 'TWN',
+  triple: 'TPL',
+  quad: 'QUAD',
+};
+
+function formatRoomOccupancy(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const key = String(value).trim().toLowerCase();
+  if (!key || key === 'unknown') return null;
+  return ROOM_OCCUPANCY_LABELS[key] || value.toUpperCase();
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '-';
   try {
@@ -284,7 +303,13 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {snapshot.hotel.occupancy.map((room, idx) => {
               const label = `Room ${room.roomNumber ?? idx + 1}`;
-              const inlineMeta = [room.roomType, room.occupancy, snapshot.hotel?.mealPlan].filter(Boolean).join(' · ');
+              const inlineMeta = [
+                room.roomType,
+                formatRoomOccupancy(room.occupancy),
+                snapshot.hotel?.mealPlan,
+              ]
+                .filter(Boolean)
+                .join(' · ');
               const passengers = Array.isArray(room.passengers) ? room.passengers : [];
               return (
                 <div
