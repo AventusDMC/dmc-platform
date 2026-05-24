@@ -224,6 +224,13 @@ export default async function AdminDashboardPage() {
             <p className="detail-copy">Business performance, finance risk, and operations signals for the DMC team.</p>
           </div>
           <AdminHeaderActions className="admin-dashboard-launchpad-actions">
+            <Link
+              href="/executive/operations"
+              className="primary-button"
+              style={{ background: '#101828', borderColor: '#101828', color: '#ffffff' }}
+            >
+              👔 Executive Ops
+            </Link>
             <Link href="/quotes/new" className="primary-button">
               New Quote
             </Link>
