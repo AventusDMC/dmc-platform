@@ -992,10 +992,11 @@ function ExecutionSections({ data, returnTo }: { data: DispatchResponse; returnT
   );
 }
 
-// Timeline view — flattens all unique rows across lanes, groups by time bucket
-// (Morning/Afternoon/Evening/Unscheduled), critical rows pinned to top of each
-// bucket. The dispatch team thinks "08:30 airport pickup → 11:00 hotel
-// check-in → 17:00 departure transfer", not by data type. This is the default.
+// Timeline view — flattens all unique rows across lanes, groups by exact
+// scheduled time (e.g. "08:30", "11:00", "14:00") so the dispatch desk reads
+// like a train schedule rather than a generic "morning / afternoon" digest.
+// Multi-service slots cluster naturally. Unscheduled rows fall to a final
+// section so they don't dilute the timeline.
 function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: string }) {
   // Deduplicate rows across lanes (a transport row that's also an arrival
   // shows in both lanes; here it should appear once on the timeline).
@@ -1010,61 +1011,115 @@ function TimelineView({ data, returnTo }: { data: DispatchResponse; returnTo: st
       allRows.push(row);
     }
   }
-  const buckets: Record<keyof typeof BUCKET_LABELS, DispatchRow[]> = {
-    morning: [],
-    afternoon: [],
-    evening: [],
-    unscheduled: [],
-  };
-  for (const row of allRows) buckets[getTimeBucket(row.time)].push(row);
-  // Within bucket: critical first, then by time ascending.
-  for (const list of Object.values(buckets)) {
+
+  // Group by exact formatted time. Rows with no time go to "unscheduled."
+  const slotMap = new Map<string, DispatchRow[]>();
+  const unscheduled: DispatchRow[] = [];
+  for (const row of allRows) {
+    const t = formatTime(row.time);
+    if (!t) {
+      unscheduled.push(row);
+      continue;
+    }
+    if (!slotMap.has(t)) slotMap.set(t, []);
+    slotMap.get(t)!.push(row);
+  }
+  // Sort each slot's rows: critical first, then stable by booking ref.
+  for (const list of slotMap.values()) {
     list.sort((a, b) => {
       const sr = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
       if (sr !== 0) return sr;
-      return String(a.time || '99:99').localeCompare(String(b.time || '99:99'));
+      return String(a.bookingRef || '').localeCompare(String(b.bookingRef || ''));
     });
   }
-  const bucketOrder = ['morning', 'afternoon', 'evening', 'unscheduled'] as const;
+  // Order slots chronologically.
+  const orderedSlots = [...slotMap.entries()].sort(([a], [b]) => a.localeCompare(b));
+
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {bucketOrder.map((key) => {
-        const rows = buckets[key];
-        if (rows.length === 0) return null;
+    <section style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+      {orderedSlots.map(([time, rows]) => {
         const critical = rows.filter((r) => r.severity === 'CRITICAL').length;
+        const action = rows.filter((r) => r.severity === 'ACTION REQUIRED').length;
         return (
-          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div
+            key={time}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '5rem minmax(0, 1fr)',
+              gap: '0.75rem',
+              alignItems: 'start',
+            }}
+          >
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '0.5rem',
                 position: 'sticky',
-                top: 0,
+                top: '0.5rem',
                 background: '#ffffff',
-                padding: '0.5rem 0.25rem',
+                padding: '0.5rem 0 0.5rem 0',
+                borderRight: '2px solid #e4e7ec',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.2rem',
+                alignItems: 'flex-end',
+                paddingRight: '0.75rem',
                 zIndex: 1,
-                borderBottom: '2px solid #e4e7ec',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span aria-hidden>{BUCKET_ICON[key]}</span>
-                {BUCKET_LABELS[key]}
-                <span style={{ color: '#667085', fontWeight: 500, fontSize: '0.95rem' }}>· {rows.length}</span>
-              </h3>
+              <strong
+                style={{
+                  fontSize: '1.6rem',
+                  color: critical > 0 ? '#b42318' : action > 0 ? '#b54708' : '#101828',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1,
+                }}
+              >
+                {time}
+              </strong>
+              <span style={{ color: '#667085', fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.04em' }}>
+                {rows.length} svc{rows.length === 1 ? '' : 's'}
+              </span>
               {critical > 0 ? (
-                <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.2rem 0.55rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 800 }}>
-                  ⚠ {critical} critical
+                <span style={{ background: '#fef3f2', color: '#b42318', padding: '0.1rem 0.4rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 800 }}>
+                  ⚠ {critical}
                 </span>
               ) : null}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.5rem' }}>
               {rows.map((row) => <DispatchCard key={`tl-${row.serviceId}`} row={row} returnTo={returnTo} />)}
             </div>
           </div>
         );
       })}
+      {unscheduled.length > 0 ? (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '5rem minmax(0, 1fr)',
+            gap: '0.75rem',
+            alignItems: 'start',
+            marginTop: '0.5rem',
+          }}
+        >
+          <div
+            style={{
+              padding: '0.5rem 0.75rem 0.5rem 0',
+              borderRight: '2px dashed #d0d5dd',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: '0.2rem',
+            }}
+          >
+            <strong style={{ fontSize: '0.95rem', color: '#475467', textAlign: 'right' }}>UNSCHED.</strong>
+            <span style={{ color: '#667085', fontSize: '0.72rem', fontWeight: 600 }}>
+              {unscheduled.length} svc{unscheduled.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingTop: '0.5rem' }}>
+            {unscheduled.map((row) => <DispatchCard key={`tl-u-${row.serviceId}`} row={row} returnTo={returnTo} />)}
+          </div>
+        </div>
+      ) : null}
       {allRows.length === 0 ? (
         <p style={{ color: '#667085' }}>No services in this window.</p>
       ) : null}
