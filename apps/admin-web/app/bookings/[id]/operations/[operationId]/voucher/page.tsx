@@ -23,6 +23,7 @@ type HotelSnapshot = {
   confirmationNumber?: string | null;
   checkIn?: string | null;
   checkOut?: string | null;
+  nights?: number | null;
   mealPlan?: string | null;
   roomCount?: number | null;
   assignedPax?: number | null;
@@ -247,6 +248,7 @@ export default async function OperationalVoucherPage({ params }: PageProps) {
             <Detail label="Hotel confirmation" hideIfEmpty>{snapshot.hotel.confirmationNumber}</Detail>
             <Detail label="Check-in" hideIfEmpty>{snapshot.hotel.checkIn}</Detail>
             <Detail label="Check-out" hideIfEmpty>{snapshot.hotel.checkOut}</Detail>
+            <Detail label="Nights" hideIfEmpty>{snapshot.hotel.nights}</Detail>
             <Detail label="Meal plan" hideIfEmpty>{snapshot.hotel.mealPlan}</Detail>
             <Detail label="Rooms" hideIfEmpty>{snapshot.hotel.roomCount}</Detail>
             <Detail label="Assigned pax" hideIfEmpty>{snapshot.hotel.assignedPax}</Detail>

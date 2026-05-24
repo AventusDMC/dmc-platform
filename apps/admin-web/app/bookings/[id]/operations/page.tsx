@@ -32,6 +32,7 @@ type OperationsGridRow = {
   confirmationReceivedAt?: string | null;
   pickupLocation?: string | null;
   dropoffLocation?: string | null;
+  nights?: number | null;
 };
 
 type SupplierOption = {
@@ -266,6 +267,18 @@ function renderAssignmentForm(bookingId: string, row: OperationsGridRow, supplie
         defaultValue={row.operationalTime || ''}
         aria-label={`Operational time for ${row.description || row.serviceType}`}
       />
+      {String(row.serviceType || '').toUpperCase().match(/HOTEL|ACCOMMODATION|LODGING/) ? (
+        <input
+          type="number"
+          name="nights"
+          min={1}
+          step={1}
+          defaultValue={row.nights ?? ''}
+          placeholder="Nights"
+          aria-label={`Number of nights for ${row.description || row.serviceType}`}
+          style={{ width: '5rem' }}
+        />
+      ) : null}
       <button type="submit" className="button button-secondary">Assign Supplier</button>
     </form>
   );
