@@ -21,6 +21,7 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     children: [
       { label: 'Overview', href: '/admin/dashboard' },
       { label: 'Executive Operations', href: '/executive/operations' },
+      { label: 'Production Readiness', href: '/admin/production-readiness' },
     ],
   },
   {

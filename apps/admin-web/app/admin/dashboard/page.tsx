@@ -231,6 +231,13 @@ export default async function AdminDashboardPage() {
             >
               👔 Executive Ops
             </Link>
+            <Link
+              href="/admin/production-readiness"
+              className="primary-button"
+              style={{ background: '#b54708', borderColor: '#b54708', color: '#ffffff' }}
+            >
+              🩺 Readiness
+            </Link>
             <Link href="/quotes/new" className="primary-button">
               New Quote
             </Link>
