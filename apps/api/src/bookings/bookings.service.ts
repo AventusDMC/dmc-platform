@@ -10419,6 +10419,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const booking = service.booking || {};
     const passengers = booking.passengers || [];
     const namesPending = passengers.filter((p: any) => !p.firstName || !p.lastName).length;
+    const expectedPax = Number(booking.pax || 0);
+    // Manifest is complete when every expected pax has a record AND no record
+    // is missing its name. The previous check (namesPending === 0) reported
+    // "complete: Yes" on bookings like BK-2026-0004 (2 pax expected, 1 record
+    // entered) because all existing records had names, but the manifest summary
+    // elsewhere correctly read it as incomplete.
+    const manifestComplete =
+      passengers.length > 0 &&
+      namesPending === 0 &&
+      (expectedPax === 0 || passengers.length >= expectedPax);
     // Prefer the operationally-assigned supplier (set by the assign-supplier
     // form on the operations grid) over the catalog-level supplierId field —
     // they often differ because assignOperationalSupplier writes only
@@ -10473,8 +10483,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       paxCount: service.participantCount || booking.pax || passengers.length || 0,
       passengerManifest: {
         total: passengers.length,
+        expected: expectedPax,
         namesPending,
-        complete: passengers.length > 0 && namesPending === 0,
+        complete: manifestComplete,
       },
       rooming: isHotel
         ? { roomCount: roomingEntries.length, assignedPax }
