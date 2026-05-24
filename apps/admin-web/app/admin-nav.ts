@@ -18,7 +18,10 @@ export const NAV_GROUPS: AdminNavGroup[] = [
     href: '/admin/dashboard',
     match: ['/', '/dashboard', '/admin', '/admin/dashboard'],
     helper: 'Business overview and operational signals',
-    children: [{ label: 'Overview', href: '/admin/dashboard' }],
+    children: [
+      { label: 'Overview', href: '/admin/dashboard' },
+      { label: 'Executive Operations', href: '/executive/operations' },
+    ],
   },
   {
     label: 'Sales',

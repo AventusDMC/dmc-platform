@@ -44,6 +44,8 @@ import { DispatchEventsController } from './dispatch-events/dispatch-events.cont
 import { DispatchEventsService } from './dispatch-events/dispatch-events.service';
 import { DriversController } from './drivers/drivers.controller';
 import { DriversService } from './drivers/drivers.service';
+import { ExecutiveController } from './intelligence/executive.controller';
+import { ExecutiveService } from './intelligence/executive.service';
 import { FinancialIntelligenceService } from './intelligence/financial-intelligence.service';
 import { IntelligenceController } from './intelligence/intelligence.controller';
 import { IntelligenceService } from './intelligence/intelligence.service';
@@ -148,6 +150,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     GalleryController,
     DispatchEventsController,
     DriversController,
+    ExecutiveController,
     GuidesController,
     IntelligenceController,
     RecoveryController,
@@ -219,6 +222,7 @@ import { UserInvitationsService } from './users/user-invitations.service';
     GalleryService,
     DispatchEventsService,
     DriversService,
+    ExecutiveService,
     FinancialIntelligenceService,
     GuidesService,
     IntelligenceService,
