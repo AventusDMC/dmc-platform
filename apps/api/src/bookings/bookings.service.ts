@@ -443,6 +443,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         include: {
           bookingDay: true,
           vehicle: true,
+          driver: true,
           assignedSupplier: true,
           touringRoute: true,
           touringRoutePricing: {
@@ -621,6 +622,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           dropoffLocation: service.dropoffLocation || null,
           assignedVehicleId: service.assignedVehicleId || service.vehicleId || null,
           assignedGuideId: service.assignedGuideId || service.guideId || null,
+          // Driver/Vehicle for the operations grid dropdowns and dispatch.
+          // The grid form posts back to /assign-transport with these IDs.
+          vehicleId: service.vehicleId || null,
+          vehicleName: service.vehicle?.name || null,
+          vehiclePlateNumber: (service.vehicle as any)?.plateNumber || null,
+          driverId: (service as any).driverId || null,
+          driverName: (service as any).driver?.fullName || service.assignedTo || null,
+          driverPhone: (service as any).driver?.phone || null,
           nights: (service as any).nights ?? null,
           mealPlan: (service as any).mealPlan ?? null,
           specialRequests: (service as any).specialRequests ?? null,
@@ -638,6 +647,67 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       passengerManifest,
       rows,
     };
+  }
+
+  // Assign vehicle and/or driver to an operations grid row. Separate from
+  // supplier assignment so the operator can fill in a driver later without
+  // re-triggering the supplier confirmation flow. Both fields independently
+  // nullable — pass null to clear, undefined to leave alone.
+  async assignTransportResources(
+    bookingId: string,
+    operationId: string,
+    data: {
+      vehicleId?: string | null;
+      driverId?: string | null;
+      actor?: AuditActor;
+      companyActor?: CompanyScopedActor;
+    },
+  ) {
+    const bookingService = await (this.prisma.bookingService as any).findFirst({
+      where: {
+        id: operationId,
+        bookingId,
+        booking: this.buildBookingCompanyWhere(data.companyActor),
+      },
+      include: { vehicle: true, driver: true },
+    });
+    if (!bookingService) throw new NotFoundException('Booking operation row not found');
+    await this.assertLatestBookingAmendment(bookingService.bookingId);
+
+    if (data.vehicleId) {
+      const vehicle = await (this.prisma.vehicle as any).findUnique({ where: { id: data.vehicleId } });
+      if (!vehicle) throw new BadRequestException('Vehicle not found');
+    }
+    if (data.driverId) {
+      const driver = await (this.prisma as any).driver.findUnique({ where: { id: data.driverId } });
+      if (!driver) throw new BadRequestException('Driver not found');
+    }
+
+    const previousValue = `vehicle=${bookingService.vehicle?.name || '—'} driver=${bookingService.driver?.fullName || bookingService.assignedTo || '—'}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const updateData: Record<string, unknown> = {};
+      if (data.vehicleId !== undefined) updateData.vehicleId = data.vehicleId || null;
+      if (data.driverId !== undefined) updateData.driverId = data.driverId || null;
+      const updated = await (tx.bookingService as any).update({
+        where: { id: operationId },
+        data: updateData,
+        include: { vehicle: true, driver: true },
+      });
+
+      const nextValue = `vehicle=${updated.vehicle?.name || '—'} driver=${updated.driver?.fullName || updated.assignedTo || '—'}`;
+      await this.createAuditLog(tx, {
+        bookingId: bookingService.bookingId,
+        bookingServiceId: bookingService.id,
+        entityType: BookingAuditEntityType.booking_service,
+        entityId: bookingService.id,
+        action: 'booking_service_transport_resources_assigned',
+        oldValue: previousValue,
+        newValue: nextValue,
+        actor: data.actor,
+      });
+      return updated;
+    });
   }
 
   async assignOperationalSupplier(
@@ -10464,6 +10534,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       include: {
         bookingDay: true,
         vehicle: true,
+        driver: true,
         supplier: true,
         touringRoute: true,
         touringRoutePricing: {
@@ -10495,6 +10566,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
               include: {
                 bookingDay: true,
                 vehicle: true,
+                driver: true,
                 touringRoute: true,
                 touringRoutePricing: {
                   include: {
@@ -10731,10 +10803,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             routeCode: transportRoute?.code || null,
             vehicleType: vehicle?.vehicleType || vehicle?.name || null,
             vehicleName: vehicle?.name || null,
-            driverName: service.assignedTo || null,
-            // No dedicated driverPhone field on BookingService yet — supplier.phone
-            // is the dispatch contact in the meantime.
-            driverPhone: null,
+            vehiclePlateNumber: (vehicle as any)?.plateNumber || null,
+            // Driver: prefer the linked Driver entity (which carries phone and
+            // licence). Fall back to the legacy `assignedTo` free-text field
+            // for rows that pre-date the Driver model.
+            driverName: (service as any).driver?.fullName || service.assignedTo || null,
+            driverPhone: (service as any).driver?.phone || null,
+            driverLicenseNumber: (service as any).driver?.licenseNumber || null,
             emergencyContact: supplierContact,
             operationalRemarks: service.supplierRemarks || null,
           }
@@ -11570,7 +11645,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           },
         },
         bookingDay: { select: { id: true, date: true, dayNumber: true, title: true } },
-        vehicle: { select: { id: true, name: true, vehicleType: true } },
+        vehicle: { select: { id: true, name: true, vehicleType: true, plateNumber: true } },
+        driver: { select: { id: true, fullName: true, phone: true, licenseNumber: true } },
         supplier: { select: { id: true, name: true, phone: true } },
         assignedSupplier: { select: { id: true, name: true, phone: true } },
         guide: { select: { id: true, fullName: true, phone: true, languages: true } },
@@ -11623,9 +11699,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         issueSeverity: (service as any).issueSeverity || null,
         issueNotes: (service as any).issueNotes || null,
         dispatchNotes: (service as any).dispatchNotes || null,
-        driverName: service.assignedTo || null,
+        // Driver: prefer the linked Driver entity, fall back to the legacy
+        // free-text `assignedTo` field for backwards compatibility on rows
+        // pre-dating the Driver model.
+        driverName: (service as any).driver?.fullName || service.assignedTo || null,
+        driverPhone: (service as any).driver?.phone || null,
+        driverLicenseNumber: (service as any).driver?.licenseNumber || null,
         vehicleName: service.vehicle?.name || null,
         vehicleType: service.vehicle?.vehicleType || null,
+        vehiclePlateNumber: (service.vehicle as any)?.plateNumber || null,
         guideName: service.guide?.fullName || service.assignedTo || null,
         guidePhone: service.guide?.phone || service.guidePhone || null,
         guideLanguages: service.guide?.languages || service.guideRequiredLanguages || [],

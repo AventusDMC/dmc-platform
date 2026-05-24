@@ -53,6 +53,7 @@ async function main() {
     const services = await seedSupplierServices(prisma, suppliers, serviceTypes);
     const transportServiceTypes = await seedTransportServiceTypes(prisma);
     const vehicles = await seedVehicles(prisma, suppliers);
+    await seedDrivers(prisma, suppliers);
     const routes = await seedRoutes(prisma, places);
     await seedTransportPricingRules(prisma, routes, transportServiceTypes, vehicles);
     await seedVehicleRates(prisma, routes, transportServiceTypes, vehicles);
@@ -675,9 +676,9 @@ async function seedTransportServiceTypes(prisma: PrismaService) {
 async function seedVehicles(prisma: PrismaService, suppliers: Record<string, NamedRecord>) {
   const transportSupplier = suppliers[normalizeKey('Desert Compass Transport')];
   const entries = [
-    { name: 'Toyota Camry Sedan', maxPax: 2, luggageCapacity: 3 },
-    { name: 'Hyundai H1 Minivan', maxPax: 5, luggageCapacity: 7 },
-    { name: 'Toyota Coaster Mini Coach', maxPax: 14, luggageCapacity: 16 },
+    { name: 'Toyota Camry Sedan', maxPax: 2, luggageCapacity: 3, plateNumber: 'JOR-4521' },
+    { name: 'Hyundai H1 Minivan', maxPax: 5, luggageCapacity: 7, plateNumber: 'JOR-7820' },
+    { name: 'Toyota Coaster Mini Coach', maxPax: 14, luggageCapacity: 16, plateNumber: 'JOR-1183' },
   ];
 
   const records = await Promise.all(
@@ -709,6 +710,51 @@ async function seedVehicles(prisma: PrismaService, suppliers: Record<string, Nam
   );
 
   return toRecordMap(records);
+}
+
+// Seed a handful of demo drivers tied to the transport supplier so the
+// operations grid dropdown has something to pick. Uses fullName-based upsert
+// so re-seeding is idempotent.
+async function seedDrivers(prisma: PrismaService, suppliers: Record<string, NamedRecord>) {
+  const transportSupplier = suppliers[normalizeKey('Desert Compass Transport')];
+  const entries: Array<{
+    fullName: string;
+    phone: string;
+    licenseNumber: string;
+    languages: string[];
+  }> = [
+    { fullName: 'Ahmed Al-Khatib', phone: '+962 79 555 1102', licenseNumber: 'JD-DR-2241', languages: ['Arabic', 'English'] },
+    { fullName: 'Mahmoud Hijazi', phone: '+962 77 555 4480', licenseNumber: 'JD-DR-2298', languages: ['Arabic', 'English', 'French'] },
+    { fullName: 'Omar Al-Ali', phone: '+962 78 555 7720', licenseNumber: 'JD-DR-2310', languages: ['Arabic', 'English'] },
+  ];
+  for (const entry of entries) {
+    const existing = await (prisma as any).driver.findFirst({
+      where: { fullName: { equals: entry.fullName, mode: 'insensitive' } },
+    });
+    if (existing) {
+      await (prisma as any).driver.update({
+        where: { id: existing.id },
+        data: {
+          phone: entry.phone,
+          licenseNumber: entry.licenseNumber,
+          languages: entry.languages,
+          active: true,
+          supplierId: transportSupplier.id,
+        },
+      });
+    } else {
+      await (prisma as any).driver.create({
+        data: {
+          fullName: entry.fullName,
+          phone: entry.phone,
+          licenseNumber: entry.licenseNumber,
+          languages: entry.languages,
+          active: true,
+          supplierId: transportSupplier.id,
+        },
+      });
+    }
+  }
 }
 
 async function seedRoutes(prisma: PrismaService, places: Record<string, NamedRecord>) {

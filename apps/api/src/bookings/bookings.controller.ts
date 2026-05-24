@@ -395,6 +395,25 @@ export class BookingsController {
     });
   }
 
+  // Assign vehicle and/or driver to an operations row. Independent of
+  // supplier assignment so the operator can fill in a driver later without
+  // disturbing the supplier confirmation flow.
+  @Patch(':id/operations/:operationId/assign-transport')
+  @Roles('admin', 'operations')
+  assignTransportResources(
+    @Param('id') id: string,
+    @Param('operationId') operationId: string,
+    @Body() body: { vehicleId?: string | null; driverId?: string | null },
+    @Actor() actor: AuthenticatedActor,
+  ) {
+    return this.bookingsService.assignTransportResources(id, operationId, {
+      vehicleId: body.vehicleId === undefined ? undefined : body.vehicleId || null,
+      driverId: body.driverId === undefined ? undefined : body.driverId || null,
+      actor: this.toAuditActor(actor),
+      companyActor: actor,
+    });
+  }
+
   @Patch(':id/operations/:operationId/confirmation')
   @Roles('admin', 'operations')
   updateOperationalSupplierConfirmation(

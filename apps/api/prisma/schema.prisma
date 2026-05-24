@@ -2260,6 +2260,9 @@ model Vehicle {
   supplierName         String?
   name                 String
   vehicleType          String?                @map("vehicle_type")
+  // Plate number — surfaced on dispatch cards so the operator and the
+  // arriving traveller can identify the vehicle on the curb.
+  plateNumber          String?                @map("plate_number")
   maxPax               Int
   luggageCapacity      Int
   createdAt            DateTime               @default(now())
@@ -2270,6 +2273,31 @@ model Vehicle {
   touringRoutePricings TouringRoutePricing[]
 
   @@map("vehicles")
+}
+
+// Drivers are the transport-side analogue of the Guide model. Used to
+// formalise the per-service driver assignment that previously lived only as
+// a free-text `assignedTo` string on BookingService.
+model Driver {
+  id              String           @id @default(uuid()) @db.Uuid
+  fullName        String
+  phone           String?
+  licenseNumber   String?           @map("license_number")
+  languages       String[]          @default([])
+  active          Boolean           @default(true)
+  // Optional link to the transport supplier this driver belongs to. Lets
+  // the operations grid filter drivers to the supplier already assigned to
+  // the service. SetNull on supplier delete so we don't cascade away
+  // driver records.
+  supplierId      String?           @db.Uuid
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  bookingServices BookingService[]
+
+  @@index([active, fullName])
+  @@index([supplierId])
+  @@map("drivers")
 }
 
 model BookingService {
@@ -2305,6 +2333,10 @@ model BookingService {
   mealDietaryRequirements    String[]                      @default([])
   mealOperationalNotes       String?
   vehicleId                  String?                       @db.Uuid
+  // Driver assignment — first-class FK to the Driver entity. Replaces the
+  // previous free-text `assignedTo` field for transport (which we keep for
+  // backwards compatibility on non-transport ops).
+  driverId                   String?                       @db.Uuid
   serviceDate                DateTime?
   startTime                  String?
   pickupTime                 String?
@@ -2379,6 +2411,7 @@ model BookingService {
   supplier                   Supplier?                     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   assignedSupplier           Supplier?                     @relation("BookingServiceAssignedSupplier", fields: [assignedSupplierId], references: [id], onDelete: SetNull)
   vehicle                    Vehicle?                      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  driver                     Driver?                       @relation(fields: [driverId], references: [id], onDelete: SetNull)
   guide                      Guide?                        @relation(fields: [guideId], references: [id], onDelete: SetNull)
   restaurant                 Restaurant?                   @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
 
@@ -2393,6 +2426,7 @@ model BookingService {
   @@index([assignmentStatus])
   @@index([supplierConfirmationStatus])
   @@index([vehicleId])
+  @@index([driverId])
   @@index([assignedVehicleId])
   @@index([assignedGuideId])
   @@index([guideId])
