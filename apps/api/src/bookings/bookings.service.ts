@@ -12224,10 +12224,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         guides: { label: 'Guides', rows: lanes.guides, ...laneCount(lanes.guides) },
       },
       // Live execution sections. Cap each to 50 to keep the response sane.
+      // Each row is run through the severity classifier so the dispatch
+      // cards render with the right severity pill (CRITICAL for issues,
+      // ACTION/INFO otherwise) — execution sections previously rendered with
+      // an empty severity which the frontend interpreted as INFO/READY.
       execution: {
-        inProgress: { label: 'In Progress', count: inProgressRowsAll.length, rows: inProgressRowsAll.slice(0, 50) },
-        delayedIssues: { label: 'Delayed / Issues', count: delayedRowsAll.length, rows: delayedRowsAll.slice(0, 50) },
-        completedToday: { label: 'Completed Today', count: completedTodayRowsAll.length, rows: completedTodayRowsAll.slice(0, 50) },
+        inProgress: {
+          label: 'In Progress',
+          count: inProgressRowsAll.length,
+          rows: inProgressRowsAll.slice(0, 50).map((r: any) => ({ ...r, ...classifyRowSeverityTimed(r) })),
+        },
+        delayedIssues: {
+          label: 'Delayed / Issues',
+          count: delayedRowsAll.length,
+          rows: delayedRowsAll.slice(0, 50).map((r: any) => ({ ...r, ...classifyRowSeverityTimed(r) })),
+        },
+        completedToday: {
+          label: 'Completed Today',
+          count: completedTodayRowsAll.length,
+          rows: completedTodayRowsAll.slice(0, 50).map((r: any) => ({ ...r, ...classifyRowSeverityTimed(r) })),
+        },
         // Resolution queue: rows in ISSUE state, ordered with oldest first so
         // the most-overdue incident sits at the top. Drives the stability
         // dashboard's "needs resolution" section.
@@ -12242,7 +12258,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           return {
             label: 'Resolution Queue',
             count: queue.length,
-            rows: queue.slice(0, 50),
+            rows: queue.slice(0, 50).map((r: any) => ({ ...r, ...classifyRowSeverityTimed(r) })),
           };
         })(),
       },
