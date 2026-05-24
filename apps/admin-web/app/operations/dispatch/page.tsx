@@ -876,6 +876,13 @@ function renderDispatchBody({
               ⚙ Resources
             </Link>
             <Link
+              href="/operations/intelligence"
+              className="button button-secondary"
+              title="Operations analytics — performance, bottlenecks, forecast, trends"
+            >
+              📊 Intelligence
+            </Link>
+            <Link
               href="/operations/simulation"
               className="button button-secondary"
               style={{ borderStyle: 'dashed' }}
